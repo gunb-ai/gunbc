@@ -3036,6 +3036,56 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
     ),
     roadmap_node(
+      identity: "rn_QYEUEURHHNC6K26XR4ZZCSFKJA",
+      id: "fleet-converge-receipt-counts-owed-work",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_converge_plan.dag"),
+      line: ticket(t: fields(
+        headline: "The converge apply receipt counts the work it withheld and the work it never meant to do",
+        boundary: "fleet_converge_apply_terminal's FullHostConverge arm builds its terminal from REFUSAL counts alone, so a plan that owed work and a run that did none of it print the same receipt. On srv1 apply run 44428803079 (plan 44423114994) the plan listed 2 cap drop-in CHANGEs and 4 runner-slot REMOVEs (srv1-10/11/12/14); the apply was correctly fail-closed and did none of them -- the cap axis is never emitted into apply.sh (gunbc.fleet.fleet_converge_plan::fleet_converge_cap_apply_shell_note: drop-in writes are live_deploy authority, per the MemoryMax SINGLE AUTHORITY note in gunbc.host.host_axis_caps::host_axis_caps_note) and the 4 teardowns echoed __GUNBC_CONVERGE_WITHHELD__ cause=no retirement evidence because srv1-07/08/09 were still running. The receipt still read partially_applied|7|slot=5 cap=0 ... activation=2, exit 0, 'applied', because a withheld row and a plan-only row are counted as NEITHER applied NOR refused. The arm's own comment in gunbc.fleet.fleet_converge_plan::fleet_converge_apply_terminal names this exact failure mode: 'the plan says work is needed, nothing does it, the terminal reports applied' and the LiveDeployMemberBasis arm is guarded against it -- a non-empty plan gives AwaitingCapability, never FullyApplied. FullHostConverge has no such guard. Adjacent and admitted by the same note: the cap rows are rendered into plan.txt as ADD/CHANGE/REMOVE MUTATIONS although converge never acts on them, and the CHANGE line says 'content drift' for a whole-file byte compare (gunbc.host.host_axis_caps::cap_member_value_eq over gunbc.host.host_axis_caps::cap_dropin_content) without naming the directive or either value. That compare is NOT producing a false positive here -- the plan's own observed baseline (artifact fleet-converge-plan of run 44423114994) reads MemoryMax=23622320128 and MemoryHigh=22548578304, the pre-ruling 22/21 GiB bracket srv1's drop-ins still carry at mtime 2026-10-30, while the model has demanded 26843545600 for BOTH directives since the operator ruling of 2026-11-04 (#15850). The drift is real, live_deploy has not written it, converge is forbidden to write it, and the receipt counted it nowhere.",
+        displaced_cost: "The one number an operator trusts about a converge run is wrong in the safe-looking direction: a converge that did nothing reports applied, so the next dispatch is chosen from a receipt that hides both the withheld teardowns and the cap rows that were never converge's to do. The retirement-evidence gate -- the thing that withheld the 4 teardowns and is the reason the run was safe -- is invisible in the receipt, which reads as though there were nothing left to wait for. And 2 plan-only cap rows presented as mutations teach the reviewer that converge owns a live_deploy write, which is the authority split the cap note exists to protect; the 25 GiB envelope srv1 has owed since 2026-11-04 is reported as 'content drift', which names neither directive nor value and cannot be acted on.",
+        first_slice: "The FullHostConverge arm carries a WITHHELD count and a PLAN-ONLY count beside the refused count, FullyApplied requires all three to be zero, and the receipt line names each; the withheld and plan-only counts are counted from what the renderer actually renders, not re-derived beside it. The cap rows render as plan-only: live_deploy authority rather than as mutations, and the drift line names the managed directive and the observed and desired values instead of saying 'content drift'.",
+        red_control: "A full-host request whose slot teardowns are withheld for want of retirement evidence yields a terminal that is NOT FullyApplied and a receipt that names the withheld count; the same request with the guard reverted reproduces the 44428803079 receipt shape (partially_applied, the 4 teardowns counted applied, no withheld or plan-only term). A plan whose cap axis is non-empty and whose slot axis is clean is likewise never FullyApplied, and a cap drift row names its directive and both values -- the srv1 pair reports MemoryMax 23622320128 -> 26843545600 and MemoryHigh 22548578304 -> 26843545600, and a drop-in whose managed directive already parses to the desired value is not reported as needing a value change.",
+        out_of_scope: "Converge does not gain a cap drop-in actuator -- writing the drop-ins stays live_deploy's authority, and the fix is to stop rendering them as converge's mutations, not to start performing them. No new withholding cause and no relaxed one: what the retirement-evidence gate decides, it decides. live_deploy's own cap converge (gunbc.runner.runner_slot_cap_converge, live cgroup readback) is untouched, as is who has to write srv1's 25 GiB envelope.",
+        handback: "The srv1 apply that reported 'applied' over 4 withheld teardowns and 2 plan-only cap rows now reports both counts and is not FullyApplied, and a srv1 converge whose plan really is empty still reports fully_applied -- the receipt says what the run did, in numbers, in both directions.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
+    ),
+    roadmap_node(
+      identity: "rn_7QW3NVBMKHTCJ6Y2XDRPE5V0GT",
+      id: "converge-plan-lists-the-withholds-the-obligation-and-actuation-gates-emit",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_slot_provision.dag"),
+      line: ticket(t: fields(
+        headline: "plan.txt lists the obligation and ungranted-actuation withholds it today only echoes into apply.sh",
+        boundary: "A host convergence plan's teardown script carries five kinds of withheld line: the required-retiree obligation gates (gunbc.runner.runner_slot_provision::obligation_withheld_line and gunbc.runner.runner_slot_provision::obligation_withheld_scripts), the ungranted-actuation gate (gunbc.runner.runner_slot_provision::ungranted_actuation_withheld_scripts), and the tree-removal gate (gunbc.runner.runner_slot_provision::slot_removal_withheld_line). Only the last has a plan.txt row behind it -- plan.txt is rendered from the membership actions -- so on srv1 apply run 44428803079 the plan listed 4 REMOVEs while apply.sh echoed 43 __GUNBC_CONVERGE_WITHHELD__ lines. fleet-converge-receipt-counts-owed-work makes that gap VISIBLE as its own named number on the receipt; it does not close it, and it must not be read as having closed it. THIS ROW IS NOT DISPATCHED and waits on that one, because the gap cannot be closed by rendering those lines as REMOVE rows: a plan row asserts a member the plan wants REMOVED, and the obligation and actuation gates withhold units the plan does not want removed -- they are the standing obligations of a width reduction, not this plan's removals. Rendering them as REMOVE rows would move the member-set fingerprint, making the plan artifact assert a member-set it does not own. They need a grain of their own. THE OPEN QUESTION THIS ROW CARRIES: whether they belong in plan.txt beside the removals in a section named for what they are, or on the observation side of the plan, beside the other units whose retirement the host is waiting on.",
+        displaced_cost: "An operator reading plan.txt sees 4 pending removals and no trace of the 39 other units the apply script will report as withheld; the only way to learn they exist today is to read apply.sh, after it has run.",
+        first_slice: "Render the obligation and actuation withholds into a plan.txt section of their own -- named for what they are (units whose retirement this host owes and has not actuated), not as REMOVE rows -- and state which side of the plan they belong to and why.",
+        red_control: "A width-reduction plan for a host with retiring slots lists the withheld obligation units in that section, and the section is EMPTY rather than absent when nothing is withheld; RED on main, where plan.txt is silent about them entirely.",
+        out_of_scope: "The receipt's own numbers, which are the other row's; any change to the member-set fingerprint, which this row must not move; the retirement evidence the withholds are waiting on.",
+        handback: "The section's grain and its place in the plan, the fingerprint's verdict on whether it moved, and the control with its red run on main."
+      )),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
+    ),
+    roadmap_node(
+      identity: "rn_C9W3QF7HX2KD8M5TPR1VN6ZBL4",
+      id: "fleet-converge-expected-revision-names-the-plan-revision",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_converge_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "The fleet-converge dispatch tells the operator that expected_revision is the plan's revision, not main's",
+        boundary: "The srv1 lab cutover (node lab-converges-release-pair) lost three cutover attempts because the operator passed expected_revision = the current main tip to the apply and deploy dispatches. The plan runs in its own earlier dispatch at revision P; the plan-revision job then emits P, and build, apply, dashboard_deploy and desired_instance_deploy all check out needs.build.outputs.revision, which is P (not github.sha). admit_optional_expected_revision is a cross-check of that checkout, so it compares the supplied expected_revision against P: a main tip M != P refuses with RunRevisionRefused naming expected M, observed P, and the cutover stalls even though every changed path since P was unrelated to the plan. The fix is NOT to relax that gate (no admission-rule change): dispatching with expected_revision = P already passes every gate whatever main does, proven on deploy test run 44488679086 (dispatched --ref main at 4c2f3046 with expected_revision = the plan revision 2561d29e; the 'Verify the checkout is the plan receipt's revision' step and every pointer admission passed). What was missing is the operator-facing statement. The dispatch input description (data `fleet_converge_expected_revision_input`) and the checkout-model comment above it in dag/gunbc/fleet/fleet_converge_workflow.dag already say the checkout is the plan's revision and expected_revision is only a cross-check; they must now SAY TO THE OPERATOR that for apply, dashboard_deploy and desired_instance_deploy the value to pass is the plan's revision P (the same value plan-revision emits), never the current main tip, because the checkout is P and main's tip refuses by name. runbook docs/runbooks/roadmap-event-log-cutover.md:1092 states expected_revision is never omitted but does not say which revision it must name once a prior plan run exists.",
+        displaced_cost: "Every future plan-then-apply-then-deploy cutover that reads expected_revision as 'the sha I dispatched at' re-loses the race, stalls on an admission that is correct, and burns a 37-minute plan plus a 22-minute apply before the deploy refuses; and a reviewer has to re-derive the checkout-at-P model from the workflow each time.",
+        first_slice: "Amend the fleet_converge_expected_revision_input dispatch description and the checkout-model comment in fleet_converge_workflow.dag to state that at the plan-executing modes expected_revision must name the plan's revision (the value plan-revision emits into needs.plan-revision.outputs.revision), not the dispatched main tip, and regenerate .github/workflows/fleet-converge.yml through generated_artifact_gate main_wet. Add a sentence to the runbook's dispatch section. No change to admit_optional_expected_revision or any gate.",
+        red_control: "A witness on the single shared admission admit_optional_expected_revision_given, modelled on the apply/deploy dispatch where the run's event sha (run_revision) is a main tip M but the checkout the build emitted (execution_revision) is the plan's revision P: expected_revision = P admits and the admitted revision is P; expected_revision absent admits and the admitted revision is P (proving the checkout followed the plan, not main); and RED — expected_revision = M (the main tip, != P) refuses with RunRevisionRefused naming expected M and observed P. The third arm is the red control: a cutover that names main's tip is refused by name, exactly the stall the docs now warn about.",
+        out_of_scope: "Any change to the admission rule (admit_optional_expected_revision stays an exact cross-check; the earlier closure/semantic relaxation investigated on the prior slice of this row is ruled out by the 44488679086 result), the boot job's event-sha-only checkout, and the unrelated 30-minute downstream step timeout that later failed 44488679086 (proud-bat-272's).",
+        handback: "The amended dispatch description and checkout-model comment, the regenerated fleet-converge.yml, the runbook sentence, and the admit_optional_expected_revision_given witness with its main-tip red arm green on srv1."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence, and the cutover that converges them dispatches the plan's revision whatever main is."),
+    ),
+    roadmap_node(
       identity: "rn_EP54CSQWDFDY1JRAD5Q0HJV8F8",
       id: "per-function-claim-run-loads-string-dispatched-names",
       owner: "self-host",
@@ -5234,7 +5284,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
     ),
     // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
-    // the schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
+    // The workspace and its workers belong to factory (@ref(gunbc.design_ruling::roadmap_scheduling_units_belong_to_factory)).
+    // The schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
     // binds its days, claims that name a leaf, the in-flight set and the realized durations derived
     // from the log, the schedule from now, its bottlenecks and its offer, the leaf-grain frontier and
     // the dispatch that carries a leaf, the typed handback, the projection every reader reads and the
@@ -5255,7 +5306,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The occurrence list for one decomposition at a declared count, the refusal output for the planted stage, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
+      parent: in_project(project: "factory", contribution: "The expansion is what makes a leaf legible at all: a dependency, an estimate and a dispatch all have something to name. What to work on stays the operator's choice (gunbc.design_ruling::planning_scheduling_is_cut)."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8N43DQ0V7XT2EZKX04",
@@ -5272,7 +5323,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The schedule output for both fixtures (start and finish per leaf, lanes, in-flight count per day, critical path), the two refusal outputs, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
+      parent: in_project(project: "factory", contribution: "The simulated execution is the scheduler; without its answer there is no critical path to bottleneck or offer from."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8PQK11YFYV0QV0SM74",
@@ -5289,7 +5340,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The dated output for one read, the weekend output and the one-week-later output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
+      parent: in_project(project: "factory", contribution: "A schedule nobody can date is not a plan; the read date is what makes the answer about today."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8QQ2EYRW11GZWGRFTB",
@@ -5306,7 +5357,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The accepted append, the refused append output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
+      parent: in_project(project: "factory", contribution: "Every leaf-grain answer downstream is a fact about a claimed leaf, and a claim that names only an item cannot carry one."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8R27QGW6MFE9WB6G4F",
@@ -5323,7 +5374,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The derived set for the planted log with and without the release, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
+      parent: in_project(project: "factory", contribution: "The projection's in-flight column and the page's strip are one derivation from the log; a second copy of that fact is how a projection starts lying."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8S3EY06Q6JCZA2F57G",
@@ -5340,7 +5391,28 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The fold output for a leaf with a realized duration and for an accepted leaf with no claim, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
+      parent: in_project(project: "factory", contribution: "The simulated execution is only honest if realized days replace the priors the moment they exist."),
+    ),
+    roadmap_node(
+      identity: "rn_01PXNRMP5HTMEKQ8W68JRAQ1D3",
+      id: "roadmap-estimates-cannot-contradict",
+      owner: "planning",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_effort_estimate.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/roadmap/roadmap_estimate_derivation.dag" },
+        Pointer { label: "witness", path: "dag/test/claim/roadmap/roadmap_estimate_derivation_witness.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "estimates that cannot contradict: one representation, derived upward",
+        boundary: "The estimate row and its one conversion table are the whole authority (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)). A row names either a size or a duration in working days, never both, and one table converts them both ways: size to duration is the range's midpoint, duration to size is the band that contains it, calibrated from the measured rows in roadmap_effort_estimate's header (an easy node is about a week, a hard compiler node 10 to 16 weeks) and re-calibrated when roadmap_leaf_realized_duration shows a band's realized days outside its range. The upward derivation and every contradiction follow CONTAINMENT ONLY -- in_project membership and decomposition-piece membership -- and never a prerequisite edge: prerequisites order siblings, they do not contain them, so two sequential tasks each carry their own price and no shared prerequisite is ever counted into a parent twice. An authored estimate on a node with an estimated descendant is the contradiction, refused BY NAME with both sides carried in the refusal -- the operator's own case, a project at 1w beside one subnode at 2w, is the witness. The dated rows already appended to roadmap_effort_estimate are history: none is deleted or rewritten, and the check reports every conflict with both sides. Decomposed items already price their pieces (WorkPiece.days read through piece_member_days), so those days are that item's leaf estimates and are not restated. A stated size is admissible only as a labelled estimate with a basis, never as a measured fact. No hours anywhere: a duration is the scheduler's marked working-day Int, with its feature/dissolve-on markers. roadmap_sizing's Intricacy x Volume calibration is a derivation input ABOUT a task and not a size OF a node, so it is not a second representation of the same fact; the merge trigger is realized durations per band, at which point the bands re-calibrate from that same population. NOT IN THIS ROW: the sizing of the roughly 290 nodes, which is its own lane and its own session; no new scheduler -- the item-grain answer places rows through the one placement core and answers over RoadmapNodeIds, and roadmap_schedule stays the leaf-grain scheduler of decomposed items, where they meet being declared here: an item that owns pieces takes its work from the sum of its pieces' days and its elapsed from that item's leaf-grain makespan, so no number is ever priced twice; no authored date beside a duration -- start and finish are bound at the read through roadmap_schedule_calendar; no scope total over a project plus its prerequisites, which is a different question for a different row; the belt's spawn input stays roadmap_schedule's next-leaf offer, which this row does not touch.",
+        displaced_cost: "an estimate that can sit beside its own contradiction: a project planned at 1w over a subnode estimated at 2w, one node carrying two durations two consumers read differently, and an unsized node priced at zero by a default nobody chose",
+        first_slice: "THIS PR (the mechanism, landed green on its own): the conversion table with its six bands and their measured basis, the one representation whose two arms make a row naming both a size and a duration impossible to construct, the size/duration round-trip witness over every band and band boundary, the upward derivation over fixture rows, the typed refusal firing on the operator's own 1w-over-2w case, containment-only (a prerequisite never makes a price a contradiction), and the append-only release a split leaf needs so a stale price cannot haunt it forever -- 27 witnesses. SECOND PR (the item-grain answer, built on the leaf-grain scheduler's own commit so the placement core is shared and this row never grows a second scheduler): the Gantt rows with their four sources, unsized listed and never defaulted, start and finish bound at the read.",
+        red_control: "the operator's contradiction refuses by name with both sides carried -- EstimateContradiction naming the authored parent's estimate and the estimated descendant's, durations and all; a size and its bucketed duration round-trip in BOTH directions for every band (size to days to size returns the same size, days to size to days lands inside the band the days came from); an unsized node appears in the Gantt answer as Unsized with no duration and no dates, never priced at zero and never defaulted to a band's floor; two sibling tasks ordered by a prerequisite, each priced, are NOT a contradiction and both prices stand",
+        out_of_scope: "sizing the roadmap's roughly 290 nodes, which is its own lane and session; any second scheduler; any authored date beside a duration; treating an unlabelled size as a measured fact; any scope-level (project plus its prerequisites) total, which is a separate question for a separate row",
+        handback: "a PR against main with a green dag-check gate; the contradiction report over the 18 rows already appended, every conflict named with both sides, posted to neat-badger-614 rather than resolved by editing history; and the row format the sizing lane hands back to",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "the estimates the planning page prices with: one representation per node, parents that cannot contradict their children, and one Gantt answer over the whole roadmap"),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8TQNENCQJCKVK0TNT1",
@@ -5357,7 +5429,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The from-now output for the fixture with the pinned rows named, the day-two control output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
+      parent: in_project(project: "factory", contribution: "The plan is read today, not from day zero; work already in flight is the first fact a read has to respect."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8VN1APM29K9AV9YE29",
@@ -5374,7 +5446,66 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The bottleneck list and the offer for the fixture, the off-path control output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
+      parent: in_project(project: "factory", contribution: "Without this row there is no bottleneck to look at and no leaf to offer; naming the offer is what lets a dispatch be addressed to a leaf at all."),
+    ),
+    // The barrier fix for the roadmap-Gantt chain (gunb-ai/gunbc#16650). Declared 2026-11-19 after
+    // merry-moth-343's planning review found, on main at 82aff98d, that leaf expansion's stage barrier dies across a
+    // stage that emits no occurrence. DISPATCHED: this is the work this PR carries.
+    roadmap_node(
+      identity: "rn_97HADSFM1HMFG14365YY78ZE0G",
+      id: "roadmap-schedule-barrier-through-empty-stages",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_decomposition.dag"),
+      line: ticket(t: fields(
+        headline: "A stage barrier carries through a stage that emits no occurrence",
+        boundary: "expand_decomposition's stage barrier links each stage to the NEAREST EARLIER stage that actually emits an occurrence, skipping a stage whose only pieces are Decision / Join / Composite (which by design emit none). A waits_on row that names an empty stage on either endpoint resolves to that stage's nearest non-empty predecessor. REFINEMENT (operator ruling 2026-11-19): an endpoint that is WELL-FORMED -- the stage index EXISTS and the parent edge is DECLARED, so the carrier's own well-formedness claim ADMITS the row -- but whose whole span at-or-below the named stage mints NO occurrence (only Join / Decision / Composite) is NOT refused: it is a wait onto a milestone / project Join that has nothing to wait on, i.e. cross-item ordering no lane schedules yet, so it is RECORDED in the expansion's unresolved_waits (side, stage, and an EndpointEmitsNoOccurrence reason naming the kinds the span held) beside omitted_composites, and the item still EXPANDS -- named and counted, never silently dropped (@ref(gunbc.design_argument::fail_closed)). DependencyClaimRefused is RETAINED for a genuinely malformed row only -- a stage index that does not exist, or a parent the item does not declare -- refused by the carrier's well-formedness claim before any endpoint resolves (the pre-#16716 sense and the #16678 red control). The fix lives inside the ONE expander: expand_decomposition, stage_barrier_edges and waits_on_edges; it adds no second expander (@ref(gunbc.design_argument::single_authority)). The expansion also gains a visible report of every top-level Composite it did NOT expand (the top-level piece's LeafPath and its nested day total read from the ONE count helper piece_leaf_days), so a schedule over an item with Composites SAYS it omits that work instead of undercounting quietly (@ref(gunbc.design_argument::fail_closed)).",
+        displaced_cost: "A stage that emits no occurrence today ERASES the barrier across it: factory-attempt-execution-on-fabric-lease has 8 audit leaves at stage 0, a Decision alone at stage 1 and 8 cut leaves at stage 2, and emits ZERO audit-to-cut edges, so the scheduler lets cut start before audit. A waits_on aimed at an empty endpoint is silently dropped today; 16 rows already name an empty endpoint.",
+        first_slice: "Expand the REAL factory-attempt-execution-on-fabric-lease and show every stage-2 cut occurrence now waits on the stage-0 audit occurrences it must, where before the fix it emitted none.",
+        red_control: "On the REAL fixture, factory-attempt-execution-on-fabric-lease emits an edge from every stage-0 audit occurrence to every stage-2 cut occurrence (8x8 = 64); reverting the barrier change makes that edge count ZERO. An added all-stages-empty item expands to zero occurrences and zero edges WITHOUT refusing, and an added waits_on naming an empty endpoint resolves to that endpoint's nearest non-empty predecessor. REFINEMENT controls (rule change 2026-11-19): an added waits_on naming a WELL-FORMED child endpoint that emits no occurrence EXPANDS and RECORDS an Into-side UnresolvedWait (side, stage, EndpointEmitsNoOccurrence kinds) rather than refusing; a malformed row (a stage the parent lacks) STILL refuses through DependencyClaimRefused; and the permanent guard roadmap_real_decomposition_expansion_guard_witness asserts EVERY real decomposition expands (no allow-list) while the three milestone / project-Join waits (v1-emitter-quarantine, native-production-admission, factory) are each reported in unresolved_waits -- reverting the rule to refuse-by-name blanks their schedules and turns the guard red.",
+        out_of_scope: "No scheduler policy change; no cross-item ordering (list-scheduling stays per-item by design). A Composite's NESTED worker pieces are NOT expanded here: the expansion now REPORTS them (their top-level path and nested day total) so the omission is visible, but that work is still not scheduled -- addressing it is the LeafPath model change on roadmap-schedule-composite-nested-addressing, which this row defers. No new occurrence kind or path format.",
+        handback: "The edge-count for the real fixture before and after the revert, the all-empty and empty-endpoint waits_on outputs, the refusal output, and the diff.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The whole schedule chain reads the expansion's edges; a barrier that silently vanishes across an empty stage makes the critical path, the bottleneck and the offer all wrong for any item with a Decision-only or Composite-only stage."),
+    ),
+    // DECLARED, NOT DISPATCHED: the frontier that gives the expander's unresolved_waits report a CONSUMER. Until it
+    // lands, roadmap_schedule carries the report on the Expansion but no schedule answer reads it (the Consumption
+    // authority: a declaration must be consumed now or by a NAMED later change). It waits on the barrier row, which is
+    // what creates the report, and bottlenecks-and-offer waits on IT so the surfaced report has a downstream reader.
+    roadmap_node(
+      identity: "rn_HED0W6FHP53P26Z4RVR45AGWSV",
+      id: "roadmap-schedule-surfaces-unresolved-waits",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_schedule.dag"),
+      line: ticket(t: fields(
+        headline: "A schedule surfaces the unresolved waits its expansion reported",
+        boundary: "The one expander records every waits_on whose endpoint span is WELL-FORMED (the stage index EXISTS and the parent edge is DECLARED, so the carrier's own well-formedness claim admits the row) but whose span emits NO occurrence -- a wait onto a milestone / project Join -- on the Expansion as unresolved_waits (side, stage, EndpointEmitsNoOccurrence kinds) beside omitted_composites (roadmap-schedule-barrier-through-empty-stages). This frontier gives that report a CONSUMER: the schedule answer carries unresolved_waits beside its placed leaves, so a reader SEES the cross-item ordering a lane cannot yet place. It orders nothing and mints no edge -- surfacing, not scheduling -- so no lane gains the ability to schedule cross-item ordering here (@ref(gunbc.design_argument::single_authority)); it simply stops the report from being a dangling declaration the scheduler throws away (@ref(gunbc.design_argument::fail_closed)).",
+        displaced_cost: "Without a named consumer the unresolved_waits field is a dangling declaration (Consumption: red). The report exists on the Expansion but no schedule answer reads it, so the cross-item-ordering gap it was added to make visible goes unseen again -- the very silence the barrier fix was made to end.",
+        first_slice: "The schedule answer for one real item (factory) carries its unresolved_waits beside its placed leaves -- the three milestone / project-Join waits reported, none scheduled.",
+        red_control: "An expansion with an unresolved wait yields a schedule answer that NAMES that wait; an expansion with none names none; and no edge or ordering is minted from an unresolved wait -- the placed-leaf set and every edge are identical to the schedule computed without the report. Reverting the surfacing blanks the named waits and turns this control red.",
+        out_of_scope: "No lane schedules cross-item ordering; no edge or order is invented for an unresolved wait. Actually SCHEDULING such waits is a further frontier, not this one. Which waits are unresolved is decided in roadmap-schedule-barrier-through-empty-stages, not here.",
+        handback: "The schedule answer for factory with its three unresolved waits listed beside the placed leaves, the empty-report item's answer naming none, and the diff showing no new edge or ordering was minted.",
+      )),
+      parent: in_project(project: "factory", contribution: "The frontier keeps the cross-item-ordering gap visible in the schedule answer until a lane can place it; bottlenecks-and-offer then reads it downstream."),
+    ),
+    // DECLARED, NOT DISPATCHED: the LeafPath model change that would let expansion reach a Composite's nested
+    // stages. It must land as a model change to LeafPath BEFORE any nested expansion, so it is held (dispatch
+    // defaults to NotDispatchable) until the path change is itself scheduled.
+    roadmap_node(
+      identity: "rn_8BQKTF2C0H9M4RVDJZ5N7AE3Y1",
+      id: "roadmap-schedule-composite-nested-addressing",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_model.dag"),
+      line: ticket(t: fields(
+        headline: "A LeafPath that reaches into a Composite's nested stages",
+        boundary: "A MODEL CHANGE to LeafPath, not an expansion change. Today LeafPath { item, stage, piece, member } reaches exactly one top-level piece, and the carrier says a Composite is a container addressed deeper than the path reaches -- decomposition_has_leaf_path REFUSES a path into a Composite -- so a Composite's nested worker pieces carry days but are never occurrences. This row widens the path to address nested Composite stages and pieces, keyed with no invented side-format, so the ONE expander can then emit those nested occurrences; whatever path a claim names must be the SAME path the expansion mints (@ref(gunbc.design_argument::single_authority)). It waits on roadmap-schedule-barrier-through-empty-stages, which makes the omission visible first.",
+        displaced_cost: "15 items contain Composites that hide 47 nested worker occurrences and 5 findings families; a schedule over them undercounts the work and the offer never names it. Until the path reaches them, no expansion change can schedule that work honestly -- which is exactly why the barrier row only REPORTS them today.",
+        first_slice: "Extend LeafPath with the nested coordinates and prove decomposition_has_leaf_path and piece_member_days answer CONSISTENTLY for one nested leaf, with every existing top-level path unchanged.",
+        red_control: "A nested leaf a Composite declares is addressed by exactly ONE path that BOTH the claim guard and the expansion agree on; an out-of-range nested index refuses by name; every existing top-level LeafPath and every existing witness is unchanged; and every Claimed already recorded in an event log decodes to the SAME LeafPath (or Pathless) as before -- recorded history is bytes, and widening the path must not reinterpret it.",
+        out_of_scope: "No scheduler policy change; no change to barrier semantics (that is roadmap-schedule-barrier-through-empty-stages); NO Composite nested expansion until this path exists.",
+        handback: "The widened LeafPath, the claim/expansion agreement receipts, the refusal output, and the diff.",
+      )),
+      parent: in_project(project: "factory", contribution: "Nested composite work is invisible to the schedule until the path can name it; this row carries the model change that makes that work schedulable without inventing a second path format."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8WTDD8SXN0SR7P26C1",
@@ -5391,7 +5522,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The frontier output for the two planted cases, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
+      parent: in_project(project: "factory", contribution: "The frontier is where the graph becomes an action; at item grain it under-reads the work the decomposition already declares."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8XJ9DVYGSNMZKP8WKJ",
@@ -5408,7 +5539,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The three outputs, the capacity bound as observed, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
+      parent: in_project(project: "factory", contribution: "This is where the simulated execution touches the fleet: the offered leaf becomes a dispatch, addressed to that leaf, under the readiness gate and the capacity bound."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8Y40BD0A4SBDMW0J60",
@@ -5425,7 +5556,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The accepted and refused handback outputs, the carrier unchanged on the refusals, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
+      parent: in_project(project: "factory", contribution: "A leaf that turns out to be four leaves, or ten days, or a finding, has to say so in a form the carrier can read."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR8ZNA89SDC0ZXCHA2DS",
@@ -5442,7 +5573,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The two JSON rows, the planted-binding refusal output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
+      parent: in_project(project: "factory", contribution: "The plan is the one mind and the projection is what it shows; every reader reads this and nothing else."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR90N2HGC2XA1WMQFRFK",
@@ -5459,7 +5590,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The rendered page for the fixture read, the planted-value refusal output, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
+      parent: in_project(project: "factory", contribution: "The plan has to be visible to be ruled on; the timeline is where the simulated execution is read."),
     ),
     roadmap_node(
       identity: "rn_01M7NPVR91VNF088PHY2G7X5PK",
@@ -5476,7 +5607,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The accepted append, the refused append output with the log unchanged, and the diff."
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "v2-self-host", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
+      parent: in_project(project: "factory", contribution: "The handback a leaf returns to has to be able to close the leaf; today only one principal can record that it did."),
     ),
   ], guarantee_ladder_nodes())
 }
@@ -5518,6 +5649,19 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-schedule-calendar-binding"),
     edge(child: "roadmap-schedule-from-now", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-from-now"),
+    // The barrier fix sits BETWEEN leaf-expansion (what it extends) and bottlenecks-and-offer (which reads the
+    // edges the barrier produces): the barrier waits on leaf-expansion, and bottlenecks-and-offer -- already
+    // waiting on from-now -- additionally waits on the barrier, so a wrong barrier cannot reach the offer. The
+    // deferred LeafPath model change waits on the barrier, which is what makes the omitted composite work visible
+    // first (gunb-ai/gunbc#16650).
+    edge(child: "roadmap-schedule-barrier-through-empty-stages", parent: "roadmap-schedule-leaf-expansion"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-barrier-through-empty-stages"),
+    edge(child: "roadmap-schedule-composite-nested-addressing", parent: "roadmap-schedule-barrier-through-empty-stages"),
+    // The unresolved-wait report the barrier creates gets its CONSUMER here: the surfacing frontier waits on the
+    // barrier (the report must exist first), and bottlenecks-and-offer -- the offer already reads the barrier's edges
+    // -- additionally waits on the surfacing frontier, so a schedule that dropped the report cannot reach the offer.
+    edge(child: "roadmap-schedule-surfaces-unresolved-waits", parent: "roadmap-schedule-barrier-through-empty-stages"),
+    edge(child: "roadmap-schedule-bottlenecks-and-offer", parent: "roadmap-schedule-surfaces-unresolved-waits"),
     edge(child: "roadmap-spawn-frontier-leaf-grain", parent: "roadmap-leaf-in-flight-set"),
     edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-schedule-bottlenecks-and-offer"),
     edge(child: "roadmap-dispatch-carries-leaf", parent: "roadmap-spawn-frontier-leaf-grain"),

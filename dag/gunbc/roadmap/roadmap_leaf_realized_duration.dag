@@ -712,6 +712,14 @@ fn schedule_refusal_text(refusal: ScheduleRefusal) -> String {
     MemberIndexBeyondExpansion { paths: paths } => join([
       "an expansion named a member the carrier does not declare, for ", to_string(count(paths)),
       " leaf(s): ", path_list_text(paths: paths)], "")
+    // The two pin arms (roadmap-schedule-from-now). A pin is a FACT about work already running, so an input pin this
+    // expansion cannot name, or whose placement no read can hold, refuses the read rather than being dropped.
+    PinnedLeafNotAnOccurrence { paths: paths } => join([
+      "a pinned in-flight leaf is not an occurrence of this expansion, for ", to_string(count(paths)),
+      " leaf(s): ", path_list_text(paths: paths)], "")
+    PinnedPlacementInvalid { paths: paths } => join([
+      "a pinned in-flight leaf states a placement no read can hold (a negative lane or day, a bar that does not run,",
+      " or one lane held by two pins), for ", to_string(count(paths)), " leaf(s): ", path_list_text(paths: paths)], "")
   }
 }
 
