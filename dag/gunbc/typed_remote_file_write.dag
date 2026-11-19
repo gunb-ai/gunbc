@@ -8,13 +8,16 @@ import extdeps.sudo.visudo { visudo_check_arguments }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
 import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   BootstrapCredentialInRunEnvironment,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
+  FleetPrincipalLegOverran,
 }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProvisioningLeg,
   FleetSshExecutionContext,
   SshTarget,
   portable_remote_word,
@@ -606,6 +609,7 @@ fn typed_remote_file_write_over_fleet_ssh(
           }
         Present { value: words } =>
           match exec_as_fleet_principal_with_stdin(
+            kind: ProvisioningLeg,
             context: context,
             target: target,
             words: words,
@@ -614,6 +618,13 @@ fn typed_remote_file_write_over_fleet_ssh(
           ) {
             FleetPrincipalLegRefused { cause: why } =>
               TypedRemoteFileWriteOutcomeRefused { reason: why as String }
+            // THE LEG WAS KILLED AT ITS CEILING. The write's content is NOT established as absent
+            // and not established as present -- the remedy is a re-read of the path, not a retry, so
+            // this is a refusal carrying the ceiling, never a success and never "not written".
+            FleetPrincipalLegOverran { session: _, deadline: d } =>
+              TypedRemoteFileWriteOutcomeRefused {
+                reason: typed_argv_exec_overran_reason(leg_hint: "typed remote file write", deadline: d) as String
+              }
             FleetPrincipalLegRan { session: _, result: result } =>
               typed_remote_file_write_outcome_after_ssh_exec(write: write, result: result)
           }
@@ -644,10 +655,12 @@ fn typed_remote_file_step(
     Absent => TypedRemoteFileStepArgvRefused
     Present { value: words } =>
       match exec_as_fleet_principal_with_stdin(
-        context: context, target: target, words: words, stdin_payload: stdin_payload,
+        kind: ProvisioningLeg, context: context, target: target, words: words, stdin_payload: stdin_payload,
         credential: BootstrapCredentialInRunEnvironment,
       ) {
         FleetPrincipalLegRefused { cause: why } => TypedRemoteFileStepLegRefused { cause: why }
+        FleetPrincipalLegOverran { session: _, deadline: d } =>
+          TypedRemoteFileStepLegRefused { cause: typed_argv_exec_overran_reason(leg_hint: "typed remote file step", deadline: d) }
         FleetPrincipalLegRan { session: _, result: r } => TypedRemoteFileStepRan { result: r }
       }
   }

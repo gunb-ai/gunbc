@@ -19,6 +19,8 @@ import extdeps.ssh.session {
 }
 import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  fleet_leg_wall_deadline,
+  fleet_remote_leg_kind,
   FleetSshExecutionContext,
   FleetOpenSshTrustPolicy,
   SshTarget,

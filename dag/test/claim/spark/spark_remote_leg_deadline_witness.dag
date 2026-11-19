@@ -13,7 +13,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
 }
 import gunbc.spark.model_snapshot_materialize {
   SparkRemoteRun, RemoteRan, RemoteUnreachable,
-  LegNotAttempted, LegBeginUnobserved,
+  LegNotAttempted, LegBeginUnobserved, LegOverran,
   spark_remote_run_of_session, spark_argv_run_of_unreachable,
 }
 
@@ -58,6 +58,9 @@ fn is_begin_unobserved(r: SparkRemoteRun) -> Bool {
   match r {
     RemoteUnreachable { cause: _, reach: LegBeginUnobserved { endpoint: _, stderr: _ } } => true
     RemoteUnreachable { cause: _, reach: LegNotAttempted { cause: _ } } => false
+    // An overrun is NOT begin-unobserved: the session was alive and the leg was ended by our own
+    // ceiling. Conflating them would report a hung-leg kill as a down host.
+    RemoteUnreachable { cause: _, reach: LegOverran { endpoint: _, deadline: _ } } => false
     RemoteRan { exit_code: _, stdout: _, stderr: _ } => false
   }
 }
@@ -122,4 +125,17 @@ test fn w_begin_unobserved_projects_to_may_have_run_never_did_not_run() -> Bool 
 
 test fn w_not_attempted_projects_to_did_not_run() -> Bool {
   is_did_not_run(r: spark_argv_run_of_unreachable(cause: "no endpoint", reach: LegNotAttempted { cause: "no endpoint" }))
+}
+
+// THE NEW ARM'S CONSUMER RULE, and the one that must NOT hold. A leg killed at its ceiling began
+// nothing less than a leg that lost its session: the effect may be half-applied, so the consumer
+// reads the host back. Projection to DidNotRun would let a retry fire blind against a host that may
+// already have the effect -- which is exactly the failure mode this row exists to prevent.
+test fn w_an_overran_projects_to_may_have_run_and_never_to_did_not_run() -> Bool {
+  let overran = spark_argv_run_of_unreachable(
+    cause: "killed at ceiling",
+    reach: LegOverran { endpoint: "h", deadline: second(count: 900) },
+  )
+  is_may_have_run(r: overran) && !is_did_not_run(r: overran)
+    && !is_begin_unobserved(r: spark_remote_unreachable(u: LegOverran { endpoint: "h", deadline: second(count: 900) }))
 }

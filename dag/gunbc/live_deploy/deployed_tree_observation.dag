@@ -9,7 +9,7 @@ import extdeps.git
 import extdeps.git { git_in_trusted_repository_args }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
 import gunbc.host.host_effect_realize {
   run_typed_argv_transport,
