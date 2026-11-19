@@ -459,12 +459,21 @@ fn count_days(d: Int, horizon: Int, running: Int, delta: Map<Int, Int>, acc: Lis
   }
 }
 
-// THE SCHEDULE, computed from an Expansion and a worker count (a SIMULATION INPUT). Refusals, each typed and
-// located: the expansion was itself refused; the worker count is not a positive count; an occurrence carries no
-// working-day prior on the carrier it is read against; the occurrence graph has a cycle; the run leaves occurrences
-// unplaced (a partial schedule is never returned as a complete one). Each is a `ScheduleRefusal` arm, located by the
-// carrier paths it carries -- never a sentence a consumer has to parse.
+// THE SCHEDULE, read from the carriers alone: every leaf is priced at its declared prior. This is
+// roadmap-schedule-list-scheduling's (#16695) answer and it is UNCHANGED in behaviour -- it delegates to the one
+// scheduler with an empty realized map, so a leaf that has never been realized in the log keeps quoting the day
+// count it started with.
 fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedule {
+  let nothing_realized: RealizedDays = empty_map()
+  schedule_with_realized(d: d, e: e, workers: workers, realized: nothing_realized)
+}
+
+// THE SCHEDULE AT A DURATION INPUT (roadmap-leaf-realized-duration). Same scheduler, same order, same refusals, same
+// lanes: the ONLY difference is that a leaf the item's log has realized is priced at its realized working-day count
+// (leaf_working_days above), and every other leaf at its prior. Which value a leaf was priced at is reported by
+// gunbc.roadmap.roadmap_leaf_realized_duration::realized_duration_fold -- the fold that produced the map -- so the
+// schedule answers, per leaf, whether the realized value or the prior was used.
+fn schedule_with_realized(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, realized: RealizedDays) -> Schedule {
   let worker_count: Int = workers.max_concurrent
   match e {
     ExpansionRejected { cause: cause } =>
@@ -493,7 +502,7 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
           NotScheduled { refusal: MemberIndexBeyondExpansion { paths: beyond } }
         } else {
           let unpriced = map(
-            filter(occs, o => match piece_member_days(d: d, path: o.path) { Present { value: _ } => false, Absent => true }),
+            filter(occs, o => match leaf_working_days(d: d, path: o.path, realized: realized) { Present { value: _ } => false, Absent => true }),
             o => o.path
           )
           if count(unpriced) > 0 {
@@ -501,7 +510,7 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
           } else {
           let empty_paths: List<LeafPath> = []
           let empty_placed: List<ScheduledLeaf> = []
-          let nodes = flat_map(occs, o => priced_node(d: d, o: o))
+          let nodes = flat_map(occs, o => priced_node(d: d, o: o, realized: realized))
             let adj = adjacency(nodes: nodes, edges: edges)
             let indeg = indegrees(nodes: nodes, succ: adj.succ)
             let empty_nodes: List<SchedNode> = []
@@ -550,11 +559,36 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
   }
 }
 
-// The run node an occurrence prices to, or nothing when the decomposition carries no working-day prior for it. The
-// `Absent` arm is not a silent drop: every such occurrence has already refused the whole answer above, and the arm
-// is here so nothing can be invented for a path the carrier does not price.
-fn priced_node(d: WorkDecomposition, o: Occurrence) -> List<SchedNode> {
-  match piece_member_days(d: d, path: o.path) {
+// THE SCHEDULE'S DURATION INPUT, named in ONE place. A leaf's working-day count is the count this scheduler pays
+// for its occurrence: the LOG's realized value where one exists, and the carrier's declared prior otherwise. The
+// realized side is produced by gunbc.roadmap.roadmap_leaf_realized-duration (roadmap-leaf-realized-duration),
+// which reads a leaf's claimed-to-accepted working days out of the item's event log; the prior side is
+// roadmap_decomposition::piece_member_days, the carrier's declared prior, imported and never copied.
+//
+// This REPLACES a duration; it never reorders. The scheduler's ORDER -- the topological order, the
+// longest-remaining-path ranks, the lane picking -- reads only the occurrence graph and these counts, exactly as
+// before; no rank, lane or placement rule is touched here. A realized count therefore changes WHICH day count a
+// leaf is priced at, which is what the Gantt needs to show work already done, and nothing else.
+//
+// The map is keyed by `path_key` -- the ONE key this unit derives from a LeafPath -- so a realized value can only
+// ever address a leaf the carrier itself can name; an unknown key is simply absent, and that leaf keeps its prior.
+type RealizedDays = Map<String, Int>
+
+// The working-day count ONE leaf occurrence is priced at, at the duration input. Where the fold handed a realized
+// count for this leaf's key, that count is taken; otherwise the carrier's prior is taken. `Absent` means NEITHER
+// exists: the path is unpriced and the scheduler refuses the whole answer (NoWorkingDayPrior), never a zero.
+fn leaf_working_days(d: WorkDecomposition, path: LeafPath, realized: RealizedDays) -> Int? {
+  match map_lookup(m: realized, key: path_key(p: path)) {
+    Present { value: days } => Present { value: days }
+    Absent => piece_member_days(d: d, path: path)
+  }
+}
+
+// The run node an occurrence prices to, or nothing when NEITHER a realized value nor a working-day prior prices it.
+// The `Absent` arm is not a silent drop: every such occurrence has already refused the whole answer above, and the
+// arm is here so nothing can be invented for a path nobody prices.
+fn priced_node(d: WorkDecomposition, o: Occurrence, realized: RealizedDays) -> List<SchedNode> {
+  match leaf_working_days(d: d, path: o.path, realized: realized) {
     Present { value: days } => [SchedNode { path: o.path, key: path_key(p: o.path), days: days, source: o.count_source }]
     Absent => []
   }
