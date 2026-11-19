@@ -600,7 +600,11 @@ fn kernel_grounding_signedness(view: KernelGroundingView) -> Signedness {
 // (std.integer_width_construction). A sign change into an UNBOUNDED kernel carrier cannot drop
 // a value -- every machine interval lies inside the naturals AND inside the integers, and
 // integer_interval_spec_contains keeps the decision for the naturals (a signed width's negative
-// lower bound fails the containment, so Int<N> as Nat still refuses) -- so there the extent
+// lower bound fails the containment, so Int<N> as Nat still refuses -- executed by
+// test.claim.uint_width_to_int_declared_route_witness :: int8_as_nat_still_refuses_emission, review
+// 96603 finding 3; the same row and signed_width_as_int_still_refuses_emission pin that the
+// exemption's reach stops at emission, where no declared conversion realizes a signed width onto the
+// host carrier) -- so there the extent
 // inclusion is the whole decision and a sign taboo would refuse a crossing that inclusion
 // proves total. That standing is gunbc.design_ruling
 // ::machine_width_unsigned_to_int_is_a_declared_total_injection (2026-11-15): the machine-width

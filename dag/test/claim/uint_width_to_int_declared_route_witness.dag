@@ -24,7 +24,7 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
-import std.integer { UInt8, UInt16, UInt32, UInt64 }
+import std.integer { UInt8, UInt16, UInt32, UInt64, Int8 }
 
 // The cast site: `as Int` from a machine-width unsigned formal, the shape the roadmap serve entry
 // uses at gunbc.roadmap.roadmap_auth_routes (map(octets, o => o as Int) over List<UInt8>).
@@ -150,6 +150,48 @@ test fn uint64_as_int_still_refuses_emission() -> Bool {
     []
   ) && cast_wall_refusal_count(source: uint64_as_int_emit_source) > 0 &&
        cast_wall_refusal_count(source: uint64_as_int_control_source) == 0
+}
+
+// THE RED, SIGN POLICY REACHES THE NATURALS (review 96603, finding 3). The sign-gate exemption in
+// std.literal_elaboration (kernel_grounding_sign_change_allowed, the `|| target_is_unbounded_carrier`
+// arm) admits a sign change from ANY machine width into EITHER unbounded carrier -- Nat included, and a
+// SIGNED source included. What refuses Int8 as Nat is therefore not the exemption but the extent test
+// behind it (integer_extent_within over integer_interval_spec_contains: a signed width's negative lower
+// bound is not inside the naturals) together with the emitter's realization wall. The comment at that
+// gate asserts exactly this reliance; before this row nothing executed it. Pinned like the cast-wall REDs
+// above: the emitted pair is not clean, the census carries a blocking CastRealizationRefused row for the
+// probe ("no declared conversion route from Int8<i64, MachineWidth<>> to Nat: ..."), and the same
+// declaration with the cast removed carries none.
+data int8_as_nat_source: String = "module probe_int8_as_nat_emit\nimport std.integer { Int8 }\nfn octet(i: Int8) -> Nat { i as Nat }\n"
+data int8_as_nat_control_source: String = "module probe_int8_as_nat_emit_control\nimport std.integer { Int8 }\nfn octet(i: Int8) -> Nat { i }\n"
+
+test fn int8_as_nat_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    int8_as_nat_source,
+    "src/probe_int8_as_nat_emit.rs",
+    ["fn octet"],
+    []
+  ) && cast_wall_refusal_count(source: int8_as_nat_source) > 0 &&
+       cast_wall_refusal_count(source: int8_as_nat_control_source) == 0
+}
+
+// THE RED, SIGNED SOURCE INTO THE INTEGERS (review 96603, finding 3). The exemption's reach includes a
+// signed width into Int, and at the model level that widening is admitted (it is total and injective --
+// containment, not a taboo, decides it). What this row pins is where the standing stops: the signed width
+// does NOT reach the host carrier through any declared conversion, so the EMITTER refuses it
+// ("no declared conversion route from Int8<i64, MachineWidth<>> to i64: ..."). No un-routed signed
+// crossing reaches emission. Same three-fold pin as above.
+data signed_width_as_int_source: String = "module probe_int8_as_int_emit\nimport std.integer { Int8 }\nfn word(i: Int8) -> Int { i as Int }\n"
+data signed_width_as_int_control_source: String = "module probe_int8_as_int_emit_control\nimport std.integer { Int8 }\nfn word(i: Int8) -> Int { i }\n"
+
+test fn signed_width_as_int_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    signed_width_as_int_source,
+    "src/probe_int8_as_int_emit.rs",
+    ["fn word"],
+    []
+  ) && cast_wall_refusal_count(source: signed_width_as_int_source) > 0 &&
+       cast_wall_refusal_count(source: signed_width_as_int_control_source) == 0
 }
 
 // THE RED, CHECKED POPULATION: the census for the un-routed pair is reported (not unroutable), and
