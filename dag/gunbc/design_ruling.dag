@@ -1178,6 +1178,13 @@ data tailscale_fleet_key_untagged_join_causality_2026_11_18: DesignRuling = Desi
   provenance: "Operator, in chat to smart-crane-730, 2026-11-18. OBSERVATION: ken (100.96.80.109) and dan/h11-a16 (100.109.228.127) joined BY HAND with the fleet key at Secret Manager version 'latest', not the pinned '1', and joined UNTAGGED, though gunbc.tailscale_fleet_auth_key records the key as tag:ci. RULING (causality, operator): a tagged auth key stamps its tags at JOIN whoever runs 'tailscale up'; going around gunbc.tailscale_join_converge does NOT drop the tags, and tailscale_auth_key_policy_admit only gates whether the CONVERGE will USE a key -- so an untagged hand join is NOT explained by bypassing the converge; it means the key used is NOT the tagged key this module describes. The two competing explanations are the typed closed set gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_untagged_join_hypotheses. Confirming which is a READ, not an inference: gunbc.tailscale_fleet_auth_key::tailscale_fleet_key_metadata_standing carries the open read obligation. Nothing here rotated; no live value was read or asserted.",
 }
 
+data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_scm_fabric_first_gate_lifted_2026_11_19"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "plans_are_intentions"),
+  provenance: "Operator decision 2026-11-19, escalation msg_dd4f5177 decided in msg_5d6b035d, option chosen verbatim: \"Lift it (I record a design_ruling row quoting you; rows 894/911 drop the gate)\". Supersedes the default-approved msg_91e05714, which was approved by default, not by the operator. WHAT THIS LIFTS: the 2026-10-03 fabric-bring-up-first gate on native SCM. Four deliverable rows (2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model, 2-claim-indexed-evidence) were held behind the fabric bring-up by a prerequisite edge onto the fabric-bringup project node; two sibling rows (2-scm-compatibility-shape, 2-scm-p0-landing-spine) carried the same 'revisited after the fabric bring-up (operator ruling 2026-10-03)' only in their contribution text. HISTORY: no 2026-10-03 design_ruling row ever existed -- that gate was asserted only in roadmap row text, never recorded in this ledger; this row is both its first record and its lifting record. The prerequisite edges onto the fabric-bringup project are deleted, the rows stay factory members, and the fabric-bringup red_control dispatch-gate sentence is removed.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     estimates_are_one_representation_derived_upward,
@@ -1324,6 +1331,7 @@ fn design_rulings() -> List<DesignRuling> {
     ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18,
     tailnet_serving_acl_admin_console_additions_2026_11_18,
     tailscale_fleet_key_untagged_join_causality_2026_11_18,
+    native_scm_fabric_first_gate_lifted_2026_11_19,
   ]
 }
 
