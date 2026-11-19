@@ -3902,12 +3902,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
           headline: "The native route is admitted as the production route",
-          boundary: "NativeProductionAdmission (gunbc.plans.demand_engine_program D10) over the required subject denominator: result-contract coverage, a refusal census, and divergence disposition (old versus new, neither wins by age). Includes the v2-lens-suite obligation: zero v1 lens-body executions.",
+          boundary: "NativeProductionAdmission (gunbc.plans.demand_engine_program D10) over the required subject denominator: result-contract coverage, a refusal census, and divergence disposition (old versus new, neither wins by age). Includes the v2-lens-suite obligation: zero v1 lens-body executions. The namespace receipt identifies the qualified resolver as the sole production declaration resolver and records import rejection by both parsers (@ref(gunbc.design_ruling::production_namespace_admission_precedes_seed_mirror_removal)).",
           displaced_cost: "The daily build still runs on the seed, so v2 proves a replacement nobody uses.",
           first_slice: "Author the verdict type and compute it once over the current route.",
-          red_control: "An undispositioned divergence or refusal refuses admission. A fallback to the interpreter refuses.",
+          red_control: "An undispositioned divergence or refusal refuses admission. A fallback to the interpreter refuses. On the production route a qualified reference must resolve to its declaration and a reference only the seed mirror could answer must refuse. An import accepted by either parser keeps admission open.",
           out_of_scope: "Generator promotion (D9).",
-          handback: "NativeProductionAdmitted, with the receipts."
+          handback: "NativeProductionAdmitted, with its subject receipts, the sole-resolver control and both parser refusals."
         ), on: "2026-09-30", note: "Not yet centered: typed verdict not on main; needs the required lane first.")),
       parent: in_project(project: "native-route-to-live", contribution: "D10: the native route becomes the production semantic route. It absorbs v1-ci-floor-cutover and v1-verification-ledger."),
     ),
