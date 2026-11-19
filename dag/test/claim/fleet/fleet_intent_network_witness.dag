@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv10, operator_host_srv11, operator_host_srv9, operator_host_e2d4b7,
 }
 import gunbc.fleet.fleet_intent_network {
-  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv12_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
+  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
 }
 import product.network_topology {
   BmcManagement,
@@ -172,16 +172,18 @@ test fn fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row() -> Boo
 // wrong machine. The per-address claims pin the known cases one at a time; this one refuses the class, so an
 // endpoint row added without its retirement reds here instead of waiting for someone to notice a pair.
 //
-// HONEST REACH. It ranges over the rows gunbc.fleet.fleet_intent_network.endpoints carries -- host, BMC, asset and
-// tailnet rows together, because a collision between a host NIC and a management port is the same defect in a
-// different hat. It does NOT reach srv10_host_lan_endpoint, srv11_host_lan_endpoint or srv12_host_lan_endpoint:
-// those three rows are declared in the module but not carried in its endpoints roster, which is what makes
-// gunbc.fleet.fleet_intent_network::host_lan_address answer absent for those hosts. That reach gap is recorded as
-// its own ledger row, gunbc.integration_concern::three_spark_lan_endpoint_rows_answer_their_addresses_twice, and
-// closing it belongs there -- a claim over those three rows here would only restate that row's question. So while
-// srv11's row stands next
-// to a rostered srv14 row at the same address, THIS claim cannot see the pair -- it becomes able to the moment
-// srv11 is retired, which is why the ledger row above is the load-bearing object and this one is the backstop.
+// HONEST REACH, AND A LIMIT THIS PR REMOVES. It ranges over the rows
+// gunbc.fleet.fleet_intent_network.endpoints carries -- host, BMC, asset and tailnet rows together, because a
+// collision between a host NIC and a management port is the same defect wearing a different hat. The limit that
+// mattered when this claim was written was that srv10_host_lan_endpoint, srv11_host_lan_endpoint and
+// srv12_host_lan_endpoint existed as declarations while sitting OUTSIDE that roster, so a pair on .237, .238 or
+// .239 was invisible to every executed check the repo had. Those three declarations are deleted in this PR on the
+// operator's Group B sale ruling, so the blind spot is gone rather than merely documented -- which is the point of
+// fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row above: it is what stops any of them coming back
+// as a roster row. What this claim still cannot see is an address held by one rostered row and one unrostered
+// declaration of any kind, and that shape is why retired rows should be deleted rather than left standing outside
+// the roster.
+//
 // Single pass by construction: @ref(std.list::first_duplicate_by_key) folds once, carrying the keys it has seen,
 // and stops at the first repeat. Review 96631 caught the first version re-filtering the whole roster once per row
 // -- a quadratic fold -- which gunbc.design_argument::how_to_work forbids regardless of how small n is today.
