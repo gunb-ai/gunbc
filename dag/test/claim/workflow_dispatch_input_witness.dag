@@ -789,6 +789,16 @@ fn step_id_text(step: Step) -> String {
   }
 }
 
+// The microvm_network_observe step producer is retyped to Outcome<Step>; other step_id_text callers pass a
+// bound Step, so keep step_id_text Step-typed and unwrap the producer here. A refusal yields "" so the
+// equality over it fails closed rather than matching a fabricated blank id.
+fn step_id_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => step_id_text(step: step)
+    Absent => ""
+  }
+}
+
 fn step_run_text(step: Step) -> String {
   match step {
     RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
@@ -819,7 +829,7 @@ fn microvm_network_step_env_text() -> String {
 test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool {
   let env = microvm_network_step_env_text()
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
-    && step_id_text(step: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
+    && step_id_of(step_o: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
 }
 
 // THE OBSERVE NOW CLAIMS THE FLEET KEY, BECAUSE IT NOW HAS A CONSUMER FOR IT. The side-chat hold on

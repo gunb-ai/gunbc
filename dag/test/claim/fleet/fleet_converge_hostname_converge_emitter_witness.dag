@@ -116,6 +116,24 @@ fn step_if_text(step: Step) -> String {
   }
 }
 
+// THE RETYPED PRODUCERS YIELD Outcome<Step>. The type checker's floor defect accepts an Outcome<Step> where a
+// Step is declared, so handing one straight to step_name_text/step_if_text does NOT error — the RunStep match
+// simply misses and returns the empty string, silently. Unwrap the accepted step first; a refusal yields the
+// empty text so an assertion over it fails closed rather than passing on a fabricated blank.
+fn step_name_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => step_name_text(step: step)
+    Absent => ""
+  }
+}
+
+fn step_if_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => step_if_text(step: step)
+    Absent => ""
+  }
+}
+
 fn runs_on_text(job: Job) -> String {
   match job.runner {
     RunsOnExpression { expression: e } => e
@@ -221,10 +239,10 @@ test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() 
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+      match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
-          step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+          step_if_text(step: plan) == step_if_of(step_o: fleet_converge_hostname_converge_read_back_step())
             && string_contains(s: step_if_text(step: plan), pattern: hostname_converge_mode as String)
             && !string_contains(s: step_if_text(step: plan), pattern: "converge ==")
       }
@@ -350,7 +368,7 @@ test fn the_act_row_carries_no_default_and_asks_for_nothing() -> Bool {
 // alone must not be enough to rename a machine -- and neither half may be dropped: a gate that lost the mode
 // half would run an apply on any dispatch that happened to send `converge` for some other mode's form.
 test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
-  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
+  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_of(step_o: fleet_converge_hostname_converge_apply_step())) {
     Absent => false
     Present { value: apply } =>
       string_contains(
@@ -386,7 +404,7 @@ test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
 // THE RE-ADOPT HAS ITS OWN GATE, separate from actuation: moving the committed baseline is a different
 // authority from writing a hostname, and one dispatch must not reach both by meaning one of them.
 test fn the_readopt_step_is_locked_behind_its_own_choice() -> Bool {
-  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
+  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_of(step_o: fleet_converge_hostname_converge_readopt_step())) {
     Absent => false
     Present { value: readopt } =>
       string_contains(
@@ -617,7 +635,7 @@ test fn the_target_and_the_peer_are_read_from_different_declared_fields() -> Boo
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+      match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
           let target = step_env_value(step: plan, key: hostname_converge_target_env_name as String)
@@ -706,10 +724,10 @@ fn lock_compares_a_declared_field_against_a_declared_word(text: String) -> Bool 
 
 test fn every_lock_compares_a_declared_field_against_a_word_the_form_offers() -> Bool {
   lock_compares_a_declared_field_against_a_declared_word(
-    text: step_if_text(step: fleet_converge_hostname_converge_apply_step()),
+    text: step_if_of(step_o: fleet_converge_hostname_converge_apply_step()),
   )
     && lock_compares_a_declared_field_against_a_declared_word(
-      text: step_if_text(step: fleet_converge_hostname_converge_readopt_step()),
+      text: step_if_of(step_o: fleet_converge_hostname_converge_readopt_step()),
     )
 }
 
@@ -721,12 +739,12 @@ test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+      match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
-          step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_apply_step())
-            && step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_readopt_step())
-            && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+          step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_apply_step())
+            && step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_readopt_step())
+            && step_if_text(step: plan) == step_if_of(step_o: fleet_converge_hostname_converge_read_back_step())
       }
   }
 }

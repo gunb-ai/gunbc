@@ -301,8 +301,10 @@ test fn witness_only_the_administrator_edge_job_selects_the_deploy_slot() -> Boo
 // mint, down-scoped to organization_self_hosted_runners read, and that mint reads the app key with the
 // job's workload-identity token, so the step's environment must carry it. The RED is a step with no
 // environment: the mint would read an empty bearer and the admission would refuse every run.
-fn admission_step_run_and_wif_env(st: Step) -> Bool {
-  match st {
+fn admission_step_run_and_wif_env(st: Outcome<Step>) -> Bool {
+  match outcome_accepted_value(st) {
+    Absent => false
+    Present { value: accepted } => match accepted {
     RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       string_contains(s: r, pattern: "\"organization_self_hosted_runners\": \"read\"")
         && string_contains(s: r, pattern: "export GUNBC_ORG_ADMIN_TOKEN")
@@ -313,6 +315,7 @@ fn admission_step_run_and_wif_env(st: Step) -> Bool {
           Absent => false
         }
     UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
   }
 }
 

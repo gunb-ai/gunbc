@@ -504,7 +504,7 @@ test fn the_probe_is_one_gated_step_in_one_job_and_its_receipt_uploads_under_alw
     && jobs_with.count() == 1
     && uploads.count() == 1
     && jobs_with.first().value.id == uploads.first().value.id
-    && probe_step_if(st: fleet_converge_boot_medium_reader_probe_step()) == "github.event.inputs.mode == 'boot_medium_reader_probe'"
+    && probe_step_if_of(step_o: fleet_converge_boot_medium_reader_probe_step()) == "github.event.inputs.mode == 'boot_medium_reader_probe'"
     && probe_step_if(st: fleet_converge_boot_medium_reader_probe_receipt_upload_step()) == "always() && github.event.inputs.mode == 'boot_medium_reader_probe'"
 }
 
@@ -546,8 +546,26 @@ fn committed_probe_step_block(step: Step) -> List<String> {
   emitted_probe_block(v: steps_yaml(steps: [step]), indent: "      ")
 }
 
+// The probe step producer is retyped to Outcome<Step>; the type checker's floor defect accepts it where a Step
+// is declared, so handing it straight to probe_step_if/committed_probe_step_block silently misses the RunStep
+// match (the receipt-upload producer is still a bare Step, so those helpers stay Step-typed). Unwrap the
+// accepted step; a refusal yields ""/[] so the assertions over it fail closed rather than pass on a blank.
+fn probe_step_if_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: st } => probe_step_if(st: st)
+    Absent => ""
+  }
+}
+
+fn committed_probe_step_block_of(step_o: Outcome<Step>) -> List<String> {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => committed_probe_step_block(step: step)
+    Absent => []
+  }
+}
+
 test fn the_committed_probe_step_is_the_models_emission_line_for_line() -> Bool {
-  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_step())
+  let block = committed_probe_step_block_of(step_o: fleet_converge_boot_medium_reader_probe_step())
   count(block) > 5 && committed_contains_block(block: block)
 }
 
@@ -591,7 +609,7 @@ test fn the_committed_shared_job_concurrency_is_the_models_and_serializes_the_pr
 // THE RED: the comparison discriminates. The same block with its last line (the timeout) changed is not in
 // the committed file, so an equality that were vacuous (an empty emission, a match on a prefix) would fail here.
 test fn a_probe_block_with_one_line_changed_is_not_the_committed_file() -> Bool {
-  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_step())
+  let block = committed_probe_step_block_of(step_o: fleet_converge_boot_medium_reader_probe_step())
   committed_contains_block(block: block)
     && !committed_contains_block(block: append(take_prefix(xs: block, n: count(block) - 1), items: ["        timeout-minutes: 6"]))
 }
