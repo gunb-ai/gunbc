@@ -874,7 +874,7 @@ fn spark_grant_install_target(host: HostIdentity, principal: NonEmptyStr) -> Ssh
 }
 
 fn spark_grant_install_transport(context: FleetSshExecutionContext, target: SshTarget) -> HostEffectTransport {
-  FleetSsh {kind: ActuationLeg, target: target, context: context }
+  FleetSsh {kind: ProvisioningLeg, target: target, context: context }
 }
 
 // AWAITING A CREDENTIAL IS NOT A FLOOR, and calling it one was the error this arm is named for. An

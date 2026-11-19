@@ -175,7 +175,7 @@ fn board_function_converge_delivery_ci_wet() -> ProcessExit
                 match prepare_fleet_ssh_agent_context(attempt_raw: board_function_converge_delivery_attempt_raw) {
                   FleetSshContextRefused { cause: c } => exit_failure(reason: c)
                   FleetSshContextReady { context: context, receipt: context_receipt } => {
-                    let outcome = deliver_to_host(host: host, transport: FleetSsh {kind: ActuationLeg, target: target, context: context }, source_root: actions_variable_trimmed(name: "GITHUB_WORKSPACE"), revision_text: actions_variable_trimmed(name: "GITHUB_SHA"))
+                    let outcome = deliver_to_host(host: host, transport: FleetSsh {kind: ProvisioningLeg, target: target, context: context }, source_root: actions_variable_trimmed(name: "GITHUB_WORKSPACE"), revision_text: actions_variable_trimmed(name: "GITHUB_SHA"))
                     let body = join([
                       "board_function_converge_delivery probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " host=", raw_host, "\n",
                       context_receipt, "outcome ", outcome, "\n",

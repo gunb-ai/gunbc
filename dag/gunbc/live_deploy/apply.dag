@@ -1210,7 +1210,7 @@ fn microvm_controller_install_over_edge(spec: DeploymentSpec) -> ProcessExit {
             CandidateObserved { candidate: candidate } => {
               let mutation = host_effect_apply(
                 target: HostOs { node: spec.target.host },
-                effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh {kind: ActuationLeg, target: target, context: context } },
+                effect: LiveDeployMicrovmControllerInstall { candidate: candidate, elevated: FleetSsh {kind: ProvisioningLeg, target: target, context: context } },
                 evidence: host_effect_identity_evidence,
                 transport: LocalShell,
               )

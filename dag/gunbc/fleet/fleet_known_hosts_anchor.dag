@@ -1026,15 +1026,21 @@ type FleetLegKind
   = ProbeLeg
   | ActuationLeg
   | RepositoryConvergenceLeg
+  | ProvisioningLeg
 
 // THE ONE AUTHORITY FOR A FLEET LEG'S BOUNDS. connect/alive_interval/alive_count_max stay exactly as
 // they were: they bound the TCP connect and a path that goes dark (per-master), which is NOT the leg's
 // total wall time -- the sshd answers keepalives itself, so a remote command that is merely silent is
-// never cut off by them. The three wall_* fields are the NEW total-wall-clock ceilings, one per fleet
+// never cut off by them. The four wall_* fields are the NEW total-wall-clock ceilings, one per fleet
 // leg kind, enforced by the runtime that owns the child process (there is no ssh keyword for total
 // session wall time). Sizing: ProbeLeg 15s sits far above the 0.26s healthy read yet catches the
 // incident's hung rev-parse in seconds; ActuationLeg 60s covers a systemctl restart; Repository-
-// ConvergenceLeg 300s covers a cold git fetch of the pinned revision. Each stays well under the outer
+// ConvergenceLeg 300s covers a cold git fetch of the pinned revision; ProvisioningLeg 900s covers a
+// toolchain install or image delivery -- the largest such leg is rebuild_runner_slot_tree, which
+// downloads and installs the actions-runner tarball (deploy_slot_runner_stage_fetch_commands), an
+// order of magnitude more bytes than a pinned-revision fetch, so it sits at 3x that 300s ceiling and
+// stays under the 30-minute whole-receipt step bound named in the incident (rn_883 boundary), which
+// is the only current backstop and must remain the outer bound. Each stays well under the outer
 // whole-receipt budget. There is deliberately no 'none' row: a leg kind that is a fleet leg always
 // gets a ceiling here, and non-fleet dispatches never consult this table.
 type FleetSshLegDeadline {
@@ -1044,6 +1050,7 @@ type FleetSshLegDeadline {
   wall_probe: Second
   wall_actuation: Second
   wall_repository_convergence: Second
+  wall_provisioning: Second
 }
 
 data fleet_ssh_leg_deadline: FleetSshLegDeadline = FleetSshLegDeadline {
@@ -1053,6 +1060,7 @@ data fleet_ssh_leg_deadline: FleetSshLegDeadline = FleetSshLegDeadline {
   wall_probe: second(count: 15),
   wall_actuation: second(count: 60),
   wall_repository_convergence: second(count: 300),
+  wall_provisioning: second(count: 900),
 }
 
 fn fleet_ssh_leg_deadline_options(deadline: FleetSshLegDeadline) -> List<SshClientOption> {
@@ -1070,6 +1078,7 @@ fn fleet_leg_wall_deadline(kind: FleetLegKind) -> Second {
     ProbeLeg => fleet_ssh_leg_deadline.wall_probe,
     ActuationLeg => fleet_ssh_leg_deadline.wall_actuation,
     RepositoryConvergenceLeg => fleet_ssh_leg_deadline.wall_repository_convergence,
+    ProvisioningLeg => fleet_ssh_leg_deadline.wall_provisioning,
   }
 }
 

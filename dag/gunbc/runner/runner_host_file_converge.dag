@@ -2823,7 +2823,7 @@ fn rebuild_runner_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
         archive: tarball as NonEmptyStr,
         pin: ArchiveSha256 { hex: actions_runner_release_digest(artifact: a).hex },
         install: runner_slot_tree_rebuild_commands(target: target, stage: stage, tarball: tarball),
-        transport: FleetSsh {kind: ActuationLeg, target: subject.target, context: context },
+        transport: FleetSsh {kind: ProvisioningLeg, target: subject.target, context: context },
       )
       if !verified_archive_install_holds(outcome: outcome) {
         RunnerSlotTreeRefused { unit: unit, cause: verified_archive_install_text(outcome: outcome) as NonEmptyStr }
