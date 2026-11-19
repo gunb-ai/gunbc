@@ -1,0 +1,96 @@
+module test.claim.roadmap.roadmap_real_decomposition_expansion_guard_witness
+
+// THE PERMANENT GUARD that no REAL decomposition silently loses its schedule. After #16716 (barrier through empty
+// stages) a waits_on whose endpoint span is wholly empty was refused BY NAME, which blanked the WHOLE item's schedule
+// -- and the real set regressed: six items expanded before #16716 and refused after it. The operator ruling 2026-11-19
+// fixed the rule (an endpoint that is WELL-FORMED but mints no occurrence -- only Join/Decision/Composite -- is a
+// REPORTED unresolved wait, not a refusal) and required this guard so the class cannot regress silently again:
+//
+//   (1) EVERY entry of the real roadmap_decompositions EXPANDS (Expanded). There is NO allow-list of expected refusers:
+//       a refusal here means a real work item has lost its schedule, which is exactly what must never go quiet.
+//   (2) the three waits that wait ON an occurrence-less milestone / project Join -- v1-emitter-quarantine,
+//       native-production-admission, factory -- EXPAND and NAME that wait in unresolved_waits with the
+//       EndpointEmitsNoOccurrence reason: reported, counted, never silently dropped (fail_closed).
+//
+// (1) alone would already be broken by the pre-fix data (the six refused); (2) pins the SPECIFIC rows so a future edit
+// that quietly drops a milestone wait from the report (instead of recording it) goes red, not merely non-refused.
+
+import std.types { Bool }
+import std.algebra { contains }
+import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_decomposition {
+  roadmap_decompositions, expand_decomposition, expand_node,
+  Expanded, ExpansionRejected, UnresolvedWait, Into, From, EndpointEmitsNoOccurrence,
+  PieceKind, CompositeKind, JoinKind, piece_kind_eq,
+}
+
+// (1) EVERY real decomposition expands at the simulation findings_count of one -- no item is refused, no item is
+// silently missing. A false here is a real work item that got NO schedule.
+test fn every_real_decomposition_expands() -> Bool {
+  all(roadmap_decompositions, d =>
+    match expand_decomposition(d: d, findings_count: 1) {
+      Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits: _ } => true
+      ExpansionRejected { cause: _ } => false
+    })
+}
+
+// helper: the unresolved_waits a real item reports, or nothing if it failed to expand.
+fn unresolved_of(node: String) -> List<UnresolvedWait> {
+  match expand_node(item: nid(s: node), findings_count: 1) {
+    Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } => unresolved_waits
+    ExpansionRejected { cause: _ } => []
+  }
+}
+
+// helper: is this unresolved wait's failing endpoint the INTO (child) side? (isolated so no `match ... == bool`
+// precedence ambiguity can silently invert the check).
+fn side_is_into(u: UnresolvedWait) -> Bool {
+  match u.side { Into => true  From => false }
+}
+
+// helper: does any reported unresolved wait on this item sit on the given side, name `stage`, wait on `parent`, and
+// give the EndpointEmitsNoOccurrence reason whose kinds include `kind`? The kind is a typed PieceKind, tested with
+// std.algebra.contains over the module's canonical piece_kind_eq (which is just structural `==`) -- the report is
+// asserted against the coproduct, never a string.
+fn reports_wait(node: String, want_into: Bool, stage: Int, parent: String, kind: PieceKind) -> Bool {
+  count(filter(unresolved_of(node: node), u =>
+      side_is_into(u) == want_into
+        && u.stage == stage
+        && u.row.item == nid(s: parent)
+        && match u.reason { EndpointEmitsNoOccurrence { kinds } => contains(xs: kinds, item: kind, eq: piece_kind_eq) })) > 0
+}
+
+// (2a) v1-emitter-quarantine is a lone Composite stage: its wait on native-production-admission lands on its own
+// occurrence-less stage 0 (INTO side) and is reported with the Composite kind -- the item expands, the wait is said.
+test fn v1_emitter_quarantine_milestone_wait_is_reported_unresolved() -> Bool {
+  match expand_node(item: nid(s: "v1-emitter-quarantine"), findings_count: 1) {
+    Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
+      count(unresolved_waits) == 1
+        && reports_wait(node: "v1-emitter-quarantine", want_into: true, stage: 0, parent: "native-production-admission", kind: CompositeKind)
+    ExpansionRejected { cause: _ } => false
+  }
+}
+
+// (2b) native-production-admission waits on namespace-unique-on-chain, a project JOIN with no occurrences: the wait's
+// FROM side (the parent) is reported unresolved with the Join kind; the item still expands.
+test fn native_production_admission_join_wait_is_reported_unresolved() -> Bool {
+  match expand_node(item: nid(s: "native-production-admission"), findings_count: 1) {
+    Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
+      count(unresolved_waits) == 1
+        && reports_wait(node: "native-production-admission", want_into: false, stage: 0, parent: "namespace-unique-on-chain", kind: JoinKind)
+    ExpansionRejected { cause: _ } => false
+  }
+}
+
+// (2c) factory is a lone project Join whose three waits all aim into its own occurrence-less stage 0: all three are
+// reported INTO-side unresolved with the Join kind; factory expands rather than refusing its whole schedule.
+test fn factory_join_waits_are_reported_unresolved() -> Bool {
+  match expand_node(item: nid(s: "factory"), findings_count: 1) {
+    Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
+      count(unresolved_waits) == 3
+        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "factory-dogfood-route", kind: JoinKind)
+        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "work-exec-6-one-ledger-per-host", kind: JoinKind)
+        && reports_wait(node: "factory", want_into: true, stage: 0, parent: "serve-held-open-response", kind: JoinKind)
+    ExpansionRejected { cause: _ } => false
+  }
+}
