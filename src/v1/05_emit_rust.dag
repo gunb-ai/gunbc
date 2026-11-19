@@ -288,6 +288,7 @@ import v1.compiler.emit {
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
+  ShellChanOverran, ShellChanWallDeadlineSeconds,
   ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent, shell_emission_refusal_fact, shell_result_channel_key,
   shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy,
   bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal,
@@ -19743,6 +19744,12 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     ShellChanStderrTruncated => "stderr_truncated"
     ShellChanStderrTotalBytes => "stderr_total_bytes"
     ShellChanStderrRetainedBytes => "stderr_retained_bytes"
+    // NEXT-RUNG: the compiled path does not implement a wall-deadline kill on Command;
+    // the interpreted sink does. The channels exist so the compiler does not refuse an
+    // operation that declares them, and the compiled expression is the honest conservative
+    // answer: no overrun was detected because no timer was armed.
+    ShellChanOverran => "false"
+    ShellChanWallDeadlineSeconds => "None"
   }
   // An optional stdout or stderr field is present only when the command succeeded, as the
   // interpreter's map_shell_outputs reads it: a declared answer arm for a non-zero status (above) has

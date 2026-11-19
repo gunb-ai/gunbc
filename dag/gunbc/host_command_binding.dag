@@ -38,7 +38,7 @@ type HostLeg
 
 fn host_leg_of_typed_argv(outcome: TypedArgvExecOutcome) -> HostLeg {
   match outcome {
-    TypedArgvExecOverran { deadline: d } => LegNotDispatched { typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d)eason: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
+    TypedArgvExecOverran { deadline: d } => LegNotDispatched { reason: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
     TypedArgvExecRefused { reason: r } => LegNotDispatched { reason: r }
     TypedArgvExecConverged { result: r } => LegAnswered { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
   }

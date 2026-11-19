@@ -929,7 +929,7 @@ type ConvergeStep =
 // A command's exit, as a step: 0 is done; any other exit carries the code and the trimmed stderr.
 fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
   match outcome {
-    TypedArgvExecOverran { deadline: d } => StepFailed { cause: concat("typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)efused before exec: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) }
+    TypedArgvExecOverran { deadline: d } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d) }
     TypedArgvExecRefused { reason: r } => StepFailed { cause: concat("refused before exec: ", r) }
     TypedArgvExecConverged { result: r } => if r.exit_code == 0 { StepDone } else {
       StepFailed { cause: join(["exit ", to_string(r.exit_code), ": ", trim(r.stderr)], "") }
@@ -988,7 +988,7 @@ fn converge_stage_from(outcome: TypedArgvExecOutcome) -> ConvergeStage {
   match converge_exec_step(outcome: outcome) {
     StepFailed { cause: c } => StageFailed { cause: concat("mktemp -d (private staging dir): ", c) }
     StepDone => match outcome {
-      TypedArgvExecOverran { deadline: d } => StageFailed { cause: concat("mktemp -d (private staging dir): typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)efused before exec: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) }
+      TypedArgvExecOverran { deadline: d } => StageFailed { cause: typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d) }
       TypedArgvExecRefused { reason: r } => StageFailed { cause: concat("mktemp -d (private staging dir): refused before exec: ", r) }
       TypedArgvExecConverged { result: r } => StageReady { dir: trim(r.stdout) }
     }
