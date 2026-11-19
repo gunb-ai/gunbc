@@ -35,7 +35,7 @@ import gunbc.live_deploy.apply_receipt {
 }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedRootTreeStanding, DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedRootTreeScopeDiverged, DeployedRootTreeUnobserved,
-  deployed_root_tree_standing_text,
+  deployed_root_tree_standing_text, deployed_tree_unobservable_text,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding, ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed, ReleaseBindingUnobserved,
@@ -941,7 +941,7 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
       DeployedRootTreeMatches { tree_hex: h } => fact_arm(arm: "matches", members: [json_kv(key: "tree_hex", value: json_string(s: h))])
       DeployedRootTreeMismatch { candidate_hex: c, deployed_hex: d } => fact_arm(arm: "mismatch", members: [json_kv(key: "candidate_hex", value: json_string(s: c)), json_kv(key: "deployed_hex", value: json_string(s: d))])
       DeployedRootTreeScopeDiverged { tree_hex: h, changed_paths: ps } => fact_arm(arm: "scope_diverged", members: [json_kv(key: "tree_hex", value: json_string(s: h)), json_kv(key: "changed_paths", value: json_string(s: ps as String))])
-      DeployedRootTreeUnobserved { cause: c } => fact_arm(arm: "unobserved", members: [json_kv(key: "cause", value: json_string(s: c))])
+      DeployedRootTreeUnobserved { cause: c } => fact_arm(arm: "unobserved", members: [json_kv(key: "cause", value: json_string(s: deployed_tree_unobservable_text(cause: c)))])
     }),
     json_kv(key: "release_binding", value: match f.release_binding {
       ReleaseBoundToTree { revision: r, surface: sf } => fact_arm(arm: "bound", members: [json_kv(key: "revision", value: json_string(s: git_object_id_wire_hex(oid: r))), json_kv(key: "surface", value: json_string(s: sf.digest as String))])

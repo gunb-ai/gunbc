@@ -774,7 +774,7 @@ fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir
         Present { value: slot } => if slot != provenance.slot {
           workspace_commissioning_slot_refused(reason: "credential names a different slot from its unit")
         } else { match bind_slot_host(slot: slot) {
-          MicrovmHostBindingRefused { cause } => workspace_commissioning_slot_refused(reason: cause)
+          MicrovmHostBindingRefused { cause } => workspace_commissioning_slot_refused(reason: microvm_host_binding_refusal_text(c: cause))
           MicrovmHostBound { spec, host: _ } => match resolve_network_subject(slot: slot) {
             NetworkSubjectRefused { refusal } => workspace_commissioning_slot_refused(reason: refusal_text(r: refusal))
             NetworkSubjectResolved { subject } => match workspace_observe_commissioning_admission(
