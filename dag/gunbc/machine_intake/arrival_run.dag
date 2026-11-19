@@ -144,7 +144,6 @@ import gunbc.machine_intake.arrival_unit_captures {
   current_manager_read_of,
 }
 import extdeps.boards.types { ServerBaseboard }
-import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected }
 import gunbc.machine_intake.mtjade1_access_observation {
   mint_committed_bmc_fru_capture,
   BmcFruCaptureRow,
@@ -185,11 +184,11 @@ import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 import extdeps.bmc.ipmi { ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import gunbc.fleet.convergence_fold { ConvergenceRunId, StepSubjectKey }
-import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialFetch, SecretCredentialReady }
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
-import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretFileBracket, PrivateSecretFileCompleted }
+import gunbc.auth.private_secret_file { PrivateSecretFileCompleted }
+import gunbc.auth.managed_accessor_credential { with_managed_accessor_credential, managed_accessor_credential_refusal, ManagedAccessorCredentialCompleted, ManagedAccessorCredentialRefused }
 import gunbc.auth.netrc_binding { with_private_netrc_binding, NetrcBinding }
-import gunbc.secret_provision { SecretRef, read_obligation_of_standing }
+import gunbc.secret_provision { SecretRef }
 import gunbc.auth.arrival_federation_pair { arrival_federation_pair_for_host, arrival_secret_grants, arrival_accessor_ref, ArrivalFederationPair }
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
@@ -889,45 +888,32 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
       match row.bmc_binding {
         Absent => exit_failure(reason: "ARRIVAL WET NO BMC BINDING: the fleet names no server BMC binding for this unit; its door runs from committed captures, not live reads")
         Present { value: binding } => {
-          match arrival_federation_pair_for_host(subject.host) {
-            Absent => exit_failure(reason: "ARRIVAL WET NO FEDERATION PAIR: no arrival lane carries this unit's accessor grant")
-            Present { value: pair } => {
-              let host = binding.bmc.host
-              // THE PIN GUARD BEFORE ANY SECRET TRAFFIC: while the accessor version's standing is
-              // not CitedToAuthority, gunbc.secret_provision's gate yields no ref at all -- the run
-              // refuses naming the obligation; a fabricated version is never fetched (reviews 94066,
-              // 94085). The same gate feeds the pair, so guard and fetch can never disagree.
-              match arrival_accessor_ref(pair) {
-                Absent => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN NOT CITED: ", read_obligation_of_standing(pair.accessor_standing) as String))
-                Present { value: accessor } =>
-              match select_access_token_source() {
-                AccessTokenSourceUnavailable { cause: cause } => exit_failure(reason: concat("ARRIVAL WET WIF UNAVAILABLE: ", cause as String))
-                AccessTokenSourceSelected { source: source } => {
-                  match fetch_secret_ref_credential(secret_ref: accessor, token_source: source) {
-                    SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
-                      match sm_resolved_version_id(identity: resolved_version) {
-                        SmVersionIdProjected { version: version } => {
-                          match with_private_netrc_binding(machine: host, login: row.managed_account, password: credential, use: fn(netrc) {
-                            match with_private_secret_file(file_name: "arrival-bmc-managed-password" as PathSegment, content: credential, use: fn(password_file) {
-                              arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: arrival_epoch_from_version(version), subject: subject, run_wire: run_wire, accessor: accessor)
-                            }) {
-                              PrivateSecretFileCompleted { value: inner } => inner
-                              _ => exit_failure(reason: "ARRIVAL WET SECRET BRACKET: the managed password file was not cleanly removed after the run")
-                            }
-                          }) {
-                            PrivateSecretFileCompleted { value: inner } => inner
-                            _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
-                          }
-                        }
-                        _ => exit_failure(reason: "ARRIVAL WET SECRET VERSION: the resolved accessor version is not a version resource")
-                      }
-                    }
-                    _ => exit_failure(reason: "ARRIVAL WET ACCESSOR SECRET UNREADABLE: the managed accessor secret needs an access upsert or its payload did not decode")
-                  }
-                }
+          let host = binding.bmc.host
+          // THE FIVE-STAGE CREDENTIAL RULE IS THE SHARED BRACKET (gunbc.auth.managed_accessor_credential),
+          // implemented once and called by both lanes: pair row, THE pin gate (an uncited standing yields no
+          // ref and the operator is handed the citation obligation -- reviews 94066, 94085), the job's own
+          // token source, the Secret Manager read, and the 0600 password-file bracket, each refused typed
+          // and located. The netrc binding is arrival's own and opens inside the credential bracket.
+          match with_managed_accessor_credential(
+            host: subject.host,
+            file_name: "arrival-bmc-managed-password" as PathSegment,
+            use: fn(bundle) {
+              match with_private_netrc_binding(machine: host, login: row.managed_account, password: bundle.credential, use: fn(netrc) {
+                arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: bundle.credential_file, credential_epoch: arrival_epoch_from_version(bundle.version), subject: subject, run_wire: run_wire, accessor: bundle.accessor)
+              }) {
+                PrivateSecretFileCompleted { value: inner } => inner
+                _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
               }
-            }
-              }
+            },
+          ) {
+            ManagedAccessorCredentialCompleted { value: outcome } => outcome
+            ManagedAccessorCredentialRefused { stage: stage } =>
+              exit_failure(reason: managed_accessor_credential_refusal(
+                lane: "ARRIVAL WET" as NonEmptyStr,
+                host: subject.host,
+                stage: stage,
+                consequence: "the arrival performs no controller traffic and writes nothing" as NonEmptyStr,
+              ))
           }
         }
       }
