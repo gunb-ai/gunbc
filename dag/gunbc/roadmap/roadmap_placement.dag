@@ -419,7 +419,7 @@ fn place(input: PlacementInput) -> PlacementOutcome {
   let ready_rows = filter(rows, n => look_or(m: seeded_indeg, key: n.key, dflt: 0) == 0)
   let outcome = topo_run(state: TopoState { ready: ready_rows, order: [], indeg: seeded_indeg, unemitted: count(rows) }, succ: graph.succ)
   match outcome {
-    PlacementCyclic { keys: _ } => PlacementRefused { refusal: PlacementCyclic { keys: unemitted_keys(rows: rows, outcome: outcome) } }
+    TopoCyclic { keys: _ } => PlacementRefused { refusal: PlacementCyclic { keys: unemitted_keys(rows: rows, outcome: outcome) } }
     Ordered { order: order } => {
       let rank = rank_pass(order_back: list_reverse(xs: order), succ: graph.succ)
       let pre_keys = preplaced_keys(preplaced: input.preplaced)
