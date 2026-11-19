@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_item_gantt {
   gantt_refusal, gantt_unpriced_count,
   GanttAnswered, GanttContradictionsPresent, GanttNoWorkers, RowBlocked, RowLeafGrainRefused, RowNoFindingsCount, RowPlaced, RowRollup, RowUnplaced, RowUnsized,
   GanttRefused, BlockedCause, NotEstimated, RollupBelow, PiecesRefused, PiecesFindingsCount, PiecesZeroDays, BlockedBelow,
-  GanttEstimatesRefused, GanttNoFindingsCount, GanttPrerequisitesCyclic, GanttUnpricedWithoutCause, GanttRowsUnplaced, GanttRowWaitsOnItsOwnContainer,
+  WaitsOnItsOwnContainer,
 }
 
 // ============================== THE FIXTURE ==============================
@@ -314,32 +314,54 @@ test fn an_empty_milestone_blocks_its_dependent_naming_the_no_priced_descendants
   }
 }
 
-// AN EDGE AGAINST ITS OWN CONTAINMENT IS REFUSED, NOT PLACED. leaf-a sits INSIDE payoff and an edge also says it
-// waits on payoff: a container's bar is drawn over the rows it contains, so a row cannot wait on what contains it.
-// Expanded through containment that edge is leaf-a waiting on leaf-a, which the placement core could only report as
-// an anonymous cycle -- so it is refused here, naming the row and the container (the operator's rule for a
-// contradiction: neither side is left for the reader to work out).
-test fn a_row_ordered_behind_its_own_container_is_refused_naming_both_sides() -> Bool {
-  let a = read(nodes: fixture_nodes(), edges: [edge(child: "fixture-leaf-a", parent: "fixture-payoff")], entries: [
+// AN EDGE AGAINST ITS OWN CONTAINMENT IS A CONTRADICTION, NOT A SCHEDULE. leaf-a sits INSIDE payoff and an edge also
+// says it waits on payoff: a container's bar is drawn over the rows it contains, so a row cannot wait on what contains
+// it. Expanded through containment that edge is leaf-a waiting on leaf-a -- so leaf-a gets no bar and names BOTH
+// sides, its dependents are blocked as behind anything unplaced, and the rest of the read still places: one bad edge
+// in the authority data must not blank the timeline for every other item.
+test fn a_row_ordered_behind_its_own_container_is_blocked_by_name_while_the_read_still_answers() -> Bool {
+  let a = read(nodes: fixture_nodes(), edges: [
+    edge(child: "fixture-leaf-a", parent: "fixture-payoff"),
+    edge(child: "fixture-leaf-c", parent: "fixture-leaf-a"),
+  ], entries: [
     planted(slug: "fixture-leaf-a", days: 10),
+    planted(slug: "fixture-leaf-b", days: 5),
+    planted(slug: "fixture-leaf-c", days: 3),
   ])
-  match gantt_refusal(a: a) {
+  let answered = match gantt_refusal(a: a) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let contradicted = match row_of(a: a, slug: "fixture-leaf-a") {
     Absent => false
-    Present { value: refusal } => match refusal {
-      GanttRowWaitsOnItsOwnContainer { edges: found } => count(found) == 1
-        && match first(found) {
-          Absent => false
-          Present { value: c } => c.waiting == nid(s: "fixture-leaf-a") && c.container == nid(s: "fixture-payoff")
-        }
-      GanttContradictionsPresent { contradictions: _ } => false
-      GanttEstimatesRefused { refusals: _ } => false
-      GanttNoWorkers { cap: _ } => false
-      GanttNoFindingsCount { count: _ } => false
-      GanttPrerequisitesCyclic { nodes: _ } => false
-      GanttUnpricedWithoutCause { nodes: _ } => false
-      GanttRowsUnplaced { nodes: _ } => false
+    Present { value: row } => match row.state {
+      RowBlocked { behind: b } => count(filter(b, c => match c {
+        WaitsOnItsOwnContainer { node: n, container: cn } => n == nid(s: "fixture-leaf-a") && cn == nid(s: "fixture-payoff")
+        NotEstimated { node: _, why: _ } => false
+        RollupBelow { node: _, work_days: _ } => false
+        PiecesRefused { node: _, cause: _ } => false
+        PiecesFindingsCount { node: _, count: _ } => false
+        PiecesZeroDays { node: _ } => false
+        BlockedBelow { node: _ } => false
+      })) == 1
+      _ => false
     }
   }
+  let dependent = match row_of(a: a, slug: "fixture-leaf-c") {
+    Absent => false
+    Present { value: row } => match row.state {
+      RowBlocked { behind: _ } => true
+      _ => false
+    }
+  }
+  let untouched = match row_of(a: a, slug: "fixture-leaf-b") {
+    Absent => false
+    Present { value: row } => match row.state {
+      RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => true
+      _ => false
+    }
+  }
+  answered && contradicted && dependent && untouched
 }
 
 // AN UNPRICED CONTAINER IS NOT TOTALLED FROM THE CHILDREN IT HAPPENS TO HAVE. payoff contains milestone, milestone

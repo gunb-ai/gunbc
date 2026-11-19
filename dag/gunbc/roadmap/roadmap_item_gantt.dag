@@ -134,6 +134,12 @@ type BlockedCause
   | BlockedBelow { node: RoadmapNodeId }
     // the key HAS a duration and this read still could not place it, because something IT waits on has none: the gate
     // is transitive, and a dependent of a blocked row is blocked, not placed at day 0.
+  | WaitsOnItsOwnContainer { node: RoadmapNodeId, container: RoadmapNodeId }
+    // an edge orders `node` behind `container`, and `container` is the node `node` sits INSIDE. A container's bar is
+    // drawn over the rows it contains, so a row cannot wait on what contains it: expanded through containment the
+    // edge is the row waiting on itself. That is a contradiction between the edge and the hierarchy, not a schedule
+    // -- so the row gets no bar, and both sides are named. Per row, not for the whole read: one bad edge in the
+    // authority data must not blank the timeline for every other item.
 
 // THE KEY A CAUSE IS ABOUT, whichever arm it is: the one total read over BlockedCause, so no consumer pattern-matches
 // its way to an id and gets the arms subtly wrong.
@@ -145,6 +151,7 @@ fn cause_node(c: BlockedCause) -> RoadmapNodeId {
     PiecesFindingsCount { node: n, count: _ } => n
     PiecesZeroDays { node: n } => n
     BlockedBelow { node: n } => n
+    WaitsOnItsOwnContainer { node: n, container: _ } => n
   }
 }
 
@@ -155,25 +162,11 @@ type GanttRefusal
   | GanttNoWorkers { cap: BeltCapacity }
   | GanttNoFindingsCount { count: Int }
   | GanttPrerequisitesCyclic { nodes: List<RoadmapNodeId> }
-  // A ROW ORDERED BEHIND THE VERY CONTAINER THAT SPANS IT. An edge says "this waits on that"; containment says the
-  // container's bar is drawn OVER the row. Both cannot be facts of one plan: expanded through containment such an
-  // edge becomes a row waiting on itself, which the placement core can only report as an anonymous cycle. It is
-  // named here instead, on both sides, before anything is placed (gunbc.design_argument::fail_closed -- "a wrong
-  // answer is a loud, typed, located error").
-  | GanttRowWaitsOnItsOwnContainer { edges: List<ContainmentCycle> }
   // A NODE WITH NO DURATION AND NO STATE EXPLAINING WHY. Unreachable by construction -- every arm of EstimateSource
   // names a cause above -- and its only job is to make that unreachability a REFUSAL rather than a gap the read walks
   // past. It is the opposite of a catch-all: a catch-all answers without the cause, this one stops answering.
   | GanttUnpricedWithoutCause { nodes: List<RoadmapNodeId> }
   | GanttRowsUnplaced { nodes: List<RoadmapNodeId> }
-
-// ONE EDGE THAT DOES BOTH: it orders `waiting` behind `container`, and `container` is the node `waiting` sits inside.
-// Both sides are named because the operator's rule for a contradiction is that neither side is left for the reader to
-// work out.
-type ContainmentCycle {
-  waiting: RoadmapNodeId
-  container: RoadmapNodeId
-}
 
 type GanttAnswer
   = GanttAnswered {
@@ -215,6 +208,10 @@ type GanttFacts {
   work_keys: Map<String, Bool>
   children: Map<String, List<RoadmapNode>>
   expanded: List<PlacementEdge>
+  // THE EDGES THAT ORDER A ROW BEHIND ITS OWN CONTAINER, as causes, one per offending edge. They are NOT in
+  // `expanded`: the row is held out by its own cause instead of reaching the core as a self-edge, and every other
+  // row still places.
+  self_waits: List<BlockedCause>
   successor: Map<String, List<String>>
 }
 
@@ -247,27 +244,8 @@ fn gantt_answer(input: GanttInput) -> GanttAnswer {
   } else if input.findings_count < 0 {
     GanttRefused { refusal: GanttNoFindingsCount { count: input.findings_count } }
   } else {
-    let facts = build_facts(input: input)
-    let inverted = rows_waiting_on_their_own_container(facts: facts)
-    if count(inverted) > 0 {
-      GanttRefused { refusal: GanttRowWaitsOnItsOwnContainer { edges: inverted } }
-    } else {
-      answer_priced(facts: facts)
-    }
+    answer_priced(facts: build_facts(input: input))
   }
-}
-
-// WHICH EDGES ORDER A ROW BEHIND ITS OWN CONTAINER, in the containment the derivation already follows. Checked
-// against the containment index the read built once, so no second walk of the nodes happens here.
-fn rows_waiting_on_their_own_container(facts: GanttFacts) -> List<ContainmentCycle> {
-  flat_map(facts.input.edges, e => {
-    let under = contained_under(children: facts.children, root: e.parent as String)
-    if any(under, k => k == (e.child as String)) {
-      [ContainmentCycle { waiting: e.child, container: e.parent }]
-    } else {
-      [] as List<ContainmentCycle>
-    }
-  })
 }
 
 // THE INDEXES, built once per read.
@@ -279,16 +257,34 @@ fn build_facts(input: GanttInput) -> GanttFacts {
   let days = map(priced, p => NodeDays { node: p.node.node, days: row_days(input: input, reads: leaf_reads, p: p) })
   let work = fold(priced, init: empty_map(), f: fn(acc, p) { if owns_work(p: p) { map_insert(m: acc, key: p.node.node as String, value: true) } else { acc } })
   let kids = fold(input.nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.node as String, value: contained_children(nodes: input.nodes, parent: n.node)) })
+  // THE PREREQUISITE EDGES, expanded through containment the same way the derivation walks it.
+  //
+  // One case is held back here rather than handed to the core: an edge that orders a row behind the container the row
+  // sits INSIDE expands to that row waiting on ITSELF, and the core can only ever see an anonymous cycle. It comes
+  // back as a cause on the row instead -- the row loses its bar, its dependents are blocked as behind anything
+  // unplaced, and every other row still places, so one bad edge cannot blank the timeline for every item.
   let expanded = flat_map(input.edges, e => {
-    flat_map(expand_to_work(facts: work, children: kids, target: e.parent), from =>
-      map(expand_to_work(facts: work, children: kids, target: e.child), to => PlacementEdge { from: from, to: to })
-    )
+    let inverted = any(contained_under(children: kids, root: e.parent as String), k => k == (e.child as String))
+    let froms = if inverted { [] as List<String> } else { expand_to_work(facts: work, children: kids, target: e.parent) }
+    EdgeExpansion {
+      contradiction: if inverted { [WaitsOnItsOwnContainer { node: e.child, container: e.parent }] } else { [] as List<BlockedCause> },
+      edges: flat_map(froms, from => map(expand_to_work(facts: work, children: kids, target: e.child), to => PlacementEdge { from: from, to: to })),
+    }
   })
-  let successor = fold(expanded, init: empty_map(), f: fn(acc, e) {
+  let waits = flat_map(expanded, x => x.contradiction)
+  let edges = flat_map(expanded, x => x.edges)
+  let successor = fold(edges, init: empty_map(), f: fn(acc, e) {
     let none_yet: List<String> = []
     map_insert(m: acc, key: e.from, value: list_push(xs: look_string(m: acc, key: e.from, dflt: none_yet), item: e.to))
   })
-  GanttFacts { input: input, priced: priced, days: days, leaf_reads: leaf_reads, work_keys: work, children: kids, expanded: expanded, successor: successor }
+  GanttFacts { input: input, priced: priced, days: days, leaf_reads: leaf_reads, work_keys: work, children: kids, expanded: edges, self_waits: waits, successor: successor }
+}
+
+// WHAT ONE AUTHORED EDGE BECOMES once containment is applied to it: the placement edges it expands to, and the
+// contradiction it turned out to be -- kept together so the edge is walked exactly once and never re-decided later.
+type EdgeExpansion {
+  contradiction: List<BlockedCause>
+  edges: List<PlacementEdge>
 }
 
 // THE ONE TOTAL READ of a String-keyed map of String lists: the successor index built above and the closure walk
@@ -315,8 +311,11 @@ fn answer_priced(facts: GanttFacts) -> GanttAnswer {
     Absent => [] as List<BlockedCause>
   })
   let unexplained = map(filter(gaps, p => !caused(causes: causes, node: p.node.node)), p => p.node.node)
-  let stuck = blocked_behind(unplaceable: map(causes, c => cause_node(c: c)), successor: facts.successor)
-  let held = concat(causes, map(filter(stuck, n => !caused(causes: causes, node: n)), n => BlockedBelow { node: n }))
+  // WHAT CANNOT BE PLACED AT ALL: every gap with no price, and every row ordered behind its own container. Both are
+  // seeds of the same transitive gate -- a dependent of either is blocked, never placed at day 0.
+  let unplaceable = concat(map(causes, c => cause_node(c: c)), map(facts.self_waits, c => cause_node(c: c)))
+  let stuck = blocked_behind(unplaceable: unplaceable, successor: facts.successor)
+  let held = concat(concat(causes, facts.self_waits), map(filter(stuck, n => !caused(causes: causes, node: n) && !caused(causes: facts.self_waits, node: n)), n => BlockedBelow { node: n }))
   if count(unexplained) > 0 {
     GanttRefused { refusal: GanttUnpricedWithoutCause { nodes: unexplained } }
   } else {
@@ -578,7 +577,7 @@ fn row_work_days(facts: GanttFacts, p: PricedNode) -> Optional<Int> {
 
 // WHICH UNPLACED PREREQUISITES THIS ROW WAITS ON, named, read off the ONE expanded edge list -- never recomputed.
 fn waiting_on(facts: GanttFacts, held: List<BlockedCause>, target: String) -> List<BlockedCause> {
-  flat_map(facts.expanded, e => if e.to == target {
+  let via_edges = flat_map(facts.expanded, e => if e.to == target {
     match first(filter(held, c => (cause_node(c: c) as String) == e.from)) {
       Present { value: c } => [c]
       Absent => [] as List<BlockedCause>
@@ -586,6 +585,19 @@ fn waiting_on(facts: GanttFacts, held: List<BlockedCause>, target: String) -> Li
   } else {
     [] as List<BlockedCause>
   })
+  // A row ordered behind its own container carries its cause itself, with no edge to walk: the edge was held back in
+  // build_facts precisely because it was that row waiting on itself. Only this arm reads by the row's own key -- the
+  // others still arrive through the prerequisite they belong to.
+  let own = filter(held, c => match c {
+    WaitsOnItsOwnContainer { node: n, container: _ } => (n as String) == target
+    NotEstimated { node: _, why: _ } => false
+    RollupBelow { node: _, work_days: _ } => false
+    PiecesRefused { node: _, cause: _ } => false
+    PiecesFindingsCount { node: _, count: _ } => false
+    PiecesZeroDays { node: _ } => false
+    BlockedBelow { node: _ } => false
+  })
+  concat(via_edges, own)
 }
 
 fn row_state(facts: GanttFacts, placed: PlacementAnswer, behind: List<BlockedCause>, p: PricedNode, key: String) -> GanttRowState {
