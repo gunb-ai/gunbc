@@ -31,8 +31,7 @@ import std.measure { Second }
 // std.resources); the bare use at the retention write resolved by proximity in some checkers and was
 // REFUSED by others (ambiguous reference 'Filesystem' at gunbc compile, main af160c362c5). The intended
 // one is the fleet's file authority -- the same qualified import every machine-intake module that
-// calls `Filesystem` carries, e.g.
-// @ref(gunbc.machine_intake.megarac_boot_diagnostic_bundle::megarac_boot_hpm_check).
+// calls `Filesystem` carries, e.g. the boot bundle's megarac_boot_hpm_check.
 // Qualifying by import is the fix; the name is not renamed. Cite the symbol, not the position
 // (*Single authority*, gunbc.design_argument::single_authority).
 import extdeps.filesystem.filesystem_io { Filesystem }
