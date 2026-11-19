@@ -326,11 +326,19 @@ fn runner_slot_provision_membership_withheld_count(plan: RunnerSlotProvisionPlan
   count(runner_slot_provision_membership_withheld_rows(plan: plan))
 }
 
-// WITHHELD LINES THE PLAN NEVER LISTED AS ROWS. The required-retiree and ungranted-actuation renderers
-// withhold units the membership reconcile did not name -- the population the srv1 apply withheld 39 of
-// while plan.txt listed 4 removals. They are counted from the renderer's own output, so the number
-// cannot disagree with the script an operator reads, and they are reported beside (never inside) the
-// plan-row count so the receipt still reconciles with plan.txt line for line.
+// WHICH UNITS, NOT MERELY HOW MANY. The receipt's count says four; this says which four, so a control can
+// put the plan's rows next to the lines the script echoes and check they name the SAME units rather than
+// merely the same number -- the difference between a count that means something and a count that happens
+// to add up.
+fn runner_slot_provision_membership_withheld_units(plan: RunnerSlotProvisionPlan) -> List<String> {
+  flat_map(plan.teardown_rows, r =>
+  match r {
+    TeardownAdmitted { unit: _, script: _ } => []
+    TeardownWithheld { unit: u, cause: _, script: _ } => [u]
+  }
+  )
+}
+
 // THE WITHHELD LINES THE RENDERED SCRIPT ACTUALLY ECHOES. Both sections the apply shell emits for this
 // family are counted -- retirement inhibition and tree removal -- because that pair is what an operator
 // reads when they ask "what did the plan not do". Counting only the teardown section would have called

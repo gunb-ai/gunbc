@@ -25,8 +25,11 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains }
 import gunbc.fleet.fleet_converge_plan {
   FleetConvergePlanArtifact,
+  FleetConvergeSlotFamily,
   fleet_converge_cap_plan_only_row_count,
   fleet_converge_plan_artifact,
+  fleet_converge_slot_family,
+  slot_family_withheld_units,
 }
 import gunbc.fleet.fleet_converge_terminal {
   AwaitingCapability,
@@ -53,7 +56,10 @@ import gunbc.runner.runner_slot_provision {
   converge_line_is_withheld,
   runner_slot_member_observed,
 }
-import gunbc.runner.runner_slot_retirement { SlotRetirementEvidenceAbsent }
+import gunbc.runner.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+}
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 
 data owed_witness_host: NonEmptyStr = "srv1" as NonEmptyStr
@@ -115,6 +121,15 @@ fn srv1_width_dropin_observed() -> CapMember {
   }
 }
 
+// THE ONE FACT THE FIXTURE CHANGES: no retirement observation is bound, exactly as on the srv1 run. The
+// tree-removal gate cannot be satisfied without it, so every removal the plan lists is withheld -- which
+// is what the receipt has to say out loud.
+fn owed_witness_evidence() -> SlotRetirementEvidence {
+  SlotRetirementEvidenceAbsent {
+    cause: "this fixture binds no retirement observation, exactly as the srv1 run did",
+  }
+}
+
 fn artifact_with(
   observed_caps: List<CapMember>,
   observed_slots: List<RunnerSlotMember>,
@@ -128,9 +143,7 @@ fn artifact_with(
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
-    observed_retirement: SlotRetirementEvidenceAbsent {
-      cause: "this fixture binds no retirement observation, exactly as the srv1 run did",
-    },
+    observed_retirement: owed_witness_evidence(),
     observed_host_grants: witness_grants_rendered(host: owed_witness_host),
   )
 }
@@ -384,5 +397,25 @@ test fn the_plan_only_count_and_the_plan_lines_agree_by_construction() -> Bool {
     Present { value: artifact } =>
       fleet_converge_cap_plan_only_row_count(host: owed_witness_host, observed_caps: observed)
         == plan_rows_starting_with(plan_body: artifact.plan_body, prefix: "PLAN-ONLY cap ")
+  }
+}
+
+// (11) THE COUNT NAMES THE SAME UNITS THE SCRIPT ECHOES. A number that merely adds up is not evidence:
+// this puts the plan's own withheld rows next to the lines the rendered script echoes and asks that they
+// be ABOUT THE SAME UNITS. It is also the reason `SlotTeardownRow` carries a unit at all -- without it the
+// most a control could check is that two lists are the same size.
+test fn every_withheld_plan_row_names_a_unit_the_script_echoes_as_withheld() -> Bool {
+  match artifact_with_withheld_teardowns() {
+    Absent => false
+    Present { value: artifact } => {
+      let family = fleet_converge_slot_family(
+        host: owed_witness_host,
+        observed_slots: owed_witness_slots(),
+        retirement_evidence: owed_witness_evidence(),
+      )
+      let units = slot_family_withheld_units(family: family)
+      count(units) > 0
+        && all(units, u => string_contains(s: artifact.apply_shell, pattern: u))
+    }
   }
 }

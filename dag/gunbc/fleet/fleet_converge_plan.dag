@@ -1652,6 +1652,14 @@ fn slot_family_withheld_beyond_plan_rows_count(family: FleetConvergeSlotFamily) 
   }
 }
 
+// WHICH UNITS THE PLAN WITHHELD, in plan order -- the names behind the terminal's withheld count.
+fn slot_family_withheld_units(family: FleetConvergeSlotFamily) -> List<String> {
+  match slot_family_plan(family: family) {
+    Absent => []
+    Present { value: p } => runner_slot_provision_membership_withheld_units(plan: p)
+  }
+}
+
 // THE ACTIVATION FAMILY, AND IT IS A SEPARATE FAMILY FROM THE SLOT FAMILY RATHER THAN TWO MORE
 // LINES INSIDE IT. Materializing a slot writes files under a directory the converging principal
 // already owns; activating one lets it accept work, and the first cache-miss compile of that work
