@@ -16,7 +16,7 @@
 module test.claim.host.network_install_ci_witness
 
 import std.logic { Bool }
-import std.types { EpochMs, NonEmptyStr, String }
+import std.types { EpochMs, NonEmptyStr, PathSegment, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains }
 import std.decl_ref { decl_ref, declaration_ref_eq }
@@ -29,6 +29,7 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
 import extdeps.toolchain.types { Architecture }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15, operator_host_srv4 }
+import gunbc.auth.managed_accessor_credential { with_managed_accessor_credential, managed_accessor_credential_refusal, ManagedAccessorCredentialCompleted, ManagedAccessorCredentialRefused }
 import gunbc.actions_run_binding { fleet_converge_arrival_subject_env_name }
 import gunbc.fleet.fleet_intent { srv15_baseboard }
 import gunbc.fleet.machine_target_disk_observations { target_disk_reading_for }
@@ -46,7 +47,7 @@ import gunbc.host.network_install_ci {
   network_install_ci_reported_serial, network_install_ci_unit_refusal, network_install_ci_conflation_refusal,
   network_install_ci_credential_pair_refusal, network_install_ci_credential_pin_refusal,
   network_install_ci_credential_token_refusal, network_install_ci_credential_fetch_refusal,
-  network_install_ci_credential_bracket_refusal, network_install_ci_password_override,
+  network_install_ci_credential_bracket_refusal,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
 import gunbc.machine_intake.arrival_subject { arrival_converge_population, arrival_population_row_in }
@@ -589,25 +590,6 @@ test fn w_every_credential_stage_refusal_names_the_unit_and_refuses_outright() -
     && string_contains(s: bracket, pattern: "did not open")
 }
 
-// THE OVERRIDE CORE IS PURE AND DISCRIMINATES BLANK FROM PATH. A whitespace-only environment
-// value is ABSENT -- a blank GUNBC_NETWORK_INSTALL_BMC_PASSWORD_FILE must not name a file and
-// short-circuit the fetched credential (if the blank were carried, the run would plan against a
-// path that exists nowhere and the fetch would never run: red). A real path is carried trimmed.
-test fn w_a_whitespace_password_override_is_absent_and_a_path_is_trimmed() -> Bool {
-  match network_install_ci_password_override(raw: Absent) {
-    Absent => true
-    _ => false
-  }
-    && match network_install_ci_password_override(raw: Present { value: "   " }) {
-      Absent => true
-      _ => false
-    }
-    && match network_install_ci_password_override(raw: Present { value: "  bmc-srv15.pw  " }) {
-      Present { value: v } => v == "bmc-srv15.pw"
-      Absent => false
-    }
-}
-
 // THE CAPABILITY REFUSAL NAMES THE OBSERVATION THAT IS MISSING, and the one that is NOT taken.
 // srv15's firmware release capability row is absent because the committed MegaRac operation
 // evidence carries no build reading for the unit's controller; the refusal must name the read-only
@@ -628,4 +610,35 @@ test fn w_the_capability_refusal_names_the_hpm_check_and_forbids_typing_a_releas
         && string_contains(s: item.cause as String, pattern: "arrival run does NOT take")
         && string_contains(s: item.cause as String, pattern: "no release may be typed in")
   )
+}
+
+// THE REAL ROUTE, HERMETICALLY: a unit with NO arrival federation pair row must be refused by the
+// FIRST stage of the actual credential bracket -- not a hand-built stage string, the gate itself.
+// srv4 has no pair row (only mtjade1 and srv15 lanes are committed), so with_managed_accessor_credential
+// must refuse PairAbsent, the use-closure can never have been reached (the PairAbsent arm never calls
+// it), and the shared generator's text must name the unit and the missing locus. If the pair gate were
+// relaxed -- defaulted, or made to invent a lane -- srv4 would reach a later stage or complete, and the
+// Refused arm below flips to false. That is the discriminating red on the REAL path, run in the hermetic
+// claim corpus: pair rows are data, the first stage is pure lookup, and nothing past it is attempted.
+test fn w_the_real_credential_route_refuses_a_pairless_unit_at_the_pair_gate() -> Bool {
+  let outcome = with_managed_accessor_credential(
+    host: operator_host_srv4,
+    file_name: "network-install-bmc-password" as PathSegment,
+    use: fn(bundle) { "the closure ran" },
+  )
+  match outcome {
+    ManagedAccessorCredentialRefused { stage: stage } => {
+      let text = managed_accessor_credential_refusal(
+        lane: "network-install" as NonEmptyStr,
+        host: operator_host_srv4,
+        stage: stage,
+        consequence: "the credential is not written and no install is dispatched" as NonEmptyStr,
+      )
+      string_contains(s: text, pattern: "srv4")
+        && string_contains(s: text, pattern: "federation pair")
+        && string_contains(s: text, pattern: "no install is dispatched")
+        && !string_contains(s: text, pattern: "the closure ran")
+    }
+    ManagedAccessorCredentialCompleted { value: _ } => false
+  }
 }
