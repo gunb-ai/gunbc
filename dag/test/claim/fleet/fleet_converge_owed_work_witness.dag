@@ -153,9 +153,12 @@ fn owed_witness_evidence() -> SlotRetirementEvidence? {
   ) {
     SlotRetirementEvidenceAbsent { cause: c } =>
       // THE PASS-THROUGH IS THE POINT: the cause is the model's sentence, written by the admission function
-      // above, and nothing here re-types it.
-      SlotRetirementEvidenceAbsent { cause: c }
-    SlotRetirementEvidencePresent { authorization: _, standings: _ } => none
+      // above, and nothing here re-types it. It is wrapped rather than returned bare because the match's
+      // arms must all inhabit the function's declared `SlotRetirementEvidence?` -- handing the checker a
+      // bare `SlotRetirementEvidence` on one side and the empty case on the other leaves the arms with no
+      // common type, which is what the first cut did.
+      Present { value: SlotRetirementEvidenceAbsent { cause: c } }
+    SlotRetirementEvidencePresent { authorization: _, standings: _ } => Absent
   }
 }
 
