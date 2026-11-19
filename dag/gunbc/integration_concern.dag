@@ -4533,11 +4533,11 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice: IntegrationConc
       revision: spark_endpoint_rows_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesHistorical {
-          historical: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint" },
+          declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv10_host_lan_endpoint" },
         },
         tail: [
           CitesHistorical {
-            historical: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint" },
+            declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv12_host_lan_endpoint" },
           },
         ],
       },
@@ -4616,7 +4616,7 @@ data srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands: Integrati
       revision: spark_endpoint_rows_sighting_revision,
       evidence: FreeSemigroup {
         head: CitesHistorical {
-          historical: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
+          declaration: HistoricalDeclaration { at: "17cbab77ee6a0228e650c398c9a12fb9ec57e46e" as CommitSha, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv11_host_lan_endpoint" },
         },
         tail: [
           CitesDeclaration {
