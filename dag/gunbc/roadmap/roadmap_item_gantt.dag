@@ -150,9 +150,9 @@ fn gantt_answer(input: GanttInput) -> GanttAnswer {
     estimate_refusals(nodes: input.nodes, entries: input.entries),
     restated_piece_days(nodes: input.nodes, entries: input.entries)
   )
-  if count(clashes, c => true) > 0 {
+  if count(clashes) > 0 {
     GanttRefused { refusal: GanttContradictionsPresent { contradictions: clashes } }
-  } else if count(malformed, r => true) > 0 {
+  } else if count(malformed) > 0 {
     GanttRefused { refusal: GanttEstimatesRefused { refusals: malformed } }
   } else if input.workers.max_concurrent <= 0 {
     GanttRefused { refusal: GanttNoWorkers { cap: input.workers } }
@@ -325,7 +325,7 @@ fn expand_to_work(facts: Map<String, Bool>, children: Map<String, List<RoadmapNo
     [key]
   } else {
     let under = work_under(work: facts, children: children, root: key, seen: [key])
-    if count(under, k => true) > 0 { under } else { [key] }
+    if count(under) > 0 { under } else { [key] }
   }
 }
 
@@ -463,7 +463,7 @@ fn rollup_or_refusal(facts: GanttFacts, placed: PlacementAnswer, behind: List<Ro
 }
 
 fn blocked_or_unplaced(behind: List<RoadmapNodeId>) -> GanttRowState {
-  if count(behind, b => true) > 0 {
+  if count(behind) > 0 {
     RowBlocked { behind: behind }
   } else {
     RowUnplaced
@@ -485,7 +485,7 @@ fn leaf_refusal_state(facts: GanttFacts, node: RoadmapNodeId) -> GanttRowState {
 // no lane, which is what keeps a parent's number and its children's numbers one fact and not two.
 fn rollup_bar(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
   let mine = spanned_rows(facts: facts, placed: placed, p: p)
-  if count(mine, r => true) == 0 {
+  if count(mine) == 0 {
     blocked_or_unplaced(behind: behind)
   } else {
     let first_day = earliest_start_of(spanned: mine)
@@ -551,7 +551,7 @@ fn gantt_refusal(a: GanttAnswer) -> Optional<GanttRefusal> {
 // HOW MANY ROWS THIS READ COULD NOT PRICE -- the count the dashboard shows beside the picture, so an unsized node is
 // never invisible and never silently defaulted.
 fn gantt_unpriced_count(a: GanttAnswer) -> Int {
-  count(gantt_rows(a: a), r => match r.state {
+  count(filter(gantt_rows(a: a), r => match r.state {
     RowUnsized { why: _ } => true
     RowBlocked { behind: _ } => true
     RowLeafGrainRefused { cause: _ } => true
@@ -559,5 +559,5 @@ fn gantt_unpriced_count(a: GanttAnswer) -> Int {
     RowNoFindingsCount { count: _ } => true
     RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
     RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
-  })
+  }))
 }

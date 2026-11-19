@@ -106,9 +106,9 @@ fn placed_days(r: Optional<GanttRow>) -> Optional<Int> {
 test fn an_unpriced_roadmap_lists_every_node_and_prices_none() -> Bool {
   let a = read(nodes: fixture_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>)
   match a {
-    GanttAnswered { rows: rows, horizon: h, in_flight: _, critical: _ } => count(rows, r => true) == 5
+    GanttAnswered { rows: rows, horizon: h, in_flight: _, critical: _ } => count(rows) == 5
       && h == 0
-      && count(rows, r => match r.work_days { Present { value: _ } => true, Absent => false }) == 0
+      && count(filter(rows, r => match r.work_days { Present { value: _ } => true, Absent => false })) == 0
       && gantt_unpriced_count(a: a) == 5
     GanttRefused { refusal: _ } => false
   }
@@ -205,7 +205,7 @@ test fn a_task_waiting_on_an_unpriced_task_is_blocked_and_named() -> Bool {
   match row_of(a: a, slug: "debt-expected-red-mock-totality-dead-rows") {
     Absent => false
     Present { value: row } => match row.state {
-      RowBlocked { behind: b } => count(b, x => x == nid(s: "debt-rung-drop-measurement-bankruptcy-retire")) == 1
+      RowBlocked { behind: b } => count(filter(b, x => x == nid(s: "debt-rung-drop-measurement-bankruptcy-retire"))) == 1
       RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
       RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
       RowUnsized { why: _ } => false
@@ -273,7 +273,7 @@ test fn a_contradiction_refuses_the_whole_picture_by_name() -> Bool {
   match gantt_refusal(a: a) {
     Absent => false
     Present { value: refusal } => match refusal {
-      GanttContradictionsPresent { contradictions: clashes } => count(clashes, c => true) == 1
+      GanttContradictionsPresent { contradictions: clashes } => count(clashes) == 1
         && match first(clashes) {
           Absent => false
           Present { value: c } => c.ancestor == nid(s: "dp-m1-dissolvable-rows-retired") && c.descendant == nid(s: "debt-expected-red-mock-totality-dead-rows")
@@ -364,8 +364,8 @@ fn row_of_live(a: GanttAnswer, slug: String) -> Optional<GanttRow> {
 test fn the_live_read_over_the_whole_roadmap_lists_every_node_and_prices_none_at_zero() -> Bool {
   let a = gantt_answer_live(workers: lanes(3), findings_count: 1, at: read_date())
   match a {
-    GanttAnswered { rows: rows, horizon: _, in_flight: _, critical: _ } => count(rows, r => true) == count(declared_roadmap_nodes(), n => true)
-      && count(rows, r => match r.work_days { Present { value: v } => v <= 0, Absent => false }) == 0
+    GanttAnswered { rows: rows, horizon: _, in_flight: _, critical: _ } => count(rows) == count(filter(declared_roadmap_nodes(), n => true))
+      && count(filter(rows, r => match r.work_days { Present { value: v } => v <= 0, Absent => false })) == 0
     GanttRefused { refusal: _ } => false
   }
 }

@@ -417,7 +417,7 @@ fn place(input: PlacementInput) -> PlacementOutcome {
   let graph = adjacency(rows: rows, edges: input.edges)
   let seeded_indeg = indegrees(rows: rows, succ: graph.succ)
   let ready_rows = filter(rows, n => look_or(m: seeded_indeg, key: n.key, dflt: 0) == 0)
-  let outcome = topo_run(state: TopoState { ready: ready_rows, order: [], indeg: seeded_indeg, unemitted: count(rows, r => true) }, succ: graph.succ)
+  let outcome = topo_run(state: TopoState { ready: ready_rows, order: [], indeg: seeded_indeg, unemitted: count(rows) }, succ: graph.succ)
   match outcome {
     PlacementCyclic { keys: _ } => PlacementRefused { refusal: PlacementCyclic { keys: unemitted_keys(rows: rows, outcome: outcome) } }
     Ordered { order: order } => {
@@ -440,7 +440,7 @@ fn place(input: PlacementInput) -> PlacementOutcome {
       }
       let done = place_all(state: started, pred: graph.pred, buckets: buckets, workers: input.workers, earliest_start: input.earliest_start)
       let missing = unplaced_keys(rows: rows, finish: done.finish)
-      if count(missing, k => true) > 0 {
+      if count(missing) > 0 {
         PlacementRefused { refusal: PlacementUnplaced { keys: missing } }
       } else {
         let h = horizon_of(rows: done.placed)

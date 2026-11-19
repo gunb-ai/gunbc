@@ -289,8 +289,8 @@ fn estimate_form_days(t: EstimateTable, v: EstimateForm) -> Optional<Int> {
   match v {
     DaysEstimate { working_days } => if working_days >= 1 { optional_present(value: working_days) } else { optional_absent() }
     SizedEstimate { size } => match estimate_band(t: t, s: size) {
-      Empty => optional_absent()
-      Cons { head: b, tail: _ } => optional_present(value: band_scheduled_days(b: b))
+      Absent => optional_absent()
+      Present { value: b } => optional_present(value: band_scheduled_days(b: b))
     }
   }
 }

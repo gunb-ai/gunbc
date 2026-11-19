@@ -265,17 +265,68 @@ fn last_recorded_row(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity)
   fold(filter(recorded_rows(entries: entries), r => r.subject == subject), init: optional_absent(), f: fn(acc, r) { optional_present(value: r) })
 }
 
+// A WITHDRAWAL RELEASES A ROW ONLY IF THAT ROW IS AN EARLIER ENTRY. `made` orders days and cannot order two
+// statements written on one day, so for same-day order the stream itself is the clock. Without the position test,
+// [withdraw A today, record A today] would clear a price that did not exist when it was withdrawn -- merry-moth-343's
+// finding. Record-then-revoke on one day is allowed; revoke-then-record is not, and is refused, not ignored.
 fn revocation_clears(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity, row: RoadmapEstimateRow) -> Bool {
-  any(filter(revocations(entries: entries), v => v.subject == subject), v => v.withdraws_made == row.made)
+  let indexed = indexed_entries(entries: entries)
+  any_strictly_before(
+    after: revocation_positions(indexed: indexed, subject: subject, withdraws_made: row.made),
+    before: row_positions(indexed: indexed, subject: subject, made: row.made)
+  )
+}
+
+// A POSITION IN THE APPENDED STREAM, so the stream can order what a calendar day cannot.
+type IndexedEntry {
+  at: Int
+  entry: EstimateEntry
+}
+
+fn indexed_entries(entries: List<EstimateEntry>) -> List<IndexedEntry> {
+  fold(entries, init: [] as List<IndexedEntry>, f: fn(acc: List<IndexedEntry>, e: EstimateEntry) { acc |> list_push(IndexedEntry { at: count(acc), entry: e }) })
+}
+
+fn is_row_entry(e: EstimateEntry, subject: RoadmapNodeIdentity, made: Iso8601CivilDate) -> Bool {
+  match e {
+    EstimateRecorded { row } => row.subject == subject && row.made == made
+    EstimateRevoked { revocation: _ } => false
+  }
+}
+
+fn is_revocation_entry(e: EstimateEntry, subject: RoadmapNodeIdentity, withdraws_made: Iso8601CivilDate) -> Bool {
+  match e {
+    EstimateRecorded { row: _ } => false
+    EstimateRevoked { revocation } => revocation.subject == subject && revocation.withdraws_made == withdraws_made
+  }
+}
+
+fn row_positions(indexed: List<IndexedEntry>, subject: RoadmapNodeIdentity, made: Iso8601CivilDate) -> List<Int> {
+  flat_map(indexed, i => if is_row_entry(e: i.entry, subject: subject, made: made) { [i.at] } else { [] as List<Int> })
+}
+
+fn revocation_positions(indexed: List<IndexedEntry>, subject: RoadmapNodeIdentity, withdraws_made: Iso8601CivilDate) -> List<Int> {
+  flat_map(indexed, i => if is_revocation_entry(e: i.entry, subject: subject, withdraws_made: withdraws_made) { [i.at] } else { [] as List<Int> })
+}
+
+fn any_strictly_before(after: List<Int>, before: List<Int>) -> Bool {
+  any(after, a => any(before, b => b < a))
 }
 
 // A withdrawal that named a row which is no longer the effective one, listed so the answer shows it rather than
 // quietly swallowing an author's belief about the state of the record.
 fn redundant_revocations(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> List<EstimateRevocation> {
+  let mine = filter(revocations(entries: entries), v => v.subject == subject)
   match last_recorded_row(entries: entries, subject: subject) {
-    Absent => [] as List<EstimateRevocation>
-    Present { value: row } => filter(filter(revocations(entries: entries), v => v.subject == subject), v => !(v.withdraws_made == row.made))
+    Absent => mine
+    Present { value: row } => filter(mine, v => !revocation_clears_row(entries: entries, subject: subject, row: row, v: v))
   }
+}
+
+// DOES THIS PARTICULAR WITHDRAWAL RELEASE THE EFFECTIVE ROW. Not `does some withdrawal`: a stream can hold both a
+// live one and a dead one for the same subject, and the dead one still has to be reported rather than dropped.
+fn revocation_clears_row(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity, row: RoadmapEstimateRow, v: EstimateRevocation) -> Bool {
+  v.subject == subject && v.withdraws_made == row.made && revocation_clears(entries: entries, subject: subject, row: row)
 }
 
 // THE LAST ENTRY in append order. Rows are appended and never edited, so the stream's order is the record's order;
@@ -485,29 +536,25 @@ fn not_same_form(a: EstimateForm, b: EstimateForm) -> Bool {
   }
 }
 
-// THE REVOCATION'S THREE FAILURES. The release merry-moth-343 asked for is the only way a price stops pricing a
-// node without editing history, so it cannot be a hole through which facts disappear: a revocation must name a row
-// that exists, must come after it, and must say why.
+// THE REVOCATION'S FAILURES. The release merry-moth-343 asked for is the only way a price stops pricing a node
+// without editing history, so it cannot be a hole through which facts disappear: a revocation must name a row that
+// exists, must sit AFTER that row in the appended stream, must not be dated before it, and must say why. The stream
+// position is what makes [withdraw A today, record A today] a refusal rather than a withdrawal of nothing -- a day
+// number cannot order two statements written on one day, so the order they were appended in is the only clock that can.
 fn revocation_refusal(entries: List<EstimateEntry>, revocation: EstimateRevocation) -> Optional<EstimateRefusal> {
-  match revocation_named_row(entries: entries, revocation: revocation) {
-    Absent => optional_present(value: RevocationNamesNoRow { subject: revocation.subject, withdraws_made: revocation.withdraws_made })
-    Present { value: row } =>
-      if date_precedes(a: revocation.made, b: row.made) {
-        optional_present(value: RevocationPrecedesItsRow { subject: revocation.subject, revocation_made: revocation.made, row_made: row.made })
-      } else {
-        if revocation.reason == "" {
-          optional_present(value: EmptyRevocationReason { subject: revocation.subject })
-        } else {
-          optional_absent()
-        }
-      }
-  }
-}
-
-fn revocation_named_row(entries: List<EstimateEntry>, revocation: EstimateRevocation) -> Optional<RoadmapEstimateRow> {
-  match filter(filter(recorded_rows(entries: entries), r => r.subject == revocation.subject), r => r.made == revocation.withdraws_made) {
-    Empty => optional_absent()
-    Cons { head: r, tail: _ } => optional_present(value: r)
+  let indexed = indexed_entries(entries: entries)
+  let rows = row_positions(indexed: indexed, subject: revocation.subject, made: revocation.withdraws_made)
+  let withdrawals = revocation_positions(indexed: indexed, subject: revocation.subject, withdraws_made: revocation.withdraws_made)
+  if count(rows) == 0 {
+    optional_present(value: RevocationNamesNoRow { subject: revocation.subject, withdraws_made: revocation.withdraws_made })
+  } else if !any_strictly_before(after: withdrawals, before: rows) {
+    optional_present(value: RevocationPrecedesItsRow { subject: revocation.subject, withdraws_made: revocation.withdraws_made })
+  } else if date_precedes(a: revocation.made, b: revocation.withdraws_made) {
+    optional_present(value: RevocationPrecedesItsRow { subject: revocation.subject, withdraws_made: revocation.withdraws_made })
+  } else if revocation.reason == "" {
+    optional_present(value: EmptyRevocationReason { subject: revocation.subject })
+  } else {
+    optional_absent()
   }
 }
 

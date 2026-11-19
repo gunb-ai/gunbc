@@ -41,7 +41,7 @@ fn fixture_nodes() -> List<RoadmapNode> {
 }
 
 fn fixture_size() -> Int {
-  count(fixture_nodes(), n => true)
+  count(fixture_nodes())
 }
 
 fn identity_of(slug: String) -> RoadmapNodeIdentity {
@@ -155,12 +155,12 @@ test fn a_project_priced_under_its_own_subnode_refuses_by_name() -> Bool {
     planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
   ])
   match clashes {
-    Cons { head: c, tail: rest } => count(clashes, x => true) == 1
+    Cons { head: c, tail: rest } => count(clashes) == 1
       && c.ancestor == nid(s: "dp-m1-dissolvable-rows-retired")
       && c.ancestor_days == 5
       && c.descendant == nid(s: "debt-expected-red-mock-totality-dead-rows")
       && c.descendant_days == 10
-      && count(rest, x => true) == 0
+      && count(rest) == 0
     Empty => false
   }
 }
@@ -210,18 +210,18 @@ fn band_scheduled_days_of_s() -> Int {
 // that walked the dependency DAG upward would refuse legitimate estimates on consecutive tasks and count a shared
 // prerequisite into two parents. Nothing here is planted: this reads the roadmap AS IT STANDS.
 test fn a_prerequisite_never_makes_a_price_a_contradiction() -> Bool {
-  count(dated_contradictions(nodes: declared_roadmap_nodes()), c => true) == 0
-    && count(cleared_prerequisite_pairs(nodes: declared_roadmap_nodes(), edges: declared_roadmap_edges()), p => true) > 0
+  count(filter(dated_contradictions(nodes: declared_roadmap_nodes()), c => true)) == 0
+    && count(filter(cleared_prerequisite_pairs(nodes: declared_roadmap_nodes(), edges: declared_roadmap_edges()), p => true)) > 0
 }
 
 // TWO NODES IN DIFFERENT PROJECTS, both priced, are never a pair: containment is the only relation the check reads,
 // so the fixture's three dp-m1 siblings can all be priced at once and nothing is refused.
 test fn priced_siblings_under_one_parent_are_not_a_contradiction() -> Bool {
-  count(estimate_contradictions(nodes: fixture_nodes(), entries: [
+  count(filter(estimate_contradictions(nodes: fixture_nodes(), entries: [
     planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
     planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12, made: day_one()),
     planted(slug: "debt-rung-drop-measurement-bankruptcy-retire", days: 8, made: day_one()),
-  ]), c => true) == 0
+  ]), c => true)) == 0
 }
 
 // ============================== DERIVED UPWARD ==============================
@@ -236,7 +236,7 @@ test fn a_parent_with_priced_children_is_derived_and_totals_their_work() -> Bool
     planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12, made: day_one()),
     planted(slug: "debt-rung-drop-measurement-bankruptcy-retire", days: 8, made: day_one()),
   ], n: fixture_subject) {
-    Derived { work_days: w, contributed: c, from_pieces: p } => w == 30 && count(c, x => true) == 3 && !p
+    Derived { work_days: w, contributed: c, from_pieces: p } => w == 30 && count(c) == 3 && !p
     _ => false
   }
   }
@@ -315,7 +315,7 @@ test fn a_withdrawn_price_stops_pricing_and_the_parent_reads_the_children() -> B
   match the_fixture_node(slug: "debt-expected-red-mock-totality-dead-rows") {
     Absent => false
     Present { value: fixture_subject } => match node_source(nodes: fixture_nodes(), entries: entries, n: fixture_subject) {
-    Unsized { why: _ } => count(estimate_contradictions(nodes: fixture_nodes(), entries: entries), c => true) == 0
+    Unsized { why: _ } => count(filter(estimate_contradictions(nodes: fixture_nodes(), entries: entries), c => true)) == 0
     _ => false
   }
   }
@@ -350,6 +350,44 @@ test fn withdrawing_the_effective_row_clears_the_node() -> Bool {
   match current_estimate(entries: entries, subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows")) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// SAME DAY, RECORDED FIRST: a price made and taken back on one day is a real correction, and it works. A day number
+// cannot order the two statements, so the order they were appended in is the clock -- this is the order that clears.
+test fn a_same_day_withdrawal_after_its_row_clears_the_node() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let entries = [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    estimate_revoked(subject: subject, made: day_one(), withdraws_made: day_one(), reason: "witness fixture: withdrawn the day it was made"),
+  ]
+  match current_estimate(entries: entries, subject: subject) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// SAME DAY, WITHDRAWN FIRST: the mirror input order clears NOTHING and is refused rather than quietly ignored. A
+// withdrawal cannot release a price that had not yet been appended, even though both statements carry one day --
+// merry-moth-343's finding, pinned in both directions so neither order can drift back into being legal.
+test fn a_same_day_withdrawal_before_its_row_is_refused_and_clears_nothing() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let entries = [
+    estimate_revoked(subject: subject, made: day_one(), withdraws_made: day_one(), reason: "witness fixture: aimed before its row was appended"),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+  ]
+  match current_estimate(entries: entries, subject: subject) {
+    Present { value: kept } => match estimate_refusals(nodes: fixture_nodes(), entries: entries) {
+      Cons { head: first, tail: _ } => match first {
+        RevocationPrecedesItsRow { subject: _, withdraws_made: _ } => match kept.value {
+          DaysEstimate { working_days: w } => w == 10
+          SizedEstimate { size: _ } => false
+        }
+        _ => false
+      }
+      Empty => false
+    }
+    Absent => false
   }
 }
 
@@ -420,8 +458,8 @@ test fn two_estimates_one_day_are_refused() -> Bool {
 // carry zero contradictions and zero refusals over zero rows, and every node must still be listed -- unsized, not
 // defaulted. `size_label` is here so the fixture's vocabulary is exercised too: XS through XXL all name themselves.
 test fn the_live_reads_are_clean_while_the_sizing_lane_is_open() -> Bool {
-  count(estimate_contradictions(nodes: declared_roadmap_nodes(), entries: [] as List<EstimateEntry>), c => true) == 0
-    && count(estimate_refusals(nodes: declared_roadmap_nodes(), entries: [] as List<EstimateEntry>), r => true) == 0
+  count(filter(estimate_contradictions(nodes: declared_roadmap_nodes(), entries: [] as List<EstimateEntry>), c => true)) == 0
+    && count(filter(estimate_refusals(nodes: declared_roadmap_nodes(), entries: [] as List<EstimateEntry>), r => true)) == 0
     && size_label(s: SizeXs) == "XS"
     && size_label(s: SizeXxl) == "XXL"
 }
