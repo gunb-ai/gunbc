@@ -11223,8 +11223,7 @@ fn shell_result_of_observation(
                 exit_code,
                 stdout: stream(text("stdout")?),
                 stderr: stream(text("stderr")?),
-                overran: false,
-                wall_deadline_seconds: None,
+                leg_exec: ShellLegExec::Completed,
             }))
         }
         "ShellProcessSpawnRefused" => Ok(Err(InterpError::ShellSpawnRefused {
@@ -16071,14 +16070,26 @@ pub(crate) struct ShellResult {
     pub(crate) exit_code: i32,
     pub(crate) stdout: bounded_shell_host_drain::CapturedStreamEvidence,
     pub(crate) stderr: bounded_shell_host_drain::CapturedStreamEvidence,
-    // Set ONLY by the sink's own per-leg wall kill (see wait_child_honoring_wall_deadline).
-    // A per-leg overrun is a VALUE, never an exit-124 sentinel, never an InterpError, and
-    // never a 0-means-none: `wall_deadline_seconds` carries the caller's own `Second` (echoed
-    // verbatim) so the located leg names the exact ceiling that tripped. The outer whole-receipt
-    // budget (ctx.witness_wall_deadline) is a SEPARATE bound that still refuses with an error;
-    // it never sets these.
-    pub(crate) overran: bool,
-    pub(crate) wall_deadline_seconds: Option<Value>,
+    // The per-leg outcome at the MODEL boundary — a SUM, not the ambiguous `overran: bool` +
+    // `wall_deadline_seconds: Option` pair (which admitted 'overran with no deadline' and 'completed
+    // but carrying a deadline'). A leg COMPLETED (a real exit code) or OVERRAN the caller-passed
+    // total-wall deadline, which is carried here as a VALUE (the caller's own `Second`, echoed
+    // verbatim) so the located leg names the exact ceiling that tripped. Set ONLY by the sink's own
+    // per-leg wall kill (see wait_child_honoring_wall_deadline); an overrun is never an exit-124
+    // sentinel and never an InterpError. The outer whole-receipt budget (ctx.witness_wall_deadline)
+    // is a SEPARATE bound that still refuses with an error and never sets this.
+    pub(crate) leg_exec: ShellLegExec,
+}
+
+/// The per-leg exec outcome at the model boundary, replacing the `overran: bool` +
+/// `wall_deadline_seconds: Option<Value>` pair. Only the ssh.Session wire record (the service JSON)
+/// keeps that pair as its on-the-wire shape; it is decoded back into a sum at the ONE .dag site
+/// (`extdeps.ssh.session` `ssh_session_exec_outcome`), which refuses the two illegal combinations by
+/// name. Here the illegal combinations are unrepresentable: an overrun CANNOT omit the deadline.
+#[derive(Debug)]
+pub(crate) enum ShellLegExec {
+    Completed,
+    Overran { wall_deadline_seconds: Value },
 }
 
 /// Expand a `ProcessArgvExpansion` into argv words, one word per `CliArgument`.
@@ -18671,11 +18682,17 @@ fn dispatch_shell(
         }
     }
     let mut result = shell_result_from_capture(&capture, &argv[0])?;
-    // Set ONLY by the sink's own per-leg kill. The deadline value is echoed so the located leg
-    // names the ceiling that tripped. Never set by the outer whole-receipt budget.
-    result.overran = overran;
-    // Echo the caller's own `Second` verbatim, and ONLY when the sink's own per-leg kill fired.
-    result.wall_deadline_seconds = if overran { leg_deadline_value } else { None };
+    // Set ONLY by the sink's own per-leg kill. On a trip, the caller's `Second` is echoed verbatim
+    // so the located leg names the ceiling that tripped; if that value was somehow absent, fall to
+    // Null so the ONE .dag decode refuses it as OverrunWithoutDeadline rather than fabricating a
+    // green completion or a phantom deadline. The outer whole-receipt budget never sets this.
+    result.leg_exec = if overran {
+        ShellLegExec::Overran {
+            wall_deadline_seconds: leg_deadline_value.unwrap_or(Value::Null),
+        }
+    } else {
+        ShellLegExec::Completed
+    };
     Ok(result)
 }
 
@@ -19064,10 +19081,9 @@ pub(crate) fn shell_result_from_capture(
         exit_code: capture.exit_status.code().unwrap_or(-1),
         stdout: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stdout),
         stderr: bounded_shell_host_drain::CapturedStreamEvidence::from_observation(&capture.stderr),
-        // The clean (not-overrun) default. dispatch_shell sets these ONLY on its own per-leg
+        // The clean (not-overrun) default. dispatch_shell overwrites this ONLY on its own per-leg
         // wall kill; a capture that ran to completion carries no overrun.
-        overran: false,
-        wall_deadline_seconds: None,
+        leg_exec: ShellLegExec::Completed,
     })
 }
 
@@ -19093,8 +19109,11 @@ fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
         // typed refusal (FleetPrincipalLegOverran / TreeLegDeadlineExceeded); `wall_deadline_seconds`
         // is the caller's own Second echoed back so the receipt names the ceiling. Both are the
         // absence (false / Absent) unless the sink itself killed the leg.
-        "overran" => Some(Value::Bool(result.overran)),
-        "wall_deadline_seconds" => result.wall_deadline_seconds.clone(),
+        "overran" => Some(Value::Bool(matches!(result.leg_exec, ShellLegExec::Overran { .. }))),
+        "wall_deadline_seconds" => match &result.leg_exec {
+            ShellLegExec::Overran { wall_deadline_seconds } => Some(wall_deadline_seconds.clone()),
+            ShellLegExec::Completed => None,
+        },
         _ => None,
     }
 }
@@ -28711,8 +28730,7 @@ mod map_shell_outputs_optional_stream_tests {
     fn shell_result_fixture(exit_code: i32, stdout_text: &str, stderr_text: &str) -> ShellResult {
         ShellResult {
             exit_code,
-            overran: false,
-            wall_deadline_seconds: None,
+            leg_exec: ShellLegExec::Completed,
             stdout: CapturedStreamEvidence {
                 total_bytes: stdout_text.len() as u64,
                 retained_bytes: stdout_text.len() as u64,
