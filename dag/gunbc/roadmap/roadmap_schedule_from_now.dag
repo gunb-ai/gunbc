@@ -302,7 +302,7 @@ fn claimed_on_day(stamp: String) -> Iso8601CivilDate? {
 fn schedule_priced(d: WorkDecomposition, e: Expansion, occs: List<Occurrence>, edges: List<OccurrenceEdge>, workers: BeltCapacity, read_on: Iso8601CivilDate, holds: List<LeafInFlightEntry>, pathless: Int, absorbed: Int, closed: Int) -> FromNowRead {
   let occ_keys = fold(occs, init: empty_map(), f: fn(m, o) { map_insert(m: m, key: path_key(p: o.path), value: true) })
   let priced = price_holds(d: d, occ_keys: occ_keys, read_on: read_on, holds: holds, acc: PinPricing { pins: [], refused: [] })
-  let refused = map(priced.refused, r => refused_leaf(r: r))
+  let refused = map(priced.refused, r => refused_leaf(refusal: r))
   let blocked = blocked_behind(edges: edges, refused: refused)
   let realized = fold(priced.pins, init: empty_map(), f: fn(m, p) { map_insert(m: m, key: path_key(p: p.leaf), value: p.remaining) })
   let pinned = map(priced.pins, p => PinnedLeaf { path: p.leaf, lane: p.lane, start_day: 0, finish_day: p.remaining })
@@ -388,10 +388,7 @@ fn from_now_output(read: FromNowRead) -> String {
   match read {
     FromNowRefused { cause: cause } => join(["from-now read refused: ", from_now_cause_text(cause: cause)], "")
     FromNowScheduled { answer: answer } => join([
-      join([
-        "read ", date_text(date: answer.read_on), "; cap ", to_string(answer.workers.max_concurrent),
-        " workers; ", to_string(count(answer.pins)), " pinned in flight; ",
-        to_string(answer.pins_over_capacity), " pins over capacity; ", from_now_unit_note()], "; "),
+      from_now_head(a: answer),
       join(map(answer.pins, p => pin_row_output(pin: p)), "\n"),
       join(map(answer.schedule.leaves, l => leaf_row_output(leaf: l)), "\n"),
       join([
@@ -399,12 +396,26 @@ fn from_now_output(read: FromNowRead) -> String {
         to_string(answer.schedule.horizon), " working days"], ""),
       join(map(answer.refused_pins, r => pin_refusal_text(refusal: r)), "\n"),
       join(map(answer.blocked, b => blocked_text(blocked: b)), "\n"),
-      join([
-        "counted, not pinned: ", to_string(answer.pathless_claims), " pathless claim(s), ",
-        to_string(answer.absorbed_claims), " absorbed claim(s), ", to_string(answer.closed_holds),
-        " closed hold(s)"], "")],
+      counted_line(a: answer)],
       "\n")
   }
+}
+
+// THE ANSWER'S HEADER LINE, and the line that counts what the logs reported WITHOUT pinning anything. Each is one
+// spelling only: from_now_output prints it and the witness that checks the handback compares against THESE, so a
+// format change is one edit and not a drift between a claim and the thing it claims.
+fn from_now_head(a: FromNowAnswer) -> String {
+  join([
+    "read ", date_text(date: a.read_on), "; cap ", to_string(a.workers.max_concurrent),
+    " workers; ", to_string(count(a.pins)), " pinned in flight; ",
+    to_string(a.pins_over_capacity), " pins over capacity; ", from_now_unit_note()], "; ")
+}
+
+fn counted_line(a: FromNowAnswer) -> String {
+  join([
+    "counted, not pinned: ", to_string(a.pathless_claims), " pathless claim(s), ",
+    to_string(a.absorbed_claims), " absorbed claim(s), ", to_string(a.closed_holds),
+    " closed hold(s)"], "")
 }
 
 // ONE PIN: the leaf, the DATE its hold was claimed, the prior the carrier declared, the working days elapsed since,
@@ -518,11 +529,11 @@ fn diff_leaf(before: ScheduledLeaf, pins: List<PinRow>, blocked: List<BlockedOcc
   let after = leaf_for(pins: pins, path: before.path)
   match after {
     Absent =>
-      if any(blocked, b => b.leaf == before.path) {
+      if any(blocked, b => path_key(p: b.leaf) == path_key(p: before.path)) {
         join([path_key(p: before.path), " ", to_string(before.finish_day - before.start_day),
           " -> not scheduled: a refused pin stands in front of it"], "")
       } else {
-        if any(refused, r => refused_leaf(refusal: r) == before.path) {
+        if any(refused, r => path_key(p: refused_leaf(refusal: r)) == path_key(p: before.path)) {
           join([path_key(p: before.path), " ", to_string(before.finish_day - before.start_day),
             " -> not scheduled: this read refused its pin by name"], "")
         } else {

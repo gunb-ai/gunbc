@@ -430,7 +430,7 @@ fn place_all(state: PlaceState, pred: Map<String, List<SchedNode>>, buckets: Map
         let empty_bucket: List<SchedNode> = []
         place_all(
           state: PlaceState { placed: state.placed, finish: state.finish, lanes: state.lanes, bucket: look_key(m: buckets, key: state.rank_now - 1, dflt: empty_bucket), rank_now: state.rank_now - 1 },
-          pred: pred, buckets: buckets, workers: workers
+          pred: pred, buckets: buckets, workers: workers, earliest_start: earliest_start
         )
       }
   }
