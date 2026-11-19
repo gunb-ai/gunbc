@@ -2,7 +2,7 @@ module test.claim.runner.runner_slot_provision_witness
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, List, String }
-import std.algebra { length }
+import std.algebra { string_contains, length }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
   actions_runner_registration_decode,
@@ -42,6 +42,7 @@ import gunbc.runner.runner_slot_provision {
   runner_slot_enumeration_postcondition,
   RunnerSlotEnumerationMatched,
   RunnerSlotEnumerationMismatch,
+  RunnerSlotEnumerationWidthUnresolved,
   RunnerSlotMember,
   runner_slot_provision_has_width_increase,
   RunnerSlotObservation,
@@ -52,6 +53,7 @@ import gunbc.runner.runner_slot_provision {
   RunnerSlotConvergeRefused,
   runner_slot_converge_verdict,
   runner_slot_member_from_instance_name,
+  runner_slot_member_key,
 }
 import gunbc.membership_reconcile {
   membership_added_count,
