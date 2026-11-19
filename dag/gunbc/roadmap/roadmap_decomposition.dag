@@ -54,6 +54,9 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadma
 // deliberately leaves the residual population unknown: its per-member days are a simulation assumption, NOT a
 // completed estimate. Before dispatch, replace a finding with a named, independently sized repair (or split it).
 // A total containing FindingsOf is provisional; reducing an invented population is not a measured speedup.
+// Source review at 398136026b345e087968a9db4ba42ec551c5ca4c adds dated assessments to all 79 decomposed
+// tickets. Existing implementation is repriced as evidence/integration work only where its producer was read;
+// these are residual effort priors, not acceptance events. Unknown findings still prevent a delivery forecast.
 // Read on 9e9994480d1: roster_head_rows already maps first to list_head, but roster_import_row_home still emits
 // imports; service_evidence_inputs_for_attempt already gathers placement, metering and result-returned. Neither
 // the old bare-name count nor the old seven-reader count describes the remaining implementation.
@@ -513,10 +516,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     [
       piece(label: "the producer reads a name table, not the pool", stages: [
         [
-          leaf(label: "name table carrier: qualified path to declaration, built once from the universe", days: 5),
+          leaf(label: "measure the existing keyed pool and identify unnecessary retained trees; reuse its declaration index", days: 2),
         ],
         [
-          leaf(label: "producer reads the table; same edges on the N7 closure", days: 5),
+          leaf(label: "producer consumes the existing keyed declaration index without unnecessary retained trees; same edges on the N7 closure", days: 5),
         ],
         [
           leaf(label: "old pool path deleted; unknown path refuses", days: 3),
@@ -619,15 +622,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "declaration-provider-outcomes", waits_on: [
   ], stages: [
     [
-      leaf(label: "vertical: a valid declaration beside an invalid one", days: 5),
-      leaf(label: "dependency propagation", days: 5),
-      leaf(label: "module-admission control", days: 5),
+      leaf(label: "execute existing declaration_provider_outcomes controls: independent good/bad declarations, dependency and mutual-refusal propagation, and module admission; retain exact-head receipts", days: 2),
     ],
     [
-      leaf(label: "controls executing on the native resolve route", days: 5),
+      leaf(label: "verify the existing controls on the native resolve route; distinguish seed-hosted witness execution and repair only a named regression", days: 2),
     ],
     [
-      leaf(label: "native-seven rerun at the landing head", days: 2),
+      leaf(label: "native-seven rerun at the same head; publish reached-subject and first-stop evidence", days: 1),
     ],
   ]),
   decomposition(node: "native-seven-names-homed", waits_on: [
@@ -827,20 +828,20 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       probe(label: "run the rebuild-scope witness and establish whether its subject is the emitted closure (it assembles a fixture executable today); diagnostic otherwise", days: 2, module_path: "v2.test.claim.stage0_partition_rebuild_scope_witness", decl_name: "witness_leaf_edit_compiles_owner_and_downstream_holds"),
     ],
     [
-      leaf(label: "read the emitted closure into the module-graph carrier", days: 5),
+      leaf(label: "verify the existing emission-derived graph against the retained closure; identify missing returned edges", days: 2),
     ],
     [
-      piece(label: "derive the partition", stages: [
+      piece(label: "ground interfaces and reuse the existing partition", stages: [
         [
-          leaf(label: "partition rule: condensation of the module graph with a size bound", days: 5),
+          leaf(label: "ground exported declarations and by-value type rows in source; replace ungrounded interface maps", days: 5),
         ],
         [
-          leaf(label: "partition emitted for the N7 closure; pieces acyclic, claim green", days: 5),
+          leaf(label: "run the existing partition policy over the N7 closure with grounded interfaces; acyclicity and export controls", days: 3),
         ],
       ]),
     ],
     [
-      leaf(label: "generated workspace", days: 5),
+      leaf(label: "reuse the generated workspace renderer and replace glob over-approximation with the grounded interface boundary", days: 3),
     ],
     [
       leaf(label: "build and behavioral run", days: 5),
@@ -854,7 +855,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 3, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "missing root exits 2; directory root walked", days: 3),
+      leaf(label: "run the existing native CLI missing-root and directory/layout controls at the chosen compiler identity", days: 1),
     ],
     [
       leaf(label: "generation two builds", days: 5),
@@ -930,7 +931,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "native-production-admission", waits_on: [
     waits(item: "native-frontier-required-lane", from_stage: 2, into_stage: 0),
     waits(item: "demand-d13-dependency-demand", from_stage: 2, into_stage: 0),
-    waits(item: "namespace-unique-on-chain", from_stage: 0, into_stage: 0),
+    waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
     waits(item: "import-grammar-and-lines-deleted", from_stage: 2, into_stage: 0),
   ], stages: [
     [
@@ -1299,7 +1300,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "ci-executed-coverage-receipt", waits_on: [
   ], stages: [
     [
-      leaf(label: "repoint the deleted carrier", days: 2),
+      leaf(label: "trace the current required verdict to its executed denominator and upstream-failure producer; the intention carrier is already repointed", days: 1),
     ],
     [
       leaf(label: "executed population on the required check", days: 5),
@@ -1312,11 +1313,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "factory-dogfood-route", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the payload kind", days: 3),
+      leaf(label: "worker round/item payload over the existing generic fabric event log", days: 3),
     ],
     [
-      leaf(label: "append path", days: 5),
-      leaf(label: "read path", days: 5),
+      leaf(label: "connect worker event production to event_log_append_with; reuse storage and concurrency refusal", days: 5),
+      leaf(label: "attempt/cursor projection through event_log_read_partition_with; preserve order and detect gaps", days: 5),
     ],
     [
       leaf(label: "order, gap and refusal receipts", days: 5),
@@ -1381,13 +1382,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "work-exec-2-durable-route-first-consumer", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "read the evidence rows", days: 3),
+      leaf(label: "persist completed-attempt samples and read them back by work class through the existing WorkClassPeakSample contract", days: 3),
     ],
     [
-      leaf(label: "derive the budget; refuse without evidence", days: 4),
+      leaf(label: "wire the existing work_class_grant rule to durable samples; preserve its missing/insufficient-sample ceiling policy", days: 2),
     ],
     [
-      leaf(label: "claims green", days: 3),
+      leaf(label: "execute second-run sizing, insufficient-sample and capped-budget controls against the durable writer/reader", days: 2),
     ],
   ]),
   decomposition(node: "work-exec-4-local-work-cutover", waits_on: [
@@ -1468,34 +1469,34 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "roadmap-schedule-leaf-expansion", waits_on: [
   ], stages: [
     [
-      leaf(label: "expand one decomposition with a FindingsOf family and two stages into leaf occurrences with their edges, through the carrier's own well-formedness claim", days: 4),
+      leaf(label: "run the existing leaf-expansion witness, including the controlled barrier and real decomposition; attach acceptance evidence", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-list-scheduling", waits_on: [
     waits(item: "roadmap-schedule-leaf-expansion", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "longest-remaining-path list schedule answering start, finish, lanes, in-flight per day and the critical path, computed from the carriers and the log, cacheable and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read)), with the two-worker and one-worker controls", days: 4),
+      leaf(label: "run the existing one/two-worker schedule and refusal controls over the shared placement core; attach per-leaf outputs", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
     waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "bind the schedule's days to the read date over five working days a week, kept out of the scheduler", days: 1),
+      leaf(label: "run the existing calendar weekday/weekend/week-later controls and retain the dated outputs", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-claim-names-leaf", waits_on: [
   ], stages: [
     [
-      leaf(label: "the Claimed payload names the leaf path as the decomposition spells it, and a path it does not have refuses at append (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing))", days: 2),
+      leaf(label: "verify existing leaf coordinates at append: known leaf accepted and nonexistent leaf refused without log mutation", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-leaf-in-flight-set", waits_on: [
     waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the in-flight leaf set derived from the log alone, with the claimed-then-released control", days: 2),
+      leaf(label: "run the existing in-flight-set claim/release/acceptance witness and verify consumer reuse", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-leaf-realized-duration", waits_on: [
@@ -1504,7 +1505,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-schedule-calendar-binding", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "claimed-to-accepted working days read from the log, taken where they exist, with the used-value reported", days: 3),
+      leaf(label: "run the existing realized-duration witness and report prior versus realized evidence, including accepted without claim", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-from-now", waits_on: [
@@ -1512,7 +1513,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "in-flight leaves pinned at their claim day with their remaining days, the unclaimed scheduled around them", days: 3),
+      leaf(label: "run the existing from-now pinning, day-two and capacity controls; verify consumer read-date binding", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-bottlenecks-and-offer", waits_on: [
