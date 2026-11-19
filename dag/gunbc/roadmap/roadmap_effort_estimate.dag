@@ -129,7 +129,7 @@ fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> B
   }
 }
 
-// BEGIN leaf-sizing research handoff, 2026-11-19
+// BEGIN leaf_sizing_research, 2026-11-19
 // Review at 82aff98d. Each numeric entry is one working-day research estimate.
 // Historical comparison rows do not request an active estimate. Empty prices carry their reason.
 // Durable identity	Node	Working days	Use	Observed standing	Basis
@@ -228,7 +228,7 @@ fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> B
 // rn_AG04P6UEWDXRCNG3OWIC6M5PQF	dp-m4-discovery-floor-semantic	5	Historical comparison	accepted	Two semantic properties replaced one count threshold, with planted cases and a live reading over 42 carriers.
 // rn_MGB7PA8AHA6B26CRK6R36G6HZS	demand-serve-program-image	75	Candidate for decomposition	open	A natively built service image must clear unenumerated compiler refusals, serve real requests and demonstrate restart and memory behavior.
 // rn_7TVTYN2VYB4NSQH9YHZ2Q654R3	demand-serve-entry-compile-time	30	Candidate leaf estimate	open	The 1,607-second compile first needs phase attribution, followed by an actual cost reduction and a repeatable same-revision measurement.
-// rn_6P0BSPKF58653MRH7GR0MD7PGH	demand-m1b		Overlaps other priced work	open	The charter absorbs compiler-identity-invariant-under-corpus-commit. That item prices the identity experiment. Define the distinct two-parse qualification or make it a child before adding a second price.
+// rn_6P0BSPKF58653MRH7GR0MD7PGH	demand-m1b		Priced in compiler-identity-invariant-under-corpus-commit for the shared identity work. Two-parse qualification is unestimated.	open	The charter absorbs compiler-identity-invariant-under-corpus-commit. That item prices the identity experiment. Define the distinct two-parse qualification or make it a child before adding a second price.
 // rn_YVM056Z9DF1W6ZXVY98E94Q4EA	demand-m1c	30	Candidate leaf estimate	open	Six generation-identity axes need real digests and a reproducible cold/warm persistent hit after the earlier attempt closed unmerged.
 // rn_867Z80DK1Y2D5ZTJFD2B0EMGNK	demand-m2	60	Candidate for decomposition	open	Replacing authored relations with inferred dependencies includes a dynamic demand protocol and a real consumer that refuses restated flow.
 // rn_3BHFWZVSHPK9KCDE56SJ6XZHZP	demand-m3b	30	Candidate leaf estimate	open	Two scheduling consumers and their graph representations must migrate before a census can justify removal of the older routes.
@@ -297,7 +297,7 @@ fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> B
 // rn_52ZXVWC7S94RYF4YJHZCN00GCS	namespace-occurrence-transport	30	Historical comparison	accepted	The accepted work transported declaration identity through the compiler and proved two same-named occurrences stay distinct.
 // rn_KFQ7I41NISIGTPGPWND9NDJEML	namespace-binding-kernel	10	Historical comparison	accepted	One canonical function checked a supplied candidate set and ran none, one, many, malformed and wrong-role examples.
 // rn_7QF3M2KDX8VNAT6JWZR0PC5HY	namespace-structural-observations	60	Historical comparison	accepted	The dated calibration records roughly ten weeks from the first PR to the accepted four-observation control on an ordinary compiled file.
-// rn_ERV25EYAMEVV1G6JQ8XAXWDHAS	v2-namespace-cutover		Overlaps other priced work	open	The old charter covers the repo-wide name migration already represented by priced name, binding and grammar items. Identify a distinct deliverable before assigning this row additional effort.
+// rn_ERV25EYAMEVV1G6JQ8XAXWDHAS	v2-namespace-cutover		Priced in native-seven-names-homed, compiler-closure-names-homed-and-types-merged, corpus-names-homed-and-collisions-discharged and import-grammar-and-lines-deleted. Verify any distinct residual.	open	The old charter covers the repo-wide name migration already represented by priced name, binding and grammar items. Identify a distinct deliverable before assigning this row additional effort.
 // rn_K7P3X9Q2MN8R6WTH5JVD4MCZ1G	shell-dag-cron-entry-line-builder	4	Candidate leaf estimate	claimed	One typed cron-line builder replaces one concatenation and runs against an existing pinned witness.
 // rn_R6Q3X8K2WP9N5TF7JHL4MZCBD	shell-dag-compile-pool-slice-install	10	Candidate leaf estimate	claimed	Both staging and install realizations must leave shell assembly and pass the already-authored execution control.
 // rn_L5T9X3K8WQ2N6RF7JHP4MZCBD	shell-dag-slot-population-census-read	4	Candidate leaf estimate	claimed	One typed argument-vector census read replaces the old rejoin and can be checked by its pinned witness.
@@ -346,7 +346,7 @@ fn overdue(subject: RoadmapNodeId, today: Iso8601CivilDate, accepted: Bool) -> B
 // rn_G2BR1NCSAD24KP0TA14TA89PMV	serving-liveness-route-withdrawal	35	Candidate leaf estimate	open	The first liveness cut landed, while progress observation, placement denial and release of seats must still agree for a stopped engine.
 // rn_XEE3RW84EBYKEBCPQD9HA6XYBB	direct-website-serving		Needs a defined leaf	open	The ticket supplies a title and a pending contracts document with no first workload, observable handback or stated serving boundary.
 // rn_FAILURE0BILLING0OUTCOMES0A	failure-billing-outcomes	30	Candidate leaf estimate	open	Five distinct non-success endings each need an unambiguous billing disposition and an exercising drill, independent of commercial prices.
-// END leaf-sizing research handoff
+// END leaf_sizing_research
 // Research exclusions: containment parents. Parent totals derive from members.
 // cardinality-absence
 // ci-end-to-end-execution
