@@ -22,9 +22,14 @@
 //
 // FAIL CLOSED (gunbc.design_argument::fail_closed, and the ruling's own no-contradiction clause): a roadmap whose
 // estimates contradict refuses the whole read, naming every contradiction with both sides -- an unscheduled roadmap is
-// reported, never scheduled around a contradiction. A node nobody priced is LISTED as Unsized with no duration and no
-// dates: never priced at zero, never defaulted to a band's floor. A row waiting on something this read could not
-// price is listed as Blocked, naming what it waits on, rather than being placed at day 0 as if it were ungated.
+// reported, never scheduled around a contradiction. A node nobody priced is LISTED as unsized with no duration and no
+// dates: never priced at zero, never defaulted to a band's floor. A row waiting on something this read could not price
+// is listed as blocked, naming what it waits on, rather than being placed at day 0 as if it were ungated.
+//
+// COST SHAPE (gunbc.design_argument::how_to_work): the read builds its indexes ONCE -- the source of every node, the
+// duration of every row, the work-owning key set, the containment-children index, and the expanded prerequisite edges
+// -- and every later pass reads those. Nothing re-scans the roadmap per node, and the leaf grain is asked once per
+// item that owns pieces.
 //
 // CONSUMER: the ctrl dashboard's planning timeline, per the_ctrl_dashboard_renders_the_planning_page -- it reads
 // these rows (source, days, start, finish, lane, state) to draw the roadmap's bars.
@@ -33,7 +38,7 @@ module gunbc.roadmap.roadmap_item_gantt
 import std.types { Bool, Int, List, Map, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
-import std.algebra { empty_map, map_insert, map_contains_key, list_push }
+import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge }
@@ -43,13 +48,13 @@ import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_fo
 import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, ScheduleRefusal, schedule, horizon_of }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_placement {
-  Placement, PlacementRow, PlacementEdge, PlacementInput, PlacementOutcome, Placed, Refused,
-  PlacementAnswer, PlacementRefusal, Cyclic, Unplaced, adjacency, look_or,
+  Placement, PlacementRow, PlacementEdge, PlacementInput, PlacementOutcome, PlacementPlaced, PlacementRefused,
+  PlacementAnswer, PlacementRefusal, PlacementCyclic, PlacementUnplaced,
 }
 import gunbc.roadmap.roadmap_estimate_derivation {
-  EstimateSource, AuthoredSize, AuthoredDuration, Derived, Unsized, UnsizedWhy, NothingEstimated,
-  EstimateContradiction, EstimateRefusal,
-  estimate_contradictions, estimate_refusals, restated_piece_days, node_source, contained_children,
+  EstimateSource, EstimateContradiction, EstimateRefusal, UnsizedWhy,
+  AuthoredSize, AuthoredDuration, Derived, Unsized,
+  estimate_contradictions, estimate_refusals, restated_piece_days, node_source, source_work_days, contained_children,
 }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry }
 
@@ -63,42 +68,42 @@ type GanttRow {
 }
 
 // WHERE A ROW SITS, in exactly the states a read can honestly answer.
-//   Placed   -- a work-owning row the core placed: half-open [start_day, finish_day), its lane, and the dates those
-//               days bind to at this read.
-//   Rollup   -- a node whose estimate is Derived from contained children: no lane of its own (its work is placed
-//               beneath it), and a bar that spans that work.
-//   UnsizedRow -- nobody priced it. Listed, with no duration and no dates.
-//   Blocked  -- it could be priced, but something it waits on was not: named in `behind`, so a bar is never drawn
-//               from a day this read did not earn.
-//   LeafGrainRefused -- the item owns pieces and its OWN leaf-grain read refused; the leaf scheduler's typed refusal
-//               is carried, unaltered, because it is the authority on why.
+//   RowPlaced             -- a work-owning row the core placed: half-open [start_day, finish_day), its lane, and the
+//                            dates those days bind to at this read.
+//   RowRollup             -- a node whose estimate is Derived from contained children: no lane of its own (its work
+//                            is placed beneath it), and a bar that spans that work.
+//   RowUnsized            -- nobody priced it. Listed, with no duration and no dates.
+//   RowBlocked            -- it could be priced, but something it waits on was not: named in `behind`, so a bar is
+//                            never drawn from a day this read did not earn.
+//   RowLeafGrainRefused   -- the item owns pieces and its OWN leaf-grain read refused; the leaf scheduler's typed
+//                            refusal is carried, unaltered, because it is the authority on why.
+//   RowUnplaced / RowNoFindingsCount -- named rather than defaulted; see each site.
 type GanttRowState
-  = Placed { start_day: Int, finish_day: Int, lane: Int, start: Iso8601CivilDate, finish: Iso8601CivilDate }
-  | Rollup { start_day: Int, finish_day: Int, start: Iso8601CivilDate, finish: Iso8601CivilDate }
-  | UnsizedRow { why: UnsizedWhy }
-  | Blocked { behind: List<RoadmapNodeId> }
-  | LeafGrainRefused { cause: ScheduleRefusal }
-  // THE ARM NO READ ANSWERS, and it is named rather than defaulted: a row this read priced, did not hold out, and
-  // still cannot place. It is unreachable while the core's own completeness check holds, and it exists so that state
-  // is a refusal a consumer must handle instead of a bar drawn at zero.
-  | UnplacedRow
+  = RowPlaced { start_day: Int, finish_day: Int, lane: Int, start: Iso8601CivilDate, finish: Iso8601CivilDate }
+  | RowRollup { start_day: Int, finish_day: Int, start: Iso8601CivilDate, finish: Iso8601CivilDate }
+  | RowUnsized { why: UnsizedWhy }
+  | RowBlocked { behind: List<RoadmapNodeId> }
+  | RowLeafGrainRefused { cause: ScheduleRefusal }
+  | RowUnplaced
+  | RowNoFindingsCount { count: Int }
 
-// WHY THERE IS NO GANTT AT ALL. Each arm is a fact about the roadmap, not a default.
+// WHY THERE IS NO GANTT AT ALL. Each arm is a fact about the roadmap or about the read, not a default.
 type GanttRefusal
-  = ContradictionsPresent { contradictions: List<EstimateContradiction> }
-  | EstimatesRefused { refusals: List<EstimateRefusal> }
-  | NoWorkers { cap: BeltCapacity }
-  | PrerequisitesCyclic { nodes: List<RoadmapNodeId> }
-  | RowsUnplaced { nodes: List<RoadmapNodeId> }
+  = GanttContradictionsPresent { contradictions: List<EstimateContradiction> }
+  | GanttEstimatesRefused { refusals: List<EstimateRefusal> }
+  | GanttNoWorkers { cap: BeltCapacity }
+  | GanttNoFindingsCount { count: Int }
+  | GanttPrerequisitesCyclic { nodes: List<RoadmapNodeId> }
+  | GanttRowsUnplaced { nodes: List<RoadmapNodeId> }
 
 type GanttAnswer
-  = Answered {
+  = GanttAnswered {
       rows: List<GanttRow>,
       horizon: Int,
       in_flight: List<Int>,
       critical: List<RoadmapNodeId>,
     }
-  | Refused { refusal: GanttRefusal }
+  | GanttRefused { refusal: GanttRefusal }
 
 // WHAT THE READ IS GIVEN. `workers` is the declared worker count, carried as the belt's own capacity type (the same
 // one the leaf scheduler takes) so the two grains cannot disagree about what "three workers" means; `findings_count`
@@ -114,58 +119,18 @@ type GanttInput {
   read_date: Iso8601CivilDate
 }
 
-// THE ANSWER, computed at the read. The contradiction check runs FIRST and refuses the whole roadmap: a bar drawn
-// over an estimate that contradicts its own child is not a schedule, it is a picture -- so it is reported instead
-// (the ruling's clause, and the operator's 1w-over-2w case, are the witness).
-fn gantt_answer(input: GanttInput) -> GanttAnswer {
-  let clashes = estimate_contradictions(nodes: input.nodes, entries: input.entries)
-  let malformed = concat(
-    estimate_refusals(nodes: input.nodes, entries: input.entries),
-    restated_piece_days(nodes: input.nodes, entries: input.entries)
-  )
-  if count(clashes, c => true) > 0 {
-    Refused { refusal: ContradictionsPresent { contradictions: clashes } }
-  } else if count(malformed, r => true) > 0 {
-    Refused { refusal: EstimatesRefused { refusals: malformed } }
-  } else if input.workers.max_concurrent <= 0 {
-    Refused { refusal: NoWorkers { cap: input.workers } }
-  } else {
-    answer_priced(input: input)
-  }
+// EVERYTHING THE READ COMPUTES ONCE, so no later pass re-derives a fact another pass already worked out
+// (gunbc.design_argument::single_authority applies to a module's own passes too).
+type GanttFacts {
+  input: GanttInput
+  priced: List<PricedNode>
+  days: List<NodeDays>
+  work_keys: Map<String, Bool>
+  children: Map<String, List<RoadmapNode>>
+  expanded: List<PlacementEdge>
+  successor: Map<String, List<String>>
 }
 
-// THE PRICED READ. Nothing here re-prices: durations come from `row_days` (which reads the derivation for an authored
-// row and the leaf scheduler for an item that owns pieces), and placement comes from the core.
-fn answer_priced(input: GanttInput) -> GanttAnswer {
-  let priced = map(input.nodes, n => PricedNode { node: n, source: node_source(nodes: input.nodes, entries: input.entries, n: n) })
-  let days = map(priced, p => NodeDays { node: p.node.node, days: row_days(input: input, p: p) })
-  let unplaceable = map(filter(days, d => match d.days { Absent => true, Present { value: v } => v <= 0 }), d => d.node)
-  let graph = prerequisite_graph(input: input, priced: priced)
-  let stuck = blocked_behind(unplaceable: unplaceable, succ: graph.succ)
-  let held = concat(unplaceable, stuck)
-  let rows = rows_to_place(priced: priced, days: days)
-  match place(input: PlacementInput {
-    rows: rows,
-    edges: graph.edges,
-    workers: input.workers.max_concurrent,
-    preplaced: [] as List<Placement>,
-    earliest_start: 0,
-    held_out: held,
-  }) {
-    Refused { refusal: Cyclic { keys: keys } } => Refused { refusal: PrerequisitesCyclic { nodes: map(keys, k => nid(s: k)) } }
-    Refused { refusal: Unplaced { keys: keys } } => Refused { refusal: RowsUnplaced { nodes: map(keys, k => nid(s: k)) } }
-    Refused { refusal: _ } => Refused { refusal: RowsUnplaced { nodes: [] as List<RoadmapNodeId> } }
-    Placed { answer: placed } => Answered {
-      rows: map(priced, p => gantt_row(input: input, priced: priced, days: days, placed: placed, held: held, p: p)),
-      horizon: placed.horizon,
-      in_flight: placed.in_flight,
-      critical: map(placed.critical, k => nid(s: k)),
-    }
-  }
-}
-
-// A NODE PAIRED WITH ITS SOURCE, once per read so the derivation is asked one question per node and never twice under
-// two different names.
 type PricedNode {
   node: RoadmapNode
   source: EstimateSource
@@ -174,6 +139,105 @@ type PricedNode {
 type NodeDays {
   node: RoadmapNodeId
   days: Optional<Int>
+}
+
+// THE ANSWER, computed at the read. The contradiction check runs FIRST and refuses the whole roadmap: a bar drawn
+// over an estimate that contradicts its own child is not a schedule, it is a picture -- so it is reported instead
+// (the ruling's clause, and the operator's 1w-over-2w case, are the witnesses).
+fn gantt_answer(input: GanttInput) -> GanttAnswer {
+  let clashes = estimate_contradictions(nodes: input.nodes, entries: input.entries)
+  let malformed = concat(
+    estimate_refusals(nodes: input.nodes, entries: input.entries),
+    restated_piece_days(nodes: input.nodes, entries: input.entries)
+  )
+  if count(clashes, c => true) > 0 {
+    GanttRefused { refusal: GanttContradictionsPresent { contradictions: clashes } }
+  } else if count(malformed, r => true) > 0 {
+    GanttRefused { refusal: GanttEstimatesRefused { refusals: malformed } }
+  } else if input.workers.max_concurrent <= 0 {
+    GanttRefused { refusal: GanttNoWorkers { cap: input.workers } }
+  } else if input.findings_count < 0 {
+    GanttRefused { refusal: GanttNoFindingsCount { count: input.findings_count } }
+  } else {
+    answer_priced(facts: build_facts(input: input))
+  }
+}
+
+// THE INDEXES, built once per read.
+fn build_facts(input: GanttInput) -> GanttFacts {
+  let priced = map(input.nodes, n => PricedNode { node: n, source: node_source(nodes: input.nodes, entries: input.entries, n: n) })
+  let days = map(priced, p => NodeDays { node: p.node.node, days: row_days(input: input, p: p) })
+  let work = fold(priced, init: empty_map(), f: fn(acc, p) { if owns_work(p: p) { map_insert(m: acc, key: p.node.node as String, value: true) } else { acc } })
+  let kids = fold(input.nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.node as String, value: contained_children(nodes: input.nodes, parent: n.node)) })
+  let expanded = flat_map(input.edges, e => {
+    flat_map(expand_to_work(facts: work, children: kids, target: e.parent), from =>
+      map(expand_to_work(facts: work, children: kids, target: e.child), to => PlacementEdge { from: from, to: to })
+    )
+  })
+  let successor = fold(expanded, init: empty_map(), f: fn(acc, e) {
+    let none_yet: List<String> = []
+    map_insert(m: acc, key: e.from, value: list_push(xs: look_string(m: acc, key: e.from, dflt: none_yet), item: e.to))
+  })
+  GanttFacts { input: input, priced: priced, days: days, work_keys: work, children: kids, expanded: expanded, successor: successor }
+}
+
+// A total read over a String-keyed map of String lists (the successor index). The map is the only authority for
+// which rows wait on which, so this is the one place its shape is read.
+fn look_string(m: Map<String, List<String>>, key: String, dflt: List<String>) -> List<String> {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
+  }
+}
+
+// THE PRICED READ. Nothing here re-prices: durations come from `row_days` (which reads the derivation for an authored
+// row and the leaf scheduler for an item that owns pieces), and placement comes from the core.
+fn answer_priced(facts: GanttFacts) -> GanttAnswer {
+  let unplaceable = map(filter(facts.priced, p => owns_work(p: p) && !has_days(facts: facts, node: p.node.node)), p => p.node.node)
+  let stuck = blocked_behind(unplaceable: unplaceable, successor: facts.successor)
+  let held = concat(unplaceable, stuck)
+  match place(input: PlacementInput {
+    rows: rows_to_place(facts: facts),
+    edges: facts.expanded,
+    workers: facts.input.workers.max_concurrent,
+    preplaced: [] as List<Placement>,
+    earliest_start: 0,
+    held_out: map(held, n => n as String),
+  }) {
+    PlacementRefused { refusal: PlacementCyclic { keys: keys } } => GanttRefused { refusal: GanttPrerequisitesCyclic { nodes: map(keys, k => nid(s: k)) } }
+    PlacementRefused { refusal: PlacementUnplaced { keys: keys } } => GanttRefused { refusal: GanttRowsUnplaced { nodes: map(keys, k => nid(s: k)) } }
+    PlacementRefused { refusal: _ } => GanttRefused { refusal: GanttRowsUnplaced { nodes: [] as List<RoadmapNodeId> } }
+    PlacementPlaced { answer: placed } => GanttAnswered {
+      rows: map(facts.priced, p => gantt_row(facts: facts, placed: placed, held: held, p: p)),
+      horizon: placed.horizon,
+      in_flight: placed.in_flight,
+      critical: map(placed.critical, k => nid(s: k)),
+    }
+  }
+}
+
+fn has_days(facts: GanttFacts, node: RoadmapNodeId) -> Bool {
+  match days_of(facts: facts, node: node) {
+    Present { value: d } => d > 0
+    Absent => false
+  }
+}
+
+// THE ROWS THE CORE IS GIVEN: the nodes that own work and have a duration. A rollup is not among them, and an
+// unsized or blocked node is filtered again inside the core through `held_out` -- it is named there rather than
+// placed and dropped, so it can never leave lane occupancy or a gate behind.
+fn rows_to_place(facts: GanttFacts) -> List<PlacementRow> {
+  flat_map(facts.priced, p => match days_of(facts: facts, node: p.node.node) {
+    Present { value: d } => [PlacementRow { key: p.node.node as String, days: d }]
+    Absent => [] as List<PlacementRow>
+  })
+}
+
+fn days_of(facts: GanttFacts, node: RoadmapNodeId) -> Optional<Int> {
+  match first(filter(facts.days, d => d.node == node)) {
+    Present { value: found } => found.days
+    Absent => optional_absent()
+  }
 }
 
 // THE DURATION OF A ROW, in working days: ABSENT when this read cannot answer one, which is a state and not a zero.
@@ -190,105 +254,6 @@ fn row_days(input: GanttInput, p: PricedNode) -> Optional<Int> {
   }
 }
 
-// THE LEAF-GRAIN MEETS THE ITEM GRAIN, in one call: expand the item's own decomposition and hand it to
-// `gunbc.roadmap.roadmap_schedule::schedule` with the same worker capacity the item grain was given. Its horizon IS
-// the item's elapsed. When the leaf read refuses, its typed refusal is carried away unaltered -- this module never
-// re-explains another module's refusal, and never invents a duration to cover for it.
-type LeafGrainRead
-  = Makespan { days: Int }
-  | LeafReadRefused { cause: ScheduleRefusal }
-
-fn leaf_grain_read(input: GanttInput, node: RoadmapNodeId) -> LeafGrainRead {
-  match checked_int_to_nat(n: input.findings_count) {
-    Absent => LeafReadRefused { cause: ConcurrencyCapInvalid { cap: input.workers } }
-    Present { value: findings } => leaf_grain_expansions(input: input, node: node, findings: findings)
-  }
-}
-
-// One item can carry more than one declared decomposition; its elapsed is the sum of their makespans, because they
-// are separate bodies of work under the same item and no piece of either is scheduled twice. Any one of them
-// refusing refuses the item's duration, carrying that leaf read's refusal.
-fn leaf_grain_expansions(input: GanttInput, node: RoadmapNodeId, findings: Nat) -> LeafGrainRead {
-  fold(decomposition_for(node: node), init: Makespan { days: 0 }, f: fn(acc, d) {
-    match acc {
-      LeafReadRefused { cause: cause } => acc
-      Makespan { days: so_far } => {
-        let read = read_one_decomposition(input: input, d: d, findings: findings)
-        match read {
-          Makespan { days: more } => Makespan { days: so_far + more }
-          LeafReadRefused { cause: cause } => LeafReadRefused { cause: cause }
-        }
-      }
-    }
-  })
-}
-
-fn read_one_decomposition(input: GanttInput, d: WorkDecomposition, findings: Nat) -> LeafGrainRead {
-  match schedule(d: d, e: expand_decomposition(d: d, findings_count: findings), workers: input.workers) {
-    Scheduled { answer: answer } => Makespan { days: horizon_of(leaves: answer.leaves) }
-    NotScheduled { refusal: refusal } => LeafReadRefused { cause: refusal }
-  }
-}
-
-fn leaf_grain_days(input: GanttInput, node: RoadmapNodeId) -> Optional<Int> {
-  match leaf_grain_read(input: input, node: node) {
-    Makespan { days: d } => if d > 0 { optional_present(value: d) } else { optional_absent() }
-    LeafReadRefused { cause: _ } => optional_absent()
-  }
-}
-
-// THE ROWS THE CORE IS GIVEN: the nodes that own work and have a duration. A rollup is not among them, and an
-// unsized or blocked node is filtered again inside the core through `held_out` -- it is named there rather than
-// placed and dropped, so it can never leave lane occupancy or a gate behind.
-fn rows_to_place(priced: List<PricedNode>, days: List<NodeDays>) -> List<PlacementRow> {
-  flat_map(priced, p => match days_of(days: days, node: p.node.node) {
-    Present { value: d } => [PlacementRow { key: p.node.node as String, days: d }]
-    Absent => [] as List<PlacementRow>
-  })
-}
-
-fn days_of(days: List<NodeDays>, node: RoadmapNodeId) -> Optional<Int> {
-  match first(filter(days, d => d.node == node)) {
-    Present { value: found } => found.days
-    Absent => optional_absent()
-  }
-}
-
-// THE PREREQUISITE GRAPH THE CORE READS, with every edge expanded through containment: a task that waits on a
-// project waits on every piece of work that project contains, and an edge that pointed only at a rollup would
-// otherwise be dropped by the core as an already-done predecessor -- which is exactly the silent ungating this pass
-// exists to prevent. Prerequisites order work; they never contain it, and no edge here is ever read upward as a
-// price (gunbc.design_ruling::estimates_are_one_representation_derived_upward).
-type PrerequisiteGraph {
-  edges: List<PlacementEdge>
-  succ: Map<String, List<PlacementRow>>
-  pred: Map<String, List<PlacementRow>>
-}
-
-fn prerequisite_graph(input: GanttInput, priced: List<PricedNode>) -> PrerequisiteGraph {
-  let expanded = flat_map(input.edges, e => {
-    flat_map(expand_to_work(input: input, priced: priced, target: e.parent), from =>
-      map(expand_to_work(input: input, priced: priced, target: e.child), to => PlacementEdge { from: from, to: to })
-    )
-  })
-  let graph = adjacency(rows: map(priced, p => PlacementRow { key: p.node.node as String, days: 0 }), edges: expanded)
-  PrerequisiteGraph { edges: expanded, succ: graph.succ, pred: graph.pred }
-}
-
-// WHICH WORK A PREREQUISITE REFERS TO: itself when it owns work, and every piece of work contained under it when it
-// is a rollup. A node that owns no work and contains no work answers with nothing, and the edge that pointed at it is
-// then an edge to nothing -- the core drops it, and `blocked_behind` is what names the row that was waiting.
-fn expand_to_work(input: GanttInput, priced: List<PricedNode>, target: RoadmapNodeId) -> List<String> {
-  match node_in(priced: priced, target: target) {
-    Absent => [] as List<String>
-    Present { value: p } => if owns_work(p: p) {
-      [target as String]
-    } else {
-      map(work_under(input: input, priced: priced, root: p.node), n => n.node as String)
-    }
-  }
-}
-
 fn owns_work(p: PricedNode) -> Bool {
   match p.source {
     AuthoredSize { size: _, scheduled_days: _, made: _, basis: _ } => true
@@ -298,96 +263,179 @@ fn owns_work(p: PricedNode) -> Bool {
   }
 }
 
-fn node_in(priced: List<PricedNode>, target: RoadmapNodeId) -> Optional<PricedNode> {
-  match first(filter(priced, p => p.node.node == target)) {
-    Present { value: p } => optional_present(value: p)
-    Absent => optional_absent()
+// THE LEAF-GRAIN MEETS THE ITEM GRAIN, in one call per item: expand the item's own decomposition and hand it to
+// `gunbc.roadmap.roadmap_schedule::schedule` with the same worker capacity the item grain was given. Its horizon IS
+// the item's elapsed. When the leaf read refuses, its typed refusal is carried away unaltered -- this module never
+// re-explains another module's refusal, and never invents a duration to cover for it.
+type LeafGrainRead
+  = LeafMakespan { days: Int }
+  | LeafReadRefused { cause: ScheduleRefusal }
+  | LeafNoFindingsCount { count: Int }
+
+fn leaf_grain_read(input: GanttInput, node: RoadmapNodeId) -> LeafGrainRead {
+  match checked_int_to_nat(n: input.findings_count) {
+    Absent => LeafNoFindingsCount { count: input.findings_count }
+    Present { value: findings } => leaf_grain_expansions(input: input, node: node, findings: findings)
+  }
+}
+
+// One item can carry more than one declared decomposition; its elapsed is the sum of their makespans, because they
+// are separate bodies of work under the same item and no piece of either is scheduled twice. Any one of them
+// refusing refuses the item's duration, carrying that leaf read's refusal.
+fn leaf_grain_expansions(input: GanttInput, node: RoadmapNodeId, findings: Nat) -> LeafGrainRead {
+  fold(decomposition_for(node: node), init: LeafMakespan { days: 0 }, f: fn(acc, d) {
+    match acc {
+      LeafReadRefused { cause: cause } => acc
+      LeafNoFindingsCount { count: n } => acc
+      LeafMakespan { days: so_far } => {
+        let read = read_one_decomposition(input: input, d: d, findings: findings)
+        match read {
+          LeafMakespan { days: more } => LeafMakespan { days: so_far + more }
+          LeafReadRefused { cause: cause } => LeafReadRefused { cause: cause }
+          LeafNoFindingsCount { count: n } => acc
+        }
+      }
+    }
+  })
+}
+
+fn read_one_decomposition(input: GanttInput, d: WorkDecomposition, findings: Nat) -> LeafGrainRead {
+  match schedule(d: d, e: expand_decomposition(d: d, findings_count: findings), workers: input.workers) {
+    Scheduled { answer: answer } => LeafMakespan { days: horizon_of(leaves: answer.leaves) }
+    NotScheduled { refusal: refusal } => LeafReadRefused { cause: refusal }
+  }
+}
+
+fn leaf_grain_days(input: GanttInput, node: RoadmapNodeId) -> Optional<Int> {
+  match leaf_grain_read(input: input, node: node) {
+    LeafMakespan { days: d } => if d > 0 { optional_present(value: d) } else { optional_absent() }
+    LeafReadRefused { cause: _ } => optional_absent()
+    LeafNoFindingsCount { count: _ } => optional_absent()
+  }
+}
+
+// WHICH WORK A PREREQUISITE REFERS TO: itself when it owns work, and every piece of work contained under it when it
+// is a rollup. A node that owns no work and contains no work answers with ITSELF, so the edge survives as a named
+// dependency on something unplacable -- `blocked_behind` is what then names the row that was waiting, rather than the
+// edge quietly vanishing and the dependent starting at day zero. Prerequisites order work; they never contain it, and
+// no edge here is ever read upward as a price (gunbc.design_ruling::estimates_are_one_representation_derived_upward).
+fn expand_to_work(facts: Map<String, Bool>, children: Map<String, List<RoadmapNode>>, target: RoadmapNodeId) -> List<String> {
+  let key = target as String
+  if map_contains_key(m: facts, key: key) {
+    [key]
+  } else {
+    let under = work_under(work: facts, children: children, root: key, seen: [key])
+    if count(under, k => true) > 0 { under } else { [key] }
   }
 }
 
 // EVERY WORK-OWNING NODE CONTAINED UNDER `root`, by the same containment the derivation follows: in_project
 // membership, and nothing else. Prerequisite edges are never walked here -- an edge orders siblings, it does not
 // contain them (the ruling's boundary, and the reason two sequential tasks each keep their own price).
-fn work_under(input: GanttInput, priced: List<PricedNode>, root: RoadmapNode) -> List<RoadmapNode> {
-  under(input: input, priced: priced, current: root, seen: [])
+fn work_under(work: Map<String, Bool>, children: Map<String, List<RoadmapNode>>, root: String, seen: List<String>) -> List<String> {
+  let none_yet: List<RoadmapNode> = []
+  under_queue(queue: look_list(m: children, key: root, dflt: none_yet), seen: seen, work: work, children: children, acc: [])
 }
 
-fn under(input: GanttInput, priced: List<PricedNode>, current: RoadmapNode, seen: List<String>) -> List<RoadmapNode> {
-  if any(seen, s => s == (current.node as String)) {
-    [] as List<RoadmapNode>
-  } else {
-    let kids = contained_children(nodes: input.nodes, parent: current.node)
-    let here = if owns_own_work(input: input, priced: priced, n: current) { [current] } else { [] as List<RoadmapNode> }
-    concat(here, flat_map(kids, k => match node_in(priced: priced, target: k.node) {
-      Absent => [] as List<RoadmapNode>
-      Present { value: p } => under(input: input, priced: priced, current: p.node, seen: list_push(xs: seen, item: current.node as String))
-    }))
+// ONE walk of the subtree, appending each work-owning node it meets. `seen` is carried so a malformed containment
+// cycle stops rather than looping (the derivation's `containment_cycles` is what reports it).
+fn under_queue(queue: List<RoadmapNode>, seen: List<String>, work: Map<String, Bool>, children: Map<String, List<RoadmapNode>>, acc: List<String>) -> List<String> {
+  match queue {
+    Empty => acc
+    Cons { head: n, tail: rest } => {
+      let key = n.node as String
+      if any(seen, s => s == key) {
+        under_queue(queue: rest, seen: seen, work: work, children: children, acc: acc)
+      } else {
+        let none_yet: List<RoadmapNode> = []
+        let next = concat(rest, look_list(m: children, key: key, dflt: none_yet))
+        let grown = if map_contains_key(m: work, key: key) { list_push(xs: acc, item: key) } else { acc }
+        under_queue(queue: next, seen: list_push(xs: seen, item: key), work: work, children: children, acc: grown)
+      }
+    }
   }
 }
 
-// Does this node own work of its own (a row it carries, or pieces it declares)? Asked of a node the read already
-// paired with a source, so the answer is the same one `owns_work` gives and never a second opinion.
-fn owns_own_work(input: GanttInput, priced: List<PricedNode>, n: RoadmapNode) -> Bool {
-  match node_in(priced: priced, target: n.node) {
-    Absent => false
-    Present { value: p } => owns_work(p: p)
+// The containment-children index, built once per read: the children of one node, or none.
+fn look_list(m: Map<String, List<RoadmapNode>>, key: String, dflt: List<RoadmapNode>) -> List<RoadmapNode> {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
   }
 }
 
 // WHICH ROWS CANNOT BE PLACED because something they wait on cannot: the closure over the prerequisite successors of
 // the unpriceable rows. It is ONE walk of the graph from a named frontier (a queue that visits each row once), not a
 // re-scan of every edge per row -- the quadratic shape gunbc.design_argument::how_to_work fixes at the root.
-fn blocked_behind(unplaceable: List<RoadmapNodeId>, succ: Map<String, List<PlacementRow>>) -> List<RoadmapNodeId> {
-  let no_rows: List<PlacementRow> = []
-  closure(queue: map(unplaceable, n => n as String), seen: empty_map(), visited: [] as List<String>, succ: succ, no_rows: no_rows)
+fn blocked_behind(unplaceable: List<RoadmapNodeId>, successor: Map<String, List<String>>) -> List<RoadmapNodeId> {
+  closure(queue: map(unplaceable, n => n as String), seen: empty_map(), visited: [] as List<String>, successor: successor)
 }
 
-fn closure(queue: List<String>, seen: Map<String, Bool>, visited: List<String>, succ: Map<String, List<PlacementRow>>, no_rows: List<PlacementRow>) -> List<RoadmapNodeId> {
+fn closure(queue: List<String>, seen: Map<String, Bool>, visited: List<String>, successor: Map<String, List<String>>) -> List<RoadmapNodeId> {
   match queue {
     Empty => map(visited, k => nid(s: k))
     Cons { head: k, tail: rest } => if map_contains_key(m: seen, key: k) {
-      closure(queue: rest, seen: seen, visited: visited, succ: succ, no_rows: no_rows)
+      closure(queue: rest, seen: seen, visited: visited, successor: successor)
     } else {
-      let next = fold(look_or(m: succ, key: k, dflt: no_rows), init: rest, g: fn(q, s) { list_push(xs: q, item: s.key) })
-      closure(queue: next, seen: map_insert(m: seen, key: k, value: true), visited: list_push(xs: visited, item: k), succ: succ, no_rows: no_rows)
+      let none_yet: List<String> = []
+      let next = fold(look_list_string(m: successor, key: k, dflt: none_yet), init: rest, g: fn(q, s) { list_push(xs: q, item: s) })
+      closure(queue: next, seen: map_insert(m: seen, key: k, value: true), visited: list_push(xs: visited, item: k), successor: successor)
     }
+  }
+}
+
+fn look_list_string(m: Map<String, List<String>>, key: String, dflt: List<String>) -> List<String> {
+  match map_lookup(m: m, key: key) {
+    Present { value: v } => v
+    Absent => dflt
   }
 }
 
 // THE ROW, assembled from the core's answer and the calendar's binder. Every arm of the source is matched by name --
 // a new source state cannot arrive here and be silently drawn as a bar.
-fn gantt_row(input: GanttInput, priced: List<PricedNode>, days: List<NodeDays>, placed: PlacementAnswer, held: List<RoadmapNodeId>, p: PricedNode) -> GanttRow {
+fn gantt_row(facts: GanttFacts, placed: PlacementAnswer, held: List<RoadmapNodeId>, p: PricedNode) -> GanttRow {
   let key = p.node.node as String
-  let behind = waiting_on(input: input, priced: priced, placed: placed, held: held, target: p.node.node)
+  let behind = waiting_on(facts: facts, held: held, target: key)
   GanttRow {
     node: p.node.node,
     source: p.source,
-    work_days: if owns_work(p: p) { days_of(days: days, node: p.node.node) } else { optional_absent() },
-    state: row_state(input: input, priced: priced, placed: placed, behind: behind, p: p, key: key),
+    work_days: row_work_days(facts: facts, p: p),
+    state: row_state(facts: facts, placed: placed, behind: behind, p: p, key: key),
   }
 }
 
-// WHICH UNPLACED PREREQUISITES THIS ROW WAITS ON, named. Only a row that would otherwise be placed is asked, so an
-// unsized row keeps its own honest Unsized answer instead of borrowing someone else's reason.
-fn waiting_on(input: GanttInput, priced: List<PricedNode>, placed: PlacementAnswer, held: List<RoadmapNodeId>, target: RoadmapNodeId) -> List<RoadmapNodeId> {
-  let prereqs = flat_map(input.edges, e => if e.child == target {
-    expand_to_work(input: input, priced: priced, target: e.parent)
+// WHAT A ROW IS WORTH IN WORK: an authored row or a pieces item carries the days it was priced at; a rollup carries
+// the derived total the derivation worked out, which is the number the dashboard shows on its bar; an unsized node
+// carries NOTHING -- not zero.
+fn row_work_days(facts: GanttFacts, p: PricedNode) -> Optional<Int> {
+  if owns_work(p: p) {
+    days_of(facts: facts, node: p.node.node)
   } else {
-    [] as List<String>
-  })
-  map(filter(prereqs, k => any(held, h => h as String == k)), k => nid(s: k))
+    match p.source {
+      Derived { work_days: w, contributed: _, from_pieces: _ } => if w > 0 { optional_present(value: w) } else { optional_absent() }
+      AuthoredSize { size: _, scheduled_days: _, made: _, basis: _ } => optional_absent()
+      AuthoredDuration { working_days: _, made: _, basis: _ } => optional_absent()
+      Unsized { why: _ } => optional_absent()
+    }
+  }
 }
 
-fn row_state(input: GanttInput, priced: List<PricedNode>, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode, key: String) -> GanttRowState {
+// WHICH UNPLACED PREREQUISITES THIS ROW WAITS ON, named, read off the ONE expanded edge list -- never recomputed.
+fn waiting_on(facts: GanttFacts, held: List<RoadmapNodeId>, target: String) -> List<RoadmapNodeId> {
+  let held_keys = fold(held, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n as String, value: true) })
+  map(filter(facts.expanded, e => e.to == target && map_contains_key(m: held_keys, key: e.from)), e => nid(s: e.from))
+}
+
+fn row_state(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode, key: String) -> GanttRowState {
   match find_placement(placed: placed, key: key) {
-    Present { value: row } => Placed {
+    Present { value: row } => RowPlaced {
       start_day: row.start_day,
       finish_day: row.finish_day,
       lane: row.lane,
-      start: bound_day_to_date(read_date: input.read_date, day: row.start_day),
-      finish: bound_day_to_date(read_date: input.read_date, day: row.finish_day),
+      start: bound_day_to_date(read_date: facts.input.read_date, day: row.start_day),
+      finish: bound_day_to_date(read_date: facts.input.read_date, day: row.finish_day),
     }
-    Absent => rollup_or_refusal(input: input, priced: priced, placed: placed, behind: behind, p: p)
+    Absent => rollup_or_refusal(facts: facts, placed: placed, behind: behind, p: p)
   }
 }
 
@@ -401,57 +449,67 @@ fn find_placement(placed: PlacementAnswer, key: String) -> Optional<Placement> {
 // THE STATES THAT ARE NOT A PLACED BAR, in the order a reader should see them: a leaf-grain refusal (an item whose
 // own pieces refused, carrying the leaf scheduler's reason), then an unsized node, then a row gated by something
 // unplacable, then a rollup spanning the work beneath it.
-fn rollup_or_refusal(input: GanttInput, priced: List<PricedNode>, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
+fn rollup_or_refusal(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
   match p.source {
     Derived { work_days: _, contributed: _, from_pieces: pieces } => if pieces {
-      leaf_refusal_state(input: input, node: p.node.node)
+      leaf_refusal_state(facts: facts, node: p.node.node)
     } else {
-      rollup_bar(input: input, priced: priced, placed: placed, behind: behind, p: p)
+      rollup_bar(facts: facts, placed: placed, behind: behind, p: p)
     }
     AuthoredSize { size: _, scheduled_days: _, made: _, basis: _ } => blocked_or_unplaced(behind: behind)
     AuthoredDuration { working_days: _, made: _, basis: _ } => blocked_or_unplaced(behind: behind)
-    Unsized { why: why } => UnsizedRow { why: why }
+    Unsized { why: why } => RowUnsized { why: why }
   }
 }
 
 fn blocked_or_unplaced(behind: List<RoadmapNodeId>) -> GanttRowState {
   if count(behind, b => true) > 0 {
-    Blocked { behind: behind }
+    RowBlocked { behind: behind }
   } else {
-    UnplacedRow
+    RowUnplaced
   }
 }
 
 // THE LEAF-GRAIN REFUSAL, re-read from the SAME call the duration came from: the leaf scheduler's own typed refusal,
 // carried unaltered. It is never paraphrased into a duration and never rounded down to a bar of zero days.
-fn leaf_refusal_state(input: GanttInput, node: RoadmapNodeId) -> GanttRowState {
-  match leaf_grain_read(input: input, node: node) {
-    LeafReadRefused { cause: cause } => LeafGrainRefused { cause: cause }
-    Makespan { days: _ } => UnplacedRow
+fn leaf_refusal_state(facts: GanttFacts, node: RoadmapNodeId) -> GanttRowState {
+  match leaf_grain_read(input: facts.input, node: node) {
+    LeafReadRefused { cause: cause } => RowLeafGrainRefused { cause: cause }
+    LeafNoFindingsCount { count: n } => RowNoFindingsCount { count: n }
+    LeafMakespan { days: _ } => RowUnplaced
   }
 }
 
 // THE ROLLUP BAR: a derived node is drawn over the placement of the work it contains -- its first day is the earliest
 // day any of that work starts and its last is the latest any of it finishes. It spends no days of its own and holds
 // no lane, which is what keeps a parent's number and its children's numbers one fact and not two.
-fn rollup_bar(input: GanttInput, priced: List<PricedNode>, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
-  let spanned = map(filter(placed.rows, r => any(work_under(input: input, priced: priced, root: p.node), w => w.node as String == r.key)), r => r)
-  if count(spanned, r => true) == 0 {
+fn rollup_bar(facts: GanttFacts, placed: PlacementAnswer, behind: List<RoadmapNodeId>, p: PricedNode) -> GanttRowState {
+  let mine = spanned_rows(facts: facts, placed: placed, p: p)
+  if count(mine, r => true) == 0 {
     blocked_or_unplaced(behind: behind)
   } else {
-    let first_day = earliest_start_of(spanned: spanned)
-    let last_day = latest_finish_of(spanned: spanned)
-    Rollup {
+    let first_day = earliest_start_of(spanned: mine)
+    let last_day = latest_finish_of(spanned: mine)
+    RowRollup {
       start_day: first_day,
       finish_day: last_day,
-      start: bound_day_to_date(read_date: input.read_date, day: first_day),
-      finish: bound_day_to_date(read_date: input.read_date, day: last_day),
+      start: bound_day_to_date(read_date: facts.input.read_date, day: first_day),
+      finish: bound_day_to_date(read_date: facts.input.read_date, day: last_day),
     }
   }
 }
 
+// THE PLACED WORK BENEATH A ROLLUP, read off the containment index built once for the read.
+fn spanned_rows(facts: GanttFacts, placed: PlacementAnswer, p: PricedNode) -> List<Placement> {
+  let under = work_under(work: facts.work_keys, children: facts.children, root: p.node.node as String, seen: [p.node.node as String])
+  filter(placed.rows, r => any(under, k => k == r.key))
+}
+
 fn earliest_start_of(spanned: List<Placement>) -> Int {
-  fold(spanned, init: 0, f: fn(m, r) { if r.start_day < m { r.start_day } else { m } })
+  match first(spanned) {
+    Absent => 0
+    Present { value: r0 } => fold(spanned, init: r0.start_day, f: fn(m, r) { if r.start_day < m { r.start_day } else { m } })
+  }
 }
 
 fn latest_finish_of(spanned: List<Placement>) -> Int {
@@ -463,30 +521,30 @@ fn latest_finish_of(spanned: List<Placement>) -> Int {
 // THE LIVE ANSWER over the declared roadmap, at a declared worker count and read date. Nothing here is authored
 // beside the graph: the entries it prices with are the appended estimate stream (empty on this branch until the
 // sizing lane appends rows), and the dates come from the read date and the placed days alone.
-fn gantt_answer_live(workers: BeltCapacity, findings_count: Int, read_date: Iso8601CivilDate) -> GanttAnswer {
+fn gantt_answer_live(workers: BeltCapacity, findings_count: Int, at: Iso8601CivilDate) -> GanttAnswer {
   gantt_answer(input: GanttInput {
     nodes: declared_roadmap_nodes(),
     edges: declared_roadmap_edges(),
     entries: [] as List<EstimateEntry>,
     workers: workers,
     findings_count: findings_count,
-    read_date: read_date,
+    read_date: at,
   })
 }
 
 // THE ROWS ONLY, for a consumer that draws bars and nothing else.
 fn gantt_rows(a: GanttAnswer) -> List<GanttRow> {
   match a {
-    Answered { rows: rows, horizon: _, in_flight: _, critical: _ } => rows
-    Refused { refusal: _ } => [] as List<GanttRow>
+    GanttAnswered { rows: rows, horizon: _, in_flight: _, critical: _ } => rows
+    GanttRefused { refusal: _ } => [] as List<GanttRow>
   }
 }
 
 // THE REFUSAL ONLY, so a consumer can report why there is no picture rather than drawing an empty one.
 fn gantt_refusal(a: GanttAnswer) -> Optional<GanttRefusal> {
   match a {
-    Answered { rows: _, horizon: _, in_flight: _, critical: _ } => optional_absent()
-    Refused { refusal: refusal } => optional_present(value: refusal)
+    GanttAnswered { rows: _, horizon: _, in_flight: _, critical: _ } => optional_absent()
+    GanttRefused { refusal: refusal } => optional_present(value: refusal)
   }
 }
 
@@ -494,11 +552,12 @@ fn gantt_refusal(a: GanttAnswer) -> Optional<GanttRefusal> {
 // never invisible and never silently defaulted.
 fn gantt_unpriced_count(a: GanttAnswer) -> Int {
   count(gantt_rows(a: a), r => match r.state {
-    UnsizedRow { why: _ } => true
-    Blocked { behind: _ } => true
-    LeafGrainRefused { cause: _ } => true
-    UnplacedRow => true
-    Placed { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
-    Rollup { start_day: _, finish_day: _, start: _, finish: _ } => false
+    RowUnsized { why: _ } => true
+    RowBlocked { behind: _ } => true
+    RowLeafGrainRefused { cause: _ } => true
+    RowUnplaced => true
+    RowNoFindingsCount { count: _ } => true
+    RowPlaced { start_day: _, finish_day: _, lane: _, start: _, finish: _ } => false
+    RowRollup { start_day: _, finish_day: _, start: _, finish: _ } => false
   })
 }

@@ -68,8 +68,8 @@ type PlacementInput {
 // WHY THERE IS NO PLACEMENT. Both arms name the rows, so a refusal can be reported instead of a schedule that is
 // quietly incomplete (fail_closed: a failure arm refuses, it never widens).
 type PlacementRefusal
-  = Cyclic { keys: List<String> }
-  | Unplaced { keys: List<String> }
+  = PlacementCyclic { keys: List<String> }
+  | PlacementUnplaced { keys: List<String> }
 
 // THE ANSWER: the placed rows in placement order (highest rank first), the horizon (the day the rows empty), the
 // per-day in-flight series over ALL placed rows including the pre-placed ones, and the critical path as keys.
@@ -81,8 +81,8 @@ type PlacementAnswer {
 }
 
 type PlacementOutcome
-  = Placed { answer: PlacementAnswer }
-  | Refused { refusal: PlacementRefusal }
+  = PlacementPlaced { answer: PlacementAnswer }
+  | PlacementRefused { refusal: PlacementRefusal }
 
 // THE BOOKKEEPING THE ORDERING PASS CARRIES. `ready` holds the rows whose predecessors have ALL been emitted;
 // `order` is the emitted sequence, one append per emit, so it is a FORWARD topological order -- every predecessor
@@ -99,7 +99,7 @@ type TopoState {
 // fact that the graph has a cycle. There is no third arm and no partial order handed back as if it were complete.
 type TopoOutcome
   = Ordered { order: List<PlacementRow> }
-  | Cyclic { keys: List<String> }
+  | PlacementCyclic { keys: List<String> }
 
 // THE BOOKKEEPING THE PLACEMENT PASS CARRIES: each lane's free day (a Map lane-index -> day; a lane with no entry
 // is free at day 0, the same default the lane scan reads, so the map is never pre-seeded by index and never
@@ -196,7 +196,7 @@ fn topo_step(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoSta
 fn topo_run(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoOutcome {
   match state.ready {
     Empty => if state.unemitted > 0 {
-      Cyclic { keys: [] }
+      PlacementCyclic { keys: [] }
     } else {
       Ordered { order: state.order }
     }
@@ -209,7 +209,7 @@ fn topo_run(state: TopoState, succ: Map<String, List<PlacementRow>>) -> TopoOutc
 fn unemitted_keys(rows: List<PlacementRow>, outcome: TopoOutcome) -> List<String> {
   match outcome {
     Ordered { order: order } => map(filter(rows, n => !in_order(order: order, key: n.key)), n => n.key)
-    Cyclic { keys: _ } => map(rows, n => n.key)
+    PlacementCyclic { keys: _ } => map(rows, n => n.key)
   }
 }
 
@@ -419,7 +419,7 @@ fn place(input: PlacementInput) -> PlacementOutcome {
   let ready_rows = filter(rows, n => look_or(m: seeded_indeg, key: n.key, dflt: 0) == 0)
   let outcome = topo_run(state: TopoState { ready: ready_rows, order: [], indeg: seeded_indeg, unemitted: count(rows, r => true) }, succ: graph.succ)
   match outcome {
-    Cyclic { keys: _ } => Refused { refusal: Cyclic { keys: unemitted_keys(rows: rows, outcome: outcome) } }
+    PlacementCyclic { keys: _ } => PlacementRefused { refusal: PlacementCyclic { keys: unemitted_keys(rows: rows, outcome: outcome) } }
     Ordered { order: order } => {
       let rank = rank_pass(order_back: list_reverse(xs: order), succ: graph.succ)
       let pre_keys = preplaced_keys(preplaced: input.preplaced)
@@ -441,10 +441,10 @@ fn place(input: PlacementInput) -> PlacementOutcome {
       let done = place_all(state: started, pred: graph.pred, buckets: buckets, workers: input.workers, earliest_start: input.earliest_start)
       let missing = unplaced_keys(rows: rows, finish: done.finish)
       if count(missing, k => true) > 0 {
-        Refused { refusal: Unplaced { keys: missing } }
+        PlacementRefused { refusal: PlacementUnplaced { keys: missing } }
       } else {
         let h = horizon_of(rows: done.placed)
-        Placed {
+        PlacementPlaced {
           answer: PlacementAnswer {
             rows: done.placed,
             horizon: h,

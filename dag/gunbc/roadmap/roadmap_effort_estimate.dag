@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_effort_estimate
 import std.types { String, Int, Bool, List }
 import std.optional { Optional, Present, Absent, optional_absent, optional_present }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
 
 // THE CLOCK IS THE ESTIMATE, NOT THE MILESTONE (gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc,
