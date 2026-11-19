@@ -204,13 +204,19 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
     }
 }
 
-// Endpoint resolution (msg_1c4e0bce): the Sparks' probe target is the MODELED
-// reservation address — 'srv9'/'srv10' are not published names anywhere — while
-// name-resolvable hosts pass through unchanged. Identity stays the receipt key.
-test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv9") == "srv9"
-    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
-    && fleet_probe_endpoint_for(host: "srv1") == "srv1"
+// (msg_1c4e0bce, superseded 2026-11-19 by the tailnet-name rule) An OWNED host that has a
+// hostname_allocation row resolves to its MagicDNS name -- uniformly: legacy-label hosts srv1..4 AND
+// drawn-name hosts ken/butch/... alike. A SOLD Group B unit (dgx_spark_disposed_units) yields NO
+// endpoint at all -- the empty target every downstream reader refuses -- never its bare id (which
+// /etc/hosts or LAN DNS could still dial). Identity stays the receipt key.
+test fn registry_hosts_resolve_to_tailnet_names_sold_units_to_none() -> Bool {
+  // Uniform positive rule (RED on main, GREEN with this change).
+  fleet_probe_endpoint_for(host: "srv1") == "srv1.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "host-e2d4b7") == "ken.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "srv14") == "butch.tailecbe08.ts.net"
+    // Sold units fail closed: no endpoint, not a name a new owner may answer.
+    && fleet_probe_endpoint_for(host: "srv9") == ""
+    && fleet_probe_endpoint_for(host: "srv10") == ""
 }
 
 // The undecided slot exists only as a fixture: both production bindings are SlotAssigned, so this
@@ -248,8 +254,13 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
 // the executing evidence that the two entry points have not forked again (gunbc.design_argument::guarantee_ladder meta-obligation 4 —
 // a climb deletes the redundant production machinery, never the evidence).
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  fleet_probe_endpoint_for(host: "srv9") == "srv9"
-    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
+  // Sold units short-circuit ahead of the (currently empty) dgx_spark_router_bindings fold, so both
+  // entry points agree they yield no endpoint. dgx_spark_router_bindings is empty on main (all eight
+  // procured Sparks sold), so the binding-override arm has no live occupancy; this stays as the
+  // regression guard that fleet_probe_endpoint_for calls spark_endpoint_for_binding rather than
+  // re-deriving, if a retained Spark lands a binding again.
+  fleet_probe_endpoint_for(host: "srv9") == ""
+    && fleet_probe_endpoint_for(host: "srv10") == ""
 }
 
 // IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.
