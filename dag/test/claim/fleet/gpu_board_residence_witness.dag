@@ -64,12 +64,16 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s()
       HostContainsComponent { host: _, component: k } => (k as String) == (a.identity as String)
       _ => false
     }).length() <= 1)
-    // No board OUTSIDE the ten named identities is in inventory (fail-closed change detector): a new card
-    // added to gpu_board_assets without naming it here reds, rather than a magic count silently changing.
+    // No board OUTSIDE the thirteen named identities is in inventory (fail-closed change detector): a new card
+    // added to gpu_board_assets without naming it here reds, rather than a magic count silently changing. It
+    // reded when ken's three went in, which is the detector working; the three are named here, and they are in
+    // ken and only in ken -- the conjuncts above cover that, and so does
+    // witness_ken_three_read_gpu_boards_reside_in_ken_alone below.
     && gpu_board_assets.all(a => a.identity == gpu_board_01 || a.identity == gpu_board_02
       || a.identity == gpu_board_03 || a.identity == gpu_board_04 || a.identity == gpu_board_05
       || a.identity == gpu_board_06 || a.identity == gpu_board_07 || a.identity == gpu_board_08
-      || a.identity == gpu_board_09 || a.identity == gpu_board_10)
+      || a.identity == gpu_board_09 || a.identity == gpu_board_10
+      || a.identity == gpu_board_11 || a.identity == gpu_board_12 || a.identity == gpu_board_13)
 }
 
 // THE FOUR SOLD A2s ARE STILL ASSETS. They left butch on 2026-11-17 and are pending sale, so their residence
@@ -147,7 +151,14 @@ test fn witness_card_assets_bind_admitted_board_rows() -> Bool {
       || a.catalog.decl_name == "nvidia_rtx_pro_6000_max_q_board_catalog"
       || a.catalog.decl_name == "nvidia_rtx_2000_ada_board_catalog"
       || a.catalog.decl_name == "nvidia_a2_board_catalog"
-      || a.catalog.decl_name == "gigabyte_r9700_ai_top_32g_board_catalog")
+      || a.catalog.decl_name == "gigabyte_r9700_ai_top_32g_board_catalog"
+      // ken's three cards, read 2026-11-18 onto the T10 catalog that already carries this board: each asset
+      // binds WholeDeclaration, so the card and the catalog row are the same board model rather than a name
+      // written beside it. The PCI ids the read returned (0x10de:0x1e37) are that catalog's pci_device_id;
+      // what the read does NOT settle is the model's NAME -- no board label was read -- nor the count, which
+      // disagrees with the operator's two-card report and is carried by
+      // gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards.
+      || a.catalog.decl_name == "nvidia_tesla_t10_board_catalog")
 }
 
 // THE H11 HOST IS A ROSTER MEMBER UNDER ITS OPAQUE IDENTITY.
