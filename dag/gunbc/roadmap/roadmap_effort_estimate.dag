@@ -160,6 +160,7 @@ fn size_label(s: EstimateSize) -> String {
 
 // THE ONE REPRESENTATION, and the only constructor pair: a row that named a size AND a duration would not
 // typecheck, because there is no carrier for both.
+// feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
 type EstimateForm = SizedEstimate { size: EstimateSize } | DaysEstimate { working_days: Int }
 
 type RoadmapEstimateRow {
@@ -235,7 +236,9 @@ fn date_precedes(a: Iso8601CivilDate, b: Iso8601CivilDate) -> Bool {
 // authority (gunbc.design_argument::single_authority).
 type SizeBand {
   size: EstimateSize
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   low: Int
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
   high: Int
 }
 
