@@ -14497,57 +14497,54 @@ pub fn validate_cast(
                     std::option::Option::None
                 } else {
                     if match (*grounded.clone()).clone() {
-                        GroundedCastVerdict::GroundedCastNotDecided => true,
-                        _ => false,
-                    } && match (*resolved_width_cast_verdict(
-                        src_node.clone(),
-                        source_declaration.clone(),
-                        target_declaration.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                    ))
-                    .clone()
-                    {
-                        GroundedCastVerdict::GroundedCastAdmitted => true,
+                        GroundedCastVerdict::GroundedCastRefused { cause: _, .. } => true,
                         _ => false,
                     } {
-                        std::option::Option::None
-                    } else {
-                        if match (*grounded.clone()).clone() {
-                            GroundedCastVerdict::GroundedCastRefused { cause: _, .. } => true,
-                            _ => false,
-                        } {
-                            {
-                                let cause = match (*grounded.clone()).clone() {
-                                    GroundedCastVerdict::GroundedCastRefused {
-                                        cause: c, ..
-                                    } => c.clone(),
-                                    _ => "".to_string(),
-                                };
-                                let msg = v1_rt::concat(
+                        {
+                            let cause = match (*grounded.clone()).clone() {
+                                GroundedCastVerdict::GroundedCastRefused { cause: c, .. } => {
+                                    c.clone()
+                                }
+                                _ => "".to_string(),
+                            };
+                            let msg = v1_rt::concat(
+                                v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "invalid cast: ".to_string(),
-                                                    source_name.clone(),
-                                                ),
-                                                " as ".to_string(),
+                                                "invalid cast: ".to_string(),
+                                                source_name.clone(),
                                             ),
-                                            target_name.clone(),
+                                            " as ".to_string(),
                                         ),
-                                        " -- ".to_string(),
+                                        target_name.clone(),
                                     ),
-                                    cause.clone(),
-                                );
-                                Some(crate::v1_std_core::make_error_node(
-                                    Rc::new(CompilerDiagnostic::InternalError {
-                                        message: msg.clone(),
-                                        span: span.clone(),
-                                    }),
-                                    module_name.clone(),
-                                ))
-                            }
+                                    " -- ".to_string(),
+                                ),
+                                cause.clone(),
+                            );
+                            Some(crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::InternalError {
+                                    message: msg.clone(),
+                                    span: span.clone(),
+                                }),
+                                module_name.clone(),
+                            ))
+                        }
+                    } else {
+                        if match (*resolved_width_cast_verdict(
+                            src_node.clone(),
+                            source_declaration.clone(),
+                            target_declaration.clone(),
+                            source_indices.clone(),
+                            env,
+                        ))
+                        .clone()
+                        {
+                            GroundedCastVerdict::GroundedCastAdmitted => true,
+                            _ => false,
+                        } {
+                            std::option::Option::None
                         } else {
                             if crate::std_coercion::dag_cast_requires_proof(
                                 source_name.clone(),
