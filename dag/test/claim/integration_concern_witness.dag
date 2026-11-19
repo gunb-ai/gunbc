@@ -207,7 +207,10 @@ test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and
 // field declares; it can go red again only when a row is authored outside that shape, and the message names
 // the row. The two needles are printed by concern_text itself: the fan row's identity (unique in the corpus)
 // and a clause of the host-key row's question -- its identity also sits in another row's account prose, so
-// the identity would not discriminate.
+// the identity would not discriminate. The error class itself is filed in the ledger as
+// gunbc.recurring_failure_mode.a_data_literal_authors_a_field_outside_the_shape_its_type_declares (gunb-ai/gunbc#16708);
+// this claim is the rung-2 interim the row records, not the guarantee -- the guarantee is the typecheck-side
+// inhabitance refusal the row's trigger names.
 test fn every_row_renders_through_the_reading() -> Bool {
   let text: String = reading_text(title: "every row, rendered", rows: integration_concerns)
   string_contains(s: text, pattern: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer")
