@@ -83,6 +83,11 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     ApproveIosOperationErrorsSwiftArtifact => Absent
     ApproveIosEnrolmentMachineTestsSwiftArtifact => Absent
     ApproveIosOperationErrorsTestsSwiftArtifact => Absent
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => Absent
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => Absent
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => Absent
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => Absent
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => Absent
     AutoinstallUserDataArtifact { spec: _ } => Absent
     RunnerHostSudoersArtifact { host: _ } => Absent
   }

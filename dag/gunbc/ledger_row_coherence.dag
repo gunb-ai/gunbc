@@ -156,6 +156,11 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     ApproveIosOperationErrorsSwiftArtifact => []
     ApproveIosEnrolmentMachineTestsSwiftArtifact => []
     ApproveIosOperationErrorsTestsSwiftArtifact => []
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => []
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => []
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => []
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => []
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
   }
