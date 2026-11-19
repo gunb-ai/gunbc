@@ -352,18 +352,34 @@ fn pieces_side(node: RoadmapNode) -> Optional<DescendantSide> {
 }
 
 fn first_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> Optional<DescendantSide> {
-  match first(flat_map(contained_children(nodes: nodes, parent: node), c => match descendant_side(nodes: nodes, entries: entries, c: c) {
-    Present { value: side } => [side]
-    Absent => if has_estimated_descendant(nodes: nodes, entries: entries, node: c.node) {
-      flat_map([c], deeper => match first_estimated_descendant(nodes: nodes, entries: entries, node: deeper.node) {
-        Present { value: side } => [side]
-        Absent => [] as List<DescendantSide>
-      })
-    } else {
-      [] as List<DescendantSide>
-    })) {
+  match first(estimated_beneath(nodes: nodes, entries: entries, node: node)) {
     Present { value: side } => optional_present(value: side)
     Absent => optional_absent()
+  }
+}
+
+// THE ESTIMATED SIDES BENEATH a node, nearest first: each contained child answers with its own side when it carries
+// a price, and with whatever is estimated beneath it when it does not -- so an authored project over a grandchild is
+// caught, not just one over its immediate child.
+fn estimated_beneath(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> List<DescendantSide> {
+  flat_map(contained_children(nodes: nodes, parent: node), c => candidate_side(nodes: nodes, entries: entries, c: c))
+}
+
+fn candidate_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, c: RoadmapNode) -> List<DescendantSide> {
+  match descendant_side(nodes: nodes, entries: entries, c: c) {
+    Present { value: side } => [side]
+    Absent => deeper_sides(nodes: nodes, entries: entries, node: c.node)
+  }
+}
+
+fn deeper_sides(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> List<DescendantSide> {
+  if has_estimated_descendant(nodes: nodes, entries: entries, node: node) {
+    match first_estimated_descendant(nodes: nodes, entries: entries, node: node) {
+      Present { value: side } => [side]
+      Absent => [] as List<DescendantSide>
+    }
+  } else {
+    [] as List<DescendantSide>
   }
 }
 
@@ -744,7 +760,7 @@ type ClearedPrerequisitePair {
 
 fn cleared_prerequisite_pairs(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<ClearedPrerequisitePair> {
   let priced = flat_map(nodes, n => match current_estimate(entries: dated_entries(nodes: nodes), subject: n.identity) {
-    Absent => [] as List<PricedSubject]
+    Absent => [] as List<PricedSubject>
     Present { value: row } => [PricedSubject { node: n.node, days: dated_row_days_of(nodes: nodes, n: n) }]
   })
   flat_map(priced, a => flat_map(priced, b =>
@@ -767,8 +783,8 @@ fn dated_row_days_of(nodes: List<RoadmapNode>, n: RoadmapNode) -> Int {
   match last_recorded_row(entries: dated_entries(nodes: nodes), subject: n.identity) {
     Absent => 0
     Present { value: row } => match row.value {
-      DaysEstimate { working_days } => working_days
-      SizedEstimate { size } => 0
+      DaysEstimate { working_days: w } => w
+      SizedEstimate { size: _ } => 0
     }
   }
 }
