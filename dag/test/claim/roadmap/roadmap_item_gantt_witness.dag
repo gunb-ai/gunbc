@@ -15,7 +15,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, Roadmap
 import gunbc.roadmap.roadmap_status { TicketLine, TicketFields }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid, edge }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, StageDependency, decomposition_for, expand_decomposition, roadmap_decompositions, decomposition, leaf }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, WorkStage, WorkPiece, StageDependency, decomposition_for, expand_decomposition, roadmap_decompositions, decomposition, leaf, Join }
 import gunbc.roadmap.roadmap_schedule { schedule, Scheduled, NotScheduled }
 import gunbc.roadmap.roadmap_schedule_calendar { bound_day_to_date }
 import gunbc.roadmap.roadmap_effort_estimate { EstimateEntry, estimate_row, estimate_recorded, days_estimate, d }
@@ -557,7 +557,7 @@ test fn an_item_that_owns_pieces_borrows_its_elapsed_from_the_leaf_scheduler() -
 // typed (gunbc.design_argument::fail_closed -- "a wrong answer is a loud, typed, located error").
 test fn an_item_whose_pieces_price_nothing_is_blocked_naming_its_own_pieces() -> Bool {
   let plan = decomposition(node: "fixture-item-zero", waits_on: [] as List<StageDependency>, stages: [
-    [gunbc.roadmap.roadmap_decomposition::join(label: "fixture-wait-only")],
+    [Join { label: "fixture-wait-only" }],
   ])
   let a = read_with_pieces(nodes: pieces_nodes(), edges: [] as List<RoadmapEdge>, entries: [] as List<EstimateEntry>, pieces: [plan])
   match leaf_horizon(plan: plan) {
