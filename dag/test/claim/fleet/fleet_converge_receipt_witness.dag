@@ -35,7 +35,7 @@ import gunbc.fleet.fleet_converge_receipt {
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
-import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied }
+import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FullyApplied, PartiallyApplied, OwedReportContradiction }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -267,6 +267,7 @@ test fn witness_apply_receipt_partially_applied_round_trips() -> Bool {
         PartiallyApplied { refused_axis_count: n, owed: _, detail: d } => n == 2 && string_contains(s: d, pattern: "timer=1")
         FullyApplied => false
         AwaitingCapability { capability: _ } => false
+        OwedReportContradiction { detail: _ } => false
       }
     FleetConvergeApplyReceiptUnreadable { reason: _ } => false
   }

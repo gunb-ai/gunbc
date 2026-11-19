@@ -3,7 +3,7 @@ module test.claim.fleet.fleet_converge_launch_environment_scope_witness
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
-import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
+import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire, OwedReportContradiction }
 
 import std.types { String, Bool, NonEmptyStr, List, Int }
 import std.algebra { length }
@@ -108,6 +108,7 @@ fn terminal_is_fully_applied(t: FleetConvergeApplyTerminal) -> Bool {
     FullyApplied => true
     PartiallyApplied { refused_axis_count: _, owed: _, detail: _ } => false
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
   }
 }
 
@@ -146,6 +147,7 @@ test fn the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis() ->
     PartiallyApplied { refused_axis_count: _, owed: _, detail: d } =>
       string_contains(s: d, pattern: "slot=1") && string_contains(s: d, pattern: "activation=")
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
   }
 }
 
@@ -566,6 +568,7 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
         && string_contains(s: d, pattern: "timer=0")
         && string_contains(s: d, pattern: join(["fabric-cell=", to_string(fabric)], ""))
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
   }
     && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
          request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },

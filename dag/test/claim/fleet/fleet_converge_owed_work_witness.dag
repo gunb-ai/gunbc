@@ -41,6 +41,7 @@ import gunbc.fleet.fleet_converge_terminal {
   fleet_converge_apply_terminal_of_wire,
   fleet_converge_apply_terminal_wire,
   fleet_converge_full_host_terminal,
+  OwedReportContradiction,
   fleet_converge_owed_work_is_clear,
 }
 import gunbc.fleet.fleet_host_identity {
@@ -222,6 +223,7 @@ fn owed_of(terminal: FleetConvergeApplyTerminal) -> FleetConvergeOwedWork? {
     PartiallyApplied { refused_axis_count: _, owed: o, detail: _ } => o
     FullyApplied => Absent
     AwaitingCapability { capability: _ } => Absent
+    OwedReportContradiction { detail: _ } => Absent
   }
 }
 
@@ -237,6 +239,7 @@ test fn a_plan_that_withholds_every_teardown_it_lists_is_not_fully_applied() -> 
         && (match artifact.apply_terminal {
           FullyApplied => false
           AwaitingCapability { capability: _ } => false
+          OwedReportContradiction { detail: _ } => false
           PartiallyApplied { refused_axis_count: _, owed: o, detail: _ } => match o {
             Absent => false
             Present { value: owed } =>
@@ -342,6 +345,7 @@ test fn the_44428803079_wire_decodes_with_nothing_to_say_about_owed_work() -> Bo
           && fleet_converge_apply_terminal_wire(terminal: terminal) == wire
       FullyApplied => false
       AwaitingCapability { capability: _ } => false
+      OwedReportContradiction { detail: _ } => false
     }
   }
 }
@@ -379,6 +383,7 @@ test fn a_count_carrying_wire_round_trips_and_is_not_the_legacy_shape() -> Bool 
           && fleet_converge_apply_terminal_wire(terminal: back) == wire
       FullyApplied => false
       AwaitingCapability { capability: _ } => false
+      OwedReportContradiction { detail: _ } => false
     }
   }
 }
@@ -539,13 +544,18 @@ test fn the_rendered_plan_and_script_reconcile_and_name_a_real_gap() -> Bool {
   }
 }
 
-// (15) A DISAGREEING OWED REPORT IS NEVER MINTED AS A RECEIPT NO READER CAN DECODE. Claim (12) shows the
-// decoder refusing such a wire; this is the other half, and the half the module's own comment promised:
-// the MINT must not produce one. The four numbers are put in front of the minted decision directly -- the
-// only way the reconciliation is ever executed rather than described -- and three things have to hold: the
-// terminal is not FullyApplied, it is not a `PartiallyApplied` carrying those numbers (which would be a
-// receipt the decoder refuses, so the operator's tooling would read a disk receipt as unreadable), and its
-// wire still decodes.
+// (15) A DISAGREEING OWED REPORT IS NEVER MINTED AS A RECEIPT NO READER CAN DECODE -- AND THE REFUSAL IS
+// NOT WORN UNDER SOMEONE ELSE'S MEANING. Claim (12) shows the decoder refusing such a wire; this is the
+// other half, the one the module's own comment promised: the MINT must not produce one. The numbers are put
+// in front of the minted decision directly, which is the only way the reconciliation is ever executed rather
+// than described. Three things have to hold: the terminal is not `FullyApplied`; it is not a
+// `PartiallyApplied` carrying those numbers (that would be a receipt the decoder refuses, so the operator's
+// tooling would find its own receipt unreadable); and it is NOT `AwaitingCapability` -- everywhere else that
+// variant means one thing, a host grant is missing and a retry after the grant is the right response
+// (`host_grant_awaiting_capability` is the only other producer). A renderer whose arithmetic contradicts is
+// not a grant to wait for, and one name carrying two meanings is a meaning fork
+// (`gunbc.design_argument::single_authority`); a consumer that treated this as a grant would re-dispatch
+// forever. So it must be its own state, naming the numbers, and its wire must still decode to itself.
 test fn a_disagreeing_owed_report_is_refused_at_the_mint_rather_than_written() -> Bool {
   let disagreeing = FleetConvergeOwedWork {
     withheld_row_count: 4,
@@ -561,15 +571,43 @@ test fn a_disagreeing_owed_report_is_refused_at_the_mint_rather_than_written() -
   match terminal {
     FullyApplied => false
     PartiallyApplied { refused_axis_count: _, owed: _, detail: _ } => false
-    AwaitingCapability { capability: c } =>
-      string_contains(s: c, pattern: "withheld=4")
-        && string_contains(s: c, pattern: "beyond-plan-rows=40")
-        && string_contains(s: c, pattern: "does not reconcile")
+    AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: d } =>
+      string_contains(s: d, pattern: "withheld=4")
+        && string_contains(s: d, pattern: "beyond-plan-rows=40")
+        && string_contains(s: d, pattern: "does not reconcile")
         && match fleet_converge_apply_terminal_of_wire(text: fleet_converge_apply_terminal_wire(terminal: terminal)) {
             Absent => false
-            Present { value: _ } => true
+            Present { value: read } => match read {
+              OwedReportContradiction { detail: back } => back == d
+              _ => false
+            }
           }
   }
+}
+
+// (15b) THE WIRE THE CONTRADICTION WRITES IS NOT THE WIRE A GRANT WRITES. If the two collapsed on the wire,
+// a receipt reader that only compares strings would put a renderer defect in the retry-when-granted queue.
+test fn the_contradiction_wire_is_not_the_awaiting_capability_wire() -> Bool {
+  let disagreement_wire = fleet_converge_apply_terminal_wire(
+    terminal: fleet_converge_full_host_terminal(
+      refused_axis_count: 7,
+      owed: FleetConvergeOwedWork {
+        withheld_row_count: 4,
+        plan_only_row_count: 2,
+        withheld_line_total_count: 43,
+        withheld_beyond_plan_rows_count: 40,
+      },
+      detail: "slot=5 cap=0 timer=0 fabric-cell=0 activation=2",
+    ),
+  )
+  let grant_wire = fleet_converge_apply_terminal_wire(
+    terminal: AwaitingCapability { capability: "host grant is missing: runner-ctl-reload" },
+  )
+  starts_with(s: disagreement_wire, prefix: "owed_report_contradiction|")
+    && !starts_with(s: disagreement_wire, prefix: "awaiting_capability|")
+    && starts_with(s: grant_wire, prefix: "awaiting_capability|")
+    && !starts_with(s: disagreement_wire, prefix: "partially_applied|")
 }
 
 // (16) AND THE SAME MINT STILL GETS IT RIGHT WHEN THE NUMBERS DO RECONCILE. Without this, (15) would pass
@@ -589,6 +627,7 @@ test fn a_reconciling_owed_report_is_minted_as_a_receipt_and_round_trips() -> Bo
   match terminal {
     FullyApplied => false
     AwaitingCapability { capability: _ } => false
+    OwedReportContradiction { detail: _ } => false
     PartiallyApplied { refused_axis_count: refused, owed: owed, detail: detail } =>
       refused == 7
         && detail == "slot=5 cap=0 timer=0 fabric-cell=0 activation=2"

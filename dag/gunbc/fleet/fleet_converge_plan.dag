@@ -30,6 +30,7 @@ import gunbc.fleet.fleet_converge_terminal {
   FleetConvergeApplyTerminal,
   FleetConvergeOwedWork,
   FullyApplied,
+  OwedReportContradiction,
   PartiallyApplied,
   fleet_converge_full_host_terminal,
 }
@@ -2047,6 +2048,10 @@ fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> S
     }
     AwaitingCapability { capability: c } =>
       join(["# apply-terminal: AwaitingCapability ", c], "")
+    // A contradiction in the renderer's own report is the one state no operator can act on and no grant can
+    // lift, so it says so in its own words rather than borrowing the grant's.
+    OwedReportContradiction { detail: d } =>
+      join(["# apply-terminal: OwedReportContradiction ", d], "")
   }
 }
 

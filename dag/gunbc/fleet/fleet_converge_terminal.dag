@@ -47,21 +47,27 @@ type FleetConvergeOwedWork {
 // FullHostConverge arm so a witness can put a BROKEN owed report in front of it -- which is the only way
 // the reconciliation below is ever executed rather than merely described.
 //
-// A DISAGREEING OWED REPORT IS NOT A RECEIPT. If the four numbers do not reconcile, this pass cannot attest
-// to anything: the counts it would publish contradict each other, and the wire it would write is one this
+// A DISAGREEING OWED REPORT IS NOT A RECEIPT. If the numbers do not reconcile, this pass cannot attest to
+// anything: the counts it would publish contradict each other, and the wire it would write is one this
 // module's own decoder refuses (`owed_work_shape`). Minting it anyway would put a receipt on disk that no
-// reader could decode -- the under-report again, this time unreadable. So the disagreement goes to
-// `AwaitingCapability`, the state this model already uses when a pass cannot certify its own apply (the
-// live-deploy arm reaches it for the same reason: the plan says work stands and nothing did it). The
-// capability names the four numbers, so the disagreement is legible to whoever has to fix the renderer.
+// reader could decode -- the under-report again, this time unreadable.
+//
+// IT IS NOT `AwaitingCapability`, and not only for tidiness. Everywhere else in this model that variant
+// means ONE thing: a host grant is missing and the run should be retried once the operator grants it
+// (`host_grant_awaiting_capability` is its only other producer). A renderer whose own numbers contradict is
+// not a grant to wait for -- nobody can un-block it by granting anything -- and one name carrying two
+// materially different meanings is a meaning fork (`gunbc.design_argument::single_authority`). So the
+// contradiction gets its own variant: typed, located, and countable
+// (`gunbc.design_argument::fail_closed`), with the numbers themselves in the detail so whoever has to fix
+// the renderer can read them off the receipt.
 fn fleet_converge_full_host_terminal(
   refused_axis_count: Int,
   owed: FleetConvergeOwedWork,
   detail: String,
 ) -> FleetConvergeApplyTerminal {
   if !fleet_converge_owed_work_reconciles(owed: owed) {
-    AwaitingCapability {
-      capability: join(
+    OwedReportContradiction {
+      detail: join(
         [
           "converge owed-work report does not reconcile: withheld=",
           to_string(owed.withheld_row_count),
@@ -71,7 +77,8 @@ fn fleet_converge_full_host_terminal(
           to_string(owed.withheld_line_total_count),
           " beyond-plan-rows=",
           to_string(owed.withheld_beyond_plan_rows_count),
-          "; withheld lines must equal withheld rows plus beyond-plan rows",
+          "; withheld lines must equal withheld rows plus beyond-plan rows; the plan detail was ",
+          detail,
         ],
         "",
       ),
@@ -88,10 +95,10 @@ fn fleet_converge_full_host_terminal(
 }
 
 type FleetConvergeApplyTerminal
-  = FullyAppliedtype FleetConvergeApplyTerminal
   = FullyApplied
   | PartiallyApplied { refused_axis_count: Int, owed: FleetConvergeOwedWork?, detail: String }
   | AwaitingCapability { capability: String }
+  | OwedReportContradiction { detail: String }
 
 // THE RECONCILIATION THE FOUR NUMBERS CLAIM, SPOKEN ONCE AND USED TWICE -- at the mint, through
 // `fleet_converge_full_host_terminal`, and on the wire, through `owed_work_shape`.
@@ -101,15 +108,28 @@ type FleetConvergeApplyTerminal
 // not a relation between any two of the fields. A gate that grew a withheld line with no row behind it, or
 // a row whose script stopped being echoed, would break it -- which is why the equality is checked rather
 // than assumed, and why a disagreement is refused instead of read as a clean report.
+// AT THE MINT THIS IS ONLY THE EQUALITY. Each field is a `count(...)` over a list, so a negative is not a
+// state this function can be handed -- a check for it here would restate a constraint the model already
+// carries (`gunbc.design_argument::fail_closed`) and would be green by construction, later cited as
+// coverage. On the WIRE it is a different story: four integers arrive from a file, where a negative is
+// perfectly expressible, so `wire_owed_counts_are_sane` refuses them there. Same shape, different
+// permissibility, because the two inputs are not the same kind of thing.
 fn fleet_converge_owed_work_reconciles(owed: FleetConvergeOwedWork) -> Bool {
+  owed.withheld_line_total_count == owed.withheld_row_count + owed.withheld_beyond_plan_rows_count
+}
+
+// THE WIRE'S SIDE OF THE SAME CLAIM. A receipt is text on disk: it can carry `-1`, it can carry a gap that
+// swallows the rows it claims, and a terminal minted from such numbers would gate FullyApplied on arithmetic
+// that cannot be true. These four integers are refused rather than trusted.
+fn wire_owed_counts_are_sane(owed: FleetConvergeOwedWork) -> Bool {
   owed.withheld_row_count >= 0
     && owed.plan_only_row_count >= 0
     && owed.withheld_line_total_count >= 0
     && owed.withheld_beyond_plan_rows_count >= 0
-    && owed.withheld_line_total_count == owed.withheld_row_count + owed.withheld_beyond_plan_rows_count
+    && fleet_converge_owed_work_reconciles(owed: owed)
 }
 
-// NOTHING IS APPLIED WHILE ANYTHING IS OWED. These are one predicate, not a preference: a withheld plan
+// NOTHING IS APPLIED WHILE ANYTHING IS OWED (and nothing is clear that does not add up). These are one predicate, not a preference: a withheld plan
 // row, a plan-only row, a withheld line the plan never listed, and a refused row each keep a convergence
 // out of FullyApplied. The line total is in the conjunction too, so a mint whose counts do not add up --
 // lines withheld with no row to account for them -- fails closed rather than reading as clean.
@@ -120,13 +140,6 @@ fn fleet_converge_owed_work_is_clear(owed: FleetConvergeOwedWork) -> Bool {
     && owed.withheld_line_total_count == 0
     && owed.withheld_beyond_plan_rows_count == 0
 }
-
-// THE RECONCILIATION THE FOUR NUMBERS CLAIM, SPOKEN ONCE AND USED TWICE -- at the mint (through
-// `fleet_converge_owed_work_is_clear`) and on the wire (through `owed_work_shape`). Lines equal rows-plus-beyond only if every withheld row echoed
-// exactly one withheld line and every withheld line either echoes a row or is counted as beyond-plan. The
-// renderer satisfies that today; a change that broke it -- a gate emitting a withheld line with no row, or
-// a row whose script stopped being echoed -- would make the numbers disagree, and a disagreement is
-// refused rather than read as clean. Fail-closed means the disagreement path is a real state, not prose.
 
 // THE WIRE NAMES EACH COUNT IT CARRIES. `withheld=`, `plan-only=`, `withheld-lines=` and
 // `withheld-beyond-plan-rows=` are spelled out rather than left positional, because the receipt line is
@@ -160,6 +173,7 @@ fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> S
       )
     }
     AwaitingCapability { capability: c } => join(["awaiting_capability|", c], "")
+    OwedReportContradiction { detail: d } => join(["owed_report_contradiction|", d], "")
   }
 }
 
@@ -179,6 +193,12 @@ fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerm
     Present {
       value: AwaitingCapability {
         capability: substring(s: text, start: 20, end: string_length(s: text)),
+      },
+    }
+  } else if starts_with(s: text, prefix: "owed_report_contradiction|") {
+    Present {
+      value: OwedReportContradiction {
+        detail: substring(s: text, start: 26, end: string_length(s: text)),
       },
     }
   } else if starts_with(s: text, prefix: "partially_applied|") {
@@ -246,7 +266,7 @@ fn owed_work_shape(segments: List<String>) -> FleetConvergeOwedWork? {
             // renderer -- it was edited, or it was minted by a renderer that had lost a line. Either way it
             // is not a state of this type, and the caller refuses the whole wire rather than keeping a
             // terminal whose owed work is nonsense.
-            if fleet_converge_owed_work_reconciles(owed: owed) {
+            if wire_owed_counts_are_sane(owed: owed) {
               Present { value: owed }
             } else {
               Absent
