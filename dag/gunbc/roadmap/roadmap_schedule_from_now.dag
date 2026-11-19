@@ -119,8 +119,12 @@ import gunbc.roadmap.roadmap_leaf_realized_duration {
 import gunbc.roadmap.roadmap_schedule_calendar { date_text }
 import gunbc.roadmap.roadmap_schedule {
   NotScheduled, OverRefusedExpansion, PinnedLeaf, Schedule, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf,
-  look_or, path_key, schedule, schedule_pinned,
+  path_key, schedule, schedule_pinned,
 }
+// `look_or` moved with the placement core: this unit reads the successor map the same total read builds, and the core
+// is where that read lives now. The repoint lives HERE (not on still-swift-742's branch) because their base has no
+// roadmap_placement to import from -- their PR landed first, this merge repoints against a main that does.
+import gunbc.roadmap.roadmap_placement { look_or }
 
 // THE UNIT A NUMBER FROM THIS UNIT IS IN, spelled out in its own output. Every day count below is WORKING days, the
 // Monday..Friday week is #16697's rule, and no holiday calendar exists anywhere in this repository.
@@ -219,7 +223,7 @@ fn schedule_from_now(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, 
     // #16716's Expansion carries the top-level Composites it did NOT expand. They are the expansion's own report
     // and the scheduler's own deferral (roadmap-schedule-composite-nested-addressing holds the nested addressing),
     // so this read neither mints an occurrence for one nor invents a second report beside the carrier's.
-    Expanded { occurrences: occs, edges: edges, omitted_composites: _ } => match holds_over_logs(logs: logs) {
+    Expanded { occurrences: occs, edges: edges, omitted_composites: _, unresolved_waits: _ } => match holds_over_logs(logs: logs) {
       HoldReadRefused { item: item, cause: cause } => FromNowRefused { cause: InFlightReadRefused { item: item, cause: cause } }
       HoldsRead { holds: holds, pathless: pathless, absorbed: absorbed, closed: closed } =>
         schedule_priced(d: d, e: e, occs: occs, edges: edges, workers: workers, read_on: read_on,

@@ -155,8 +155,9 @@ test fn witness_card_assets_bind_admitted_board_rows() -> Bool {
       // ken's three cards, read 2026-11-18 onto the T10 catalog that already carries this board: each asset
       // binds WholeDeclaration, so the card and the catalog row are the same board model rather than a name
       // written beside it. The PCI ids the read returned (0x10de:0x1e37) are that catalog's pci_device_id;
-      // what the read does NOT settle is the model's NAME -- no board label was read -- nor the count, which
-      // disagrees with the operator's two-card report and is carried by
+      // what the read does NOT settle is the model's NAME -- no board label was read. The count IS settled now,
+      // by the operator's own 2026-11-19 read of three T10s, agreeing with these three rows; the disagreement
+      // with the earlier two-card report is closed in
       // gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards.
       || a.catalog.decl_name == "nvidia_tesla_t10_board_catalog")
 }
@@ -173,8 +174,9 @@ test fn witness_h11_host_is_on_the_roster_opaquely() -> Bool {
 // agree with them. It goes red four ways: a ken board loses its containment row or gains a second one; a DIFFERENT
 // host is given one of these boards, which is the failure that would let a cap or a thermal budget reach the wrong
 // machine; a ken board appears in the current device population without a containment row; or the count drifts from
-// the three functions the 2026-11-18 read returned (three, not the two the operator reported -- the disagreement is
-// carried by gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards, and this claim
+// the three functions the 2026-11-18 read returned -- three, which the operator's own 2026-11-19 read confirms; the
+// earlier two-card report and that confirmation meet in
+// gunbc.integration_concern::h11ssl_unit3_three_gpu_functions_against_two_reported_cards, and this claim
 // is what pins which side a consumer sees).
 fn ken_containment_rows_for(component: String) -> Int {
   filter(installed_gpu_board_containments, c => match c {

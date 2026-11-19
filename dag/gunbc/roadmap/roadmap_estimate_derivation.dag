@@ -62,7 +62,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, Roadmap
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
 import gunbc.roadmap.roadmap_schedule_calendar { working_days_between }
 import gunbc.roadmap.roadmap_decomposition {
-  decomposition_for, WorkDecomposition, WorkStage, stages_leaf_days, stages_leaf_count,
+  decomposition_for, decompositions_in, roadmap_decompositions, WorkDecomposition, WorkStage, stages_leaf_days, stages_leaf_count,
 }
 import gunbc.roadmap.roadmap_effort_estimate {
   EstimateSize, EstimateForm, RoadmapEstimateRow, EstimateEntry, EstimateRevocation, estimate_table,
@@ -340,31 +340,47 @@ fn last_entry(entries: List<EstimateEntry>, subject: RoadmapNodeIdentity) -> Opt
 
 // THE PIECES, read through the one authority that prices them: stages_leaf_days multiplies a Family by its
 // population and costs a Decision at the declared decision_days, so this module restates no piece arithmetic.
+// THE PIECES READ OVER A TABLE CARRIED AS A VALUE, so the contradiction check and the Gantt answer the same questions
+// about a roadmap the CALLER names: the live reads pass `roadmap_decompositions` and answer exactly what they always
+// did, and a witness passes the empty table and gets a roadmap with no pieces under it. One body per question, and the
+// declared table is read in exactly one place (single_authority) -- the delegators below.
+fn has_decomposition_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Bool {
+  count(decompositions_in(pieces: pieces, node: node)) > 0
+}
+
+fn decomposition_work_days_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Int {
+  fold(decompositions_in(pieces: pieces, node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) })
+}
+
+fn decomposition_leaf_count_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Int {
+  fold(decompositions_in(pieces: pieces, node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) })
+}
+
 fn has_decomposition(node: RoadmapNodeId) -> Bool {
-  count(decomposition_for(node: node)) > 0
+  has_decomposition_in(pieces: roadmap_decompositions, node: node)
 }
 
 fn decomposition_work_days(node: RoadmapNodeId) -> Int {
-  fold(decomposition_for(node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) })
+  decomposition_work_days_in(pieces: roadmap_decompositions, node: node)
 }
 
 fn decomposition_leaf_count(node: RoadmapNodeId) -> Int {
-  fold(decomposition_for(node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) })
+  decomposition_leaf_count_in(pieces: roadmap_decompositions, node: node)
 }
 
 // IS THIS NODE PRICED AT ALL? A row of its own, or a decomposition that prices its pieces.
-fn is_estimated(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> Bool {
+fn is_estimated(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, n: RoadmapNode) -> Bool {
   match current_estimate(entries: entries, subject: n.identity) {
     Present { value: _ } => true
-    Absent => has_decomposition(node: n.node)
+    Absent => has_decomposition_in(pieces: pieces, node: n.node)
   }
 }
 
 // ANYTHING PRICED BELOW HERE -- the predicate behind the operator's rule. An authored estimate on a node with an
 // estimated descendant is the contradiction, whichever level the descendant sits at.
-fn has_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> Bool {
+fn has_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Bool {
   any(contained_children(nodes: nodes, parent: node), c =>
-    is_estimated(nodes: nodes, entries: entries, n: c) || has_estimated_descendant(nodes: nodes, entries: entries, node: c.node)
+    is_estimated(nodes: nodes, entries: entries, pieces: pieces, n: c) || has_estimated_descendant(nodes: nodes, entries: entries, pieces: pieces, node: c.node)
   )
 }
 
@@ -379,24 +395,24 @@ type DescendantSide {
   from_pieces: Bool
 }
 
-fn descendant_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, c: RoadmapNode) -> Optional<DescendantSide> {
+fn descendant_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, c: RoadmapNode) -> Optional<DescendantSide> {
   match current_estimate(entries: entries, subject: c.identity) {
     Present { value: r } => match estimate_form_days(t: estimate_table, v: r.value) {
       Present { value: days } => optional_present(value: DescendantSide {
         node: c.node, identity: c.identity, days: days, basis: r.basis, from_pieces: false
       })
-      Absent => pieces_side(node: c)
+      Absent => pieces_side(pieces: pieces, node: c)
     }
-    Absent => pieces_side(node: c)
+    Absent => pieces_side(pieces: pieces, node: c)
   }
 }
 
-fn pieces_side(node: RoadmapNode) -> Optional<DescendantSide> {
-  if has_decomposition(node: node.node) {
+fn pieces_side(pieces: List<WorkDecomposition>, node: RoadmapNode) -> Optional<DescendantSide> {
+  if has_decomposition_in(pieces: pieces, node: node.node) {
     optional_present(value: DescendantSide {
       node: node.node,
       identity: node.identity,
-      days: decomposition_work_days(node: node.node),
+      days: decomposition_work_days_in(pieces: pieces, node: node.node),
       basis: "the days its own decomposition declares for its pieces",
       from_pieces: true,
     })
@@ -405,8 +421,8 @@ fn pieces_side(node: RoadmapNode) -> Optional<DescendantSide> {
   }
 }
 
-fn first_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> Optional<DescendantSide> {
-  match first(estimated_beneath(nodes: nodes, entries: entries, node: node)) {
+fn first_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Optional<DescendantSide> {
+  match first(estimated_beneath(nodes: nodes, entries: entries, pieces: pieces, node: node)) {
     Present { value: side } => optional_present(value: side)
     Absent => optional_absent()
   }
@@ -415,20 +431,20 @@ fn first_estimated_descendant(nodes: List<RoadmapNode>, entries: List<EstimateEn
 // THE ESTIMATED SIDES BENEATH a node, nearest first: each contained child answers with its own side when it carries
 // a price, and with whatever is estimated beneath it when it does not -- so an authored project over a grandchild is
 // caught, not just one over its immediate child.
-fn estimated_beneath(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> List<DescendantSide> {
-  flat_map(contained_children(nodes: nodes, parent: node), c => candidate_side(nodes: nodes, entries: entries, c: c))
+fn estimated_beneath(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> List<DescendantSide> {
+  flat_map(contained_children(nodes: nodes, parent: node), c => candidate_side(nodes: nodes, entries: entries, pieces: pieces, c: c))
 }
 
-fn candidate_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, c: RoadmapNode) -> List<DescendantSide> {
-  match descendant_side(nodes: nodes, entries: entries, c: c) {
+fn candidate_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, c: RoadmapNode) -> List<DescendantSide> {
+  match descendant_side(nodes: nodes, entries: entries, pieces: pieces, c: c) {
     Present { value: side } => [side]
-    Absent => deeper_sides(nodes: nodes, entries: entries, node: c.node)
+    Absent => deeper_sides(nodes: nodes, entries: entries, pieces: pieces, node: c.node)
   }
 }
 
-fn deeper_sides(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: RoadmapNodeId) -> List<DescendantSide> {
-  if has_estimated_descendant(nodes: nodes, entries: entries, node: node) {
-    match first_estimated_descendant(nodes: nodes, entries: entries, node: node) {
+fn deeper_sides(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> List<DescendantSide> {
+  if has_estimated_descendant(nodes: nodes, entries: entries, pieces: pieces, node: node) {
+    match first_estimated_descendant(nodes: nodes, entries: entries, pieces: pieces, node: node) {
       Present { value: side } => [side]
       Absent => [] as List<DescendantSide>
     }
@@ -441,14 +457,14 @@ fn deeper_sides(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, node: Ro
 // Collected rather than short-circuited: the report is a deliverable of this lane, so one bad row must not hide the
 // next one, and the answer refuses on the whole list rather than on its first entry.
 
-fn estimate_refusals(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateRefusal> {
+fn estimate_refusals_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>) -> List<EstimateRefusal> {
   let cycles = containment_cycles(nodes: nodes)
   let cycle_refusals = match cycles {
     Empty => [] as List<EstimateRefusal>
     Cons { head: _, tail: _ } => [ContainmentCycle { nodes: cycles }]
   }
   let carrier_refusals = if dated_rows_are_closed_to_the_ruling() { [] as List<EstimateRefusal> } else { [DatedCarrierReopened] }
-  let row_refusals = flat_map(recorded_rows(entries: entries), r => match estimate_row_refusal(nodes: nodes, entries: entries, row: r) {
+  let row_refusals = flat_map(recorded_rows(entries: entries), r => match estimate_row_refusal(nodes: nodes, entries: entries, pieces: pieces, row: r) {
     Present { value: r2 } => [r2]
     Absent => [] as List<EstimateRefusal>
   })
@@ -456,15 +472,15 @@ fn estimate_refusals(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> 
     Present { value: r2 } => [r2]
     Absent => [] as List<EstimateRefusal>
   })
-  let restatements = restated_piece_days(nodes: nodes, entries: entries)
-  let conflicts = flat_map(estimate_contradictions(nodes: nodes, entries: entries), c => [ContradictionFound { contradiction: c }])
+  let restatements = restated_piece_days_in(nodes: nodes, entries: entries, pieces: pieces)
+  let conflicts = flat_map(estimate_contradictions_in(nodes: nodes, entries: entries, pieces: pieces), c => [ContradictionFound { contradiction: c }])
   concat(
     concat(concat(cycle_refusals, carrier_refusals), row_refusals),
     concat(revocation_refusals, concat(restatements, conflicts)),
   )
 }
 
-fn estimate_row_refusal(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, row: RoadmapEstimateRow) -> Optional<EstimateRefusal> {
+fn estimate_row_refusal(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, row: RoadmapEstimateRow) -> Optional<EstimateRefusal> {
   match node_by_identity(nodes: nodes, subject: row.subject) {
     Absent => optional_present(value: EstimateSubjectNamesNoNode { subject: row.subject })
     Present { value: n } => match basis_refusal(row: row) {
@@ -563,20 +579,20 @@ fn revocation_refusal(entries: List<EstimateEntry>, occ: WithdrawalOccurrence) -
 // THE CONTRADICTIONS: an authored estimate on a node with an estimated descendant. The operator's rule, and the
 // reason both sides are carried. Read over CURRENT estimates, so a withdrawn price cannot contradict anything --
 // it simply stays readable, which is the whole point of appending rather than deleting.
-fn estimate_contradictions(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateContradiction> {
+fn estimate_contradictions_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>) -> List<EstimateContradiction> {
   flat_map(nodes, n => match current_estimate(entries: entries, subject: n.identity) {
     Absent => [] as List<EstimateContradiction>
-    Present { value: row } => match contradiction_for_node(nodes: nodes, entries: entries, ancestor: n, row: row) {
+    Present { value: row } => match contradiction_for_node(nodes: nodes, entries: entries, pieces: pieces, ancestor: n, row: row) {
       Present { value: c } => [c]
       Absent => [] as List<EstimateContradiction>
     }
   })
 }
 
-fn contradiction_for_node(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, ancestor: RoadmapNode, row: RoadmapEstimateRow) -> Optional<EstimateContradiction> {
+fn contradiction_for_node(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, ancestor: RoadmapNode, row: RoadmapEstimateRow) -> Optional<EstimateContradiction> {
   match estimate_form_days(t: estimate_table, v: row.value) {
     Absent => optional_absent()
-    Present { value: ancestor_days } => match first_estimated_descendant(nodes: nodes, entries: entries, node: ancestor.node) {
+    Present { value: ancestor_days } => match first_estimated_descendant(nodes: nodes, entries: entries, pieces: pieces, node: ancestor.node) {
       Absent => optional_absent()
       Present { value: side } => optional_present(value: EstimateContradiction {
         ancestor: ancestor.node,
@@ -596,17 +612,17 @@ fn contradiction_for_node(nodes: List<RoadmapNode>, entries: List<EstimateEntry>
 
 // AN AUTHORED ESTIMATE BESIDE A DECOMPOSITION THAT ALREADY PRICES THE SAME WORK: the pieces are that item's leaf
 // estimates, and restating them is a second representation of one fact rather than a second opinion about it.
-fn restated_piece_days(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateRefusal> {
+fn restated_piece_days_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>) -> List<EstimateRefusal> {
   flat_map(nodes, n => match current_estimate(entries: entries, subject: n.identity) {
     Absent => [] as List<EstimateRefusal>
-    Present { value: row } => if has_decomposition(node: n.node) {
+    Present { value: row } => if has_decomposition_in(pieces: pieces, node: n.node) {
       match estimate_form_days(t: estimate_table, v: row.value) {
         Absent => [] as List<EstimateRefusal>
         Present { value: days } => [RestatedPieceDays {
           node: n.node,
           authored_days: days,
-          pieces_days: decomposition_work_days(node: n.node),
-          pieces: decomposition_leaf_count(node: n.node),
+          pieces_days: decomposition_work_days_in(pieces: pieces, node: n.node),
+          pieces: decomposition_leaf_count_in(pieces: pieces, node: n.node),
         }]
       }
     } else {
@@ -638,8 +654,8 @@ type NodeEstimate {
   source: EstimateSource
 }
 
-fn node_estimate(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> NodeEstimate {
-  NodeEstimate { node: n.node, identity: n.identity, source: node_source(nodes: nodes, entries: entries, n: n) }
+fn node_estimate_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, n: RoadmapNode) -> NodeEstimate {
+  NodeEstimate { node: n.node, identity: n.identity, source: node_source_in(nodes: nodes, entries: entries, pieces: pieces, n: n) }
 }
 
 // THE ONE DERIVATION. A current row prices the node only where the node owns the work -- nothing contained under it
@@ -647,20 +663,20 @@ fn node_estimate(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: Road
 // own decomposition declares are its leaves and the total is their sum. Otherwise the total is the sum over the
 // contained children, and only when EVERY contained child is itself priced: a parent that summed around an unsized
 // child would be pricing work it cannot see at zero, and that is the default this module exists to refuse.
-fn node_source(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> EstimateSource {
+fn node_source_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, n: RoadmapNode) -> EstimateSource {
   match current_estimate(entries: entries, subject: n.identity) {
     Present { value: row } => match estimate_form_days(t: estimate_table, v: row.value) {
       Present { value: days } => authored_source(form: row.value, days: days, made: row.made, basis: row.basis)
       Absent => Unsized { why: NothingEstimated }
     }
-    Absent => if has_decomposition(node: n.node) {
+    Absent => if has_decomposition_in(pieces: pieces, node: n.node) {
       Derived {
-        work_days: decomposition_work_days(node: n.node),
+        work_days: decomposition_work_days_in(pieces: pieces, node: n.node),
         contributed: [] as List<RoadmapNodeId>,
         from_pieces: true,
       }
     } else {
-      from_contained_children(nodes: nodes, entries: entries, n: n)
+      from_contained_children(nodes: nodes, entries: entries, pieces: pieces, n: n)
     }
   }
 }
@@ -672,12 +688,12 @@ fn authored_source(form: EstimateForm, days: Int, made: Iso8601CivilDate, basis:
   }
 }
 
-fn from_contained_children(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> EstimateSource {
+fn from_contained_children(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, n: RoadmapNode) -> EstimateSource {
   match contained_children(nodes: nodes, parent: n.node) {
     Empty => Unsized { why: NothingEstimated }
     Cons { head: _, tail: _ } => {
       let children = contained_children(nodes: nodes, parent: n.node)
-      let sources = map(children, c => node_source(nodes: nodes, entries: entries, n: c))
+      let sources = map(children, c => node_source_in(nodes: nodes, entries: entries, pieces: pieces, n: c))
       match first_unsized_child(children: children, sources: sources) {
         Present { value: why } => Unsized { why: why }
         Absent => Derived {
@@ -748,9 +764,9 @@ fn unsized_row(node: NodeEstimate) -> List<RoadmapNodeId> {
   }
 }
 
-fn estimate_answer(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> EstimateAnswer {
-  let refusals = estimate_refusals(nodes: nodes, entries: entries)
-  let answered = map(nodes, n => node_estimate(nodes: nodes, entries: entries, n: n))
+fn estimate_answer_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>) -> EstimateAnswer {
+  let refusals = estimate_refusals_in(nodes: nodes, entries: entries, pieces: pieces)
+  let answered = map(nodes, n => node_estimate_in(nodes: nodes, entries: entries, pieces: pieces, n: n))
   match refusals {
     Cons { head: _, tail: _ } => Refused { refusals: refusals }
     Empty => Answered {
@@ -765,17 +781,43 @@ fn estimate_answer(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> Es
   }
 }
 
+// THE SAME READS OVER THE DECLARED TABLE, kept as the public entry points so every existing consumer (the guard, the
+// authority rows, the estimates witness) answers exactly as it did before the pieces table became a value.
+fn estimate_answer(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> EstimateAnswer {
+  estimate_answer_in(nodes: nodes, entries: entries, pieces: roadmap_decompositions)
+}
+
+fn estimate_contradictions(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateContradiction> {
+  estimate_contradictions_in(nodes: nodes, entries: entries, pieces: roadmap_decompositions)
+}
+
+fn estimate_refusals(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateRefusal> {
+  estimate_refusals_in(nodes: nodes, entries: entries, pieces: roadmap_decompositions)
+}
+
+fn restated_piece_days(nodes: List<RoadmapNode>, entries: List<EstimateEntry>) -> List<EstimateRefusal> {
+  restated_piece_days_in(nodes: nodes, entries: entries, pieces: roadmap_decompositions)
+}
+
+fn node_estimate(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> NodeEstimate {
+  node_estimate_in(nodes: nodes, entries: entries, pieces: roadmap_decompositions, n: n)
+}
+
+fn node_source(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, n: RoadmapNode) -> EstimateSource {
+  node_source_in(nodes: nodes, entries: entries, pieces: roadmap_decompositions, n: n)
+}
+
 // THE LIVE READS, and the only ones.
 fn live_estimate_answer() -> EstimateAnswer {
-  estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries)
+  estimate_answer_in(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries, pieces: roadmap_decompositions)
 }
 
 fn live_estimate_contradictions() -> List<EstimateContradiction> {
-  estimate_contradictions(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries)
+  estimate_contradictions_in(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries, pieces: roadmap_decompositions)
 }
 
 fn live_estimate_refusals() -> List<EstimateRefusal> {
-  estimate_refusals(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries)
+  estimate_refusals_in(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries, pieces: roadmap_decompositions)
 }
 
 // ============== THE DATED CARRIER, READ THROUGH THE SAME ONE DERIVATION ==============
@@ -805,7 +847,7 @@ fn dated_entries(nodes: List<RoadmapNode>) -> List<EstimateEntry> {
 // THE CONTRADICTION CHECK OVER THE ROADMAP AS IT STANDS. This is the report the handback carries: every conflict,
 // both sides named, history untouched.
 fn dated_contradictions(nodes: List<RoadmapNode>) -> List<EstimateContradiction> {
-  estimate_contradictions(nodes: nodes, entries: dated_entries(nodes: nodes))
+  estimate_contradictions_in(nodes: nodes, entries: dated_entries(nodes: nodes), pieces: roadmap_decompositions)
 }
 
 // A PAIR THE CHECK CLEARED, and why: two priced nodes related ONLY by prerequisite reachability. A naive check that

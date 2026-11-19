@@ -5825,6 +5825,18 @@ data fleet_converge_event_sha: Expression = ContextAccess { context: Github, pat
 // not a second revision authority and not a checkout selector (operator 2026-10-10). Apply's R is the
 // admitted plan receipt, not this expression.
 //
+// OPERATOR: AT THE PLAN-EXECUTING MODES (apply, dashboard_deploy, desired_instance_deploy) THE VALUE YOU
+// PASS AS expected_revision IS THE PLAN'S REVISION P, NOT THE CURRENT MAIN TIP. The plan ran in its own
+// earlier dispatch at P; the `plan-revision` job emits P; build checks out at P; and this admission
+// compares the expected_revision you supply against that checkout (P). So pass the same sha that
+// plan-revision emits — never main's tip at your dispatch time. Passing main's tip M (which has moved
+// since P) makes admit_optional_expected_revision refuse with RunRevisionRefused naming expected M and
+// observed P, and the cutover stalls even though every path changed since P was unrelated to the plan.
+// The gate is an exact cross-check and stays one: there is no relaxation that admits a moving main, and
+// none is needed — expected_revision = P passes every gate whatever main is (deploy test 44488679086:
+// dispatched --ref main at a tip past P, expected_revision = P, and the checkout-at-plan-revision step
+// and every pointer admission passed). Omitting expected_revision admits the checkout (still P).
+//
 // APPLY AND DASHBOARD_DEPLOY EXECUTE AT THE PLAN RUN'S REVISION R, NOT AT THE DISPATCHED COMMIT.
 // Plan and apply are separate runs and main moves between them; both are dispatched from main so
 // sign-in passes, but apply must run the bytes that were planned. The `plan-revision` job
@@ -7916,7 +7928,7 @@ data fleet_converge_mode_input: DispatchInput = DispatchInput {
 // same fact would be a nickname, and the dispatch-input budget (25) has no room for one.
 data fleet_converge_expected_revision_input: DispatchInput = DispatchInput {
     name: "expected_revision",
-    description: Present { value: "Optional cross-check of the event sha (RLM_EXPECTED_REVISION). Omit to admit github.sha. Present must match the checkout. Malformed refuses. qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not." },
+    description: Present { value: "Optional cross-check of the checked-out revision (RLM_EXPECTED_REVISION). Omit to admit the checkout. Present must equal the checkout. Malformed refuses. AT apply, dashboard_deploy and desired_instance_deploy the checkout is the PLAN's revision P (emitted by the plan-revision job, checked out by build), so the value to pass is that plan revision P — NEVER the current main tip: a main tip M that has moved since P is refused by name. At every other mode the checkout is the event sha (github.sha). qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not." },
     required: false,
     default: none,
     type: InputString,
