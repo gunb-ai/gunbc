@@ -4556,11 +4556,44 @@ data h11ssl_unit3_three_gpu_functions_against_two_reported_cards: IntegrationCon
           },
         ],
       },
-      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The same session's first attempt at the PCI ids failed on sysfs paths without the PCI domain prefix; the retry with domain-prefixed paths read vendor=0x10de device=0x1e37 class=0x030200 on each function (unit_read2.txt, cited above). So what stays open is the CARD COUNT and which machine answers on 192.168.1.236, not the ids.",
+      account: "Read on the unit 2026-11-18 in an admitted read-only session: three GPU functions (0000:01:00.0, 0000:81:00.0, 0000:c1:00.0), three GPU UUIDs, three card serials -- against a report of two Tesla T10. The same session's first attempt at the PCI ids failed on sysfs paths without the PCI domain prefix; the retry with domain-prefixed paths read vendor=0x10de device=0x1e37 class=0x030200 on each function (unit_read2.txt, cited above). So what stays open is the CARD COUNT and which machine answers on 192.168.1.236, not the ids. CLOSED 2026-11-19 by the same source that gave the two-card figure: the operator's own nvidia-smi read on the unit names THREE Tesla T10s, at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, serving as one ken-strata server on :18081 -- the three bus ids the 2026-11-18 receipts already enumerate, so the disagreement was between a report and a later report, and the later one matches what the fleet read. The read receipt stays the authority for the enumeration; the relay is what retires the count question, and it is carried as a report (TranscribedUncited), not minted into an observed standing. The ownership half of the second ask went the same way -- the operator names the machine answering at 192.168.1.236 as this unit, hostname h11-new, tailnet ken.tailecbe08.ts.net at 100.96.80.109 -- and the reads that would confirm it in the fleet's own instruments stay owed where they are written: gunbc.machine_intake::supermicro_h11ssl_unit3_install_nic_address_standing and h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which stay Open.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: h11ssl_unit3_operator_answers_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19"),
+          },
+          tail: [
+            h11ssl_unit3_gpu_identity_receipt,
+            h11ssl_unit3_gpu_pci_ids_receipt,
+          ],
+        },
+        account: "The operator's own read of 2026-11-19 (relayed by chat; the fleet holds no artifact of that session) states three Tesla T10s at 01:00.0, 81:00.0 and c1:00.0, each capped at 100 W, all serving as one ken-strata server on :18081. The 2026-11-18 receipts in this repo enumerate exactly three driver-visible functions and, through the domain-prefixed sysfs paths, read vendor=0x10de device=0x1e37 on each -- so the two sources that survive disagree about nothing except the earlier report's count, and the earlier report is what the row was opened against. WHAT THE RELAY DOES NOT CLOSE, and where those questions live: whether 100 W bounds sustained or peak draw (h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, still Open), and the bus-to-slot pairing, which gunbc.fleet.gpu_device_observation::current_gpu_device_observations keeps unread for each ken board rather than guessing a slot from a domain-prefixed bus id. The enumeration authority remains the receipts; the relay retires only the count question.",
+      },
+    ],
   },
-  disposition: Open,
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "8bbcb0eef46dc8d72ffb2d069660da5514a6c80c" as CommitSha,
+      superseded: [],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19"),
+        tail: [
+          decl_ref(module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations"),
+        ],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet.gpu_board_residence_witness", decl_name: "witness_ken_three_read_gpu_boards_reside_in_ken_alone"),
+          run: "claim_batch --wet, binary sha256 e79a3d77d29acba40ef9500f0db319cdb7b422f4bc58d429038c66ce8e74bc6a built from main a7edfc30d566, entry dag/test/claim/fleet/gpu_board_residence_witness.dag, clean tree at head de6a3a25922a44c6610e00770e77bcf8506e40c8: 7 witness(es), 7 pass, 0 fail. Nothing in a7edfc30..HEAD touches src/, so the interpreter that produced this binary is the one the tree asks for.",
+          conclusion: "Three read T10 boards reside in ken and in no other host, each bound to nvidia_tesla_t10_board_catalog through WholeDeclaration, and the current device population agrees with the containment rows -- the count the operator states is the count the inventory carries, so nothing in this row still points at a fork.",
+        },
+        tail: [],
+      },
+    },
+  },
 }
 
 // THE CAP THE MODEL HOLDS AND THE CAP THE MACHINE RUNS are two different things, and the model has a shape for
