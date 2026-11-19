@@ -3851,7 +3851,6 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_ci_instance_receipt_identity_from_ci
-          cat "$ROOT/target/live-deploy-desired-instance-deploy-identity-receipt/live_deploy_receipt.json"
         env:
           GUNBC_DEPLOY_INSTANCE_SUBJECT: ${{ github.event.inputs.subject_host }}
       - name: Deploy the named srv1 instance (live_deploy_apply_desired_wet_from_ci, receipted; the instance arrives via env)

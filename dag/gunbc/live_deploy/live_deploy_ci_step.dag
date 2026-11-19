@@ -132,7 +132,13 @@ fn gunbc_ci_desired_instance_receipt_identity_invoke() -> String {
     source_roots: witness_layer_roots,
     target: gunbc_ci_desired_instance_receipt_identity_target,
     claim_run: false,
-    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: "desired-instance-deploy-identity")
+    // receipt_rel: none -- the function writes ONLY $GITHUB_OUTPUT (apply.dag:1427), it never
+    // creates a receipt file. A Some(receipt_rel) here makes the projection append a
+    // `cat "$ROOT/<receipt>"` for a file that is never written, which fails the step with
+    // "No such file or directory" and skips the deploy fold (the #16687 cutover defect). Every
+    // sibling output-only invoke in this module already passes none; pinned by
+    // test.claim.gunbc_invoke_witness gunbc_ci_desired_instance_receipt_identity_invoke_has_no_receipt_cat_holds.
+    receipt_rel: none
   )
 }
 
