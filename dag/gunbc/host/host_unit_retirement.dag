@@ -259,6 +259,10 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
     mkdir_parents_argv(path: host_unit_retirement_retained_dir),
     argv_words(command: test_regular_file_command(path: row.retained_path)),
     coreutils_install_file_argv(mode: "0444" as NonEmptyStr, source: row.fragment_path, dest: row.retained_path),
+  ])
+  // Observed BEFORE the judgement, unconditionally: whether the fragment still stands on disk decides
+  // whether trusting a pre-existing retained copy can lose anything.
+  let fragment_probe = host_unit_retirement_exec_all(target, context, [
     argv_words(command: test_regular_file_command(path: row.fragment_path)),
   ])
   // The copy is satisfied when THIS row wrote the retained copy, or when the fragment is already gone and
@@ -268,7 +272,7 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   // accepted (host_unit_retirement_copy_accepted): the row keeps its fragment and reads RetainedCopyAbsent.
   let retained_present = host_unit_retirement_ok(acts.at(3))
   let install_ok = host_unit_retirement_ok(acts.at(4))
-  let fragment_present = host_unit_retirement_ok(acts.at(5))
+  let fragment_present = host_unit_retirement_ok(fragment_probe.at(0))
   let copy_ok = host_unit_retirement_copy_accepted(install_ok: install_ok, fragment_present: fragment_present, retained_present: retained_present)
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
   // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent. The
