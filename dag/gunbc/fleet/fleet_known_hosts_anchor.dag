@@ -950,7 +950,7 @@ fn fleet_remote_leg_kind(leg: FleetRemoteLeg) -> FleetLegKind {
 // reaches an ssh sink: a caller neither computes the ceiling nor may omit it (extdeps.ssh.session
 // ssh_session_exec_portable_words takes wall_deadline with no default, so a leg that states none is a
 // compile error, not an unbounded ssh).
-record FleetSshArmedLeg {
+type FleetSshArmedLeg sole_constructor {
   client_args: List<String>,
   wall_deadline: Optional<Second>,
 }
