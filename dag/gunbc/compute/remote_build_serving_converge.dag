@@ -22,7 +22,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_install_subject_read, fleet_converge_install_refusal_line, InstallSubjectOnNamedSubject, InstallSubjectOnExecutorsOwnMachine, InstallSubjectRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -420,7 +421,7 @@ fn serving_receipt_body(host_name: String, probed_at: String, context_receipt: S
 fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
   match host {
     Absent =>
-      exit_failure(reason: "remote_build_serving_observe: the host was not named; one host per run, named by the dispatch in FLEET_CONVERGE_EXPECTED_HOST")
+      exit_failure(reason: "remote_build_serving_observe: the served host was not named; one subject per run, named by the dispatch in FLEET_CONVERGE_SUBJECT_HOST (the executor that runs the job is named in FLEET_CONVERGE_EXPECTED_HOST and is never the machine being served)")
     Present { value: raw_host } => {
       let hi = raw_host as HostIdentity
       match administrator_ssh_target(host: hi) {
@@ -469,11 +470,41 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
   }
 }
 
+// The host this run SERVES is its SUBJECT, named in its own dispatch row, and it is read through the
+// ONE executor/subject mechanism the host-file modes use (gunbc.fleet.fleet_converge_executor_subject_split),
+// under the INSTALL rule that module attaches to these two modes: a serving mode may act on the machine
+// it stands on, because installing an account, a checkout and a binary drains nothing.
+// One mechanism, one rule table: the subject is read there, the refusals carry the same typed markers,
+// and the SAME workflow precondition step (fleet_converge_executor_subject_split_gate_step) applies the
+// rule before this entry is ever invoked. The served machine is not the EXECUTOR -- the host that runs
+// this job -- and a zero-CI host makes that structural: it has no runner lane of its own to execute
+// anything (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
+// and gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths for butch), so its serving setup is
+// necessarily driven from another host's lane, over ssh, at the address its anchor names.
+//
+// What does NOT refuse here is the pair the bracket modes must refuse: a serving mode acting on the
+// machine it stands on. That is not a hole in the gate, it is the gate reading the rule for this mode
+// (fleet_converge_split_rule_for_mode). The srv3-13 deadlock (refused run 40085967610) is a property of
+// a DRAIN, and these modes drain nothing -- they write an account, a ledger home, a checkout, a
+// toolchain and a binary. srv1, srv3 and srv4 were each set up from their own lane exactly this way
+// (runs 44656574939, 44660458690); refusing it would make a host with no second lane unconvergeable.
+// What stays refused is the part that was never about the deadlock: a run that names no machine at all,
+// and a process that cannot name the lane it is standing on.
 fn remote_build_serving_observe_ci_wet() -> ProcessExit {
-  remote_build_serving_observe_ci_wet_hosted(host: match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariablePresent { value: v } => Present { value: v }
-    ActionsVariableAbsent => none
-  })
+  // THE SUBJECT, BY THE INSTALL RULE (operator ruling 2026-11-20). A zero-CI host like srv14 has no
+  // runner lane of its own, so its serving can only be converged from ANOTHER host's executor lane --
+  // the dispatch names the machine served in FLEET_CONVERGE_SUBJECT_HOST and the lane that runs the job
+  // in the executor identity. A host that DOES have lanes may still be served from its own lane, which
+  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690): under this rule an unnamed
+  // subject means that machine, named by the executor's expected host. What is refused is a run that
+  // names no machine at all, or a process that names no lane -- never a pair that could not deadlock.
+  match fleet_converge_install_subject_read() {
+    InstallSubjectRefused { reason: why } => exit_failure(reason: fleet_converge_install_refusal_line(reason: why))
+    InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: subject } =>
+      remote_build_serving_observe_ci_wet_hosted(host: Present { value: subject as String })
+    InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: own } =>
+      remote_build_serving_observe_ci_wet_hosted(host: Present { value: own as String })
+  }
 }
 
 // ============================ converge decision model ============================
@@ -1266,7 +1297,7 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
 fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
   match host {
     Absent =>
-      exit_failure(reason: "remote_build_serving_converge: the host was not named; one host per run, named by the dispatch in FLEET_CONVERGE_EXPECTED_HOST")
+      exit_failure(reason: "remote_build_serving_converge: the served host was not named; one subject per run, named by the dispatch in FLEET_CONVERGE_SUBJECT_HOST (the executor that runs the job is named in FLEET_CONVERGE_EXPECTED_HOST and is never the machine being mutated)")
     Present { value: raw_host } => {
       let hi = raw_host as HostIdentity
       match administrator_ssh_target(host: hi) {
@@ -1309,9 +1340,21 @@ fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
   }
 }
 
+// Same split as the observe: the served machine is the dispatch's SUBJECT, read through the one
+// mechanism, and an executor that is a slot on that subject refuses before a single write is planned.
 fn remote_build_serving_converge_ci_wet() -> ProcessExit {
-  remote_build_serving_converge_ci_wet_hosted(host: match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariablePresent { value: v } => Present { value: v }
-    ActionsVariableAbsent => none
-  })
+  // THE SUBJECT, BY THE INSTALL RULE (operator ruling 2026-11-20). A zero-CI host like srv14 has no
+  // runner lane of its own, so its serving can only be converged from ANOTHER host's executor lane --
+  // the dispatch names the machine served in FLEET_CONVERGE_SUBJECT_HOST and the lane that runs the job
+  // in the executor identity. A host that DOES have lanes may still be served from its own lane, which
+  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690): under this rule an unnamed
+  // subject means that machine, named by the executor's expected host. What is refused is a run that
+  // names no machine at all, or a process that names no lane -- never a pair that could not deadlock.
+  match fleet_converge_install_subject_read() {
+    InstallSubjectRefused { reason: why } => exit_failure(reason: fleet_converge_install_refusal_line(reason: why))
+    InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: subject } =>
+      remote_build_serving_converge_ci_wet_hosted(host: Present { value: subject as String })
+    InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: own } =>
+      remote_build_serving_converge_ci_wet_hosted(host: Present { value: own as String })
+  }
 }

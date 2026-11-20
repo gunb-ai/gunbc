@@ -265,7 +265,7 @@ import gunbc.machine_intake.mtcollins1_census_ci_step {
   gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke,
 }
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
-import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name }
+import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name }
 import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets, host_primary_network_receipt_path }
 import gunbc.fleet.board_function_converge_delivery { board_function_converge_delivery_receipt_path }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
@@ -532,8 +532,16 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     HostResetReturn => FleetConvergeModeFacts { wire: "host_reset_return", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: "host-reset-return" as NonEmptyStr, is_spark_target: false },
     HostnameConverge => FleetConvergeModeFacts { wire: hostname_converge_mode, scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: hostname_converge_target_input_name }, job_id: "hostname-converge" as NonEmptyStr, is_spark_target: false },
     RunnerHostFileObserve => FleetConvergeModeFacts { wire: "runner_host_file_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    RemoteBuildServingObserve => FleetConvergeModeFacts { wire: "remote_build_serving_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    RemoteBuildServingConverge => FleetConvergeModeFacts { wire: "remote_build_serving_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    // GROUPED ON THE MACHINE IT MUTATES, not on the lane that executes it. The executor is a dispatch row
+    // (inputs.host) and the subject is another (inputs.subject_host, fleet_converge_subject_host_input_name),
+    // so a serve-binary install on butch and a unit teardown on butch queue in gunbc-host-mutation-srv14
+    // behind each other whoever executes them -- the same-machine guarantee the group exists to give, with
+    // no second mechanism deciding serialization. Keying these two on the executor instead would let a
+    // teardown and an install on one machine run at once from two lanes; the mode that retires butch's
+    // serving units (tidy-swift-586) takes this same domain for the same reason.
+    RemoteBuildServingObserve => FleetConvergeModeFacts { wire: "remote_build_serving_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    // Same domain as the observe: grouped on the machine it writes (see the row above).
+    RemoteBuildServingConverge => FleetConvergeModeFacts { wire: "remote_build_serving_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     HostMemoryObserve => FleetConvergeModeFacts { wire: "host_memory_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: OwnRunConfined, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotReserve => FleetConvergeModeFacts { wire: "microvm_slot_reserve", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotStart => FleetConvergeModeFacts { wire: "microvm_slot_start", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -2491,20 +2499,30 @@ fn fleet_converge_runner_host_file_observe_step() -> Step {
 }
 
 fn fleet_converge_remote_build_serving_observe_step() -> Step {
-  fleet_converge_runner_host_file_step(
+  // The served machine is the dispatch's SUBJECT, handed through the same env the host-file acts use --
+  // never the executor's own name -- and the entry reads it through the same split precheck
+  // (gunbc.fleet.fleet_converge_executor_subject_split), so the gate upstream and the entry downstream
+  // cannot drift into different answers to "who am I acting on".
+  fleet_converge_runner_host_file_step_within(
     id: "remote_build_serving_observe",
     name: "Remote-build serving: read one roster host's serving setup over fleet SSH against the derived desired state; emit a per-host plan receipt (no writes)",
     invoke: gunbc_ci_remote_build_serving_observe_invoke(),
     if_condition: fleet_converge_remote_build_serving_observe_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+    extra_env: [kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}"))],
   )
 }
 
 fn fleet_converge_remote_build_serving_converge_step() -> Step {
-  fleet_converge_runner_host_file_step(
+  // Same split as the observe: the mutated machine is the dispatch's SUBJECT, and an executor that is a
+  // slot on that subject is refused by the precondition step and again by the entry, before a write.
+  fleet_converge_runner_host_file_step_within(
     id: "remote_build_serving_converge",
     name: "Remote-build serving: converge one roster host's serving setup to the derived desired state (plan-decided, re-observed settled, refused unless every arm is handled and the seed-binary arch matches)",
     invoke: gunbc_ci_remote_build_serving_converge_invoke(),
     if_condition: fleet_converge_remote_build_serving_converge_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+    extra_env: [kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}"))],
   )
 }
 
@@ -2617,20 +2635,54 @@ fn fleet_converge_runner_host_restore_step() -> Step {
 // text, and the absence of any actuation invoke in the step.
 // The gate step's `if:` tree: the three act modes and nothing else. The step serializes exactly this
 // tree, and the linkage control evaluates it (test.claim.fleet.fleet_converge_host_cap_linkage_witness).
+// WHICH MODES NAME THEIR SUBJECT IN THE DISPATCH, AND THEREFORE NEED THE SPLIT. ONE FACT, TWO
+// CONSUMERS: the precondition gate's `if:` and every step's FLEET_CONVERGE_SUBJECT_HOST env are read
+// from THIS list, so a mode cannot be gated without being handed its subject, nor handed a subject it
+// is not gated on. A mode that acts on the machine it runs on names no subject and gets neither.
+//
+// The trio is the bracket-drain family (a runner-file act whose executor must not be a slot on its own
+// subject -- the srv3-13 self-drain deadlock, run 40085967610). The pair is the remote-build serving
+// family: a zero-CI host has no runner lane of its own to execute anything (the operator ruling adopted
+// by gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign; for
+// butch, gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths decides a width of zero and
+// gunbc.runner.runner_host_deploy admits that shape as RunnerHostDeployZeroWidthAdmitted -- "zero
+// fabric slots to deploy"), so its serving observe/converge is driven from another host's lane, over
+// ssh, at the address its anchor names. Before this, those two modes read the EXECUTOR's name as the
+// machine they serve -- true only while every serving host was also its own executor, which is how
+// srv1/srv3/srv4 were set up (runs 44656574939 and 44660458690 ran labeled srv3 and srv4) and what a
+// host with no CI can never be.
+// The dispatch row that carries the subject's name. One spelling for the group key and the env value.
+data fleet_converge_subject_host_input_name: NonEmptyStr = "subject_host"
+
+fn fleet_converge_modes_naming_a_subject() -> List<FleetConvergeWorkflowMode> {
+  [
+    RunnerHostFileConverge,
+    RunnerHostWithdraw,
+    RunnerHostRestore,
+    RemoteBuildServingObserve,
+    RemoteBuildServingConverge,
+  ]
+}
+
 fn fleet_converge_executor_subject_split_gate_if() -> Expression {
-  fleet_converge_any_mode_expression(modes: [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore])
+  fleet_converge_any_mode_expression(modes: fleet_converge_modes_naming_a_subject())
 }
 
 fn fleet_converge_executor_subject_split_gate_step() -> Step {
   RunStep {
-    name: Present { value: "Split precondition: refuse a run whose executor host is its own subject (self-drain deadlock, run 40085967610)" },
+    name: Present { value: "Split precondition, by the dispatched mode's rule: a drain mode refuses a run whose executor host is its own subject (self-drain deadlock, run 40085967610) or names no subject; a serving mode must at least name the machine it serves and the lane it runs on" },
     id: Present { value: "fleet_converge_executor_subject_split_gate" },
-    run: fleet_converge_split_gate_step_run(executor_env_name: fleet_converge_expected_host_env_name, subject_env_name: fleet_converge_subject_host_env_name),
+    run: fleet_converge_split_gate_step_run(executor_env_name: fleet_converge_expected_host_env_name, subject_env_name: fleet_converge_subject_host_env_name, mode_env_name: fleet_converge_mode_env_name),
     shell: none,
     env: Present {
       value: [
         kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
         kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+        // THE RULE IS CHOSEN BY THE MODE, not by a second step or a second gate: the script reads this
+        // and applies SubjectRequiredAndDistinct to the drain trio and
+        // SubjectMayBeTheExecutorsOwnMachine to the serving pair (operator ruling 2026-11-20). Without
+        // it the drain refusals would be applied to a mode that cannot deadlock.
+        kv(key: fleet_converge_mode_env_name, value: yaml_string(s: "${{ github.event.inputs.mode }}")),
       ]
     },
     working_directory: none,
@@ -7908,7 +7960,7 @@ data fleet_converge_host_input: DispatchInput = DispatchInput {
 
 data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
     name: "subject_host",
-    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg. desired_instance_deploy ONLY: the value is PACKED '<host>:<instance_id>' (e.g. srv1:srv1-lab-codex-feedback-v0) -- the host still means the host, and the ONE instance to converge rides on it after the colon; the options list carries those packed rows, derived from the srv1 roster minus the prod-role holder. A typed parser reads both halves and the deploy refuses a malformed value, a host that is not the instance's own roster host, or the prod-role holder." },
+    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, remote_build_serving_observe / converge, host_primary_network_observe / converge, board_function_converge, qualification_attempt, service_slot_start). hostname_converge only: the TARGET whose Linux hostname converges -- the name it converges TO is never an input, it comes from gunbc.hostname_allocation canonical_hostname_for_fleet_slot through deployed_intent_v1_from_fleet_slot, and the name a rollback writes back comes from the committed baseline, so no dispatch can rename a machine to a name the allocation does not admit. It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg. desired_instance_deploy ONLY: the value is PACKED '<host>:<instance_id>' (e.g. srv1:srv1-lab-codex-feedback-v0) -- the host still means the host, and the ONE instance to converge rides on it after the colon; the options list carries those packed rows, derived from the srv1 roster minus the prod-role holder. A typed parser reads both halves and the deploy refuses a malformed value, a host that is not the instance's own roster host, or the prod-role holder." },
     required: false,
     default: none,
     type: InputChoice { options: concat(fleet_converge_enrolled_host_options, fleet_converge_desired_instance_deploy_options(rows: desired_deployment_roster(), host: operator_host_srv1)) },

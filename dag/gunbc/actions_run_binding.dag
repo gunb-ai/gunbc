@@ -168,6 +168,12 @@ data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HO
 // refuses as a precondition, before any drain or mask actuation, and readback stays an edge read.
 data fleet_converge_subject_host_env_name: String = "FLEET_CONVERGE_SUBJECT_HOST"
 
+// WHICH MODE THE DISPATCH NAMED, bound as an env name for any step that must decide per-mode. The
+// split gate reads it: the two split refusals are per-mode rules, not one rule for every mode that
+// ever names a subject (operator ruling 2026-11-20). The name is already what other steps bind it as
+// (gunbc.fleet.fleet_release_bins_key release_bins_mode_env); one spelling, no fork.
+data fleet_converge_mode_env_name: String = "FLEET_CONVERGE_MODE"
+
 data fleet_converge_arrival_subject_env_name: String = "FLEET_CONVERGE_ARRIVAL_SUBJECT"
 
 type ExpectedRevisionRead

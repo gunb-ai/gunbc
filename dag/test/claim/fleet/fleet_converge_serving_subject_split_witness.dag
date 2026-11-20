@@ -1,0 +1,312 @@
+module test.claim.fleet.fleet_converge_serving_subject_split_witness
+
+import std.types { Bool, String, List }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import gunbc.actions_run_binding { fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
+import v2.workflow.bash_emit { Accepted, Rejected }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_converge_executor_subject_split {
+  fleet_converge_split_precheck,
+  fleet_converge_install_subject_decision,
+  fleet_converge_split_rule_for_mode,
+  fleet_converge_split_gate_script,
+  fleet_converge_split_missing_subject_marker,
+  fleet_converge_split_missing_executor_marker,
+  fleet_converge_split_refusal_marker,
+  fleet_converge_install_rule_mode_wires,
+  SplitSubjectRule,
+  SubjectRequiredAndDistinct,
+  SubjectMayBeTheExecutorsOwnMachine,
+  SubjectAbsent,
+  ExecutorIdentityAbsent,
+  InstallSubjectOnNamedSubject,
+  InstallSubjectOnExecutorsOwnMachine,
+  InstallSubjectRefused,
+  SplitOk,
+  SplitRefused,
+}
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow_modes,
+  fleet_converge_workflow_mode_wire,
+  fleet_converge_executor_subject_split_gate_step,
+  fleet_converge_mode_mutation_domain,
+  fleet_converge_modes_naming_a_subject,
+  fleet_converge_remote_build_serving_converge_step,
+  fleet_converge_remote_build_serving_observe_step,
+  fleet_converge_runner_host_file_observe_step,
+  fleet_converge_subject_host_input_name,
+  fleet_converge_arm_domain_clause,
+  hostname_converge_target_input_name,
+  step_condition_text,
+  FleetConvergeWorkflowMode,
+  HostMemoryObserve,
+  ExecutorDomain,
+}
+import gunbc.fleet.fleet_known_hosts_anchor { anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, SshTargetResolved, SshTargetRefused }
+import product.host_identity { HostIdentity }
+import extdeps.github.actions { Step, RunStep }
+
+// A HOST WITH NO CI CANNOT CONVERGE ITS OWN SERVING, AND NOTHING IN THE MODEL MAY PRETEND OTHERWISE.
+// Butch (srv14) is admitted to remote build with no CI runner of its own:
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign (#16748) rules
+// that hosted CI dispatches to remote build, and
+// gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths decides its committed width is a zero that was
+// RULED -- not a width the model failed to derive -- which gunbc.runner.runner_host_deploy admits as
+// RunnerHostDeployZeroWidthAdmitted ("zero fabric slots to deploy"). Zero slots means there is no runner lane
+// on butch, so no fleet-converge job can EVER run on butch. Every act on butch, its serving setup included,
+// must come from another host's executor lane, over ssh, at the address its anchor names. The two acts
+// already performed on butch were exactly that: mode=runner_host_file_converge host=srv1 (runs 43448221797,
+// 43561214659). This witness pins that routing, and pins the rule boundary the operator drew on 2026-11-20:
+// the split refusals belong to the modes that DRAIN their subject, and a mode that only INSTALLS on a
+// subject is refused for naming no machine, never for naming the one it stands on.
+//
+// WHY THIS IS NOT A SECOND MECHANISM. The subject travels in the dispatch row the drain trio already uses
+// (`subject_host` -> FLEET_CONVERGE_SUBJECT_HOST), is read by the precheck in the same module
+// (gunbc.fleet.fleet_converge_executor_subject_split), is gated by the same precondition step, and serializes
+// on the same host-mutation group keyed on the machine being MUTATED -- the group tidy-swift-586 and I agreed
+// the retirement of butch's serving units rides too (dispatch host=srv1 subject_host=srv14). The only new
+// fact in the workflow is that the one gate step is told WHICH MODE was dispatched, because the refusals are
+// per-mode rules and not one rule for every mode that ever names a subject.
+
+// (1) THE GATE COVERS EXACTLY THE ROSTER -- no mode outside it is gated, no mode inside it is not. This is
+// the drift control between the disjunction in the `if:` and the list the entries and the env come from: a
+// mode gated but never handed its subject could not satisfy its own precondition, and a mode handed a
+// subject without the gate is the old conflation.
+test fn the_split_gate_covers_exactly_the_subject_roster() -> Bool {
+  let cond = step_condition_text(step: fleet_converge_executor_subject_split_gate_step())
+  let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
+  let outside = filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => !any(roster, r => r == w))
+  length(roster) == 5
+    && all(roster, w => string_contains(s: cond, pattern: concat("'", w, "'")))
+    && !any(outside, w => string_contains(s: cond, pattern: concat("'", w, "'")))
+    && any(roster, w => w == "remote_build_serving_converge")
+    && any(roster, w => w == "remote_build_serving_observe")
+}
+
+// (2) A MODE THAT NAMES NO SUBJECT IS NOT GATED AND IS NOT HANDED ONE. `runner_host_file_observe` reads the
+// executor's own state; it has no subject. Control: if the disjunction or the env grew to cover it, the gate
+// would become a precondition spread over modes that cannot satisfy it -- an observe dispatch has no subject
+// input to give, so it would refuse with no way to be admitted.
+test fn a_mode_that_names_no_subject_gets_neither_the_gate_nor_the_env() -> Bool {
+  let cond = step_condition_text(step: fleet_converge_executor_subject_split_gate_step())
+  !string_contains(s: cond, pattern: "'runner_host_file_observe'")
+    && env_keys(step: fleet_converge_runner_host_file_observe_step()) == [fleet_converge_expected_host_env_name]
+}
+
+// (3) THE ONE GATE STEP IS TOLD THE MODE, because the refusals are per-mode rules. It cannot be a second gate
+// pretending to be the first, so the mode goes into the SAME step's env and the emitted script tests it --
+// against the same list the entries read. The empty-script arm is refused by the generation gate
+// (fleet_converge_split_gate_script_admitted), so a script the fold rejects stops the yml being emitted at
+// all rather than shipping a syntax error.
+test fn the_gate_step_binds_the_mode_and_the_script_carries_the_rule_test() -> Bool {
+  let gate = fleet_converge_executor_subject_split_gate_step()
+  let script = fleet_converge_split_gate_script(
+    executor_env_name: fleet_converge_expected_host_env_name,
+    subject_env_name: fleet_converge_subject_host_env_name,
+    mode_env_name: fleet_converge_mode_env_name
+  )
+  env_keys(step: gate) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name]
+    && env_text(step: gate, key: fleet_converge_mode_env_name) == "${{ github.event.inputs.mode }}"
+    && match script {
+      Accepted { value: s, diagnostics: _ } =>
+        string_contains(s: s, pattern: concat("$", fleet_converge_mode_env_name))
+          && all(fleet_converge_install_rule_mode_wires, w => string_contains(s: s, pattern: w))
+          && string_contains(s: s, pattern: "!=")
+          && string_contains(s: s, pattern: fleet_converge_split_missing_subject_marker)
+          && string_contains(s: s, pattern: fleet_converge_split_missing_executor_marker)
+          && string_contains(s: s, pattern: fleet_converge_split_refusal_marker)
+          && !string_contains(s: s, pattern: "--entry")
+      Rejected { diagnostics: _ } => false
+    }
+}
+
+// (4) THE SERVING STEPS SEPARATE THE TWO ROLES IN THEIR ENV. `host` stays the EXECUTOR -- it is what runs-on
+// keys on (fleet-converge.yml's `fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host))`)
+// and what the job's own facts describe; `subject_host` is the machine served. Control: the executor half
+// missing, or the two bindings collapsing to one, makes the label and the acted-on machine the same variable
+// again -- which is the conflation this whole routing removes.
+test fn the_serving_steps_carry_the_subject_and_keep_the_executor_separate() -> Bool {
+  let observe = fleet_converge_remote_build_serving_observe_step()
+  let converge = fleet_converge_remote_build_serving_converge_step()
+  all([observe, converge], s =>
+    env_keys(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name]
+      && env_text(step: s, key: fleet_converge_subject_host_env_name) == concat("${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")
+      && env_text(step: s, key: fleet_converge_expected_host_env_name) == "${{ github.event.inputs.host }}"
+  )
+    && env_text(step: observe, key: fleet_converge_subject_host_env_name) != env_text(step: observe, key: fleet_converge_expected_host_env_name)
+}
+
+// (5) THE SERVING PAIR IS GROUPED ON THE MACHINE IT MUTATES, not on the lane that happens to execute it. The
+// arm clause concatenates the host-mutation group prefix with the SUBJECT input, so a serve-binary install on
+// butch and the retirement of butch's serving units queue behind each other in gunbc-host-mutation-srv14
+// whoever executes them -- which is what the operator's "one fleet-converge run at a time on the srv1
+// host-mutation group" rule has been covering by hand. The field is the same dispatch row the hostname
+// converge already groups on, so "the machine being acted on" has ONE spelling in this workflow. Control: a
+// mode grouped on the executor produces no arm clause at all -- the group falls through to the executor input
+// -- which is exactly what these two modes were before this change, and exactly the hole the srv1-executes /
+// butch-subject dispatch falls through.
+test fn the_serving_pair_is_grouped_on_the_machine_it_mutates() -> Bool {
+  let observe = fleet_converge_arm_domain_clause(mode: mode_named(name: "remote_build_serving_observe"))
+  let converge = fleet_converge_arm_domain_clause(mode: mode_named(name: "remote_build_serving_converge"))
+  all([observe, converge], clause =>
+    string_contains(s: clause, pattern: "github.event.inputs.subject_host")
+      && string_contains(s: clause, pattern: "gunbc-host-mutation-")
+  )
+    && fleet_converge_subject_host_input_name == hostname_converge_target_input_name
+    && match fleet_converge_mode_mutation_domain(mode: mode_named(name: "runner_host_file_observe")) {
+      ExecutorDomain => fleet_converge_arm_domain_clause(mode: mode_named(name: "runner_host_file_observe")) == ""
+      _ => false
+    }
+    && fleet_converge_arm_domain_clause(mode: mode_named(name: "runner_host_file_converge")) != ""
+}
+
+// (6) THE BUTCH DISPATCH IS ADMITTED: srv1 executing for a srv14 subject is the shape the operator assigned,
+// and srv14 names no srv1 slot, so nothing about it can self-drain.
+test fn srv1_executing_for_a_butch_subject_is_admitted() -> Bool {
+  match fleet_converge_split_precheck(executor_runner_name: Present { value: "srv1-03-1764067000-4213" }, subject_host: Present { value: "srv14" }) {
+    SplitOk { executor_runner_name: _, subject_host: subject } => subject == "srv14"
+    _ => false
+  }
+}
+
+// (7) THE DRAIN RULE STILL REFUSES A HOST ACTING ON ITSELF. Red control the manager asked for: a mode under
+// the drain rule whose executor proves its own subject is refused before any plan is read (the self-drain
+// deadlock, refused run 40085967610, actions-runner@srv3-13 draining srv3). Both spellings refuse -- a bare
+// host name and a full runner name. And a mode that declares NO rule falls back to the drain rule: the
+// default is the stricter one, so a new subject-naming mode is refused rather than served by accident.
+test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
+  match fleet_converge_split_rule_for_mode(mode: "runner_host_withdraw") {
+    SubjectRequiredAndDistinct => true
+    _ => false
+  }
+    && match fleet_converge_split_precheck(executor_runner_name: Present { value: "srv14" }, subject_host: Present { value: "srv14" }) {
+      SplitRefused { reason: _ } => true
+      _ => false
+    }
+    && match fleet_converge_split_precheck(executor_runner_name: Present { value: "actions-runner@srv14-01" }, subject_host: Present { value: "srv14" }) {
+      SplitRefused { reason: _ } => true
+      _ => false
+    }
+    && match fleet_converge_split_rule_for_mode(mode: "qualification_attempt") {
+      SubjectRequiredAndDistinct => true
+      _ => false
+    }
+}
+
+// (8) THE SERVING PAIR ADMITS THE PAIR THE DRAIN RULE REFUSES, because installing an account, a ledger home,
+// a checkout, a toolchain and a binary drains nothing -- and this is not a theoretical concession. srv1, srv3
+// and srv4 were each set up FROM THEIR OWN LANES exactly this way (runs 44656574939, 44660458690), so applying
+// the drain rule to these modes would leave a host with no second lane impossible to converge, and srv1 --
+// which serves remote builds and is its own executor -- unconvergeable forever.
+test fn the_install_rule_admits_the_pair_the_drain_rule_refuses() -> Bool {
+  match fleet_converge_split_rule_for_mode(mode: "remote_build_serving_converge") {
+    SubjectMayBeTheExecutorsOwnMachine => true
+    _ => false
+  }
+    && match fleet_converge_split_rule_for_mode(mode: "remote_build_serving_observe") {
+      SubjectMayBeTheExecutorsOwnMachine => true
+      _ => false
+    }
+    && match fleet_converge_install_subject_decision(executor_runner_name: "actions-runner@srv14-01", named_subject: "srv14", own_host: "srv1") {
+      InstallSubjectOnNamedSubject { executor_runner_name: e, subject_host: s } => e == "actions-runner@srv14-01" && s == "srv14"
+      _ => false
+    }
+    && match fleet_converge_install_subject_decision(executor_runner_name: "srv3-01-1764067000-1", named_subject: "srv3", own_host: "srv3") {
+      InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: s } => s == "srv3"
+      _ => false
+    }
+}
+
+// (9) WHAT STAYS REFUSED FOR A SERVING MODE: a dispatch that names no machine at all, and a process that
+// names no lane. Red control: the subject-empty case answers SubjectAbsent -- the entry must NOT fill the
+// subject in from the executor's slot identity, because "the machine you are standing on" is precisely what
+// an operator does not mean when they dispatch a remote host -- and the nameless-lane case answers
+// ExecutorIdentityAbsent, because a host mutation performed by a process no registered lane owns has no
+// executor to attribute it to. The one admissible same-machine case is the historical one: the executor's own
+// expected HOST names the machine.
+test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
+  match fleet_converge_install_subject_decision(executor_runner_name: "srv1-03-1764067000-4213", named_subject: "", own_host: "") {
+    InstallSubjectRefused { reason: why } => match reason { SubjectAbsent => true  _ => false }
+    _ => false
+  }
+    && match fleet_converge_install_subject_decision(executor_runner_name: "", named_subject: "srv14", own_host: "srv1") {
+      InstallSubjectRefused { reason: why } => match reason { ExecutorIdentityAbsent => true  _ => false }
+      _ => false
+    }
+    && match fleet_converge_install_subject_decision(executor_runner_name: "srv3-01-1764067000-1", named_subject: "", own_host: "srv3") {
+      InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: h } => h == "srv3"
+      _ => false
+    }
+    && match fleet_converge_install_subject_decision(executor_runner_name: "", named_subject: "", own_host: "") {
+      InstallSubjectRefused { reason: why } => match reason { ExecutorIdentityAbsent => true  _ => false }
+      _ => false
+    }
+}
+
+// (10) A SERVING SUBJECT MUST RESOLVE TO AN ADDRESS THE ANCHOR NAMES. The legs dial the anchored address of
+// the subject (gunbc.fleet.fleet_known_hosts_anchor::anchored_ssh_target), so a subject the anchor does not
+// know refuses there instead of connecting somewhere guessed. Red control: a name no anchor row carries.
+// Positive: srv14 IS anchored today, which is why butch's admission is not blocked on
+// gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for resolving registry hosts to their tailnet names
+// (#16762, tidy-pike-449, still open) or on butch's stale .205 anchor being retired (#16655). Reach by
+// tailnet name is that pair's fact to land; what this claim holds is that no leg may dial an unanchored name.
+test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
+  match anchored_ssh_target(host: "srv-not-in-the-registry" as HostIdentity, principal: executor_bootstrap_principal.login) {
+    SshTargetRefused { endpoint: _, refusal: why } => string_contains(s: ssh_target_refusal_text(endpoint: "srv-not-in-the-registry", refusal: why), pattern: "anchor row")
+    _ => false
+  }
+    && match anchored_ssh_target(host: "srv14" as HostIdentity, principal: executor_bootstrap_principal.login) {
+      SshTargetResolved { target: t } => ssh_target_wire(target: t) as String != ""
+      _ => false
+    }
+}
+
+// (11) THE RULE LIST AND THE ROSTER NAME THE SAME PAIR, in one wire spelling, and the roster is exactly the
+// three act modes plus the two serving modes. If the install-rule list grew past the roster, a mode would be
+// handed the lenient rule by the script and the strict one by nothing -- or vice versa -- and the two halves
+// of the same gate would disagree.
+test fn the_rule_list_and_the_roster_name_the_same_pair() -> Bool {
+  let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
+  length(fleet_converge_install_rule_mode_wires) == 2
+    && length(roster) == 5
+    && all(fleet_converge_install_rule_mode_wires, w => any(roster, r => r == w))
+    && all(roster, w => any(fleet_converge_install_rule_mode_wires, x => x == w) || w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
+    && all(fleet_converge_install_rule_mode_wires, w => match fleet_converge_split_rule_for_mode(mode: w) { SubjectMayBeTheExecutorsOwnMachine => true  _ => false })
+    && none(roster, w => w == "runner_host_file_observe")
+}
+
+// ---------------------------------------------------------------- helpers
+
+fn mode_named(name: String) -> FleetConvergeWorkflowMode {
+  first(map(filter(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == name), m => m), default: HostMemoryObserve)
+}
+
+fn env_pairs(step: Step) -> List<YamlKeyValue> {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match e {
+      Present { value: kvs } => kvs
+      Absent => []
+    }
+    UsesStep { name: _, id: _, uses: _, with: _, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match e {
+      Present { value: kvs } => kvs
+      Absent => []
+    }
+  }
+}
+
+fn env_keys(step: Step) -> List<String> {
+  map(env_pairs(step: step), e => e.key)
+}
+
+fn env_text(step: Step, key: String) -> String {
+  first(map(filter(env_pairs(step: step), e => e.key == key), e => value_text(value: e.value)), default: "")
+}
+
+fn value_text(v: YamlValue) -> String {
+  match v {
+    YamlString { value: s } => s as String
+    _ => ""
+  }
+}
