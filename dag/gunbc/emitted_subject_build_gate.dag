@@ -4,7 +4,7 @@ import std.types { Bool, String, List }
 import std.algebra { list_append, list_map }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { byte_size_saturating_sub }
-import extdeps.bazel.label { Label, render_label }
+import extdeps.bazel.label { Label, render_label, label_structural_eq }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
@@ -94,6 +94,24 @@ fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
     EmittedSubjectBuildRow { label: self_host_label(), step_id: emitted_subject_self_host_step_id },
     EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: emitted_subject_v2_native_cli_step_id },
   ]
+}
+
+// WHICH ROW CARRIES THIS LABEL, ANSWERED BY THE ROWS THEMSELVES. Every door that turns a label someone
+// typed into a gate subject has to ask this question, so it is answered ONCE here, next to the rows: the
+// label the caller parsed is compared to each row's own Label with extdeps.bazel.label's structural
+// equality -- the module that owns the grammar owns the comparison, and string equality on renderings
+// would let two spellings of one label mean two things. Absence is not a defect of the label: it is a
+// well-formed label for something the required gate does not have, and the caller refuses with that
+// fact rather than substituting a nearby row.
+fn emitted_subject_build_row_for_label(l: Label) -> EmittedSubjectBuildRow? {
+  match filter(emitted_subject_build_rows(), row => label_structural_eq(a: row.label, b: l)) {
+    Empty {} => none
+    Cons { head: row, tail: Empty {} } => Present { value: row }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+      // Two rows carrying one label would be two authorities over one subject; the rows are declared
+      // literally, so this is a defect in THIS module, and the refusal of the label is where it surfaces.
+      none
+  }
 }
 
 // THE LABEL TEXT IS RENDERED FROM THE DECLARATION, never typed. `render_label` is the upstream

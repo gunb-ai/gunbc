@@ -35,6 +35,7 @@ import gunbc.compute.work_provider_local {
 import gunbc.compute.remote_build {
   RemoteBuildRequest, RemoteBuildRequestDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
   remote_build_request_refusal_text, remote_build_source_ref_name, remote_build_work_operation,
+  remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild,
   RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
@@ -231,17 +232,28 @@ fn remote_build_provide_on(instance: HostDashboardInstance, request: RemoteBuild
   )
 }
 
-// THE BUILD FIRST, answered by its own typed outcome (gunbc.compute.remote_build, the dependency rule):
-// a failed build is the work's answer, a full pool or a build in flight is that, and only a build that
-// succeeded (produced or attached) goes on to the operation, which then attaches to it.
+// THE DEPENDENCY RULE DECIDES THE SHAPE OF THE RUN, and it is decided in gunbc.compute.remote_build,
+// not read off the request here. A request that depends on the seed build gets THE BUILD FIRST, answered
+// by its own typed outcome: a failed build is the work's answer, a full pool or a build in flight is
+// that, and only a build that succeeded (produced or attached) goes on to the operation, which then
+// attaches to it. A request that carries its own seed build goes to its operation directly, because for
+// it the attached binary is the wrong answer and the second reservation is a second door to refuse.
 fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
-  let build = remote_build_provide_on(instance: instance, request: request, op: remote_build_dependency_operation())
-  match remote_build_ending_of_provide(r: build) {
-    ServeServed => {
-      let result = remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
-      remote_build_serve_answer(ending: remote_build_ending_of_provide(r: result), text: provide_result_document(r: result))
+  match remote_build_dependency_rule(op: request.operation) {
+    RemoteBuildCarriesItsOwnSeedBuild => {
+      let carried = remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
+      remote_build_serve_answer(ending: remote_build_ending_of_provide(r: carried), text: provide_result_document(r: carried))
     }
-    _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
+    RemoteBuildBuildsTheSeedFirst => {
+      let build = remote_build_provide_on(instance: instance, request: request, op: remote_build_dependency_operation())
+      match remote_build_ending_of_provide(r: build) {
+        ServeServed => {
+          let result = remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
+          remote_build_serve_answer(ending: remote_build_ending_of_provide(r: result), text: provide_result_document(r: result))
+        }
+        _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
+      }
+    }
   }
 }
 
