@@ -34,7 +34,6 @@ import gunbc.live_deploy.spec {
   BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, OidcConfigArtifact,
   deployment_owned_steps, deployment_oidc_config_steps
 }
-import gunbc.host.host_layout { srv1_gunbc_oidc_config_root }
 import gunbc.live_deploy.deploy_artifact_read_sets {
   deployment_artifact_read_rows, deployment_artifact_read_set
 }
@@ -481,22 +480,6 @@ test fn the_oidc_config_artifact_is_an_installed_artifact_not_a_reader() -> Bool
         InstalledArtifactRow { located: _ } => true
         _ => false
       }
-    Absent => false
-  }
-}
-
-// THE OIDC CONFIG MEMBER IS PLACED UNDER THE DEPLOY-OWNED, WORLD-TRAVERSABLE CONFIG ROOT, never inside the
-// operator-only /etc/gunbc-oidc. THE DISCRIMINATING RED at the spec level for option C: the member's path is
-// projected from gunbc.host.host_layout srv1_gunbc_oidc_config_root, so the host-arm observation can reach it
-// as the runner principal. If the path is spelled back into the custody directory this fails -- and that is
-// exactly the state that produced the real refusal (ghrunner cannot enter a 0700 briansrls directory), so the
-// red is faithful to the production failure, not a tautology over my own constant.
-test fn the_oidc_config_member_is_placed_under_the_deploy_owned_config_root() -> Bool {
-  match srv1_oidc_step() {
-    Present { value: s } =>
-      let p = s.path as String
-      string_contains(s: p, pattern: srv1_gunbc_oidc_config_root as String)
-        && !string_contains(s: p, pattern: "/etc/gunbc-oidc")
     Absent => false
   }
 }

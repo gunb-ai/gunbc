@@ -1160,8 +1160,8 @@ test fn no_oidc_apply_leg_names_the_operator_only_directory() -> Bool {
       let dir_words = words_at(legs: ls, step: "oidc-config-dir")
       let file_words = words_at(legs: ls, step: "oidc-config")
       let payload = payload_at(legs: ls, step: "oidc-config")
-      !any(dir_words, w => string_contains(s: w, pattern: "/etc/gunbc-oidc"))
-        && !any(file_words, w => string_contains(s: w, pattern: "/etc/gunbc-oidc"))
+      !any(xs: dir_words, predicate: fn(w) { string_contains(s: w, pattern: "/etc/gunbc-oidc") })
+        && !any(xs: file_words, predicate: fn(w) { string_contains(s: w, pattern: "/etc/gunbc-oidc") })
         && string_contains(s: payload, pattern: "/etc/gunbc-oidc")
     ApplyPlanRefused { step: _, reason: _ } => false
   }
