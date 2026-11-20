@@ -68,3 +68,15 @@ test fn the_emitted_workflow_gates_forks_and_types_the_not_configured_notice() -
     && contains(haystack: rendered, needle: "merge_group")
     && contains(haystack: rendered, needle: "::notice::not configured")
 }
+
+// THE MERGE-GROUP FAIL-CLOSED ARM (review 96834): repository secrets MUST exist on merge_group,
+// so their absence there is an incident, not a skip — the emitted bytes must carry the typed
+// '::error::' and exit 1 under the $GITHUB_EVENT_NAME = merge_group test. Without this arm a
+// rotated or deleted secret turns the shadow gate into a permanent silent pass.
+test fn the_emitted_workflow_fails_closed_on_merge_group_when_secrets_are_absent() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "$GITHUB_EVENT_NAME")
+    && contains(haystack: rendered, needle: "merge_group\" ]")
+    && contains(haystack: rendered, needle: "::error::not configured")
+    && contains(haystack: rendered, needle: "exit 1")
+}

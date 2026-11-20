@@ -143,7 +143,7 @@ fn shadow_gate_config_check_script() -> String {
     shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret),
     "\" ] || [ -z \"",
     shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key),
-    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::not configured: required secret absent; shadow gate skipped'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
+    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ]; then\n    echo '::error::not configured: required secret absent on merge_group; the shadow gate refuses to silently pass'\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
   ], "")
 }
 
@@ -164,11 +164,17 @@ data shadow_gate_tailscale_args: String = concat("--accept-dns=false --ephemeral
 // ── THE CONFIG-CHECK STEP ─────────────────────────────────────────────────────────────────────────
 //
 // Before anything that needs a secret runs, this step checks whether the required secrets
-// are present. If they are absent (the operator has not set them yet), it prints the typed
-// notice and writes configured=false to the step output; every downstream step skips via
-// if_condition. The job is neither green-as-passed nor red: it reports the gate was not
-// attempted. The red control: when secrets ARE present and the remote gate fails, the
-// exit code propagates normally.
+// are present. The arms are typed per event (fail-closed: every degradation is typed, located
+// and countable — gunbc.design_argument::fail_closed):
+// - pull_request with secrets absent: typed '::notice::' + configured=false, downstream steps
+//   skip. This is the documented fork arm (forks get no secrets) and the pre-cutover case;
+//   the job reports "not attempted", neither green-as-passed nor red.
+// - merge_group with secrets absent: '::error::' + exit 1. On merge_group the repository
+//   secrets MUST be present, so their absence is a rotated/deleted-secret incident and the
+//   shadow gate must not degrade into a permanent silent pass. The config job goes red and
+//   the dependent shadow job never runs.
+// - secrets present: configured=true; when the remote gate fails its exit code propagates
+//   normally (the red control).
 
 data shadow_gate_config_job_id: String = "shadow-gate-config"
 

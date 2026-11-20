@@ -21,7 +21,11 @@ jobs:
         run: |
           if [ -z "${{ secrets.TS_OAUTH_CLIENT_ID }}" ] || [ -z "${{ secrets.TS_OAUTH_SECRET }}" ] || [ -z "${{ secrets.GUNBC_REMOTE_BUILD_CI_SSH_KEY }}" ]; then
             echo 'configured=false' >> $GITHUB_OUTPUT
-            echo '::notice::not configured: required secret absent; shadow gate skipped'
+            if [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+              echo '::error::not configured: required secret absent on merge_group; the shadow gate refuses to silently pass'
+              exit 1
+            fi
+            echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'
           else
             echo 'configured=true' >> $GITHUB_OUTPUT
           fi
