@@ -998,6 +998,18 @@ data serve_entry_verdict_step_raised_to_45_minutes: DesignRuling = DesignRuling 
   provenance: "Operator, 2026-11-14, relayed verbatim by session neat-badger-614 (msg_a27efa77) to session bright-ibex-807. Question as put to the operator: raise the fleet-converge plan run's serve-entry compile verdict step bound from 30 to 45 minutes (gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, ci_job_budgets_closed_to_growth). Operator words, verbatim: \"yes thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: that one step, 30 -> 45 minutes. Evidence: plan run 43593733352 was killed at 30m in this step; on srv1 the child compile measured 1607 s and the step 1798 s wall, 13.6 GB peak. The fleet job backstop (gunbc_ci_fleet_job_backstop_timeout_minutes) does not add this term, so no job timeout changes. INTERPRETATION, not the operator's words: the selected remediation direction stays runtime reduction (a faster serve-entry compile), after which this bound comes back down; lowering it needs no sign-off.",
 }
 
+// The operator's sign-off for the arrival-converge budget raise, recorded under the rule that reserves
+// CI time and memory budgets to them (ci_job_budgets_closed_to_growth). The text was staged for review on
+// PR #16691 and is granted here; this same change flips the emitter's two call sites, so the permission and
+// the figures it authorizes cannot be separated. Reviews 96450, 96488, 96494, 96500, 96505 and 96506 are
+// what put it in this order.
+data srv15_arrival_converge_step_raised_to_21_minutes: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_converge_step_raised_to_21_minutes"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-18T21:13Z (the answer was given in chat at about 21:13:23Z), relayed verbatim by session smart-crane-730 from its own session chat; there is no dashboard message id, so the citation is: operator chat to smart-crane-730, 2026-11-18T21:13Z. Question as put to the operator: \"#16691: raise the srv15 arrival step's time limit from 5 to 21 minutes, and its job's from 25 to 51. srv15 can't be installed until this is applied.\" Operator words, verbatim: \"1. yeah thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; it is not a default-closed escalation, and lowering these figures later needs no sign-off at all. The figures agreed to: the fleet-converge arrival-converge job's backstop 25 -> 51 minutes and its 'arrival converge under the standing grant and arrival interlock' step 5 -> 21 minutes. Both are generated, not hand-typed: gunbc.fleet.fleet_converge_workflow fleet_converge_arrival_converge_step_timeout_minutes builds the step figure as fleet_converge_gunbc_run_step_timeout_minutes over the Secret Manager read bound (gunbc_ci_sm_max_time), the door's IPMI legs (gunbc.machine_intake.arrival_run arrival_wet_ipmi_legs_bound) and the prior-life capture's legs (gunbc.machine_intake.prior_life_capture_live live_prior_life_legs_bound), on the existing resolve allowance (gunbc_ci_gunbc_run_resolve_step_timeout_minutes); fleet_converge_arrival_converge_job_backstop_timeout_minutes builds the job through checked_job_timeout_minutes, and fleet_converge_arrival_converge_backstop_holds refuses emission past max_job_timeout_minutes rather than clamping. Arithmetic, every term a declared row: step = ceiling(60 s + 302 s + 140 s + 59 s = 561 s) = 10 min plus one 5-minute allowance = 660 s = 21 min; job = prelude 5 + artifact transfer 10 + three 5-minute neighbours + 21 = 51, against the 360-minute ceiling. Evidence for the need: arrival run 44249358201 at 418bf0a1674 was killed at 05m00s in that step at 2026-11-18T07:17:51Z with the fold never entered -- [pre-entry] 107 s over 523 closure files, compile.frontend 80 s, process max_rss 2191 MB, the admission step before it green -- and zero ipmitool or curl lines in the step, so srv15's controller was contacted zero times and its lockout budget was untouched. INTERPRETATION, not the operator's words: the remediation direction stays the reduction of the pre-entry fixed cost (roadmap node gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation); when that cost comes down, this bound comes down with it.",
+}
+
 data mtcollins1_bmc_cold_reset_step_raised_to_67_minutes: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_bmc_cold_reset_step_raised_to_67_minutes"),
   decided: "2026-11-18",
@@ -1335,6 +1347,7 @@ fn design_rulings() -> List<DesignRuling> {
     namespace_xl_migration_program_is_bankrupt,
     printer_ci_budget_raised_for_the_four_hour_card,
     serve_entry_verdict_step_raised_to_45_minutes,
+    srv15_arrival_converge_step_raised_to_21_minutes,
     mtcollins1_bmc_cold_reset_step_raised_to_67_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
@@ -1350,6 +1363,9 @@ fn design_rulings() -> List<DesignRuling> {
     tailnet_serving_acl_admin_console_additions_2026_11_18,
     tailscale_fleet_key_untagged_join_causality_2026_11_18,
     native_scm_fabric_first_gate_lifted_2026_11_19,
+    pxe_default_install_and_no_standing_erase_2026_11_10,
+    runner_capacity_counts_only_when_observed_2026_11_10,
+    pxe_witnesses_need_no_required_ci_2026_11_10,
   ]
 }
 
@@ -1385,4 +1401,37 @@ data ken_strata_memory_trim_buys_two_build_seats_2026_11_19: DesignRuling = Desi
 THE SERVING-SIDE FIGURES ARE THE OPERATOR'S REPORT, NOT READS THIS FLEET HAS TAKEN. The operator performed a ken memory trim, live on the unit from 17:21Z on 2026-11-19: parked-session RAM 32 -> 12 GiB; parked-session slots 24 -> 6; parallel 8 -> 4; non-reclaimable memory roughly 59 -> roughly 25 GB; the full-speed need roughly 53 GB, which the operator splits as about 25 GB of engine plus about 28 GiB of model page cache; below that level prompt prefill degrades and THE DEGRADATION CURVE IS UNMEASURED; max context stays 224k; the prior configuration is kept on the host as cfg-ken.json.bak-before-mem-trim-20261119T171122Z.
 
 WHAT THE MODEL DOES NOT YET KNOW, which is the part a reader must not skip. No read held in this repo has confirmed the new ceiling: gunbc.serving.serving_host_memory::ken_strata_engine_memory still carries memory_max 112 GiB, from the 2026-11-18T21:21Z systemctl read over read-only ssh, and its soft ceiling, swap ceiling, loaded-and-idle base and parked-session cache are still ServingMemoryUnread with the reads that would settle them named. The owed read is systemctl show ken-strata.service for MemoryMax, MemoryHigh and MemorySwapMax on that host, plus the parked-session cache budget and slot count from cfg-ken.json; only a read like that may move the physical row, because fail_closed (gunbc.design_argument::fail_closed) refuses a plausible output nobody observed. Once it lands, the consequence this ruling was made for is mechanical rather than argued: gunbc.serving.serving_reservation derives the serving charge from the read ceiling, so the frontier row h11ssl_unit3_serving_charge_blocks_build_seat_frontier should dissolve, and that row -- not this ruling -- is where the two-seat claim lives until a read exists to put it there.",
+}
+
+// THE THREE OPERATOR DECISIONS THE BOOT AND MANAGEMENT EDGE INTENTION STANDS ON THAT WERE RECORDED
+// NOWHERE BUT A PLAN CARRIER. DESIGN.md's *Plans are intentions* is explicit -- "a decision it needs
+// from the operator is recorded in `gunbc.design_ruling` and cited, never kept in the plan or the pull
+// request alone" -- so these three are recorded here and cited from
+// gunbc.plans.new_server_bringup, which no longer holds them as prose. Their only source is that
+// carrier -- section 1 and section 7 of the file on branch session/smart-crane-730-plan (head
+// c623b01ef18), which smart-crane-730 relayed from operator chat on 2026-11-10 and never opened a pull
+// request for, so until this change no row in the repository carried them. NO VERBATIM OPERATOR MESSAGE
+// SURVIVES for these three: each row quotes the carrier's decision text and says so, and any framing that
+// is mine rather than the operator's is marked INTERPRETATION inside the provenance, so a reader can tell
+// the relayed words from the reading of them (manager ruling msg_98ba7c8a, 2026-11-20). Where a decision is
+// already modeled, the row below cites the model instead of restating it, and no ruling is minted for it.
+data pxe_default_install_and_no_standing_erase_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pxe_default_install_and_no_standing_erase_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_no_requests"),
+  provenance: "Decides the default installation path and the lifetime of an install request. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 1 (\"1. Operator decisions (2026-11-10)\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The decision text, verbatim from that file: \"PXE is the default installation path for every eligible physical machine. BMC virtual media remains a fallback that needs an explicit, evidenced reason.\" and \"An install is one-shot. An install request is never a standing authorization to erase a disk.\" INTERPRETATION (mine, 2026-11-20, not the operator's words): these are two halves of one decision -- a default plus a one-shot exception to it -- and both are already modeled rather than restated here: the eligible architectures are uefi_pxe_admitted_architectures at gunbc.network_boot_delivery:221, and gunbc.host.network_install::network_install_no_requests is the roster of standing install requests, empty at :919, with each install a client binding at :864 carrying its own target-disk identity. The ruling changes what is decided; the empty roster is what refuses a standing erase.",
+}
+
+data runner_capacity_counts_only_when_observed_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_capacity_counts_only_when_observed_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Decides when a machine counts as runner capacity. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 1 (\"1. Operator decisions (2026-11-10)\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The decision text, verbatim from that file: \"Runner capacity is a completion condition. A machine counts as capacity only after its runner services are healthy, its registrations and labels are observed, its resource admission resolves, and a real CI job has run on it.\" INTERPRETATION (mine, 2026-11-20, not the operator's words): a host that exists is not a host that contributes, so a fleet view counting the first would report capacity nobody observed -- fail_closed (gunbc.design_argument::fail_closed) applied to a capacity number. Where the observations come from: gunbc.runner.runner_host_deploy (gunbc_runner_listener_principal at :218, srv1_runner_host_spec at :220), where srv14/butch is the already-installed CI-only host at :341 and a spec refuses until its host's LAN address is modeled.",
+}
+
+data pxe_witnesses_need_no_required_ci_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pxe_witnesses_need_no_required_ci_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
+  provenance: "Decides that the PXE witnesses do not join required CI. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 7 (\"7. Decided: no required CI for the PXE witnesses\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The carrier's sentence, verbatim from that file: \"The operator ruled on 2026-11-10 that the PXE witnesses do not join required CI now. Nothing on the required path evaluates a witness (the declared drop gunbc.rung_drop v1_required_lanes_withdrawn), and the job roster and budgets stay closed to growth (gunbc.design_ruling job_roster_closed_to_growth, ci_job_budgets_closed_to_growth). Each lane runs the witnesses it touches with claim_batch and records the result in its PR.\" Its opening clause is the decision; the rest is smart-crane-730's gloss of the model, so it is cited and not repeated: that drop and those two rulings are rows of gunbc.rung_drop and gunbc.design_ruling. INTERPRETATION (mine, 2026-11-20, not the operator's words): this narrows conformance (gunbc.design_argument::conformance) for this class of witness only, because a check needing a machine on the network and a hand at a console would block every unrelated change whenever the floor is busy -- so its verdict is carried by the work item's own acceptance, not branch protection. It does not weaken the witness: the claim still goes RED against a plant and GREEN against the fix, on the post-wall binary, before the item that owes it is accepted.",
 }

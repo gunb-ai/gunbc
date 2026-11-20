@@ -1,0 +1,227 @@
+module test.claim.fleet.fleet_converge_arrival_step_budget_witness
+
+// WHY THIS WITNESS EXISTS. Dispatch 44249358201 ran the arrival lane and killed it before the controller
+// was ever contacted: the arrival-converge STEP carried the flat gunbc_ci_aux_step_timeout_minutes figure,
+// and the door's closure spent ~107 s of load, 80 s of compile.frontend and 4 s of compile.normalize, so
+// GitHub ended the step at 313 s of wall with reconcile still open. The receipt's own lines say what that
+// cost: zero ipmitool or curl calls, so zero carriers, zero prior-life archive, zero BmcSecure standing,
+// no interlock acquired and nothing to release -- one day out of srv15's install window, spent on loading.
+// The mode is named in the roadmap at gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation,
+// and fan_observe and the runner-host read steps already moved off the flat figure after the same kill.
+// The arrival-converge budget, held in both directions. The fold over the door's declared legs (21 minutes
+// for the step, a derived 51 for the job) is computed, ceiling-checked, and SHIPPED -- shipped because
+// gunbc.design_ruling srv15_arrival_converge_step_raised_to_21_minutes is in the ledger with the operator's
+// words, which is what gunbc.design_ruling ci_job_budgets_closed_to_growth requires before a CI time budget
+// moves. The claims refuse either drift: a raised figure with no row behind it, and a ledger row whose
+// figures the emitter does not carry. They read the ruling as a carrier (its reference and governs
+// DeclarationRefs), never as prose -- reviews 96500 and 96505: a word like PENDING is not a control bit, and
+// grading a hand-typed sentence is not grading a model.
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_arrival_converge_job,
+  fleet_converge_arrival_converge_step_timeout_minutes,
+  fleet_converge_arrival_converge_job_backstop_timeout_minutes,
+  fleet_converge_arrival_converge_backstop_holds,
+  fleet_converge_gunbc_run_step_timeout_minutes,
+}
+import gunbc.fleet.fleet_workflow_steps {
+  gunbc_ci_aux_step_timeout_minutes,
+  gunbc_ci_artifact_transfer_step_timeout_minutes,
+  gunbc_ci_prelude_allowance_minutes,
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+}
+import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
+import gunbc.machine_intake.arrival_run {
+  arrival_candidate_channel_numbers, arrival_threshold_read_legs, arrival_counted_census_ops,
+  arrival_ipmi_leg_bound, arrival_wet_ipmi_legs_bound,
+}
+import gunbc.machine_intake.prior_life_capture_live {
+  live_prior_life_ipmi_legs, live_prior_life_redfish_single_call_legs, live_ipmi_leg_bound,
+  live_prior_life_legs_bound, live_redfish_read_budget, live_log_services_read_bound,
+}
+import extdeps.github.actions { Job, Step, RunStep, UsesStep, max_job_timeout_minutes }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { second_count }
+import gunbc.design_ruling { DesignRuling, design_rulings }
+import std.decl_ref { declaration_ref_display_key }
+
+fn step_id_of(s: Step) -> NonEmptyStr {
+  match s {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match i {
+        Present { value: v } => v
+        Absent => "<unnamed>"
+      }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match i {
+        Present { value: v } => v
+        Absent => "<unnamed>"
+      }
+  }
+}
+
+// A step that declares NO timeout reads as -1 here, never as 0. Zero would be a lie in the dangerous
+// direction: GitHub's real default for an undeclared step is the JOB's ceiling (360 minutes), so an
+// undeclared step is the loosest budget in the file, and a claim that compared 0 against a bound would
+// pass it. -1 fails every "the figure is at least this" comparison and is caught by the explicit
+// existence claim below, so an undeclared budget is loud at the same moment it appears.
+fn step_timeout_of(s: Step) -> Int {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      match t {
+        Present { value: m } => m
+        Absent => -1
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+      match t {
+        Present { value: m } => m
+        Absent => -1
+      }
+  }
+}
+
+// The timeouts of the arrival job's steps that carry a given id: exactly one row per step, so a claim
+// that sees length 1 is a claim about ONE step, not about a name that matches nothing.
+fn arrival_step_timeouts(job: Job, step_id: NonEmptyStr) -> List<Int> {
+  fold(job.steps, init: [], f: (acc, s) =>
+    if step_id_of(s) == step_id { acc + [step_timeout_of(s: s)] } else { acc })
+}
+
+fn arrival_job_timeout_minutes(job: Job) -> Int {
+  match job.timeout_minutes {
+    Present { value: m } => m
+    Absent => -1  // undeclared is not zero; see step_timeout_of
+  }
+}
+
+// THE FOLD IS THE PHASES IT DECLARES -- a reading of the function, not of the shipped job, so it holds
+// whether or not the raise has been admitted. Every term is a declared row: the Secret Manager read bound,
+// the door's IPMI legs, the prior-life capture's legs, and the generic fold that adds the resolve allowance.
+test fn the_step_fold_is_the_phases_it_declares() -> Bool {
+  fleet_converge_arrival_converge_step_timeout_minutes()
+    == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()])
+    && fleet_converge_arrival_converge_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
+}
+
+// THE SHIPPED FIGURE IS THE FOLD. Read off the job that runs it, not off a copy of the number: the step's
+// emitted timeout equals what fleet_converge_arrival_converge_step_timeout_minutes computes from the
+// declared legs, and is strictly above the allowance it used to carry -- the allowance is the figure that
+// killed run 44249358201 at 05m00s with the door's first BMC call still queued.
+test fn the_arrival_converge_step_ships_the_fold() -> Bool {
+  let t = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
+  t.length() == 1
+    && all(t, m => m >= 0)
+    && all(t, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
+    && all(t, m => m > gunbc_ci_aux_step_timeout_minutes)
+}
+
+// THE RAISE AND ITS PERMISSION TRAVEL TOGETHER, read as carriers. If the step and job figures are raised,
+// the ledger must hold the ruling row that authorizes them, governing the CI contract; if that row is ever
+// removed or re-pointed, the raised figures go RED and the lane must either restore the row or come back
+// down (coming down needs no sign-off). Nothing here inspects a string inside a ruling.
+// The row's `governs` is a resolved DeclarationRef (design_ruling.dag), so the key comparison is
+// direct. The optionality is in the LIST, not the field: indexing a List yields an Optional
+// element, so the caller binds `rows.first()` and refuses the Absent case rather than defaulting
+// it -- a ledger that has lost the row, or holds it twice, fails the pairing here.
+fn governs_the_ci_contract(row: DesignRuling) -> Bool {
+  declaration_ref_display_key(ref: row.governs) == "gunbc.design_document::ci_contract_blocks"
+}
+
+test fn the_shipped_raise_carries_its_ledger_row() -> Bool {
+  let rows = filter(
+    design_rulings(),
+    r => declaration_ref_display_key(ref: r.reference) == "gunbc.design_ruling::srv15_arrival_converge_step_raised_to_21_minutes"
+  )
+  let step = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_converge")
+  let job = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
+  rows.length() == 1
+    && match rows.first() {
+         Present { value: row } => governs_the_ci_contract(row: row)
+         Absent => false
+       }
+    && step.length() == 1
+    && all(step, m => m >= 0)
+    && all(step, m => m == fleet_converge_arrival_converge_step_timeout_minutes())
+    && job == fleet_converge_arrival_converge_job_backstop_timeout_minutes()
+}
+
+
+// THE FOLD COVERS ITS PHASES, each counted once: the resolve allowance plus the credential read plus both
+// leg rosters, in seconds, is inside the minute figure the step carries. This is the claim that fails if a
+// leg is added to a roster and the step's phases list stops naming the bound.
+test fn the_step_fold_covers_the_resolve_allowance_and_every_declared_leg() -> Bool {
+  let seconds = (gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60)
+    + (second_count(s: gunbc_ci_sm_max_time) as Int)
+    + (second_count(s: arrival_wet_ipmi_legs_bound()) as Int)
+    + (second_count(s: live_prior_life_legs_bound()) as Int)
+  (fleet_converge_arrival_converge_step_timeout_minutes() * 60) >= seconds
+}
+
+// THE PHASES COME FROM THE DECLARED LEGS, not from a number typed at the call site: each roster is
+// non-empty, and each bound is at least one per-leg bound per declared leg. A roster emptied to make a
+// budget fit is RED here before it is a live run that reads less than the controller has to say.
+test fn the_leg_rosters_are_what_the_bounds_fold() -> Bool {
+  let ipmi_legs = length(xs: live_prior_life_ipmi_legs)
+  let redfish_legs = length(xs: live_prior_life_redfish_single_call_legs)
+  ipmi_legs > 0
+    && redfish_legs > 0
+    && (second_count(s: live_prior_life_legs_bound()) as Int)
+        >= (ipmi_legs * (second_count(s: live_ipmi_leg_bound()) as Int))
+          + ((redfish_legs + live_log_services_read_bound) * (second_count(s: live_redfish_read_budget) as Int))
+    && length(xs: arrival_threshold_read_legs) > 0
+    && length(xs: arrival_counted_census_ops) > 0
+    && length(xs: arrival_candidate_channel_numbers) > 0
+    && (second_count(s: arrival_wet_ipmi_legs_bound()) as Int)
+        >= ((length(xs: arrival_candidate_channel_numbers)
+            + length(xs: arrival_threshold_read_legs)
+            + length(xs: arrival_counted_census_ops)) * (second_count(s: arrival_ipmi_leg_bound()) as Int))
+}
+
+// THE JOB'S BACKSTOP IS DERIVED -- prelude, artifact transfer, the three 5-minute neighbours, and the step
+// fold -- and it is what the job carries. It must still cover its own steps, and it must not have slid back
+// to the flat sum the file used to emit.
+test fn the_derived_job_backstop_is_shipped_and_covers_its_steps() -> Bool {
+  let shipped = arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job())
+  let derived = fleet_converge_arrival_converge_job_backstop_timeout_minutes()
+  let steps = (gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes
+      + (3 * gunbc_ci_aux_step_timeout_minutes) + fleet_converge_arrival_converge_step_timeout_minutes())
+  shipped > 0
+    && shipped == derived
+    && derived == steps
+    && shipped != gunbc_ci_aux_step_timeout_minutes + 20
+}
+
+// THE CEILING IS CHECKED, NEVER CLAMPED: the job's backstop sits under
+// extdeps.github.actions max_job_timeout_minutes, and the predicate that guards emission is the one the
+// generation route consults. If a future leg roster pushes the figure past the ceiling, generation
+// refuses with a named reason -- the claim goes RED at the same moment, which is the point.
+test fn the_arrival_job_backstop_holds_under_the_platform_ceiling() -> Bool {
+  arrival_converge_ceiling_holds()
+    && arrival_job_timeout_minutes(job: fleet_converge_arrival_converge_job()) <= max_job_timeout_minutes
+}
+
+fn arrival_converge_ceiling_holds() -> Bool {
+  fleet_converge_arrival_converge_backstop_holds()
+}
+
+// THE STEPS AROUND THE DOOR KEEP THEIR OWN BUDGETS: the credential-free admission and the WIF auth stay
+// on the aux figure -- they print nothing and read nothing from the controller, so widening them would
+// hide a change of character. Pinned so the arrival step's raise cannot be used as cover.
+test fn the_arrival_jobs_aux_steps_stay_on_the_aux_figure() -> Bool {
+  let admit = arrival_step_timeouts(job: fleet_converge_arrival_converge_job(), step_id: "arrival_admit")
+  admit.length() == 1 && all(admit, m => m >= 0) && all(admit, m => m == gunbc_ci_aux_step_timeout_minutes)
+}
+
+// THE BUDGETS EXIST AS DECLARATIONS. Read with the -1 marker above, an undeclared step or job timeout is
+// RED here rather than silently the loosest budget in the file (GitHub's own default for an undeclared
+// step is the job's ceiling, not zero). This is the claim that makes the -1 marker load-bearing.
+test fn the_arrival_budgets_are_all_declared() -> Bool {
+  let job = fleet_converge_arrival_converge_job()
+  let converge = arrival_step_timeouts(job: job, step_id: "arrival_converge")
+  let admit = arrival_step_timeouts(job: job, step_id: "arrival_admit")
+  converge.length() == 1
+    && admit.length() == 1
+    && all(converge, m => m >= 0)
+    && all(admit, m => m >= 0)
+    && arrival_job_timeout_minutes(job: job) >= 0
+}
