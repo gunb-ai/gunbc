@@ -1506,7 +1506,12 @@ fn fleet_converge_build_job() -> Job {
   Job {
     id: "build",
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    // THE ONE RULE: build on the CI pool when the executor's Architecture equals the pool's, else on the
+    // executor host natively. Decided once in gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec
+    // and published as needs.plan-revision.outputs.build_runner; this job reads that output as-is, so no arch
+    // literal and no placement logic sits in the YAML (needs already lists plan-revision for the build checkout
+    // ref, so the output is readable here).
+    runner: RunsOnExpression { expression: fleet_converge_build_runner_expression },
     environment: none,
     steps: fleet_converge_build_job_steps(),
     needs: fleet_converge_job_needs(id: fleet_converge_release_bins_job_id),
@@ -1658,7 +1663,7 @@ fn fleet_converge_plan_revision_job() -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_plan_revision_job_id),
     env: none,
     outputs: Present {
-      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}")), kv(key: fleet_converge_executor_arch_output_name, value: yaml_string(s: "${{ steps.executor_arch.outputs.arch }}"))]
+      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}")), kv(key: fleet_converge_executor_arch_output_name, value: yaml_string(s: "${{ steps.executor_arch.outputs.arch }}")), kv(key: fleet_converge_build_runner_output_name, value: yaml_string(s: "${{ steps.executor_arch.outputs.build_runner }}"))]
     },
     if_condition: Present { value: fleet_converge_dispatch_event_if },
     timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
@@ -6028,6 +6033,17 @@ data fleet_converge_plan_revision_output_name: String = "revision"
 // (gunbc.integration_concern fleet_converge_arm64_label_blocks_x86_executor_host). plan-revision runs in
 // every dispatch, so needs.plan-revision.outputs.arch is present when the shared job places itself.
 data fleet_converge_executor_arch_output_name: String = "arch"
+
+// THE BUILD JOB'S RUNNER, published by plan-revision's executor_arch step as GitHub JSON label array. The
+// build runs on the CI pool when the executor host's Architecture equals the pool's, and on the executor host
+// natively when they differ (so an x86_64 host's binaries are built x86_64, not queued for an arm64 pool). The
+// whole rule lives in gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec; the YAML carries no
+// logic -- the build job just reads this output as-is (no defaulting on its side; a missing/absent output fails
+// the build step, matching the arch refusal). plan-revision runs in every dispatch, so this is set whenever the
+// build job schedules.
+data fleet_converge_build_runner_output_name: String = "build_runner"
+
+data fleet_converge_build_runner_expression: String = "${{ fromJSON(needs.plan-revision.outputs.build_runner) }}"
 
 data fleet_converge_plan_revision_output: Expression = ContextAccess {
   context: Needs,
