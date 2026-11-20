@@ -202,7 +202,7 @@ fn serving_opt_names_text(v: List<String>?) -> String {
 fn serve_identity_drift_reason_text(reason: ServeIdentityDriftReason) -> String {
   match reason {
     IdentitySidecarMissing => "(confirmed absent)"
-    IdentitySidecarMalformed => "(present but not the documented {revision, sha256} object)"
+    IdentitySidecarMalformed => "(present but not the documented two-member object)"
     IdentityShaMismatch { sidecar_sha, binary_sha } => concat("(records ", sidecar_sha, ", the binary runs ", binary_sha, ")")
   }
 }
