@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_run_in_a_bounded_container_skips_the_user_work_slice_and_is_bounded_by_nothing
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+
+data a_run_in_a_bounded_container_skips_the_user_work_slice_and_is_bounded_by_nothing: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_run_in_a_bounded_container_skips_the_user_work_slice_and_is_bounded_by_nothing" as NonEmptyStr,
+
+  rung: RungUnread { cause: NoRungStated },
+
+  receipts: [
+    "**every `gunbc run` inside a bounded container declines the bound it is supposed to install, and says so in one line nobody reads**. INVALID STATE: the first line of every run log is `user_work_scope: skip wrap into gunbc-user-work.slice (ExemptBoundedContainer:25769803776)`, and the process then runs UNWRAPPED. `src/v1/stage0/src/cli_run/user_work_scope.rs` carries the arm `UserWorkScopeStanding::ExemptBoundedContainer { bytes }`, and when the host reports a container memory cap the code treats that cap as the bound and skips the wrap entirely. The defect in that reasoning: a container cap bounds the SUM of everything inside the container and bounds no single member of it. Agent sessions on one host share one memory cgroup, and the rule of that host is that when the aggregate is exceeded the LARGEST task is killed -- which may be the runaway or may be whoever else happened to be large. So the exemption removes the per-workload bound precisely in the situation where workloads compete, and leaves one run free to consume the whole container.",
+
+    "OBSERVED (2026-11-17, two runs on one shared host, main `dd14ed00b63` and branch `25db57797eb`, each with the binary built at its own head): a claim run held 13.8-14.4 GB RSS at 99.9% CPU for more than sixty minutes, unwrapped, alongside other agent sessions, and was stopped only by an external timeout -- not by any slice, any admission, or by the run itself. The exemption line above is the first line of BOTH logs, identical down to the byte count (25769803776 is the container's 24 GiB). The run that escaped was doing no work the slice would have disapproved of; it was typechecking.",
+
+    "IT IS DESIGNED, WHICH IS WHAT MAKES IT A RECURRING CLASS AND NOT A STRAY BUG. `src/v1/stage0/src/cli_run/user_work_scope.rs`'s own unit test asserts that the standing renders exactly `ExemptBoundedContainer:25769803776`. So the pass is intended and pinned; the gap is not that something broken happens, it is that a designed exemption has no compensating bound, no named beneficiary and no observer. A future reader who 'fixes' the exemption by deleting the arm will break that test and be told the exemption is required -- so the repair has to ADD a bound, not remove an escape.",
+
+    "SECOND-ORDER HARM, against the very repair that reads the slice. The belt's memory-fit admission (gunbc#16013: `belt_review_spawn` and `belt_audit_spawn` refuse before launch, typed, when gunbc-user-work.slice cannot hold the work) decides from SLICE OCCUPANCY, and its recorded reason for existing is a goal-audit reviewer that was memcg-OOM-killed after being admitted on slot count and liveness alone. A run that skipped the wrap contributes nothing to slice occupancy. So the admission is blind to exactly the class of workload most likely to fill the container -- an unwrapped run is invisible to the thing built to stop OOMs -- and the belt can keep admitting while the container fills from outside its view.",
+
+    "THE RUNG, AND WHY IT IS UNREAD: `RungUnread { cause: NoRungStated }`. No workflow asserts that the wrap happened, and nothing refuses when it does not -- the exemption's own test pins the STRING it prints, not the bound it forgoes -- so no CI observation of an unwrapped run exists to read a rung from. The two observations above are hand runs, taken for a different question, on the only host where the ~14 GB was seen. The ledger carries no 'not yet measured' arm by design (see `gunbc.recurring_failure_mode`'s note on `UnreadCause`), so a rung here would be a guess dressed as a finding.",
+
+    "CEILING AND TRIGGER. Ceiling: mechanically preventable. Wrapping the unit with a per-unit `MemoryMax` strictly below the container cap, or refusing to run unwrapped unless the caller names itself exempt, are mechanical acts; nothing here depends on author diligence. Trigger capability, not yet built: the capability for a `gunbc run` to be REFUSED rather than EXEMPTED when neither the slice nor an equivalent per-unit bound would contain it -- an exemption that must say who it exempts, to what limit, and on whose authority, so that 'the container has a cap' stops being a reason to install no cap at all.",
+  ],
+
+  evidence: [],
+}
