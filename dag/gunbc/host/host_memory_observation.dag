@@ -396,14 +396,15 @@ data gunbc_ci_srv14_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
   provenance: "srv14/butch /proc/meminfo MemTotal = 262937528 kB, read over SSH by the B3b bring-up (tidy-swift-586) 2026-11-11T10:35Z and re-read stable in five same-instant samples at 10:42Z; against the 8 x 32 GiB population B1 recorded in machine_intake (operator_host_srv14 256 GiB nominal)",
 }
 
-// HOST-E2D4B7'S OWN KERNEL ANSWER ON USABLE RAM. This is the read that prices the host's CI seat against the
-// serving charge (gunbc.serving.serving_reservation::host_memory_reserved); it is the kernel's MemTotal, not
+// HOST-E2D4B7'S OWN KERNEL ANSWER ON USABLE RAM. This is the read that prices the host's build seats against the
+// serving charge (gunbc.serving.serving_reservation::host_memory_reserved, witnessed in
+// test.claim.fleet.ken_build_host_gate_witness); it is the kernel's MemTotal, not
 // the DIMM-population inventory figure, because the kernel reserves before it reports and the envelope spends
 // what the kernel reports. Read over the read-only bootstrap ssh while the box still answered on its unreserved
 // LAN lease; the lease is a bootstrap path only, not this host's pinned address (the tailnet node is).
 data gunbc_ci_ken_memtotal_measured: HostUsableRam = HostUsableRamMeasured {
   bytes: byte_size(134878527488),
-  provenance: "host-e2d4b7 (ken) /proc/meminfo MemTotal = 131717312 kB, read over read-only bootstrap ssh (ubuntu@192.168.1.236, its unreserved DHCP lease) 2026-11-18T21:21Z; this hand-installed unit has never given a DIMM census (gunbc.fleet.fleet_intent::supermicro_h11ssl_unit3_host carries an empty memory census), so this kernel figure is the box's only usable-RAM standing on record and is not cross-checked against a DIMM inventory that was never read",
+  provenance: "host-e2d4b7 (ken) /proc/meminfo MemTotal = 131717312 kB, read over read-only bootstrap ssh (ubuntu@192.168.1.236, its unreserved DHCP lease) 2026-11-18T21:21Z; this hand-installed unit has never given a DIMM census (gunbc.fleet.fleet_intent::supermicro_h11ssl_unit3_host carries an empty memory census), so this kernel figure is the box's only usable-RAM standing on record and is not cross-checked against a DIMM inventory that was never read. RE-READ AT THE SAME ADDRESS 2026-11-19T22:18:37Z, /proc/meminfo MemTotal = 131717312 kB again, byte-identical: taken after the operator's serving trim (gunbc.design_ruling::ken_strata_memory_trim_buys_two_build_seats_2026_11_19), and MemTotal is the kernel's figure after its own reservations, so it does not move with load -- this fresh read CONFIRMS the priced envelope rather than replacing it. A quiescent MemAvailable, which does move with load, has still never been read on this unit.",
 }
 
 // THE UNKNOWN-HOST ARM REFUSES RATHER THAN BORROWING, WHICH IS THE ONLY THING THIS DISPATCH

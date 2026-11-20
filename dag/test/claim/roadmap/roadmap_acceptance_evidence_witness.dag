@@ -815,8 +815,9 @@ test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Boo
 // reads the wrong list passed every gate, because nothing ever asked the branch to answer. That is what
 // gunbc.design_argument::consumption means by dangling, and "Done means a real consumer green by execution".
 //
-// So the claim hands the decision the values the wet half would hand it: three of the model's roster nodes
-// accepted, the other fifteen retired with nothing carried for them — the shape of the real migration —
+// So the claim hands the decision the values the wet half would hand it: the two roster nodes the migration
+// carried acceptances for are accepted, the other three are retired with nothing carried for them — five names
+// in all, which is what roadmap_migration_retirement_ids holds — the shape of the real migration —
 // with the roster taken from the model, because the decision refuses a roster that is not the model's. The
 // closedness list is produced by `roadmap_acceptance_migration_event_node`, the same naming function the wet
 // half of `roadmap_acceptance_migration_verdict` folds over, so the two halves cannot disagree about which

@@ -4800,7 +4800,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
     environment: ${{ github.event.inputs.arrival_subject }}-arrival
-    timeout-minutes: 25
+    timeout-minutes: 51
     if: github.event.inputs.mode == 'arrival_converge'
     permissions:
       contents: read
@@ -4854,7 +4854,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
-        timeout-minutes: 5
+        timeout-minutes: 21
   printer:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [build]
