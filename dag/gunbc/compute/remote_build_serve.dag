@@ -388,11 +388,17 @@ fn remote_build_provide_discharging(instance: HostDashboardInstance, request: Re
 // release (unreadable slot, unknown lifecycle) KEEPS its charge, and the reason is in the receipt, typed
 // and countable, where the person who has to clear it can read it.
 fn remote_build_discharge_note(pass: SeatDischargePass) -> String {
-  match seat_discharge_pass_standing(p: pass) {
+  match pass {
+    // A SKIPPED PASS IS NOT A CLEAN ONE. The standing erases the difference (it counts outcomes), and a
+    // receipt that said "clean" for a pass that was never run would be exactly the kind of reading that
+    // sends someone off to look in the wrong place.
+    SeatDischargeSkipped { why } => join(["\nseat-discharge: the pass was skipped, so no seat was touched: ", why], "")
+    _ => match seat_discharge_pass_standing(p: pass) {
     SeatDischargeClean => "\nseat-discharge: the pass ran clean: no seat refused a release and none came back red"
     SeatDischargeHasRefusals { refused, first } => join(["\nseat-discharge: ", to_string(value: refused), " seat(s) refused a release and KEEP their charge; first: ", first], "")
     SeatDischargeHasReds { reds, first } => join(["\nseat-discharge: ", to_string(value: reds), " seat(s) came back red; first: ", first], "")
     SeatDischargePassRefused { reason } => concat("\nseat-discharge: the pass itself refused, so no seat was touched: ", reason)
+    }
   }
 }
 

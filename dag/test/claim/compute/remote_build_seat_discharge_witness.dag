@@ -89,8 +89,10 @@ test fn a_clean_pass_says_the_door_opened_without_refusal_or_red() -> Bool {
 // product, an unreadable host record, or a served run -- the answer carries no discharge line at all. This
 // is the control against the change leaking into endings it was never about.
 test fn every_answer_that_is_not_a_full_pool_carries_no_discharge_record() -> Bool {
-  count_where(xs: [g_cancelled(), ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordLost { detail: "the record slot is unreadable" }],
-    r => remote_build_attempt_document(attempt: RemoteBuildServeAttempt { result: r, discharge: Absent })
+  count_where([g_cancelled(), ProvideAttached {
+      identity: "gate@1", ending: "attached", document: "work-document",
+      host_record: HostRecordLost { detail: "the record slot is unreadable" },
+    }], r => remote_build_attempt_document(attempt: RemoteBuildServeAttempt { result: r, discharge: Absent })
       == provide_result_document(r: r)) == 2
 }
 
@@ -144,5 +146,10 @@ test fn a_refusal_that_is_not_a_capacity_fact_earns_no_second_request_even_after
     !remote_build_retry_after_discharge(first: ProvideFresh {
       outcome: WorkRefusedByInfrastructure { identity: "gate@1", cause: HostBelowMemoryFloor { requested: kibibyte(count: 25600), available: kibibyte(count: 4096) } },
       document: "work-document", host_record: HostRecordWritten }, pass: g_released_seat()) &&
-    !remote_build_retry_after_discharge(first: ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordLost { detail: "the record slot is unreadable" }, pass: g_released_seat())
+    !remote_build_retry_after_discharge(
+      first: ProvideAttached {
+        identity: "gate@1", ending: "attached", document: "work-document",
+        host_record: HostRecordLost { detail: "the record slot is unreadable" },
+      },
+      pass: g_released_seat())
 }

@@ -495,8 +495,6 @@ fn seat_exit_entries_undecodable(listings: List<SpoolListing>) -> List<SeatUndec
   })
 }
 
-// ONE PASS OVER THE ATTEMPTS WHOSE WORKER EXIT WAS RECORDED. A stage that cannot be read refuses the
-// whole pass: "I could not look" is never "there is no exit".
 // THE ONE PASS THAT LOOKS FOR A WEDGED SEAT AND DISCHARGES IT, declared at the layer that owns seats.
 //
 // It used to be reachable only behind the belt (roadmap_belt_actuate::belt_compute_seat_discharge_pass),
@@ -553,6 +551,8 @@ fn compute_provide_pool_full(result: ProvideResult) -> Bool {
   }
 }
 
+// ONE PASS OVER THE ATTEMPTS WHOSE WORKER EXIT WAS RECORDED. A stage that cannot be read refuses the
+// whole pass: "I could not look" is never "there is no exit".
 fn compute_seat_discharge_all(instance: HostDashboardInstance, leases: ComputeProducerLeases, subject: ComputeCapacitySubject, appropriation: Kibibyte, source: UnitLifecycleSource) -> SeatDischargePass {
   let listings = attempt_exit_stage_listings(instance_root: instance.instance_root as String)
   match seat_exit_listings_unreadable(listings: listings).first() {
