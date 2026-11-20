@@ -31,6 +31,7 @@ import gunbc.integration_concern {
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
   h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
+  edge_install_residue_fold_integrated_revision,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_intake_sighting_revision,
   h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
@@ -332,15 +333,45 @@ fn matches_open(disposition: ConcernDisposition) -> Bool {
   }
 }
 
-test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool {
+// THE HAND WORK STANDS AS TWO OPEN GAPS AND ONE CLOSED ONE. The roster half and the disk-capture half are still
+// open, and this claim refuses any shape where they are quietly written off. The edge-artifact half closed when the
+// prune fold grew to reach the staging subtree it used to miss -- and it closed ONLY by citing a revision that
+// contains that fold, which is what edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for checks.
+test fn witness_the_register_carries_the_hand_work_as_two_open_gaps_and_one_closed() -> Bool {
   all(
     [
-      h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
       h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
       h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
     ],
     gap_stands_open,
   )
+    && edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for()
+}
+
+// A CLOSED GAP NAMES THE FOLD THAT CLOSED IT, at a revision a reader can stand on. The replacement must be the
+// ownership fold -- not a receipt, not a prose note -- and integrated_at must be the landing datum, whose exact sha
+// is pinned here so that re-pointing the datum somewhere the fold does not live reddens this claim instead of
+// quietly re-anchoring the closure. The execution results are retained (three) because the closure claims an
+// executed control, and a closure no run discriminates is the failure mode gunbc.design_argument::fail_closed
+// refuses.
+fn edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for() -> Bool {
+  match h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition {
+    Integrated { evidence: evidence } =>
+      ((evidence.integrated_at as String) == (edge_install_residue_fold_integrated_revision as String))
+        && ((edge_install_residue_fold_integrated_revision as String) == "6f1e4de1eac8ee3db1a307ec616980229fc74fd4")
+        && decl_ref_names(
+             ref: evidence.replacement.head,
+             module_path: "gunbc.fleet.site_pxe_edge_converge",
+             decl_name: "site_pxe_edge_owned_install_path",
+           )
+        && any(evidence.replacement.tail, d => decl_ref_names(ref: d, module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_served_root"))
+        && any(evidence.replacement.tail, d => decl_ref_names(ref: d, module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_empty_owned_install_dirs"))
+        && (length(evidence.executions.tail) == 2)
+    Open => false
+    Triaged { home: _, preserve: _, next: _ } => false
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+  }
 }
 
 // THE DISK-CAPTURE GAP POINTS AT THE INSTALL SUBJECT'S OWN ADMISSION, so the gap is about the model that
@@ -355,9 +386,12 @@ test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool 
 // the owned-path predicate never reaches the edge's staging/ subtree, and directories a completed removal left
 // empty, which a file-only listing cannot see at all. This claim refuses the shape where any of those halves
 // shows up as another open row: one obstacle, one row, deepened in place.
+// The growth is in the SIGHTINGS (four in the tail) and the row was never duplicated -- and when the gap closed, it
+// closed as Integrated on that SAME row, with the fold it asked for as the replacement. Open here would mean the
+// fold never grew; a second row anywhere would mean the register forgot this obstacle is one thing.
 test fn witness_the_edge_gap_grew_sightings_rather_than_rows() -> Bool {
-  matches_open(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition)
-    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 4)
+  (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 4)
+    && edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for()
 }
 
 test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
