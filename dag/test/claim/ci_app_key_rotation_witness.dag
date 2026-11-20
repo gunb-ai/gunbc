@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, Bytes }
 import std.bytes { utf8_encode_bytes }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.cloud.gcp.secret_manager {
+  sm_version_state_wire,
   GcpSecretVersion,
   SmVersionState, SmEnabled, SmDisabled,
   SmResolvedVersionIdentity,
@@ -108,7 +109,7 @@ fn v7() -> SmResolvedVersionIdentity { app_key_v7_name as SmResolvedVersionIdent
 fn row(identity: SmResolvedVersionIdentity, state: SmVersionState) -> GcpSecretVersion {
   GcpSecretVersion {
     name: identity,
-    state: state,
+    state: sm_version_state_wire(state),
     create_time: "2026-09-19T00:00:00Z",
     etag: Present { value: concat("etag-", identity as String) },
     destroy_time: none,

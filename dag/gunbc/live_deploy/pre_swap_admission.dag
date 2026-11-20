@@ -1,7 +1,7 @@
 module gunbc.live_deploy.pre_swap_admission
 
 import std.types { String, Bool, Int, NonEmptyStr, GitRef, List }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -22,6 +22,13 @@ import gunbc.live_deploy.emit {
   live_deploy_ingress_argv_segments,
   live_deploy_ingress_limit_argv_segments,
   live_deploy_serve_unit_ingress_args,
+  ingress_limit_ms,
+}
+import gunbc.http_ingress {
+  HttpIngressListener,
+  HttpIngressUnixSocket,
+  http_ingress_unix_socket_mode,
+  http_ingress_binding_arguments,
 }
 import gunbc.instruments.host_prelude { witness_bin_release_path }
 import gunbc.output_policy { OutcomeIsData }
@@ -171,6 +178,142 @@ fn observe_serve_entry_compile_clean(repo_root: String, bin_path: String, roots:
       )
       let _ = shell.Remove.RecursiveForce(path: tmp.path)
       serve_entry_compile_verdict_of(exit_success: run.success, exit_code: run.exit_code, stderr: run.stderr)
+    }
+  }
+}
+
+// ── SERVED-COMMAND VERDICT (node demand-serve-entry-compile-time) ──────────────────────────────
+// THE PLAN ROUTE RUNS THE SERVED COMMAND ITSELF. The fleet-converge serve_entry_verdict step is the
+// red control's subject; it admitted a release by compiling the WHOLE entry closure to the dag target
+// and reading the exit -- checking MORE than the served run checks (a second, stronger answer to the
+// same question) and paying the whole-closure resolve+type floor (~1607 s / 45 min) for it, while the
+// emitted program was deleted unread. Serve IS `gunbc run` on the binding, and gunbc run typechecks
+// only what its entry REACHES (gunbc_run_checks_only_what_its_entry_reaches). So the justified verdict
+// is to RUN THE SERVED COMMAND -- `gunbc run` with the prod unit's OWN ingress identity (the same
+// handler, binding function and budgets the ExecStart binds, via live_deploy_serve_unit_ingress_args
+// and http_ingress_binding_arguments, so the handler cannot drift from the one the release will serve)
+// -- on an UNBINDABLE listener whose PARENT DIRECTORY does not exist, and read the refusal:
+//   * reached the bind stage (resolve+type+realize of the REACH all clean, then a clean bind refusal)
+//     => admitted;
+//   * a compile/type error BEFORE bind (an `error` line, no bind refusal) => blocked;
+//   * anything else (a refusal short of bind, e.g. an un-realized --arg handler before PR #16507; or a
+//     clean exit, which the absent-parent listener makes impossible) => unobserved, FAILING CLOSED --
+//     a compile/type/realization refusal must NEVER be read as reached-bind.
+// SEMANTICS CHANGE, STATED PLAINLY: the verdict no longer typechecks the whole entry closure; it
+// typechecks EXACTLY what `gunbc run` on the served command reaches -- the same scope the release will
+// actually execute. A type error OUTSIDE the served handler's reach no longer refuses the release; one
+// INSIDE it still does. This is the whole cost of the ~1607 s floor and it was never checked by serve.
+//
+// THE LISTENER: a well-formed unix socket path whose PARENT DIRECTORY is absent, under a fresh temp
+// dir the verdict creates. Opening its lock file fails ENOENT at EVERY privilege level (a root or
+// CAP_NET_BIND_SERVICE process could bind a low tcp port and would then be OPENING a real port, so a
+// loopback tcp port is not acceptable here); and it opens no port. Being well-formed, it passes the
+// ingress listener VALIDATION and fails only at bind_listener's lock open -- which is what proves the
+// run got past evaluate/realize to the bind step.
+//
+// STATED RESIDUAL (manager-accepted framing, made SOUND): reached-bind is keyed on the ingress host's
+// typed `REFUSED: ingress binding:` prefix (gunbc.http_ingress http_ingress_host, the startup() Err),
+// NOT a dedicated exit code -- and that prefix is printed for MANY refusals that are NOT the bind
+// stage: a missing declared read-fold, the served handler not yet realized (the pre-#16507 case:
+// `runtime-keyed reads not realized ... roadmap_serve_handle`), a fact-plan refusal, a
+// listener-validation refusal. Keying on the prefix ALONE would fail OPEN and admit a release whose
+// handler never loaded. Only bind_listener names the listener PATH (lock_socket_path / bind_unix embed
+// it: "could not open the socket's lock <path>.lock: ...", "failed to bind unix socket <path>: ...").
+// The probe listener's path is unique to the verdict's own scratch dir, so the discriminator is: a
+// `REFUSED: ingress binding:` line that ALSO contains the probe socket path. That is satisfied only by
+// a genuine bind-stage failure and FAILS CLOSED on every pre-bind refusal, none of which carries the
+// probe path. Condition-2 reds in the witness pin: a compile/type error is Blocked, and a
+// `REFUSED: ingress binding:` WITHOUT the probe path (the realization refusal) is NOT admitted.
+
+fn serve_entry_probe_socket_path(tmp_dir: String) -> String {
+  join([tmp_dir, "/absent/serve.sock"], "")
+}
+
+fn serve_entry_bind_probe_listener(socket_path: String) -> HttpIngressListener {
+  HttpIngressUnixSocket { path: socket_path as NonEmptyStr, mode: http_ingress_unix_socket_mode }
+}
+
+fn serve_entry_reached_bind(stderr: String, socket_path: String) -> Bool {
+  let marked = filter(
+    split(s: stderr, sep: "\n"),
+    l => starts_with(s: trim(s: l), prefix: "REFUSED: ingress binding:") && string_contains(s: l, pattern: socket_path),
+  )
+  count(marked) > 0
+}
+
+fn serve_command_verdict_of(exit_success: Bool, exit_code: Int, stderr: String, socket_path: String) -> ServeEntryCompileVerdict {
+  let errors = filter(split(s: stderr, sep: "\n"), l => starts_with(s: l, prefix: "error"))
+  if serve_entry_reached_bind(stderr: stderr, socket_path: socket_path) {
+    ServeEntryCompileAdmitted
+  } else if exit_success {
+    ServeEntryCompileUnobserved { detail: "the served command returned cleanly without a bind refusal; the verdict expects a clean bind refusal on the absent-parent unix listener, not a clean run" }
+  } else if count(errors) > 0 {
+    ServeEntryCompileBlocked { blocking: count(errors), diagnostics: errors }
+  } else {
+    ServeEntryCompileUnobserved { detail: join([
+      "the served command exited ",
+      int_to_decimal_string(value: exit_code),
+      " with no bind refusal and no error line (a refusal short of the bind stage, e.g. an un-realized --arg handler or an unloaded read-fold)",
+    ], "") }
+  }
+}
+
+fn serve_entry_run_args(
+  roots: List<String>, entry: String, binding_function: String, handler: String,
+  listener: HttpIngressListener, release_revision: String, cpu_limit_ms: Int?, wall_limit_ms: Int?,
+) -> List<String> {
+  concat(
+    concat(["run"], fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))),
+    concat(
+      ["--entry", entry, "--function", binding_function],
+      http_ingress_binding_arguments(
+        handler: handler, listener: listener, release_revision: release_revision,
+        cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+      ),
+    ),
+  )
+}
+
+// The plan route's observation: run the served command to a clean bind refusal. `stderr_sink`, when
+// non-empty, receives the child's verbatim stderr -- which carries the served command's OWN
+// [pre-entry] phase receipt (gunbc run prints it; it is the after-half evidence of this node) and the
+// `REFUSED: ingress binding:` terminal line. Surfacing it is required because gunbc.WitnessBin.Run
+// captures child stderr into run.stderr and nothing else echoes it.
+fn observe_served_command_reaches_bind(
+  repo_root: String, bin_path: String, roots: List<String>, spec: DeploymentSpec,
+  release_revision: String, stderr_sink: String,
+) -> ServeEntryCompileVerdict {
+  let svc = spec.service
+  let path = trim(s: svc.serve_entry as String)
+  if path == "" {
+    ServeEntryCompileUnobserved { detail: "serve entry path is empty" }
+  } else {
+    let tmp = shell.Mktemp.Dir()
+    if !tmp.success {
+      ServeEntryCompileUnobserved { detail: "no scratch directory for the served-command bind probe" }
+    } else {
+      let socket_path = serve_entry_probe_socket_path(tmp_dir: tmp.path as String)
+      let args = live_deploy_serve_unit_ingress_args(service: svc)
+      let run = gunbc.WitnessBin.Run(
+        workdir: repo_root,
+        bin_path: bin_path,
+        args: serve_entry_run_args(
+          roots: roots,
+          entry: path,
+          binding_function: args.binding_function as String,
+          handler: args.handler as String,
+          listener: serve_entry_bind_probe_listener(socket_path: socket_path),
+          release_revision: release_revision,
+          cpu_limit_ms: ingress_limit_ms(limit: svc.serve_cpu_limit),
+          wall_limit_ms: ingress_limit_ms(limit: svc.serve_wall_limit),
+        ),
+        expect: OutcomeIsData,
+      )
+      if stderr_sink != "" {
+        let _ = Filesystem.Write(path: stderr_sink, content: run.stderr)
+      }
+      let _ = shell.Remove.RecursiveForce(path: tmp.path)
+      serve_command_verdict_of(exit_success: run.success, exit_code: run.exit_code, stderr: run.stderr, socket_path: socket_path)
     }
   }
 }
@@ -731,11 +874,13 @@ fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
     Sha256FileDigestUnavailable { path: wanted, reason } =>
       exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the pair build produced no digestable gunbc at ", wanted as String, ": ", reason], ""))
     Sha256FileDigest { digest } => {
-      let compile = observe_serve_entry_compile_clean(
+      let compile = observe_served_command_reaches_bind(
         repo_root: root_path,
         bin_path: bin,
         roots: deployment_serve_source_roots,
-        entry: spec.service.serve_entry as String,
+        spec: spec,
+        release_revision: observe_checkout_head_hex(),
+        stderr_sink: join([serve_entry_verdict_path(), ".child-stderr"], ""),
       )
       let record = ServeEntryVerdictRecord {
         source_revision: observe_checkout_head_hex(),
@@ -752,20 +897,22 @@ fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
         match compile {
           ServeEntryCompileAdmitted => ExitSuccess
           ServeEntryCompileBlocked { blocking, diagnostics } =>
-            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the serve entry does not compile cleanly; ", int_to_decimal_string(value: blocking), " blocking: ", serve_entry_blocking_summary(diagnostics: diagnostics)], ""))
+            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the served command did not reach the bind stage cleanly; ", int_to_decimal_string(value: blocking), " blocking: ", serve_entry_blocking_summary(diagnostics: diagnostics)], ""))
           ServeEntryCompileUnobserved { detail } =>
-            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the serve-entry compile was not observed: ", detail], ""))
+            exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the served command did not reach the bind stage: ", detail], ""))
         }
       }
     }
   }
 }
 
-// PLAN-JOB ENTRY (fleet-converge job, after the plan step, before the artifact upload): compile
-// the prod-role serve entry with the release pair the run itself built, and publish the verdict
-// beside the plan receipt so the swap consumes it by identity. A blocked or unobserved compile
-// fails the PLAN RUN here, where the fold belongs -- the deploy chain then never starts, and
-// PR 1's run-pointer admission names the refused plan run.
+// PLAN-JOB ENTRY (fleet-converge job, after the plan step, before the artifact upload): run the
+// prod-role SERVED COMMAND with the release pair the run itself built, and publish the verdict beside
+// the plan receipt so the swap consumes it by identity. The served command is run to a clean bind
+// refusal on an absent-parent unix listener; reaching that refusal is what admits the release (it
+// checks exactly what the served run checks -- the entry plus the served handler's reach -- and
+// materializes nothing). A blocked or unobserved run fails the PLAN RUN here, where the fold belongs
+// -- the deploy chain then never starts, and PR 1's run-pointer admission names the refused plan run.
 fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
   match prod_role_desired_deployment() {
     ProdRoleDeploymentSelected { deployment } => record_plan_serve_entry_verdict_for(row: deployment)

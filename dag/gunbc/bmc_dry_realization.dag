@@ -7,7 +7,7 @@ import std.operation_argv { OperationRef, ArgvMaterialized, ArgvMaterializationR
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep,
   OperationObserved, OperationHarnessFault, ShellObserved,
-  operation_input_text, virtual_delay_binding,
+  operation_input_text, operation_input_text_list, virtual_delay_binding,
 }
 import extdeps.transports.shell { ShellProcessExited }
 import extdeps.bmc.ipmi_chassis_control {
@@ -23,6 +23,7 @@ import extdeps.bmc.ipmi { ipmi_completion_code_request_data_length_invalid, ipmi
 import extdeps.bmc.ipmitool_raw_reply { IpmitoolRawRequest, ipmitool_raw_request_of_argv, ipmitool_raw_refusal_stderr }
 import gunbc.bmc_model {
   BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
+  bmc_controller_cold_reset, bmc_controller_resetting,
   BootOverrideNone, BootOverrideCdromEfiNextBoot,
 }
 import gunbc.megarac_media_model {
@@ -38,6 +39,11 @@ import extdeps.bmc.megarac_observed_output {
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
+import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
+import extdeps.bmc.ipmitool_lanplus_timing { IpmitoolLanplusInvocation, ipmitool_lanplus_invocation_of_argv, ipmitool_lanplus_auth_caps_unanswered_wait }
+import std.measure { measure_le }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line, ipmitool_lanplus_get_auth_caps_no_reply_line, ipmitool_lanplus_get_channel_auth_caps_issuing_line, ipmitool_verbosity_argv, IpmitoolVerboseOnce }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
   ipmitool_fru_print_0_mt_collins,
@@ -94,8 +100,113 @@ type BmcReply
   | BmcRefused { exit_code: Int, stderr: String, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }
 
+// A CONTROLLER THAT IS NOT ANSWERING: no RMCP+ session comes up, so ipmitool exits 1. What it prints depends on
+// its verbosity (extdeps.bmc.ipmi_session, source-transcribed from ipmitool 1.8.19): at the default only the bare
+// session line; at one -v, the Get Channel Authentication Capabilities request that got no reply is named first.
+// This is the controller declining to answer (an observation), not a harness fault.
+fn bmc_controller_unanswered(world: BmcWorld, verbose: Bool) -> BmcReply {
+  let named = if verbose { join([ipmitool_lanplus_get_auth_caps_no_reply_line, "\n", ipmitool_lanplus_get_channel_auth_caps_issuing_line, "\n"], "") } else { "" }
+  BmcRefused { exit_code: 1, stderr: join([named, ipmitool_lanplus_session_unestablished_line, "\n"], ""), world: world }
+}
+
+// THE CLOCK ONE CALL RUNS UNDER, read from the argv the real transport would run (the operation's declaration with the
+// call's own bindings, as bmc_call_raw_request reads a raw request): the coreutils `timeout` deadline that wraps it,
+// and the invocation ipmitool runs after its own defaulting (extdeps.bmc.ipmitool_lanplus_timing). A dry
+// controller that does not answer uses it to answer in the time the client would have spent: a silent controller's
+// stage line comes back only if the client finished waiting before the deadline killed it.
+type BmcLanplusCallClock { invocation: IpmitoolLanplusInvocation, deadline: Second }
+
+fn bmc_call_argv(call: OperationCall) -> List<String>? {
+  match shell_materialize_operation_argv(call.invocation.at.path, call.invocation.at.service, call.invocation.at.operation, call.invocation.bindings) {
+    ArgvMaterialized { argv: a } => Present { value: a }
+    ArgvMaterializationRefused { at: _, cause: _ } => none
+  }
+}
+
+// `timeout --kill-after <k> <duration> ...`: the duration is the fourth word, in seconds with an optional "s" suffix
+// (extdeps.tools.gnu_coreutils coreutils_duration_operand renders "<n>s"). The digits are read here, at the argv, and
+// leave as a Second.
+fn bmc_argv_timeout_deadline(argv: List<String>) -> Second? {
+  if argv.take(n: 2) == ["timeout", "--kill-after"] {
+    match argv.skip(n: 3).first() {
+      Absent => none
+      Present { value: d } => match parse_int(s: replace(s: d, from: "s", to: "")) {
+        Absent => none
+        Present { value: n } => match checked_int_to_nat(n: n) {
+          Absent => none
+          Present { value: count } => Present { value: second(count: count) }
+        }
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn bmc_call_lanplus_clock(call: OperationCall) -> BmcLanplusCallClock? {
+  match bmc_call_argv(call: call) {
+    Absent => none
+    Present { value: argv } => match ipmitool_lanplus_invocation_of_argv(argv: argv) {
+      Absent => none
+      Present { value: a } => match bmc_argv_timeout_deadline(argv: argv) {
+        Absent => none
+        Present { value: d } => Present { value: BmcLanplusCallClock { invocation: a, deadline: d } }
+      }
+    }
+  }
+}
+
+// A CONTROLLER THAT DOES NOT ANSWER, AT THE CLIENT'S PACE. Both Get Channel Authentication Capabilities requests go
+// unanswered for every attempt (ipmitool asks twice); if the client's wait for them ends before the deadline, ipmitool prints what it
+// prints for an unanswered controller (bmc_controller_unanswered); otherwise coreutils kills it first and nothing is
+// printed (exit 124). `refused` is a controller whose network stack answers each datagram with an ICMP refusal, which
+// doubles the client's wait. A call whose argv carries no readable clock is a harness fault, never a guess.
+fn bmc_controller_silent(world: BmcWorld, call: OperationCall, refused: Bool) -> BmcReply {
+  match bmc_call_lanplus_clock(call: call) {
+    Absent => BmcReplyFault { reason: "an unanswered ipmitool call whose argv carries no readable deadline or attempt count" as NonEmptyStr }
+    Present { value: clock } =>
+      if !measure_le(a: clock.deadline, b: ipmitool_lanplus_auth_caps_unanswered_wait(invocation: clock.invocation, refused: refused)) {
+        bmc_controller_unanswered(world: world, verbose: bmc_call_verbose(call: call))
+      } else {
+        BmcRefused { exit_code: 124, stderr: "", world: world }
+      }
+  }
+}
+
+// Whether a call ran ipmitool at one -v, read from the words its verbosity input was bound to. An operation without
+// that input runs at the default.
+fn bmc_call_verbose(call: OperationCall) -> Bool {
+  match operation_input_text_list(invocation: call.invocation, name: "verbosity_argv") {
+    Present { value: words } => words == ipmitool_verbosity_argv(verbosity: IpmitoolVerboseOnce)
+    Absent => false
+  }
+}
+
 fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_silent(world: world, call: call, refused: false)
+  } else {
+    BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+  }
+}
+
+// `mc reset cold`: ipmitool prints its sent line and exits 0 (extdeps.bmc.ipmitool_mc_reset), and the modeled
+// controller stops answering shortly after and answers again a minute later (gunbc.bmc_model
+// bmc_controller_cold_reset). The window is THIS ADAPTER'S scenario default, not a vendor figure; a scenario that
+// needs another behavior (a controller that ignores the reset, a reply that exits nonzero after the request left)
+// binds its own handler for this operation.
+data bmc_dry_cold_reset_drop_after: Second = second(count: 2)
+data bmc_dry_cold_reset_back_after: Second = second(count: 60)
+
+fn bmc_mc_reset_cold_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_silent(world: world, call: call, refused: false)
+  } else {
+    BmcReplied {
+      stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
+      world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: bmc_dry_cold_reset_back_after),
+    }
+  }
 }
 
 fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
@@ -117,12 +228,16 @@ fn input_is(call: OperationCall, name: String, expected: String) -> Bool {
 
 fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "parameter", expected: "5") {
-    BmcReplied {
-      stdout: match world.boot_override {
-        BootOverrideNone => ipmitool_bootparam5_no_override
-        BootOverrideCdromEfiNextBoot => ipmitool_bootparam5_cdrom_efi_next_boot
-      },
-      world: world,
+    match world.boot_override {
+      BootOverrideNone => BmcReplied { stdout: ipmitool_bootparam5_no_override, world: world }
+      BootOverrideCdromEfiNextBoot => BmcReplied { stdout: ipmitool_bootparam5_cdrom_efi_next_boot, world: world }
+      // A next-boot PXE override HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER either, and the same rule
+      // that declines parameter 3 below declines synthesizing its bytes here (the SdrElistVerbose
+      // precedent): the model prints only what a committed capture says the controller prints. The arm
+      // exists so a live reading can NAME what it found (smart-crane-730's ruling B -- an unmodeled
+      // target never collapses into None); a dry world that reaches this arm is asking the model to
+      // invent evidence, and it gets a refusal that says the model is declining.
+      BootOverridePxeNextBoot => BmcRefused { exit_code: 1, stderr: "gunbc dry world: the next-boot PXE override has no committed capture of this controller's parameter-5 answer; the model does not answer it", world: world }
     }
   } else if input_is(call: call, name: "parameter", expected: "3") {
     // PARAMETER 3 (valid-bit clearing) HAS NO CAPTURE OF THIS CONTROLLER'S ANSWER, and synthesizing its bytes
@@ -230,6 +345,15 @@ fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // world does not model gets no reply and says so — ipmitool then has nothing to parse, which is the honest
 // outcome, and the first-contact battery records the read as owed rather than answered.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_silent(world: world, call: call, refused: false)
+  } else {
+    bmc_mc_info_answer(world: world)
+  }
+}
+
+// The answer itself, from what the world models of this controller.
+fn bmc_mc_info_answer(world: BmcWorld) -> BmcReply {
   match world.record_surfaces.mc_info {
     Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
     Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
@@ -307,6 +431,7 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "McResetCold"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_reset_cold_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "FruPrint"), handler: bmc_lift(get: get, put: put, reply: bmc_fru_print_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SdrTypeList"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_type_reply) },

@@ -394,7 +394,7 @@ fn owned_directory_install_argv(plan: OwnedDirectoryInstallPlan) -> List<String>
     mode: plan.mode,
     owner: plan.owner.user,
     group: plan.owner.group,
-    path: plan.path as String,
+    path: plan.path,
   )
 }
 

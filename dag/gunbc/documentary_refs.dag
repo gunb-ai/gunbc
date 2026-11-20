@@ -2,7 +2,7 @@ module gunbc.documentary_refs
 
 import std.types { String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import gunbc.design_ruling { design_rulings }
+import gunbc.design_ruling { DesignRuling }
 import gunbc.design_argument { design_row_citations }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
@@ -51,19 +51,29 @@ fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", declaration_ref_display_key(ref: reference), "`")
 }
 
-// Every reference the generated design document names: the two standalone rows above, each ruling
-// it cites, the design claim or document part each ruling governs, and the symbol of every design
-// claim the document renders (gunbc.design_argument design_row_citations). A renamed or deleted
-// claim, or a ruling governing one that no longer exists, fails to resolve.
-fn generated_document_declaration_refs() -> List<DeclarationRef> {
+// Every reference the generated design document NAMES: the two standalone rows above (both rendered
+// by the document through documentary_ref_symbol_text), each operator ruling the document cites (its
+// `reference`), and the symbol of every design claim the document renders (gunbc.design_argument
+// design_row_citations). This is the population the document itself owns -- it is what the prose
+// binds, not the whole gunbc.design_ruling ledger. The document is loaded in full on every turn, so
+// the dated-ruling LEDGER lives apart from it (gunbc.design_ruling design_rulings); citing a ruling
+// is an act of the document, and the cited set is `document_cited_rulings()` from
+// gunbc.design_document. Passing it in (rather than importing that module) keeps the dependency one
+// way -- gunbc.design_document imports this module for the citation spelling, so this module must
+// not import it back. A ruling the document names by symbol that no longer exists then fails to
+// resolve here.
+//
+// A ruling's `governs` is NOT part of this population: the document never renders a governed part
+// (the ruling renderer emits only the reference, `ruling(r: X)` -> `gunbc.design_ruling::X`), so a
+// governed part is not a reference the document names. The full ledger's references and governed
+// parts -- cited by the document or not -- are covered against the real declaration pool by the two
+// live-pool claims of this witness, not here.
+fn generated_document_declaration_refs(cited_rulings: List<DesignRuling>) -> List<DeclarationRef> {
   concat(
     concat(
       [v1_maintenance_standing_ref, required_gate_subjects_ref],
-      map(design_rulings(), r => r.reference),
+      map(cited_rulings, r => r.reference),
     ),
-    concat(
-      map(design_rulings(), r => r.governs),
-      design_row_citations(),
-    ),
+    design_row_citations(),
   )
 }

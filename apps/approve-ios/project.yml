@@ -54,6 +54,7 @@ targets:
       properties:
         aps-environment: $(APNS_ENVIRONMENT)
         com.apple.developer.devicecheck.appattest-environment: $(APP_ATTEST_ENVIRONMENT)
+        com.apple.developer.usernotifications.time-sensitive: true
     dependencies:
       - package: GoogleSignIn
   ApproveTests:

@@ -1,6 +1,6 @@
 module extdeps.languages.simd.kernel
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
 import std.types { NonEmptyStr, Int, List, Float }
@@ -18,6 +18,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "gcc.gnu.org/onlinedocs/gcc/Vector-Extensions.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.simd.kernel",
+      decl_name: "SimdKernelEmitSurface",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data simd_kernel_target_medium_name: NonEmptyStr = "simd-contiguous-loop"

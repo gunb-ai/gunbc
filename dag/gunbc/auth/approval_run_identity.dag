@@ -14,9 +14,38 @@ fn attempt_identity_of(run_id: String, run_attempt: String) -> AttemptIdentity? 
   }
 }
 
+// The typed observation of the runner's identity pair: THE single place the Actions environment
+// is consulted for run id and attempt number, admitted by the one decimal rule in
+// attempt_identity_of. Consumers that need the parts project from this observation; none may
+// re-read the pair or repeat the admission (root_generalization: the second local implementation
+// of one rule is the trigger).
+type RunAttemptObservation {
+  run_id: NonEmptyStr
+  run_attempt: NonEmptyStr
+}
+
+fn observe_run_attempt() -> RunAttemptObservation? {
+  let run_id = actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr)
+  let run_attempt = actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr)
+  match attempt_identity_of(run_id: run_id, run_attempt: run_attempt) {
+    Present { value: _ } =>
+      Present {
+        value: RunAttemptObservation {
+          run_id: run_id as NonEmptyStr,
+          run_attempt: run_attempt as NonEmptyStr,
+        },
+      }
+    Absent => none
+  }
+}
+
 fn run_attempt() -> AttemptIdentity? {
-  attempt_identity_of(
-    run_id: actions_variable_trimmed(name: github_run_id_variable_name as NonEmptyStr),
-    run_attempt: actions_variable_trimmed(name: github_run_attempt_variable_name as NonEmptyStr),
-  )
+  match observe_run_attempt() {
+    Present { value: o } =>
+      attempt_identity_of(
+        run_id: o.run_id as String,
+        run_attempt: o.run_attempt as String,
+      )
+    Absent => none
+  }
 }

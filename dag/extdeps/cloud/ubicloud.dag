@@ -1,6 +1,6 @@
 module extdeps.cloud.ubicloud
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import std.measure {
@@ -33,6 +33,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "ubicloud.com/docs/github-actions-integration/runner-types.md"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.ubicloud",
+      decl_name: "UbicloudRunnerCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // A NAMED handle on this module's upstream citation, for consumers that must

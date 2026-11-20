@@ -76,7 +76,7 @@ fn rr_ev(node: RoadmapNodeId, kind: RoadmapEventKind, parent: RoadmapEventId?, a
 }
 
 fn rr_claim_by(node: RoadmapNodeId, requester: EventPrincipal, parent: RoadmapEventId?, at: String) -> RoadmapEventEnvelope {
-  rr_ev(node: node, kind: Claimed { assignee: rr_fabric(), return_to: requester }, parent: parent, author: requester, at: at)
+  rr_ev(node: node, kind: Claimed { assignee: rr_fabric(), return_to: requester , grain: Pathless }, parent: parent, author: requester, at: at)
 }
 
 fn rr_claim(node: RoadmapNodeId) -> RoadmapEventEnvelope {

@@ -29,14 +29,16 @@ import extdeps.bmc.ipmi {
 // shelf; extdeps.boards.asrock_rack keeps only what ASRock Rack publishes about the board.
 import gunbc.machine_intake.bmc_inband_recovery_receipts {
   PublishedFactoryPasswordWritePolicy, FirmwareRefusesPublishedPassword, NotMeasured, PublishedPasswordWritePolicySighting, RefusalMeasuredOnThisController, ControllerNeverMeasured, CatalogAmbiguousForController, CatalogIndexesDisagree, RowDisagreesWithItsOwnReading, asrock_altrad8ud_published_factory_password_write_policy_sighted_on, asrock_altrad8ud_published_factory_password_write_policy_for, asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy, asrock_altrad8ud_1l2t_inband_device_identity, RecoveryPostResetReadbackRecord, asrock_altrad8ud_post_reset_readback_record_for,
-  // WHEN a capture was taken is the notebook's fact, not the route's: the carrier, every mint and
-  // the two folds over it are imported, never re-declared (gunbc.design_argument::single_authority, one home for a fact).
-  CapturedInstant, CaptureTimeBand, CaptureTimeBandInverted, recovery_capture_day,
-  captured_epoch_millisecond, captured_band, captured_instant_band, captured_band_precedes,
-  captured_band_ordering, CapturedBandOrdering, BandPrecedes, BandDoesNotPrecede,
-  EarlierBandRefuses, LaterBandRefuses,
-  captured_bound_utc_text, recovery_inband_channel_instant,
+  // WHEN a capture was taken is the notebook's fact, not the route's: its day, its windows and the
+  // text of their bounds come from here and are never re-declared. The CARRIER of a capture time and the
+  // folds over it are one import below, in the clock authority they live in (gunbc.design_argument::single_authority).
+  recovery_capture_day, captured_bound_utc_text, recovery_inband_channel_instant,
   recovery_device_node_creation_instant, recovery_reset_instant, recovery_post_reset_instant,
+}
+import extdeps.clock {
+  CapturedInstant, CaptureTimeBand, CaptureTimeBandInverted, captured_epoch_millisecond, captured_band,
+  captured_instant_band, captured_band_precedes, captured_band_ordering, CapturedBandOrdering,
+  BandPrecedes, BandDoesNotPrecede, EarlierBandRefuses, LaterBandRefuses,
 }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcObservedIdentity }
 // THE PRIVILEGE FACT IS NOT RE-MINTED HERE. gunbc.design_argument::minimize_redundancy: "Decomposing a leaf by minting a fresh authority for a

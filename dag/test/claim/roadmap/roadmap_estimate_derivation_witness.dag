@@ -1,0 +1,578 @@
+// THE WITNESSES FOR ESTIMATES THAT CANNOT CONTRADICT: the one conversion table, the upward derivation, the typed
+// refusal of an authored estimate beside an estimated descendant (the operator's own 1w-over-2w case), and the
+// release path that keeps an append-only price from becoming a permanent contradiction.
+//
+// FIXTURES, NOT THE SIZING LANE'S DATA: the roughly 290 nodes are sized by their own session (the operator assigned
+// it 2026-11-19), so every estimate here is PLANTED by this file over a real three-level containment chain from the
+// authority -- debt-payoff > dp-m1-dissolvable-rows-retired > its dissolvable-row nodes. Those nodes are passed to
+// the derivation as a filtered node list, which is what makes the fixture independent of the sizing lane's rows
+// without inventing node identities. The chain is containment (`in_project`), never a prerequisite edge, and the
+// prerequisite case is witnessed SEPARATELY below as the thing that must NOT be refused.
+module test.claim.roadmap.roadmap_estimate_derivation_witness
+
+import std.types { Bool, Int, List, String }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges, nid }
+import gunbc.roadmap.roadmap_effort_estimate {
+  EstimateSize, EstimateForm, EstimateEntry, RoadmapEstimateRow, estimate_row, estimate_recorded, estimate_revoked,
+  sized_estimate, days_estimate, estimate_table, estimate_table_partitions_the_line, size_round_trips,
+  days_round_trip_inside_band, estimate_ceiling, band_scheduled_days, estimate_band, size_label, d,
+  roadmap_estimate_entries,
+  SizeXs, SizeS, SizeM, SizeL, SizeXl, SizeXxl, SizedEstimate, DaysEstimate,
+}
+import gunbc.roadmap.roadmap_estimate_derivation {
+  EstimateSource, EstimateContradiction, EstimateRefusal, UnsizedWhy, Unsized, AuthoredSize, AuthoredDuration, Derived,
+  EstimateAnswer, Answered, Refused, FindingsUnprobed, estimate_answer,
+  estimate_contradictions, estimate_refusals, restated_piece_days, node_source, node_by_slug, current_estimate,
+  dated_contradictions, cleared_prerequisite_pairs,
+  EmptyEstimateBasis, EmptyRevocationReason, EstimateAboveCeiling, EstimateSubjectNamesNoNode, RevocationNamesNoRow, RevocationPrecedesItsRow, TwoEstimatesOneDay,
+}
+
+// ============================== THE FIXTURE POPULATION ==============================
+
+// The chain, taken from the authority by id. Nothing here mints an identity or invents a node: the fixture asks the
+// derivation about a subgraph of the roadmap that already exists.
+fn fixture_nodes() -> List<RoadmapNode> {
+  filter(declared_roadmap_nodes(), n =>
+    n.node == nid(s: "debt-payoff")
+      || n.node == nid(s: "dp-m1-dissolvable-rows-retired")
+      || n.node == nid(s: "debt-expected-red-mock-totality-dead-rows")
+      || n.node == nid(s: "debt-exclusion-frontier-excludes-nothing")
+      || n.node == nid(s: "debt-rung-drop-measurement-bankruptcy-retire")
+  )
+}
+
+fn fixture_size() -> Int {
+  count(fixture_nodes())
+}
+
+fn identity_of(slug: String) -> RoadmapNodeIdentity {
+  match node_by_slug(nodes: fixture_nodes(), slug: slug) {
+    Present { value: n } => n.identity
+    Absent => "rn_01FIXTURENODEABSENT" as RoadmapNodeIdentity
+  }
+}
+
+fn planted(slug: String, days: Int, made: Iso8601CivilDate) -> EstimateEntry {
+  estimate_recorded(row: estimate_row(
+    subject: identity_of(slug: slug),
+    made: made,
+    value: days_estimate(working_days: days),
+    basis: "witness fixture: planted duration",
+  ))
+}
+
+fn planted_size(slug: String, size: EstimateSize, made: Iso8601CivilDate) -> EstimateEntry {
+  estimate_recorded(row: estimate_row(
+    subject: identity_of(slug: slug),
+    made: made,
+    value: sized_estimate(size: size),
+    basis: "witness fixture: planted size",
+  ))
+}
+
+fn day_one() -> Iso8601CivilDate { d(y: 2026, m: 11, day: 19) }
+fn day_two() -> Iso8601CivilDate { d(y: 2026, m: 11, day: 20) }
+
+// ============================== THE ONE CONVERSION TABLE ==============================
+
+// The table is the single authority, so the first thing it owes is that its bands PARTITION the working-day line:
+// contiguous, none empty, starting at one day. A duration that fell in two bands would price one node twice; a
+// duration that fell in none would be refused for a reason the table cannot name.
+test fn the_table_partitions_the_working_day_line() -> Bool {
+  estimate_table_partitions_the_line(t: estimate_table) && fixture_size() == 5
+}
+
+// BOTH DIRECTIONS, by construction and not by luck: every size's scheduled duration buckets back to that size, and
+// every duration's band contains the days it came from. This is the red control the brief names -- a size and its
+// bucketed duration round-trip consistently.
+test fn a_size_and_its_bucketed_duration_round_trip() -> Bool {
+  all(every_size(), s => size_round_trips(t: estimate_table, s: s))
+    && all(every_band_edge_and_reading(), d => days_round_trip_inside_band(t: estimate_table, days: d))
+}
+
+// EVERY SIZE, and one duration per band plus every band boundary plus every duration the sizing lane has actually
+// read. The round trip is only worth calling a law if it holds at the seams, where two bands could disagree.
+fn every_size() -> List<EstimateSize> {
+  [SizeXs, SizeS, SizeM, SizeL, SizeXl, SizeXxl]
+}
+
+fn every_band_edge_and_reading() -> List<Int> {
+  [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 16, 20, 25, 30, 35, 40, 45, 49, 50, 60, 70, 75, 80, 81, 90, 100, 120, 160]
+}
+
+// A duration above the declared ceiling resolves to NO SIZE -- it is refused by `estimate_refusals` below, never
+// clamped into the top band. The table itself must still answer the ceiling's own value, so the ceiling is a fact and
+// not a boundary nobody can see.
+test fn the_ceiling_is_a_number_the_table_answers_and_nothing_above_it_is_sized() -> Bool {
+  match estimate_band(t: estimate_table, s: SizeXxl) {
+    Present { value: band } => band.high == estimate_ceiling() && band_scheduled_days(b: band) >= band.low && band_scheduled_days(b: band) <= band.high
+    Absent => false
+  }
+}
+
+// A refusal rather than a default: a duration past the ceiling is refused BY NAME with its number and the ceiling it
+// passed, so a sizing lane that reads 200 days sends a finding instead of quietly being told it is XXL.
+test fn a_duration_above_the_ceiling_is_refused_with_its_number() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [planted(slug: "debt-expected-red-mock-totality-dead-rows", days: estimate_ceiling() + 1, made: day_one())]) {
+    Cons { head: r, tail: _ } => match r {
+      EstimateAboveCeiling { subject: _, working_days: w, ceiling: c } => w == estimate_ceiling() + 1 && c == estimate_ceiling()
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// A row with no basis is refused: a number nobody can be asked about is not an estimate
+// (gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc).
+test fn an_estimate_with_no_basis_is_refused() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [estimate_recorded(row: estimate_row(
+    subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"),
+    made: day_one(),
+    value: days_estimate(working_days: 10),
+    basis: "",
+  ))]) {
+    Cons { head: r, tail: _ } => match r {
+      EmptyEstimateBasis { subject: _ } => true
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// A row naming a node that is not declared is refused rather than priced: identity is the join, and a typo must not
+// become a number on a bar.
+test fn an_estimate_naming_no_node_is_refused() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [estimate_recorded(row: estimate_row(
+    subject: "rn_01NOTADECLAREDNODE" as RoadmapNodeIdentity,
+    made: day_one(),
+    value: days_estimate(working_days: 3),
+    basis: "witness fixture: an identity nobody declared",
+  ))]) {
+    Cons { head: r, tail: _ } => match r {
+      EstimateSubjectNamesNoNode { subject: _ } => true
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// ============================== THE OPERATOR'S CONTRADICTION ==============================
+
+// THE RED CONTROL, verbatim from the operator: "if a project node says 1w, but a single subnode says 2w, that is a
+// contradiction". dp-m1 is authored at five working days and ONE node beneath it carries ten; the refusal names both
+// sides with both numbers, so a reader never has to go looking for the fact that made the other one illegal.
+test fn a_project_priced_under_its_own_subnode_refuses_by_name() -> Bool {
+  let clashes = estimate_contradictions(nodes: fixture_nodes(), entries: [
+    planted(slug: "dp-m1-dissolvable-rows-retired", days: 5, made: day_one()),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+  ])
+  match clashes {
+    Cons { head: c, tail: rest } => count(clashes) == 1
+      && c.ancestor == nid(s: "dp-m1-dissolvable-rows-retired")
+      && c.ancestor_days == 5
+      && c.descendant == nid(s: "debt-expected-red-mock-totality-dead-rows")
+      && c.descendant_days == 10
+      && count(rest) == 0
+    Empty => false
+  }
+}
+
+// THE SAME REFUSAL AT A GRANDCHILD, and it does not stop at the level below: containment is a walk, not a depth. The
+// authored side is the whole chain's root and the priced side is two levels down, through an intermediate that carries
+// no estimate of its own.
+test fn a_project_priced_under_its_own_grandchild_refuses_by_name() -> Bool {
+  let clashes = estimate_contradictions(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-payoff", days: 5, made: day_one()),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+  ])
+  match clashes {
+    Cons { head: c, tail: _ } => c.ancestor == nid(s: "debt-payoff") && c.descendant == nid(s: "debt-expected-red-mock-totality-dead-rows")
+    Empty => false
+  }
+}
+
+// A SIZED parent contradicts a priced child just as a duration does: the refusal is about two prices for one body of
+// work, not about which form either of them wrote.
+test fn a_sized_project_priced_under_its_own_subnode_refuses_too() -> Bool {
+  let clashes = estimate_contradictions(nodes: fixture_nodes(), entries: [
+    planted_size(slug: "dp-m1-dissolvable-rows-retired", size: SizeS, made: day_one()),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 40, made: day_one()),
+  ])
+  match clashes {
+    Cons { head: c, tail: _ } => c.ancestor_days == band_scheduled_days_of_s() && match c.ancestor_form {
+      SizedEstimate { size: sz } => sz == SizeS
+      DaysEstimate { working_days: _ } => false
+    }
+    Empty => false
+  }
+}
+
+fn band_scheduled_days_of_s() -> Int {
+  match estimate_band(t: estimate_table, s: SizeS) {
+    Present { value: band } => band_scheduled_days(b: band)
+    Absent => 0
+  }
+}
+
+// ============================== WHAT IS *NOT* A CONTRADICTION ==============================
+
+// TWO SIBLING TASKS ORDERED BY A PREREQUISITE EACH CARRY THEIR OWN PRICE. This is merry-moth-343's finding, kept as a
+// red control so it can never regress: the upward derivation and the contradiction follow containment ONLY
+// (in_project membership and decomposition pieces). Prerequisites order siblings; they do not contain them, so a check
+// that walked the dependency DAG upward would refuse legitimate estimates on consecutive tasks and count a shared
+// prerequisite into two parents. Nothing here is planted: this reads the roadmap AS IT STANDS.
+test fn a_prerequisite_never_makes_a_price_a_contradiction() -> Bool {
+  count(filter(dated_contradictions(nodes: declared_roadmap_nodes()), c => true)) == 0
+    && count(filter(cleared_prerequisite_pairs(nodes: declared_roadmap_nodes(), edges: declared_roadmap_edges()), p => true)) > 0
+}
+
+// TWO NODES IN DIFFERENT PROJECTS, both priced, are never a pair: containment is the only relation the check reads,
+// so the fixture's three dp-m1 siblings can all be priced at once and nothing is refused.
+test fn priced_siblings_under_one_parent_are_not_a_contradiction() -> Bool {
+  count(filter(estimate_contradictions(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12, made: day_one()),
+    planted(slug: "debt-rung-drop-measurement-bankruptcy-retire", days: 8, made: day_one()),
+  ]), c => true)) == 0
+}
+
+// ============================== DERIVED UPWARD ==============================
+
+// A PARENT WHOSE CHILDREN ARE ALL PRICED is Derived, its total the sum of the work beneath it -- authored by nobody.
+// This is the "derive as much as possible" half of the ruling: the parent has no number of its own to disagree with.
+test fn a_parent_with_priced_children_is_derived_and_totals_their_work() -> Bool {
+  match the_fixture_node(slug: "dp-m1-dissolvable-rows-retired") {
+    Absent => false
+    Present { value: fixture_subject } => match node_source(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12, made: day_one()),
+    planted(slug: "debt-rung-drop-measurement-bankruptcy-retire", days: 8, made: day_one()),
+  ], n: fixture_subject) {
+    Derived { work_days: w, contributed: c, from_pieces: p } => w == 30 && count(c) == 3 && !p
+    _ => false
+  }
+  }
+}
+
+// A PARENT WHOSE CHILDREN ARE NOT ALL PRICED answers Unsized, naming the child, rather than totalling the ones that
+// happen to have numbers: a derived total that quietly omits an unpriced sibling is a smaller kind of the same lie the
+// contradiction refuses (gunbc.design_argument::fail_closed).
+test fn a_parent_with_one_unpriced_child_names_it_instead_of_summing_the_rest() -> Bool {
+  match the_fixture_node(slug: "dp-m1-dissolvable-rows-retired") {
+    Absent => false
+    Present { value: fixture_subject } => match node_source(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12, made: day_one()),
+  ], n: fixture_subject) {
+    Unsized { why: _ } => true
+    _ => false
+  }
+  }
+}
+
+// AN UNSIZED NODE IS LISTED, and it is not priced at zero or at a default: the source of a leaf nobody priced answers
+// Unsized, and `current_estimate` answers Absent rather than a band's floor.
+test fn an_unsized_node_is_listed_and_never_priced() -> Bool {
+  match the_fixture_node(slug: "debt-expected-red-mock-totality-dead-rows") {
+    Absent => false
+    Present { value: fixture_subject } => match node_source(nodes: fixture_nodes(), entries: [] as List<EstimateEntry>, n: fixture_subject) {
+    Unsized { why: _ } => match current_estimate(entries: [] as List<EstimateEntry>, subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows")) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    _ => false
+  }
+  }
+}
+
+// AN AUTHORED SIZE IS ANSWERED IN DAYS BY THE TABLE AND NOTHING ELSE: the row named a size, the answer carries the
+// band's scheduled duration, and the size stays readable beside it. This is the one-way derivation the operator
+// asked for -- "you could specify a t shirt size OR a literal estimate, your choice, and we could derive the other
+// consistently".
+test fn an_authored_size_is_answered_in_days_by_the_table() -> Bool {
+  match the_fixture_node(slug: "debt-expected-red-mock-totality-dead-rows") {
+    Absent => false
+    Present { value: fixture_subject } => match node_source(nodes: fixture_nodes(), entries: [planted_size(slug: "debt-expected-red-mock-totality-dead-rows", size: SizeL, made: day_one())], n: fixture_subject) {
+    AuthoredSize { size: s, scheduled_days: days, made: _, basis: _ } => s == SizeL && days == band_scheduled_days_of_l()
+    _ => false
+  }
+  }
+}
+
+fn band_scheduled_days_of_l() -> Int {
+  match estimate_band(t: estimate_table, s: SizeL) {
+    Present { value: band } => band_scheduled_days(b: band)
+    Absent => 0
+  }
+}
+
+// THE FIXTURE NODE, or nothing: a fixture that lost its node fails the witness that asked for it rather than
+// answering with a stand-in node nobody declared.
+fn the_fixture_node(slug: String) -> Optional<RoadmapNode> {
+  node_by_slug(nodes: fixture_nodes(), slug: slug)
+}
+
+// ============================== THE RELEASE PATH (merry-moth-343's lifecycle) ==============================
+
+// AN ESTIMATED LEAF THAT SPLITS INTO PRICED CHILDREN must be able to stop pricing itself without erasing that it ever
+// did. Withdraw the leaf's own price and the parent reads Derived from the children; the withdrawn row is still there
+// to read, and the node is no longer a contradiction.
+test fn a_withdrawn_price_stops_pricing_and_the_parent_reads_the_children() -> Bool {
+  let entries = [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-exclusion-frontier-excludes-nothing", days: 12, made: day_one()),
+    planted(slug: "debt-rung-drop-measurement-bankruptcy-retire", days: 8, made: day_one()),
+    estimate_revoked(subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"), made: day_two(), withdraws_made: day_one(), reason: "witness fixture: this leaf is now priced as its own pieces"),
+  ]
+  match the_fixture_node(slug: "debt-expected-red-mock-totality-dead-rows") {
+    Absent => false
+    Present { value: fixture_subject } => match node_source(nodes: fixture_nodes(), entries: entries, n: fixture_subject) {
+    Unsized { why: _ } => count(filter(estimate_contradictions(nodes: fixture_nodes(), entries: entries), c => true)) == 0
+    _ => false
+  }
+  }
+}
+
+// THE STALE TARGET, which is the control merry-moth-343 asked for: record A, revise to B, then try to withdraw A.
+// Only a withdrawal of the CURRENTLY EFFECTIVE row may clear the node, so B still prices it and the answer is still
+// B's number. A withdrawal aimed at a superseded row is history, not a lever.
+test fn withdrawing_a_superseded_row_does_not_clear_the_current_one() -> Bool {
+  let entries = [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 12, made: day_two()),
+    estimate_revoked(subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"), made: day_two(), withdraws_made: day_one(), reason: "witness fixture: aimed at the superseded row"),
+  ]
+  match current_estimate(entries: entries, subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows")) {
+    Present { value: row } => match row.value {
+      DaysEstimate { working_days: w } => w == 12
+      SizedEstimate { size: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// AND THE WITHDRAWAL THAT DOES WORK: aimed at the effective row, it clears the node. The history stays readable
+// (the stream still holds both rows), which is the difference between a release and an edit.
+test fn withdrawing_the_effective_row_clears_the_node() -> Bool {
+  let entries = [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 12, made: day_two()),
+    estimate_revoked(subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"), made: day_two(), withdraws_made: day_two(), reason: "witness fixture: aimed at the effective row"),
+  ]
+  match current_estimate(entries: entries, subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// SAME DAY, RECORDED FIRST: a price made and taken back on one day is a real correction, and it works. A day number
+// cannot order the two statements, so the order they were appended in is the clock -- this is the order that clears.
+test fn a_same_day_withdrawal_after_its_row_clears_the_node() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let entries = [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    estimate_revoked(subject: subject, made: day_one(), withdraws_made: day_one(), reason: "witness fixture: withdrawn the day it was made"),
+  ]
+  match current_estimate(entries: entries, subject: subject) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// SAME DAY, WITHDRAWN FIRST: the mirror input order clears NOTHING and is refused rather than quietly ignored. A
+// withdrawal cannot release a price that had not yet been appended, even though both statements carry one day --
+// merry-moth-343's finding, pinned in both directions so neither order can drift back into being legal.
+test fn a_same_day_withdrawal_before_its_row_is_refused_and_clears_nothing() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let entries = [
+    estimate_revoked(subject: subject, made: day_one(), withdraws_made: day_one(), reason: "witness fixture: aimed before its row was appended"),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+  ]
+  match current_estimate(entries: entries, subject: subject) {
+    Present { value: kept } => match estimate_refusals(nodes: fixture_nodes(), entries: entries) {
+      Cons { head: first, tail: _ } => match first {
+        RevocationPrecedesItsRow { subject: _, withdraws_made: _ } => match kept.value {
+          DaysEstimate { working_days: w } => w == 10
+          SizedEstimate { size: _ } => false
+        }
+        _ => false
+      }
+      Empty => false
+    }
+    Absent => false
+  }
+}
+
+// AN EARLY WITHDRAWAL DOES NOT BORROW A LATE ONE'S STANDING. In [withdraw A, record A, withdraw A] the late
+// withdrawal correctly releases the row, and the early one is STILL refused: each withdrawal is validated at its own
+// position in the stream, not at the position of any withdrawal aimed at the same day (merry-moth-343's case).
+test fn an_early_withdrawal_is_refused_even_when_a_late_one_clears_the_row() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let entries = [
+    estimate_revoked(subject: subject, made: day_one(), withdraws_made: day_one(), reason: "witness fixture: aimed before its row"),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    estimate_revoked(subject: subject, made: day_two(), withdraws_made: day_one(), reason: "witness fixture: the release that works"),
+  ]
+  let cleared = match current_estimate(entries: entries, subject: subject) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  cleared && any(estimate_refusals(nodes: fixture_nodes(), entries: entries), r => is_early_withdrawal_refusal(r: r))
+}
+
+fn is_early_withdrawal_refusal(r: EstimateRefusal) -> Bool {
+  match r {
+    RevocationPrecedesItsRow { subject: _, withdraws_made: _ } => true
+    _ => false
+  }
+}
+
+// TWO IDENTICAL WITHDRAWALS ARE TWO STATEMENTS AT TWO POSITIONS. Appending the same withdrawal twice adds no fact,
+// and it must not blur the stream: the copy below the row releases it and the copy above the row is still refused.
+// Matching withdrawals by value would collapse the two and let the upper copy inherit the lower one's standing --
+// merry-moth-343's duplicate control, which matching on all four fields did not close.
+test fn two_identical_withdrawals_are_judged_at_their_own_positions() -> Bool {
+  let subject = identity_of(slug: "debt-expected-red-mock-totality-dead-rows")
+  let early = estimate_revoked(subject: subject, made: day_two(), withdraws_made: day_one(), reason: "witness fixture: same words, two positions")
+  let late = estimate_revoked(subject: subject, made: day_two(), withdraws_made: day_one(), reason: "witness fixture: same words, two positions")
+  let entries = [
+    early,
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    late,
+  ]
+  let cleared = match current_estimate(entries: entries, subject: subject) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  cleared && any(estimate_refusals(nodes: fixture_nodes(), entries: entries), r => is_early_withdrawal_refusal(r: r))
+}
+
+// A REVOCATION THAT NAMES NO ROW IS REFUSED: a withdrawal is a fact about a row, and one that matches nothing is a
+// reader being told something was retracted that was never said.
+test fn a_revocation_naming_no_row_is_refused() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [estimate_revoked(
+    subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"),
+    made: day_two(),
+    withdraws_made: day_one(),
+    reason: "witness fixture: no row was ever made that day",
+  )]) {
+    Cons { head: r, tail: _ } => match r {
+      RevocationNamesNoRow { subject: _, withdraws_made: _ } => true
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// A REVOCATION THAT PREDATES ITS ROW IS REFUSED: `made` is the clock that orders revisions, and a withdrawal cannot
+// unmake a price that had not been made yet.
+test fn a_revocation_that_predates_its_row_is_refused() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_two()),
+    estimate_revoked(subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"), made: day_one(), withdraws_made: day_two(), reason: "witness fixture: aimed backwards"),
+  ]) {
+    Cons { head: r, tail: _ } => match r {
+      RevocationPrecedesItsRow { subject: _, withdraws_made: _ } => true
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// A REVOCATION WITH NO REASON IS REFUSED: a price is public, so taking one back is too.
+test fn a_revocation_with_no_reason_is_refused() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    estimate_revoked(subject: identity_of(slug: "debt-expected-red-mock-totality-dead-rows"), made: day_two(), withdraws_made: day_one(), reason: ""),
+  ]) {
+    Cons { head: r, tail: _ } => match r {
+      EmptyRevocationReason { subject: _ } => true
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// TWO OPINIONS WRITTEN THE SAME DAY ARE REFUSED RATHER THAN SETTLED BY DECLARATION ORDER: `made` is the clock, and a
+// clock that cannot separate two rows leaves the later one winning by an accident of where it was typed.
+test fn two_estimates_one_day_are_refused() -> Bool {
+  match estimate_refusals(nodes: fixture_nodes(), entries: [
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 10, made: day_one()),
+    planted(slug: "debt-expected-red-mock-totality-dead-rows", days: 20, made: day_one()),
+  ]) {
+    Cons { head: r, tail: _ } => match r {
+      TwoEstimatesOneDay { subject: _, made: _ } => true
+      _ => false
+    }
+    Empty => false
+  }
+}
+
+// ============================== THE MECHANISM, GREEN WITH NO DATA ==============================
+
+// THE LIVE READ IS CLEAN, OVER THE STREAM THAT ACTUALLY EXISTS. This reads `roadmap_estimate_entries` itself rather
+// than being handed a list: a witness that passes `[]` proves only that the empty stream is empty, and stays green
+// forever while a real contradiction sits in the carrier (merry-moth-343's finding). The sizing lane owns the roughly
+// 290 nodes, so today the carrier is empty and this read is clean; the day their rows land, this SAME assertion runs
+// over all of them and goes red on any contradiction or malformed row -- without anyone editing this file.
+// `size_label` is here so the fixture's vocabulary is exercised too: XS through XXL all name themselves.
+test fn the_live_reads_are_clean_while_the_sizing_lane_is_open() -> Bool {
+  count(filter(estimate_contradictions(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries), c => true)) == 0
+    && count(filter(estimate_refusals(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries), r => true)) == 0
+    && size_label(s: SizeXs) == "XS"
+    && size_label(s: SizeS) == "S"
+    && size_label(s: SizeM) == "M"
+    && size_label(s: SizeL) == "L"
+    && size_label(s: SizeXl) == "XL"
+    && size_label(s: SizeXxl) == "XXL"
+}
+
+// ---- RED FIRST: an unprobed FindingsOf family is UNSIZED, never priced as one member ----
+// names-bind-to-the-unique-declaration's decomposition carries a FindingsOf family (its population is unknown until
+// the probe runs) and it has no authored row, so it must reach the pieces branch. Today's code priced it Derived at
+// 1 x days -- a fabricated member count -- so it was NOT in the answer's unsized list; the fix leaves it UNSIZED
+// (listed, never priced). THIS witness uses only the stable estimate_answer(...) shape (unchanged by the fix), so it
+// COMPILES against BOTH main and the fix: false on main, true on the fix. A VALUE-level red, not a compile error --
+// exactly what @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward) demands.
+test fn an_unprobed_findings_item_is_listed_as_unsized() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(unsized, id => id == nid(s: "names-bind-to-the-unique-declaration"))) == 1
+    Refused { refusals: _ } => false
+  }
+}
+
+// The unsized cause NAMES the family and its probe (a typed UnsizedWhy::FindingsUnprobed), so the item is listed WITH
+// its reason rather than silently dropped. This references the new arm, so it runs on the fix only.
+fn source_is_findings_unprobed(src: EstimateSource, family: String, probe: String) -> Bool {
+  match src {
+    Unsized { why: w } => match w {
+      FindingsUnprobed { family: f, probe: p } => f == family && p == probe
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn an_unprobed_findings_item_names_its_family_and_probe() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: rows, unsized: _, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(rows, r => r.node == nid(s: "names-bind-to-the-unique-declaration")
+        && source_is_findings_unprobed(src: r.source, family: "one head declared in std with its claims", probe: "list the roster heads (probe)"))) == 1
+    Refused { refusals: _ } => false
+  }
+}
+
+// Produced/Reading families still price members x days: a sibling whose decomposition carries only declared
+// populations (no findings family) and no authored row stays priced -- it is NOT in the unsized list -- unchanged by
+// this fix. Both-compatible: priced on main, still priced on the fix.
+test fn a_declared_population_item_still_prices_members_times_days() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(unsized, id => id == nid(s: "the-v1-dag-file-was-a-carrier-not-an-executable"))) == 0
+    Refused { refusals: _ } => false
+  }
+}

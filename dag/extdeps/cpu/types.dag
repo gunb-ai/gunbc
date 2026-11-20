@@ -1,7 +1,7 @@
 module extdeps.cpu.types
 
 
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.vendor { Vendor }
@@ -9,11 +9,24 @@ import extdeps.hardware { Hardware }
 import std.measure { ByteSize, Celsius, HardwareThreadCount, Hertz, Watt }
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { FreeSemigroup, non_empty_to_list }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/CPU_socket"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.types",
+      decl_name: "CpuModelCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // TERMINATION AND ATTACHMENT ARE TWO AXES, AND FUSING THEM MADE A CONTRADICTION WRITABLE. The

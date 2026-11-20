@@ -1,0 +1,92 @@
+module test.claim.fleet_converge_plan_revision_execution_witness
+
+// THE ADMISSION THAT DECIDES WHAT THE srv1 CUTOVER RUNS: `admit_optional_expected_revision_given` is the
+// ONE cross-check both apply (gunbc.fleet.fleet_converge_plan_cli fleet_converge_apply_wet) and the
+// deploy (gunbc.live_deploy.apply live_deploy_transaction_admitted_wet_with_access) route through. It is an
+// EXACT cross-check and stays one — this witness does not exercise a relaxation, it pins what the
+// operator must pass. The model, from the workflow (fleet_converge_workflow.dag plan_revision comment,
+// verified on dispatch test 44488679086): the plan runs in its own earlier dispatch at revision P; the
+// `plan-revision` job emits P; `build` checks out and builds at P and re-exports it; and every consumer
+// checks out `needs.build.outputs.revision`, so the checkout this admission sees (execution_revision) is
+// P — while the run's event sha (run_revision, github.sha) is whatever main was when the operator
+// dispatched, a LATER commit M. A moving main between plan and deploy is therefore irrelevant once
+// expected_revision names P. These witnesses make that claim executable: they build a binding whose
+// run_revision is a main tip M and whose execution_revision is the plan's revision P, the exact shape a
+// plan-then-apply-then-deploy cutover produces, and show the admission follows the plan, not main.
+//
+// THE POSITIVE ARMS ARE NOT SELF-EVIDENT FROM THE EXISTING actions_run_binding_witness: that witness uses a
+// binding whose run_revision EQUALS its execution_revision, so it cannot tell "followed the plan" from
+// "followed main". Only a binding where the two differ — here run_revision=M, execution_revision=P —
+// separates them, which is why these rows are load-bearing and not a restatement.
+
+import std.types { String }
+import gunbc.actions_run_binding {
+  ActionsRunBinding, admit_optional_expected_revision_given,
+  ExpectedRevisionPresent, ExpectedRevisionAbsent,
+  RunRevisionAdmitted, RunRevisionRefused,
+}
+
+// P: the plan's revision — what the plan run was created at, what the plan-revision job emits, what build
+// checked out, and therefore what the apply/deploy checkout (execution_revision) is.
+data sha_plan: String = "2561d29e2561d29e2561d29e2561d29e2561d29e"
+// M: the current main tip when the operator dispatches apply/deploy --ref main, strictly later than P. The
+// run's event sha (run_revision) is this, NOT P.
+data sha_main: String = "4c2f30464c2f30464c2f30464c2f30464c2f3046"
+
+// The binding a cutover produces: the run was dispatched from main (event sha = M) but checked out the
+// plan's revision P (build.outputs.revision), so the two revisions differ.
+data plan_checkout_binding: ActionsRunBinding = ActionsRunBinding {
+  repository: "gunb-ai/gunbc",
+  workflow_ref: "refs/heads/main",
+  run_id: "44488679086",
+  run_revision: sha_main,
+  execution_revision: sha_plan,
+}
+
+// ARMS A AND B ARE THE GUARANTEE (both admit P); ARM C IS THE RED CONTROL (refuses, naming M vs P).
+
+// (A) The operator passes the PLAN's revision P: the admission admits, and what it admits is P. Because
+// the run's event sha is M, an admission that admitted the run's own sha instead of the checkout would
+// surface M; admitting P is the proof the checkout followed the plan.
+test fn apply_dispatch_admits_the_plan_revision() -> Bool {
+  let admitted = admit_optional_expected_revision_given(
+    read: ExpectedRevisionPresent { revision: sha_plan },
+    binding: plan_checkout_binding,
+  )
+  match admitted {
+    RunRevisionAdmitted { revision: r } => r == sha_plan
+    _ => false
+  }
+}
+
+// (B) Omitting expected_revision admits the CHECKOUT, which is the plan's revision P — NOT main's tip M.
+// This is the heart of "the plan's revision whatever main is": with no cross-check at all, the admitted
+// revision is still P, because build put the tree and bins at P. If anything here admitted M, the
+// "moving main is irrelevant" claim would be false.
+test fn omitted_expected_revision_admits_the_plan_checkout_not_main() -> Bool {
+  let admitted = admit_optional_expected_revision_given(
+    read: ExpectedRevisionAbsent { variable: "RLM_EXPECTED_REVISION", detail: "unset" },
+    binding: plan_checkout_binding,
+  )
+  match admitted {
+    RunRevisionAdmitted { revision: r } => r == sha_plan
+    _ => false
+  }
+}
+
+// (C) THE RED CONTROL. The operator passes the CURRENT MAIN TIP M (which has moved since P) — the mistake
+// that stalls a cutover. The admission refuses with RunRevisionRefused naming expected M and observed P:
+// the refusal is BY NAME (it reports the sha the operator wrongly supplied and the plan checkout it did
+// not match), and it is the refusal the amended docs at fleet_converge_workflow.dag warn against. If this
+// refused for the wrong reason, or admitted M, the gate would not be an exact cross-check of the plan
+// checkout and the whole "expected_revision is the plan's revision" documentation would be false.
+test fn main_tip_expected_revision_refuses_naming_the_plan_checkout() -> Bool {
+  let refused = admit_optional_expected_revision_given(
+    read: ExpectedRevisionPresent { revision: sha_main },
+    binding: plan_checkout_binding,
+  )
+  match refused {
+    RunRevisionRefused { expected: e, observed: o } => e == sha_main && o == sha_plan
+    _ => false
+  }
+}

@@ -6,16 +6,29 @@ import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.algebra { length, skip }
 import std.optional { Present }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.capability",
+      decl_name: "BmcFirmwareVersion",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type BmcCapability

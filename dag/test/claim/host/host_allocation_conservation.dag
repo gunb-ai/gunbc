@@ -38,8 +38,8 @@ import gunbc.host.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
   gunbc_ci_host_fixed_overhead_for,
 }
-import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_runner_pool_charge_over, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthOverCommitted, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth, host_transitional_ci_slot_count, MicrovmSlotRealizationRow, MicrovmSlotRealized, srv1_microvm_shakedown_slot, srv1_revision_job_slot, RunnerSlotIdentity }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, RunnerSlotLabels, SlotCpuQuotaUnbounded }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_runner_pool_charge_over, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthCensusAbsent, CpuWidthOverCommitted, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth, memory_admitted_total_width, MicrovmSlotRealizationRow, MicrovmSlotRealized, srv1_microvm_shakedown_slot, srv1_revision_job_slot, RunnerSlotIdentity }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, RunnerSlotLabels, SlotCpuQuotaUnbounded, host_build_pool_reservation }
 import gunbc.fabric.fabric_control_plane_charge {
   host_fabric_control_plane_claim,
   ControlPlaneNotPlaced,
@@ -74,7 +74,7 @@ fn witness_allocation_conserves(
   match host_allocation_verdict(
     host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
     session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
-    served_deployment: served_deployment, serving: serving
+    served_deployment: served_deployment, serving: serving, build_pool: byte_size(0)
   ) {
     HostAllocationConserves => true
     HostAllocationOversubscribed => false
@@ -214,7 +214,8 @@ fn live_verdict_with_session_charge(
     compile_pool: byte_size(0),
     control_plane: control_plane,
     served_deployment: host_served_deployment_claim(host: host),
-    serving: host_memory_reserved(host: host)
+    serving: host_memory_reserved(host: host),
+    build_pool: host_build_pool_reservation(host: host)
   )
 }
 
@@ -242,7 +243,8 @@ fn live_verdict_with_runner_pool_over(
     compile_pool: byte_size(0),
     control_plane: control_plane,
     served_deployment: host_served_deployment_claim(host: host),
-    serving: host_memory_reserved(host: host)
+    serving: host_memory_reserved(host: host),
+    build_pool: host_build_pool_reservation(host: host)
   )
 }
 
@@ -303,14 +305,6 @@ fn session_charge_is_established(host: HostIdentity) -> Bool {
     SessionSliceNotApplicable => true
     SessionSliceUnsized { reason: _ } => false
   }
-}
-
-// The total runner width RAM admits -- the fleet-row slots host_memory_admitted_width counts PLUS
-// the transitional CI slot the width fold grants the sub-25 GiB remainder its division discards.
-// host_memory_admitted_width alone is a PROJECTION (fleet-row slots only); a host with a
-// transitional slot is one short of the wall without this addend.
-fn memory_admitted_total_width(host: HostIdentity) -> Int {
-  host_memory_admitted_width(host: host) + host_transitional_ci_slot_count(host: host)
 }
 
 fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
@@ -378,6 +372,22 @@ test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
     a => conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host))
       && !conserves_at_width(host: a.host, slots: memory_admitted_total_width(host: a.host) + 1)
   )
+}
+
+// RED CONTROL on the BUILD-POOL CHARGE, at the #16562 boundary. srv3 and srv4 are the two build hosts
+// that carve ONE CI slot for the gunbc-build account (gunbc.runner.runner_slot_desired::
+// host_build_pool_reservation). That carve reaches host_memory_admitted_width through the width fold
+// (envelope_final), and it MUST also be charged in the wall (host_allocation_verdict's build_pool child);
+// then the wall refuses one slot past each host's admitted total. This claim pins that refusal. If the
+// charge were dropped from the wall -- the exact half-landed state #16562 left -- the wall would keep a
+// full slot of slack on those two hosts, CONSERVE at total+1, and this claim would go RED for that and
+// no other reason. So it is the non-vacuity control on the build-pool charge: it is falsified by the
+// physical charge, not by the slot count. srv1/srv2 reserve no build pool and are not its subject.
+test fn srv3_and_srv4_wall_refuses_one_slot_past_the_build_pool_carve() -> Bool {
+  let t3 = memory_admitted_total_width(host: operator_host_srv3)
+  let t4 = memory_admitted_total_width(host: operator_host_srv4)
+  !conserves_at_width(host: operator_host_srv3, slots: t3 + 1)
+    && !conserves_at_width(host: operator_host_srv4, slots: t4 + 1)
 }
 
 // FAIL_CLOSED RED CONTROL, at srv1's PRODUCTION total. srv1 admits its total (7 fleet rows + the
@@ -1231,6 +1241,7 @@ test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool 
     && match host_cpu_admitted_width(host: operator_host_srv1) {
       CpuWidthDerived { slots: n } => n == altra_max_m12830_catalog.cores
       CpuWidthOfferAbsent { host: _ } => false
+      CpuWidthCensusAbsent { host: _ } => false
       CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => false
     }
     && committed_equals_memory_admission(host: operator_host_srv1)

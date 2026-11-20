@@ -2,8 +2,8 @@ module extdeps.tailscale.serve
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, Port, List, Bool, Unit }
-import std.algebra { Less, Equal, Greater }
+import std.types { NonEmptyStr, Port, List, Bool, Unit, checked_port }
+import std.algebra { Less, Equal, Greater, string_contains }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label, semver_version_parse }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -138,15 +138,35 @@ fn tailscale_serve_unix_target_path(endpoint: TailscaleServeEndpoint) -> NonEmpt
 // nothing rather than an approximation.
 data tailscale_serve_port_proxy_prefix: String = "http://127.0.0.1:"
 
+// THE ONE PORT-LABEL RULE OF THIS MODULE: a word is a port label when it round-trips the integer
+// surface as a positive number. Both consumers call THIS (root_generalization; a second copy drifts
+// the moment one side learns a new fact): tailscale_serve_backend_of_proxy_target applies it to the
+// port half of a loopback proxy URL, and tailscale_serve_backend_target applies it to a whole backend
+// word (directly, and through tailscale_serve_backend_is_host_port for the host:port form).
+// THE UPPER BOUND IS THE PORT FOLD, not a copied literal: tailscale --bg and the TCP port surface
+// both cap at 65535, and the admission now reads std.types checked_port (its next-rung twin is the
+// http_status_of comment), the fold pattern beside a range that this row formerly had no twin of.
+// Binding `n <= 65535` inline here would be the copied-literal drift the fold pattern exists to
+// prevent, so the bound is consumed, not restated: checked_port refuses 0 (reserved, RFC 6335 §6)
+// and 70000 (outside RFC 793 / RFC 9293's 16-bit field) by construction, and the round-trip
+// `to_string(n) == backend` refuses a non-numeric or non-canonical label. Today 70000 and 0 answer
+// false and "tcp" answers false.
+fn tailscale_serve_backend_is_port_label(backend: String) -> Bool {
+  match parse_int(s: backend) {
+    Present { value: n } => match checked_port(n: n) {
+      Present { value: _ } => to_string(n) == backend
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
 fn tailscale_serve_backend_of_proxy_target(target: String) -> NonEmptyStr? {
   if starts_with(s: target, prefix: tailscale_serve_unix_target_prefix) && length(target) > length(tailscale_serve_unix_target_prefix) {
     Present { value: target as NonEmptyStr }
   } else if starts_with(s: target, prefix: tailscale_serve_port_proxy_prefix) {
     let port = substring(s: target, start: length(tailscale_serve_port_proxy_prefix), end: length(target))
-    match parse_int(s: port) {
-      Present { value: n } => if n > 0 && to_string(n) == port { Present { value: port as NonEmptyStr } } else { none }
-      Absent => none
-    }
+    if tailscale_serve_backend_is_port_label(backend: port) { Present { value: port as NonEmptyStr } } else { none }
   } else {
     none
   }
@@ -164,6 +184,77 @@ fn tailscale_serve_backend_is_unix_target(endpoint: TailscaleServeEndpoint) -> B
 fn tailscale_serve_proxy_url(endpoint: TailscaleServeEndpoint) -> String {
   if starts_with(s: endpoint.backend as String, prefix: tailscale_serve_unix_target_prefix) { endpoint.backend as String }
   else { concat(tailscale_serve_port_proxy_prefix, endpoint.backend as String) }
+}
+
+// WHAT THE BACKEND WORD ADDRESSES -- THE QUESTION THE DEPLOY GATE ASKS. The endpoint's
+// backend: NonEmptyStr is forwarded VERBATIM to `tailscale serve --bg <backend>`
+// (tailscale_serve_configure_command above), and tailscale's target grammar (ipn/serve.go
+// ExpandProxyTargetValue, tailscale.com/kb/1242) has two families and a remainder: a PROXY target
+// tailscale DIALS -- a bare port, a host:port, a URL, or a unix socket (the "unix:" prefix above)
+// -- whose bytes never come from the host's installed artifacts; and a FILESYSTEM target, an
+// absolute path to a file or a directory whose contents tailscale serves, which tailscaled READS
+// at serve time. Anything else (a relative path, a scheme-less word) is not a target this module
+// can decide the reads of. The consumer in gunbc.live_deploy.deploy_artifact_read_sets maps the
+// families onto the artifact contract: proxy and unix-socket backends read nothing of the
+// deployment's, a filesystem backend declares its path, and an unclassifiable word is left NOT
+// YET MODELED rather than guessed (gunbc.design_argument::fail_closed: "failing to compute the
+// answer is a different outcome from computing a conservative one" -- answering NoReadOfRecord for
+// a word that might be a directory would let a deploy admit a mapping whose target the host has
+// never installed).
+type TailscaleServeBackendTarget
+  = ServeBackendProxyTarget
+  | ServeBackendFilesystemTarget { path: NonEmptyStr }
+  | ServeBackendUnclassifiable
+
+// host:port, the form `tailscale serve --bg localhost:3000` accepts: exactly one ':', a non-empty
+// host before it, and a valid port after it. A word carrying a '/' is a path-shaped word and
+// answers false here so the classifier falls through to Unclassifiable rather than reading a
+// colon inside a path as a port separator.
+fn tailscale_serve_backend_is_host_port(backend: String) -> Bool {
+  if string_contains(s: backend, pattern: "/") {
+    false
+  } else {
+    let parts = split(s: backend, delimiter: ":")
+    if length(parts) == 2 {
+      match parts.first() {
+        Absent => false
+        Present { value: head } => if head == "" {
+          false
+        } else {
+          match parts.skip(n: 1).first() {
+            Absent => false
+            Present { value: tail } => tailscale_serve_backend_is_port_label(backend: tail)
+          }
+        }
+      }
+    } else {
+      false
+    }
+  }
+}
+
+// THE ORDER IS THE UPSTREAM ORDER. tailscale's applyWebServe (cmd/tailscale/cli/serve_v2.go
+// ~1263-1297 at 9ad2a962) asks filepath.IsAbs FIRST and serves the path, so an absolute path that
+// merely CONTAINS a URL marker -- /srv/www/a://b -- is a filesystem target upstream, not a URL.
+// Testing the marker first here would classify it ServeBackendProxyTarget, the gate would read
+// NoReadOfRecord, and a deploy would admit a mapping whose target the host never installed. The
+// absolute-path test therefore precedes the "://" test; the unix-socket prefix is a scheme name
+// that can never begin with '/', so its position relative to the path test does not matter.
+fn tailscale_serve_backend_target(endpoint: TailscaleServeEndpoint) -> TailscaleServeBackendTarget {
+  let backend = endpoint.backend as String
+  if tailscale_serve_backend_is_unix_target(endpoint: endpoint) {
+    ServeBackendProxyTarget
+  } else if starts_with(s: backend, prefix: "/") {
+    ServeBackendFilesystemTarget { path: endpoint.backend }
+  } else if string_contains(s: backend, pattern: "://") {
+    ServeBackendProxyTarget
+  } else if tailscale_serve_backend_is_port_label(backend: backend) {
+    ServeBackendProxyTarget
+  } else if tailscale_serve_backend_is_host_port(backend: backend) {
+    ServeBackendProxyTarget
+  } else {
+    ServeBackendUnclassifiable
+  }
 }
 
 fn tailscale_serve_mount_status_key(mount: TailscaleServeMount) -> String {

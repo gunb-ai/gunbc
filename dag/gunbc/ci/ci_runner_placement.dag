@@ -1,7 +1,7 @@
 module gunbc.ci.ci_runner_placement
 
 import gunbc.ci.ci_fleet { ComputeOffer }
-import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import product.host_identity { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { hardware_thread_count_saturating_sub }
@@ -13,7 +13,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_width_unresolved_cause_text, gunbc_runner_slice_cap_for_width, host_runner_pool_charge }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, host_build_pool_reservation }
 import gunbc.serving.serving_reservation { host_memory_reserved }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
@@ -619,11 +619,18 @@ fn session_slice_of(f: HostWidthFacts) -> HostSessionSliceResolution {
 fn host_deployment_standing_given(offer: ComputeOffer, facts: HostWidthFacts, control_plane_placement: FabricControlPlanePlacement) -> HostRunnerDeploymentStanding {
   let host_id = offer.supply.physical.identity
   match compute_host_primary_cpu(host: offer.supply.physical) {
-    Absent =>
-      refuse_host(host: host_id, cause: PrimaryCpuUnavailable {
+    // TWO REFUSALS, NOT ONE: the board was read and has no CPU in it, or nobody has read the board at all. The
+    // second is the case of a host whose fleet row is ahead of its SMBIOS read, and it must not be reported as a
+    // fact about the machine (review 96379).
+    PrimaryCpuCensusUnread { host: unread_host } =>
+      refuse_host(host: unread_host, cause: PrimaryCpuUnavailable {
+        cause: concat("no hardware census has been read for this host, so no primary CPU is known: ", host_id)
+      })
+    PrimaryCpuAbsentFromSurvey { host: surveyed_host } =>
+      refuse_host(host: surveyed_host, cause: PrimaryCpuUnavailable {
         cause: concat("compute offer has no primary CPU facts: ", host_id)
       })
-    Present { value: cpu } =>
+    PrimaryCpuMeasured { cpu: cpu } =>
       match host_usable_ram_or_refusal(host: host_id, r: facts.usable_ram) {
         HostUsableRamUnresolved { reason: rr } =>
           refuse_host(host: host_id, cause: UsableRamUnavailable { cause: rr })
@@ -706,7 +713,8 @@ fn host_standing_at_width(
             compile_pool: compile_pool,
             control_plane: host_fabric_control_plane_claim_under(host: host_id, placement: control_plane_placement),
             served_deployment: facts.served_deployment,
-            serving: host_memory_reserved(host: host_id)
+            serving: host_memory_reserved(host: host_id),
+            build_pool: host_build_pool_reservation(host: host_id)
           ) {
             HostAllocationOversubscribed =>
               refuse_host(host: host_id, cause: HostAllocationOversubscribedOnHost {

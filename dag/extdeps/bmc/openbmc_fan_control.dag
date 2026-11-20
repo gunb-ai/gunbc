@@ -3,7 +3,7 @@ module extdeps.bmc.openbmc_fan_control
 import std.algebra { Empty, trim }
 import v2.std.diagnostic { Accepted, Rejected }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
 import extdeps.ssh.password_session {
   PasswordSshExecResult,
@@ -137,12 +137,25 @@ import std.measure {
   second_count,
 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Unit }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
   },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.openbmc_fan_control",
+      decl_name: "openbmc.JsonProjection",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct

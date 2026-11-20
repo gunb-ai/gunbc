@@ -1,0 +1,150 @@
+module test.claim.live_deploy.lab_pair_serve_refusal_witness
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  RunningReleaseIdentified,
+  RunningReleaseUnidentified,
+  RunningReleaseObservation,
+  ReleaseIdentityBodyUnparseable,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+  DeployedScopeMatchesCommit,
+  TreeCommandFailed,
+}
+import gunbc.live_deploy.release_binding {
+  LabServePairVerdict,
+  PairBoundToServe,
+  PairServeRefused,
+  lab_pair_serve_verdict,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data hex_a: String = "8a472fff9e9000600e33cc3559ecfad4ba55e3a3"
+data hex_b: String = "1111111111111111111111111111111111111111"
+
+fn probe_surface() -> Fnv1a64Structural {
+  Fnv1a64Structural { digest: "0123456789abcdef" as Fnv1a64StructuralDigestHex }
+}
+
+fn oid(hex: String) -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: hex)
+}
+
+fn tree_at(hex: String) -> DeployedTreeObservation? {
+  match oid(hex: hex) {
+    Absent => none
+    Present { value: o } =>
+      Present { value: DeployedTreeObserved { revision: o, tree: o, content: DeployedScopeMatchesCommit } }
+  }
+}
+
+fn process_saying(hex: String, surface: Fnv1a64Structural) -> RunningReleaseIdentity {
+  RunningReleaseIdentified {
+    observation: RunningReleaseObservation {
+      revision: hex as CommitSha,
+      surface_bundle_identity: surface,
+    },
+  }
+}
+
+fn unobserved_tree() -> DeployedTreeObservation {
+  DeployedTreeUnobservable {
+    cause: TreeCommandFailed { leg: "rev-parse HEAD", exit_code: 128, stderr: "not a git repository" },
+  }
+}
+
+// RED CONTROL: A STALE PAIR SERVED WITH NO VISIBLE REFUSAL. On base (main) there is no
+// lab_pair_serve_verdict, no consumer at the lab asks the pairing question, and a mixed
+// pair is served anyway. On head, the fold exists and must refuse.
+
+test fn witness_mixed_pair_refuses_serve() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match lab_pair_serve_verdict(
+        observation: t,
+        identity: process_saying(hex: hex_b, surface: probe_surface()),
+        expected_surface: probe_surface(),
+      ) {
+        PairServeRefused { binding: _, reason: r } =>
+          string_contains(s: r, pattern: "release-binding")
+        PairBoundToServe { binding: _ } => false
+      }
+  }
+}
+
+// RED CONTROL: AN UNOBSERVED IDENTITY MEANS NO PAIR DECIDABLE, SERVE MUST REFUSE.
+// The belt_observe_once_cli currently has no such gate; on head the fold refuses.
+
+test fn witness_unobserved_identity_refuses_serve() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match lab_pair_serve_verdict(
+        observation: t,
+        identity: RunningReleaseUnidentified { cause: ReleaseIdentityBodyUnparseable },
+        expected_surface: probe_surface(),
+      ) {
+        PairServeRefused { binding: _, reason: r } => string_contains(s: r, pattern: "release-binding")
+        PairBoundToServe { binding: _ } => false
+      }
+  }
+}
+
+// A BOUND PAIR PERMITS SERVE: tree revision and process revision agree, surfaces agree.
+
+test fn witness_bound_pair_permits_serve() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match lab_pair_serve_verdict(
+        observation: t,
+        identity: process_saying(hex: hex_a, surface: probe_surface()),
+        expected_surface: probe_surface(),
+      ) {
+        PairBoundToServe { binding: _ } => true
+        PairServeRefused { binding: _, reason: _ } => false
+      }
+  }
+}
+
+// THE REFUSAL REASON NAMES THE BINDING: it must carry the revision text of the disagreement
+// so an operator reading the log can identify which arm rejected and why.
+
+test fn witness_refusal_reason_names_the_binding() -> Bool {
+  match tree_at(hex: hex_a) {
+    Absent => false
+    Present { value: t } =>
+      match lab_pair_serve_verdict(
+        observation: t,
+        identity: process_saying(hex: hex_b, surface: probe_surface()),
+        expected_surface: probe_surface(),
+      ) {
+        PairServeRefused { binding: _, reason: r } =>
+          string_contains(s: r, pattern: hex_a)
+            && string_contains(s: r, pattern: hex_b)
+        PairBoundToServe { binding: _ } => false
+      }
+  }
+}
+
+// UNOBSERVED TREE ALSO REFUSES: the fail-closed path where the tree itself could not be read.
+
+test fn witness_unobserved_tree_refuses_serve() -> Bool {
+  match lab_pair_serve_verdict(
+    observation: unobserved_tree(),
+    identity: process_saying(hex: hex_a, surface: probe_surface()),
+    expected_surface: probe_surface(),
+  ) {
+    PairServeRefused { binding: _, reason: r } => string_contains(s: r, pattern: "release-binding")
+    PairBoundToServe { binding: _ } => false
+  }
+}

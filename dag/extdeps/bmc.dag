@@ -1,17 +1,30 @@
 module extdeps.bmc
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.redfish { bmc_ground_host_observations }
 import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot }
 import std.measure { ByteSize, HardwareThreadCount }
 import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Baseboard_management_controller"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc",
+      decl_name: "bmc_observed_processor_model",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 fn bmc_observed_processor_model(obs: BmcGroundedHostObservations) -> NonEmptyStr {

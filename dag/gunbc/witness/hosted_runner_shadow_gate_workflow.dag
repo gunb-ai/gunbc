@@ -1,0 +1,497 @@
+module gunbc.witness.hosted_runner_shadow_gate_workflow
+
+
+import std.types { String, Int, List, bool_text }
+import std.optional { Present, Absent }
+import std.algebra { list_map, list_head, list_append }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
+import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep, RunnerSpec, HostedRunner, Bash,
+  WorkflowTrigger, PullRequest, MergeGroup, PullRequestActivity, Opened, Synchronize, Reopened,
+  WorkflowPermissions, PermRead, Ubuntu2404,
+}
+import extdeps.tailscale.github_action { tailscale_github_action_v4_4_0 }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description}
+import extdeps.bazel.label { render_label }
+import gunbc.action_use_admission {
+  checkout_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
+  workflow_action_uses_refusal_reason,
+  admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused,
+  workflow_checkout_refs_refusal_reason,
+}
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused,
+  toolchain_home_refusal_reason,
+}
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.tailscale_ci_oauth_client {
+  ci_oauth_client_id_github_secret, ci_oauth_client_secret_github_secret, ci_oauth_client_tags,
+}
+
+// THE HOSTED-RUNNER SHADOW GATE: a NON-required GitHub Actions job on a standard GitHub-hosted
+// runner that joins the tailnet and drives the gunbc remote build for every required-gate row.
+// This implements the operator ruling of 2026-11-19 (@ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign). It
+// DISSOLVES at cutover: the job roster is closed to growth and this entry was admitted by the
+// ruling; when the fleet itself runs the remote build natively, this workflow is removed.
+//
+// WHY A SEPARATE WORKFLOW FILE rather than a second job in witnesses.yml:
+//   1. It needs repository secrets (tailscale OAuth, CI SSH key) the required gate does not.
+//   2. It is same-repo only (forks get no secrets), so it needs its own conditional guard.
+//   3. It is ephemeral by ruling; removing it at cutover should not touch the required workflow.
+//   4. The drift watch covers it independently: each generated artifact has its own producer.
+//
+// THE NETWORK PATH: the hosted runner joins the tailnet as tag:ci-dispatch (the operator ruling of
+// 2026-11-19: "OK for ci-dispatch, as long as its all modeled/recorded for tailscale convergence").
+// The emitted ACL grant (extdeps.tailscale.acl tag_ci_dispatch_to_build_hosts_ssh_grant) gives
+// tag:ci-dispatch tcp:22 to tag:ci (the fleet hosts' tag). Only the gunbc-build forced-command
+// account admits the CI key, so the blast radius is the remote-build gate operation and nothing
+// else on the host. Even if a host ran Tailscale SSH, no ssh rule names tag:ci-dispatch.
+//
+// THE CONFIG-CHECK ARM (manager ruling 2026-11-19): when the required secrets are absent (the
+// operator has not yet set them), the config-check step prints ::notice::not configured:: and all
+// downstream steps skip via if_condition. The job is not green-as-passed (it reports the gate was
+// not attempted) and not red. Red control: when secrets ARE present and the remote gate fails, the
+// step's exit code propagates and the job goes red.
+//
+// THE HAND-SHELL GATE (ctrl review policy): the run: fields build shell as strings. This is a
+// scaffold; the dissolution trigger below names the capability that would replace it — the
+// orchestration-to-shell bash-emit capability v2.workflow.bash_emit / bash_emit_stmts, tracked as
+// #5828 (the same trigger the precedent carriers name:
+// gunbc.test.claim.runner.runner_host_medium_fleet_keys_witness
+// the_boot_command_carries_its_dissolution_trigger_naming_bash_emit). The carrier-level marker
+// dissolves when that capability lands.
+//
+// THE DISSOLUTION: this entire workflow dissolves at remote-build cutover. The carrier-level
+// DissolutionCondition below records it.
+//
+// THE GATE OPERATION: per emitted_subject_build_rows row, the job invokes the remote-build client's
+// gate operation (gunbc.compute.remote_build_client remote_gate_cli). Until that CLI lands (work
+// item adhoc-7d2186ce-2c3, sibling keen-swift-260), the plumbing is proved with remote_test_cli on
+// a known pattern. When remote_gate_cli lands, the steps below switch to it with the same shape.
+//
+// CI EVALUATES NO WITNESSES: the job dispatches work to a remote host via SSH; the witnesses are
+// evaluated on the fleet host, not on the GitHub runner.
+
+// ── THE WORKFLOW IDENTITY ────────────────────────────────────────────────────────────────────────
+
+data shadow_gate_workflow_name: String = "hosted-runner-shadow-gate"
+// CARRIER-LEVEL DISSOLUTION MARKER (HAND-SHELL GATE policy + the operator ruling @ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign):
+// this workflow is a scaffold. It dissolves at remote-build cutover, when the fleet runs the
+// remote build natively and the v2-bootstrap required context's witnesses.yml drops.
+data shadow_gate_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: remote-build cutover -- the fleet runs the remote build natively; this shadow gate and its hosted runner are no longer needed. The v2-bootstrap required context dissolves (same ruling, 2026-11-19); this job dissolves with it. The hand-assembled run: strings in this workflow are scaffold pending the orchestration-to-shell capability v2.workflow.bash_emit / bash_emit_stmts, tracked as #5828; when that lands they are authored as modeled Nodes and this marker retires with them.")
+
+data shadow_gate_job_id: String = "remote-build-shadow"
+data shadow_gate_timeout_minutes: Int = 30
+
+// ── THE TRIGGERS ─────────────────────────────────────────────────────────────────────────────────
+//
+// pull_request (same-repo only, since forks receive no secrets) and merge_group.
+
+fn shadow_gate_pull_request_activity_types() -> List<PullRequestActivity> {
+  [Opened, Synchronize, Reopened]
+}
+
+fn shadow_gate_triggers() -> List<WorkflowTrigger> {
+  [
+    PullRequest {
+      branches: [gunbc_default_branch_name],
+      types: shadow_gate_pull_request_activity_types(),
+      paths: []
+    },
+    MergeGroup,
+  ]
+}
+
+// THE SAME-REPO GUARD. A fork PR has no access to repository secrets, so the tailscale step and the
+// SSH-key step would fail with an unhelpful secret-not-found error. This if_condition skips the job
+// entirely on fork PRs with a clear job name in the Actions UI, rather than failing on a missing secret.
+data shadow_gate_fork_guard: String = "github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)"
+
+// ── THE SECRETS ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE THREE SECRETS THIS JOB NEEDS. The two OAuth names have their single home in
+// gunbc.tailscale_ci_oauth_client (the OAuth credential model, @ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign); the
+// SSH key name has its single home here because it is this job's fact, not a credential fact.
+//   TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET: the Tailscale OAuth application (operator-configured);
+//   GUNBC_REMOTE_BUILD_CI_SSH_KEY: the private half of the CI-specific SSH key for the gunbc-build
+//     forced-command account. The public half is admitted through the remote-build authorized-keys
+//     roster (gunbc.compute.remote_build, the same mechanism as the operator's session key).
+
+data shadow_gate_secret_ci_ssh_key: String = "GUNBC_REMOTE_BUILD_CI_SSH_KEY"
+
+fn shadow_gate_secret_ref(name: String) -> String {
+  join(["${{ secrets.", name, " }}"], "")
+}
+
+// The config-check script: one ||-chain of -z tests, each naming a secret through
+// shadow_gate_secret_ref so the secret names have exactly one home (the OAuth credential model and
+// this module's SSH-key row). A rename edits the rows, never this script.
+fn shadow_gate_config_check_script() -> String {
+  join([
+    "if [ -z \"",
+    shadow_gate_secret_ref(name: ci_oauth_client_id_github_secret),
+    "\" ] || [ -z \"",
+    shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret),
+    "\" ] || [ -z \"",
+    shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key),
+    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ]; then\n    echo '::error::not configured: required secret absent on merge_group; the shadow gate refuses to silently pass'\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
+  ], "")
+}
+
+// ── THE TAILNET JOIN ─────────────────────────────────────────────────────────────────────────────
+//
+// The hosted runner joins as tag:ci-dispatch (operator ruling @ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign:
+// "OK for ci-dispatch, as long as its all modeled/recorded for tailscale convergence").
+// EPHEMERAL (--ephemeral), so it self-expires from the tailnet when the runner exits; no operator
+// or Terraform cleanup. The tailscale/github-action's post step logs the node out.
+
+data shadow_gate_tailscale_tags: String = join(ci_oauth_client_tags, ",")
+// `tailscale up` args for the runner node. --ephemeral is DERIVED from the credential's ephemeral
+// row (a non-ephemeral OAuth-minted node would linger on a GitHub-hosted runner forever; the
+// standing is one fact with one home: ci_oauth_client_ephemeral).
+data shadow_gate_tailscale_args: String = concat("--accept-dns=false --ephemeral=", bool_text(b: ci_oauth_client_ephemeral))
+
+// ── THE CONFIG-CHECK STEP ─────────────────────────────────────────────────────────────────────────
+//
+// Before anything that needs a secret runs, this step checks whether the required secrets
+// are present. The arms are typed per event (fail-closed: every degradation is typed, located
+// and countable — gunbc.design_argument::fail_closed):
+// - pull_request with secrets absent: typed '::notice::' + configured=false, downstream steps
+//   skip. This is the documented fork arm (forks get no secrets) and the pre-cutover case;
+//   the job reports "not attempted", neither green-as-passed nor red.
+// - merge_group with secrets absent: '::error::' + exit 1. On merge_group the repository
+//   secrets MUST be present, so their absence is a rotated/deleted-secret incident and the
+//   shadow gate must not degrade into a permanent silent pass. The config job goes red and
+//   the dependent shadow job never runs.
+// - secrets present: configured=true; when the remote gate fails its exit code propagates
+//   normally (the red control).
+
+data shadow_gate_config_job_id: String = "shadow-gate-config"
+
+fn shadow_gate_config_job() -> Job {
+  Job {
+    id: shadow_gate_config_job_id,
+    name: Present { value: "Hosted-runner shadow gate: configuration" },
+    runner: HostedRunner { label: Ubuntu2404 },
+    environment: none,
+    env: none,
+    outputs: Present { value: [kv(key: "configured", value: yaml_string(s: "${{ steps.check.outputs.configured }}"))] },
+    if_condition: Present { value: shadow_gate_fork_guard },
+    needs: [],
+    steps: [
+      RunStep {
+        name: Present { value: "Check secrets" },
+        id: Present { value: "check" },
+        run: shadow_gate_config_check_script(),
+        shell: Present { value: Bash },
+        working_directory: none,
+        env: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: none,
+      },
+    ],
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+data shadow_gate_main_job_needs: List<String> = [shadow_gate_config_job_id]
+
+// The main job's if_condition: runs only when the config job says configured=true.
+// When configured=false, GitHub marks this job as SKIPPED (gray), not green and not red.
+data shadow_gate_main_job_if: String = "needs.shadow-gate-config.outputs.configured == 'true'"
+
+
+
+fn shadow_gate_tailscale_join_step() -> Step {
+  UsesStep {
+    name: Present { value: "Join tailnet (ephemeral, tag:ci-dispatch)" },
+    id: none,
+    uses: tailscale_github_action_v4_4_0,
+    with: Present { value: [
+      kv(key: "oauth-client-id", value: yaml_string(s: shadow_gate_secret_ref(name: ci_oauth_client_id_github_secret))),
+      kv(key: "oauth-secret", value: yaml_string(s: shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret))),
+      kv(key: "tags", value: yaml_string(s: shadow_gate_tailscale_tags)),
+      kv(key: "args", value: yaml_string(s: shadow_gate_tailscale_args)),
+    ] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ── THE SSH IDENTITY ─────────────────────────────────────────────────────────────────────────────
+//
+// A CI-specific key for the gunbc-build forced-command account, admitted through the remote-build
+// authorized-keys line in gunbc.compute.remote_build. NOT the operator's personal key. The private
+// half is the GUNBC_REMOTE_BUILD_CI_SSH_KEY secret; this step writes it to the runner's filesystem
+// with the permissions ssh requires (600) and registers it in ssh-agent.
+
+fn shadow_gate_ssh_setup_step() -> Step {
+  RunStep {
+    name: Present { value: "Write the CI SSH key" },
+    id: Present { value: "ssh-setup" },
+    run: concat(
+      join([
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
+        concat("printf '%s\\n' \"", shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key), "\" > ~/.ssh/id_ed25519"),
+        "chmod 600 ~/.ssh/id_ed25519",
+        "eval \"$(ssh-agent -s)\"",
+        "ssh-add ~/.ssh/id_ed25519",
+      ], " && "),
+      "\n",
+    ),
+    shell: Present { value: Bash },
+    working_directory: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ── THE REMOTE BUILD PLUMBING PROOF ──────────────────────────────────────────────────────────────
+//
+// ONE step, one small witness package, through remote_test_cli. It proves the hosted runner can
+// reach the tailnet, authenticate as the gunbc-build forced-command account, and drive the
+// remote-build client end to end. It does NOT run any gate row and does not claim to: when
+// remote_gate_cli (work item adhoc-7d2186ce-2c3) lands, its per-row adoption of
+// emitted_subject_build_rows replaces this step, and each step will then be named after the row it
+// actually runs.
+
+// THE PLUMBING-PROOF PATTERN: one small witness package that exercises the remote-build path
+// without needing a full witness roster. This is the remote_test_cli pattern argument.
+data shadow_gate_plumbing_proof_pattern: String = "//dag/test/claim/compute/host_capacity_seal_witness.dag"
+
+// The remote-build account to SSH into. This is the forced-command account, not root, not operator.
+data shadow_gate_remote_user: String = "gunbc-build"
+
+// THE REMOTE-BUILD CLIENT WALKS THE ROSTER. The client (remote_build_client.dag) handles
+// unreachable hosts with its typed per-host answer (HostUnreachable). The shadow job targets the
+// first serving host from remote_build_serving_hosts(); if it is unreachable, the client refuses
+// that host and the step fails (shadow behavior). The model does NOT filter by reachability:
+// reachability is a runtime fact (a host's tailnet membership changes when it is joined), not a
+// model invariant. Today only srv1 resolves; srv3/srv4/butch are queued for joining.
+
+// The first serving host (the client's own roster ordering; the gate CLI picks by capacity).
+fn shadow_gate_first_serving_host() -> String {
+  match list_head(xs: remote_build_serving_hosts()) {
+    Present { value: h } => h as String
+    Absent => "srv1"
+  }
+}
+
+// The tailnet name for a host identity (the standard pattern from gunbc.fleet.fleet_tailnet).
+fn shadow_gate_host_tailnet_name(host: String) -> String {
+  join([host, ".tailecbe08.ts.net"], "")
+}
+
+// The gunbc binary the CI builds (same as the required gate).
+data shadow_gate_gunbc_binary: String = "target/release/gunbc"
+
+// THE ONE PLUMBING-PROOF STEP. Name and identity say exactly what runs: remote_test_cli over the
+// plumbing-proof pattern, on the first serving host. It is NOT named after any gate row because it
+// runs no gate row. When remote_gate_cli lands, per-row steps named after each row's rendered
+// label replace it.
+fn shadow_gate_remote_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Plumbing proof: remote_test_cli over the plumbing-proof pattern" },
+    id: Present { value: "remote-build-plumbing-proof" },
+    run: concat(
+      concat(
+        join([
+          "set -euo pipefail",
+          "echo '--- remote gate step ---'",
+          concat("ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ", concat(shadow_gate_remote_user, concat("@", concat(shadow_gate_host_tailnet_name(host: shadow_gate_first_serving_host()), " true")))),
+        ], " && "),
+        "\n"
+      ),
+      concat(
+        join([
+          "set -euo pipefail",
+          concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="), shadow_gate_plumbing_proof_pattern), " --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json"),
+          "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
+        ], " && "),
+        "\n"
+      )
+    ),
+    shell: Present { value: Bash },
+    working_directory: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// Build the remote steps: exactly one plumbing-proof step until remote_gate_cli lands.
+fn shadow_gate_remote_build_steps() -> List<Step> {
+  [shadow_gate_remote_build_step()]
+}
+
+// ── THE BUILD STEPS (hosted prelude: checkout, build gunbc) ──────────────────────────────────────
+//
+// The shadow gate needs a working gunbc binary to invoke remote_test_cli. The hosted runner builds
+// it from source. This is slower than the fleet (which has a pre-built binary), but the shadow gate
+// measures WALL TIME against v2-bootstrap; the build is part of what is measured.
+
+fn shadow_gate_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present { value: [kv(key: "persist-credentials", value: yaml_bool(b: false))] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn shadow_gate_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build gunbc" },
+    id: Present { value: "build-gunbc" },
+    run: "cargo build --release --bin gunbc\n",
+    shell: Present { value: Bash },
+    working_directory: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ── THE JOB ──────────────────────────────────────────────────────────────────────────────────────
+
+fn shadow_gate_job() -> Job {
+  Job {
+    id: shadow_gate_job_id,
+    name: Present { value: "Hosted-runner shadow gate (remote build)" },
+    runner: HostedRunner { label: Ubuntu2404 },
+    environment: none,
+    env: none,
+    if_condition: Present { value: shadow_gate_main_job_if },
+    needs: shadow_gate_main_job_needs,
+    outputs: none,
+    permissions: none,
+    concurrency: none,
+    timeout_minutes: Present { value: shadow_gate_timeout_minutes },
+    continue_on_error: none,
+    steps: shadow_gate_all_steps(),
+  }
+}
+
+// The steps in order: checkout, build, tailscale join, SSH setup, remote gate per row.
+fn shadow_gate_all_steps() -> List<Step> {
+  list_append(
+    left: [
+      shadow_gate_checkout_step(),
+      shadow_gate_build_step(),
+      shadow_gate_tailscale_join_step(),
+      shadow_gate_ssh_setup_step(),
+    ],
+    right: shadow_gate_remote_build_steps()
+  )
+}
+
+// ── THE WORKFLOW ─────────────────────────────────────────────────────────────────────────────────
+
+fn shadow_gate_workflow() -> Workflow {
+  Workflow {
+    name: shadow_gate_workflow_name,
+    run_name: none,
+    on: shadow_gate_triggers(),
+    concurrency: none,
+    env: none,
+    permissions: none,
+    jobs: [shadow_gate_config_job(), shadow_gate_job()],
+  }
+}
+
+// ── THE EMITTER ──────────────────────────────────────────────────────────────────────────────────
+
+type ShadowGateWorkflowGenerationOutcome
+  = ShadowGateWorkflowGenerated { content: String }
+  | ShadowGateWorkflowGenerationRefused { reason: String }
+
+fn expected_hosted_runner_shadow_gate_yml() -> ShadowGateWorkflowGenerationOutcome {
+  expected_hosted_runner_shadow_gate_yml_with(workflow: shadow_gate_workflow())
+}
+
+// THE GENERATED HEADER, INSIDE the emitted content (the fleet-converge emitter's pattern): the drift
+// watch compares the committed file to this function's bytes, so the header is part of what is emitted,
+// not something the CLI bolts on. Two carriers belong on the artifact per
+// gunbc.design_argument::source_annotations ("a dissolution condition belongs in a typed carrier"):
+// the HAND-SHELL GATE line (the run: strings are scaffold pending v2.workflow.bash_emit /
+// bash_emit_stmts, #5828 -- the trigger the runner_host_medium precedent names) and the DISSOLUTION
+// line (the job dissolves at remote-build cutover). gunbc.test.claim
+// .hosted_runner_shadow_gate_workflow_witness locks both on these bytes.
+fn shadow_gate_generated_header() -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          "# Generated by gunbc.witness.hosted_runner_shadow_gate_workflow expected_hosted_runner_shadow_gate_yml — do not hand-edit.\n",
+          "# Authority: gunbc.witness.hosted_runner_shadow_gate_workflow shadow_gate_workflow; regen via gunbc.instruments.generated_artifact_gate main_wet.\n"
+        ),
+        "# HAND-SHELL GATE: run: steps are scaffold strings; dissolution trigger is v2.workflow.bash_emit / bash_emit_stmts (#5828).\n"
+      ),
+      "# DISSOLUTION (fail-closed): this carrier DISSOLVES WHEN "
+    ),
+    concat(dissolution_description(condition: shadow_gate_dissolution), ".\n")
+  )
+}
+
+fn expected_hosted_runner_shadow_gate_yml_with(workflow: Workflow) -> ShadowGateWorkflowGenerationOutcome {
+  match admit_workflow_action_uses(workflow: workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      ShadowGateWorkflowGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness.hosted_runner_shadow_gate_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_checkout_refs(workflow: workflow, declared: []) {
+        WorkflowCheckoutRefsRefused { refusals: crs } =>
+          ShadowGateWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.witness.hosted_runner_shadow_gate_workflow", refusals: crs) }
+        WorkflowCheckoutRefsAdmitted =>
+          match admit_workflow_toolchain_homes(workflow: workflow) {
+            WorkflowToolchainHomesAdmitted =>
+              match emit_yaml(v: project_workflow_to_yaml(workflow: workflow)) {
+                EmittedYaml { text: t } => ShadowGateWorkflowGenerated { content: concat(shadow_gate_generated_header(), t) }
+                YamlEmitRefused { path: p, reason: r } =>
+                  ShadowGateWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.witness.hosted_runner_shadow_gate_workflow", path: p, reason: r) }
+              }
+            WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+              ShadowGateWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+          }
+      }
+  }
+}
+
+// ── THE CLI ────────────────────────────────────────────────────────────────────────────────────────
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/witness/hosted_runner_shadow_gate_workflow.dag \
+//     --function shadow_gate_emit_cli --claim-run
+
+fn shadow_gate_emit_cli() -> ProcessExit {
+  match expected_hosted_runner_shadow_gate_yml() {
+    ShadowGateWorkflowGenerated { content } => {
+      let w = Filesystem.Write(path: ".github/workflows/hosted-runner-shadow-gate.yml", content: content)
+      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: w.error } }
+    }
+    ShadowGateWorkflowGenerationRefused { reason } => ExitFailure { code: 1, reason: reason }
+  }
+}

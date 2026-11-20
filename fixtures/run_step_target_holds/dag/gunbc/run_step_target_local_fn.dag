@@ -1,0 +1,18 @@
+module gunbc.run_step_target_local_fn
+
+import std.types { Int, String }
+
+// THE IDENTITY CONTROL (closed_grounded_substrate: identity, not spelling). This module declares its OWN fn named
+// gunbc_run_step_target and does NOT import the real constructor from gunbc.ci.ci_run_step_target. So the call
+// below lexically names the constructor, but its callee resolves -- through this module's scope, in the check's own
+// ResolutionContext -- to THIS module, not the constructor's home: it is therefore NOT a run-step-target site and
+// its deliberately bogus entry (a module that does not exist) must NOT refuse. Had the check keyed on spelling
+// rather than resolved callee identity, this decoy would refuse -- which is exactly what this control catches.
+fn gunbc_run_step_target(module: String, function: String) -> Int {
+  0
+}
+
+data run_step_target_local_decoy: Int = gunbc_run_step_target(
+  module: "gunbc.no_such_module_at_all",
+  function: "no_such_entry_at_all",
+)

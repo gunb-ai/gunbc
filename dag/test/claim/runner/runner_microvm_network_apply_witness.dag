@@ -12,7 +12,7 @@ import gunbc.runner.runner_microvm_network_apply {
   runner_microvm_root_only_probe_argv,
   RulesetReadback, RulesetListed, RulesetNotListed,
 }
-import gunbc.runner.runner_host_file_converge { classify_root_only_paths, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, fleet_host_path_ancestors }
+import gunbc.runner.runner_host_file_converge { classify_root_only_paths, PathsRootOnly, PathsNotRootOnly, PathsUnobservable, PathsNotApplicable, fleet_host_path_ancestors, fleet_host_file_scope }
 import gunbc.file_access { path_ancestor_prefixes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -125,9 +125,9 @@ test fn the_shared_prefix_fold_excludes_the_leaf_and_applies_no_scope() -> Bool 
 // that module checks. The red is fleet_host_path_ancestors starting to return /var or a bare
 // prefix outside its write scope.
 test fn the_etc_caller_keeps_its_scope_filter_after_the_fold_moved() -> Bool {
-  fleet_host_path_ancestors(path: "/etc/systemd/system/unit.service")
+  fleet_host_path_ancestors(scope: fleet_host_file_scope, path: "/etc/systemd/system/unit.service")
     == ["/etc", "/etc/systemd", "/etc/systemd/system"]
-    && fleet_host_path_ancestors(path: "/var/lib/elsewhere/file") == []
+    && fleet_host_path_ancestors(scope: fleet_host_file_scope, path: "/var/lib/elsewhere/file") == []
 }
 
 

@@ -25,7 +25,8 @@ import product.fabric.sanitation { CellId }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_id_for_slot }
-import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, gunbc_runner_slot_desired_for, gunbc_microvm_shakedown_slot_memory_max, memory_admitted_width_of_envelope_over, fabric_execution_slot_identities, gunbc_microvm_shakedown_slot_charge, MicrovmSlotRealization, MicrovmSlotRealizationRow }
+import std.decl_ref { decl_ref }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max_bytes }
 import gunbc.floor.floor_demand { gunbc_internal_fleet_trust_domain }
 import gunbc.runner.runner_microvm { gunbc_runner_microvm_shape_for_slot, MicroVmShapeResolved, MicroVmShapeRefused }
@@ -178,17 +179,55 @@ test fn the_shakedown_slot_carries_28_gib_no_swap_and_no_throttle_line_while_the
     && byte_size_count(b: fleet.memory_swap_max) == byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)
 }
 
-// THE WIDTH CHARGE IS THE CELL PLUS THE CONTROLLER'S SLICE, SPENT FIRST: an envelope holding the
-// charge plus fourteen fleet rows admits fifteen, one byte less admits fourteen, and a host that
-// cannot hold the charge at all admits zero.
+// THE CHARGED ARM OF #16144's CONDITIONAL-CHARGE RULING. #16144 (eefe616dead, 2026-11-10,
+// "charge srv1's microVM slots only when their controller is realized") made the envelope spend a
+// slot's cell+controller charge ONLY while a positive read says the slot is MicrovmSlotRealized; a
+// positive not-realized read releases it. The claim's name -- the slot is charged its cell plus its
+// controller before the fleet row divides -- is the REALIZED case, so it asks the fold against
+// explicit MicrovmSlotRealized rows rather than the live standing (which is #16144's job to pin).
+// Against those rows an envelope holding the charge plus fourteen fleet rows admits fifteen, one byte
+// less admits fourteen, and a host that cannot hold the charge at all admits zero.
+fn microvm_realized_row(slot: RunnerSlotIdentity, reading: String) -> MicrovmSlotRealizationRow {
+  MicrovmSlotRealizationRow {
+    slot: slot,
+    realization: MicrovmSlotRealized { observed_at: "2026-11-09T01:20Z", reading: reading },
+  }
+}
+
+fn microvm_notrealized_row(slot: RunnerSlotIdentity) -> MicrovmSlotRealizationRow {
+  MicrovmSlotRealizationRow {
+    slot: slot,
+    realization: MicrovmSlotNotRealized {
+      observed_at: "2026-11-09T01:20Z",
+      reading: "no controller unit and no microVM slot instance is installed or live on srv1",
+      invalidated_by: decl_ref("gunbc.live_deploy.apply", "microvm_controller_install_wet"),
+    },
+  }
+}
+
 test fn the_shakedown_slot_is_charged_its_cell_plus_its_controller_before_the_fleet_row_divides() -> Bool {
   let fleet_row = gunbc_runner_slot_memory_max_bytes
   let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+  let realized = [microvm_realized_row(slot: srv1_microvm_shakedown_slot(), reading: "controller unit active and gunbc-microvm-slot@<instance> live on srv1")]
   charge == byte_size_count(b: gunbc_microvm_shakedown_slot_memory_max) + byte_size_count(b: microvm_controller_slice_memory_max())
-    && memory_admitted_width_of_envelope(envelope: byte_size(15 * fleet_row), authored_slots: []) == 15
-    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row), authored_slots: [srv1_microvm_shakedown_slot()]) == 15
-    && memory_admitted_width_of_envelope(envelope: byte_size(charge + 14 * fleet_row - 1), authored_slots: [srv1_microvm_shakedown_slot()]) == 14
-    && memory_admitted_width_of_envelope(envelope: byte_size(charge - 1), authored_slots: [srv1_microvm_shakedown_slot()]) == 0
+    && memory_admitted_width_of_envelope_over(envelope: byte_size(15 * fleet_row), authored_slots: [], rows: realized) == 15
+    && memory_admitted_width_of_envelope_over(envelope: byte_size(charge + 14 * fleet_row), authored_slots: [srv1_microvm_shakedown_slot()], rows: realized) == 15
+    && memory_admitted_width_of_envelope_over(envelope: byte_size(charge + 14 * fleet_row - 1), authored_slots: [srv1_microvm_shakedown_slot()], rows: realized) == 14
+    && memory_admitted_width_of_envelope_over(envelope: byte_size(charge - 1), authored_slots: [srv1_microvm_shakedown_slot()], rows: realized) == 0
+}
+
+// THE RELEASED ARM OF #16144, HERMETIC. Read the SAME slot against explicit MicrovmSlotNotRealized
+// rows and the envelope pays nothing for it, so the three envelopes above admit 17, 17 and 3 instead of
+// 15, 14 and 0 -- the widths srv1 carries while no controller is installed. Supplied rows, not the live
+// standing, so neither this nor its pair flips when the operator re-reads srv1; the live standing row
+// itself is a 2026-11-09T01:20Z operator read and is pinned by the realization witness, not here.
+test fn the_shakedown_slot_releases_its_controller_charge_before_the_fleet_row_divides() -> Bool {
+  let fleet_row = gunbc_runner_slot_memory_max_bytes
+  let charge = byte_size_count(b: gunbc_microvm_shakedown_slot_charge())
+  let released = [microvm_notrealized_row(slot: srv1_microvm_shakedown_slot())]
+  memory_admitted_width_of_envelope_over(envelope: byte_size(charge + 14 * fleet_row), authored_slots: [srv1_microvm_shakedown_slot()], rows: released) == 17
+    && memory_admitted_width_of_envelope_over(envelope: byte_size(charge + 14 * fleet_row - 1), authored_slots: [srv1_microvm_shakedown_slot()], rows: released) == 17
+    && memory_admitted_width_of_envelope_over(envelope: byte_size(charge - 1), authored_slots: [srv1_microvm_shakedown_slot()], rows: released) == 3
 }
 
 // THE SHAKEDOWN SLOT'S GUEST SHAPE RESOLVES. This claim first said it resolved WHILE the fleet row's

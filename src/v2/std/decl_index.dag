@@ -92,7 +92,10 @@ fn export_signature_declared_facts(pool_roots: List<String>) -> Outcome<List<Dec
               rel_path: fact.rel_path
             }))
           })
-        _ => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        TypeItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        DataItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        ServiceItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
+        OtherItem => outcome_accepted(value: list_snoc_item(xs: facts, item: fact))
       }
     })
   })
@@ -160,6 +163,42 @@ fn data_decl_type_facts(pool_roots: List<String>) -> List<DataDeclTypeFact> {
   data_decl_type_facts(pool_roots: pool_roots)
 }
 
+// WHY one ExternalModelScope subject row is NOT a literal declaration read — a CLOSED vocabulary, not
+// a free string. A row is not-literal when any node on the `subject -> declaration -> {module_path,
+// decl_name}` path is missing, is a named reference (a dotted/bare path), or is the wrong connective;
+// each is located (by the row's declaring module_path/decl_name/rel_path) and countable, never guessed
+// positionally. `NamedReference` is the shape DP-M3b joins against (a `subject: <pkg>.<X>_subject` or
+// `declaration: <X>_ref`), the rest distinguish a missing row from a malformed one so a bad row is
+// never silently read as a good one.
+type SubjectNotLiteralWhy
+  = SubjectMissing
+  | SubjectNamedReference
+  | SubjectNotRecordLiteral
+  | DeclarationMissing
+  | DeclarationNamedReference
+  | DeclarationNotRecordLiteral
+  | ModulePathNamedReference
+  | ModulePathNotStringLiteral
+  | DeclNameNamedReference
+  | DeclNameNotStringLiteral
+
+// THE ONE TYPED READ OF AN ExternalModelScope SUBJECT, per row, as a sum. `SubjectLiteral` carries
+// `subject.declaration.{module_path, decl_name}` read from the authored parse tree (NEVER the
+// typechecking marshal — `marshal_data_initializer_projection` falls to
+// `constructor_resolution_refused_projection` for extdeps scopes, which is why this host read exists);
+// `SubjectNotLiteral` refuses that row as data, naming the reason, rather than emitting a positional
+// guess. The whole census only errors when a source is unparseable (`decls_parse_only_fail_closed`).
+type ExtdepsSubjectRefFact
+  = SubjectLiteral { module_path: String, decl_name: String, rel_path: String, subject_module_path: String, subject_decl_name: String }
+  | SubjectNotLiteral { module_path: String, decl_name: String, rel_path: String, why: SubjectNotLiteralWhy }
+
+// The census: one row per top-level `data` declaration whose declared type is `ExternalModelScope`,
+// keyed at the declaring declaration's identity. The same `pool_roots` as `data_decl_type_facts`; the
+// same fail-closed walk, so any source it reaches it refuses rather than skipping silently.
+fn extdeps_subject_ref_facts(pool_roots: List<String>) -> List<ExtdepsSubjectRefFact> {
+  extdeps_subject_ref_facts(pool_roots: pool_roots)
+}
+
 data export_signature_facts_host_scaffold_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -212,5 +251,4 @@ fn decl_facts_fn_item_count(pool_roots: List<String>) -> Int {
 
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "export_signature_declared_arrow" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "export_signature_declared_facts" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]

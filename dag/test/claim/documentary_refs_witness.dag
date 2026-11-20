@@ -1,9 +1,10 @@
 module test.claim.documentary_refs_witness
 
-import std.types { Bool, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, Int, String }
+import std.algebra { skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_ref_display_key }
 import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.std.decl_index { DeclFact, FnItem, TypeItem, decl_facts_at }
+import v2.std.decl_index { DeclFact, FnItem, TypeItem, decl_facts_at, qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count }
@@ -11,29 +12,50 @@ import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
 }
-import gunbc.design_document { expected_design_md }
+import gunbc.design_document { expected_design_md, document_cited_rulings, ruling }
 import gunbc.design_ruling { DesignRuling, design_rulings }
 import gunbc.design_argument { design_row_citations }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
 // required cited-symbol gate calls -- so a refusal proved here is a refusal on the real acceptance
-// path rather than a second algorithm agreeing with it. The fact populations below are planted
-// rather than live because the SUBJECT of these claims is the mechanism: that a reference which
-// cannot resolve refuses, and that the same reference against an intact population does not. The
-// smallest crossing specimen is the requirement plus one.
+// path rather than a second algorithm agreeing with it. The intact control below READS THE LIVE POOL
+// keyed by the document's own references, and the perturbations plant a removal or a fork on top of
+// that read -- the SUBJECT of these claims is the mechanism: that a reference which cannot resolve
+// refuses, and that the same reference against an intact, live population does not. The smallest
+// crossing specimen is the requirement plus one.
+
+// The population the resolver and render witnesses read: exactly the references the generated
+// document NAMES -- the two standalone rows, the operator rulings the document cites, and every
+// design claim it renders. It is DERIVED from the document itself (gunbc.design_document
+// document_cited_rulings plus gunbc.design_argument design_row_citations), NOT from the
+// gunbc.design_ruling ledger roster -- so it cannot drift from what the document binds: a ref named
+// here renders by construction, and the intact control below reads each one against the live pool.
+// The whole ledger's references and governed parts are also covered against the real declaration pool
+// by the two live-pool claims below.
+fn generated_refs() -> List<DeclarationRef> {
+  generated_document_declaration_refs(cited_rulings: document_cited_rulings())
+}
+
+fn ref_qualified_name(reference: DeclarationRef) -> String {
+  qualified_name_from_module(
+    module_name: reference.module_path as String,
+    name: reference.decl_name as String,
+  )
+}
+
+// ModuleDeclarationFact.path and DeclFact.rel_path are NOT read by the resolver: module_path_declared
+// checks only .module, and a declaration ref matches by qualified_name. So the conventional .dag
+// location is derived from the module name rather than hand-kept per module.
+fn ref_module_source_path(reference: DeclarationRef) -> String {
+  concat("dag/", concat((reference.module_path as String).replace(from: ".", to: "/"), ".dag"))
+}
 
 fn fixture_modules() -> List<ModuleDeclarationFact> {
-  [
-    ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
-    ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/resolve.dag" },
-    ModuleDeclarationFact { module: "gunbc.roadmap.roadmap_authority", path: "dag/gunbc/roadmap/roadmap_authority.dag" },
-    ModuleDeclarationFact { module: "gunbc.v1.v1_maintenance_standing", path: "dag/gunbc/v1/v1_maintenance_standing.dag" },
-    ModuleDeclarationFact { module: "gunbc.emitted_subject_build_gate", path: "dag/gunbc/emitted_subject_build_gate.dag" },
-    ModuleDeclarationFact { module: "gunbc.design_ruling", path: "dag/gunbc/design_ruling.dag" },
-    ModuleDeclarationFact { module: "gunbc.design_argument", path: "dag/gunbc/design_argument.dag" },
-    ModuleDeclarationFact { module: "gunbc.design_document", path: "dag/gunbc/design_document.dag" },
-  ]
+  map(generated_refs(), reference => ModuleDeclarationFact {
+    module: reference.module_path as String,
+    path: ref_module_source_path(reference),
+  })
 }
 
 fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact {
@@ -46,62 +68,22 @@ fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact 
   }
 }
 
-// The declarations the generated document names, present exactly once each, one per row of
-// generated_document_declaration_refs(). This is the
-// control that proves the refusals below are caused by the perturbation rather than by a fixture
-// that never resolved anything.
-fn fixed_facts() -> List<DeclFact> {
-  [
-    fixture_fact(
-      qualified_name: "gunbc.v1.v1_maintenance_standing.v1_seed_standing",
-      name: "v1_seed_standing",
-      path: "dag/gunbc/v1/v1_maintenance_standing.dag",
-    ),
-    fixture_fact(
-      qualified_name: "gunbc.emitted_subject_build_gate.emitted_subject_build_rows",
-      name: "emitted_subject_build_rows",
-      path: "dag/gunbc/emitted_subject_build_gate.dag",
-    ),
-  ]
-}
-
-// The ruling rows' facts come from the same roster the document's references do, so a ruling
-// added to gunbc.design_ruling design_rulings() is resolved and render-checked with no edit here.
-fn ruling_facts() -> List<DeclFact> {
-  map(design_rulings(), r => fixture_fact(
-    qualified_name: concat("gunbc.design_ruling.", r.reference.decl_name as String),
-    name: r.reference.decl_name as String,
-    path: "dag/gunbc/design_ruling.dag",
-  ))
-}
-
-// The design claims the document renders, planted from the claims' own citations, plus the one
-// document part a ruling may govern that is not a claim. A ruling's `governs` is deliberately NOT
-// planted from itself: a ruling governing a claim that does not exist then refuses here.
-fn design_claim_facts() -> List<DeclFact> {
-  concat(
-    map(design_row_citations(), c => fixture_fact(
-      qualified_name: concat("gunbc.design_argument.", c.decl_name as String),
-      name: c.decl_name as String,
-      path: "dag/gunbc/design_argument.dag",
-    )),
-    [
-      fixture_fact(
-        qualified_name: "gunbc.design_document.ci_contract_blocks",
-        name: "ci_contract_blocks",
-        path: "dag/gunbc/design_document.dag",
-      ),
-    ],
-  )
-}
-
+// The declarations the document names, READ FROM THE LIVE POOL keyed by those very references -- not
+// planted from them. Each fact is a real declaration in the corpus, so "intact resolves clean" shows
+// the document's population inhabits the pool rather than merely agreeing with a fixture copied from
+// the refs (which would make the zero a tautology). The perturbations below remove or fork a row of
+// THIS read, so they still drive the resolver against real declarations.
 fn intact_facts() -> List<DeclFact> {
-  concat(concat(fixed_facts(), ruling_facts()), design_claim_facts())
+  decl_facts_at(
+    pool_roots: ["dag"],
+    qualified_names: map(generated_refs(), r => ref_qualified_name(r)),
+    type_names: [],
+  )
 }
 
 fn refusals_against(facts: List<DeclFact>) -> Int {
   cited_declaration_ref_refusal_count(
-    refs: generated_document_declaration_refs(),
+    refs: generated_refs(),
     facts: facts,
     modules: fixture_modules(),
   )
@@ -111,12 +93,18 @@ test fn documentary_refs_intact_population_resolves_clean() -> Bool {
   refusals_against(facts: intact_facts()) == 0
 }
 
-// THE PRODUCT RED. A referenced system is renamed -- here by removing the declaration the document
-// names and leaving the rest of the population intact -- and NO DOCUMENT SOURCE IS EDITED. The
-// refusal count rises, which is the whole claim: the generated paragraph names its systems through
-// typed rows, so the rename reaches the required gate rather than leaving a sentence quietly
-// describing a declaration that no longer exists. Before this change that same rename moved
-// nothing, because the name lived inside a string literal.
+// THE PRODUCT RED, AND THE CONTROL THAT MAKES IT THE RIGHT RED. A ruling the DOCUMENT CITES is
+// renamed -- its reference no longer names the ruling ledger's declaration -- and NO DOCUMENT SOURCE
+// IS EDITED. The refusal count rises. The `population_has_qualified_name` guard is load-bearing: it
+// forces the renamed ruling to be one the document actually names, so this claim is red if the
+// population ever stops equaling the document's citations (the boundary that was broken). Under the
+// old instrument the whole ledger was the population, so a renamable ruling from outside the
+// document's citations could satisfy the shape of this claim without proving the document's own
+// binding is guarded.
+
+fn population_has_qualified_name(qualified_name: String) -> Bool {
+  any(generated_refs(), reference => ref_qualified_name(reference) == qualified_name)
+}
 
 fn facts_without(qualified_name: String) -> List<DeclFact> {
   fold(intact_facts(), init: [], f: fn(acc, f) {
@@ -125,52 +113,62 @@ fn facts_without(qualified_name: String) -> List<DeclFact> {
 }
 
 test fn documentary_refs_renamed_system_refuses() -> Bool {
+  // machine_width_composition_has_an_intersection_carrier is cited by the document (it is in
+  // gunbc.design_document document_cited_rulings), so its reference is a generated ref and renaming
+  // it removes the only declaration that reference names.
+  let target = "gunbc.design_ruling.machine_width_composition_has_an_intersection_carrier"
   let clean = refusals_against(facts: intact_facts())
-  let renamed = refusals_against(
-    facts: facts_without(qualified_name: "gunbc.v1.v1_maintenance_standing.v1_seed_standing")
-  )
-  clean == 0 && renamed == 1
+  let renamed = refusals_against(facts: facts_without(qualified_name: target))
+  population_has_qualified_name(qualified_name: target) && clean == 0 && renamed == 1
 }
 
-// THE SECOND PERTURBATION, AND IT IS A DIFFERENT FAILURE FROM THE FIRST. A system forked into two
-// same-named declarations still EXISTS -- an existence check passes and a grep passes -- so only a
+// THE SECOND PERTURBATION, AND IT IS A DIFFERENT FAILURE FROM THE FIRST. A cited ruling forked into
+// two same-named declarations still EXISTS -- an existence check passes and a grep passes -- so only a
 // resolver that answers zero/one/many catches it. The document's reference no longer identifies one
-// system, which is exactly the gunbc.design_argument::single_authority fork the citation rule is about, and it must refuse rather than
-// pick the first.
+// system, which is exactly the gunbc.design_argument::single_authority fork the citation rule is
+// about, and it must refuse rather than pick the first.
 
 test fn documentary_refs_ambiguous_system_refuses() -> Bool {
+  // coercion_is_the_implicit_safe_subset is cited by the document; forking its declaration makes the
+  // document's single reference to it name two declarations.
+  let target = "gunbc.design_ruling.coercion_is_the_implicit_safe_subset"
   let forked = concat(
     intact_facts(),
     [
       fixture_fact(
-        qualified_name: "gunbc.v1.v1_maintenance_standing.v1_seed_standing",
-        name: "v1_seed_standing",
-        path: "dag/gunbc/v1_maintenance_standing_fork.dag",
+        qualified_name: target,
+        name: "coercion_is_the_implicit_safe_subset",
+        path: "dag/gunbc/design_ruling_fork.dag",
       ),
     ]
   )
-  refusals_against(facts: forked) == 1
+  population_has_qualified_name(qualified_name: target) && refusals_against(facts: forked) == 1
 }
 
 // THE BYTES COME FROM THE ROWS, WHICH IS WHAT MAKES THE ROWS LOAD-BEARING RATHER THAN DECORATIVE. A
 // typed reference sitting beside a paragraph that independently spells the same name is two
 // representations of one fact -- the rename would move the row and leave the sentence, and the
 // enrolled population would resolve while the document lied. This claim asserts the rendered symbol
-// text of EVERY row appears in the generated document, so the row and the printed name cannot
-// diverge, and a row no paragraph renders is a red rather than an orphan.
+// text of EVERY reference the document names appears in the generated document, so the row and the
+// printed name cannot diverge. Because document_cited_rulings() is derived FROM the rendered bytes, a
+// ruling's own row is guaranteed present here; the load-bearing part of this claim is that the two
+// standalone rows and every design claim citation the inventory carries must genuinely be rendered --
+// a reference declared as named but printed by no paragraph is a red rather than an orphan.
 
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = expected_design_md()
-  all(generated_document_declaration_refs(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
+  all(generated_refs(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
 }
 
 
-// THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so
-// it proves the resolver's behaviour, not that a row's reference names the row: a row whose
-// decl_name drifted from its declaration would plant its own matching fact and stay green. This
-// claim reads the live declaration pool, keyed, so each ruling reference must name exactly one real
-// declaration. The pool is read ONCE with every ruling's key and each ruling is joined against
-// that read by its own key, so a ruling answers with exactly the rows a one-key read would give.
+// THE INHABITANCE HALF. The intact control above reads the live pool for the DOCUMENT's cited subset
+// only. These two claims cover the WHOLE ledger against the raw declaration index, which the cited
+// subset does not: every ruling reference and every governed part, plus every design claim citation,
+// must each name exactly one real declaration. So a ledger row whose reference or governed part
+// drifted from its declaration turns red here even when the document's cited subset stays green --
+// the roster is never the document's population (that would render all 134 rulings into DESIGN.md),
+// yet it is still held to the pool. The pool is read ONCE with every key and each row is joined
+// against that read by its own key, so a row answers with exactly the rows a one-key read would give.
 fn documentary_ruling_key(r: DesignRuling) -> String {
   concat("gunbc.design_ruling.", r.reference.decl_name as String)
 }
@@ -202,4 +200,85 @@ test fn documentary_refs_claims_and_governed_parts_name_live_declarations() -> B
     type_names: [],
   )
   all(claim_and_governed_refs(), r => length(xs: decl_facts_matching_qualified_name(qn: qualified_key(r: r), facts: facts)) == 1)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// REVIEW 96518 — the two directions the roster filter alone cannot see.
+//
+// document_cited_rulings() derives the population by filtering design_rulings() on "does this
+// ruling's own row render into the document". That is sound for rulings ON the roster, but two
+// things sit outside the filter and need their own claims: (1) the match must be the WHOLE rendered
+// citation, or a ruling whose name is a prefix of another is counted whenever the longer is cited;
+// (2) a paragraph citing a ruling that is NOT on the roster is invisible to a filter that iterates
+// the roster, so it must be caught by reading the citations OUT of the rendered bytes instead.
+
+// The citation grammar, in ONE place for the parser: gunbc.design_document ruling(r:) renders each
+// citation as "(ruling `<std.decl_ref display key>`)". The open delimiter ends the surrounding prose;
+// the display key runs up to the closing backtick-and-paren. This mirrors ruling(r:) exactly -- the
+// prefix guard below asserts that closing delimiter is load-bearing, so the two cannot silently drift.
+fn citation_first_key_piece(xs: List<String>) -> String {
+  // The first split piece is the display key (a `module::decl`, never empty for a real citation).
+  fold(xs, init: "", f: fn(acc, x) { if acc != "" { acc } else { x } })
+}
+
+fn citation_keys_in(doc: String) -> List<String> {
+  map(skip(xs: split(s: doc, delimiter: "(ruling `"), n: 1), piece => citation_first_key_piece(split(s: piece, delimiter: "`)")))
+}
+
+fn roster_display_keys() -> List<String> {
+  map(design_rulings(), r => declaration_ref_display_key(ref: r.reference))
+}
+
+// FIXTURE for the prefix guard: two rulings whose reference names are a strict prefix pair. They are
+// NOT on the roster -- only the matcher (the same string_contains over ruling(r: r) that
+// document_cited_rulings uses) is under test here.
+data witness_prefix_short_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "witness_prefix_carrier"),
+  decided: "witness fixture",
+  governs: decl_ref(module_path: "gunbc.design_ruling", decl_name: "witness_prefix_carrier"),
+  provenance: "witness fixture for the prefix-collision guard (review 96518)",
+}
+
+data witness_prefix_long_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "witness_prefix_carrier_extended"),
+  decided: "witness fixture",
+  governs: decl_ref(module_path: "gunbc.design_ruling", decl_name: "witness_prefix_carrier"),
+  provenance: "witness fixture for the prefix-collision guard (review 96518)",
+}
+
+// The shorter name is a strict prefix of the longer. A document that cites ONLY the longer must not
+// count the shorter as cited: the matcher is the whole rendered citation, closing backtick and
+// parenthesis included, so "…::witness_prefix_carrier`)" is never a substring of
+// "…::witness_prefix_carrier_extended`)". If the matcher ever narrowed to the bare reference (no
+// trailing delimiter), the shorter would match and this claim would go red.
+test fn documentary_refs_derivation_has_no_prefix_collision() -> Bool {
+  let only_longer = ruling(r: witness_prefix_long_ruling)
+  let longer_seen = string_contains(s: only_longer, pattern: ruling(r: witness_prefix_long_ruling))
+  let shorter_seen = string_contains(s: only_longer, pattern: ruling(r: witness_prefix_short_ruling))
+  longer_seen && !shorter_seen
+}
+
+// FIXTURE for the off-roster guard: a ruling on NO roster row. A paragraph citing it would be
+// invisible to document_cited_rulings (which iterates design_rulings), so the render-side parse must
+// see it. The reference name is deliberately not a ledger row.
+data witness_off_roster_ruling: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "witness_citation_not_on_the_ledger"),
+  decided: "witness fixture",
+  governs: decl_ref(module_path: "gunbc.design_ruling", decl_name: "witness_citation_not_on_the_ledger"),
+  provenance: "witness fixture for the off-roster citation guard (review 96518)",
+}
+
+// Every citation the document RENDERS must be the reference of a roster row. Direction (a): the real
+// document parses to keys that are all on the roster. Direction (b) is the red control, encoded so it
+// cannot rot: a paragraph appended that cites an off-roster ruling is DETECTED by the very same
+// predicate (its parsed key is absent from the roster). If the parse ever stopped seeing citations,
+// (a) would stay green but (b) would flip -- so the parse's teeth are pinned by this claim.
+test fn documentary_refs_rendered_citations_are_all_on_the_roster() -> Bool {
+  let roster = roster_display_keys()
+  let real_clean = all(citation_keys_in(expected_design_md()), k => any(roster, rk => rk == k))
+  let rogue_key = declaration_ref_display_key(ref: witness_off_roster_ruling.reference)
+  let tampered = concat(expected_design_md(), ruling(r: witness_off_roster_ruling))
+  let tampered_sees_rogue = any(citation_keys_in(tampered), k => k == rogue_key)
+  let rogue_absent_from_roster = !any(roster, rk => rk == rogue_key)
+  real_clean && tampered_sees_rogue && rogue_absent_from_roster
 }

@@ -226,6 +226,6 @@ fn workspace_installed_image(release_dir: String, identity: NonEmptyStr) -> Work
   }
 }
 
-fn workspace_installed_image_root(release_dir: String, identity: NonEmptyStr) -> String {
-  join([release_dir, "/images/workspace/", identity as String], "")
+fn workspace_installed_image_root(release_dir: String, identity: NonEmptyStr) -> NonEmptyStr {
+  join([release_dir, "/images/workspace/", identity as String], "") as NonEmptyStr
 }

@@ -1,21 +1,191 @@
 module gunbc.fleet.fleet_converge_terminal
 
-import std.types { String, Int }
+import std.types { Bool, Int, List, String }
 
 // Shared terminal and wire authority. Receipt decoding must not load the fleet planning graph.
-type FleetConvergeApplyTerminal
-  = FullyApplied
-  | PartiallyApplied { refused_axis_count: Int, detail: String }
-  | AwaitingCapability { capability: String }
+//
+// THE TERMINAL IS A COUNT OF WHAT THE RUN LEFT STANDING, NOT A COUNT OF WHAT IT REFUSED.
+//
+// `refused_axis_count` alone was never enough to decide "applied", and the gap was measured on srv1:
+// apply run 44428803079 (plan 44423114994) ran a plan that owed 2 cap drop-in changes and 4 runner-slot
+// teardowns and performed none of them -- correctly, fail-closed -- and still printed
+// `partially_applied|7|slot=5 cap=0 ... activation=2` with exit 0, because a row the script withholds
+// and a row the script never meant to execute are counted as neither applied nor refused. The
+// LiveDeployMemberBasis arm of gunbc.fleet.fleet_converge_plan's terminal already refuses FullyApplied
+// over a non-empty plan for exactly this reason; the FullHostConverge arm is guarded by these counts.
+//
+// WHY THE FOUR COUNTS ARE ONE TYPE AND NOT FOUR FIELDS. They are read together -- a terminal is
+// FullyApplied only when all four are zero -- and they are produced together, by the renderer of one
+// plan. Splitting them across the variant invites a reader to gate on one and ignore the others.
+//
+// WHY `owed` IS AN OPTION RATHER THAN FOUR ZEROS. A receipt minted before these counts existed carries
+// a wire that says nothing about owed work. Decoding it to zero would be this module asserting "nothing
+// was left standing" on the authority of a string that never said so -- the same under-report, laundered
+// into a default. `Absent` means THIS WIRE DOES NOT SAY, and every consumer has to handle that instead
+// of inheriting a reassuring number.
+//
+// WHY EACH NUMBER IS AN OBSERVATION AND NOT AN ARITHMETIC. `withheld_row_count` is read off the plan's own
+// rows; `withheld_line_total_count` and `withheld_beyond_plan_rows_count` are read off the lines the
+// rendered script echoes, the second counting only those lines that are not the echo of any row. The srv1
+// run is the shape they were built for: 4 rows, 43 lines, 39 of them with no row behind them.
+//
+// They are not related by subtraction -- not any more. The first cut defined `beyond` as total minus rows,
+// which made `withheld_line_total_count == withheld_row_count + withheld_beyond_plan_rows_count` true by
+// construction, and a check whose forbidden state cannot be expressed is a decoration: a renderer that
+// dropped a withheld line, or grew a row that echoed nothing, would have printed numbers that added up
+// anyway. Reading all three from artifacts instead leaves the equality a CLAIM about the renderer -- true
+// today, falsifiable tomorrow -- and `fleet_converge_owed_work_reconciles` is where that claim is enforced:
+// once when the terminal is minted, and again when a receipt's wire is decoded.
+type FleetConvergeOwedWork {
+  withheld_row_count: Int
+  plan_only_row_count: Int
+  withheld_line_total_count: Int
+  withheld_beyond_plan_rows_count: Int
+}
 
-fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
-  match terminal {
-    FullyApplied => "fully_applied"
-    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
-    AwaitingCapability { capability: c } => join(["awaiting_capability|", c], "")
+// THE FULL-HOST DECISION, IN ONE PLACE, WITH THE COUNTS SUPPLIED. Factored out of the planner's
+// FullHostConverge arm so a witness can put a BROKEN owed report in front of it -- which is the only way
+// the reconciliation below is ever executed rather than merely described.
+//
+// A DISAGREEING OWED REPORT IS NOT A RECEIPT. If the numbers do not reconcile, this pass cannot attest to
+// anything: the counts it would publish contradict each other, and the wire it would write is one this
+// module's own decoder refuses (`owed_work_shape`). Minting it anyway would put a receipt on disk that no
+// reader could decode -- the under-report again, this time unreadable.
+//
+// IT IS NOT `AwaitingCapability`, and not only for tidiness. Everywhere else in this model that variant
+// means ONE thing: a host grant is missing and the run should be retried once the operator grants it
+// (`host_grant_awaiting_capability` is its only other producer). A renderer whose own numbers contradict is
+// not a grant to wait for -- nobody can un-block it by granting anything -- and one name carrying two
+// materially different meanings is a meaning fork (`gunbc.design_argument::single_authority`). So the
+// contradiction gets its own variant: typed, located, and countable
+// (`gunbc.design_argument::fail_closed`), with the numbers themselves in the detail so whoever has to fix
+// the renderer can read them off the receipt.
+fn fleet_converge_full_host_terminal(
+  refused_axis_count: Int,
+  owed: FleetConvergeOwedWork,
+  detail: String,
+) -> FleetConvergeApplyTerminal {
+  if !fleet_converge_owed_work_reconciles(owed: owed) {
+    OwedReportContradiction {
+      detail: join(
+        [
+          "converge owed-work report does not reconcile: withheld=",
+          to_string(owed.withheld_row_count),
+          " plan-only=",
+          to_string(owed.plan_only_row_count),
+          " lines=",
+          to_string(owed.withheld_line_total_count),
+          " beyond-plan-rows=",
+          to_string(owed.withheld_beyond_plan_rows_count),
+          "; withheld lines must equal withheld rows plus beyond-plan rows; the plan detail was ",
+          detail,
+        ],
+        "",
+      ),
+    }
+  } else if refused_axis_count == 0 && fleet_converge_owed_work_is_clear(owed: owed) {
+    FullyApplied
+  } else {
+    PartiallyApplied {
+      refused_axis_count: refused_axis_count,
+      owed: Present { value: owed },
+      detail: detail,
+    }
   }
 }
 
+type FleetConvergeApplyTerminal
+  = FullyApplied
+  | PartiallyApplied { refused_axis_count: Int, owed: FleetConvergeOwedWork?, detail: String }
+  | AwaitingCapability { capability: String }
+  | OwedReportContradiction { detail: String }
+
+// THE RECONCILIATION THE FOUR NUMBERS CLAIM, SPOKEN ONCE AND USED TWICE -- at the mint, through
+// `fleet_converge_full_host_terminal`, and on the wire, through `owed_work_shape`.
+//
+// Lines equal rows plus beyond only if every withheld row echoed exactly one withheld line, and every
+// withheld line either echoes a row or is counted as beyond-plan. The renderer satisfies that today; it is
+// not a relation between any two of the fields. A gate that grew a withheld line with no row behind it, or
+// a row whose script stopped being echoed, would break it -- which is why the equality is checked rather
+// than assumed, and why a disagreement is refused instead of read as a clean report.
+// AT THE MINT THIS IS ONLY THE EQUALITY. Each field is a `count(...)` over a list, so a negative is not a
+// state this function can be handed -- a check for it here would restate a constraint the model already
+// carries (`gunbc.design_argument::fail_closed`) and would be green by construction, later cited as
+// coverage. On the WIRE it is a different story: four integers arrive from a file, where a negative is
+// perfectly expressible, so `wire_owed_counts_are_sane` refuses them there. Same shape, different
+// permissibility, because the two inputs are not the same kind of thing.
+fn fleet_converge_owed_work_reconciles(owed: FleetConvergeOwedWork) -> Bool {
+  owed.withheld_line_total_count == owed.withheld_row_count + owed.withheld_beyond_plan_rows_count
+}
+
+// THE WIRE'S SIDE OF THE SAME CLAIM. A receipt is text on disk: it can carry `-1`, it can carry a gap that
+// swallows the rows it claims, and a terminal minted from such numbers would gate FullyApplied on arithmetic
+// that cannot be true. These four integers are refused rather than trusted.
+fn wire_owed_counts_are_sane(owed: FleetConvergeOwedWork) -> Bool {
+  owed.withheld_row_count >= 0
+    && owed.plan_only_row_count >= 0
+    && owed.withheld_line_total_count >= 0
+    && owed.withheld_beyond_plan_rows_count >= 0
+    && fleet_converge_owed_work_reconciles(owed: owed)
+}
+
+// NOTHING IS APPLIED WHILE ANYTHING IS OWED (and nothing is clear that does not add up). These are one predicate, not a preference: a withheld plan
+// row, a plan-only row, a withheld line the plan never listed, and a refused row each keep a convergence
+// out of FullyApplied. The line total is in the conjunction too, so a mint whose counts do not add up --
+// lines withheld with no row to account for them -- fails closed rather than reading as clean.
+fn fleet_converge_owed_work_is_clear(owed: FleetConvergeOwedWork) -> Bool {
+  fleet_converge_owed_work_reconciles(owed: owed)
+    && owed.withheld_row_count == 0
+    && owed.plan_only_row_count == 0
+    && owed.withheld_line_total_count == 0
+    && owed.withheld_beyond_plan_rows_count == 0
+}
+
+// THE WIRE NAMES EACH COUNT IT CARRIES. `withheld=`, `plan-only=`, `withheld-lines=` and
+// `withheld-beyond-plan-rows=` are spelled out rather than left positional, because the receipt line is
+// read by an operator deciding whether to dispatch again or to go get the evidence a teardown is waiting
+// on -- and the srv1 receipt that started this was unreadable in exactly that way: one number, called
+// partially_applied, with no way to tell refusal from withholding from a row converge was never going to
+// act on.
+fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "fully_applied"
+    PartiallyApplied { refused_axis_count: n, owed: o, detail: d } => match o {
+      // The pre-count wire, spelled exactly as it was minted: a decoded legacy receipt re-renders to
+      // the byte-identical string, so its content-addressed identity still verifies.
+      Absent => join(["partially_applied|", to_string(n), "|", d], "")
+      Present { value: owed } => join(
+        [
+          "partially_applied|",
+          to_string(n),
+          "|withheld=",
+          to_string(owed.withheld_row_count),
+          "|plan-only=",
+          to_string(owed.plan_only_row_count),
+          "|withheld-lines=",
+          to_string(owed.withheld_line_total_count),
+          "|withheld-beyond-plan-rows=",
+          to_string(owed.withheld_beyond_plan_rows_count),
+          "|",
+          d,
+        ],
+        "",
+      )
+    }
+    AwaitingCapability { capability: c } => join(["awaiting_capability|", c], "")
+    OwedReportContradiction { detail: d } => join(["owed_report_contradiction|", d], "")
+  }
+}
+
+// THE WIRE TELLS THE TRUTH OR IT IS NOTHING. A `partially_applied` prefix whose refusal count is not an
+// integer decodes to nothing rather than to 0, so a corrupt or hand-edited wire cannot arrive claiming
+// an empty ledger; the reader of the receipt sees an unreadable terminal and stops.
+//
+// THE TWO SHAPES CANNOT BE CONFUSED. A count-carrying wire has the four named owed segments after the
+// refusal count and is decoded by those literal keys; the pre-count wire has a detail that opens with an
+// axis name (`slot=`, `timer=`, `fabric-cell=`) or a sentence and never with `withheld=`, so its shape
+// cannot parse as a count-carrying one. Whatever follows the counts is the detail, taken whole, so a
+// detail containing a pipe round-trips intact.
 fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
   if text == "fully_applied" {
     Present { value: FullyApplied }
@@ -25,18 +195,113 @@ fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerm
         capability: substring(s: text, start: 20, end: string_length(s: text)),
       },
     }
+  } else if starts_with(s: text, prefix: "owed_report_contradiction|") {
+    Present {
+      value: OwedReportContradiction {
+        detail: substring(s: text, start: 26, end: string_length(s: text)),
+      },
+    }
   } else if starts_with(s: text, prefix: "partially_applied|") {
-    let rest = substring(s: text, start: 18, end: string_length(s: text))
-    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
-    match parse_int(s: n_text) {
+    let segments = split(
+      s: substring(s: text, start: 18, end: string_length(s: text)),
+      delimiter: "|",
+    )
+    match parse_int(s: segment_at(segments: segments, index: 0)) {
       Absent => none
-      Present { value: n } =>
-        Present { value: PartiallyApplied {
-          refused_axis_count: n,
-          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
-        } }
+      Present { value: refused } => match owed_work_shape(segments: segments) {
+        Present { value: owed } =>
+          Present {
+            value: PartiallyApplied {
+              refused_axis_count: refused,
+              owed: Present { value: owed },
+              detail: detail_from(segments: segments, counts_consumed: 5),
+            },
+          }
+        // A WIRE THAT LOOKS LIKE A COUNT WIRE AND IS NOT ONE IS NOT A LEGACY WIRE. Falling through here
+        // would read `withheld=4|plan-only=…` back as an operator-facing detail, which is how a tampered or
+        // half-written receipt gets a second life as a clean-looking terminal. Only a wire that never claimed
+        // to carry counts gets the legacy reading.
+        Absent => if opens_with_owed_key(segments: segments) {
+        none
+      } else {
+        Present {
+          value: PartiallyApplied {
+            refused_axis_count: refused,
+            owed: Absent,
+            detail: detail_from(segments: segments, counts_consumed: 1),
+          },
+        }
+      }
+      }
     }
   } else {
     none
   }
+}
+
+// THE FOUR OWED COUNTS, OR NOTHING. They arrive together or the shape is the old one; a wire with three
+// of the four keys is not a shape anyone may mint, and inventing a zero for the missing one is the exact
+// defect this type exists to prevent.
+fn owed_work_shape(segments: List<String>) -> FleetConvergeOwedWork? {
+  match keyed_int(segments: segments, index: 1, key: "withheld=") {
+    Absent => Absent
+    Present { value: withheld } => match keyed_int(segments: segments, index: 2, key: "plan-only=") {
+      Absent => Absent
+      Present { value: plan_only } => match keyed_int(segments: segments, index: 3, key: "withheld-lines=") {
+        Absent => Absent
+        Present { value: lines } => match keyed_int(
+          segments: segments,
+          index: 4,
+          key: "withheld-beyond-plan-rows=",
+        ) {
+          Absent => Absent
+          Present { value: beyond } => {
+            let owed = FleetConvergeOwedWork {
+              withheld_row_count: withheld,
+              plan_only_row_count: plan_only,
+              withheld_line_total_count: lines,
+              withheld_beyond_plan_rows_count: beyond,
+            }
+            // FOUR INTEGERS ARE NOT A RECEIPT. A wire whose numbers do not add up was not minted by the
+            // renderer -- it was edited, or it was minted by a renderer that had lost a line. Either way it
+            // is not a state of this type, and the caller refuses the whole wire rather than keeping a
+            // terminal whose owed work is nonsense.
+            if wire_owed_counts_are_sane(owed: owed) {
+              Present { value: owed }
+            } else {
+              Absent
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn opens_with_owed_key(segments: List<String>) -> Bool {
+  starts_with(s: segment_at(segments: segments, index: 1), prefix: "withheld=")
+}
+
+fn keyed_int(segments: List<String>, index: Int, key: String) -> Int? {
+  let segment = segment_at(segments: segments, index: index)
+  if !starts_with(s: segment, prefix: key) {
+    Absent
+  } else {
+    parse_int(
+      s: substring(s: segment, start: string_length(s: key), end: string_length(s: segment)),
+    )
+  }
+}
+
+fn segment_at(segments: List<String>, index: Int) -> String {
+  match get(xs: segments, index: index) {
+    Absent => ""
+    Present { value: v } => v
+  }
+}
+
+// The detail is everything the counts did not consume, rejoined with the delimiter so a detail that
+// itself contains a pipe survives decode whole.
+fn detail_from(segments: List<String>, counts_consumed: Int) -> String {
+  join(segments |> skip(n: counts_consumed), "|")
 }

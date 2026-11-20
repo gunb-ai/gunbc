@@ -18,7 +18,10 @@ fn getent_program() -> ProgramIdentity = uncataloged_program(invocation: "getent
 // getent passwd <key> answers the passwd database entry for key, one line:
 // name:passwd:uid:gid:gecos:home:shell. The fleet probe modules used to reach the same entry
 // through a shell pipeline (`getent passwd "$(whoami)" | cut -d: -f6`); the pipeline's field
-// selection now happens in the corpus (see gunbc.passwd_home split at field six), so this
+// selection now happens in the corpus (extdeps.linux.etc_passwd parses the seven passwd(5) fields;
+// its etc_passwd_home_of answers the home, consumed by
+// gunbc.fleet.fleet_probe_identity_observe::passwd_home_observation and
+// gunbc.runner.runner_gpu_container_toolchain::job_user_home_from_passwd), so this
 // module owns only the invocation: the database, the key, and nothing else.
 fn getent_passwd_command(key: NonEmptyStr) -> ArgvCommand {
   argv_command(program: getent_program(), arguments: ["passwd", key as String])
@@ -50,4 +53,30 @@ fn getent_group_command(key: NonEmptyStr) -> ArgvCommand {
 // login; the utility resolves the database, so this row does not name a file or an account.
 fn getent_shadow_command(key: NonEmptyStr) -> ArgvCommand {
   argv_command(program: getent_program(), arguments: ["shadow", key as String])
+}
+
+// getent ahostsv4 <name> is the READ-OF-RECORD for "does this name resolve ON THIS HOST, through the
+// resolver the host's own programs use". gunbc.tailscale_join_converge's srv1 read-back runs it against a
+// joined host's tailnet name, and it is the right instrument precisely because of what the man page says
+// it is NOT: getent(1) "displays entries from databases supported by the Name Service Switch libraries,
+// which are configured in /etc/nsswitch.conf", and ahostsv4 is "Same as ahosts, but use the address family
+// AF_INET" -- ahosts being the database that passes each key "in succession to getaddrinfo(3)". So an
+// answer here is an answer from the same NSS path the router's own upstream lookups take, which is the
+// question the fleet owes when upstreams are addressed by tailnet name rather than by a LAN IP.
+//
+// WHY THIS IS NOT REDUNDANT WITH `tailscale ping` (extdeps.tailscale.join): the ping resolves a machine
+// name from Tailscale's own peer list, not from NSS (cmd/tailscale/cli/ping.go), so a pong says the peer is
+// reachable OVER THE TAILNET while saying nothing about whether sshd(8)-era resolver consumers -- nginx, an
+// ssh target string, a cron entry -- can resolve the name. The two legs answer different failures, which is
+// why they are two legs.
+//
+// THE OUTPUT SHAPE IS NOT CLAIMED. getent(1) documents the databases and the address family, not a column
+// layout for ahostsv4, so no field indexing happens here and this module does not parse the reply at all;
+// the caller judges non-emptiness and looks for the name it asked about
+// (@ref(gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution)), and the raw reply
+// travels in any refusal rather than being
+// silently re-shaped into a success. THE NOT-FOUND CODE IS THE SAME ONE as every other database above:
+// getent(1) EXIT STATUS "2 One or more supplied key could not be found in the database".
+fn getent_hosts_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: getent_program(), arguments: ["ahostsv4", name as String])
 }

@@ -590,7 +590,19 @@ type FileHoldDeadHolderRecovery
   | FileHoldDeadHolderHolderUnobservable { holder: DurableHoldOwnerRef, cause: NonEmptyStr }
   | FileHoldDeadHolderNotEligible { refusal: DurableHoldRecoveryRefusal }
   | FileHoldDeadHolderReleaseLost
-  | FileHoldDeadHolderReleaseStoreUnavailable { cause: NonEmptyStr }
+  // THE CAUSE IS THE FAILURE THE STORE REPORTED, NOT A RENDERING OF IT. Declared NonEmptyStr while its only
+  // producer -- the FileHoldReleaseStoreUnavailable arm of
+  // @ref(gunbc.durable_exclusive_hold_file_store::file_hold_recover_dead_holder), which forwards that
+  // variant's cause verbatim out of @ref(gunbc.durable_exclusive_hold_file_store::FileHoldReleaseOutcome) --
+  // hands it a @ref(std.durable_compare_and_set::CasStoreFailure), and its only reader
+  // (@ref(gunbc.host.managed_host_unit_hold::unit_hold_recover_dead_holder), on
+  // @ref(gunbc.durable_exclusive_hold_file_store::FileHoldDeadHolderRecovery)) discards the field -- so the
+  // scalar spelling was never a claim anyone honoured, only a declaration no value inhabited. The sibling
+  // propagations of the same failure already declare the carrier:
+  // @ref(extdeps.realization.materialization_store_local::LocalStoreHoldStoreUnavailable) and
+  // @ref(extdeps.realization.materialization_store_local::LocalStoreHoldReleaseStoreUnavailable). Rendering
+  // it is a reader's business, and the one rendering is std.durable_compare_and_set cas_store_failure_detail.
+  | FileHoldDeadHolderReleaseStoreUnavailable { cause: CasStoreFailure }
   | FileHoldDeadHolderReleaseKeyNotAddressable
 
 fn file_hold_recover_dead_holder(
