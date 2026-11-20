@@ -1349,6 +1349,9 @@ fn design_rulings() -> List<DesignRuling> {
     tailnet_serving_acl_admin_console_additions_2026_11_18,
     tailscale_fleet_key_untagged_join_causality_2026_11_18,
     native_scm_fabric_first_gate_lifted_2026_11_19,
+    pxe_default_install_and_no_standing_erase_2026_11_10,
+    runner_capacity_counts_only_when_observed_2026_11_10,
+    pxe_witnesses_need_no_required_ci_2026_11_10,
   ]
 }
 
@@ -1384,4 +1387,35 @@ data ken_strata_memory_trim_buys_two_build_seats_2026_11_19: DesignRuling = Desi
 THE SERVING-SIDE FIGURES ARE THE OPERATOR'S REPORT, NOT READS THIS FLEET HAS TAKEN. The operator performed a ken memory trim, live on the unit from 17:21Z on 2026-11-19: parked-session RAM 32 -> 12 GiB; parked-session slots 24 -> 6; parallel 8 -> 4; non-reclaimable memory roughly 59 -> roughly 25 GB; the full-speed need roughly 53 GB, which the operator splits as about 25 GB of engine plus about 28 GiB of model page cache; below that level prompt prefill degrades and THE DEGRADATION CURVE IS UNMEASURED; max context stays 224k; the prior configuration is kept on the host as cfg-ken.json.bak-before-mem-trim-20261119T171122Z.
 
 WHAT THE MODEL DOES NOT YET KNOW, which is the part a reader must not skip. No read held in this repo has confirmed the new ceiling: gunbc.serving.serving_host_memory::ken_strata_engine_memory still carries memory_max 112 GiB, from the 2026-11-18T21:21Z systemctl read over read-only ssh, and its soft ceiling, swap ceiling, loaded-and-idle base and parked-session cache are still ServingMemoryUnread with the reads that would settle them named. The owed read is systemctl show ken-strata.service for MemoryMax, MemoryHigh and MemorySwapMax on that host, plus the parked-session cache budget and slot count from cfg-ken.json; only a read like that may move the physical row, because fail_closed (gunbc.design_argument::fail_closed) refuses a plausible output nobody observed. Once it lands, the consequence this ruling was made for is mechanical rather than argued: gunbc.serving.serving_reservation derives the serving charge from the read ceiling, so the frontier row h11ssl_unit3_serving_charge_blocks_build_seat_frontier should dissolve, and that row -- not this ruling -- is where the two-seat claim lives until a read exists to put it there.",
+}
+
+// THE THREE OPERATOR DECISIONS THE BOOT AND MANAGEMENT EDGE INTENTION STANDS ON THAT WERE RECORDED
+// NOWHERE BUT A PLAN CARRIER. DESIGN.md's *Plans are intentions* is explicit -- "a decision it needs
+// from the operator is recorded in `gunbc.design_ruling` and cited, never kept in the plan or the pull
+// request alone" -- so these three are recorded here and cited from
+// gunbc.plans.new_server_bringup, which no longer holds them as prose. Their wording is the
+// new_server_bringup carrier's section 1, whose heading attributes them to the operator on 2026-11-10
+// in smart-crane-730's session; that carrier sat on branch session/smart-crane-730-plan (head
+// c623b01ef18) with no pull request ever opened, so until this change no row in the repository carried
+// them. Where a decision is already modeled, the row below cites the model instead of restating it, and
+// no ruling is minted for it.
+data pxe_default_install_and_no_standing_erase_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pxe_default_install_and_no_standing_erase_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_no_requests"),
+  provenance: "Operator decision of 2026-11-10 in smart-crane-730's session, recorded in the new_server_bringup carrier's section 1 and moved here on 2026-11-20 when that carrier was landed, because *Plans are intentions* (gunbc.design_argument::plans_are_intentions) keeps the how out of a plan and DESIGN.md keeps an operator decision out of a plan alone. Two decisions, one shape: PXE is the default installation path for every eligible physical machine, and BMC virtual media stays a fallback that has to carry an explicit, evidenced reason -- the eligible architectures are already modeled as uefi_pxe_admitted_architectures at gunbc.network_boot_delivery:221, and the reason a fallback needs is the operator's to receive, not the agent's to invent. And an install is one-shot: an install request is never a standing authorization to erase a disk, which the model already holds structurally -- gunbc.host.network_install::network_install_no_requests is the roster of standing requests and it is empty at :919, with each install a client binding at :864 carrying its own target-disk identity. The ruling changes what is decided; the empty roster is what refuses a standing erase.",
+}
+
+data runner_capacity_counts_only_when_observed_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_capacity_counts_only_when_observed_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator decision of 2026-11-10 in smart-crane-730's session, recorded in the new_server_bringup carrier's section 1 and moved here on 2026-11-20 when that carrier was landed. Runner capacity is a completion condition, not a declaration: a machine counts as capacity only once its runner services are healthy, its registrations and labels have been observed, its resource admission resolves, and a real CI job has run on it. A host that exists is therefore not a host that contributes, and a fleet view that counted the first would be reporting capacity nobody observed -- which is fail_closed (gunbc.design_argument::fail_closed) applied to a capacity number. What the model already carries: the listener principals and per-host specs at gunbc.runner.runner_host_deploy (gunbc_runner_listener_principal at :218, srv1_runner_host_spec at :220), where srv14/butch is the already-installed CI-only host at :341 and a spec refuses until the host's LAN address is modeled.",
+}
+
+data pxe_witnesses_need_no_required_ci_2026_11_10: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pxe_witnesses_need_no_required_ci_2026_11_10"),
+  decided: "2026-11-10",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
+  provenance: "Operator decision of 2026-11-10 in smart-crane-730's session, recorded in the new_server_bringup carrier's section 7 and moved here on 2026-11-20 when that carrier was landed. The PXE witnesses that read a boot or an install on the floor are not made required status checks: a check that needs a machine on the network and an operator's hand at a console would block every unrelated change whenever the floor is busy, so their verdict is carried by the work item's own acceptance rather than by branch protection. This narrows conformance (gunbc.design_argument::conformance) for this class of witness only -- what a required check must be able to answer is whether the change is sound on the tree, and a floor reading cannot. It does not weaken the witness itself: the claim still has to go RED against the plant and GREEN against the fix, on the post-wall binary, before the item that owes it can be accepted.",
 }

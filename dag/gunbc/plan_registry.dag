@@ -39,7 +39,7 @@ import gunbc.plans.first_customer_service { first_customer_service_plan }
 // new_server_bringup is the site's boot and management edge program -- srv4 as the SitePxeEdge, bobo (srv15) as the first
 // host installed over it, butch (srv14) executor-only under the 2026-11-19 CI ruling, and mtcollins1's boot duties retired
 // onto modeled rows (written 2026-11-10, landed and re-derived from GitHub 2026-11-20; the rows it serves are under
-// site-boot-and-management-edge in dag/gunbc/roadmap/roadmap_authority.dag).
+// realization is carried as work items on the roadmap at dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention).
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
