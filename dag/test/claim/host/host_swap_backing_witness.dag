@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The fold under test takes its requirement as a parameter, so the claim that exercises its four
 // arms supplies the requirement AT THE INTERFACE rather than reading the live one. The live
 // `memory_swap_max` is byte_size(0) since the 2026-11-04 envelope ruling
-// (@ref(gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired), operator: "no thrashing
+// (#gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired, operator: "no thrashing
 // allowed", class gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal), so
 // host_swap_backing_requirement() answers SwapBackingNotRequired and host_swap_backing_verdict
 // then returns Converged for every input -- the four arms collapse and the fold is never

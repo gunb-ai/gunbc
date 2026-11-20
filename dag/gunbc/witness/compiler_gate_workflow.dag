@@ -25,7 +25,7 @@ module gunbc.witness.compiler_gate_workflow
 // passes native_product_reuse_env_name=fresh, under which the runner refuses a restored hit rather
 // than serving it. That is the one use the ruling leaves the seed. The one run that does NOT emit is a
 // pull request the planning fast lane covers (gunbc.read_set_restore, admitted by
-// @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)): its subject steps are skipped, not
+// #gunbc.design_ruling::seed_read_set_receipt_is_admitted): its subject steps are skipped, not
 // served from a store, and the job says so -- it reuses the verdict main's run reached at the restored
 // ancestor and runs the whole-tree checks with the binary that run built, labelled as reused. A verdict this gate gains from
 // here is a row of emitted_subject_build_rows judged by a binary built from that emission, not a

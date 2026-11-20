@@ -1648,8 +1648,8 @@ fn the_startup_key_set_check_precedes_the_first_fallible_consult() {
 // declarations name hides those rows from the host scan, and the REST decode then answers
 // `no CoproductWireContract row names this coproduct` for a row that exists -- a SILENT MISS of the kind
 // gunbc.design_argument::fail_closed forbids. The seeding
-// (@ref(v1.compiler.infer::realization_wire_contract_read_row), @ref(v1.compiler.infer::realization_wire_contract_read_names),
-// which since this PR also follows the whole alias chain via @ref(v1.compiler.infer::realization_wire_contract_alias_chain))
+// (#v1.compiler.infer::realization_wire_contract_read_row, #v1.compiler.infer::realization_wire_contract_read_names,
+// which since this PR also follows the whole alias chain via #v1.compiler.infer::realization_wire_contract_alias_chain)
 // is the declared edge from those reads to the rows; these tests pin that the seeding is real in both
 // directions: read rows are realized though nothing demands them, and an ordinary undemanded data declaration
 // stays unrealized (the category seed is not a blanket rule).

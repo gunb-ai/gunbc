@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_host_plan_halts_on_an_item_that_can_only_refuse
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_host_plan_halts_on_an_item_that_can_only_refuse: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_host_plan_halts_on_an_item_that_can_only_refuse" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a host pass that distinguishes 'not yet settled' from 'cannot settle without a decision this pass is not allowed to make': the second is not a wait, it is a refusal, and a plan that waits on it waits forever. On the runner side the discrimination is the restart-loop admission -- gunbc.runner.runner_host_file_converge::runner_slot_restart_loop_standing answering no MainPID, an empty unit cgroup and no registration from ONE observation, admitting one systemctl stop for a KEPT slot whose install directory the listing proved absent, reading it back stopped, and only then handing the slot to the existing first-install route -- SUFFICIENT FOR the settle witness to red the merge path if a kept slot's tree leg goes back to refusing instead of settling, and NOT YET SUFFICIENT for the general case, which needs every host pass to carry per-item refusals beside per-item pending writes instead of halting at the first of either.",
+    },
+  },
+
+  receipts: [
+    "**a refusal the plan reads as a wait, on a unit that can never answer.** INVALID STATE: a host whose model names thirteen runner slots, whose unit files and sudoers are converged, and whose cap phase reports observed=21 effective=0. Two of the thirteen -- srv3-06 and srv3-07 -- are units the host has never instantiated: their install directory was never built, and their units restart-loop against it, which the actuation reading reports as instantiated (ActiveState=activating) while the tree reading reports TreeAbsent. That combination is not transient and not fixable by waiting, and the tree leg's answer is a typed refusal per unit. CONSEQUENCE, AND THE PART THAT HURTS: the cap phase is host-wide, so the other ELEVEN kept slots' CPU quota is withheld with ALLOCATION-NOT-EFFECTIVE want=9000000us, the quota drop-in `60-fleet-cpu.conf` has never been written on that host, and the shadow drops under /etc and /run/systemd/system.control cannot be removed because the removal is gated behind the same plan. RUN HISTORY: converge 44593179957 and 44621007740 both refuse step=slot-tree 'slot tree absent while active' for exactly those two units and withhold every cap; withdraw 44595938568 had already masked thirteen KEPT slots; observe 44609820213 reads effective=0 retired=8. WHAT MADE IT LOOK LIKE A WAIT: the plan's own language -- 'surplus slots have not retired', 'allocation not effective' -- is the vocabulary of pending writes, and nothing in the receipt says this item refuses rather than lags.",
+    "THE SAME SHAPE IN ANOTHER LEG, SAME DAY, INDEPENDENTLY REPORTED: the remote-build serving converge on srv3 (runs 44719307397 and 44738040665) halted at rank 8, InstallUserWorkSlice, because the cap was read from CGROUP FILES and a started-but-empty slice has no `memory.max` file -- an ENOENT that can never settle -- and the pass halts at the first unsettled write, so the serve-binary and identity legs downstream never RAN AT ALL and their absence read as three separate faults (serve_binary.sha256 mismatch, identity absent) until the cause was read. That is the same error class wearing a different uniform: one item that can only refuse, carried as if it were an item that has not yet arrived, and a host plan held hostage behind it.",
+    "RUNG NOW: mitigatable -- the refusal is typed, per-unit and located (step=slot-tree, the unit named), and the withheld population is countable in the same receipt ('observed=21 effective=0'), so an operator can see the host is not settled and can name the two items; nothing prevents a new instance, because every host pass still decides locally whether an unsettled item is a wait or a refusal. CEILING: mechanically preventable -- a pass that reports a per-item ledger separating 'pending' from 'refuses, needs a decision' cannot wait forever on the second, and the writer that gates a host-wide write on 'nothing is unsettled' can then tell a stall from a lag. THE CLIMB IS UNBUILT, NOT BLOCKED: for the runner tree leg the discrimination now exists and is witnessed (the settle admission above), which is why this row is filed against the class rather than that one leg; what remains unbuilt is the general per-item ledger in the converge execution, where an unmet item is today indistinguishable from a not-yet-run one. Note this row does NOT ask that host-wide gates be removed: withholding a cap phase while the population is genuinely unsettled is correct. What it asks is that a refusal be reported AS one, and that where the refusal is something the pass is authorized to repair -- a kept slot with no install directory, a unit with no process and no workload cgroup -- the pass repairs it instead of refusing forever.",
+  ],
+
+  evidence: [],
+}
