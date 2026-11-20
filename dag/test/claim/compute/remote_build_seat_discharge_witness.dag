@@ -1,0 +1,146 @@
+module test.claim.compute.remote_build_seat_discharge_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.measure { kibibyte }
+import std.algebra { count_where, string_contains }
+import gunbc.compute.work_request { WorkRefusedByInfrastructure, HostComputeCapacityFull, HostCannotServe, WorkCancelled }
+import gunbc.compute.work_provider_local { ProvideResult, ProvideFresh, ProvideAttached, HostRecordWritten, HostRecordUnreadable, provide_result_document }
+import gunbc.compute.compute_seat_ensure {
+  SeatDischargeRan, SeatDischargeRefused, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused,
+}
+import gunbc.compute.remote_build_serve {
+  RemoteBuildServeAttempt, remote_build_attempt_document, remote_build_discharge_note, remote_build_ending_of_provide,
+  remote_build_retry_after_discharge, RemoteBuildServeEnding, ServeHostFull,
+}
+
+// WHAT THE SERVE'S ONE DOOR-KNOCK IS ALLOWED TO CHANGE, AND WHAT IT IS NOT.
+//
+// When the remote-build serve is refused for capacity it now runs the seat-discharge pass once and, only
+// if that pass RETURNED A SEAT with its readback, makes the request a second time. The retry rule itself
+// is witnessed where its two predicates live (test.claim.roadmap.roadmap_belt_converge_witness, which now
+// points at the shared compute-layer declarations): a pass that released nothing, refused, or found only
+// seats held by live units does NOT license a retry. What is under test here is the other half, which is
+// new: what the answer looks like once a pass has run.
+//
+// THE CONTRACT THAT MUST NOT MOVE: the work's own document is never replaced, and the serve ENDING is
+// never changed by the annotation. A capacity refusal with a note is still a capacity refusal; a served
+// run, a cancelled attempt, an attached product and an unreadable host record answer byte-for-byte as they
+// did before this change. Those are the reds: append the note in the wrong arm, or let the pass's standing
+// talk the ending into a success, and one of these goes red.
+
+fn g_capacity_full() -> ProvideResult {
+  ProvideFresh {
+    outcome: WorkRefusedByInfrastructure { identity: "gate@1", cause: HostComputeCapacityFull { wire: "pool is full" } },
+    document: "work-document",
+    host_record: HostRecordWritten,
+  }
+}
+
+fn g_cancelled() -> ProvideResult {
+  ProvideFresh {
+    outcome: WorkCancelled { identity: "gate@1", detail: "the holder died" },
+    document: "work-document",
+    host_record: HostRecordWritten,
+  }
+}
+
+// THE DOOR RAN AND FOUND NOTHING ENDED: the refusal stands, and the work's own document is UNTOUCHED at
+// its front -- the note is added, never substituted. A reader diffing the receipt against the pre-change
+// form must find the same document, with one extra line of account below it.
+test fn a_pass_that_ran_and_released_nothing_keeps_the_works_own_document_whole() -> Bool {
+  let pass = SeatDischargeRan { outcomes: [SeatEnsureNoop { reference: "gate@1", why: "held by a live unit" }] }
+  let attempt = RemoteBuildServeAttempt { result: g_capacity_full(), discharge: Present { value: pass } }
+  remote_build_attempt_document(attempt: attempt)
+    == concat(provide_result_document(r: g_capacity_full()), remote_build_discharge_note(pass: pass)) &&
+    string_contains(s: remote_build_attempt_document(attempt: attempt), pattern: "work-document") &&
+    string_contains(s: remote_build_attempt_document(attempt: attempt), pattern: "seat-discharge")
+}
+
+// SEATS REFUSED A RELEASE KEEP THEIR CHARGE, AND THE ANSWER SAYS HOW MANY AND WHICH. This is the part a
+// person clearing a wedged host needs: "pool is full" alone leaves them to guess whether the door was
+// knocked at all, whether it found a seat, and why that seat was left holding.
+test fn seats_refused_a_release_are_counted_and_named_in_the_answer() -> Bool {
+  remote_build_discharge_note(pass: SeatDischargeRan { outcomes: [
+    SeatEnsureRefused { reference: "gate@1", reason: "the slot is unreadable" },
+    SeatEnsureRefused { reference: "gate@2", reason: "the unit lifecycle is unknown" },
+  ] }) == "\nseat-discharge: 2 seat(s) refused a release and KEEP their charge; first: gate@1: the slot is unreadable"
+}
+
+// THE PASS ITSELF REFUSED -- no capacity subject resolves, or the producer leases are not admissible: NO
+// seat was touched, and the answer must not imply one was. The distinction matters downstream: a refused
+// pass is not evidence that the pool is genuinely full of live work, it is evidence the host's own record
+// could not be read.
+test fn a_refused_pass_says_no_seat_was_touched_and_gives_the_reason() -> Bool {
+  remote_build_discharge_note(pass: SeatDischargeRefused { reason: "no capacity subject resolves for host srv1" })
+    == "\nseat-discharge: the pass itself refused, so no seat was touched: no capacity subject resolves for host srv1"
+}
+
+// A CLEAN PASS -- nothing refused, nothing red -- says the door opened. The seat it DID release is what
+// licenses the retry (the retry rule lives with its own predicates); this claim pins that the receipt does
+// NOT read as though nothing happened, so a retry after this line is a retry on a real release.
+test fn a_clean_pass_says_the_door_opened_without_refusal_or_red() -> Bool {
+  remote_build_discharge_note(pass: SeatDischargeRan { outcomes: [
+    SeatEnsureReleased { reference: "gate@1", committed_before: kibibyte(count: 25600), committed_after: kibibyte(count: 0) },
+  ] }) == "\nseat-discharge: the pass ran clean: no seat refused a release and none came back red"
+}
+
+// NO DOOR, NO NOTE: whenever the work was NOT refused for capacity -- a cancelled attempt, an attached
+// product, an unreadable host record, or a served run -- the answer carries no discharge line at all. This
+// is the control against the change leaking into endings it was never about.
+test fn every_answer_that_is_not_a_full_pool_carries_no_discharge_record() -> Bool {
+  count_where(xs: [g_cancelled(), ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordUnreadable }],
+    r => remote_build_attempt_document(attempt: RemoteBuildServeAttempt { result: r, discharge: Absent })
+      == provide_result_document(r: r)) == 2
+}
+
+// THE ANNOTATION NEVER MOVES THE ENDING. A capacity refusal with a note appended is still answered as
+// ServeHostFull -- the client's exit 3 "no host admitted" depends on that ending surviving, and a note
+// that could talk the serve into a different ending would be the silent-pass failure this exit table
+// exists to prevent.
+test fn a_note_never_changes_the_serve_ending_of_the_work() -> Bool {
+  let pass = SeatDischargeRefused { reason: "the producer leases are not admissible" }
+  let attempt = RemoteBuildServeAttempt { result: g_capacity_full(), discharge: Present { value: pass } }
+  remote_build_ending_of_provide(r: attempt.result) == (ServeHostFull as RemoteBuildServeEnding) &&
+    remote_build_ending_of_provide(r: g_cancelled()) != (ServeHostFull as RemoteBuildServeEnding)
+}
+
+// ---- THE RULE ITSELF: WHO IS OWED THE SECOND REQUEST ------------------------------------------------
+//
+// The serve asks one function, remote_build_retry_after_discharge, and its answer decides whether a second
+// request is made -- ONCE, never in a loop: the route calls the provider a second time in exactly one arm
+// of one if. What is under test here is that this cannot drift into a wait or a recovery fired on a fact
+// the host never stated. The live half of the manager's claim -- "a wedged but recoverable seat answers
+// served, not capacity-full" -- needs a host and belongs to the live proof; these claims pin the decision
+// that route will make when it gets one.
+
+fn g_released_seat() -> SeatDischargeRan {
+  SeatDischargeRan { outcomes: [
+    SeatEnsureReleased { reference: "gate@1", committed_before: kibibyte(count: 25600), committed_after: kibibyte(count: 0) },
+  ] }
+}
+
+// A full pool PLUS a seat the pass actually returned, with its readback, is the ONLY thing that earns the
+// second request. A pass that found the seat held by a live unit, refused a seat, or refused outright, does
+// not -- those are the three ways a door gets knocked and stays shut, and each must keep the typed refusal.
+test fn a_full_pool_plus_a_returned_seat_earns_the_second_request_and_nothing_else_does() -> Bool {
+  remote_build_retry_after_discharge(first: g_capacity_full(), pass: g_released_seat()) &&
+    !remote_build_retry_after_discharge(first: g_capacity_full(), pass: SeatDischargeRan { outcomes: [
+      SeatEnsureNoop { reference: "gate@1", why: "the owner is live or its launch deadline has not passed" } ] }) &&
+    !remote_build_retry_after_discharge(first: g_capacity_full(), pass: SeatDischargeRan { outcomes: [
+      SeatEnsureRefused { reference: "gate@1", reason: "the slot is unreadable" } ] }) &&
+    !remote_build_retry_after_discharge(first: g_capacity_full(), pass: SeatDischargeRefused { reason: "the producer leases are not admissible" }) &&
+    !remote_build_retry_after_discharge(first: g_capacity_full(), pass: SeatDischargeRan { outcomes: [] })
+}
+
+// A refusal that is NOT a capacity fact never earns a recovery pass at all -- not a cancelled attempt, and
+// not a host refusing for a different infrastructure reason. The host never stated its pool is full, so a
+// pass run here would be acting on a fact the host did not state, and a retry after it would be a second
+// request made on a guess.
+test fn a_refusal_that_is_not_a_capacity_fact_earns_no_second_request_even_after_a_clean_pass() -> Bool {
+  !remote_build_retry_after_discharge(first: g_cancelled(), pass: g_released_seat()) &&
+    !remote_build_retry_after_discharge(first: ProvideFresh {
+      outcome: WorkRefusedByInfrastructure { identity: "gate@1", cause: HostCannotServe { detail: "the provider cannot serve" } },
+      document: "work-document", host_record: HostRecordWritten }, pass: g_released_seat()) &&
+    !remote_build_retry_after_discharge(first: ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordUnreadable }, pass: g_released_seat())
+}
