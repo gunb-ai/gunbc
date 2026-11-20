@@ -46,6 +46,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_remote_build_serving_observe_step,
   fleet_converge_runner_host_file_observe_step,
   fleet_converge_subject_host_input_name,
+  fleet_converge_job_work_steps,
   fleet_converge_arm_domain_clause,
   hostname_converge_target_input_name,
   step_condition_text,
@@ -310,6 +311,62 @@ test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
     && !any(roster, w => w == "runner_host_file_observe")
 }
 
+// (13) EVERY STEP WHOSE ENTRY READS THE RULE CARRIES THE RULE, spelled exactly as its facts row declares
+// it. srv4 run 44822470270 (mode=remote_build_serving_converge, host=srv4) is the receipt for the hole this
+// pins: the rule reached the GATE step and never the mode step, so the entry read an empty FLEET_CONVERGE_SUBJECT_RULE,
+// mapped empty to SubjectRuleNotApplicable, and refused with InstallModeDeclaresNoSubject -- a dispatch whose
+// facts row declares may_be_executors_own was told it named no machine. This is an IDENTITY JOIN, not a grep:
+// the left side is the facts table itself (every roster mode on the install half), each mode is looked up in
+// the emitted step list BY ITS OWN WIRE, and the value compared is that same row's rule rendering. A mode
+// whose step is missing from the list fails the join; a step that carries a different spelling fails the
+// equality; a rule renamed in the table moves both sides together, which is the point.
+// The drain half is deliberately NOT asserted here: its entry asks the rule-free precheck with explicit
+// arguments (gunbc.runner.runner_host_withdraw::withdraw_host_over -> fleet_converge_split_precheck), so a
+// rule env on those steps would be an env no consumer reads. Their rule is decided once, in the gate.
+test fn every_mode_step_whose_entry_reads_the_rule_carries_the_rule_its_facts_row_declares() -> Bool {
+  let install_modes = filter(
+    fleet_converge_modes_naming_a_subject(),
+    m => match fleet_converge_mode_facts(mode: m).subject_rule {
+      SubjectMayBeTheExecutorsOwnMachine => true
+      _ => false
+    }
+  )
+  let steps = fleet_converge_job_work_steps()
+  length(install_modes) > 0
+    && all(install_modes, m =>
+      match first_where(xs: steps, keep: s => step_id_text(step: s) == fleet_converge_workflow_mode_wire(mode: m)) {
+        Present { value: s } =>
+          env_text(step: s, key: fleet_converge_subject_rule_env_name)
+            == fleet_converge_split_rule_wire(rule: fleet_converge_mode_facts(mode: m).subject_rule)
+        Absent => false
+      }
+    )
+    // The pair goes where a consumer reads it, and nowhere else: the observe of the same family names no
+    // subject at all (claim 11), so an env carrying a rule there would be a declaration with no reader.
+    && env_text(step: fleet_converge_runner_host_file_observe_step(), key: fleet_converge_subject_rule_env_name) == ""
+    // The entry refuses the empty rendering rather than defaulting, which is what made the hole loud
+    // instead of silent -- the same refusal the run above printed.
+    && match fleet_converge_install_subject_decision(rule: fleet_converge_split_rule_of_wire(wire: ""), executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
+      InstallSubjectRefused { reason: why } => match why { InstallModeDeclaresNoSubject => true  _ => false }
+      _ => false
+    }
+}
+
+// (14) THE GATE RUNS BEFORE EVERY STEP THAT NAMES A SUBJECT, in the emitted order. A precondition that runs
+// after the acts it guards can only contradict them after the fact: in the run above the entry refused and
+// the gate never spoke. The list is the emitted job's own step order, so this claim is about what the
+// runner executes, not about where the source happens to mention a function.
+test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Bool {
+  let names = map(fleet_converge_job_work_steps(), s => step_id_text(step: s))
+  let gate = step_id_text(step: fleet_converge_executor_subject_split_gate_step())
+  let gated = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
+  gate != ""
+    && length(gated) == 5
+    && length(filter(names, n => n == gate)) == 1
+    && all(gated, w => appears_before(names: names, before: gate, after: w))
+    && !appears_before(names: names, before: gate, after: gate)
+}
+
 // ---------------------------------------------------------------- helpers
 
 fn mode_named(name: String) -> FleetConvergeWorkflowMode {
@@ -388,5 +445,28 @@ fn value_text(v: YamlValue) -> String {
   match v {
     YamlString { value: s } => s as String
     _ => ""
+  }
+}
+
+fn step_id_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i {
+      Present { value: s } => s as String
+      Absent => ""
+    }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i {
+      Present { value: s } => s as String
+      Absent => ""
+    }
+  }
+}
+
+// Which of two named steps the runner reaches first. The first of the pair to appear in the emitted order
+// decides; a name missing from the list is not a pass but a refusal, so a renamed or dropped step fails the
+// claims that lean on it instead of quietly ordering nothing.
+fn appears_before(names: List<String>, before: String, after: String) -> Bool {
+  match first_where(xs: names, keep: n => n == before || n == after) {
+    Present { value: n } => n == before
+    Absent => false
   }
 }
