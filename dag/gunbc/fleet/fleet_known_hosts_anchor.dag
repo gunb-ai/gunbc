@@ -269,21 +269,34 @@ fn known_hosts_file_rows() -> List<KnownHostKeyRow> {
   concat(fleet_known_hosts_rows(), first_contact_known_host_rows())
 }
 
-// AN ADMISSION TOKEN, not a wire string (review 96277). Report the rung honestly
-// (gunbc.design_argument::guarantee_ladder -- "a type name establishes nothing" beyond what it
-// mechanically buys): this closed sum makes the admission list TYPO- AND DRIFT-PROOF (no third mode
-// name can be passed, and no caller can pass a String that merely looks admitted) and its Absent arm
-// forces every non-admitted caller to SAY so as a value. It does NOT seal construction: any module
-// importing the type can construct a variant -- review 96423. What makes "exactly the two join-making
-// modes" more than a comment is EVIDENCE, not the type name: inside dag/gunbc the only two
-// constructions are the two owning modes (hostname_converge::bind_transport and
-// tailscale_join_host's custody hop -- git grep HostnameMode / TailscaleJoinMode shows exactly those
-// plus witnesses, and witnesses construct tokens precisely to EXECUTE the hop claims), and the reds
-// sit in the witnesses (the token-less caller is refused by named variant; the anchored refusal and
-// supersession arms run on every CI of the touching paths). Sealing construction any tighter would
-// need module-private constructors the language does not have; claiming it here would be rung
-// inflation, which the guarantee ladder punishes harder than sitting low.
-type FirstContactAdmission = HostnameMode | TailscaleJoinMode
+// AN ADMISSION TOKEN, not a wire string (review 96277), SEALED at the construction wall
+// (review 96908). `sole_constructor` is the language's construction wall (src/v2/compiler/
+// infer.dag, THE SOLE_CONSTRUCTOR section: a variant of a sealed coproduct built OUTSIDE the
+// declaring module is a compile diagnostic), so no module but this one can mint a variant -- a
+// third mode cannot spell `HostnameMode` as an expression at all. The token list itself is TYPO-
+// AND DRIFT-PROOF, and the Optional<...> Absent arm forces every non-admitted caller to SAY so.
+// The constructors below are the ONLY mint entry points, one per OWNING mode, named for its owner
+// (gunbc.design_argument::conformance-phase-admission: "a phase is a carrier type whose only constructor is
+// the function that establishes it"). THE HONEST RESIDUE: the language has no caller identity, so
+// any module may CALL these two named constructors -- what remains short of a full seal is
+// tracked as a rung row, NOT by this comment: gunbc.integration_concern::
+// first_contact_admission_mint_lacks_caller_identity, whose trigger names per-caller-identity
+// refusal. The behavioural reds sit in the witnesses (the token-less caller refused by named
+// variant; the anchored and supersession arms run on every CI of the touching paths).
+type FirstContactAdmission sole_constructor = HostnameMode | TailscaleJoinMode
+
+// THE ONE MINT ENTRY FOR THE HOSTNAME MODE, spelled only here and called by its owner
+// (host_hostname_converge::bind_transport). No other production caller exists; a new caller is a
+// roster change the rung row and the witnesses make visible.
+fn first_contact_admission_for_hostname_mode() -> FirstContactAdmission {
+  HostnameMode
+}
+
+// THE ONE MINT ENTRY FOR THE TAILSCALE JOIN MODE, spelled only here and called by its owner
+// (tailscale_join_converge's custody hop). Same roster discipline as its sibling above.
+fn first_contact_admission_for_tailscale_join_mode() -> FirstContactAdmission {
+  TailscaleJoinMode
+}
 
 // THE FIRST-CONTACT TARGET -- admitted ONLY by the two token holders above, and ONLY while the host
 // has no anchored row (the anchor check is inside this function, so no mode, in any order, dials a

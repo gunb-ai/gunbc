@@ -19,6 +19,8 @@ import gunbc.fleet.fleet_host_key_enrollment {
   fleet_name_at_ssh_port,
 }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  first_contact_admission_for_hostname_mode,
+  first_contact_admission_for_tailscale_join_mode,
   anchored_host_key_row,
   first_contact_known_host_rows,
   first_contact_ssh_target,
@@ -247,11 +249,11 @@ test fn a_host_with_only_a_hop_has_no_anchored_row() -> Bool {
 // Absent and is refused the hop. The claim that the workflow's mode facts still spell the two wires
 // lives beside this one (fleet_converge_mode_facts vs the leaf datums), so a renamed wire still fails.
 test fn the_hop_admits_only_the_token_holding_modes() -> Bool {
-  match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: Present { value: HostnameMode }) {
+  match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: Present { value: first_contact_admission_for_hostname_mode() }) {
     SshTargetResolved { target: _ } => true
     SshTargetRefused { endpoint: _, refusal: _ } => false
   }
-    && match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: Present { value: TailscaleJoinMode }) {
+    && match first_contact_ssh_target(host: "srv14" as HostIdentity, principal: "ubuntu", admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
       SshTargetResolved { target: _ } => true
       SshTargetRefused { endpoint: _, refusal: _ } => false
     }
@@ -263,7 +265,7 @@ test fn the_hop_admits_only_the_token_holding_modes() -> Bool {
 }
 
 test fn the_hop_admits_nothing_for_a_host_with_no_pinned_key() -> Bool {
-  match first_contact_ssh_target(host: "not-a-fleet-host" as HostIdentity, principal: "ubuntu", admission: Present { value: TailscaleJoinMode }) {
+  match first_contact_ssh_target(host: "not-a-fleet-host" as HostIdentity, principal: "ubuntu", admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
     SshTargetResolved { target: _ } => false
     SshTargetRefused { endpoint: _, refusal: _ } => true
   }

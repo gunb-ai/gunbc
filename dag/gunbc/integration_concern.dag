@@ -4977,3 +4977,59 @@ data machine_width_uint8_int_crossing_has_no_declared_route: IntegrationConcern 
     next: climbs_when(capability: "std.integer lands the ruled intersection carrier -- a checked width mint with its target realization, and the declared total UInt<N> -> Int crossing of PR #16548, parked while its non-required heal job thrash-refuses near 22.5 GB on the 25.7 GB runner slot pending an operator decision on that budget -- so sole construction makes an unadmitted octet unwritable and auth_base64url_wire consumes the qualified carrier instead of casting o as Int"),
   },
 }
+
+// THE FIRST-CONTACT TOKEN IS SEALED AT THE CONSTRUCTION WALL BUT NOT AT THE CALL DOOR. Review 96908
+// forced FirstContactAdmission behind sole_constructor (variant construction outside
+// gunbc.fleet.fleet_known_hosts_anchor is a compile diagnostic, executed red by
+// test.claim.sole_constructor_completeness_audit_probe's f13) with one named mint function per owning
+// mode. What still rests on evidence rather than the compiler: the language has no caller identity, so
+// any importing module may CALL the two named constructors. The roster of two is held by the witnesses
+// (named refusals for the token-less caller, the anchored-host refusal, and the supersession arm, green
+// on every CI of the touching paths) -- the rung row below tracks the compile-roster rung, so the gap is
+// a named climb, not a comment's claim (gunbc.design_argument::guarantee_ladder, "No untracked stall").
+data first_contact_seal_review_revision: CommitSha = "0ffe19fdd4b039ff8f209c811675c7e8df7677e1"
+
+data first_contact_admission_mint_lacks_caller_identity: IntegrationConcern = IntegrationConcern {
+  identity: "first_contact_admission_mint_lacks_caller_identity",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "FirstContactAdmission"),
+    requirement: "only the two join-making modes -- host_hostname_converge and tailscale_join_converge -- can hold a first-contact admission token; a third module can neither spell a variant (sole_constructor refuses it) nor reach a mint by any compiled rule other than not importing the two named constructors",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "first_contact_ssh_target") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "FirstContactAdmission"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "first_contact_admission_for_hostname_mode"),
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "first_contact_admission_for_tailscale_join_mode"),
+      decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "first_contact_ssh_target"),
+    ],
+  },
+  question: "Can the language refuse a CALL into a sealed carrier's named mint by caller module identity -- a per-caller roster or module-private constructors checked at compile time -- so the two-owner admission is a compiled fact for every module that exists, rather than a grep-plus-witness roster over the modules that exist today?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: first_contact_seal_review_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "first_contact_admission_for_tailscale_join_mode") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.host_hostname_converge", decl_name: "bind_transport") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.sole_constructor_completeness_audit_probe", decl_name: "f13_variant_construction_refuses") },
+        ],
+      },
+      account: "Review 96908 read the PR's comment claiming the language lacks module-private constructors and checked it: sole_constructor is in use (extdeps.apple.app_attest, extdeps.bmc.http) and the f13 probe EXECUTES the coproduct-variant refusal. The comment was rewritten and the seal applied; what remains open is exactly the call-door gap this row tracks, named here so the claim is never again carried by prose.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "FirstContactAdmission") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "first_contact_ssh_target"),
+        control: decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "the_hop_admits_only_the_token_holding_modes"),
+        statement: "a caller holding no token is refused by named variant (FirstContactModeNotAdmitted) with its own refusal text, and the anchored host keeps its anchor: no admission path may dial the lease hop for an anchored host (FirstContactHopSupersededByAnchor) or with no pinned key (TargetAnchorRowAbsent)",
+      },
+    ],
+    next: climbs_when(capability: "the compiler refuses a call into an exported mint function of a sole_constructor carrier by CALLER MODULE IDENTITY -- a per-caller roster checked at typecheck, or module-private constructors -- SUFFICIENT FOR the two-owner first-contact admission to be a compile fact for every importer, leaving the witnesses only the behaviour of the refusals to prove"),
+  },
+}

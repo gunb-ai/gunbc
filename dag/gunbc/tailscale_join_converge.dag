@@ -131,6 +131,7 @@ import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshExecutionContext, FirstContactAdmission,
+  first_contact_admission_for_tailscale_join_mode,
   SshTarget,
   SshTargetResolution,
   SshTargetRefused,
@@ -824,7 +825,7 @@ fn tailscale_join_host(
     SshTargetRefused { endpoint: endpoint, refusal: _ } =>
       JoinRefused { host: host, cause: concat("srv1 is not an ssh target this converge can use: ", endpoint) }
     SshTargetResolved { target: router } =>
-      match custody_host(host: host, admission: Present { value: TailscaleJoinMode }) {
+      match custody_host(host: host, admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
         // The custody subject is the same admission every other credential placement on this host goes
         // through: a host with no runner spec is not a host a converge may write a credential onto.
         CustodyHostSubjectRefused { cause: cause } => JoinRefused { host: host, cause: cause }
