@@ -38,7 +38,8 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
-import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_is_active_argv, systemctl_reset_failed_argv }
+import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_disable_now_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_is_active_argv, systemctl_reset_failed_argv, systemctl_show_property_argv }
+import extdeps.systemd { UnitFileState }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.gnu_coreutils { coreutils_install_file_argv, coreutils_rm_force_argv }
 import extdeps.posix.test_utility { test_regular_file_command }
@@ -137,6 +138,10 @@ type HostUnitRetirementObservation {
   unit: NonEmptyStr,
   load_state: String,
   active_state: String,
+  // The UnitFileState read from the SAME receipt, verbatim. Empty (or any word systemd prints for a unit
+  // it does not know) is what a retired unit answers; a leftover enable symlink answers `enabled` and the
+  // shared readback refuses it (review 96915).
+  unit_file_state: String,
   // The retained copy's path AS THE RUN WROTE IT, transcribed from the receipt -- not rebuilt from the
   // unit name. The engine instances' retained copy lives at the SHARED template fragment's name
   // (strata-pool@.service), which no function may reconstruct from `strata-pool@a.service`.
@@ -163,6 +168,7 @@ fn host_unit_retirement_observed_row_readback(o: HostUnitRetirementObservation) 
     },
     o.load_state,
     o.active_state,
+    o.unit_file_state,
     o.retained_readable,
   )
 }
@@ -176,13 +182,26 @@ type HostUnitRetirementReadback
   = Retired { unit: NonEmptyStr, retained_path: String }
   | UnitStillLoaded { unit: NonEmptyStr, load_state: String }
   | UnitActive { unit: NonEmptyStr, active_state: String }
+  | UnitStillEnabled { unit: NonEmptyStr, unit_file_state: String }
   | RetainedCopyAbsent { unit: NonEmptyStr, retained_path: String }
 
-fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String, active_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
+// The judgement the receipt and the wet run both run through, ONE order: the manager must not know the
+// unit (not-found), it must not be running (inactive), it must carry NO INSTALL STATE, and the retained
+// copy must stand readable. The install-state arm (review 96915) is what makes "GONE from the system
+// manager" true rather than plausible: deleting the fragment without disabling leaves *.wants/ symlinks
+// pointing at nothing, and is-enabled still answers enabled -- a dangling link that would pass load-state
+// and active-state and print `retired` over install state still on the host. FAIL-CLOSED: ONLY the empty
+// answer -- what systemctl prints for a unit the manager does not know -- passes; any word it prints,
+// `enabled` or `disabled` (a disabled state means a unit FILE is still on disk) or one from a newer
+// systemd we do not parse, refuses with the word retained. The act batch runs systemctl_disable_now_argv
+// before the rm precisely so the empty answer is what a correctly-retired unit prints.
+fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String, active_state: String, unit_file_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
   if load_state != "not-found" {
     UnitStillLoaded { unit: row.unit, load_state: load_state }
   } else if active_state != "inactive" {
     UnitActive { unit: row.unit, active_state: active_state }
+  } else if unit_file_state != "" {
+    UnitStillEnabled { unit: row.unit, unit_file_state: unit_file_state }
   } else if !retained_readable {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
   } else {
@@ -195,6 +214,7 @@ fn host_unit_retirement_readback_line(readback: HostUnitRetirementReadback) -> S
     Retired { unit, retained_path } => concat("retired ", unit as String, " retained=", retained_path)
     UnitStillLoaded { unit, load_state } => concat("STILL-PRESENT ", unit as String, " load-state=", load_state)
     UnitActive { unit, active_state } => concat("ACTIVE ", unit as String, " active-state=", active_state)
+    UnitStillEnabled { unit, unit_file_state } => concat("STILL-ENABLED ", unit as String, " unit-file-state=", unit_file_state)
     RetainedCopyAbsent { unit, retained_path } => concat("RETAINED-ABSENT ", unit as String, " path=", retained_path)
   }
 }
@@ -297,16 +317,21 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
   // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent. The
   // argv goes through the extdeps constructor (gunbc.design_argument::interface_realization_policy).
-  let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ coreutils_rm_force_argv(paths: [row.fragment_path]), systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
+  let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ systemctl_disable_now_argv(unit: row.unit), coreutils_rm_force_argv(paths: [row.fragment_path]), systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
+  // The read batch, four reads. Beyond load-state, active state and the retained copy, the unit's INSTALL
+  // STATE must be gone: a leftover enable symlink (review 96915) would keep is-enabled answering `enabled`
+  // for a fragment that no longer exists, and a receipt printed over that state would fabricate "gone from
+  // the system manager" (gunbc.design_argument::fail_closed).
   let back = host_unit_retirement_exec_all(target, context, [
     systemctl_show_load_state_argv(unit: row.unit),
     systemctl_is_active_argv(unit: row.unit),
     argv_words(command: test_regular_file_command(path: row.retained_path)),
+    systemctl_show_property_argv(unit: row.unit, property: UnitFileState),
   ])
   if !copy_ok {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
   } else {
-    host_unit_retirement_read_row(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_ok(back.at(2)))
+    host_unit_retirement_read_row(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_first_line(back.at(3)), host_unit_retirement_ok(back.at(2)))
   }
 }
 

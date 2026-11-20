@@ -66,14 +66,30 @@ test fn host_unit_retirement_rows_cite_the_ruling() -> Bool {
 // a missing retained copy is NOT retired. Only not-found + inactive + readable copy accepts.
 test fn host_unit_retirement_readback_refuses_half_states() -> Bool {
   let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr, ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
-  let loaded = host_unit_retirement_read_row(row, "loaded", "inactive", true)
-  let active = host_unit_retirement_read_row(row, "not-found", "active", true)
-  let unretained = host_unit_retirement_read_row(row, "not-found", "inactive", false)
-  let gone = host_unit_retirement_read_row(row, "not-found", "inactive", true)
+  let loaded = host_unit_retirement_read_row(row, "loaded", "inactive", "", true)
+  let active = host_unit_retirement_read_row(row, "not-found", "active", "", true)
+  let unretained = host_unit_retirement_read_row(row, "not-found", "inactive", "", false)
+  let gone = host_unit_retirement_read_row(row, "not-found", "inactive", "", true)
   (match loaded { UnitStillLoaded { unit: _, load_state: _ } => true _ => false })
     && (match active { UnitActive { unit: _, active_state: _ } => true _ => false })
     && (match unretained { RetainedCopyAbsent { unit: _, retained_path: _ } => true _ => false })
     && (match gone { Retired { unit: _, retained_path: _ } => true _ => false })
+}
+
+// A DANGLING ENABLE LINK IS NOT RETIRED (review 96915). Deleting the fragment without disabling leaves
+// *.wants/ symlinks pointing at nothing; load-state reads not-found, is-active reads inactive, and the
+// retained copy is readable -- the three reads the first revision judged -- while is-enabled still answers
+// `enabled`. The readback now also demands the INSTALL STATE be gone: any parseable UnitFileState refuses,
+// `disabled` included (a disabled state means a unit file is still on disk); only the empty word systemd
+// prints for a unit it does not know passes.
+test fn host_unit_retirement_dangling_enable_link_is_refused() -> Bool {
+  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr, ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+  let enabled = host_unit_retirement_read_row(row, "not-found", "inactive", "enabled", true)
+  let disabled = host_unit_retirement_read_row(row, "not-found", "inactive", "disabled", true)
+  let masked = host_unit_retirement_read_row(row, "not-found", "inactive", "masked", true)
+  (match enabled { UnitStillEnabled { unit: _, unit_file_state: _ } => true _ => false })
+    && (match disabled { UnitStillEnabled { unit: _, unit_file_state: _ } => true _ => false })
+    && (match masked { UnitStillEnabled { unit: _, unit_file_state: _ } => true _ => false })
 }
 
 test fn host_unit_retirement_all_retired_needs_every_row() -> Bool {
@@ -105,9 +121,9 @@ test fn host_unit_retirement_group_keys_on_the_subject() -> Bool {
 // must satisfy, that state refuses every row -- the run's acceptance is exactly what is missing today.
 test fn host_unit_retirement_live_units_still_refuse_retired() -> Bool {
   let rows = host_unit_retirement_rows()
-  let a_state = host_unit_retirement_read_row(rows.at(0), "loaded", "inactive", false)
-  let b_state = host_unit_retirement_read_row(rows.at(1), "loaded", "inactive", false)
-  let cap_state = host_unit_retirement_read_row(rows.at(2), "loaded", "failed", false)
+  let a_state = host_unit_retirement_read_row(rows.at(0), "loaded", "inactive", "", false)
+  let b_state = host_unit_retirement_read_row(rows.at(1), "loaded", "inactive", "", false)
+  let cap_state = host_unit_retirement_read_row(rows.at(2), "loaded", "failed", "", false)
   !host_unit_retirement_all_retired([ a_state, b_state, cap_state ])
 }
 
@@ -136,6 +152,7 @@ test fn host_unit_retirement_observed_readback_uses_the_receipt_path() -> Bool {
     unit: "strata-pool@a.service" as NonEmptyStr,
     load_state: "not-found",
     active_state: "inactive",
+    unit_file_state: "",
     retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
     retained_readable: true,
     probed_at: "2026-11-20T00:00:00Z" as NonEmptyStr,
