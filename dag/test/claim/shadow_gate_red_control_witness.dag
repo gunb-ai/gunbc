@@ -1,0 +1,15 @@
+module test.claim.shadow_gate_red_control_witness
+
+// DISCARDABLE RED CONTROL FOR THE HOSTED-RUNNER SHADOW GATE EVIDENCE RUN.
+// This witness fails BY CONSTRUCTION: its only claim asserts a false fact, so the remote
+// gate (gunbc.compute.remote_build_client::remote_gate_cli) on this ref must answer with the
+// code verdict (exit 1) and the shadow job must render it red. It exists to prove the failure
+// arm of the shadow gate is real (gunbc.design_argument::fail_closed: "a red control: a real
+// input that goes red"). THIS BRANCH IS NEVER MERGED; delete it after the evidence run
+// (tracked in work item node://adhoc-ab9c2a17-cc4).
+
+import std.types { Bool }
+
+test fn the_red_control_claim_fails_by_construction() -> Bool {
+  1 == 2
+}
