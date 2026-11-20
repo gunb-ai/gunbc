@@ -14,6 +14,7 @@ import extdeps.sudo.nopasswd_execute_probe_check_op {
 }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
+  TypedArgvExecOverran,
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
@@ -182,6 +183,7 @@ test fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
   ) {
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecRefused { reason: _ } => false
+    TypedArgvExecOverran { deadline: _ } => false
   }
 }
 
@@ -248,6 +250,8 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
       ) {
         TypedArgvExecConverged { result: r } => r.success
         TypedArgvExecRefused { reason: _ } => false
+    TypedArgvExecOverran { deadline: _ } => false
+        TypedArgvExecOverran { deadline: _ } => false
       }
     }
     NopasswdGrantListCheck => false
@@ -261,6 +265,7 @@ test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool
   ) {
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecRefused { reason: _ } => false
+    TypedArgvExecOverran { deadline: _ } => false
   }
 }
 
