@@ -1,0 +1,54 @@
+// WITNESS: the fleet-converge runner architecture label is DERIVED from each machine's board, never a
+// hard-coded arm64. This is the containment for the change that lets an x86 executor (ken) host a
+// converge job. The three cases are the manager's controls, held together deliberately:
+//   * POSITIVE -- srv1-srv4 (AsRock ALTRAD8UD-1L2T, Ampere Altra) resolve to the label "arm64", byte-
+//     identical to the literal every serving runner label carried before this derivation existed. Delete
+//     asrock_altrad8ud_board_soc_edge from gunbc.host.board_platform_facts board_soc_edges and these four
+//     fall to RunnerArchUnknown -- so the AsRock edge is load-bearing, not decoration.
+//   * x86 -- ken (Supermicro H11SSL, AMD EPYC) resolves to "x64", the label that lets it host a converge
+//     job. Delete supermicro_h11ssl_board_soc_edge and this falls to RunnerArchUnknown.
+//   * RED -- a machine with no architecture the fleet can establish (a provider-owned Hetzner guest)
+//     answers RunnerArchUnknown, NOT "arm64". The fleet-converge plan refuses on that answer; it must
+//     never silently borrow an arm64 runner for a host whose architecture is unknown.
+module test.claim.fleet.machine_board_witness
+
+import std.types { Bool }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch_label, RunnerArchKnown, RunnerArchUnknown }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+  operator_host_e2d4b7, operator_host_183527,
+}
+
+fn resolves_to(host: HostIdentity, expected: String) -> Bool {
+  match fleet_converge_runner_arch_label(host: host) {
+    RunnerArchKnown { label } => label == expected
+    RunnerArchUnknown => false
+  }
+}
+
+fn answers_unknown(host: HostIdentity) -> Bool {
+  match fleet_converge_runner_arch_label(host: host) {
+    RunnerArchUnknown => true
+    RunnerArchKnown { label: _ } => false
+  }
+}
+
+// POSITIVE CONTROL. The four Altra serving hosts still resolve the arm64 label exactly as the old literal did.
+test fn srv1_to_srv4_runner_arch_still_derives_arm64() -> Bool {
+  resolves_to(host: operator_host_srv1, expected: "arm64")
+    && resolves_to(host: operator_host_srv2, expected: "arm64")
+    && resolves_to(host: operator_host_srv3, expected: "arm64")
+    && resolves_to(host: operator_host_srv4, expected: "arm64")
+}
+
+// ken's board (H11SSL, AMD EPYC) is the first x86 executor; it derives the GitHub x64 runner label.
+test fn ken_runner_arch_derives_x64() -> Bool {
+  resolves_to(host: operator_host_e2d4b7, expected: "x64")
+}
+
+// RED CONTROL. A provider-owned guest has no fleet-establishable architecture; the answer is unknown, and
+// it is NOT defaulted to arm64 -- the plan must refuse rather than hand an unknown host an arm64 runner.
+test fn host_without_an_architecture_answers_unknown_never_arm64() -> Bool {
+  answers_unknown(host: operator_host_183527) && !resolves_to(host: operator_host_183527, expected: "arm64")
+}
