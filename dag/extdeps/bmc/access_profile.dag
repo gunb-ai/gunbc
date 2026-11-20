@@ -3,6 +3,7 @@ module extdeps.bmc.access_profile
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
+import extdeps.clock { CapturedInstant }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.credentials { FactoryLogin }
@@ -178,6 +179,14 @@ type BmcBootControlRouteObservation {
   observed_at: EpochMs
 }
 
+// WHEN THE OBSERVATION WAS TAKEN IS A BAND, NOT A STOPWATCH VALUE. An access observation is a receipt of
+// a pass over a controller, and a pass is not always dated to the millisecond: a notebook that records a
+// re-capture as "~06:5xZ" licenses the interval 06:50:00-06:59:59 and no instant inside it, while a live run
+// whose own diagnostics stamp each read license one. So the field carries extdeps.clock::CapturedInstant and
+// each observer mints its band at its own source (captured_point for an instrument read, captured_band or
+// captured_minute_band for a window). Typing this field as EpochMs made every notebook-sourced observation
+// claim a second of precision its bytes do not support (gunbc.design_argument::fail_closed: "no plausible
+// output is fabricated"); the boot-control probe above is dated by the run that ran it and stays a point.
 type BmcAccessObservation {
   endpoint: BmcControllerEndpoint
   identity: BmcObservedIdentity
@@ -187,7 +196,7 @@ type BmcAccessObservation {
   successful_read_surfaces: List<BmcAccessSurface>
   successful_write_surfaces: List<BmcAccessSurface>
   raw_response: ContentHash
-  observed_at: EpochMs
+  observed_at: CapturedInstant
 }
 
 // An observation is a receipt of an attempt; its absence is a state a solver

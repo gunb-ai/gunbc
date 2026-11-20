@@ -54,7 +54,7 @@ module gunbc.roadmap.roadmap_estimate_derivation
 
 import std.types { String, Int, Bool, List }
 import std.optional { Optional, Present, Absent, optional_present, optional_absent }
-import std.algebra { list_push, zip_map }
+import std.algebra { list_push, zip_map, FreeSemigroup }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, NodeParent, RoadmapEdge,
   MemberOf, AdmittedRoot, Closes,
@@ -63,6 +63,7 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadma
 import gunbc.roadmap.roadmap_schedule_calendar { working_days_between }
 import gunbc.roadmap.roadmap_decomposition {
   decomposition_for, decompositions_in, roadmap_decompositions, WorkDecomposition, WorkStage, stages_owners, stages_leaf_days, stages_leaf_count,
+  merge_pricing, merge_count, LeafPricing, LeafCount, UnprobedFamily, Priced, Unpriced, Counted, Uncounted,
 }
 import gunbc.roadmap.roadmap_effort_estimate {
   EstimateSize, EstimateForm, RoadmapEstimateRow, EstimateEntry, EstimateRevocation, estimate_table,
@@ -348,31 +349,51 @@ fn has_decomposition_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) ->
   count(decompositions_in(pieces: pieces, node: node)) > 0
 }
 
-fn decomposition_work_days_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Int {
-  fold(decompositions_in(pieces: pieces, node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) })
+// THE ONE PRICING READ over a carried table: it folds the ONE pricing function (stages_leaf_days) with merge_pricing.
+// It returns a typed LeafPricing -- Priced only when no FindingsOf family in the node's pieces is unprobed, otherwise
+// Unpriced naming every unprobed family and its probe -- so a caller CANNOT price an unmeasured population by forgetting
+// to check: the type forces the unprobed case to be handled (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)).
+fn decomposition_work_days_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> LeafPricing {
+  fold(decompositions_in(pieces: pieces, node: node), init: Priced { days: 0 }, f: fn(acc, d) { merge_pricing(a: acc, b: stages_leaf_days(stages: d.stages)) })
 }
 
-fn decomposition_leaf_count_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Int {
-  fold(decompositions_in(pieces: pieces, node: node), init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) })
+// THE ONE COUNT READ over a carried table, typed the same way: Counted only when no family is unprobed.
+fn decomposition_leaf_count_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> LeafCount {
+  fold(decompositions_in(pieces: pieces, node: node), init: Counted { members: 0 }, f: fn(acc, d) { merge_count(a: acc, b: stages_leaf_count(stages: d.stages)) })
 }
 
 fn has_decomposition(node: RoadmapNodeId) -> Bool {
   has_decomposition_in(pieces: roadmap_decompositions, node: node)
 }
 
-fn decomposition_work_days(node: RoadmapNodeId) -> Int {
+// THE delegators: the declared table is read in exactly one place (single_authority).
+fn decomposition_work_days(node: RoadmapNodeId) -> LeafPricing {
   decomposition_work_days_in(pieces: roadmap_decompositions, node: node)
 }
 
-fn decomposition_leaf_count(node: RoadmapNodeId) -> Int {
+fn decomposition_leaf_count(node: RoadmapNodeId) -> LeafCount {
   decomposition_leaf_count_in(pieces: roadmap_decompositions, node: node)
 }
 
-// IS THIS NODE PRICED AT ALL? A row of its own, or a decomposition that prices its pieces.
+// Does this node's decomposition PRICE it? A decomposition that exists but carries an unprobed FindingsOf family does
+// NOT price the node -- it leaves it unsized. So a node with only such a decomposition is not "estimated": it is
+// listed, never priced (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)).
+fn decomposition_prices_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Bool {
+  if has_decomposition_in(pieces: pieces, node: node) {
+    match decomposition_work_days_in(pieces: pieces, node: node) {
+      Priced { days: _ } => true
+      Unpriced { families: _ } => false
+    }
+  } else {
+    false
+  }
+}
+
+// IS THIS NODE PRICED AT ALL? A row of its own, or a decomposition that prices its pieces (not one merely left unsized).
 fn is_estimated(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces: List<WorkDecomposition>, n: RoadmapNode) -> Bool {
   match current_estimate(entries: entries, subject: n.identity) {
     Present { value: _ } => true
-    Absent => has_decomposition_in(pieces: pieces, node: n.node)
+    Absent => decomposition_prices_in(pieces: pieces, node: n.node)
   }
 }
 
@@ -409,13 +430,16 @@ fn descendant_side(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, piece
 
 fn pieces_side(pieces: List<WorkDecomposition>, node: RoadmapNode) -> Optional<DescendantSide> {
   if has_decomposition_in(pieces: pieces, node: node.node) {
-    optional_present(value: DescendantSide {
-      node: node.node,
-      identity: node.identity,
-      days: decomposition_work_days_in(pieces: pieces, node: node.node),
-      basis: "the days its own decomposition declares for its pieces",
-      from_pieces: true,
-    })
+    match decomposition_work_days_in(pieces: pieces, node: node.node) {
+      Priced { days: days } => optional_present(value: DescendantSide {
+        node: node.node,
+        identity: node.identity,
+        days: days,
+        basis: "the days its own decomposition declares for its pieces",
+        from_pieces: true,
+      })
+      Unpriced { families: _ } => optional_absent()
+    }
   } else {
     optional_absent()
   }
@@ -618,12 +642,20 @@ fn restated_piece_days_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>
     Present { value: row } => if has_decomposition_in(pieces: pieces, node: n.node) {
       match estimate_form_days(t: estimate_table, v: row.value) {
         Absent => [] as List<EstimateRefusal>
-        Present { value: days } => [RestatedPieceDays {
-          node: n.node,
-          authored_days: days,
-          pieces_days: decomposition_work_days_in(pieces: pieces, node: n.node),
-          pieces: decomposition_leaf_count_in(pieces: pieces, node: n.node),
-        }]
+        Present { value: days } => match decomposition_work_days_in(pieces: pieces, node: n.node) {
+          // The decomposition prices nothing (an unprobed FindingsOf family), so there is no priced pieces
+          // representation beside the authored one to refuse as a restatement -- unsized is listed, never priced.
+          Unpriced { families: _ } => [] as List<EstimateRefusal>
+          Priced { days: pieces_days } => match decomposition_leaf_count_in(pieces: pieces, node: n.node) {
+            Uncounted { families: _ } => [] as List<EstimateRefusal>
+            Counted { members: leaf_count } => [RestatedPieceDays {
+              node: n.node,
+              authored_days: days,
+              pieces_days: pieces_days,
+              pieces: leaf_count,
+            }]
+          }
+        }
       }
     } else {
       [] as List<EstimateRefusal>
@@ -647,6 +679,15 @@ type EstimateSource
 type UnsizedWhy
   = NothingEstimated
   | ContainedChildUnsized { child: RoadmapNodeId }
+  | FindingsUnprobed { family: String, probe: String }
+
+// The cause an unpriced decomposition gives: name the FIRST unprobed family and its probe, deterministically. The
+// Unpriced total's `families` is a FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup)), so
+// there is no empty state to fall back to -- an "unpriced but nameless" total is unwritable and no made-up cause is
+// ever returned. This reads the head; it does not re-decide cardinality.
+fn findings_unprobed_cause(families: FreeSemigroup<UnprobedFamily>) -> UnsizedWhy {
+  FindingsUnprobed { family: families.head.family, probe: families.head.probe }
+}
 
 type NodeEstimate {
   node: RoadmapNodeId
@@ -670,10 +711,13 @@ fn node_source_in(nodes: List<RoadmapNode>, entries: List<EstimateEntry>, pieces
       Absent => Unsized { why: NothingEstimated }
     }
     Absent => if has_decomposition_in(pieces: pieces, node: n.node) {
-      Derived {
-        work_days: decomposition_work_days_in(pieces: pieces, node: n.node),
-        contributed: [] as List<RoadmapNodeId>,
-        from_pieces: true,
+      match decomposition_work_days_in(pieces: pieces, node: n.node) {
+        Priced { days: days } => Derived {
+          work_days: days,
+          contributed: [] as List<RoadmapNodeId>,
+          from_pieces: true,
+        }
+        Unpriced { families: families } => Unsized { why: findings_unprobed_cause(families: families) }
       }
     } else {
       from_contained_children(nodes: nodes, entries: entries, pieces: pieces, n: n)

@@ -148,7 +148,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // so product reaches a key's description through a function that can be read, cited, and witnessed.
 fn tailscale_auth_key_policy_of(
   kind: TailscaleAuthKeyKind,
-  approval: TailscaleAuthKeyApproval,
+  approval: Optional<TailscaleAuthKeyApproval>,
   key_tags: List<NonEmptyStr>,
   expires_after: Second,
 ) -> TailscaleAuthKeyPolicy {
@@ -177,6 +177,16 @@ fn tailscale_auth_key_kind_wire(kind: TailscaleAuthKeyKind) -> String {
 // classifier outside it would be a second, consumer-less answer to the same question
 // (gunbc.design_argument::minimize_redundancy).
 
+// What the key's approval attribute CAN BE, per the upstream key object: its `requires_approval` is a
+// boolean, so the upstream field has exactly two states -- the key will not be accepted until it is
+// approved, or it is already approved. Nothing wider belongs here. Device approval is a per-TAILNET switch,
+// not a key attribute: on a tailnet whose device approval is OFF a key has no approval attribute AT ALL,
+// and that is not a third value of this enum but the ABSENCE of the field -- modeled in the observing layer,
+// where gunbc.tailscale_fleet_auth_key records the tailnet's device-approval switch as its own typed receipt
+// (tailscale_fleet_device_approval_enabled) and leaves the fleet key's approval field absent. Minting a
+// "not-applicable" arm here would put an observation this repository makes inside the upstream module, which
+// gunbc.design_argument::external_upstreams forbids ("observations ... are receipts in the observing layer,
+// never facts of the upstream"; "model what the API actually returns").
 type TailscaleAuthKeyApproval = AuthKeyPreApproved | AuthKeyApprovalRequired
 
 fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> String {
@@ -217,10 +227,14 @@ fn tailscale_auth_key_expiry_window_is_upstream(expires_after: Second) -> Bool {
 
 // THE RECORD OF WHAT THE KEY UPSTREAM IS. Product supplies the values; the shape, the ranges, and the
 // meaning of each field are upstream's. `key_tags` is what the key itself carries ("the device assumes
-// the identity of the auth key's tags").
+// the identity of the auth key's tags"). `approval` is Optional because it is CONDITIONAL on a per-TAILNET
+// fact, not a per-key one: it is Present (one of the two upstream words) only where the tailnet runs device
+// approval, and ABSENT where it does not -- that absence is a receipt kept by the observing layer
+// (gunbc.tailscale_fleet_auth_key::tailscale_fleet_device_approval_enabled), never a value minted into
+// TailscaleAuthKeyApproval above (gunbc.design_argument::external_upstreams).
 type TailscaleAuthKeyPolicy sole_constructor {
   kind: TailscaleAuthKeyKind,
-  approval: TailscaleAuthKeyApproval,
+  approval: Optional<TailscaleAuthKeyApproval>,
   key_tags: List<NonEmptyStr>,
   expires_after: Second,
 }
