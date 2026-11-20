@@ -76,12 +76,12 @@ import extdeps.package_managers.dpkg {
   DpkgQueryUndecidable,
   dpkg_print_architecture_command,
   dpkg_query_status_command,
+  lsb_release_codename_command,
   dpkg_query_status_verdict_of,
 }
 import extdeps.tailscale.apt_repo {
   tailscale_apt_repo_noble,
   tailscale_apt_repo_suite,
-  tailscale_host_codename_command,
   tailscale_packages,
 }
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
@@ -619,7 +619,7 @@ fn tailscale_join_host_codename(
   match typed_argv_exec_over_fleet_ssh(
     target: target,
     context: context,
-    argv: argv_words(command: tailscale_host_codename_command()),
+    argv: argv_words(command: lsb_release_codename_command()),
   ) {
     TypedArgvExecRefused { reason: _ } => Absent
     TypedArgvExecConverged { result: r } =>

@@ -22,8 +22,6 @@ import std.types { NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 import extdeps.package_managers.apt { ThirdPartyAptRepo, PinnedAptKeyFingerprint, package_tailscale }
-import extdeps.exec.command { ArgvCommand, argv_command }
-import extdeps.exec.program { uncataloged_program }
 
 // tailscale's own published apt channel is the authority for the repository URI, the noble suite and the
 // `main` component -- read from the dists/noble/Release it serves (Origin: Tailscale, Codename: noble,
@@ -75,12 +73,4 @@ fn tailscale_apt_repo_noble(arch: NonEmptyStr) -> ThirdPartyAptRepo {
 
 // The package the tailscale repository serves, named by the one apt row that carries it -- not a re-spelled
 // string, so the readback names the same package the install installs.
-// THE HOST-CODENAME READ, the sibling of the arch read (gunbc.tailscale_join_converge::
-// tailscale_join_host_arch): the row pins the Ubuntu suite it was published for (tailscale_apt_repo_suite),
-// so the converge reads the host's OWN codename with this command and refuses the install when it is not
-// the pinned suite. `lsb_release --codename --short` prints e.g. noble; one binary, like dpkg for arch.
-fn tailscale_host_codename_command() -> ArgvCommand {
-  argv_command(program: uncataloged_program(invocation: "lsb_release"), arguments: ["--codename", "--short"])
-}
-
 data tailscale_packages: List<NonEmptyStr> = [package_tailscale]
