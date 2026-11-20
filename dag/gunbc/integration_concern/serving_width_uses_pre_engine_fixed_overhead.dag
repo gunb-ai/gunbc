@@ -32,6 +32,29 @@ import gunbc.integration_concern { CitesDeclaration, ConcernSighting, Integratio
 // an uncounted degradation stated, not hidden). Filed per manager ruling 2026-11-10 (smart-crane-730) so it
 // outlives the PR that found it. NOT fixed in this PR: the fix is the quiescent read host_memory_observation
 // already names as its own dissolution trigger.
+// The main revision the 2026-11-19 and 2026-11-20 read-only edge listings were taken against -- the ref those
+// readings are a statement about. The ownership change they evidence is carried by this row's fifth sighting; no
+// revision is claimed for the landing itself, because gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
+// stand on, and a pending change has none until it lands.
+// ---------------------------------------------------------------------------------------------
+// THE READING PATH.
+//
+//   CONCERN_CHANGED=a.b,c.d CONCERN_REFERENCED=e.f gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//   CONCERN_SUBTREE=product gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//
+// Module paths are comma-separated. With neither variable set it lists every open concern.
+// Deriving `changed` and `referenced` from a diff is not done here; the caller supplies them.
+// WIDTH FROM A FIXED_OVERHEAD THAT PREDATES THE WORKLOADS IT SHOULD EXCLUDE. srv3 and srv4's runner memory
+// width subtracts a fixed_overhead read 2026-07-16 (gunbc_ci_srv3_memavailable_high_water), before both the
+// 64 GiB DIMM upgrade (they now read ~502 GiB usable) and the strata engines (both cgroup caps raised
+// 2026-11-09). Because that bound cannot contain an engine that did not exist yet, gunbc.serving.serving_reservation
+// charges each engine its cgroup MemoryMax as a SEPARATE serving term. That is only correct while the overhead
+// stays pre-engine; a quiescent read that folds the engine in would make the separate charge a double-count.
+// The width is derived from the stale bound in the meantime -- recorded so nobody silently trusts it (fail_closed:
+// an uncounted degradation stated, not hidden). Filed per manager ruling 2026-11-10 (smart-crane-730) so it
+// outlives the PR that found it. NOT fixed in this PR: the fix is the quiescent read host_memory_observation
+// already names as its own dissolution trigger.
 data serving_width_uses_pre_engine_fixed_overhead: IntegrationConcern = IntegrationConcern {
   identity: "serving_width_uses_pre_engine_fixed_overhead",
   kind: SuspectedCapabilityGap {

@@ -568,6 +568,12 @@ data h11ssl_unit3_operator_answers_revision: CommitSha = "b156ebb3c225"
 // h11ssl_unit3_operator_answers_revision -- see
 // gunbc.recurring_failure_mode.a_revision_citation_that_no_landing_contains.
 data h11ssl_unit3_gpu_count_integrated_revision: CommitSha = "218429cecebd204441ac8323b304687d4ae537e7"
+// The main revision the 2026-11-19 and 2026-11-20 read-only edge listings were taken against -- the ref those
+// readings are a statement about. The ownership change they evidence is carried by this row's fifth sighting; no
+// revision is claimed for the landing itself, because gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
+// stand on, and a pending change has none until it lands.
+data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
