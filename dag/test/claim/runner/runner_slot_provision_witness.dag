@@ -421,9 +421,9 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 //
 // The ceiling is the TOTAL wall a deploy row may sit under, not the memory axis alone.
 // host_memory_admitted_width is deliberately the base-only fleet-row PROJECTION (recorded in
-// @ref(gunbc.integration_concern::srv14_slot_admission_answered_by_envelope_and_verdict)), while
+// #gunbc.integration_concern::srv14_slot_admission_answered_by_envelope_and_verdict), while
 // materialization may commit a host's single transitional CI slot on top of it -- the committed
-// path @ref(gunbc.runner.runner_slot_allocation::derived_runner_slots_of_over) adds
+// path #gunbc.runner.runner_slot_allocation::derived_runner_slots_of_over adds
 // host_transitional_ci_slot_count. srv1 commits 8 (7 memory-admitted + 1 transitional srv1-01);
 // comparing runner_count against the base-only projection alone falsely failed it.
 test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {

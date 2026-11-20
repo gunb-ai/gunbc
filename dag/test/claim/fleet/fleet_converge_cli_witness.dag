@@ -399,11 +399,11 @@ fn revision_fixture_oid(hex: String) -> GitObjectId {
 }
 
 // THE SOLD SPARK SLOTS STAY OUT OF CONVERGENCE, AND MAY NEVER TAKE THE SPARK ROUTE.
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) records that every procured DGX Spark
+// #gunbc.spark.dgx_procurement::dgx_spark_disposed_units records that every procured DGX Spark
 // - srv5 and srv6 among them - was sold, under the operator allocations
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_group_a_sale_2026_10_07) (basis: "Group A (fabric cage
+// #gunbc.spark.dgx_procurement::dgx_spark_group_a_sale_2026_10_07 (basis: "Group A (fabric cage
 // 1: srv5-srv8) is turned down and the units are sold and wiped; remove them from fleet config and
-// convergence") and @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) ("none may
+// convergence") and #gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 ("none may
 // remain a reachable fleet host"). So the fleet converge CLI must keep typing a sold slot as outside
 // the fleet, must refuse it with a NAMED cause, must never report it converged, and must never route
 // it through the Spark seam. If a producer for a sold slot is ever wired, this claim turns red - the

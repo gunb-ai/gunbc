@@ -37,7 +37,7 @@ import gunbc.emitted_subject_build_gate {
 }
 
 // THE FAST-LANE UNIT, PUBLISHED ON MAIN (step 1 of the planning fast lane,
-// @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted), @ref(gunbc.design_ruling::native_ci_checks_progress_by_plan)).
+// #gunbc.design_ruling::seed_read_set_receipt_is_admitted, #gunbc.design_ruling::native_ci_checks_progress_by_plan).
 //
 // WHAT IS RECORDED. The required job's emit-and-build steps run with GUNBC_READ_SET_OUT naming one
 // workspace-relative file, so the seed's demand acquisition appends every file, probed path and enumerated

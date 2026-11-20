@@ -226,7 +226,7 @@ fn belt_attempt_obligation_unit_run_bound() -> Second {
 data belt_credential_recovery_backstop: Second = second(count: 900)
 
 // THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). The served-observation fold (the pass that
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16. The served-observation fold (the pass that
 // syncs the roadmap event carrier and republishes /standings.json, /sessions.json and the
 // per-attempt surfaces) is otherwise produced ONLY by a belt tick, and a tick starts ONLY on a
 // worker exit or an operator action. On an IDLE host — no worker finishes, no operator acts — no

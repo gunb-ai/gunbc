@@ -284,10 +284,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // getent ahostsv4 <name>: the fourth database of the same read-only lookup, admitted on the same terms
     // as its siblings -- it names a database the utility resolves itself and names no path, no key file, and
     // no account, and it writes nothing. Its caller is the srv1 read-back
-// (@ref(gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution)), which
+// (#gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution), which
     // must ask whether the JOINED HOST'S TAILNET NAME resolves through NSS -- the resolver path the router's
     // own upstream lookups take -- because `tailscale ping` resolves names from Tailscale's peer list instead
-    // and so cannot answer that question (@ref(extdeps.posix.getent::getent_hosts_command)).
+    // and so cannot answer that question (#extdeps.posix.getent::getent_hosts_command).
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_hosts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),

@@ -226,7 +226,7 @@ fn observe_release_tree_receipt(success: Bool, body: String, error: NonEmptyStr)
 // born: the two halves land at different times, so in between the lab serves a binary from one head against
 // a tree from another, and the gate refuses. This fold is that delivery as ONE authority: the observed facts
 // of a candidate delivery in, a bound pair out, or a refusal that keeps the last good pair serving. Its
-// consumer is the co-located install stage @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan),
+// consumer is the co-located install stage #gunbc.live_deploy.release_pair_delivery::release_pair_install_plan,
 // which consults this fold and turns a PairInstalled into the ordered typed install and a PairRefused into
 // PlanKeepsLastGood. The install stage is itself consumed by the executing route — the lab's own delivery unit
 // (a NAMED, TRACKED later change, declared frontier: roadmap work item `lab-converges-release-pair`, PR3b — unit
@@ -279,7 +279,7 @@ data release_pair_source_missing_reason: NonEmptyStr = "a binary digest was repo
 // the observed fetch produced no pack for the head (unbuilt); when a pack was fetched they are its OBSERVED digest
 // and the path of the file the fetch produced. `verified` is a `VerifiedPack?` — the OBSERVED build-key verdict,
 // carrying the digest the consumer script verified against. It is `none` when no verdict was observed (pack not
-// verified); its single producer, @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan), emits
+// verified); its single producer, #gunbc.live_deploy.release_pair_delivery::release_pair_install_plan, emits
 // it only when the verify observation names the SAME pack_dir the fetch observed. The fold then CROSS-CHECKS that
 // the verdict's digest equals the `binaries_sha256` it is about to bind, and refuses otherwise — so a caller
 // cannot hand a verdict for a pack it did not verify (fail_closed: the wrong state cannot be USED, not merely

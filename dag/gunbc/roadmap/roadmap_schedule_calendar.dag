@@ -19,10 +19,10 @@ module gunbc.roadmap.roadmap_schedule_calendar
 // date. NO scheduling policy is changed: the order, the lanes, and the worker count are read straight off the
 // schedule answer (#16695), never recomputed -- this unit IMPORTS the schedule, it does not recompute it.
 //
-// DATES ARE DERIVED, NEVER AUTHORITATIVE BETWEEN READS (@ref schedule_answers_are_computed_cached_and_re_read,
-// narrowing @ref planning_scheduling_is_cut): a dated answer may be cached, but a READ RECOMPUTES it from the
+// DATES ARE DERIVED, NEVER AUTHORITATIVE BETWEEN READS (#gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read,
+// narrowing #gunbc.design_ruling::planning_scheduling_is_cut): a dated answer may be cached, but a READ RECOMPUTES it from the
 // schedule answer and the read date handed in; the cached dated answer is never served as a fact between reads.
-// The dated clock itself stays @ref effort_estimates_are_public_and_live_in_gunbc -- this unit reads a read date
+// The dated clock itself stays #gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc -- this unit reads a read date
 // in; it does not read a wall clock.
 
 import std.types { Bool, Int, List, String }
