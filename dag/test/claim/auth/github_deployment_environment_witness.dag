@@ -177,18 +177,19 @@ test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
     == ReviewersNotRequired
 }
 
-// THE PIN GATE, stated by the frontier over the committed pin: while the accessor pin stands
-// TranscribedUncited (until the versions-read artifact is cited into it), the gate is CLOSED --
-// no accessor ref, no grant, no fetch. When the pin PR lands the standing flips and this row
-// flips with it: the claim pins TODAY's value, so minting the pin without the read goes red here.
-// The accessor gate is accessor_ref_from_pin ITSELF (a consumed authority, no row of mine beside
-// it): while the pin stands TranscribedUncited it answers Absent -- no accessor ref, no grant, no
-// fetch. The claim pins TODAY's answer, so minting the pin before the versions-read artifact is
-// cited into it goes red here.
-test fn srv15_arrival_accessor_gate_is_closed_until_the_pin_is_cited() -> Bool {
+// THE PIN GATE, stated by the frontier over the committed pin: the standing is CITED -- the
+// job-identity versions read of fleet-converge run 44134741714 (artifact
+// srv15-bmc-secret-versions-receipt, id 14362631725) named exactly one ENABLED version and the pin
+// cites that receipt -- so the gate is OPEN and mints the ref naming that version. This claim pins
+// TODAY's value on the other side: unciting the receipt (or reverting the figure) without re-grounding
+// goes red here, and the ref must keep naming secret bmc-srv15-admin version 1, the receipt's figure.
+// The accessor gate is accessor_ref_from_pin ITSELF (a consumed authority, no row beside it): the ref
+// exists exactly when figure and warrant are present together (review 94161).
+test fn srv15_arrival_accessor_gate_is_open_on_the_cited_receipt_read() -> Bool {
   match srv15_bmc_gunbc_arrival_accessor_version {
-    TranscribedUncited { read_obligation: _ } => true
-    CitedToAuthority { authority: _ } => false
+    CitedToAuthority { authority: a } =>
+      (a.uri.locator as String) == "github.com/gunb-ai/gunbc/actions/runs/44134741714/artifact/14362631725"
+    TranscribedUncited { read_obligation: _ } => false
     ObservedByReceipt { observed: _ } => false
   }
 }

@@ -23,14 +23,13 @@ import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
 
 data roadmap_native_ingress_program: NativeIngressProgram = NativeIngressProgram {
   binding: DeclarationRef { module_path: "gunbc.roadmap.roadmap_native_ingress", decl_name: "roadmap_native_ingress", field: WholeDeclaration },
-  // Manager (crisp-dove-117): fix the handler that exists on MAIN and is what PRODUCTION serves.
-  // Verified: gunbc.live_deploy.spec (serve_function / the instance-selecting handler) = roadmap_serve_handle,
-  // which binds srv1_live_dashboard_instance (the handler is what selects the instance -- the class behind
-  // the current prod outage: a handler named only by --arg the demanded run did not realize). Fixing it at
-  // compile time MOVES deploy-time selection (which built product to start), it does not collapse it.
-  // srv1 native cutover remains a bright-ibex-807 deploy step (scope 5); this row is not a srv1 unit.
+  // The handler is roadmap_serve_handle because production's serve spec names it: gunbc.live_deploy.spec's
+  // serve function is roadmap_serve_handle, and the handler is what selects the served instance. Naming it
+  // in the descriptor pins the entry to the same handler production runs, and fixes the class of defect
+  // where a handler carried only by a run argument can fail to realize. Fixing it at compile time MOVES
+  // deploy-time selection (which built product to start); it does not collapse it.
   handler: DeclarationRef { module_path: "gunbc.roadmap.roadmap_serve", decl_name: "roadmap_serve_handle", field: WholeDeclaration },
-  // startup: Absent -- deferred; the authority is this node's handback (see the module header note).
+  // startup: Absent. The deferral is carried on the roadmap node demand-serve-program-image (roadmap_authority).
   startup: Absent,
 }
 

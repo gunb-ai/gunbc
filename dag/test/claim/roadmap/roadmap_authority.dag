@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_authority
 
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
 import std.types { NonEmptyStr, String, Map }
 import gunbc.roadmap.roadmap_authority {
   declared_roadmap_nodes,
@@ -35,11 +35,18 @@ import gunbc.roadmap.roadmap_authority {
   FrontierSetsProjected,
   FrontierSetsProjectionRefused,
 }
+import gunbc.roadmap.roadmap_estimate_derivation {
+  prerequisite_edges_into_own_containers, prerequisite_edges_onto_own_contained,
+  live_prerequisite_edges_into_own_containers, live_prerequisite_edges_onto_own_contained,
+}
+import gunbc.roadmap.roadmap_decomposition { decomposition, findings_family, WorkDecomposition, StageDependency }
 import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
 import gunbc.roadmap.roadmap_spawner {
   roadmap_rendered_ghost_count,
   roadmap_ghost_node_red_probe_count,
   roadmap_altered_copy_red_probe_count,
+  roadmap_ghost_node_red_probe_count_with,
+  roadmap_altered_copy_red_probe_count_with,
 }
 import gunbc.v1.v1_deletion_plan {
   V1FinishLine,
@@ -67,9 +74,54 @@ import gunbc.roadmap.roadmap_execution_contract {
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
 import gunbc.roadmap.roadmap_authority {
   roadmap_authority_projection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
+  RoadmapAuthorityProjection,
+  FrontierSetsProjection,
   roadmap_retired_node_ids_load,
+  RoadmapAcceptanceEventHistoryLoad,
+  closing_contract_task_pairs_for_accepted,
+  ClosingContractTaskPairsProjection,
+  ClosingContractTaskPairsProjected,
+  closing_contract_task_edges_for_accepted,
+  projected_roadmap_edges_for_accepted,
 }
-import gunbc.roadmap.roadmap_event_log { RetiredNodeIdsLoaded }
+import gunbc.roadmap.roadmap_event_log {
+  RetiredNodeIdsLoaded,
+  RetiredNodeIdsRefused,
+  RoadmapRetiredNodeIds,
+  roadmap_retired_node_ids_of,
+  RoadmapEvent,
+  RoadmapEventKind,
+  RoadmapEventEnvelope,
+  RoadmapEventId,
+  EventPrincipalAuthenticated,
+  AcceptancePrEvidence,
+  AcceptanceRecordedEvent,
+  AcceptanceRevokedEvent,
+  Retired,
+  EarnedByPullRequest,
+  roadmap_event_envelope,
+  roadmap_event_id,
+  roadmap_event_wire_text,
+}
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_events_decode_reads,
+  EventFileContent,
+  EventFileUnreadable,
+  EventsRead,
+  EventsReadRefused,
+  roadmap_events_read_dir,
+  roadmap_events_read_all_synced,
+  RoadmapEventCarrierLayout,
+  RoadmapAllEventsRead,
+  AllEventsRead,
+  AllEventsReadRefused,
+}
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_acceptance_history_of,
+  OperatorAcceptanceHistoryLoaded,
+  OperatorAcceptanceHistoryRefused,
+}
+import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_emit { acceptance_pending_suffix_inlines, line_inlines }
 import std.markdown { MarkdownInline, TextInline, ParagraphBlock }
@@ -80,10 +132,13 @@ import gunbc.roadmap.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   RoadmapNodeId,
+  NodeParent,
+  MemberOf,
   RoadmapAcceptanceReceipt,
   RoadmapAcceptanceEvent,
   AcceptanceRecorded,
   AcceptanceRevoked,
+  AcceptanceRevocationDisposition,
   AcceptanceNodeReopensActiveFrontier,
   AcceptanceNodeRemainsSuperseded,
   remains_superseded_revocations_join,
@@ -134,6 +189,27 @@ import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph 
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io
+// THE COMMITTED EVENT LOG, AS A GENERATED ARTIFACT. This module reads the fixture and never produces it: the
+// roster (gunbc.generated_artifact) owns where the files live, the producer
+// (gunbc.roadmap.roadmap_authority_fixture) owns what their bytes are, the gate
+// (gunbc.instruments.generated_artifact_gate) owns putting them on disk, and this module only ever asks the
+// filesystem what is actually there. An earlier revision imported a writer from here and wrote the log itself;
+// that route is deleted, and every name below is a read.
+import gunbc.roadmap.roadmap_authority_fixture {
+  roadmap_authority_fixture_worktree_root,
+  roadmap_authority_fixture_absent_node,
+  roadmap_authority_fixture_scenarios,
+  roadmap_authority_fixture_accepted_scenario,
+  roadmap_authority_fixture_superseded_scenario,
+  roadmap_authority_fixture_declared_rows,
+  roadmap_authority_fixture_digest,
+}
+import gunbc.generated_artifact { GeneratedArtifact, artifact_directory, artifact_name, artifact_path, artifact_eq }
+import gunbc.generated_artifact_registry { committed_generated_artifacts }
+import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
+import gunbc.instruments.generated_artifact_gate { artifact_selection_for_path, ArtifactSelected, ArtifactSelectionEmpty }
+import std.filesystem { path_parent_directory }
+import gunbc.live_deploy.member_identity { structural_digest_wire }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -161,16 +237,7 @@ fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
   }
 }
 
-fn live_withheld_node_ids() -> List<RoadmapNodeId>? {
-  match withheld_node_ids_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
-    WithheldNodeIdsProjected { ids: ids } => Present { value: ids }
-    WithheldNodeIdsProjectionRefused { detail: _ } => Absent
-  }
-}
-
-fn tnid(s: String) -> RoadmapNodeId { s }
+fn tnid(s: String) -> RoadmapNodeId { s as NonEmptyStr as RoadmapNodeId }
 fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
 
 fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
@@ -223,6 +290,198 @@ fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
     accepted_by: "operator",
     accepted_on: "2026-07-28",
   }
+}
+
+// ─── THE HERMETIC SCENARIO ───────────────────────────────────────────────────
+// WHY THIS EXISTS. Twenty-two of these witnesses were UNOBSERVED, and one refusal explained all of
+// them: the only way to an acceptance history was the LIVE load, which walks the event directory
+// through Filesystem.List, and the hermetic floor has no arm for that effect (claim_batch is hermetic
+// by default; publishing a Filesystem.List mock would FABRICATE the log this ledger's authority rests
+// on — the floor refuses it precisely so no witness can invent a history). So each witness now states
+// the scenario its own property is about: the events that scenario needs, spelled by the log's own
+// emitter, decoded back by the reader's own decoder, and folded by the same fold the live load uses.
+// Nothing is stubbed and nothing is shared — 21 scenarios for 21 witnesses, because a witness is
+// answerable for the single interface it discriminates at (gunbc.design_argument::witness_one_interface),
+// and a shared mega-fixture would be a second home for the acceptance facts
+// (gunbc.design_argument::single_authority).
+//
+// A scenario is not a substitute for the real route. Two witnesses keep it: the committed fixture, read
+// by roadmap_events_read_dir so the actual directory walk runs through the checkout carve-out, and the
+// same-reader witness that holds the live and committed routes to one reader.
+
+// The scenario's principal. It names an operator, never impersonates one: the subject is legibly a
+// fixture, so no scenario byte can be read as a real person's acceptance.
+fn scenario_principal() -> EventPrincipalAuthenticated {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr,
+    namespace: "accounts" as NonEmptyStr,
+    subject: "sub-roadmap-authority-scenario" as NonEmptyStr,
+  } }
+}
+
+// THE RECEIPT THE FOLD WILL ADMIT: the node's own criteria digest, a red control executed, a handback
+// delivered. A receipt missing any of those is DROPPED by the fold, which is the point — a witness that
+// asserts a node was accepted has to spell an acceptance the log would actually honour, not merely say
+// so. The digest comes from the DECLARED node, so a scenario cannot accept a node on terms the model
+// does not state; a node the model does not declare gets a digest no receipt can match, and stays absent.
+fn scenario_digest(id: RoadmapNodeId) -> Fnv1a64Structural {
+  match first(nodes() |> filter(n => n.node == id)) {
+    Absent => tchash(s: "0000000000000000")
+    Present { value: n } => digest_or_zero(rn: n)
+  }
+}
+
+fn scenario_receipt(id: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
+  receipt_fixture(node: id as String, digest: scenario_digest(id: id))
+}
+
+// THE ACCEPTANCE WAS EARNED BY A PULL REQUEST, legibly the scenario's: a real url, merge time and head,
+// and a url whose number cannot be read as anybody's work. The other evidence case (no pull request at
+// all) is a CLOSED SET keyed by the receipt's own bytes, so a scenario could not argue into it even if
+// it wanted to — which is exactly why the scenarios do not want to.
+fn scenario_evidence() -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: "https://github.com/gunb-ai/gunbc/pull/0" as NonEmptyStr,
+    merged_at: "2026-11-18T00:00:00Z" as NonEmptyStr,
+    head_sha: "0000000000000000000000000000000000000000" as NonEmptyStr,
+  }
+}
+
+fn scenario_acceptance_kind(id: RoadmapNodeId) -> RoadmapEventKind {
+  AcceptanceRecordedEvent { receipt: scenario_receipt(id: id), evidence: scenario_evidence() }
+}
+
+fn scenario_revocation_kind(id: RoadmapNodeId, disposition: AcceptanceRevocationDisposition) -> RoadmapEventKind {
+  AcceptanceRevokedEvent {
+    receipt: scenario_receipt(id: id),
+    disposition: disposition,
+    revoked_by: "operator" as NonEmptyStr,
+    revoked_on: "2026-11-18" as NonEmptyStr,
+    reason: "the scenario took the acceptance back" as NonEmptyStr,
+  }
+}
+
+// ONE SCENARIO EVENT. Every scenario event is recorded at the same instant, so an ordering a witness
+// cares about is always the chain — the parent an event names — never a timestamp nobody read.
+fn scenario_event(node: RoadmapNodeId, parent: RoadmapEventId?, kind: RoadmapEventKind) -> RoadmapEvent {
+  RoadmapEvent {
+    node: node, author: scenario_principal(), parent: parent, kind: kind,
+    recorded_at: "2026-11-18T00:00:00Z",
+  }
+}
+
+// ONE NODE'S CHAIN, parent-threaded. A second event that does not name its predecessor's id is a fork,
+// and a forked chain refuses the whole fold — so a scenario with more than one event per node goes
+// through here rather than hand-numbering ids nobody can check.
+fn scenario_chain(node: RoadmapNodeId, kinds: List<RoadmapEventKind>) -> List<RoadmapEvent> {
+  scenario_chain_after(node: node, kinds: kinds, after: Absent)
+}
+
+fn scenario_chain_after(node: RoadmapNodeId, kinds: List<RoadmapEventKind>, after: RoadmapEvent?) -> List<RoadmapEvent> {
+  match first(kinds) {
+    Absent => []
+    Present { value: k } => {
+      let e = scenario_event(
+        node: node,
+        parent: match after {
+          Absent => Absent
+          Present { value: p } => Present { value: roadmap_event_id(e: p) }
+        },
+        kind: k,
+      )
+      concat([e], scenario_chain_after(node: node, kinds: kinds.skip(n: 1), after: Present { value: e }))
+    }
+  }
+}
+
+// THE SCENARIO'S BYTES, out through the log's own emitter and back through the reader's own decoder —
+// the same decoder the directory walk feeds on the live route. A scenario that spells an event the wire
+// cannot carry is caught here, before any projection gets to call it a fact.
+fn scenario_retirement_kind() -> RoadmapEventKind {
+  Retired { reason: "the scenario closed the node's story" as NonEmptyStr }
+}
+
+fn scenario_envelopes(label: RoadmapNodeId, events: List<RoadmapEvent>) -> List<RoadmapEventEnvelope>? {
+  match roadmap_events_decode_reads(
+    node: label,
+    reads: map(events, e => EventFileContent { content: roadmap_event_wire_text(env: roadmap_event_envelope(e: e)) })) {
+    EventsRead { node: _, envelopes: envs } => Present { value: envs }
+    EventsReadRefused { node: _, step: _, reason: _ } => Absent
+  }
+}
+
+// THE HISTORY THE PROJECTIONS CONSUME: the scenario's envelopes through the fold the live load uses —
+// the same causal ordering, the same replay law, the same drop of a receipt whose criteria digest does
+// not match its node or whose evidence was never delivered. A refusal is carried as the refusal, never
+// swallowed: a scenario that cannot produce a history must make its witness red, not quietly empty.
+fn scenario_history(envs: List<RoadmapEventEnvelope>) -> RoadmapAcceptanceEventHistoryLoad {
+  match roadmap_operator_acceptance_history_of(envelopes: envs) {
+    OperatorAcceptanceHistoryRefused { detail: d } =>
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: d }
+    OperatorAcceptanceHistoryLoaded { events: events, replayed: _, rows: _ } =>
+      RoadmapAcceptanceEventHistoryLoaded { events: events }
+  }
+}
+
+// WHAT THE SCENARIO RETIRES, read off the same envelopes by the same law.
+fn scenario_retired(envs: List<RoadmapEventEnvelope>) -> RoadmapRetiredNodeIds {
+  roadmap_retired_node_ids_of(envs: envs)
+}
+
+fn scenario_frontier(envs: List<RoadmapEventEnvelope>) -> FrontierSetsProjection {
+  frontier_sets_projection(history: scenario_history(envs: envs), retired: scenario_retired(envs: envs))
+}
+
+fn scenario_accepted(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match scenario_frontier(envs: envs) {
+    FrontierSetsProjected { accepted: accepted, withheld: _ } => accepted
+    FrontierSetsProjectionRefused { detail: _ } => []
+  }
+}
+
+fn scenario_withheld(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match scenario_frontier(envs: envs) {
+    FrontierSetsProjected { accepted: _, withheld: withheld } => withheld
+    FrontierSetsProjectionRefused { detail: _ } => []
+  }
+}
+
+// THE HISTORY AS A LIST, for the witnesses that inspect receipts one by one. A refused fold answers the
+// empty list here because every caller of this one asserts about members it found; the refusal still
+// reaches a witness that asks for it, through scenario_history directly.
+fn scenario_event_history(envs: List<RoadmapEventEnvelope>) -> List<RoadmapAcceptanceEvent> {
+  match scenario_history(envs: envs) {
+    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+  }
+}
+
+// THE AUTHORITY OVER A SCENARIO: the projection the live route would render, driven by the scenario's
+// own history and retirements instead of a directory walk.
+fn scenario_authority(envs: List<RoadmapEventEnvelope>) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection(history: scenario_history(envs: envs), retired: scenario_retired(envs: envs))
+}
+
+// THE CLOSING-CONTRACT PAIRS OVER A SCENARIO, in the carrier the probe counts want.
+fn scenario_pairs(envs: List<RoadmapEventEnvelope>) -> ClosingContractTaskPairsProjection {
+  ClosingContractTaskPairsProjected {
+    pairs: closing_contract_task_pairs_for_accepted(
+      accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs)),
+  }
+}
+
+// THE ACTIVE FRONTIER OVER A SCENARIO — the same projection the live route renders, with the scenario's
+// accepted/withheld sets where the live route would have put the directory walk's.
+fn scenario_active_nodes(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNode> {
+  active_roadmap_nodes_for_accepted(accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs))
+}
+
+fn scenario_active_edges(envs: List<RoadmapEventEnvelope>) -> List<RoadmapEdge> {
+  active_roadmap_edges_for_accepted(accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs))
+}
+
+fn scenario_active_id_exists(envs: List<RoadmapEventEnvelope>, id: RoadmapNodeId) -> Bool {
+  scenario_active_nodes(envs: envs) |> any(n => n.node == id)
 }
 
 fn id_exists(id: RoadmapNodeId) -> Bool {
@@ -333,8 +592,15 @@ fn red_ticket() -> RoadmapItem {
 }
 
 test fn witness_declared_graph_has_justified_size() -> Bool {
-  count(nodes()) > 0 && count(edges()) > 0
-    && count(active_nodes()) > 0 && count(active_edges()) > 0
+  // THE SCENARIO: nothing accepted, nothing withdrawn — the frontier is the declared graph itself. This
+  // witness asks whether a graph of this size is justified and whether the note names the lane; the live
+  // event log has no bearing on either, so it is not read.
+  match scenario_envelopes(label: "declared-graph-has-justified-size", events: []) {
+    Absent => false
+    Present { value: envs } =>
+      count(nodes()) > 0 && count(edges()) > 0
+        && count(scenario_active_nodes(envs: envs)) > 0 && count(scenario_active_edges(envs: envs)) > 0
+  }
 }
 
 test fn witness_declared_node_ids_are_unique() -> Bool {
@@ -350,6 +616,94 @@ test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
     && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
 }
 
+// ===== THE AUTHORING LAW WITNESSES: no row waits on its own container =====
+// These construct their own tiny containment graph and edges (never a live-state count), and reuse the authority's
+// OWN single containment walk (roadmap_estimate_derivation's contained_under, now counting decomposition pieces) --
+// no second walker. Each refusal names both the edge and the container.
+
+// A fixture row: a self-contained RoadmapNode. `project` is the MemberOf container slug (empty => root, parent none).
+fn own_container_fixture(id: String, project: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: join(["rnfx_owncontainer_", id], "") as RoadmapNodeIdentity,
+    node: tnid(s: id),
+    line: red_ticket(),
+    carriers: [Pointer { label: "fixture", path: "dag/test/claim/roadmap/roadmap_authority.dag" }],
+    dispatch: NotDispatchable,
+    execution: ExecutionContractUnspecified,
+    owner: "cool-fox-418",
+    parent: if project == "" { none } else { Present { value: MemberOf { project: project, contribution: "fixture contribution" as NonEmptyStr } } },
+    centering: none,
+  }
+}
+
+// A MEMBEROF violation refuses, naming both the edge (child -> parent) and the container the edge points at.
+test fn witness_authoring_refuses_prerequisite_into_own_memberof_container() -> Bool {
+  let graph = [own_container_fixture(id: "own-container", project: ""), own_container_fixture(id: "own-leaf", project: "own-container")]
+  let into_own = [RoadmapEdge { child: tnid(s: "own-leaf"), parent: tnid(s: "own-container") }]
+  let found = prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: [] as List<WorkDecomposition>)
+  count(found) == 1
+    && any(found, r => r.child == tnid(s: "own-leaf") && r.parent == tnid(s: "own-container"))
+}
+
+// A DECOMPOSITION-PIECE violation refuses identically, even though MemberOf alone does not link leaf to container:
+// proves the single walk counts pieces and that a MemberOf-only walk would have missed it.
+test fn witness_authoring_refuses_prerequisite_into_own_decomposition_container() -> Bool {
+  let graph = [own_container_fixture(id: "piece-container", project: ""), own_container_fixture(id: "piece-leaf", project: "")]
+  let pieces = [decomposition(
+    node: "piece-container",
+    waits_on: [] as List<StageDependency>,
+    stages: [[findings_family(label: "piece", days: 1, probe: "fixture-probe", owner: "piece-leaf")]],
+  )]
+  let into_own = [RoadmapEdge { child: tnid(s: "piece-leaf"), parent: tnid(s: "piece-container") }]
+  count(prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: pieces)) == 1
+    // MemberOf-only, the SAME graph with no pieces, must NOT refuse -- this is the arm the walk had to gain.
+    && count(prerequisite_edges_into_own_containers(nodes: graph, edges: into_own, decompositions: [] as List<WorkDecomposition>)) == 0
+}
+
+// A LEGAL cross-item edge between two siblings under one container passes both checks (neither contains the other).
+test fn witness_authoring_allows_legal_cross_item_prerequisite() -> Bool {
+  let graph = [
+    own_container_fixture(id: "legal-container", project: ""),
+    own_container_fixture(id: "legal-a", project: "legal-container"),
+    own_container_fixture(id: "legal-b", project: "legal-container"),
+  ]
+  let legal = [RoadmapEdge { child: tnid(s: "legal-a"), parent: tnid(s: "legal-b") }]
+  count(prerequisite_edges_into_own_containers(nodes: graph, edges: legal, decompositions: [] as List<WorkDecomposition>)) == 0
+    && count(prerequisite_edges_onto_own_contained(nodes: graph, edges: legal, decompositions: [] as List<WorkDecomposition>)) == 0
+}
+
+// A CONTAINER waiting on its own contained child is REDUNDANT, not contradictory: FLAGged, never REFUSED.
+test fn witness_authoring_flags_parent_on_own_child_without_refusing() -> Bool {
+  let graph = [
+    own_container_fixture(id: "redundant-container", project: ""),
+    own_container_fixture(id: "redundant-child", project: "redundant-container"),
+  ]
+  let waits_down = [RoadmapEdge { child: tnid(s: "redundant-container"), parent: tnid(s: "redundant-child") }]
+  count(prerequisite_edges_into_own_containers(nodes: graph, edges: waits_down, decompositions: [] as List<WorkDecomposition>)) == 0
+    && count(prerequisite_edges_onto_own_contained(nodes: graph, edges: waits_down, decompositions: [] as List<WorkDecomposition>)) == 1
+}
+
+// THE LIVE GATE: the declared authority graph carries no prerequisite edge into the source's own container. Red on
+// any violating live edge; the RED-FIRST run lists them. (Redundant container->child edges are advisory flags, not
+// refusals, so the live gate is the refusal count only.)
+test fn witness_live_authority_has_no_prerequisite_into_own_container() -> Bool {
+  count(live_prerequisite_edges_into_own_containers()) == 0
+}
+
+// The live redundant read (a container waiting on something it contains) has a named consumer: this claim route
+// calls it and checks the invariant over whatever the live graph holds -- an edge the redundant read flags is NEVER
+// also refused by the containment law (the two live reads stay consistent: redundant is flagged, never refused).
+// Consumption is shown by the named consumer + executing route, not by forcing the live population to be non-empty
+// (DESIGN *Fail-closed*: a live count against a literal is a change detector; the flag exists precisely to prompt
+// removing these edges, so requiring them to exist would punish the fix). The fixture witness
+// witness_authoring_flags_parent_on_own_child_without_refusing proves the flag arm works.
+test fn witness_live_redundant_prerequisites_are_flagged_not_refused() -> Bool {
+  let flagged = live_prerequisite_edges_onto_own_contained()
+  let refused = live_prerequisite_edges_into_own_containers()
+  all(flagged, f => f.container != f.waited_on
+    && !any(refused, r => r.child == f.container && r.parent == f.waited_on))
+}
+
 // Every declared TICKET row is a complete, unsigned, open ticket with a carrier and an owner; a
 // sized row is sized for this repository with manual acceptance, and an unsized row is simply not
 // ready (gunbc.roadmap.roadmap_readiness). The one superseded history row carries no ticket and is
@@ -361,45 +715,335 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which gunbc.design_argument::fail_closed names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
-  match live_accepted_node_ids() {
+  // THE SCENARIO: the ten acceptances this witness names, each spelled as the log spells one. They are
+  // real declared rows carrying real receipts, so the fold admits them or this witness reddes — which is
+  // what keeps the per-id assertions honest now that no directory walk stands behind them. What stays
+  // asserted is the RELATIONSHIP this witness is actually for (see live_state_count_transcription_note):
+  // active == declared minus accepted minus withheld, with nothing accepted or withheld left inside.
+  let wanted = [
+    tnid(s: "namespace-occurrence-transport"),
+    tnid(s: "pderive-typesafe-nullary-reflection"),
+    tnid(s: "pderive-static-supplemental-contract"),
+    tnid(s: "v1-test-hygiene-producer-retirement"),
+    tnid(s: "2-scm-git-upstream-model"),
+    tnid(s: "2-scm-mercurial-upstream-model"),
+    tnid(s: "2-scm-pijul-upstream-model"),
+    tnid(s: "2-claim-indexed-evidence"),
+    tnid(s: "2-scm-compatibility-shape"),
+    tnid(s: "2-scm-p0-landing-spine"),
+  ]
+  match scenario_envelopes(
+    label: "active-set-is-declared-minus-accepted",
+    events: map(wanted, id => scenario_event(node: id, parent: Absent, kind: scenario_acceptance_kind(id: id)))) {
     Absent => false
-    Present { value: accepted } =>
-      (accepted |> any(a => a == "namespace-occurrence-transport"))
-        && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
-        && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
-        && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
-        && (accepted |> any(a => a == "2-scm-git-upstream-model"))
-        && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
-        && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
-        && (accepted |> any(a => a == "2-claim-indexed-evidence"))
-        && (accepted |> any(a => a == "2-scm-compatibility-shape"))
-        && (accepted |> any(a => a == "2-scm-p0-landing-spine"))
-        && match live_withheld_node_ids() {
-          Absent => false
-          Present { value: withheld } =>
-            count(active_nodes()) == count(nodes()) - count(accepted) - count(withheld)
-              && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
-              && all(active_nodes(), n => !(withheld |> any(w => w == n.node)))
-        }
+    Present { value: envs } => {
+      let accepted = scenario_accepted(envs: envs)
+      let withheld = scenario_withheld(envs: envs)
+      all(wanted, w => accepted |> any(a => a == w))
+        && count(active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld))
+          == count(nodes()) - count(accepted) - count(withheld)
+        && all(active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
+          n => !(accepted |> any(a => a == n.node)))
+        && all(active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld),
+          n => !(withheld |> any(w => w == n.node)))
         && all(accepted, a => id_exists(id: a))
+    }
+  }
+}
+
+// ─── THE COMMITTED FIXTURE ──────────────────────────────
+// A SMALL EVENT LOG ON DISK, checked in under the checkout root, so the REAL Filesystem.List walk runs once
+// through the floor's checkout carve-out instead of being mocked. It is five generated artifacts: five rows of
+// gunbc.generated_artifact's population, whose bytes the log's own emitter produces in
+// gunbc.roadmap.roadmap_authority_fixture and whose only route to disk is
+// gunbc.instruments.generated_artifact_gate::write_generated_artifact. Nothing in this module writes them;
+// witness_committed_fixture_bytes_are_the_encoders_own reads each file back and compares it, byte for byte, to
+// what the roster's generator says it should be, so the fixture cannot rot away from the encoder it came from.
+
+// THE COMMITTED FIXTURE IS THE ROSTER'S, NOT THIS MODULE'S.
+//
+// Five committed JSON files under fixtures/roadmap_authority/events, each of them a member of
+// gunbc.generated_artifact's population and of gunbc.generated_artifact_registry's committed list. This module
+// READS them and writes nothing: the bytes come from the gate's own generator (artifact_generate), the paths
+// come from the roster's own artifact_location, and the walk root is DERIVED from the roster instead of being
+// spelled a second time here. That separation is the design, not a nicety -- the witness that demands a file and
+// the code that produces it must be different authorities, or the witness can be talked into agreement with
+// whatever the writer happens to do. An earlier revision of this change carried its own writer, its own path
+// guard and its own copy of the directory here; review 96472/96474/96479 each blocked that as a second path
+// beside a modelled route, and the ruling is that the roster is the route.
+//
+// WHAT EACH PIECE IS AUTHORITATIVE FOR.
+//   the path    -> gunbc.generated_artifact artifact_location, read back through artifact_directory / artifact_name
+//   the bytes   -> gunbc.generated_artifact_emit artifact_generate, which dispatches to the pure producer
+//                  gunbc.roadmap.roadmap_authority_fixture
+//   the walk    -> derived from the rostered directory; nothing here re-spells it, and
+//                  witness_committed_fixture_is_the_rosters_five_rows reddens if the two ever disagree
+//
+// REGENERATING IT IS THE ROSTER'S OWN WET RUN, not a command in this file: the gate materializes the parent
+// directory and reports a false Filesystem.Write as an exit failure naming the artifact path
+// (dag/gunbc/instruments/generated_artifact_gate.dag::write_generated_artifact), so a partial log can never be
+// reported as a fixture -- which is the property this change carried over when the local writer was deleted.
+// The byte witness below is what makes the commit load-bearing: regenerate and forget to commit, or hand-edit a
+// file, and it reddens before any projection is consulted.
+
+// THE FIXTURE'S ROWS, selected from the committed roster by their directory. Selecting by directory rather than
+// by naming five constructors here keeps this module from holding its own list of what the fixture contains; the
+// count in witness_committed_fixture_is_the_rosters_five_rows is what notices if a row moves out.
+fn roadmap_authority_fixture_rows() -> List<GeneratedArtifact> {
+  filter(
+    committed_generated_artifacts(),
+    a => artifact_directory(a: a).starts_with(prefix: concat(roadmap_authority_fixture_worktree_root(), "/")),
+  )
+}
+
+// THE DIRECTORY THE WALK RUNS OVER, off the roster. A fixture whose rows were spread over two directories would
+// not be one log, and the walk would silently read one of them; the agreement is asserted, not assumed.
+fn roadmap_authority_fixture_walk_root() -> String? {
+  match first(roadmap_authority_fixture_rows()) {
+    Absent => Absent
+    Present { value: a } => Present { value: path_parent_directory(path: artifact_directory(a: a)) }
+  }
+}
+
+// THE FIXTURE IS FIVE ROWS, IN ONE DIRECTORY, EACH WITH ITS OWN PATH. A roster edit that renamed a row, moved a
+// file out of the fixture, or let a second row claim the same path would otherwise arrive as a baffling reader
+// failure; here it fails as the roster defect it is. Two rows on one path is the case worth naming: the wet run
+// would write both and the last would win, silently -- which is why the gate's own selection counts matches
+// instead of stopping at the first, and why this witness counts them too.
+test fn witness_committed_fixture_is_the_rosters_five_rows() -> Bool {
+  let rows = roadmap_authority_fixture_rows()
+  match roadmap_authority_fixture_walk_root() {
+    Absent => false
+    Present { value: root } =>
+      count(rows) == 5
+        && all(rows, a => artifact_path(a: a).starts_with(prefix: concat(root, "/")))
+        && all(rows, a => path_parent_directory(path: artifact_directory(a: a)) == root)
+        && all(rows, a => string_length(s: artifact_name(a: a)) > 0)
+        && all(rows, a => count(rows |> filter(x => artifact_path(a: x) == artifact_path(a: a))) == 1)
+  }
+}
+
+// THE GATE REFUSES AN UNROSTERED TARGET BY NAME, BEFORE ANY WRITE IS ATTEMPTED. This is the red control the
+// deleted local writer used to carry, and it is stronger here because it interrogates the route that actually
+// writes: an absolute path into the lab's real event log, a traversal out of the fixture, an ordinary file
+// elsewhere in the checkout, and the empty path must each select NOTHING -- and one genuinely rostered fixture
+// path must select exactly ONE row, or "refuses everything" would pass for the wrong reason. Hermetic by
+// construction: selection is a pure fold over the registry, and a refusal happens before mkdir or
+// Filesystem.Write is ever reached.
+// THE FIXTURE'S DIGESTS ARE ITS OWN ROWS' DIGESTS, AND THE FIXTURE READS NO PLAN. Two claims, one witness.
+// (1) EVERY digest in a committed event file is the digest the fixture's own scenario row derives from: the
+// two accepted rows carry their own, and the absent-node file -- the one file about a row nobody declares --
+// carries the accepted row's verbatim, because it is a stranger holding borrowed terms, not a row with an
+// invented number. The fold demands this: a receipt whose digest is not its row's is dropped, so a made-up
+// digest would not merely be dishonest, it would silently change what every other witness sees.
+// (2) NO FIXTURE NODE IS A REAL ROADMAP ROW. That is the fail-closed check on the coupling review 96520
+// found: these five files are a CommitRequired generated product, and DESIGN
+// gunbc.design_argument::planning_has_one_home forbids a generated product depending on plan content ("a
+// change that edits only plans invalidates neither the compiler nor any mirror"). If someone re-points a
+// fixture node at a live row, or reintroduces a lookup into the plan, the first clause reddens -- the digest
+// would no longer be the one this module's ticket fields derive -- and this clause reddens with it. It also
+// closes the fabricated-default question the approvals raised from the other side: there is no fallback left
+// to be unreachable, because the producer takes its numbers only from scenario rows defined beside it.
+test fn witness_fixture_digests_are_declared_or_borrowed() -> Bool {
+  let scenarios = roadmap_authority_fixture_scenarios()
+  let accepted = roadmap_authority_fixture_accepted_scenario()
+  let rows = roadmap_authority_fixture_declared_rows()
+  let accepted_wire = structural_digest_wire(h: roadmap_authority_fixture_digest(s: accepted))
+  let superseded_wire =
+    structural_digest_wire(h: roadmap_authority_fixture_digest(s: roadmap_authority_fixture_superseded_scenario()))
+  // (1a) The fixture's declared rows ARE its scenarios, and each row's criteria digest is the digest the
+  // receipts carry -- derived by the model's own criteria law, checked rather than asserted.
+  let rows_agree_with_their_own_criteria =
+    count(rows) == count(scenarios)
+      && all(scenarios, s => {
+           let mine = rows |> filter(r => r.node == s.node)
+           count(mine) == 1
+             && all(mine, r => match node_criteria_digest(rn: r) {
+                  Absent => false
+                  Present { value: d } =>
+                    content_hash_eq_structural(left: d, right: roadmap_authority_fixture_digest(s: s))
+                })
+         })
+  // (2) None of the fixture's three node ids is a row the roadmap declares.
+  let fixture_nodes_are_not_plan_rows = all(
+    [accepted.node, roadmap_authority_fixture_superseded_scenario().node, roadmap_authority_fixture_absent_node()],
+    id => !(declared_roadmap_nodes() |> any(n => n.node == id)),
+  )
+  match roadmap_authority_fixture_walk_root() {
+    Absent => false
+    Present { value: root } => {
+      let stranger_dir = concat(concat(root, "/"), roadmap_authority_fixture_absent_node() as String)
+      let accepted_dir = concat(concat(root, "/"), accepted.node as String)
+      let superseded_dir =
+        concat(concat(root, "/"), roadmap_authority_fixture_superseded_scenario().node as String)
+      let accepted_files = roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == accepted_dir)
+      let superseded_files =
+        roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == superseded_dir)
+      let stranger_files = roadmap_authority_fixture_rows() |> filter(a => artifact_directory(a: a) == stranger_dir)
+      // (1b) Each scenario's own acceptance and revocation files carry ITS digest and not the other
+      // scenario's; the retirement file carries a receipt by no one, so it carries neither number. The
+      // absent-node file carries the ACCEPTED row's number verbatim -- the borrow is that row's bytes, not a
+      // lookalike -- and not the other scenario's, so a wrong-node borrow reddens this too.
+      let accepted_ok =
+        count(accepted_files) == 1
+          && all(accepted_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } =>
+                 content.contains(fragment: accepted_wire) && !content.contains(fragment: superseded_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+      let superseded_ok =
+        count(superseded_files) == 3
+          && count(superseded_files |> filter(a => artifact_name(a: a) == "03-retired.json")) == 1
+          && all(superseded_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } => !content.contains(fragment: accepted_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+          && all(
+               superseded_files |> filter(a => artifact_name(a: a) != "03-retired.json"),
+               a => match artifact_generate(a: a) {
+                 ArtifactGenerated { content } => content.contains(fragment: superseded_wire)
+                 ArtifactGenerationRefused { reason: _ } => false
+               })
+      let stranger_ok =
+        count(stranger_files) == 1
+          && all(stranger_files, a => match artifact_generate(a: a) {
+               ArtifactGenerated { content } =>
+                 content.contains(fragment: accepted_wire) && !content.contains(fragment: superseded_wire)
+               ArtifactGenerationRefused { reason: _ } => false
+             })
+      rows_agree_with_their_own_criteria
+        && fixture_nodes_are_not_plan_rows
+        && accepted_ok
+        && superseded_ok
+        && stranger_ok
+        && string_length(s: accepted_wire) > 0
+        && string_length(s: superseded_wire) > 0
+    }
+  }
+}
+
+test fn witness_gate_refuses_an_unrostered_target_by_name() -> Bool {
+  all(
+    [
+      "/opt/gunbc/roadmap-events/roadmap-authority-scenario-accepted/01-acceptance.json",
+      "fixtures/roadmap_authority/events/../../../etc/passwd",
+      "dag/gunbc/roadmap/roadmap_authority.dag",
+      "",
+    ],
+    target => match artifact_selection_for_path(path: target) {
+      ArtifactSelectionEmpty { matches: n } => n == 0
+      ArtifactSelected { artifact: _, matches: _ } => false
+    },
+  )
+    && all(roadmap_authority_fixture_rows(), a => match artifact_selection_for_path(path: artifact_path(a: a)) {
+         ArtifactSelectionEmpty { matches: _ } => false
+         ArtifactSelected { artifact: selected, matches: n } => n == 1 && artifact_eq(a: a, b: selected)
+       })
+}
+
+// THE FIXTURE AS THE READER SEES IT: the committed route, the real directory walk, the real decode.
+fn roadmap_authority_fixture_envelopes() -> List<RoadmapEventEnvelope>? {
+  match roadmap_authority_fixture_walk_root() {
+    Absent => Absent
+    Present { value: root } => match roadmap_events_read_dir(dir: root) {
+      AllEventsRead { envelopes: envs } => Present { value: envs }
+      AllEventsReadRefused { step: _, reason: _ } => Absent
+    }
+  }
+}
+
+// THE SAME DIRECTORY THROUGH THE LIVE ROUTE: the live route builds its own path out of the layout and
+// calls the same one reader. Aimed at the fixture it must answer identically.
+fn roadmap_authority_fixture_live_route_envelopes() -> List<RoadmapEventEnvelope>? {
+  match roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout {
+    repo_root: roadmap_authority_fixture_worktree_root(),
+    worktree: roadmap_authority_fixture_worktree_root(),
+    git_program: "git",
+    directory_program: "install",
+    remote: "origin",
+  }) {
+    AllEventsRead { envelopes: envs } => Present { value: envs }
+    AllEventsReadRefused { step: _, reason: _ } => Absent
+  }
+}
+
+// THE LOG'S OWN RETIRED SET, read off the fixture rather than assumed.
+// THE SCENARIO'S OWN DECLARED GRAPH, as the committed-fixture witnesses see it. These two are the whole
+// reason the fixture declares rows at all: the fold validates a receipt against the DOCUMENT it is handed
+// (gunbc.roadmap.roadmap_model receipt_matches_node), so the committed route is checked against the same
+// small scenario that produced the bytes -- never against the plan. A generated product reading plan content
+// is what DESIGN gunbc.design_argument::planning_has_one_home forbids, and
+// witness_fixture_digests_are_declared_or_borrowed is the red control that keeps it that way.
+fn roadmap_authority_fixture_row_for(id: RoadmapNodeId) -> RoadmapNode? {
+  first(roadmap_authority_fixture_declared_rows() |> filter(r => r.node == id))
+}
+
+fn roadmap_authority_fixture_declares(id: RoadmapNodeId) -> Bool {
+  roadmap_authority_fixture_declared_rows() |> any(r => r.node == id)
+}
+
+fn roadmap_authority_fixture_retired(envs: List<RoadmapEventEnvelope>) -> List<RoadmapNodeId> {
+  match roadmap_retired_node_ids_of(envs: envs) {
+    RetiredNodeIdsLoaded { ids: ids } => ids
+    RetiredNodeIdsRefused { detail: _ } => []
   }
 }
 
 test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
-  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
-    RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
-      count(receipts) > 0
-        && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
-        && all(receipts, r => id_exists(id: r.node))
-        && all(receipts, r => all(declared_node(id: r.node as String), n =>
-          match receipt_node_match_verdict(r: r, rn: n, retired: fixture_retired_node_ids()) {
-            ReceiptMatchesNode => true
-            LiveReceiptOnRetiredNode { node: _ } => false
-            ReceiptDoesNotMatchNode => false
-          }
-        ))
+  // THE COMMITTED ROUTE, END TO END: the real Filesystem.List walk over the checked-in fixture, the real
+  // decode, the real fold — then the claim this witness is for, that the log's receipts are valid and
+  // one-per-node. The fixture deliberately also carries a row the scenario does not declare; that row
+  // is the fail-closed half of the claim, and it is answered with types, never a crash. "Declared" is the
+  // fixture's own two rows (roadmap_authority_fixture_declared_rows) and never the plan: the fold validates
+  // a receipt against the document it is handed (roadmap_model receipt_matches_node), and a CommitRequired
+  // generated product may not read plan content (gunbc.design_argument::planning_has_one_home).
+  match roadmap_authority_fixture_envelopes() {
+    Absent => false
+    Present { value: envs } => {
+      match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
+        RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+        RoadmapAcceptanceReceiptsProjected { receipts: receipts } => {
+          let declared_receipts = receipts |> filter(r => roadmap_authority_fixture_declares(id: r.node))
+          let absent_receipts = receipts |> filter(r => !roadmap_authority_fixture_declares(id: r.node))
+          count(declared_receipts) > 0
+            && all(declared_receipts, r => count(declared_receipts |> filter(x => x.node == r.node)) == 1)
+            && all(declared_receipts, r => match roadmap_authority_fixture_row_for(id: r.node) {
+              Present { value: n } => match receipt_node_match_verdict(
+                r: r, rn: n, retired: fixture_retired_node_ids()
+              ) {
+                ReceiptMatchesNode => true
+                LiveReceiptOnRetiredNode { node: _ } => false
+                ReceiptDoesNotMatchNode => false
+              }
+              // A receipt whose row the fixture does not declare is not "nothing to check": the filter above
+              // selected it as declared, so a missing row here is the scenario being wrong. Red, not vacuous.
+              Absent => false
+            })
+            // THE ABSENT ROW IS IN THE LOG AND ANSWERS WITH NOTHING ADMITTED.
+            && count(absent_receipts) == 1
+            && all(absent_receipts, r => !roadmap_authority_fixture_declares(id: r.node))
+            && !scenario_active_id_exists(envs: envs, id: roadmap_authority_fixture_absent_node())
+            && !(scenario_accepted(envs: envs) |> any(a => a == roadmap_authority_fixture_absent_node()))
+            && !(scenario_withheld(envs: envs) |> any(w => w == roadmap_authority_fixture_absent_node()))
+        }
+      }
+    }
   }
+}
+
+// THE COMMITTED BYTES ARE THE ENCODER'S OWN. Separated from the receipts witness on purpose: a byte that
+// drifted and a receipt that joined wrong are different failures, and a witness that folds them together
+// reports one of them and hides which. Every committed file is re-encoded from the fixture table and
+// compared byte for byte, so a hand-edit to the log reddens here, before any projection is consulted --
+// and the fixture cannot be quietly edited into agreement with a projection that has moved.
+test fn witness_committed_fixture_bytes_are_the_encoders_own() -> Bool {
+  all(roadmap_authority_fixture_rows(), a => {
+    let r = Filesystem.Read(path: artifact_path(a: a))
+    match artifact_generate(a: a) {
+      ArtifactGenerated { content } => r.success && r.content == content
+      ArtifactGenerationRefused { reason: _ } => false
+    }
+  })
 }
 
 // A LIVE RECEIPT ON A NODE THE LOG HAS RETIRED REFUSES, with the node named. The receipt is the
@@ -422,41 +1066,85 @@ test fn witness_live_receipt_on_retired_node_refuses_with_typed_cause() -> Bool 
 }
 
 test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
-  !active_id_exists(id: tnid(s: "entry-graph-union-construction"))
-    && match live_withheld_node_ids() {
-      Absent => false
-      Present { value: withheld } =>
-        withheld |> any(w => w == tnid(s: "entry-graph-union-construction"))
-    }
+  // THE SCENARIO: that node is accepted, then revoked under the disposition that leaves it superseded.
+  // A revoked-but-superseded acceptance must NOT put the row back on the frontier -- it stays withheld.
+  // `gone` is accepted and then revoked under remains-superseded; `back` is accepted and then revoked
+  // under reopens-active-frontier. Only the disposition differs, so the pair is what makes this
+  // discriminate: conflate the two dispositions and one half goes red. A remains-superseded revocation is
+  // an admissible log fact only once the node is ALSO retired -- remains_superseded_revocations_join
+  // refuses one on an unretired node -- so `gone` carries its retirement too. That is why `back` shares the
+  // log: a retirement on its own would not put anything back on the frontier, so the reopened twin is what
+  // shows the claim is about the disposition and not about the retirement.
+  let gone = tnid(s: "entry-graph-union-construction")
+  let back = tnid(s: "namespace-occurrence-transport")
+  match scenario_envelopes(label: gone, events: concat(
+    scenario_chain(node: gone, kinds: [
+      scenario_acceptance_kind(id: gone),
+      scenario_revocation_kind(id: gone, disposition: AcceptanceNodeRemainsSuperseded {}),
+      scenario_retirement_kind(),
+    ]),
+    scenario_chain(node: back, kinds: [
+      scenario_acceptance_kind(id: back),
+      scenario_revocation_kind(id: back, disposition: AcceptanceNodeReopensActiveFrontier {}),
+    ]),
+  )) {
+    Absent => false
+    Present { value: envs } =>
+      !scenario_active_id_exists(envs: envs, id: gone)
+        && (scenario_withheld(envs: envs) |> any(w => w == gone))
+        && scenario_active_id_exists(envs: envs, id: back)
+  }
 }
 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
-  let prior = live_acceptance_event_history()
-  match project_live_acceptance_receipts(history: prior) {
-    LiveAcceptanceReceiptsReplayRefused => false
-    LiveAcceptanceReceiptsReplayed { live: live } => {
-      let receipt = first(
-        live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-      )
-      let reopened = concat(prior, [
-        AcceptanceRevoked {
-          exact_prior_receipt: receipt,
-          disposition: AcceptanceNodeReopensActiveFrontier {},
-          reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
-          revoked_by: "operator" as NonEmptyStr,
-          revoked_on: "2026-09-13" as NonEmptyStr,
-        },
-      ])
-      match project_live_acceptance_receipts(history: reopened) {
+  // THE SCENARIO: one accepted row and one row the log says nothing about. An explicit revocation with
+  // the REOPEN disposition must put the accepted row back on the frontier. The absent row is the red
+  // control for the bug this witness used to carry: first(...) over a node with no receipt returned an
+  // Optional, and the fold then reached for a `node` field on it and crashed the claim. The absent row
+  // now answers with a Bool -- the typed refusal to claim anything about a node the log never accepted.
+  let reopened_row = tnid(s: "namespace-occurrence-transport")
+  let absent_row = roadmap_authority_fixture_absent_node()
+  match scenario_envelopes(label: "reopen-revocation-returns-node", events: [
+    scenario_event(node: reopened_row, parent: Absent, kind: scenario_acceptance_kind(id: reopened_row)),
+  ]) {
+    Absent => false
+    Present { value: envs } => {
+      let prior = scenario_event_history(envs: envs)
+      match project_live_acceptance_receipts(history: prior) {
         LiveAcceptanceReceiptsReplayRefused => false
-        LiveAcceptanceReceiptsReplayed { live: reopened_live } => {
-          let accepted = declared_roadmap_nodes()
-            |> filter(n => node_accepted(receipts: reopened_live, rn: n))
-            |> map(n => n.node)
-          let withheld = node_ids_held_off_active_frontier(history: reopened, retired: fixture_retired_node_ids())
-          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
-            |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
-        }
+        LiveAcceptanceReceiptsReplayed { live: live } =>
+          // AN ABSENT NODE IS ANSWERED, NOT CRASHED ON.
+          match first(live |> filter(r => r.node == absent_row)) {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match first(live |> filter(r => r.node == reopened_row)) {
+            // No receipt for a row the scenario accepted is the scenario's own bug: refuse, with a type.
+            Absent => false
+            Present { value: receipt } => {
+              let reopened = concat(prior, [
+                AcceptanceRevoked {
+                  exact_prior_receipt: receipt,
+                  disposition: AcceptanceNodeReopensActiveFrontier {},
+                  reason: "the scenario took the acceptance back and put the row back on the plan" as NonEmptyStr,
+                  revoked_by: "operator" as NonEmptyStr,
+                  revoked_on: "2026-09-13" as NonEmptyStr,
+                },
+              ])
+              match project_live_acceptance_receipts(history: reopened) {
+                LiveAcceptanceReceiptsReplayRefused => false
+                LiveAcceptanceReceiptsReplayed { live: reopened_live } => {
+                  let accepted = declared_roadmap_nodes()
+                    |> filter(n => node_accepted(receipts: reopened_live, rn: n))
+                    |> map(n => n.node)
+                  let withheld = node_ids_held_off_active_frontier(
+                    history: reopened, retired: fixture_retired_node_ids())
+                  active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+                    |> any(n => n.node == reopened_row)
+                }
+              }
+            }
+          }
       }
     }
   }
@@ -466,31 +1154,64 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
 // read `SupersededLine { by: … }` off the row; the row no longer states an ending, and the retired
 // set — the log's own — is passed in, so the verdict cannot be manufactured by editing a plan row.
 test fn witness_live_remains_superseded_revocations_join_retired_nodes() -> Bool {
-  match remains_superseded_revocations_join(
-    history: live_acceptance_event_history(),
-    nodes: declared_roadmap_nodes(),
-    retired: fixture_retired_node_ids(),
-  ) {
-    RemainsSupersededRevocationsJoined =>
-      all(
-        declared_node(id: "entry-graph-union-construction"),
-        n => roadmap_node_ids_contain(ids: fixture_retired_node_ids(), node: n.node),
-      )
-    RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
-    RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
-    RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+  // THE SAME-READER WITNESS. Two routes reach the event log: the committed route names a directory and
+  // the live route assembles one from the carrier layout -- and BOTH call roadmap_events_read_dir, the
+  // one walk and the one decode (dag/gunbc/roadmap/roadmap_event_carrier.dag). Aimed at the same
+  // directory they must answer with the same envelopes; if either route grew its own walk, or its own
+  // parser, this reddens while every scenario witness above stays green. Then the join this witness is
+  // named for runs over what that reader returned: a revocation that leaves a node off the plan joins
+  // only a node THE LOG RETIRED, and the retired set here is the log's own, not a caller's assertion.
+  let superseded_row = roadmap_authority_fixture_superseded_scenario().node
+  match roadmap_authority_fixture_envelopes() {
+    Absent => false
+    Present { value: committed } => match roadmap_authority_fixture_live_route_envelopes() {
+      Absent => false
+      Present { value: live } =>
+        count(committed) == 5
+          && live == committed
+          && match remains_superseded_revocations_join(
+            history: scenario_event_history(envs: live),
+            nodes: roadmap_authority_fixture_declared_rows(),
+            retired: roadmap_authority_fixture_retired(envs: live),
+          ) {
+            RemainsSupersededRevocationsJoined =>
+              match roadmap_authority_fixture_row_for(id: superseded_row) {
+                Present { value: n } => roadmap_node_ids_contain(
+                  ids: roadmap_authority_fixture_retired(envs: live), node: n.node)
+                // The join verdict says the row exists in the document it was handed; if the fixture's own
+                // rows no longer hold it, the scenario drifted and the witness goes red.
+                Absent => false
+              }
+            RemainsSupersededRevocationOnUnretiredNode { node: _ } => false
+            RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
+            RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+          }
+          && !(scenario_accepted(envs: live) |> any(a => a == superseded_row))
+    }
   }
 }
 
 test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
+  // THE SCENARIO: that row, accepted by the log. THE CODE PROPERTY: remains-superseded is a state an
+  // OPERATOR chose, and only an explicit revocation carries that choice -- a row still standing as a
+  // live ticket line must REFUSE the join, naming the node. The absent-node half is the bug this witness
+  // used to have: first(...) on a row with no receipt gave an Optional and the fold reached through it
+  // for a `node` field. It now answers with a type.
   let victims = declared_node(id: "namespace-occurrence-transport")
-  let prior = live_acceptance_event_history()
+  let ticket_row = tnid(s: "namespace-occurrence-transport")
+  match scenario_envelopes(label: "remains-superseded-on-ticket-line", events: [
+    scenario_event(node: ticket_row, parent: Absent, kind: scenario_acceptance_kind(id: ticket_row)),
+  ]) {
+    Absent => false
+    Present { value: scenario_envs } => {
+  let prior = scenario_event_history(envs: scenario_envs)
   match project_live_acceptance_receipts(history: prior) {
     LiveAcceptanceReceiptsReplayRefused => false
     LiveAcceptanceReceiptsReplayed { live: live } => {
-  let receipt = first(
-    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-  )
+  match first(live |> filter(r => r.node == ticket_row)) {
+    // NO RECEIPT, A TYPED REFUSAL -- never a field lookup on an Optional.
+    Absent => false
+    Present { value: receipt } => {
   count(victims) == 1
     && all(victims, n =>
       match n.line {
@@ -514,10 +1235,14 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
       nodes: declared_roadmap_nodes(),
     ) {
       RemainsSupersededRevocationOnUnretiredNode { node } =>
-        node == tnid(s: "namespace-occurrence-transport")
+        node == ticket_row
       RemainsSupersededRevocationsJoined => false
       RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
       RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
+    }
+    }
+    }
+    }
     }
     }
   }
@@ -594,36 +1319,44 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
 // authority projection emits for that contradiction, located by node
 // ('live-receipt-on-retired-node:<node>', dag/gunbc/roadmap/roadmap_authority.dag:6583-6586).
 test fn witness_live_receipt_on_a_log_retired_node_refuses_frontier_sets() -> Bool {
-  let prior = live_acceptance_event_history()
-  match first(
-    prior |> filter(e =>
-      match e {
-        AcceptanceRecorded { receipt: r } =>
-          r.node == tnid(s: "entry-graph-union-construction")
-        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-          false
-      }
-    ),
-  ) {
+  // THE SCENARIO: the log ACCEPTS the row and the log RETIRES it. Acceptance completes a node's story and
+  // retirement ends it, so a log holding both is contradicted -- and the frontier sets refuse, naming the
+  // row, rather than averaging the two. The retired set here is the carrier's own variant, not a caller's
+  // assertion, which is what makes this the log-retired case rather than the caller-retired one.
+  let retired_row = tnid(s: "entry-graph-union-construction")
+  match scenario_envelopes(label: retired_row, events: [
+    scenario_event(node: retired_row, parent: Absent, kind: scenario_acceptance_kind(id: retired_row)),
+  ]) {
     Absent => false
-    Present { value: recorded } =>
-      match recorded {
-        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
-          false
-        AcceptanceRecorded { receipt } =>
-          match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: concat(prior, [
-            AcceptanceRecorded { receipt: receipt },
-          ]) }, retired: RetiredNodeIdsLoaded {
-            ids: [tnid(s: "entry-graph-union-construction")],
-          }) {
-            FrontierSetsProjectionRefused { detail } =>
-              detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
-            FrontierSetsProjected { accepted: _, withheld: _ } => false
-          }
-      }
+    Present { value: envs } => match scenario_history(envs: envs) {
+      RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => false
+      RoadmapAcceptanceEventHistoryLoaded { events: prior } =>
+        // THE HISTORY GOES THROUGH UNCHANGED. It holds the one acceptance the scenario recorded, and that
+        // is already enough to contradict the retirement. Re-recording it -- which an earlier draft of this
+        // witness did -- is a DIFFERENT defect (duplicate_receipts_refuse_acceptance witnesses that), and
+        // the replay would then refuse for the wrong reason, so the detail this claim pins would never
+        // arrive. The retired set is the carrier's own loaded variant, which is what makes this the
+        // log-retired case rather than the caller-retired one.
+        match frontier_sets_projection(
+          history: RoadmapAcceptanceEventHistoryLoaded { events: prior },
+          retired: RetiredNodeIdsLoaded { ids: [retired_row] },
+        ) {
+          FrontierSetsProjectionRefused { detail: detail } =>
+            detail == concat("live-receipt-on-retired-node:", "entry-graph-union-construction")
+          FrontierSetsProjected { accepted: _, withheld: _ } => false
+        }
+    }
   }
 }
 
+// CLASSIFIED LIVE/STATE, NOT CODE, and kept. What this witness asks is not what an acceptance does but
+// WHICH rows have in fact been accepted -- a fact whose only home is the synced event log, reached through
+// Filesystem.List, which the hermetic floor refuses and which may not be mocked (a stubbed listing would
+// fabricate the log; gunbc.design_argument::fail_closed). So it stays a wet/live witness, run by
+// claim_batch --wet over this entry, and it is EXCLUDED from the hermetic set by a typed carrier rather
+// than left as a silent gap: gunbc.rung_drop.roadmap_authority_accepted_parents_precede_dependents_live_state_only,
+// whose restoration trigger is the capability that would bring it back -- a live-probe home for roadmap
+// acceptance facts. The other fifty-one witnesses in this file carry their own events and run hermetically.
 test fn witness_accepted_parents_precede_dependents() -> Bool {
   match live_accepted_node_ids() {
     Absent => false
@@ -642,15 +1375,23 @@ test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
 }
 
 test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
-  match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
-    RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
-    RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
-      let rs = all_receipts |> filter(r => r.node == "namespace-occurrence-transport")
-      let victims = declared_node(id: "namespace-occurrence-transport")
-      count(rs) == 1
-        && count(victims) == 1
-        && all(victims, n => node_accepted(receipts: rs, rn: n))
-        && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+  // THE SCENARIO: one acceptance of one row. The log holds exactly that receipt; the row is accepted on
+  // it; and the same receipt spelled TWICE accepts nothing — a node cannot be accepted twice over.
+  let subject = "namespace-occurrence-transport"
+  match scenario_envelopes(label: subject, events: [
+    scenario_event(node: subject, parent: Absent, kind: scenario_acceptance_kind(id: subject)),
+  ]) {
+    Absent => false
+    Present { value: envs } => match roadmap_acceptance_receipts(history: scenario_history(envs: envs)) {
+      RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
+      RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
+        let rs = all_receipts |> filter(r => r.node == subject)
+        let victims = declared_node(id: subject)
+        count(rs) == 1
+          && count(victims) == 1
+          && all(victims, n => node_accepted(receipts: rs, rn: n))
+          && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+      }
     }
   }
 }
@@ -669,53 +1410,97 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
 
 data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). Accepted and retired are read from the roadmap event log alone (gunbc.roadmap.roadmap_event_log); roadmap_acceptance_receipts projects live receipts only. The git-observed integrity witness that used to execute here (test.claim.roadmap.roadmap_receipt_continuity_live_witness) went with the carriers it read: it walked a revision-addressed observation carrier through git, and a chain in the log has no such prior — its parent is an event id in the same log. Its law is the fold's own (witness_deleted_history_event_refuses: a removed record with no withdrawal refuses) plus roadmap_acceptance_migration_verify, with RED controls in test.claim.roadmap.roadmap_receipt_continuity_acceptance: plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, and the typed load/projection refusal chain."
 
-fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
-  match roadmap_acceptance_event_history_load() {
-    RoadmapAcceptanceEventHistoryLoaded { events: events } => events
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
+test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
+  // THE SCENARIO: two accepted rows, then the same history with one acceptance quietly gone and no
+  // withdrawal to account for it. That is the shape of a silent history deletion, and the fold must
+  // refuse it rather than let the plan shrink by one row.
+  let kept = "namespace-occurrence-transport"
+  let vanished = "2-scm-git-upstream-model"
+  match scenario_envelopes(label: "vanished-receipt", events: [
+    scenario_event(node: kept, parent: Absent, kind: scenario_acceptance_kind(id: kept)),
+    scenario_event(node: vanished, parent: Absent, kind: scenario_acceptance_kind(id: vanished)),
+  ]) {
+    Absent => false
+    Present { value: envs } => {
+      let prior = scenario_event_history(envs: envs)
+      let current = prior |> filter(e =>
+        match e {
+          AcceptanceRecorded { receipt: r } => r.node != tnid(s: vanished)
+          AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
+        }
+      )
+      count(prior) == 2 && count(current) == 1 && !acceptance_history_extends_prior(prior: prior, current: current)
+    }
   }
 }
 
-test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
-  let prior = live_acceptance_event_history()
-  let current = prior
-    |> filter(e =>
-      match e {
-        AcceptanceRecorded { receipt: r } => r.node != tnid(s: "namespace-occurrence-transport")
-        AcceptanceRevoked { exact_prior_receipt: _, disposition: _, reason: _, revoked_by: _, revoked_on: _ } => true
-      }
-    )
-  !acceptance_history_extends_prior(prior: prior, current: current)
-}
-
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
-  let prior = live_acceptance_event_history()
-  match project_live_acceptance_receipts(history: prior) {
-    LiveAcceptanceReceiptsReplayRefused => false
-    LiveAcceptanceReceiptsReplayed { live: live } => {
-  let receipt = first(
-    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-  )
-  let current = concat(prior, [
-    AcceptanceRevoked {
-      exact_prior_receipt: receipt,
-      disposition: AcceptanceNodeReopensActiveFrontier {},
-      reason: "fixture revocation witness" as NonEmptyStr,
-      revoked_by: "operator" as NonEmptyStr,
-      revoked_on: "2026-08-04" as NonEmptyStr,
-    },
-  ])
-  acceptance_history_extends_prior(prior: prior, current: current)
-    && acceptance_history_integrity_holds(
-      history: current,
-      prior_history: prior,
-    )
+  // THE SCENARIO: one accepted row and one row the log says nothing about. The accepted one can be
+  // withdrawn by an explicit revocation naming its exact prior receipt; the absent one has no receipt to
+  // name, and asking for it answers with a TYPE (the empty case) rather than the crash this witness used
+  // to have -- first(...) on an absent node used to reach for a `node` field on an Optional.
+  let accepted_row = tnid(s: "namespace-occurrence-transport")
+  let absent_row = tnid(s: "roadmap-authority-scenario-absent-node")
+  match scenario_envelopes(label: "explicit-revocation-authorizes-vanished-receipt", events: [
+    scenario_event(node: accepted_row, parent: Absent, kind: scenario_acceptance_kind(id: accepted_row)),
+  ]) {
+    Absent => false
+    Present { value: envs } => {
+      let prior = scenario_event_history(envs: envs)
+      match project_live_acceptance_receipts(history: prior) {
+        LiveAcceptanceReceiptsReplayRefused => false
+        LiveAcceptanceReceiptsReplayed { live: live } => {
+          // THE ABSENT NODE ANSWERS TYPED: nothing to revoke, said with a Bool, never a field lookup.
+          match first(live |> filter(r => r.node == absent_row)) {
+            Absent => true
+            Present { value: _ } => false
+          }
+          && match first(live |> filter(r => r.node == accepted_row)) {
+            // No receipt for a row the scenario accepted is the scenario's own bug; refuse, typed.
+            Absent => false
+            Present { value: receipt } => {
+              let current = concat(prior, [
+                AcceptanceRevoked {
+                  exact_prior_receipt: receipt,
+                  disposition: AcceptanceNodeReopensActiveFrontier {},
+                  reason: "the scenario took the acceptance back" as NonEmptyStr,
+                  revoked_by: "operator" as NonEmptyStr,
+                  revoked_on: "2026-08-04" as NonEmptyStr,
+                },
+              ])
+              acceptance_history_extends_prior(prior: prior, current: current)
+                && acceptance_history_integrity_holds(
+                  history: current,
+                  prior_history: prior,
+                )
+            }
+          }
+        }
+      }
     }
   }
 }
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
-  let act = active_edges()
+  // THE SCENARIO: the four parents whose work has landed. The declared half -- every edge_exists assertion
+  // below -- reads the .dag graph and is untouched; what the scenario carries is the frontier, so the
+  // claim stays what it always was: an accepted parent discharges its dependent's active dependency.
+  let landed = [
+    "namespace-occurrence-transport",
+    "pderive-typesafe-nullary-reflection",
+    "2-scm-compatibility-shape",
+    "2-claim-indexed-evidence",
+    // The only declared parent of declaration-identity-switchover. Without it that node keeps an active
+    // incoming edge and is not top-level: top level is not a property of a node, it is a property of
+    // everything above it, and the witness correctly refused until this row was in the accepted set.
+    "namespace-binding-kernel",
+  ]
+  match scenario_envelopes(
+    label: "accepted-parent-discharges-active-dependency",
+    events: map(landed, id => scenario_event(node: id, parent: Absent, kind: scenario_acceptance_kind(id: id)))) {
+    Absent => false
+    Present { value: scenario_envs } =>
+  let act = scenario_active_edges(envs: scenario_envs)
   !(act |> any(e => e.child == "namespace-binding-kernel" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
     && !(act |> any(e => e.child == "2-scm-p0-landing-spine"))
@@ -729,6 +1514,7 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
     && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
     && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape")
     && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence")
+    }
 }
 
 fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
@@ -745,9 +1531,21 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
     && exit_line_bound_to(l: InterpreterDeleted, node: "v1-interpreter-delete")
     && exit_line_bound_to(l: ProductsV1Free, node: "v1-products-v1-free")
     && exit_line_bound_to(l: ZeroHandMaintainedRust, node: "v1-zero-hand-maintained-rust")
-    && match live_accepted_node_ids() {
+    // THE SCENARIO, twice: an unrelated acceptance must leave all four exit lines uncounted, and one
+    // accepted exit line must be counted -- so the count is shown to track the frontier rather than to
+    // read a constant. Neither case is the live log's business; the four rows being open is claimed by
+    // the assertions above, which still run against the declared graph.
+    && match scenario_envelopes(label: "exit-finish-lines-open", events: [
+      scenario_event(node: "namespace-occurrence-transport", parent: Absent, kind: scenario_acceptance_kind(id: "namespace-occurrence-transport")),
+    ]) {
       Absent => false
-      Present { value: accepted } => v1_finish_lines_accepted_count(accepted: accepted) == 0
+      Present { value: open_envs } => v1_finish_lines_accepted_count(accepted: scenario_accepted(envs: open_envs)) == 0
+        && match scenario_envelopes(label: "exit-finish-line-accepted", events: [
+          scenario_event(node: "v1-emitter-fixed-point", parent: Absent, kind: scenario_acceptance_kind(id: "v1-emitter-fixed-point")),
+        ]) {
+          Absent => false
+          Present { value: closed_envs } => v1_finish_lines_accepted_count(accepted: scenario_accepted(envs: closed_envs)) == 1
+        }
     }
 }
 
@@ -893,15 +1691,31 @@ test fn witness_shell_batch_chain_is_explicit() -> Bool {
 // removed the native-SCM program and its open P1 slice: every accepted row is still declared and
 // inactive, and nothing open is left in the family.
 test fn witness_accepted_scm_sequence_remains_declared_history() -> Bool {
-  match live_accepted_node_ids() {
+  // THE SCENARIO: the six accepted SCM rows, spelled as the log spells an acceptance. The declared half
+  // of this witness is untouched and stays live-reading of the .dag graph itself -- six rows on that
+  // carrier, and the three withdrawn ids still absent. What the scenario carries is the frontier fact:
+  // an accepted row is off the plan, and it stays declared history.
+  let sequence = [
+    "2-scm-git-upstream-model",
+    "2-scm-mercurial-upstream-model",
+    "2-scm-pijul-upstream-model",
+    "2-claim-indexed-evidence",
+    "2-scm-compatibility-shape",
+    "2-scm-p0-landing-spine",
+  ]
+  match scenario_envelopes(
+    label: "accepted-scm-sequence",
+    events: map(sequence, id => scenario_event(node: id, parent: Absent, kind: scenario_acceptance_kind(id: id)))) {
     Absent => false
-    Present { value: accepted } =>
+    Present { value: envs } => {
+      let accepted = scenario_accepted(envs: envs)
       node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 6
-        && all(["2-scm-git-upstream-model", "2-scm-mercurial-upstream-model", "2-scm-pijul-upstream-model", "2-claim-indexed-evidence", "2-scm-compatibility-shape", "2-scm-p0-landing-spine"], id =>
-          id_exists(id: id) && !active_id_exists(id: id) && (accepted |> any(a => a == id)))
+        && all(sequence, id =>
+          id_exists(id: id) && !scenario_active_id_exists(envs: envs, id: id) && (accepted |> any(a => a == id)))
         && !id_exists(id: "2-scm-p1-proof-kernel")
         && !id_exists(id: "2-scm-native-authority-program")
         && !id_exists(id: "dag-scm-program")
+    }
   }
 }
 
@@ -962,9 +1776,11 @@ fn inline_text_contains(i: MarkdownInline, pattern: String) -> Bool {
 // The former markdown claim's text clause, split off because it is independent of which rows are
 // active: no projected row's line and no preamble paragraph carries an operator TODO.
 test fn witness_projection_carries_no_operator_todo() -> Bool {
-  match roadmap_authority_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
+  // THE SCENARIO: nothing accepted, nothing retired. A leftover "Operator TODO" is a rendering defect of
+  // the projection, not a fact about anybody's log, so the projection is driven over a scenario instead.
+  match scenario_envelopes(label: "no-operator-todo", events: []) {
+    Absent => false
+    Present { value: scenario_envs } => match scenario_authority(envs: scenario_envs) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
       !any(doc_all_nodes(doc: d), n => any(line_inlines(line: n.line), i => inline_text_contains(i: i, pattern: "Operator TODO")))
@@ -972,6 +1788,7 @@ test fn witness_projection_carries_no_operator_todo() -> Bool {
           ParagraphBlock { inlines } => any(inlines, i => inline_text_contains(i: i, pattern: "Operator TODO"))
           _ => false
         })
+    }
   }
 }
 
@@ -1047,24 +1864,55 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
 data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
 
 test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
-  roadmap_ghost_node_red_probe_count() == 1
+  // THE SCENARIO: nothing accepted. The probe's base document is the projection over that scenario and
+  // the sanctioned closing-contract pairs are the scenario's own -- so the count is the wall it claims to
+  // be (exactly the one synthetic ghost) with no directory walk behind it. The live nullary above stays
+  // the live route; both go through one law in dag/gunbc/roadmap/roadmap_spawner.dag.
+  match scenario_envelopes(label: "ghost-probe", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
+      RoadmapAuthorityProjectionRefused { detail: _ } => false
+      RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
+        roadmap_ghost_node_red_probe_count_with(pairs: scenario_pairs(envs: envs), base: d) == 1
+    }
+  }
 }
 
 test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
-  roadmap_altered_copy_red_probe_count() == 1
+  // THE SCENARIO, as above: the copied row is a declared row, so an altered copy of it is a ghost by the
+  // same law -- and the count is still exactly one, not zero-by-absence.
+  match scenario_envelopes(label: "altered-copy-probe", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
+      RoadmapAuthorityProjectionRefused { detail: _ } => false
+      RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
+        roadmap_altered_copy_red_probe_count_with(pairs: scenario_pairs(envs: envs), base: d) == 1
+    }
+  }
 }
 
 test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool {
-  match closing_contract_task_edges_projection() {
-    ClosingContractTaskEdgesProjected { edges: closing_edges } =>
-      match projected_roadmap_dependency_edges_projection() {
-        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(closing_edges, init: true, f: fn(acc, edge) {
-            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-          })
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
-      }
-    ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
+  // THE SCENARIO: nothing accepted, so the closing-contract obligations are the ones the un-accepted
+  // frontier owes. Both halves are read from the SAME scenario, which is the point: the dependency-edge
+  // projection must be a superset of the closing-contract edges for any frontier at all, and a live log
+  // can only ever show one frontier. Both sides are the caller-held list projections, so no live load is
+  // consulted and the containment is checked over a frontier the witness chose.
+  match scenario_envelopes(label: "projected-edges-closing-contract", events: []) {
+    Absent => false
+    Present { value: envs } =>
+      fold(
+        closing_contract_task_edges_for_accepted(
+          accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
+        ),
+        init: true,
+        f: fn(acc, edge) {
+          acc
+            && projected_roadmap_edges_for_accepted(
+                 accepted: scenario_accepted(envs: envs), withheld: scenario_withheld(envs: envs),
+               )
+               |> any(p => p.child == edge.child && p.parent == edge.parent)
+        }
+      )
   }
 }
 
@@ -1075,22 +1923,27 @@ test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Boo
 }
 
 test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
-  match frontier_sets_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
+  // THE SCENARIO: one accepted row, so the active set is not merely the whole declared graph and the
+  // superset claim has something to bite on. The frontier and the edge projection are driven from the
+  // SAME scenario, so the claim is the containment itself rather than a coincidence of one live log.
+  match scenario_envelopes(label: "projected-edges-active", events: [
+    scenario_event(node: "namespace-occurrence-transport", parent: Absent, kind: scenario_acceptance_kind(id: "namespace-occurrence-transport")),
+  ]) {
+    Absent => false
+    Present { value: envs } =>
+      match scenario_frontier(envs: envs) {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-      match projected_roadmap_dependency_edges_projection() {
-        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
-          fold(
-            active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
-            init: true,
-            f: fn(acc, edge) {
-              acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
-            }
-          )
-        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
-      }
+      fold(
+        active_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld),
+        init: true,
+        f: fn(acc, edge) {
+          acc
+            && projected_roadmap_edges_for_accepted(accepted: accepted, withheld: withheld)
+               |> any(p => p.child == edge.child && p.parent == edge.parent)
+        }
+      )
     FrontierSetsProjectionRefused { detail: _ } => false
+      }
   }
 }
 
@@ -1101,9 +1954,20 @@ test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> 
 }
 
 fn withheld_sized_subject_verdict() -> Bool {
-  match live_accepted_node_ids() {
+  // THE SCENARIO: nothing accepted -- the frontier the minting rule is read against. The verdict is the
+  // rule's own: withholding a startable sized subject must take its would-be closing-contract task out
+  // with it, so the task was never owed independently of the row.
+  match scenario_envelopes(label: "withheld-sized-subject", events: []) {
     Absent => false
-    Present { value: accepted } =>
+    Present { value: envs } => match scenario_frontier(envs: envs) {
+      FrontierSetsProjectionRefused { detail: _ } => false
+      FrontierSetsProjected { accepted: accepted, withheld: _ } =>
+        withheld_sized_subject_verdict_over(accepted: accepted)
+    }
+  }
+}
+
+fn withheld_sized_subject_verdict_over(accepted: List<RoadmapNodeId>) -> Bool {
       let unfiltered = startable_nodes_missing_closing_contract_for_accepted(
         accepted: accepted,
         withheld: [],
@@ -1120,7 +1984,6 @@ fn withheld_sized_subject_verdict() -> Bool {
             ) |> any(x => x.node == victim.node))
         }
       }
-  }
 }
 
 // THE AUTHORITY-WIDE HALF OF THE PAGE CLAIMS, AS A CENSUS THAT DOES NOT RENDER. The page claims read
@@ -1140,9 +2003,13 @@ fn projected_document_carries(ids: Map<String, Bool>, id: String) -> Bool {
 }
 
 test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
-  match roadmap_authority_projection(
-    history: roadmap_acceptance_event_history_load(), retired: roadmap_retired_node_ids_load(),
-  ) {
+  // THE SCENARIO: nothing accepted and nothing retired, so EVERY declared row is active and the census is
+  // a census -- the projected document must carry all of them, none may be silently dropped from the page
+  // it belongs on, and every row a subtree claim names must be among them. A non-empty frontier would
+  // make the claim smaller, not stronger: an accepted row is absent from the page by design.
+  match scenario_envelopes(label: "authority-document-census", events: []) {
+    Absent => false
+    Present { value: envs } => match scenario_authority(envs: envs) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted, withheld } => {
       let shown = projected_document_id_set(doc: d)
@@ -1151,6 +2018,7 @@ test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
         && all(active, n => projected_document_carries(ids: shown, id: n.node as String))
         && all(fx_subtree_fixture_ids(), id => any(active, n => (n.node as String) == id))
     }
+    }
   }
 }
 
@@ -1158,8 +2026,10 @@ test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
 // an attempt's events from the fabric event log, so it waits on fabric-worker-event-log publishing
 // them there. Readiness fires only from declared edges, so the claim reads the ONE readiness the
 // page and the dispatcher read (node_readiness_in_graph over the declared graph): the dependent row
-// names the prerequisite among its dependency blockers, and the prerequisite, which depends on
-// nothing, names no dependency gap -- so the blocker is the edge's, not a gap every row carries.
+// names the prerequisite among its dependency blockers, and the prerequisite's own blockers are
+// exactly its two declared parents -- factory-attempt-execution-on-fabric-lease and
+// factory-dogfood-route -- with no gap blocker beside them, so the blocker the dependent sees is the
+// edge's and not an unsatisfied-dependency gap that every row would carry.
 fn declared_dependency_blockers(id: String) -> List<String> {
   let graph = readiness_graph(nodes: nodes(), edges: edges(), accepted: [], withheld: [])
   fold(declared_node(id: id), init: [], f: (acc, n) => match node_readiness_in_graph(node: n, graph: graph, merged: []) {
@@ -1175,5 +2045,7 @@ test fn witness_serve_held_open_response_waits_on_the_fabric_worker_event_log() 
   count(declared_node(id: "serve-held-open-response")) == 1
     && count(declared_node(id: "fabric-worker-event-log")) == 1
     && (declared_dependency_blockers(id: "serve-held-open-response") |> any(b => b == "fabric-worker-event-log"))
-    && count(declared_dependency_blockers(id: "fabric-worker-event-log")) == 0
+    && count(declared_dependency_blockers(id: "fabric-worker-event-log")) == 2
+    && (declared_dependency_blockers(id: "fabric-worker-event-log") |> any(b => b == "factory-attempt-execution-on-fabric-lease"))
+    && (declared_dependency_blockers(id: "fabric-worker-event-log") |> any(b => b == "factory-dogfood-route"))
 }

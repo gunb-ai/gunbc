@@ -32,10 +32,13 @@ import std.algebra { Cons, Empty, list_flat_map, length, contains }
 //   no longer holds (so the subtraction happened). Until review 65986 that fold asserted the
 //   REMOVED rows were still members, which described a contract with no downward direction.
 //
-//   AN ADDITION IS REFUSED BY `roster_change_verdict` -- WHICH NOTHING ON THE ACCEPTANCE PATH
-//   CALLS AGAINST THIS ROSTER. Its only executing consumers are three-row fixtures in
-//   `test.claim.floor_eval_step_budget_witness`. So the refusal is modeled and exercised at
-//   fixture scale, and is a DECLARED FRONTIER at corpus scale; the frontier and its trigger are
+//   AN ADDITION IS REFUSED BY `roster_change_verdict`, AND THE FOLD NOW RUNS AGAINST THIS ROSTER.
+//   Four claims in `test.claim.floor_eval_step_budget_witness` call it with the live cut (3,795
+//   rows) and the live disposition rows (449): a live identity the cut has never held refuses as an
+//   addition, a live cut row does not, and a live departure whose disposition row is gone refuses
+//   as an undisposed removal. What stays a DECLARED FRONTIER is the corpus-wide disposition arm --
+//   the whole roster as `current`, which pays more eval steps than the ceiling this lane declares
+//   (72,300 for an identity the roster does not exempt) -- and the frontier and its trigger are
 //   stated where the verdict is declared, further down this file.
 //
 // THAT DISTINCTION IS NOT PEDANTIC, AND THIS CHANGE IS THE PROOF. Three witnesses THIS LANE ADDED
@@ -2746,11 +2749,18 @@ fn floor_grandfathered_cut_size() -> Int {
 // exemption the new-witness tier exists to deny. So an addition REFUSES -- it is not reported, not
 // warned about, and not admitted with a note.
 //
-// DECLARED FRONTIER (gunbc.design_argument::consumption): the executing consumer today is
-// `test.claim.floor_eval_step_budget_witness`. The consumer that lands next is the roster's
-// own regeneration gate, which must run this verdict against the discovery producer's current
-// output before writing the file -- so that a regen which would ADD a row refuses instead of
-// silently resetting the baseline. Trigger: the first change that re-derives this roster.
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the executing consumer is
+// `test.claim.floor_eval_step_budget_witness`, and since debt-grandfathered-fold-enrolled it calls
+// this verdict ON THE ROSTER'S OWN ROWS: the live cut at whole-roster scale for the addition arm
+// (22,700 eval steps for the three struck identities, 60,902 on a cold corpus), eight live chunks for the disposition arm (8,618); the counts are `claim_batch` measurements, run linked at gunbc#16610.
+// What no claim executes is the corpus-wide disposition arm -- `current` as the whole 3,795-row
+// roster pays a cut scan per row, which is not a number under the ceiling this lane declares. The
+// consumer that lands next is the roster's own regeneration gate, which must run this verdict
+// against the discovery producer's current output before writing the file -- so that a regen which
+// would ADD a row refuses instead of silently resetting the baseline. Trigger: the first change
+// that re-derives this roster. Neither consumer is CI: the required lane
+// (`.github/workflows/witnesses.yml`) fires on pull_request, merge_group and main push and invokes
+// no `claim_batch` on any of them, so it parses and typechecks these claims and executes none.
 type RosterChangeVerdict =
     RosterChangeAdmitted
   | RosterAdditionRefused { added: String }

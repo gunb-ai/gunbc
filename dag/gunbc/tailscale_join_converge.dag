@@ -38,9 +38,10 @@ module gunbc.tailscale_join_converge
 //     tailscale_fleet_auth_key_usable_on). An expired key fails the login, and a login failure reads like a
 //     network fault; refusing on the calendar says which one it was. A host that is already a member is a
 //     Noop regardless, because upstream is explicit that expiry stops enrollments and not membership.
-//   A BACKEND STATE THAT IS NOT RUNNING, including Starting and NeedsMachineAuth. The fleet's key is
-//     pre-approved, so NeedsMachineAuth means the key is not what the model says it is -- a custody and
-//     roster question, not something to retry past.
+//   A BACKEND STATE THAT IS NOT RUNNING, including Starting and NeedsMachineAuth. Device approval is OFF on
+//     this tailnet and the fleet key is tagged tag:ci, so a correctly-enrolled host never parks in
+//     NeedsMachineAuth -- seeing it means the node did not self-enroll as the model expects, a custody and
+//     tailnet-config question, not something to retry past.
 //   AN UNREADABLE PACKAGE QUERY OR STATUS. dpkg-query's "unknown" and a status document that will not parse
 //     are refusals, never defaults: "not installed" and "installed" produce opposite legs, and a guessed one
 //     installs or skips a package on a host nobody looked at.
@@ -55,8 +56,9 @@ module gunbc.tailscale_join_converge
 //     the sealed write and the portable-word check all carry their own refusal arms, and this module
 //     propagates them. No leg here is ever composed as a shell string.
 //
-// WHAT IT DOES NOT DO: approve a device in the admin console (the key is pre-approved, which is the operator
-// decision that makes the join non-interactive); restart or reauthenticate a daemon (`--force-reauth` is not
+// WHAT IT DOES NOT DO: approve a device in the admin console (there is nothing to approve -- device approval
+// is off on this tailnet, which is the operator setting that makes the join non-interactive); restart or
+// reauthenticate a daemon (`--force-reauth` is not
 // offered by extdeps.tailscale.join at all, because it may drop the connection it is being run over); or
 // render the router's upstream configuration, which is held for its own read-only diff.
 
@@ -81,7 +83,8 @@ import extdeps.package_managers.dpkg {
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import extdeps.tailscale.join {
-  JoinStateJoined,
+  JoinStateJoinedWithRequiredTag,
+  JoinStateJoinedWithoutRequiredTag,
   JoinStateNotJoined,
   JoinStateUnreadable,
   PingAnswered,
@@ -147,16 +150,19 @@ import gunbc.fleet.host_credential_custody_converge {
   ElevatedLeg,
   ElevatedLegRan,
   ElevatedLegRefused,
-  HostCustodyCredential,
-  TailscaleFleetAuthKey,
   custody_action_wire,
   custody_host,
   custody_placement_refusal_wire,
   custody_row_placement,
   custody_run_settled,
   converge_host_credential_custody,
-  host_credential_custody_row,
   run_elevated_leg,
+}
+
+import gunbc.fleet.host_credential_custody_roster {
+  HostCustodyCredential,
+  TailscaleFleetAuthKey,
+  host_credential_custody_row,
 }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.secret_provision { Secret }
@@ -245,7 +251,7 @@ fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionCo
         // is not the response to not understanding the host.
         JoinStateUnreadable { cause: concat("status leg exit=", to_string(r.exit_code)) }
       } else {
-        tailscale_up_join_state_of(status_json: trim(s: r.stdout))
+        tailscale_up_join_state_of(status_json: trim(s: r.stdout), required_tag: tailscale_fleet_node_tag)
       }
   }
 }
@@ -291,8 +297,9 @@ fn tailscale_join_package_state_for(
 // THE PLAN: PURE, TOTAL, AND WITNESSED ARM BY ARM.
 //
 // No legs, no clock, no IO: (join state, package state, key usability) in, one arm out, with the name taken
-// from the one authority inside. That is what makes the two properties the operator cares about checkable
-// without a host: a joined host is a Noop even when the key is expired and the package is missing, and every
+// from the one authority inside. That is what makes the properties the operator cares about checkable
+// without a host: a host that is a member of the tag-keyed tailnet is a Noop even when the key is expired and
+// the package is missing; a host that is Running under some OTHER identity is never a Noop; and every
 // non-Noop arm carries a name that came from tailnet_host_from.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -305,6 +312,17 @@ type TailscaleJoinPlan
       tailnet_name: NonEmptyStr,
       hostname: DnsLabel,
       package_action: TailscaleJoinPackageAction,
+    }
+  // JOINED, BUT NOT AS THE FLEET TAG: the host is a member of the tailnet under an identity the fleet's
+  // policy does not key on -- hand-joined under a personal account, or owned by a user. Not a Noop, not a
+  // re-join this converge may perform: the remedy is an operator-approved re-authentication under the key
+  // that carries the tag, and this arm is where that refusal is located. It carries what the node DID
+  // present, so the operator sees the identity they are being asked to replace.
+  | JoinPlanNotFleetMember {
+      host: HostIdentity,
+      tailnet_name: NonEmptyStr,
+      required_tag: NonEmptyStr,
+      observed_tags: List<String>,
     }
   | JoinPlanRefused { host: HostIdentity, cause: String }
 
@@ -329,11 +347,34 @@ fn tailscale_join_plan(
           JoinPlanRefused { host: host, cause: "the tailnet name is absent while the hostname is present" }
         Present { value: tailnet_name } =>
           match join_state {
-            // THE NOOP, FIRST AND UNCONDITIONAL: no key check, no package check. An existing member is not a
-            // candidate for either, and this is the arm that keeps a routine fleet converge from re-placing a
-            // reusable enrollment key on hosts that joined long ago.
-            JoinStateJoined =>
-              JoinPlanNoop { host: host, tailnet_name: tailnet_name, reason: "backend state is Running" }
+            // THE NOOP, FIRST AND UNCONDITIONAL: no key check, no package check. An existing member of the
+            // tag-keyed tailnet is not a candidate for either, and this is the arm that keeps a routine fleet
+            // converge from re-placing a reusable enrollment key on hosts that joined long ago. It is
+            // unconditional over a FLEET MEMBER, and a fleet member is a JOINED HOST THAT CARRIES THE FLEET
+            // TAG -- `BackendState == Running` alone never reaches this arm
+            // (extdeps.tailscale.join: WHETHER A HOST IS JOINED -- AND UNDER WHICH IDENTITY).
+            JoinStateJoinedWithRequiredTag { self_tags: _ } =>
+              JoinPlanNoop {
+                host: host,
+                tailnet_name: tailnet_name,
+                reason: "backend state is Running and the node carries the fleet tag",
+              }
+            // JOINED, BUT NOT AS THE FLEET TAG -- SO NOT A FLEET MEMBER, AND NOT A Noop. ken is the specimen
+            // (operator_host_e2d4b7, read 2026-11-18 by still-fox-404): Running under a personal account,
+            // presenting no tags, resolvable under the tailnet's MagicDNS suffix and outside every grant the
+            // fleet's policy is keyed on. Reporting Noop over that is a silent success over the wrong state.
+            // THE CONVERGE DOES NOT RE-JOIN IT EITHER: `tailscale up --force-reauth` with the fleet key would
+            // replace an identity the OPERATOR chose (a node is a member as the tag of the key that enrolled
+            // it, or as the person who joined it -- tailscale.com/kb/1085/auth-keys), and silently changing a
+            // host's tailnet identity is not this converge's authority. It refuses, typed and located, and
+            // names the remedy the operator performs (@ref(gunbc.design_argument::fail_closed)).
+            JoinStateJoinedWithoutRequiredTag { self_tags: self_tags } =>
+              JoinPlanNotFleetMember {
+                host: host,
+                tailnet_name: tailnet_name,
+                required_tag: tailscale_fleet_node_tag,
+                observed_tags: self_tags,
+              }
             JoinStateUnreadable { cause: cause } =>
               JoinPlanRefused { host: host, cause: concat("join state unreadable: ", cause) }
             JoinStateNotJoined { state: state } =>
@@ -385,14 +426,16 @@ fn tailscale_join_plan_requiring_key(
       cause: "the pinned auth key is expired, so this join cannot be authorized; existing members are unaffected (upstream: an expired key \"will not work after that date, but the nodes it authorized continue to work\")",
     }
   } else if string_contains(s: state, pattern: "NeedsMachineAuth") {
-    // Pre-approval is a property of the KEY (gunbc.tailscale_fleet_auth_key), and a node sitting in
-    // NeedsMachineAuth on a tailnet with device approval on means the key is not what that record says it is.
-    // Approving by hand would leave the model and the tailnet disagreeing about why the host is reachable.
+    // Device approval is OFF on this tailnet (gunbc.tailscale_fleet_auth_key records the key's approval as
+    // not-applicable), so a healthy tagged join never lands here. A node parked in NeedsMachineAuth means the
+    // node did not self-enroll as the model expects -- a custody / tailnet-config fault, not a key property to
+    // approve by hand. Approving it anyway would leave the model and the tailnet disagreeing about why the host
+    // is reachable.
     JoinPlanRefused {
       host: host,
       cause: concat(
         "backend state is ", state,
-        ", which on this tailnet means the key is not pre-approved",
+        ", which on this tailnet (device approval off) is unexpected: the node did not self-enroll -- a custody/tailnet-config fault, do not retry past it",
       ),
     }
   } else if !tailscale_join_tag_consistency() {
@@ -640,6 +683,18 @@ type TailscaleJoinOutcome
       removal_cause: String?,
     }
   | JoinRefused { host: HostIdentity, cause: String }
+  // THE REFUSAL FOR A HOST THAT IS JOINED UNDER THE WRONG IDENTITY. Separate from `JoinRefused` on
+  // purpose: a `JoinRefused` is the converge missing an input it could in principle go and get (a name, a
+  // usable key, a readable package state), while this is an OBSERVED STATE OF A HOST that the converge has
+  // no authority to change -- the node's tailnet identity belongs to the operator. `observed_tags` carries
+  // what the node presented, so the log shows the identity that has to be replaced, not just that something
+  // was wrong.
+  | JoinRefusedNotFleetMember {
+      host: HostIdentity,
+      tailnet_name: NonEmptyStr,
+      required_tag: NonEmptyStr,
+      observed_tags: List<String>,
+    }
 
 fn tailscale_join_host(
   host: HostIdentity,
@@ -690,6 +745,21 @@ fn tailscale_join_act_on_plan(
 ) -> TailscaleJoinOutcome {
   match plan {
     JoinPlanRefused { host: host, cause: cause } => JoinRefused { host: host, cause: cause }
+    JoinPlanNotFleetMember {
+      host: host,
+      tailnet_name: tailnet_name,
+      required_tag: required_tag,
+      observed_tags: observed_tags,
+    } =>
+      // NOTHING IS READ BACK AND NOTHING IS DISPATCHED. The host is Running, so a name-resolution-plus-pong
+      // read-back from the router would PASS -- and a passing read-back is exactly what would let this state
+      // be reported as converged. The key is neither written nor placed nor used.
+      JoinRefusedNotFleetMember {
+        host: host,
+        tailnet_name: tailnet_name,
+        required_tag: required_tag,
+        observed_tags: observed_tags,
+      }
     JoinPlanNoop { host: host, tailnet_name: tailnet_name, reason: _ } =>
       // The Noop is still read back FROM THE ROUTER. A host that believes it is Running while srv1 can
       // neither resolve nor reach it is precisely the state the fleet was in -- four hosts "not on the
@@ -1061,6 +1131,49 @@ fn tailscale_join_outcome_receipt(outcome: TailscaleJoinOutcome) -> String {
         ],
         "",
       )
+    // THE RECEIPT THAT NAMES THE REMEDY WITHOUT PERFORMING IT. The line is deliberately shaped so the
+    // failure cannot be read as a join that worked: `outcome=refused_not_fleet_member`, the tag the policy
+    // keys on, what the node actually presents, `key=never_used`, and the recovery as an operator act.
+    JoinRefusedNotFleetMember {
+      host: host,
+      tailnet_name: tailnet_name,
+      required_tag: required_tag,
+      observed_tags: observed_tags,
+    } =>
+      join(
+        [
+          "tailscale_join host=",
+          host as String,
+          " outcome=refused_not_fleet_member tailnet_name=",
+          tailnet_name as String,
+          " fleet_tag=",
+          required_tag as String,
+          " presents_tags=",
+          tailscale_join_observed_tags_word(tags: observed_tags),
+          " key=never_used",
+          " REFUSED: the node is Running on the tailnet but under an identity this fleet's policy does not",
+          " key on -- hand-joined, or owned by a user account -- so it sits outside every grant written",
+          " against ",
+          required_tag as String,
+          ". Recovery, and it is an OPERATOR-approved act, not this converge's: re-authenticate the host",
+          " under the fleet's tag:ci key (`tailscale up --auth-key=file:<placed key> --force-reauth`;",
+          " a tagged key makes the node assume the key's tag -- tailscale.com/kb/1085/auth-keys). This",
+          " converge never re-authenticates a host it did not join.\n",
+        ],
+        "",
+      )
+  }
+}
+
+// What the node presented, in the receipt's words. `none` is the hand-joined reading -- a node carrying NO
+// tags -- and it is printed as a word rather than an empty list because "carries no tags" and "the tag list
+// could not be read" are different facts for whoever acts on this line.
+fn tailscale_join_observed_tags_word(tags: List<String>) -> String {
+  match tags {
+    Empty => "none"
+    Cons { head: head, tail: Empty } => head
+    Cons { head: head, tail: tail } =>
+      concat(concat(head, ","), tailscale_join_observed_tags_word(tags: tail))
   }
 }
 
@@ -1083,6 +1196,14 @@ fn tailscale_join_run_settled(outcome: TailscaleJoinOutcome) -> Bool {
     JoinConvergedNoop { host: _, tailnet_name: _ } => true
     JoinConverged { host: _, tailnet_name: _, installed: _, placement_action: _, key_removed: _, removal_cause: _ } => true
     JoinRefused { host: _, cause: _ } => false
+    // A host on the tailnet under the wrong identity is the failure this converge exists to prevent, stated
+    // as a refusal: the job does not settle.
+    JoinRefusedNotFleetMember {
+      host: _,
+      tailnet_name: _,
+      required_tag: _,
+      observed_tags: _,
+    } => false
   }
 }
 

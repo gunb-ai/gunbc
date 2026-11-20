@@ -3,7 +3,7 @@ module gunbc.compute.host_capacity
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
 import std.algebra { empty_map, map_insert, map_lookup }
 import std.nat { Nat }
-import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count, measure_fits, Fits, Below }
+import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size, byte_size_count, measure_fits, Fits, Below }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
@@ -13,7 +13,8 @@ import std.resource_release_law { QuiescenceRequired }
 import product.capacity.lease { LeasePolicy, LeaseGrant }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric.fabric_storage_file_store {
-  FabricStoreStanding, FabricStoreReady, FabricStoreUnready, fabric_store_open, fabric_store_declared_root, fabric_store_area_paths,
+  FabricStoreStanding, FabricStoreReady, FabricStoreUnready, fabric_store_open_root, fabric_store_area_paths_root,
+  fabric_store_open, fabric_store_area_paths, fabric_store_declared_root,
 }
 import gunbc.fabric.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, SeatStoreRefused,
@@ -35,9 +36,12 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_compute_ledger_group_name 
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
 import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
-  HostDashboardInstance, dashboard_instance_shared_directory,
-  DashboardInstanceByHost, DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
+  HostDashboardInstance, dashboard_instance_child,
+  DashboardInstanceForHost, DashboardInstanceHostUnknown, dashboard_instance_for_host,
+  HostCapacityHome, host_capacity_ledger_home, host_capacity_carrier_of,
+  compute_build_memory_ceiling_default, host_capacity_home_root,
 }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation }
 
 // THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
 //
@@ -104,7 +108,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 // what is sealed is that a consumer cannot be handed a subject over an instance the declaration did not
 // resolve, nor a ledger store around a directory its holder chose.
 type ComputeCapacitySubject sole_constructor {
-  instance: HostDashboardInstance
+  home: HostCapacityHome
   partition: PartitionId
 }
 
@@ -141,8 +145,26 @@ type ComputeSubjectResolution
 // the mint together and they cannot drift.
 data compute_root_member: NonEmptyStr = "compute"
 
+// The owned-directory target for the host-scoped ledger, built from the CARRIER (its root + owner), not a
+// dashboard instance. The one place a directory target is built for a host that has no dashboard instance.
+fn host_capacity_shared_directory(home: HostCapacityHome, member: NonEmptyStr, child: String) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: member,
+    path: dashboard_instance_child(root: home.instance_root, child: child),
+    owner: home.directory_owner,
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+// The carrier body. The instance form below is the one-line projection, so live callers that hold a real
+// dashboard instance (dashboard_instance_directory_demands, the wet witnesses) are untouched.
+fn compute_root_directory_carrier(home: HostCapacityHome) -> OwnedDirectoryTarget {
+  host_capacity_shared_directory(home: home, member: "compute-root" as NonEmptyStr, child: compute_root_member as String)
+}
+
 fn compute_root_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_shared_directory(instance: instance, member: "compute-root" as NonEmptyStr, child: compute_root_member as String)
+  compute_root_directory_carrier(home: host_capacity_carrier_of(instance: instance))
 }
 
 // THE LEDGER'S PROVISIONING ROWS, DERIVED FROM THE SAME CHAIN THE MINT READS: the declared root and the
@@ -150,13 +172,32 @@ fn compute_root_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarg
 // compute_capacity_slots) are demanded as owned directories, so the substrate creates them before any
 // reservation opens the store. Renaming a member of the chain moves the mint and these rows together;
 // nothing else spells the path.
-fn compute_capacity_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
-  let areas = fabric_store_area_paths(members: compute_capacity_slots, instance: instance)
+fn compute_capacity_directories_carrier(home: HostCapacityHome) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_posture(home: home, sharing: compute_ledger_sharing_carrier(home: home))
+}
+
+// THE ONE LIST OF LEDGER ROWS, under a GIVEN area posture. The roster gate supplies the posture for a
+// host it knows (compute_capacity_directories_carrier); a candidate's serving desired state supplies the
+// shared posture directly (compute_capacity_directories_admitted). Root, areas and paths are spelled
+// here once, so the two selectors cannot disagree about anything but the posture.
+fn compute_capacity_directories_posture(home: HostCapacityHome, sharing: ComputeLedgerSharing) -> List<OwnedDirectoryTarget> {
+  let areas = fabric_store_area_paths_root(members: compute_capacity_slots, root: home.instance_root)
   [
-    dashboard_instance_shared_directory(instance: instance, member: "compute-capacity-root" as NonEmptyStr, child: join(map(compute_capacity_slots, s => s as String), "/")),
-    compute_capacity_area(instance: instance, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
-    compute_capacity_area(instance: instance, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
+    host_capacity_shared_directory(home: home, member: "compute-capacity-root" as NonEmptyStr, child: join(map(compute_capacity_slots, s => s as String), "/")),
+    compute_capacity_area_posture(home: home, sharing: sharing, member: "compute-capacity-objects" as NonEmptyStr, path: areas.objects),
+    compute_capacity_area_posture(home: home, sharing: sharing, member: "compute-capacity-heads" as NonEmptyStr, path: areas.heads),
   ]
+}
+
+fn compute_capacity_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_carrier(home: host_capacity_carrier_of(instance: instance))
+}
+
+// THE LEDGER ROWS A HOST GETS ONCE ADMITTED: the one row list under the shared posture. This is what the
+// serving desired state asks for a CANDIDATE (not-yet-rostered) host, so admission is not a desired-state
+// change (side-chat review of 2026-11-16, A2).
+fn compute_capacity_directories_admitted(home: HostCapacityHome) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_posture(home: home, sharing: ComputeLedgerSharedWithRemoteBuild)
 }
 
 // A LEDGER AREA IS SHARED WHEN ITS HOST SERVES REMOTE BUILDS, and only the ledger the host resolves to:
@@ -177,35 +218,61 @@ type ComputeLedgerSharing
   = ComputeLedgerServiceOnly
   | ComputeLedgerSharedWithRemoteBuild
 
-fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerSharing {
-  if !remote_build_host_is_serving(host: (instance.host_identity as HostIdentity)) {
-    ComputeLedgerServiceOnly
+// THE SHARED ARM IS KEYED ON THE HOST, NOT ON AN INSTANCE ID. A directory is grouped to
+// gunbc-compute (3770, sticky) iff its host is on the remote-build roster AND the instance carrying it
+// is rooted at the host capacity home (/opt/gunbc) -- i.e. the ledger really is the host home and not
+// some instance's private tree. This is the host-scoped test that replaces the old one, which matched
+// the carried instance against gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host by
+// INSTANCE ID: that walk is exactly what resolved srv2's ledger into /home/briansrls and left srv3/srv4
+// with no ledger, so it must not return. The red control in the witnesses fails if resolution goes back
+// to it. The home root is NOT re-typed here -- it is gunbc.roadmap.roadmap_dashboard_instance
+// host_capacity_home_root, the SAME data host_capacity_ledger_home mints its carrier from, so the sharing test
+// and the carrier can never disagree about what "the host home" is (single_authority). srv1's host home
+// carries that root, so srv1's shared directories are unchanged.
+data compute_capacity_home_root: FilePath = host_capacity_home_root
+
+fn compute_ledger_sharing_carrier(home: HostCapacityHome) -> ComputeLedgerSharing {
+  if remote_build_host_is_serving(host: (home.host_identity as HostIdentity))
+    && ((home.instance_root as String) == (compute_capacity_home_root as String)) {
+    ComputeLedgerSharedWithRemoteBuild
   } else {
-    match dashboard_instance_for_host(host: instance.host_identity as String) {
-      DashboardInstanceHostUnknown { host: _ } => ComputeLedgerServiceOnly
-      DashboardInstanceForHost { instance: resolved } =>
-        if (resolved.instance_id as String) == (instance.instance_id as String) { ComputeLedgerSharedWithRemoteBuild } else { ComputeLedgerServiceOnly }
-    }
+    ComputeLedgerServiceOnly
   }
 }
 
-fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
-  match compute_ledger_sharing(instance: instance) {
+fn compute_ledger_sharing(instance: HostDashboardInstance) -> ComputeLedgerSharing {
+  compute_ledger_sharing_carrier(home: host_capacity_carrier_of(instance: instance))
+}
+
+// ONE AREA ROW UNDER A GIVEN POSTURE. The posture is chosen by the caller: the roster gate
+// (compute_ledger_sharing_carrier) for a rostered host, the shared arm directly for a candidate's
+// admitted posture (side-chat review of 2026-11-16, finding A2), so the group, mode and adoption of
+// each posture are spelled once.
+fn compute_capacity_area_posture(home: HostCapacityHome, sharing: ComputeLedgerSharing, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  match sharing {
     ComputeLedgerServiceOnly => OwnedDirectoryDeclared {
       member: member,
       path: path,
-      owner: instance.directory_owner,
+      owner: home.directory_owner,
       mode: DirectoryOwnerAllEveryoneTraverse,
       group_adoption: ForeignOwnershipRefuses,
     }
     ComputeLedgerSharedWithRemoteBuild => OwnedDirectoryDeclared {
       member: member,
       path: path,
-      owner: PosixOwnerNames { user: instance.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
+      owner: PosixOwnerNames { user: home.directory_owner.user, group: fleet_posix_compute_ledger_group_name },
       mode: DirectoryOwnerGroupWritableSetgidSticky,
       group_adoption: SameUserRegroupToDeclaredGroup,
     }
   }
+}
+
+fn compute_capacity_area_carrier(home: HostCapacityHome, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  compute_capacity_area_posture(home: home, sharing: compute_ledger_sharing_carrier(home: home), member: member, path: path)
+}
+
+fn compute_capacity_area(instance: HostDashboardInstance, member: NonEmptyStr, path: FilePath) -> OwnedDirectoryTarget {
+  compute_capacity_area_carrier(home: host_capacity_carrier_of(instance: instance), member: member, path: path)
 }
 
 fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
@@ -221,8 +288,12 @@ fn compute_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // ledger's chain adds this module's member and nothing else.
 data compute_capacity_slots: List<NonEmptyStr> = [compute_root_member, "capacity" as NonEmptyStr]
 
+fn compute_capacity_root_carrier(home: HostCapacityHome) -> NonEmptyStr {
+  fabric_store_declared_root(members: compute_capacity_slots, root: home.instance_root) as String as NonEmptyStr
+}
+
 fn compute_capacity_root(host_instance: HostDashboardInstance) -> NonEmptyStr {
-  fabric_store_declared_root(members: compute_capacity_slots, root: host_instance.instance_root) as String as NonEmptyStr
+  compute_capacity_root_carrier(home: host_capacity_carrier_of(instance: host_instance))
 }
 
 // THE ONE DECLARATION OF WHERE A SEAT'S EXIT RECORD LANDS: the member under the host's compute root, and
@@ -312,26 +383,152 @@ fn compute_capacity_subject(instance: HostDashboardInstance) -> ComputeSubjectRe
   host_capacity_subject(instance: instance, pool: ComputeBuildPool)
 }
 
+// THE HOST-SCOPED CAPACITY DIRECTORY DEMAND. dashboard_instance_directory_demands spells the capacity
+// directories for the instances it has; a host with no dashboard instance (srv3/srv4) has none, so its
+// ledger home would go unensured. This is that home spelled BY HOST -- the same three directories
+// compute_capacity_directories yields for the host home carrier. It deliberately does NOT route the
+// per-instance compute_capacity_directories through any host lookup: the wet witnesses
+// (host_capacity_wet_witness, attempt_discharge_wet_witness, session_placement_wet_witness) pass an
+// ISOLATED instance and expect the ledger rooted in their own test directory, so compute_capacity_-
+// directories stays instance-pure and this function supplies the host root by minting the home itself.
+// Spelled once -- it calls compute_capacity_directories, never a second copy of the rows.
+//
+// DECLARED FRONTIER (gunbc.design_argument::consumption). Named consumer: the remote-build serving-setup
+// converger (remote-build PR 5, gunbc.compute-serve-setup), which ensures these directories for a host
+// and READS THEM BACK before that host is admitted to gunbc.compute.remote_build_hosts
+// remote_build_serving_hosts -- admission follows the home existing on disk, per the fail_closed note
+// there. Trigger: a host being admitted to the roster (the same change that creates and reads back its
+// /opt/gunbc/compute/capacity). Until PR 5 lands this function has no live caller, and that is the honest
+// limit: srv1's host home already flows through dashboard_instance_directory_demands (srv1's home and its
+// live dashboard instance share /opt/gunbc, so the rows are identical), and srv2/3/4 are not yet on the
+// roster, so nothing currently-provisioning depends on this. The cost of the frontier is stated rather
+// than hidden: if PR 5 admits a host without consuming this, that host's host-scoped ledger home would go
+// unensured -- which is exactly the failure this demand exists to prevent, so it is declared here before
+// the converger rather than invented inside it. srv2's switch from its /home/briansrls per-instance ledger
+// to this host home is that converger's actuation (no in-flight reservation carries across it).
+fn host_capacity_home_directories(host: HostIdentity) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_carrier(home: host_capacity_ledger_home(host: host as NonEmptyStr, build_seat: host_capacity_build_seat(host: host)))
+}
+
+// THE LEDGER ROWS A CANDIDATE HOST MUST CARRY BEFORE IT CAN BE ADMITTED: the same rows
+// host_capacity_home_directories would yield AFTER admission, taken directly from the shared-posture
+// authority (compute_capacity_directories_admitted) instead of through the roster gate — which a
+// candidate does not yet pass. remote_build_serving_desired uses this so a pre-admission 'settled'
+// receipt describes the post-admission ledger (side-chat review of 2026-11-16, finding A2).
+fn host_capacity_home_directories_admitted(host: HostIdentity) -> List<OwnedDirectoryTarget> {
+  compute_capacity_directories_admitted(home: host_capacity_ledger_home(host: host as NonEmptyStr, build_seat: host_capacity_build_seat(host: host)))
+}
+
+// THE ONE RUNNER SLOT THE BUILD POOL IS CARVED FROM, ON srv3/srv4. A host with no dashboard
+// instance has no ceilings to appropriate from, so its build pool is DECLARED and the declaration is
+// DERIVED, not a fresh figure: it is exactly one CI runner slot given to the pool, per the operator's
+// standing "build-pool reservation carved from CI runner width, one runner slot per host on srv3/srv4"
+// (the admitted-scaffold provenance on gunbc.design_ruling.remote_build_ssh_dispatch_is_an_admitted_scaffold).
+// WHICH hosts are carved, and by how much, is decided in exactly ONE place --
+// gunbc.runner.runner_slot_desired.host_build_pool_reservation, the same reservation subtracted from
+// that host's CI memory envelope. This function READS that reservation and divides it across the pool's
+// seats (compute_pool_slots, this module's own constant); it does NOT re-test the host list. That is
+// gunbc.design_argument::single_authority: a second place that independently decides the carve is a fork
+// that can drift -- add srv5 to one list and not the other and you get a host whose CI width drops with
+// no pool seat, or one that gains a seat with no width removed. The account witness now pins the seat
+// against the reservation, so the two cannot silently diverge. A host with no carve (reservation 0 --
+// srv1, srv2) keeps the default compute-build ceiling as its seat, so host_capacity_pool_appropriation
+// (BuildPool) = seat * compute_pool_slots reproduces the carved slot exactly on the carved hosts rather
+// than restating 25 GiB.
+fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
+  capacity_seat_for_reservation(reservation: host_build_pool_reservation(host: host))
+}
+
+// THE SEAT IS DERIVED FROM THE RESERVATION, not re-decided. Given the carve (one slot), the seat is that
+// slot split across the pool's seats (compute_pool_slots); a carved host's BuildPool appropriation
+// (seat * compute_pool_slots) therefore reproduces the carved slot EXACTLY -- the slot leaves CI and is
+// held by the pool. A host with NO reservation (off the roster, not carved) gets the host default ceiling.
+// Pure over the reservation so the positive "carved -> one slot" case is witnessed even though PR 4 carves
+// nothing (review 95809 / manager): the derivation is proven before PR 5's admission exercises it.
+fn capacity_seat_for_reservation(reservation: ByteSize) -> ByteSize {
+  if byte_size_count(reservation) > 0 {
+    byte_size(byte_size_count(reservation) / compute_pool_slots)
+  } else {
+    compute_build_memory_ceiling_default
+  }
+}
+
+// THE ONE TABLE: WHERE EACH HOST'S LEDGER LIVES, found by host. A host on the remote-build roster
+// has ONE capacity home at /opt/gunbc/compute/capacity and it is found HERE, by host identity -- not by
+// walking gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host to whatever instance the
+// host happens to resolve. That walk was the whole defect: srv1 resolved to its /opt/gunbc instance (the
+// one path that happened to be right), srv2 resolved to a /home/briansrls instance the gunbc-build
+// account cannot traverse, and srv3/srv4 resolved nothing and so had no ledger. EVERY OTHER host --
+// macbook-local (gunbc.roadmap.roadmap_dashboard_instance.macbook_local_dashboard_id) and any future
+// instance host -- keeps the dashboard instance it resolved BEFORE this PR, unchanged, so the local
+// compute provider still resolves a subject where it always did. This is one per-host function covering
+// every host, not a fallback that returns nothing off-roster: off-roster it is exactly the pre-PR
+// dashboard_instance_for_host walk.
+// The ledger home, found BY HOST: the host-scoped carrier for a rostered host, the projection of a real
+// dashboard instance for any other host (macbook-local), or unknown. One carrier -- never a fabricated
+// dashboard instance (fail_closed).
+type HostCapacityHomeByHost
+  = HostCapacityHomeFound { home: HostCapacityHome }
+  | HostCapacityHomeUnknown { host: NonEmptyStr }
+
+// THE ONE DECISION, over host facts. A rostered host's ledger home is the host-scoped carrier at /opt/gunbc
+// -- found BY HOST, never by walking that host's dashboard instance. An off-roster host keeps its instance's
+// root (the macbook-local rule). Taking `rostered` and `resolved_instance` as arguments (rather than reading
+// the roster and the instance table inside) keeps a single place that decides it AND makes the rostered arm
+// reachable with a real instance from a witness -- so the regression "a host resolves its ledger through its
+// instance" is discriminated here, not deferred to PR 5: pass srv2 with rostered=true and srv2's real
+// instance (root under /home/...) and this must still yield /opt/gunbc; a decision that fell back to the
+// instance would yield the /home root and go red.
+fn host_capacity_home_for(host: NonEmptyStr, rostered: Bool, resolved_instance: HostDashboardInstance?) -> HostCapacityHomeByHost {
+  if rostered {
+    HostCapacityHomeFound { home: host_capacity_ledger_home(host: host, build_seat: host_capacity_build_seat(host: host as HostIdentity)) }
+  } else {
+    match resolved_instance {
+      Present { value: instance } => HostCapacityHomeFound { home: host_capacity_carrier_of(instance: instance) }
+      Absent => HostCapacityHomeUnknown { host: host }
+    }
+  }
+}
+
+// Binds the live host facts and asks the one decision. The compute provider reaches the ledger through here.
+fn host_capacity_home_for_host(host: NonEmptyStr) -> HostCapacityHomeByHost {
+  let resolved = match dashboard_instance_for_host(host: host as String) {
+    DashboardInstanceForHost { instance: instance } => Present { value: instance }
+    DashboardInstanceHostUnknown { host: _ } => Absent
+  }
+  host_capacity_home_for(
+    host: host,
+    rostered: remote_build_host_is_serving(host: host as HostIdentity),
+    resolved_instance: resolved,
+  )
+}
+
+// THE LEDGER IS FOUND BY HOST. host_capacity_subject resolves the host's ledger home through
+// host_capacity_home_for_host -- the roster arm's host home, or (off-roster) the host's dashboard
+// instance exactly as before this PR. A host with neither a roster entry nor a dashboard instance
+// resolves nothing and is refused; a host with a dashboard instance ALWAYS resolves a subject, so no
+// previously-working host loses its ledger. srv1's roster home is byte-identical on every field the
+// ledger reads, so srv1 does not migrate.
 fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeSubjectResolution {
-  match dashboard_instance_for_host(host: instance.host_identity as String) {
-    DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
-    DashboardInstanceForHost { instance: host_instance } => {
-      let ledger = host_capacity_subject_in(requesting: instance, host_instance: host_instance, pool: pool)
+  match host_capacity_home_for_host(host: instance.host_identity) {
+    HostCapacityHomeUnknown { host: h } => ComputeSubjectHostUnresolved { host: h }
+    HostCapacityHomeFound { home: host_home } => {
+      let ledger = host_capacity_subject_in(requesting: instance, host_home: host_home, pool: pool)
       ComputeSubjectResolved { subject: ledger.subject, appropriation: ledger.appropriation }
     }
   }
 }
 
-// THE SECOND MINT: the subject for a host instance already in hand. host_capacity_subject reaches it through the
-// deployment's host-to-instance authority; a witness reaches it with an isolated instance, which is the only way a
+// THE SECOND MINT: the subject for a host instance already in hand. host_capacity_subject reaches it
+// through the host-scoped home; a witness reaches it with an isolated instance, which is the only way a
 // test roots the ledger in its own directory without a path-taking constructor.
-fn host_capacity_subject_in(requesting: HostDashboardInstance, host_instance: HostDashboardInstance, pool: HostCapacityPool) -> ComputeCapacityLedger {
+fn host_capacity_subject_in(requesting: HostDashboardInstance, host_home: HostCapacityHome, pool: HostCapacityPool) -> ComputeCapacityLedger {
   ComputeCapacityLedger {
     subject: ComputeCapacitySubject {
-      instance: host_instance,
+      home: host_home,
       partition: host_capacity_pool_partition(pool: pool, host: requesting.host_identity),
     },
-    appropriation: host_capacity_pool_appropriation(instance: host_instance, pool: pool),
+    appropriation: host_capacity_pool_appropriation_carrier(home: host_home, pool: pool),
   }
 }
 
@@ -349,7 +546,7 @@ type ComputeCapacityStoreStanding
   | ComputeCapacityStoreUnready { area: String, detail: String }
 
 fn compute_capacity_store(subject: ComputeCapacitySubject) -> ComputeCapacityStoreStanding {
-  match fabric_store_open(members: compute_capacity_slots, instance: subject.instance, entry_mode: none) {
+  match fabric_store_open_root(members: compute_capacity_slots, root: subject.home.instance_root, entry_mode: none) {
     FabricStoreUnready { area: a, detail: d } => ComputeCapacityStoreUnready { area: a, detail: d }
     FabricStoreReady { store: ops } => ComputeCapacityStoreReady { store: FabricStorageLocalFiles { operations: ops } }
   }
@@ -405,20 +602,32 @@ fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
 
 // EACH POOL IS PRICED IN ITS OWN CEILING: the build pool in the compute build ceiling, the session pool in the
 // worker-session cap. They are two facts on the instance, so a worker-cap change cannot move the build pool.
-fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling(instance: instance, pool: pool)) * host_capacity_pool_slots(pool: pool))
+fn host_capacity_pool_appropriation_carrier(home: HostCapacityHome, pool: HostCapacityPool) -> Kibibyte {
+  kibibyte(count: kibibyte_count(k: host_capacity_pool_seat_ceiling_carrier(home: home, pool: pool)) * host_capacity_pool_slots(pool: pool))
 }
 
-fn host_capacity_pool_seat_ceiling(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+  host_capacity_pool_appropriation_carrier(home: host_capacity_carrier_of(instance: instance), pool: pool)
+}
+
+fn host_capacity_pool_seat_ceiling_carrier(home: HostCapacityHome, pool: HostCapacityPool) -> Kibibyte {
   match pool {
-    ComputeBuildPool => compute_memory_ceiling(instance: instance)
-    AgentSessionPool { slots: _ } => host_capacity_session_seat_ceiling(instance: instance)
+    ComputeBuildPool => compute_memory_ceiling_carrier(home: home)
+    AgentSessionPool { slots: _ } => host_capacity_session_seat_ceiling_carrier(home: home)
   }
 }
 
+fn host_capacity_pool_seat_ceiling(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+  host_capacity_pool_seat_ceiling_carrier(home: host_capacity_carrier_of(instance: instance), pool: pool)
+}
+
 // THE WORKER SESSION'S SEAT: the worker unit's MemoryMax, so the reservation equals what the cgroup enforces.
+fn host_capacity_session_seat_ceiling_carrier(home: HostCapacityHome) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: home.dispatch_worker_memory_max)
+}
+
 fn host_capacity_session_seat_ceiling(instance: HostDashboardInstance) -> Kibibyte {
-  kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)
+  host_capacity_session_seat_ceiling_carrier(home: host_capacity_carrier_of(instance: instance))
 }
 
 // THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
@@ -433,8 +642,12 @@ fn host_capacity_session_seat_ceiling(instance: HostDashboardInstance) -> Kibiby
 // without enough samples on the provider's own route -- the fail-closed arm, which over-reserves
 // and never under-reserves. A request's amount is therefore supplied to compute_reserve rather than
 // read here; this function only names the ceiling the grant falls back to and never exceeds.
+fn compute_memory_ceiling_carrier(home: HostCapacityHome) -> Kibibyte {
+  kibibyte_from_byte_size_floor(b: home.compute_build_memory_ceiling)
+}
+
 fn compute_memory_ceiling(instance: HostDashboardInstance) -> Kibibyte {
-  kibibyte_from_byte_size_floor(b: instance.compute_build_memory_ceiling)
+  compute_memory_ceiling_carrier(home: host_capacity_carrier_of(instance: instance))
 }
 
 // A COMPUTE SEAT IS QUIESCENCE-REQUIRED AND THAT IS THE SAFE ARM, NOT A LIMITATION. A running cargo

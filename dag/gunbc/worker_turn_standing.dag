@@ -46,8 +46,6 @@ import gunbc.codex_app_server_press {
   codex_press_account_trip_request_lines,
   codex_press_account_trip_program,
   codex_press_account_trip_argv_admission,
-  CodexTripArgvAdmitted,
-  CodexTripArgvRefused,
   CodexTripLock,
   parse_account_trip_session,
   AccountTripDigestStructural,
@@ -109,14 +107,11 @@ fn codex_observed_standing_for_instance(instance: HostDashboardInstance, provide
     match dashboard_instance_provider_executable(instance: instance) {
       Absent => ProviderStandingUnobserved { reason: "no codex executable is placed for this instance" as NonEmptyStr }
       Present { value: executable } => {
-        match codex_press_account_trip_argv_admission(
+        let arguments = codex_press_account_trip_argv_admission(
           executable: executable,
           codex_home: codex_worker_turn_codex_home as FilePath,
           lock: Present { value: codex_harness_trip_lock() },
-        ) {
-          CodexTripArgvRefused { diagnostic } =>
-            ProviderStandingUnobserved { reason: diagnostic }
-          CodexTripArgvAdmitted { arguments } => {
+        )
             let run = shell.Exec.RunArgvStdin(
               program: codex_press_account_trip_program(lock: Present { value: codex_harness_trip_lock() }),
               arguments: arguments,
@@ -141,8 +136,6 @@ fn codex_observed_standing_for_instance(instance: HostDashboardInstance, provide
                 ),
               )
             }
-          }
-        }
       }
     }
   }

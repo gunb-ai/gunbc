@@ -1,0 +1,300 @@
+module test.claim.live_deploy.release_pair_delivery_witness
+
+// THE DELIVERY LEG THAT MAKES A PAIRED DEPLOY HAPPEN BY ITSELF. This module witnesses the one authority the
+// node delivers (gunbc.live_deploy.release_locus::deliver_release_pair): the lab's release PAIR — its serving
+// binary and the source tree it loads — is delivered as ONE unit from one main head, and whenever any step of
+// that delivery refuses (the head's release bins are not built yet, the pack fails build-key verification, or
+// the fetched source is not the head delivered for), the LAST GOOD pair keeps serving and the refusal is named,
+// never a half-installed serve. The lab's existing serve gate (gunbc.live_deploy.release_binding::lab_pair_serve_verdict,
+// which the parent landed) is what makes a mixed pair non-serving downstream; the gap this closes is UPSTREAM —
+// nothing modelled installed a matched pair, only a person at a terminal did, which is how a mixed pair is born.
+//
+// ── WHY IT IS RED ON BASE ─────────────────────────────────────────────────────────────────────────────────
+// The fold this claims (`deliver_release_pair`, its result type, and the delivered-pair record) does not exist
+// on the base commit. On base there is no delivery leg to refuse — a head whose bins are unbuilt or whose pack
+// fails verification is simply installed and served by whoever runs the hand redeploy. On head the same input
+// is a PairRefused arm that keeps the last-good pair serving, which is exactly what the red control demands.
+
+import std.types { String, NonEmptyStr, Bool, CommitSha }
+import std.algebra { fold_list, list_map }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.live_deploy.release_pair_delivery {
+  release_pair_incoming_serve_source,
+  ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
+  release_pair_occupied_link_benign,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
+}
+import gunbc.command_runner { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.live_deploy.release_locus {
+  ReleasePairDelivery, PairInstalled, PairRefused,
+  deliver_release_pair, delivered_pair_revision, VerifiedPack,
+  ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
+  release_locus_dir, release_locus_member_path,
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec, DeploymentArtifactStep, UpsertOwned, ServeBinary,
+}
+import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_set }
+import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, Declared, DeclaredRead }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── fixtures ────────────────────────────────────────────────────────────────────────────────────────────────
+// The pair being delivered is the head a worker just merged to main; the last-good pair that must keep serving
+// through every refusal is a DIFFERENT head, so "kept == serving" is a real claim about a real previous pair,
+// not a no-op equality with the candidate.
+data base_root: String = "/opt/gunbc/releases"
+data main_sha: String = "3333333333333333333333333333333333333333"
+data last_good_sha: String = "2222222222222222222222222222222222222222"
+data wrong_sha: String = "9999999999999999999999999999999999999999"
+data bin_sha256: NonEmptyStr = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+// the file the fetch OBSERVED producing the pack — the placement source the fold must carry (review 96059)
+data fetched_src: NonEmptyStr = release_pair_incoming_serve_source(base_root: base_root, revision: main_sha) as NonEmptyStr
+
+fn main_head() -> CommitSha { main_sha as CommitSha }
+fn last_good_head() -> CommitSha { last_good_sha as CommitSha }
+fn wrong_head() -> CommitSha { wrong_sha as CommitSha }
+
+fn last_good_serving() -> ReleaseRevisionBinding { RevisionBoundAtEmission { revision: last_good_head() } }
+
+fn srv1_spec() -> DeploymentSpec { deployment_spec_srv1() }
+fn srv1_inst() -> HostDashboardInstance { srv1_live_dashboard_instance() }
+
+// ── helpers (hermetic; substrate inputs only, no live host) ───────────────────────────────────────────────────
+fn kept_is(v: ReleasePairDelivery, want: ReleaseRevisionBinding) -> Bool {
+  match v {
+    PairRefused { reason: _, kept: k } =>
+      match k {
+        RevisionBoundAtEmission { revision: kr } =>
+          match want {
+            RevisionBoundAtEmission { revision: wr } => (kr as String) == (wr as String)
+            RevisionNotInstalled => false
+          }
+        RevisionNotInstalled => false
+      }
+    PairInstalled { pair: _, locus: _ } => false
+  }
+}
+
+fn member(p: String, xs: List<String>) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { if acc { true } else if x == p { true } else { false } })
+}
+
+fn read_path(r: DeclaredRead) -> String { r.path }
+
+fn declared_containing(rs: ArtifactReadSet, p: String) -> Bool {
+  match rs { Declared { reads: reads } => member(p: p, xs: list_map(xs: reads, f: read_path)), _ => false }
+}
+
+// ── the good head: one main head installs BOTH halves as one unit ─────────────────────────────────────────────
+// WITNESS: a main head whose CI release bins exist and verified, with the matching source checked out at that
+// SAME head, installs as one bound pair. Its locus is named by the pair's OWN identity (the source head, which
+// equals the main head here) — so the binary and the tree have ONE identity (one authority). The refusal has
+// one place, so the success is just the absence of every refusal.
+test fn witness_good_head_installs_bound_pair() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
+  )
+  match d {
+    PairInstalled { pair: p, locus: l } =>
+      let want_dir = release_locus_dir(root: base_root, revision: delivered_pair_revision(pair: p))
+      (p.head as String) == main_sha &&
+        (p.binaries_sha256 as String) == bin_sha256 &&
+        l.locus == want_dir &&
+        want_dir == release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: main_head() })
+    PairRefused { reason: _, kept: _ } => false
+  }
+}
+
+// ── RED CONTROL (arm 1): a head whose release bins are not built yet must NOT install ─────────────────────────
+// The delivery leg refuses: no CI pack was handed off for the head, so there is no verified binary to pair the
+// source with. It keeps the LAST GOOD pair serving — the pair it did NOT install — and the refusal is visible,
+// not a half-installed serve. This is the input that would install-and-serve-anyone on base.
+test fn witness_bins_not_built_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: none,
+    binary_source: none,
+    verified: none,
+  )
+  kept_is(v: d, want: last_good_serving())
+}
+
+// ── RED CONTROL (arm 2): a head whose pack fails build-key verification must NOT install ──────────────────────
+// Same shape, different reason: the pack exists but --verify-build-artifacts refused it against the build key,
+// so its binaries are not trusted. The last-good pair keeps serving.
+test fn witness_pack_unverified_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: none,
+  )
+  kept_is(v: d, want: last_good_serving())
+}
+
+// ── RED CONTROL (arm 3): a fetched source that is not the head delivered for must NOT install ─────────────────
+// The two halves of the pair would not match — a mixed pair, the very thing the serve gate refuses downstream.
+// The delivery leg refuses it UP FRONT rather than installing a mixed pair that the serve would then refuse to
+// serve (which would stop the lab refreshing). Last good keeps serving.
+test fn witness_source_head_mismatch_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: wrong_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
+  )
+  kept_is(v: d, want: last_good_serving())
+}
+
+// ── RED CONTROL (arm 4, review 96059): a digest reported with no fetched file must NOT install ───────────────
+// A caller reporting a binary digest but no observed fetched file would give the install a placement source from
+// nowhere — the hand step this leg exists to remove. The fold refuses it as its own named degradation (fail_closed)
+// rather than binding a pair whose source is unknown, and keeps the last good pair serving.
+test fn witness_source_missing_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: none,
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
+  )
+  kept_is(v: d, want: last_good_serving())
+}
+
+// ── the delivered pair enters the deploy intent's artifact closure ──────────────────────────────────────────
+// A pair that is installed but not in the closure is not owned by the deploy intent: the gate could require an
+// artifact it never declared, or omit one the serve reads. The installed pair's serving binary is a ServeBinary
+// roster entry, whose read of record is what the serve unit loads — its ExecStart binary AND the source tree —
+// read from the EXISTING closure authority (gunbc.live_deploy.spec deployment_artifact_read_set), not restated
+// here. So the pair the delivery leg installs is a real, countable read row of the deploy intent.
+test fn witness_delivered_pair_enters_artifact_read_set() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: Present { value: VerifiedPack { digest: bin_sha256 } },
+  )
+  match d {
+    PairInstalled { pair: p, locus: _ } =>
+      let rev = delivered_pair_revision(pair: p)
+      let bin_path = release_locus_member_path(root: base_root, revision: rev, name: p.binaries_sha256 as String)
+      let step = DeploymentArtifactStep { kind: UpsertOwned { kind: ServeBinary }, path: bin_path as NonEmptyStr }
+      declared_containing(
+        rs: deployment_artifact_read_set(step: step, spec: srv1_spec(), instance: srv1_inst(), revision: rev),
+        p: bin_path,
+      )
+    PairRefused { reason: _, kept: _ } => false
+  }
+}
+
+// (No empty-digest witness: the input type is NonEmptyStr?, so an empty digest is unrepresentable -- the type
+//  rules it out where a hand-written check used to stand, per review 96047.)
+
+// ── RED CONTROL (review 96067): a verdict for a DIFFERENT pack must NOT authorize an install ─────────────────
+// The fold cross-checks the VerifiedPack digest against the binary it binds; handing it a verdict that verified a
+// different pack (here a foreign digest) is refused, not trusted — fail_closed: the wrong state cannot be used.
+data wrong_bin_sha256: NonEmptyStr = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+test fn witness_verdict_names_other_pack_keeps_last_good() -> Bool {
+  let d = deliver_release_pair(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    binaries_sha256: Present { value: bin_sha256 },
+    binary_source: Present { value: fetched_src },
+    verified: Present { value: VerifiedPack { digest: wrong_bin_sha256 } },
+  )
+  kept_is(v: d, want: last_good_serving())
+}
+
+// ── RESUME (review 96241 f1): the receipt the delivery would write is the completion authority ───────────────
+data resume_body: String = "revision 3333333333333333333333333333333333333333 digest 0f1e2d3c installed 1"
+
+// A byte-identical receipt means the pair is already placed: resume at the restart, never re-create (the create-only
+// link would go red on a healthy pair). Second tick on a half-done-then-completed pair performs no create leg.
+test fn witness_resume_receipt_match_is_already_placed() -> Bool {
+  match release_pair_resume_decision(
+    receipt_read: FilesystemReadSucceeded { content: resume_body },
+    expected_body: resume_body,
+  ) {
+    AlreadyPlaced => true
+    _ => false
+  }
+}
+
+// A receipt with DIFFERENT content is a foreign/stale placement at the per-revision locus: refuse (red control: a
+// mismatched pre-existing placement refuses; it must NOT be adopted or overwritten).
+test fn witness_resume_receipt_mismatch_refuses() -> Bool {
+  match release_pair_resume_decision(
+    receipt_read: FilesystemReadSucceeded { content: "a-different-receipt-body" },
+    expected_body: resume_body,
+  ) {
+    MismatchRefusal { reason: _ } => true
+    _ => false
+  }
+}
+
+// A receipt that cannot be read (absent / unreadable) is the ORDINARY fresh tick, not the red one: place it.
+test fn witness_resume_receipt_absent_is_not_yet_placed() -> Bool {
+  match release_pair_resume_decision(
+    receipt_read: FilesystemReadRefused { error: "ENOENT" },
+    expected_body: resume_body,
+  ) {
+    NotYetPlaced => true
+    _ => false
+  }
+}
+
+// ── OCCUPIED-LINK GUARD (review 96241 f1, manager B): benign ONLY when it already points here ────────────────
+data locus_link: String = "/opt/gunbc/releases/incoming-release-bins/3333333333333333333333333333333333333333/bin/gunbc-standings-serve"
+
+// readlink prints THIS revision's fetched member -> benign (a prior tick placed the link then died before the receipt;
+// the fresh tick may resume to write it). Trailing newline is trimmed, matching the actuator's readlink capture.
+test fn witness_occupied_link_to_same_target_is_benign() -> Bool {
+  release_pair_occupied_link_benign(
+    link_read: ProcessOutputPresent { text: join([locus_link, "\n"], "") },
+    expected_source: locus_link,
+  )
+}
+
+// readlink prints a DIFFERENT target -> NOT benign (red control: an occupied link pointing elsewhere refuses rather
+// than being silently adopted). Written as an == false compare to avoid relying on a not-operator spelling.
+test fn witness_occupied_link_to_other_target_is_not_benign() -> Bool {
+  release_pair_occupied_link_benign(
+    link_read: ProcessOutputPresent { text: "/some/other/revision/bin/gunbc-standings-serve\n" },
+    expected_source: locus_link,
+  ) == false
+}
+
+// readlink refuses (the path is not a symlink) -> NOT benign (fail-closed: never adopt a foreign path as ours).
+test fn witness_occupied_link_readlink_refused_is_not_benign() -> Bool {
+  release_pair_occupied_link_benign(
+    link_read: ProcessRefused { exit_code: 1, stderr: "not a symlink" },
+    expected_source: locus_link,
+  ) == false
+}

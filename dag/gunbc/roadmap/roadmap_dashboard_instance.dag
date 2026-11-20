@@ -1374,6 +1374,62 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
+// THE ONE SPELLING OF THE HOST CAPACITY HOME ROOT. Every consumer that asks "is this instance the host
+// home?" compares against THIS, not a re-typed literal: gunbc.compute.host_capacity's
+// compute_ledger_sharing (which decides whether a ledger area is grouped to gunbc-compute) and
+// host_capacity_home (which mints the carrier rooted there) both read it. A second literal could drift
+// and silently un-share a home. gunbc.design_argument::single_authority.
+data host_capacity_home_root: FilePath = "/opt/gunbc"
+
+// THE HOST-SCOPED CAPACITY HOME (remote-build PR 4, operator 2026-11-15 "can we just standardize it
+// now?"). ONE ledger per HOST, at /opt/gunbc/compute/capacity, found by HOST and not through any
+// dashboard instance. srv1's dashboard instance already lives at /opt/gunbc, so srv1's home is the
+// SAME root and the SAME ownership it has today -- srv1 does not migrate. srv2's dashboard instances
+// live under /home/briansrls/.local/share, which the gunbc-build account cannot traverse; its ledger
+// moves to this host home so every instance on srv2 reserves in one reachable ledger. srv3/srv4 resolve
+// no dashboard instance and so had no ledger at all; this is their ONLY ledger.
+//
+// THE LEDGER HOME IS NOT A DASHBOARD INSTANCE. The capacity ledger sits at one host-scoped root and is
+// owned by one group; those are the only facts the ledger ever reads about where it lives. Minting a
+// HostDashboardInstance to carry them fabricated a serve_function no function implements, a port nothing
+// binds, and a provider/tmux/dispatch binding for a host that runs no dashboard -- a fabricated default,
+// which gunbc.design_argument::fail_closed rejects outright, and live for every rostered host through
+// host_capacity_home_for_host. This is the narrow carrier: exactly the fields the ledger reads, and nothing
+// a consumer could mistake for a real serving instance.
+type HostCapacityHome sole_constructor {
+  host_identity: NonEmptyStr
+  directory_owner: PosixOwnerNames
+  instance_root: FilePath
+  compute_build_memory_ceiling: ByteSize
+  dispatch_worker_memory_max: ByteSize
+}
+
+// The host-scoped ledger home: the root and owner are the host's, the ceilings come from the carve. srv1
+// resolves to the same /opt/gunbc root and owner it resolved through its dashboard instance, so it is
+// byte-identical on every field the ledger reads -- the bar the ledger's compute-provider reader depends on.
+fn host_capacity_ledger_home(host: NonEmptyStr, build_seat: ByteSize) -> HostCapacityHome {
+  HostCapacityHome {
+    host_identity: host,
+    directory_owner: linux_service_directory_owner(),
+    instance_root: host_capacity_home_root,
+    compute_build_memory_ceiling: build_seat,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+  }
+}
+
+// THE PROJECTION. A host that does have a real dashboard instance yields the same carrier read off it, so a
+// single ledger code path consumes one carrier type whether the home was host-scoped (a rostered host) or
+// instance-resolved (an off-roster host such as macbook-local). Reads only the fields the ledger consumes.
+fn host_capacity_carrier_of(instance: HostDashboardInstance) -> HostCapacityHome {
+  HostCapacityHome {
+    host_identity: instance.host_identity,
+    directory_owner: instance.directory_owner,
+    instance_root: instance.instance_root,
+    compute_build_memory_ceiling: instance.compute_build_memory_ceiling,
+    dispatch_worker_memory_max: instance.dispatch_worker_memory_max,
+  }
+}
+
 // host_identity USED TO BE A PARAMETER OVER A BODY OF srv1 LITERALS, which made a second host
 // expressible without making it representable. Serve binary, provider state root, and source-seed
 // controller repo were pinned to srv1 rows here, so srv2_preview_dashboard_instance below produced

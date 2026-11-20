@@ -558,7 +558,7 @@ What a plan is follows from what it is for: a plan says where the repository sho
 - **Realization is downstream.** Work items, their order and their staffing are a selection made against the intention (*Selection precedes convergence*), and may be redrawn whenever the work is picked up without the plan changing. A work item names the intention it serves; the intention does not list its work items. An intention is achieved when its done-when holds on the repository, assessed against an independent observation, not when its work items are checked off.
 - **Formal work opts in.** A formal change names, in its brief and its pull request, the intention it serves (by `gunbc.plans` symbol) and the work items it owns; a decision it needs from the operator is recorded in `gunbc.design_ruling` and cited, never kept in the plan or the pull request alone. Pull requests are orthogonal to work items: one may carry several items or part of one, so a work item, not a pull request, is the unit of progress. Ad hoc work -- a fix, an investigation, an operator's one-off request -- is admitted without an intention, and becomes formal by naming one.
 - **Done is an acceptance.** A work item is done when an accepted event is recorded for it in the item event log, with its evidence (its red control now passes and its handback was delivered); a merged pull request, a checkbox or prose is not done. The manager of the session that owns the work item decides the acceptance; a session with no manager raises it to the operator as an escalation (ruling `gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation`).
-- **No schedule.** There is no schedule type, time-period record, forecast or synchronized today list; what to work on next is the operator's choice (ruling `gunbc.design_ruling::planning_scheduling_is_cut`). An order or date field appears only when a named consumer decides something from it.
+- **No schedule.** There is no schedule type, time-period record, forecast or synchronized today list; what to work on next is the operator's choice (ruling `gunbc.design_ruling::planning_scheduling_is_cut`). Narrowed 2026-11-17 by (ruling `gunbc.design_ruling::effort_estimates_are_public_and_live_in_gunbc`): a dated effort estimate with a basis is the clock, not a schedule; it lives in gunbc.roadmap.roadmap_effort_estimate, appended and never edited, with overdue derived against the acceptance log and no date ever a dependency. An order or date field appears only when a named consumer decides something from it.
 - **Execution and display.** Execution converges on fabric dispatch (`product.fabric`, `gunbc.compute`, `gunbc.fabric`) (ruling `gunbc.design_ruling::planning_execution_is_anchored_on_fabric`). A work item's lifecycle (claimed, released, accepted, retired) and its fabric execution are separate authorities joined by one binding, and in progress is derived from an active execution, never written. Any view of the work, the control plane's dashboard or a gunbc page, is a projection of plans, work items and both logs.
 - **Where it stands.** The first intention written this way is `gunbc.plans.planning_consolidation`; the other plans still hold their how as prose until they are rewritten, and the realization home is not yet decided.
 
@@ -754,6 +754,41 @@ The roster *Conformance* reviews against, from `gunbc.design_argument` `conforma
   - `v2.std.inhabitance::declared_type_inhabitance`
 - **Natural bounds** — the existing natural-order witness from which its two bounds are read
   - `v2.std.cardinality::NatLeWitness`
+
+### Phase admission
+
+**Owns.** The admission of each compiler phase: a phase is a carrier type whose only constructor is the function that establishes it (the sole_constructor modifier), so the states are types and the transitions are the only constructors (gunbc.design_ruling::phase_admission_is_a_conformance_pattern, operator 2026-11-17). Evaluation and emission consume only the checked carrier.
+
+**Boundaries.**
+
+- What a phase establishes (its judgments) belongs to the phase's own module; this domain owns only that nothing bypasses its admission.
+- Tooling may read partial analyses; a build may not.
+
+**Existing authorities**
+
+- **Sealed phase carriers** — the existing carriers with one constructor each
+  - `v2.compiler.normalized_tree::NormalizedTree`
+  - `v2.compiler.normalized_tree::CensusTree`
+  - `v2.compiler.body_lowering_fold::BodyLoweredTree`
+  - `v2.compiler.module_acquisition::HeldSourceRead`
+
+## Reference: product names
+
+Each product word is anchored on one declaration (`gunbc.product_names`), and means that declaration and nothing else; a word used for something its anchor does not cover is a nickname (`gunbc.design_argument::single_authority`). This roster is read, never extended by prose: a new word is a new row with an anchor that resolves.
+
+| Word | Anchor | Is | Is not |
+| --- | --- | --- | --- |
+| factory | `gunbc.roadmap.roadmap_dogfood_route::DogfoodRouteReceipt` | The machine that lands and verifies work: harness, workers, CI and the floor, and the daily workspace. It is defined by one request crossing every stage of the dogfood route and coming back as a reviewed, published candidate; the receipt is its acceptance. | Not the daily workspace alone, not the fabric, and not the private control plane. |
+| fabric | `product.fabric.selection::select_supply` | Compute placement on our own fleet: a demand matched with supply under a policy-bound selection, with seats, leases and cells (product.fabric, product.capacity, gunbc.fabric, gunbc.compute). | Not the belt that dispatches an attempt, not the harness that runs it, and not the fleet hardware itself. |
+| harness | `gunbc.harness.harness_seat::harness_bind_seat` | A worker session bound to a seat, with its guidance, tools, checkpoints and alignment to the node it serves. | Not the dispatcher (the belt) and not the placement (the fabric). |
+| belt | `gunbc.roadmap.roadmap_belt_actuate::belt_run_claim_through_compute` | The dispatch and attempt loop beside the daily workspace that runs a node's attempt, verifies and publishes it; it keeps attempt, lease and slot state of its own that gunbc.plans.planning_consolidation records as a duplicate of fabric's, to be deleted into fabric. | Not the fabric, and not the workspace page it serves. |
+| daily workspace | `gunbc.roadmap.roadmap_page::roadmap_page` | The served page that shows nodes, dispatches, standings and acceptances; the operator's reading surface, also called the roadmap page. | Not the lab (an instance that serves it) and not the private session dashboard. |
+| lab | `gunbc.live_deploy.release_binding::DeployedReleaseBinding` | The one running deployment of the daily workspace and belt on srv1, bound to the release it was built from; a place, not a program. | Not the workspace page itself and not a second workspace. |
+| control plane | `gunbc.design_ruling::planning_execution_is_anchored_on_fabric` | The private repository's session dashboard (ctrl), where the operator reads work items today; by the 2026-11-11 ruling a side path that renders this repository's plans and is not the destination. | Not the daily workspace, not the factory, and never a second planning authority. |
+| seed | `gunbc.v1.v1_maintenance_standing::v1_seed_standing` | The v1 compiler: the hand-maintained Rust that builds v2 today, semantics-frozen and maintenance-active under a purpose test; a regression oracle. | Not a specification of v2, and not the native route. |
+| native route | `gunbc.instrument_targets::v2_native_cli_entry` | The v2-emitted compiler, built from the seed's emission, judging sources itself; the route that becomes production by native-production-admission. | Not the seed interpreting v2 sources, and not a required CI job by itself. |
+| floor | `v2.workflow.required_floor::required_gate_authored_modules` | The required gate's authored population: the exact modules whose witnesses the required path judges, grown one name at a time by operator ruling. | Not the CI job roster, and not a census of every witness. |
+| compute cell | `gunbc.compute.work_provider_local::ComputeLayout` | A stateless unit of compute the fabric lays out, reserves and admits; between grants it holds nothing and settles money. | Not a serving seat, which holds a loaded replica. |
 
 ## Reference: building and checks
 

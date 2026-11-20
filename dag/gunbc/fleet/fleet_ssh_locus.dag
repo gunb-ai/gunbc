@@ -19,6 +19,7 @@ module gunbc.fleet.fleet_ssh_locus
 
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.optional { Present, Absent }
 import extdeps.ssh.keys { SshPublicKey }
 import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow }
 import product.host_identity { HostIdentity }
@@ -32,6 +33,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
   fleet_ssh_execution_context_of,
   materialize_fleet_ssh_multiplex_directory,
+  materialize_fleet_ssh_multiplex_directory_under,
   fleet_ssh_multiplex_receipt,
   materialize_known_hosts_anchor,
   fleet_known_hosts_rows,
@@ -43,6 +45,7 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
   FleetSshCredentialDerivationRefused,
+  FleetSshCredentialAdmissionEmpty,
   AgentSelectorMaterialized,
   AgentSelectorRefused,
   materialize_agent_public_selector,
@@ -171,6 +174,12 @@ fn prepare_ssh_agent_context(
                       verification: FleetSshCredentialDerivationRefused { cause: cause },
                     ),
                   }
+                FleetSshCredentialAdmissionEmpty { observed_line: o } =>
+                  FleetSshContextRefused {
+                    cause: fleet_ssh_credential_verification_refusal_reason(
+                      verification: FleetSshCredentialAdmissionEmpty { observed_line: o },
+                    ),
+                  }
                 FleetSshCredentialVerified { binding: binding } =>
                   ssh_context_from_verified_binding(
                     attempt: attempt,
@@ -192,8 +201,24 @@ fn ssh_context_from_verified_binding(
   rows: List<KnownHostKeyRow>,
 ) -> FleetSshContextPreparation
 {
+  ssh_context_from_verified_binding_under(attempt: attempt, binding: binding, rows: rows, job_root: Absent)
+}
+
+// THE SAME HALF, with the control socket's directory under a caller-named root instead of RUNNER_TEMP
+// (gunbc.fleet.fleet_known_hosts_anchor materialize_fleet_ssh_multiplex_directory_under): a caller
+// outside CI, the remote-build client, names the directory it owns for the run.
+fn ssh_context_from_verified_binding_under(
+  attempt: FleetSshAttemptIdentity,
+  binding: FleetSshCredentialBinding,
+  rows: List<KnownHostKeyRow>,
+  job_root: String?,
+) -> FleetSshContextPreparation
+{
   let materialization = materialize_known_hosts_anchor(attempt: attempt, rows: rows)
-  let multiplex = materialize_fleet_ssh_multiplex_directory()
+  let multiplex = match job_root {
+    Absent => materialize_fleet_ssh_multiplex_directory()
+    Present { value: root } => materialize_fleet_ssh_multiplex_directory_under(runner_temp: root)
+  }
   match fleet_ssh_execution_context_of(outcome: materialization, credential: binding, multiplex: multiplex) {
     Absent =>
       FleetSshContextRefused {

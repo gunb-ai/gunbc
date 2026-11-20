@@ -42,7 +42,9 @@ module test.claim.roadmap.roadmap_acceptance_evidence_witness
 import std.types { String, Bool, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
-import gunbc.roadmap.roadmap_event_carrier { roadmap_event_same_command }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_same_command, RoadmapEventEnvelope,
+}
 import gunbc.roadmap.roadmap_issue_command {
   AcceptNode, IssueCommandSubject, issue_command_event, issue_command_acceptance_evidence_law,
 }
@@ -64,14 +66,19 @@ import gunbc.roadmap.roadmap_event_log {
   AcceptanceRecordedEvent, AcceptanceRevokedEvent, roadmap_event_envelope, roadmap_event_wire_text,
   roadmap_event_decode, roadmap_acceptance_receipt_members,
   roadmap_migration_acceptance_identities, roadmap_migration_acceptance_identity_is_seeded,
-  roadmap_acceptance_migration_identity,
+  roadmap_acceptance_migration_identity, roadmap_acceptance_migration_event_node,
+  roadmap_migration_retirement_ids,
 }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   parse_roadmap_acceptance_event_history_carrier, RoadmapAcceptanceEventHistoryParsed,
   RoadmapAcceptanceEventHistoryParseRefused,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
-import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_receipt_line }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_acceptance_receipt_line, roadmap_acceptance_migration_decide,
+  RoadmapAcceptanceMigrationOutcome, MigrationVerified, MigrationRefused,
+  roadmap_acceptance_migration_refusal_report,
+}
 import gunbc.principal_projection { PrincipalRef }
 
 // THE PULL REQUEST AN ACCEPTANCE WAS EARNED BY, spelled once as the typed fact. A LOCAL fact record: this
@@ -627,13 +634,14 @@ test fn a_migration_verifier_agrees_when_the_log_holds_what_the_manifest_names()
   claim("agreement between the manifest and the log reports no problem at all",
     count(roadmap_acceptance_migration_problems(
       wanted: verifier_events_accepted(), held: verifier_events_accepted(),
-      closed_nodes: verifier_closed(), not_retired: verifier_nothing())) == 0)
+      closed_nodes: verifier_closed(), not_retired: verifier_nothing(),
+      migration_roster: verifier_nothing())) == 0)
 }
 
 test fn a_migration_verifier_refuses_swapped_evidence_on_both_sides_of_the_difference() -> Bool {
   let problems = roadmap_acceptance_migration_problems(
     wanted: verifier_events_accepted(), held: verifier_events_swapped(),
-    closed_nodes: verifier_closed(), not_retired: verifier_nothing())
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing(), migration_roster: verifier_nothing())
   claim("swapped evidence refuses on both sides of the difference", count(problems) == 2
     && any(problems, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
     && any(problems, pr => string_contains(s: pr, pattern: "expected 0, the log holds 1")))
@@ -642,7 +650,7 @@ test fn a_migration_verifier_refuses_swapped_evidence_on_both_sides_of_the_diffe
 test fn a_migration_verifier_counts_a_fact_the_manifest_names_twice_against_one_copy() -> Bool {
   let problems = roadmap_acceptance_migration_problems(
     wanted: concat(verifier_events_accepted(), verifier_events_accepted()), held: verifier_events_accepted(),
-    closed_nodes: verifier_closed(), not_retired: verifier_nothing())
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing(), migration_roster: verifier_nothing())
   claim("a fact the manifest names twice against one copy in the log reports its counts",
     count(problems) >= 1 && any(problems, pr => string_contains(s: pr, pattern: "expected 2, the log holds 1")))
 }
@@ -650,7 +658,7 @@ test fn a_migration_verifier_counts_a_fact_the_manifest_names_twice_against_one_
 test fn a_migration_verifier_refuses_an_acceptance_the_log_lost_with_its_closedness() -> Bool {
   let problems = roadmap_acceptance_migration_problems(
     wanted: verifier_events_accepted(), held: verifier_nothing_events(),
-    closed_nodes: verifier_nothing(), not_retired: verifier_nothing())
+    closed_nodes: verifier_nothing(), not_retired: verifier_nothing(), migration_roster: verifier_nothing())
   claim("an acceptance the log lost refuses as a missing fact and an unmet closedness",
     count(problems) == 2 && any(problems, pr => string_contains(s: pr, pattern: "expected 1, the log holds 0"))
     && any(problems, pr => string_contains(s: pr, pattern: "node-multiset"))
@@ -660,18 +668,50 @@ test fn a_migration_verifier_refuses_an_acceptance_the_log_lost_with_its_closedn
 // The empty held-list typed once, so a reader cannot mistake a dropped argument for a typo.
 fn verifier_nothing_events() -> List<RoadmapAcceptanceEvent> { [] as List<RoadmapAcceptanceEvent> }
 
-test fn a_migration_verifier_refuses_a_closed_node_the_manifest_never_accepted() -> Bool {
+// (5) The invented closed node still refuses — but now only where the migration has the standing to call it
+// invented: the node is one the migration carried on its own roster, so its evidence has something to say
+// about that node, and the log calling it closed on a receipt the manifest never accepted contradicts it.
+test fn a_migration_verifier_refuses_a_closed_node_the_migration_rostered_but_never_accepted() -> Bool {
   let problems = roadmap_acceptance_migration_problems(
     wanted: verifier_events_accepted(), held: verifier_events_accepted(),
-    closed_nodes: concat(verifier_closed(), ["node-the-manifest-never-accepted"]), not_retired: verifier_nothing())
-  claim("a node the log calls closed that the manifest never accepted refuses",
-    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-the-manifest-never-accepted")))
+    closed_nodes: concat(verifier_closed(), ["node-the-migration-rostered"]), not_retired: verifier_nothing(),
+    migration_roster: ["node-the-migration-rostered"])
+  claim("a rostered node the manifest never accepted cannot be reported closed by the log",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-the-migration-rostered")))
+}
+
+// (5b) THE SCOPE RULE, witnessed on the case a live append-only log actually presents. After the export,
+// another lane recorded acceptances of its own plan entries through the same modeled route, so the log holds
+// events the manifest never mentions. The manifest is SILENT about those nodes, silence is not a negation
+// (gunbc.design_argument::fail_closed: "unobserved is not absent"), and a migration that arrived whole must
+// still verify. Red before the scope rule: each foreign node reported two problems — a fact count of
+// "expected 0, the log holds 1" and an invented closedness the manifest "never accepted". That is what
+// stopped the srv1 deploy chain on 2026-11-17 for a migration that had in fact arrived intact.
+test fn a_migration_verifier_leaves_a_later_lanes_own_planning_out_of_the_verdict() -> Bool {
+  let foreign = [AcceptanceRecorded { receipt: sample_receipt("node-of-another-lane") }] as List<RoadmapAcceptanceEvent>
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: concat(verifier_events_accepted(), foreign),
+    closed_nodes: concat(verifier_closed(), ["node-of-another-lane"]), not_retired: verifier_nothing(),
+    migration_roster: verifier_nothing())
+  claim("an acceptance another lane appended after the export does not refuse a migration that arrived whole",
+    count(problems) == 0)
+}
+
+// (5c) The other side of the same rule, so that restricting the comparison is not permission to invent. An
+// extra acceptance naming a node the migration DID carry still refuses, and the refusal names the fact.
+test fn a_migration_verifier_still_refuses_a_foreign_event_naming_a_carried_node() -> Bool {
+  let extra = [AcceptanceRecorded { receipt: sample_receipt_other_executed_day("node-multiset") }] as List<RoadmapAcceptanceEvent>
+  let problems = roadmap_acceptance_migration_problems(
+    wanted: verifier_events_accepted(), held: concat(verifier_events_accepted(), extra),
+    closed_nodes: verifier_closed(), not_retired: verifier_nothing(), migration_roster: verifier_nothing())
+  claim("an acceptance invented for a node the migration carried still refuses, naming that fact",
+    count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-multiset")))
 }
 
 test fn a_migration_verifier_refuses_a_manifest_that_does_not_replay() -> Bool {
   let problems = roadmap_acceptance_migration_problems(
     wanted: verifier_events_revoked_alone(), held: verifier_events_revoked_alone(),
-    closed_nodes: verifier_nothing(), not_retired: verifier_nothing())
+    closed_nodes: verifier_nothing(), not_retired: verifier_nothing(), migration_roster: verifier_nothing())
   claim("a manifest that does not replay REFUSES rather than certifying an empty expectation",
     count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "does not replay")))
 }
@@ -679,7 +719,7 @@ test fn a_migration_verifier_refuses_a_manifest_that_does_not_replay() -> Bool {
 test fn a_migration_verifier_refuses_a_retired_node_the_log_does_not_hold_retired() -> Bool {
   let problems = roadmap_acceptance_migration_problems(
     wanted: verifier_events_accepted(), held: verifier_events_accepted(),
-    closed_nodes: verifier_closed(), not_retired: ["node-never-retired"])
+    closed_nodes: verifier_closed(), not_retired: ["node-never-retired"], migration_roster: verifier_nothing())
   claim("a node the runbook claims retired that the log does not hold retired refuses",
     count(problems) == 1 && any(problems, pr => string_contains(s: pr, pattern: "node-never-retired")))
 }
@@ -764,5 +804,83 @@ test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Boo
         Empty => false
         _ => false
       }
+  }
+}
+
+// ── THE VERDICT ITSELF, GREEN BY EXECUTION ─────────────────────────────────────────────
+//
+// No claim before this one ever built `MigrationVerified`. The certified outcome was reachable only through a
+// live carrier, so the counts it hands the operator — the manifest's size, the accepted count, the revoked
+// count, and `retired_named` — had never been produced by an executing route: a head in which one of them
+// reads the wrong list passed every gate, because nothing ever asked the branch to answer. That is what
+// gunbc.design_argument::consumption means by dangling, and "Done means a real consumer green by execution".
+//
+// So the claim hands the decision the values the wet half would hand it: three of the model's roster nodes
+// accepted, the other fifteen retired with nothing carried for them — the shape of the real migration —
+// with the roster taken from the model, because the decision refuses a roster that is not the model's. The
+// closedness list is produced by `roadmap_acceptance_migration_event_node`, the same naming function the wet
+// half of `roadmap_acceptance_migration_verdict` folds over, so the two halves cannot disagree about which
+// node an event speaks of; what the claim stands for is the certified counts, not the git read — the read
+// is the carrier's own witness, and the live migration's receipts bind it in production.
+//
+// Red at the head whose `retired_named` counted a name the function no longer bound: there the claim does not
+// merely fail, it cannot resolve — which is the same fact the seed's compile check cannot see, because a
+// seed refuses at function lookup and never reaches a body.
+
+fn migration_principal() -> EventPrincipalAuthenticated {
+  EventPrincipalAuthenticated { ref: PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr,
+    subject: "sub-migration-verifier-witness" as NonEmptyStr,
+  } }
+}
+
+fn migration_evidence() -> AcceptancePrEvidence {
+  EarnedByPullRequest {
+    pr_url: "https://github.com/briansrls/gunbc/pull/94291" as NonEmptyStr,
+    merged_at: "2026-11-03T04:15:00Z" as NonEmptyStr,
+    head_sha: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr,
+  }
+}
+
+// The first three names of the roster, taken from the roster itself so the claim cannot drift from it.
+fn migration_carried(model: List<String>) -> List<String> {
+  fold(model, init: [] as List<String>,
+    f: (acc, n) => if count(acc) < 3 { concat(acc, [n]) } else { acc })
+}
+
+// What the log's own reader closes when it holds exactly these acceptances: the node each one names.
+fn migration_closed(accepted: List<RoadmapAcceptanceEvent>) -> List<String> {
+  map(accepted, e => roadmap_acceptance_migration_event_node(e: e))
+}
+
+fn migration_envs(carried: List<String>) -> List<RoadmapEventEnvelope> {
+  map(carried, n => roadmap_event_envelope(e: RoadmapEvent {
+    node: n as NonEmptyStr as RoadmapNodeId,
+    author: migration_principal(),
+    parent: none,
+    kind: AcceptanceRecordedEvent { receipt: sample_receipt(n), evidence: migration_evidence() },
+    recorded_at: "2026-11-14T00:00:00Z" as String,
+  }))
+}
+
+test fn the_migration_verifier_certifies_a_migration_whose_facts_the_carrier_holds() -> Bool {
+  let model = roadmap_migration_retirement_ids()
+  let carried = migration_carried(model: model)
+  let accepted = map(carried, n => AcceptanceRecorded { receipt: sample_receipt(n) }) as List<RoadmapAcceptanceEvent>
+  match roadmap_acceptance_migration_decide(
+    wanted: accepted, log_events: accepted, envelopes: migration_envs(carried: carried),
+    closed_nodes: migration_closed(accepted: accepted),
+    retired_ids: map(model, n => n as NonEmptyStr as RoadmapNodeId),
+    retired_roster: join(model, ",")) {
+    MigrationVerified {
+      manifest_events: m, accepted_events: ae, revoked_events: rv, retired_named: rn,
+      held_events: h, event_lines: el,
+    } => claim(
+      "the decision certifies the migration it was handed, and names the model's roster as retired",
+      rn == count(model) && m == count(carried) && h == count(carried)
+        && ae == count(carried) && rv == 0 && count(el) == count(carried))
+    MigrationRefused { cause: cause } => claim(join([
+      "the decision refused a migration whose facts it was handed: ",
+      roadmap_acceptance_migration_refusal_report(cause: cause)], ""), false)
   }
 }

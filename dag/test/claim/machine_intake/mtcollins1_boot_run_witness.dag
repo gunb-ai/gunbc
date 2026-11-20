@@ -46,10 +46,10 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
 import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account, apply_workflow_run_id_mode_readings, mtcollins1_boot_site_pxe_edge_run_reading, DispatchFieldModeReading, SitePxeEdgeObserveRunPointer, FleetApplyRunPointer, fleet_converge_workflow_mode_wire }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_pxe_mac_discovery_step, fleet_converge_fan_policy_phase_step, fleet_converge_fan_policy_phase_receipt_upload_step, fleet_converge_fan_policy_phase_step_if_expression, fleet_converge_mtcollins1_bmc_cold_reset_step, fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account, apply_workflow_run_id_mode_readings, mtcollins1_boot_site_pxe_edge_run_reading, DispatchFieldModeReading, SitePxeEdgeObserveRunPointer, FleetApplyRunPointer, fleet_converge_workflow_mode_wire }
 import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
-import extdeps.github.expressions { serialize_expression }
+import extdeps.github.expressions { serialize_expression, evaluate_expression, gha_value_is_truthy, ExpressionValue, ExpressionEvaluationRefused, GithubPathResolution, GithubPathValue, GithubPathUnmodeled }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import std.process { ExitSuccess }
 import std.temporal_effect {
@@ -1290,4 +1290,46 @@ test fn apply_workflow_run_id_is_read_one_way_per_mode_and_as_the_edge_run_for_t
     && boot_reads_edge
     && (mtcollins1_boot_site_pxe_edge_run_reading.field as String) == "apply_workflow_run_id"
     && fleet_converge_workflow_mode_wire(mode: mtcollins1_boot_site_pxe_edge_run_reading.mode) == boot_wire
+}
+
+// ── THE FAN-POLICY STEP SKIPS EXACTLY THE CONTROLLER COLD RESET (merry-fox-82 msg_7dbfdbb9) ──────────────
+// The step's condition, EVALUATED for a dispatch of each boot-job mode, not compared as text: true for
+// mtcollins1_boot and mtcollins1_pxe_mac_discovery, false for mtcollins1_bmc_cold_reset. A condition widened to
+// skip any boot mode (or `false`, or a negation of the whole job) goes red on the first two; one that forgot the
+// exclusion goes red on the third. The step must also carry that very condition, so editing the expression
+// without wiring it, or wiring another, goes red too.
+fn dispatched_mode(path: List<String>, mode: String) -> GithubPathResolution {
+  if path == ["event", "inputs", "mode"] { GithubPathValue { value: mode } } else { GithubPathUnmodeled }
+}
+fn dispatch_boot(path: List<String>) -> GithubPathResolution { dispatched_mode(path: path, mode: "mtcollins1_boot") }
+fn dispatch_discovery(path: List<String>) -> GithubPathResolution { dispatched_mode(path: path, mode: "mtcollins1_pxe_mac_discovery") }
+fn dispatch_cold_reset(path: List<String>) -> GithubPathResolution { dispatched_mode(path: path, mode: "mtcollins1_bmc_cold_reset") }
+
+// THE ORACLE REQUIRES A VALUE (side chat on gunbc#16529, F5): the condition must EVALUATE, and its value is read
+// by GitHub truthiness (gha_value_is_truthy), the reading the runner applies to an `if:`. The evaluator encodes a
+// false comparison or negation as the empty string, never the text "false", so comparing to "false" was
+// unsatisfiable. An evaluation refusal satisfies neither expectation, so a condition that cannot be evaluated
+// cannot pass the cold-reset case by failing.
+fn fan_step_evaluates_to(github_path: fn(List<String>) -> GithubPathResolution, runs: Bool) -> Bool {
+  match evaluate_expression(expression: fleet_converge_fan_policy_phase_step_if_expression(), github_path: github_path) {
+    ExpressionValue { value: v } => gha_value_is_truthy(s: v) == runs
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+}
+
+test fn the_fan_policy_step_still_runs_for_every_boot_mode_and_skips_only_the_cold_reset() -> Bool {
+  fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
+    && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
+    && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
+    && step_if_text(s: fleet_converge_fan_policy_phase_step()) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
+    && step_if_text(s: fleet_converge_fan_policy_phase_receipt_upload_step()) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
+}
+
+// The cold reset's own step is not gated on the fan outcome (the fan step does not run in that mode), and the
+// boot and MAC-discovery steps still are: the exclusion did not travel into either boot mode's gate.
+test fn the_cold_reset_step_reads_no_fan_outcome_while_the_boot_step_still_does() -> Bool {
+  !string_contains(s: step_if_text(s: fleet_converge_mtcollins1_bmc_cold_reset_step()), pattern: "fan_policy_phase")
+    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_bmc_cold_reset_step()), pattern: "mtcollins1_bmc_cold_reset")
+    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_boot_step()), pattern: "steps.fan_policy_phase.outputs.")
+    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_pxe_mac_discovery_step()), pattern: "steps.fan_policy_phase.outputs.")
 }

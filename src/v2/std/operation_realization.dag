@@ -195,6 +195,22 @@ fn operation_input_text(invocation: BoundOperationInvocation, name: String) -> S
   })
 }
 
+// The words a dispatcher bound to one declared list input of an invocation, by the input's declared name. Absent
+// when the operation declared no such input or bound it as text, as operation_input_text is for the converse.
+fn operation_input_text_list(invocation: BoundOperationInvocation, name: String) -> List<String>? {
+  fold(invocation.bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if b.name == name {
+        match b.value {
+          InputText { text: _ } => none
+          InputTextList { items: xs } => Present { value: xs }
+        }
+      } else { none }
+    }
+  })
+}
+
 // A DELAY IS VIRTUAL TIME, NOT A PROCESS. An operation whose whole effect is to wait (a sleep) is
 // realized by advancing the realization's virtual clock by the requested seconds; the dispatcher then
 // applies every scheduled event due in that interval, which is how an event can happen during a quiet

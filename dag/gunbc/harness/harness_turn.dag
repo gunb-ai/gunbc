@@ -26,7 +26,7 @@ import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnre
 import gunbc.harness.harness_session_recovery {
   UnexplainedEngineRefusal, SessionValidation, harness_unexplained_refusal, session_messages_validation,
   session_event_recovery_needed, session_cause_text,
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events, session_conversation_from_request,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, SessionRecoveryUnreadable, session_recovery_of_events, session_conversation_from_request,
   session_conversation_messages, session_validation_interrupted_ids, session_event_resumed, session_resume_bound,
   session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of, SessionRecoveryRequestPending,
   RequestPendingCause, PendingNoCardServing, PendingCardUnanswered, PendingUpstreamBusy, PendingNoResponse,
@@ -2194,6 +2194,7 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
     match session_recovery_of_events(lines: lines) {
       SessionRecoveryNone => TurnResumeRefused { cause: "the session's stream records no recovery-needed refusal that is still unanswered, so there is nothing to resume" }
       SessionRecoveryMalformed { mismatch: mismatch } => TurnResumeRefused { cause: join(["the session's recovery record is unreadable, so it is not resumable: ", mismatch], "") }
+      SessionRecoveryUnreadable { detail } => TurnResumeRefused { cause: join(["the session's attempt event log could not be read, so it is not resumable: ", detail], "") }
       SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, wakes_made: wakes, last_delivery_at: _, resumable: _, interrupted_calls: interrupted, resume_round: round } =>
         match now_epoch_seconds() {
           // THE RE-DELIVERY IS STAMPED AT THE INSTANT THE WORKER ARRIVES. An unstamped re-delivery cannot feed

@@ -1,6 +1,11 @@
 module gunbc.fleet.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import std.integer { int_to_decimal_string, int_add, int_sub, int_mul, int_div_result, int_compare }
+import std.algebra { Ordering, Less, Equal, Greater }
+import std.measure { Second, second, second_count, measure_add, minutes_per_hour, seconds_per_minute }
+import std.error_primitives { Result, Ok, Err }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, NonEmptyDiagnostics, outcome_accepted, diagnostics_reason_lexemes }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -13,16 +18,18 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 
 import extdeps.tools.jq {
-  JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqAdmittedProcessPlan,
+  JqInvocation, JqProgram, JqInputFile, JqRawOutput, JqLastResultExit, JqProgramExit, JqAdmittedProcessPlan,
   jq_invocation_process_plan, jq_admitted_plan_surface, jq_executable,
 }
 import v2.std.compilers.cli_surface { cli_surface_arguments, cli_argument_text }
 import v2.extdeps.languages.bash_build {
   BracketQuoted,
+  bash_build_comment,
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_if, bash_build_if_else_from_stmts, bash_build_test_bracket, bash_build_stmt_list_from_nodes, bash_build_and_then,
   bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir, bash_build_with_redir_to_file,
+  bash_build_with_redir_from_file, bash_build_with_redir_append_to_file,
   bash_build_exit,
   bash_build_if_else,
 }
@@ -527,6 +534,13 @@ fn release_bins_transport_test(transport: ReleaseBinsTransportExactness) -> Node
 fn release_bins_outcome_arm(outcome: ReleaseBinsOutcome) -> Node {
   match outcome {
     ReuseAfterVerification => bash_build_stmt_list_from_nodes(stmts: [cmdl(ls: [":", "no-op"])])
+    // THE ARM MUST END IN exit 0 (review 96095). Falling through runs on into the REUSE path's
+    // stored-pack verification, whose first check tests $STAGE/release-bins.preimage against the
+    // $STAGE this arm just emptied: every cache-miss run would refuse with a false
+    // StoredEntryIncomplete instead of building -- a fabricated refusal where the real outcome is
+    // a build. The retention chore does not ride this arm's tail: it LEADS the step
+    // (release_bins_outcome_with_retention_statements prepends it), so build runs complete the
+    // chore before they exit, which is exactly what the chore exists for.
     BuildAfterEstablishedAbsence => bash_build_stmt_list_from_nodes(stmts: [
       cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "STAGE")]),
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "STAGE")]),
@@ -955,7 +969,11 @@ fn release_bins_key_statements(product: ReleaseBinsProduct) -> List<Node> {
 // nonzero, which refuses as LookupAnswerUnusable and is never absence. Of the admitted rows, exactly
 // one with key == the requested key and ref == the admitted ref is a candidate (its id, ref, version
 // and creation time are the receipt's producer identity); none is absence; two is refused.
-data release_bins_lookup_page_size: String = "100"
+// One authority for the cache-API page size: the number. Every textual use --
+// the per_page query parameter and every jq comparison -- is emitted from this
+// datum (review 96043: the re-spelled "100" was a second authority).
+data release_bins_lookup_page_size_int: Int = 100
+data release_bins_lookup_page_size: String = int_to_decimal_string(value: release_bins_lookup_page_size_int)
 
 fn release_bins_lookup_program(ref_expression: String) -> String {
   join([
@@ -992,6 +1010,869 @@ fn release_bins_jq_words(plan: Outcome<JqAdmittedProcessPlan>) -> List<Node> {
     Rejected { diagnostics: _ } => []
   }
 }
+
+//
+// DERIVATION OF KEEP (the admitted constraint: grounded, not guessed -- escalation msg_66b5d26e,
+// recommended option A approved by default 2026-11-16; the constraints originate in
+// bright-ibex-807's brief, not an operator ruling. No new CI job is admitted, so
+// gunbc.design_ruling::job_roster_closed_to_growth is the ruling that governs this step, and the
+// step conforms to it: retention runs inside the existing fleet-converge build job). The census
+// figures are
+// TYPED DATA below and the value is COMPUTED from them, so no deletion can depend on a comment:
+// deleting these lines breaks the build, not the policy. Measured 2026-11-16 (census GET
+// /repos/gunb-ai/gunbc/actions/caches?key=release-bins- plus gh run-list over main-branch
+// fleet-converge runs): creation peaked at 15 entries in one day (>=4x the ~3.6-3.8/day mean) --
+// carried below in its exact reduced form, 5 entries per 8 hours, so both arms of the rate are
+// exact Nat carriers; longest observed consumption lag 15.9 h, rounded up to 16 h (a deploy-only
+// retry reuses a plan's bins 3.9 h later today; a plan stays live across its approval window);
+// largest observed approval lag 4 h. Durations ride std.measure carriers (Second), built from the
+// std hour-to-second conversion chain (minutes_per_hour x seconds_per_minute) -- there is no
+// hand-spelled 24, 60 or 3600 anywhere here (review 96090: std.measure is the single authority
+// for time). Raw need = ceil(peak_rate x horizon) = ceil(5 x 72000 / 28800) = ceil(12.5) = 13
+// (horizon summed through measure_add, read off with second_count) + 1 for the oldest
+// in-horizon entry's own boundary = 14, rounded up to whole groups of 4 to absorb a burst -> 16.
+// A review that contradicts a datum may change the datum; a review that offers no measurement may
+// not change the number.
+data release_bins_retention_census_peak_window_entries: Int = 5
+data release_bins_retention_census_peak_window: Second = second(count: 8 * minutes_per_hour() * seconds_per_minute())
+data release_bins_retention_census_observed_lag: Second = second(count: 16 * minutes_per_hour() * seconds_per_minute())
+data release_bins_retention_census_approval_margin: Second = second(count: 4 * minutes_per_hour() * seconds_per_minute())
+data release_bins_retention_census_group_size: Int = 4
+data release_bins_retention_census_spare_entries: Int = 1
+
+// A broken census datum REFUSES, it does not produce a plausible number (review 96120;
+// gunbc.design_argument::fail_closed: "Every path succeeds fully or fails with a typed, located
+// diagnostic, and no plausible output is fabricated"). The earlier sentinel (Err => 1000000) made a
+// zero divisor look like a giant keep, after which the chore reported nothing-due as if retention
+// had worked -- a fabricated default hiding a deficit. Now the refusal is typed, and
+// fleet_converge_release_bins_retention_census_refusal turns it into a workflow-generation refusal
+// on the same channel the emitter already uses for every other unemittable fact
+// (FleetConvergeYamlGenerationRefused): no yaml at all rather than a chore on a made-up count.
+fn release_bins_retention_ceil_div(a: Int, b: Int) -> Result<Int, String> {
+  match int_div_result(int_add(a, int_sub(b, 1)), b) {
+    Ok { value: q } => Ok { value: q }
+    Err { value: _ } => Err { value: join(["release-bins retention census: ceiling division by a zero divisor (numerator ", int_to_decimal_string(a), ", divisor ", int_to_decimal_string(b), ") -- a census datum is zero"], "") }
+  }
+}
+
+fn release_bins_retention_keep_computed() -> Result<Int, String> {
+  let horizon = measure_add(a: release_bins_retention_census_observed_lag, b: release_bins_retention_census_approval_margin)
+  let horizon_secs: Int = second_count(s: horizon)
+  let window_secs: Int = second_count(s: release_bins_retention_census_peak_window)
+  let needed = match release_bins_retention_ceil_div(int_mul(release_bins_retention_census_peak_window_entries, horizon_secs), window_secs) {
+    Ok { value: q } => q
+    Err { value: r } => return Err { value: r }
+  }
+  let raw: Int = int_add(needed, release_bins_retention_census_spare_entries)
+  match release_bins_retention_ceil_div(raw, release_bins_retention_census_group_size) {
+    Ok { value: q } => Ok { value: int_mul(q, release_bins_retention_census_group_size) }
+    Err { value: r } => return Err { value: r }
+  }
+}
+
+// THE CENSUS GATE AT THE WORKFLOW BORDER. Ok and positive -> no refusal; anything else names the
+// cause and the emitter emits NO workflow (see expected_fleet_converge_yml in
+// gunbc.fleet.fleet_converge_workflow). The keep value must also be positive: a zero keep would
+// delete every non-current entry, which is the opposite of what a broken census should do.
+// The refusal over an arbitrary census result, so the witnesses can hand it a broken one and
+// watch it refuse, and a good one and watch it admit (gunbc.design_argument::fail_closed: "Done
+// means ... a discriminating input that goes red when the behavior is wrong"). The production
+// gate reads the real census.
+fn release_bins_retention_census_refusal_of(result: Result<Int, String>) -> String? {
+  match result {
+    Ok { value: q } =>
+      match int_compare(q, 0) {
+        Greater => Absent
+        Equal => Present { value: join(["REFUSED gunbc.fleet.fleet_release_bins_key: the release-bins retention census computed keep 0 -- the deletion plan would take every non-current entry on a broken count. No workflow yaml was emitted (gunbc.design_argument::fail_closed). Fix the census rows (census_peak_window_entries, census_group_size, the std.measure windows), or raise this refusal deliberately in a review."], "") }
+        Less => Present { value: join(["REFUSED gunbc.fleet.fleet_release_bins_key: the release-bins retention census computed the negative keep ", int_to_decimal_string(q), " -- a census datum is negative. No workflow yaml was emitted (gunbc.design_argument::fail_closed)."], "") }
+      }
+    Err { value: r } => Present { value: join(["REFUSED gunbc.fleet.fleet_release_bins_key: ", r, ". No workflow yaml was emitted -- retention would otherwise plan deletions or report nothing-due on a keep it never computed (gunbc.design_argument::fail_closed)."], "") }
+  }
+}
+
+fn fleet_converge_release_bins_retention_census_refusal() -> String? {
+  release_bins_retention_census_refusal_of(result: release_bins_retention_keep_computed())
+}
+
+data fleet_converge_release_bins_retention_keep: Result<Int, String> = release_bins_retention_keep_computed()
+// The hand-shell gate (ctrl review policy, review 96043): the listing, plan
+// and deletion below are carried as a bash sequence built through the
+// bash_build grammar (curl page ladder, jq plan invocations, xargs deletes).
+// The grammar builds the MEDIUM; the ORCHESTRATION -- fetch every required
+// page, admit completeness, plan once over the union, delete only from an
+// admitted plan -- is interim bash until the bash-emit capability tracked as
+// issue #5828 gives gunbc a modeled loop/condition node in
+// v2.extdeps.languages.bash_build. This row is the on-carrier dissolution
+// trigger for that interim.
+data release_bins_retention_guard_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: release_bins_retention_statements -- the retention guard's page-fetch loop, page gates, union plan and delete block are carried as a bash sequence built from bash_build grammar nodes; DISSOLVES WHEN the bash-emit capability of issue #5828 models loop and condition nodes in v2.extdeps.languages.bash_build, so the orchestration is emitted as Nodes and this hand-assembled sequence retires. The jq filter text remains a single typed program string passed as an argument -- jq is neither shell nor YAML syntax, so it is not a string medium (ctrl review policy; api-review 96036).")
+// Pagination bound for the retention lookup. The cache API page size is 100
+// (release_bins_lookup_page_size); five pages admit a release-bins family of
+// 500. Derivation: the last census counted 59-61 family entries, and steady
+// state under this guardian is at most 16 (KEEP) plus whatever a single burst
+// adds between runs; 500 is ~8x the largest family ever observed. Past 500
+// retention prints the typed `over-cap` line and deletes NOTHING -- the
+// guardian degrades visibly rather than guessing from a partial listing
+// (gunbc.design_argument::fail_closed: typed, located, countable).
+data fleet_converge_release_bins_retention_max_pages: Int = 5
+// Both bounds are DERIVED from their authorities -- the page size datum and
+// the page-count datum -- never re-spelled (review 96043).
+fn release_bins_retention_max_total_text() -> String {
+  int_to_decimal_string(value: release_bins_lookup_page_size_int * fleet_converge_release_bins_retention_max_pages)
+}
+fn release_bins_retention_page_size_text() -> String { release_bins_lookup_page_size }
+data release_bins_retention_prefix: String = "release-bins-"
+data fleet_converge_release_bins_retention_excluded_prefixes: List<String> = [
+  "fast-lane", "parse-verdict", "cargo-ci", "gunbc-materialization",
+]
+data release_bins_retention_answer_basename: String = "release-bins-retention-answer.json"
+data release_bins_retention_ids_basename: String = "release-bins-retention.ids"
+data release_bins_retention_ids_dedup_basename: String = "release-bins-retention.ids.dedup"
+data release_bins_retention_union_basename: String = "release-bins-retention.union"
+data release_bins_retention_flag_basename: String = "release-bins-retention.seen-answer"
+// Set by ANY required page that failed to fetch or admit. One admission of
+// completeness is checked before planning and before deleting: a partial
+// listing must never drive deletions (F4d, review 96005).
+data release_bins_retention_incomplete_basename: String = "release-bins-retention.pages-incomplete"
+data release_bins_retention_header_basename: String = "release-bins-retention-auth-header"
+data release_bins_retention_delete_header_basename: String = "release-bins-retention-delete-auth-header"
+
+// Renderings of the computed keep. fleet_converge_release_bins_retention_census_refusal makes
+// every Err here UNREACHABLE at emission (the workflow is not emitted at all when the census
+// refuses), so these arms are totalization, not a second path: each renders something that CANNOT
+// plan a deletion -- "REFUSED" is not a number, so jq refuses the slice and the run prints
+// plan-failed instead. fail_closed demands no fabricated number even in an unreachable arm.
+fn release_bins_retention_keep_text() -> String {
+  match fleet_converge_release_bins_retention_keep {
+    Ok { value: q } => int_to_decimal_string(value: q)
+    Err { value: _ } => "REFUSED"
+  }
+}
+
+// The per-run DELETE CAP (F2, side chat 2026-11-17): at most one KEEP WINDOW of deletions per
+// run. Grounded in the same census as KEEP: steady-state creation is ~5 entries per 8 h, so the
+// realistic backlog stays near the keep window and converges within a few runs even from the
+// over-cap ceiling (500), while the delete PHASE is bounded by construction -- cap x the per-op
+// bound below (<=16 x 8 s = 128 s worst case).
+fn release_bins_retention_delete_cap_text() -> String {
+  match fleet_converge_release_bins_retention_keep {
+    Ok { value: q } => int_to_decimal_string(value: q)
+    Err { value: _ } => "REFUSED"
+  }
+}
+
+// PER-OP NETWORK BOUND (F2): the 2026-11-16 census measured ~1.3 s per Actions-API call from the
+// runner. curl self-limits at --max-time 5 (nearly 4x the measurement); the timeout PREFIX (8 s)
+// catches a curl that ignores its own limit. Worst-case chore: <=6 GETs + <=cap DELETEs, each
+// <=8 s, plus local jq -- bounded by construction and far inside the step's unchanged 5-minute
+// budget. The whole chore additionally runs inside a best-effort subshell whose refusal prints one
+// typed chore-failed line and lets the outcome proceed.
+data release_bins_retention_curl_max_time: Second = second(count: 5)
+data release_bins_retention_curl_timeout: Second = second(count: 8)
+
+// `timeout(1)` takes an unsigned integer of SECONDS with no suffix, so both bounds are read off
+// their Second carriers as plain counts -- the wait policy stays on the measure algebra (review
+// 96116), and no unit letter is re-spelled in a string.
+fn release_bins_retention_curl_max_time_text() -> String {
+  int_to_decimal_string(value: second_count(s: release_bins_retention_curl_max_time))
+}
+
+fn release_bins_retention_curl_timeout_text() -> String {
+  int_to_decimal_string(value: second_count(s: release_bins_retention_curl_timeout))
+}
+
+// THE ANSWER FILE LIVES IN THE WORKSPACE, at the step's working directory, exactly like the lookup's
+// answer (release_bins_lookup_file / lookup_fetch_statement): curl writes it with -o at $ROOT/<name>
+// and the jq operand is the same path spelled relative, because the lowered jq argv carries the path
+// as a literal word and the step runs with the checkout root as its working directory. A review
+// (95940) caught the first draft writing curl -o under $RUNNER_TEMP while jq read the bare name --
+// two directories that never meet, which made jq always fail on a missing file.
+fn release_bins_retention_answer_file() -> String {
+  release_bins_retention_answer_basename
+}
+
+fn release_bins_retention_answer_rooted() -> Node {
+  rooted(file: release_bins_retention_answer_basename)
+}
+
+// Page N's answer file. Page 1 keeps the original basename (every existing
+// fixture and claim addresses it); pages 2..5 get their own file so a partial
+// listing can never masquerade as a whole page, and each page's jq reads only
+// the file its own curl wrote (F3's rule, per page).
+fn release_bins_retention_answer_page_basename(n_text: String) -> String {
+  if n_text == "1" {
+    release_bins_retention_answer_basename
+  } else {
+    join(["release-bins-retention-answer-", n_text, ".json"], "")
+  }
+}
+
+fn release_bins_retention_answer_page_rooted(n_text: String) -> Node {
+  rooted(file: release_bins_retention_answer_page_basename(n_text: n_text))
+}
+
+// The admitted answer shape mirrors the lookup's (one JSON document, total_count == page length,
+// every member an object with string key, string created_at and numeric id). Then: keep only the
+// release-bins family, drop the current key and the named foreign families, sort oldest-first and
+// slice off everything older than the KEEP newest, emitting ids one per line.
+fn release_bins_retention_excluded_fragment(p: String) -> String {
+  join([" and (.key | startswith(\"", p, "\") | not)"], "")
+}
+
+// The page-1 listing admitted in full, emitting its family entries as one JSON
+// array. Page 1 carries the newest 100 (the API lists created_at-descending),
+// but the KEEP WINDOW is never decided page-locally: every page appends its own
+// admitted family objects to the union file and the plan below sorts the UNION
+// once, by the same key everywhere, before choosing the keep window (manager
+// msg_9d49bb52: keep-newest is a union decision, never a per-page one).
+fn release_bins_retention_page1_program() -> String {
+  join([
+    ". as $answer | [inputs] | if length != 0 then error(\"the cache-API answer is not exactly one JSON document\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count <= ",
+    release_bins_retention_max_total_text(),
+    " and ((.total_count <= ",
+    release_bins_retention_page_size_text(),
+    " and .total_count == (.actions_caches | length)) or (.total_count > ",
+    release_bins_retention_page_size_text(),
+    " and (.actions_caches | length) == ",
+    release_bins_retention_page_size_text(),
+    "))",
+    " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
+    release_bins_retention_prefix,
+    "\"))",
+    join(map(fleet_converge_release_bins_retention_excluded_prefixes, q => release_bins_retention_excluded_fragment(p: q)), ""),
+    ")] else error(\"cache-API answer is not the admitted shape\") end end",
+  ], "")
+}
+
+// THE UNION PLAN: reads every page's appended family array, flattens, admits
+// only {id, key, created_at, ref} objects, and -- THE POPULATION THE WINDOW IS COMPUTED OVER IS
+// THE CONSUMABLE ONE (review 96127; gunbc.design_argument::demand_before_materialization: a
+// provider's retention must "span the obligated lifetime" of what it provides) -- the reuse
+// lookup consumes ONLY entries whose ref is refs/heads/main (release_bins_lookup_program pairs
+// key == RELEASE_BINS_KEY with .ref == that ref). Deleting by age across all refs would let a
+// crowd of PR-ref entries (visible to nobody but their own PR, per GitHub's cache-ref rule) push
+// the one entry a main dispatch can consume out of the keep window -- the guardian would evict
+// exactly what the consumer reads. So: filter to the producer ref FIRST, then one sort over that
+// population, order it by REAL TIME (strptime+mktime: created_at is a string, and sorting the
+// strings lexically would rank 2026-11-100 before 2026-11-2 -- the window would then keep a
+// pseudo-random 16 and delete recent packs; and dropping the fraction alone would tie two
+// entries created inside one second, letting INPUT ORDER decide which of them dies (F4,
+// bright-ibex-807: counterexample -- id 2 at .900Z listed before id 1 at .100Z was the one
+// deleted), so the sort key is [epoch_seconds, NUMERIC fraction, id]: no lossy step, and
+// .id makes even byte-identical timestamps deterministic (the fraction is extracted with an
+// explicit test branch, NOT the (? ...) // 0 idiom, which drops entries whose timestamp has
+// no fraction because capture emits the EMPTY stream on no-match and map swallows it).
+// GitHub documents FRACTIONAL seconds
+// ("2019-01-24T22:45:36.000Z") and jq 1.7 strptime REJECTS them outright (review F3,
+// bright-ibex-807 2026-11-17), which would make every valid listing plan-failed and starve
+// retention forever; sub("\.[0-9]+Z$"; "Z") strips an optional fraction so both documented
+// shapes parse. A timestamp in NEITHER shape still aborts the plan with
+// plan-failed rather than ordering deletions on a guess), keep its newest KEEP, everything older in it is due, minus this run's own key,
+// oldest-first, capped. PR-ref entries are simply not this chore's population.
+fn release_bins_retention_union_program() -> String {
+  join([
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $union | if ($union | type) == \"array\" and ($union | all(.[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\" and (.ref | type) == \"string\")) then ($union | map(.id)) as $ids | if ($ids | length) == ($ids | unique | length) then $union | map(select(.ref == ", join(["\"", release_bins_admitted_producer_ref, "\""], ""), ")) | map(. + {\"_retention_epoch\": (.created_at | sub(\"\\\\.[0-9]+Z$\"; \"Z\") | strptime(\"%Y-%m-%dT%H:%M:%SZ\") | mktime), \"_retention_frac\": (if (.created_at | test(\"\\\\.[0-9]+Z$\")) then (.created_at | capture(\"\\\\.(?<f>[0-9]+)Z$\") | ((.f | tonumber) / pow(10; (.f | length)))) else 0 end)}) | sort_by([._retention_epoch, ._retention_frac, .id]) | .[0: (if length > ",
+    release_bins_retention_keep_text(),
+    " then length - ",
+    release_bins_retention_keep_text(),
+    " else 0 end)] | map(select(.key != $ENV.RELEASE_BINS_KEY)) | .[0: ", release_bins_retention_delete_cap_text(), "] | .[] | .id | tostring else error(\"duplicate ids across pages: the listing is incomplete, deletions refused\") end else error(\"union entries are not the admitted family objects\") end",
+  ], "")
+}
+
+// A repeated id across pages means something else was SKIPPED -- the listing
+// is incomplete and no deletion may ride on it (side chat, #16596 review 2).
+// This is the countable admission: the program is TRUE exactly when the union
+// is duplicate-free, so `jq -e ... || <touch|echo>` runs its right arm exactly
+// when a duplicate is present; the boolean stays out of the log (/dev/null).
+fn release_bins_retention_duplicate_program() -> String {
+  join([
+    ". as $first | [inputs] as $rest | (([$first] + $rest) | flatten) as $u | ((($u | map(.id)) | length) == (($u | map(.id)) | unique | length))",
+  ], "")
+}
+
+fn release_bins_retention_duplicate_present() -> Node {
+  bash_build_with_redir_to_file(
+    inner: cmd(ws: [
+      lit(t: "jq"),
+      lit(t: "-e"),
+      lit(t: release_bins_retention_duplicate_program()),
+      rooted(file: release_bins_retention_union_basename),
+    ]),
+    path: lit(t: "/dev/null"),
+  )
+}
+
+
+// JqProgramExit, not JqLastResultExit: with --exit-status, jq exits 4 when it
+// produced NO output at all -- the at-cap case (nothing due) reads as a
+// failure and would be mistyped as plan-failed. Program correctness is still
+// enforced by the admission checks (error() exits nonzero under either
+// policy; malformed input, a disagreeing count or a stream of documents exit
+// nonzero and land in plan-failed), and the decision block separates the
+// empty-plan case by the ids file, not by jq's exit code.
+fn release_bins_retention_plan() -> Outcome<JqAdmittedProcessPlan> {
+  jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_retention_union_program() },
+    bindings: Empty,
+    input: JqInputFile { path: release_bins_retention_union_basename },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  })
+}
+
+fn release_bins_retention_get_word() -> Node {
+  words(ws: [
+    var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+    lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&key="], "")),
+    lit(t: release_bins_retention_prefix),
+  ])
+}
+
+// The same listing query, one page deeper. Only pages 2..5 use this spelling;
+// page 1 keeps the original URL so every existing answer fixture and claim
+// still addresses it.
+fn release_bins_retention_get_page_word(n_text: String) -> Node {
+  words(ws: [
+    var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+    lit(t: join(["/actions/caches?per_page=", release_bins_lookup_page_size, "&page=", n_text, "&key="], "")),
+    lit(t: release_bins_retention_prefix),
+  ])
+}
+
+// The listing's total_count, as the shell reads it to gate the later pages and
+// to declare `over-cap`. It exits nonzero when the field is absent or not a
+// number, which leaves the shell variable empty and every later gate false; the
+// shape verdict itself belongs to the plan, not here.
+fn release_bins_retention_total_program() -> String {
+  join([
+    ". as $answer | [inputs] | if length != 0 then error(\"multiple JSON documents\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" then .total_count else error(\"cache-API answer is not the admitted shape\") end end",
+  ], "")
+}
+
+fn release_bins_retention_total_words(answer_path: String) -> List<Node> {
+  release_bins_jq_words(plan: jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_retention_total_program() },
+    bindings: Empty,
+    input: JqInputFile { path: answer_path },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }))
+}
+
+// A later page's own admission: the same shape checks as the plan, bounded by
+// the page size, and NO keep-slice -- every family entry on pages past the
+// tfirst is older than everything on page 1 (the listing is created_at-
+// descending), so all of them are due. Admission is UNFILTERED (F1, review side chat
+// 2026-11-17): even the current run's key stays in the listing, so the duplicate-id and
+// completeness gates see EVERY entry; the exclusion happens only when the plan selects
+// delete candidates.
+fn release_bins_retention_page_program(n: Int) -> String {
+  // A page must carry EXACTLY as many entries as its own total_count declares
+  // for its position: pages before the last are full (per_page each), the last
+  // page carries the remainder. A page that comes back shorter than its own
+  // arithmetic demands is a broken or mid-stream answer; it is refused here
+  // (typed plan-failed at the append) rather than silently truncating the
+  // union the keep window is decided over.
+  let lo = int_to_decimal_string(release_bins_lookup_page_size_int * (n - 1))
+  let hi = int_to_decimal_string(release_bins_lookup_page_size_int * (n - 1) + release_bins_lookup_page_size_int)
+  join([
+    ". as $answer | [inputs] | if length != 0 then error(\"multiple JSON documents\") else $answer | if type == \"object\" and (.total_count | type) == \"number\" and (.actions_caches | type) == \"array\" and .total_count <= ",
+    release_bins_retention_max_total_text(),
+    " and (.actions_caches | length) == (if .total_count >= ",
+    hi,
+    " then ",
+    release_bins_retention_page_size_text(),
+    " elif .total_count <= ",
+    lo,
+    " then 0 else (.total_count - ",
+    lo,
+    ") end)",
+    " and all(.actions_caches[]; type == \"object\" and (.key | type) == \"string\" and (.created_at | type) == \"string\" and (.id | type) == \"number\") then [.actions_caches[] | select((.key | startswith(\"",
+    release_bins_retention_prefix,
+    "\"))",
+    join(map(fleet_converge_release_bins_retention_excluded_prefixes, q => release_bins_retention_excluded_fragment(p: q)), ""),
+    ")] else error(\"cache-API answer is not the admitted shape\") end end",
+  ], "")
+}
+
+fn release_bins_retention_page1_words() -> List<Node> {
+  release_bins_jq_words(plan: jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_retention_page1_program() },
+    bindings: Empty,
+    input: JqInputFile { path: release_bins_retention_answer_file() },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }))
+}
+
+fn release_bins_retention_page_words(n: Int) -> List<Node> {
+  let n_text = int_to_decimal_string(n)
+  release_bins_jq_words(plan: jq_invocation_process_plan(invocation: JqInvocation {
+    program: JqProgram { source: release_bins_retention_page_program(n: n) },
+    bindings: Empty,
+    input: JqInputFile { path: release_bins_retention_answer_page_basename(n_text: n_text) },
+    output_encoding: JqRawOutput,
+    exit_policy: JqProgramExit,
+  }))
+}
+
+fn release_bins_retention_delete_url_word() -> Node {
+  words(ws: [
+    var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"),
+    lit(t: join(["/actions/caches/", "RETENTION_ID"], "")),
+  ])
+}
+
+fn release_bins_retention_echo(word: String) -> Node {
+  cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins retention: ", word], ""))])
+}
+
+// FAILURE words ride out as job annotations, not just stdout (review 96127: "a retention guard
+// that never deletes anything looks the same in the job summary as one that works" --
+// gunbc.design_argument::fail_closed demands every degradation be TYPED, LOCATED AND COUNTABLE).
+// The message keeps the plain "release-bins retention: <word>" substring inside the annotation so
+// the witness assertions and the executed-step matrix keep matching the same words. Success lines
+// (done, keep=N, nothing-due) stay plain echoes: annotations are for degradations, not noise.
+fn release_bins_retention_warning(word: String) -> Node {
+  cmd(ws: [lit(t: "echo"), lit(t: join(["::warning title=release-bins retention::release-bins retention: ", word], ""))])
+}
+
+// Fetch and delete each own their bearer header file, removed on both outcomes immediately after
+// their own only consumer -- the same rule the lookup fetch follows (credential_argv_exposure).
+fn release_bins_retention_fetch(header: Node, answer: Node) -> Node {
+  let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
+  let get = cmd(ws: concat(
+    concat([lit(t: "timeout"), lit(t: release_bins_retention_curl_timeout_text()), lit(t: "curl"), lit(t: "-sSf"), lit(t: "--max-time"), lit(t: release_bins_retention_curl_max_time_text())], gunbc_ci_auth_header_file_args(header_path: header)),
+    [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_word(), lit(t: "-o"), answer],
+  ))
+  // A failed lookup is TYPED, not swallowed: the failure arm removes the
+  // header AND the answer file (so the decision block cannot read a stale or
+  // partial answer) and prints the lookup-failed line. The answer is also
+  // invalidated by the caller BEFORE this fetch runs, so "the plan's
+  // deletions are driven only by this invocation's own successful answer".
+  bash_build_or_else(
+    left: bash_build_subshell_from_stmts(stmts: [
+      gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
+      bash_build_or_else(
+        // The header OUTLIVES this fetch on success: pages 2..5 reuse the same
+        // header file (their curl references it and nothing recreates it), and
+        // the final cleanup statement removes it once. Removing it here made
+        // every real page-2 curl fail (F4b, review 96005).
+        left: get,
+        right: bash_build_subshell_from_stmts(stmts: [
+          remove_header,
+          cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
+          release_bins_retention_warning(word: "lookup-failed"),
+        ]),
+      ),
+    ]),
+    right: release_bins_retention_warning(word: "lookup-failed"),
+  )
+}
+
+// One deeper page, fetched into its OWN answer file with its own typed failure
+// line (`page-failed=N`). Same rule as the first fetch, per page: the answer is
+// invalidated before the curl and removed again on failure, so a page's ids can
+// only come from the curl that just ran (F3, per page).
+fn release_bins_retention_fetch_page(header: Node, answer: Node, n_text: String) -> Node {
+  let get = cmd(ws: concat(
+    concat([lit(t: "timeout"), lit(t: release_bins_retention_curl_timeout_text()), lit(t: "curl"), lit(t: "-sSf"), lit(t: "--max-time"), lit(t: release_bins_retention_curl_max_time_text())], gunbc_ci_auth_header_file_args(header_path: header)),
+    [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_get_page_word(n_text: n_text), lit(t: "-o"), answer],
+  ))
+  bash_build_or_else(
+    // Header kept alive by the page-1 fetch (F4b); its own curl references it.
+    left: get,
+    right: bash_build_subshell_from_stmts(stmts: [
+      cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer]),
+      cmd(ws: [lit(t: "touch"), rooted(file: release_bins_retention_incomplete_basename)]),
+      release_bins_retention_warning(word: join(["page-failed=", n_text], "")),
+    ]),
+  )
+}
+
+// A page's fetch + own-total check + append, run only when the shell's TOTAL
+// (read from page 1's answer) reaches past the pages already fetched. A failed
+// fetch or a total that moved between pages types `page-failed=N`, removes that
+// page's answer, and contributes NO ids -- the delete set shrinks towards the
+// pages this invocation actually fetched, never towards a stale or foreign file.
+fn release_bins_retention_page_statements(n: Int, header: Node, ids_file: Node) -> Node {
+  let n_text = int_to_decimal_string(n)
+  let gate_threshold = int_to_decimal_string(100 * (n - 1))
+  let answer_n = release_bins_retention_answer_page_rooted(n_text: n_text)
+  let answer_operand_n = lit(t: release_bins_retention_answer_page_basename(n_text: n_text))
+  let answer_present_n = test_words(ws: [lit(t: "-s"), answer_operand_n])
+  let total_n_assign = bash_build_assign(
+    name: "RELEASE_BINS_RETENTION_TOTAL_PAGE",
+    value: bash_build_word_cmdsubst(body: cmd(ws: release_bins_retention_total_words(answer_path: release_bins_retention_answer_page_basename(n_text: n_text)))),
+  )
+  let total_matches = test_words(ws: [var(n: "RELEASE_BINS_RETENTION_TOTAL_PAGE"), lit(t: "="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])
+  let page_type_fail = bash_build_subshell_from_stmts(stmts: [
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
+    cmd(ws: [lit(t: "touch"), rooted(file: release_bins_retention_incomplete_basename)]),
+    release_bins_retention_warning(word: join(["page-failed=", n_text], "")),
+  ])
+  let append_plan = bash_build_with_redir_append_to_file(
+    inner: cmd(ws: release_bins_retention_page_words(n: n)),
+    path: ids_file,
+  )
+  bash_build_or_else(
+    left: bash_build_and_then(
+      // Once the over-cap refusal typed its verdict the listing is decided:
+      // fetching pages 2..5 would be pointless GETs past the cap, and their
+      // failures would bury `over-cap` under spurious page-failed and
+      // pages-incomplete lines. The refusal flag short-circuits the ladder.
+      left: test_words(ws: [lit(t: "!"), lit(t: "-e"), rooted(file: release_bins_retention_flag_basename)]),
+      right: bash_build_and_then(
+      // Numeric gate by jq on page 1's own answer file, not `test -gt`: a
+      // bracket test needs its operator between operands and any misspelling
+      // exits 2, which the trailing `|| :` would swallow. jq -e is 0 exactly
+      // when the predicate is true and non-zero otherwise, and page 1's
+      // answer has already admitted total_count as a number by here.
+      left: bash_build_with_redir_to_file(
+        // The predicate's VALUE must not print: only its exit code is used.
+        inner: cmd(ws: [
+          lit(t: "jq"),
+          lit(t: "-e"),
+          lit(t: join([".total_count > ", gate_threshold], "")),
+          release_bins_retention_answer_rooted(),
+        ]),
+        path: lit(t: "/dev/null"),
+      ),
+      right: bash_build_subshell_from_stmts(stmts: [
+        // Invalidate this page's answer before its curl (F3, per page): ids
+        // can only come from the curl that just ran.
+        cmd(ws: [lit(t: "rm"), lit(t: "-f"), answer_n]),
+        release_bins_retention_fetch_page(header: header, answer: answer_n, n_text: n_text),
+        bash_build_or_else(
+          left: bash_build_and_then(left: answer_present_n, right: total_n_assign),
+          right: page_type_fail,
+        ),
+        // AND-THEN, not OR-ELSE: the check/appends run WHEN the answer IS
+        // THERE. An OR-ELSE runs its right arm when the left TEST fails, so
+        // 'answer present || append' appended only when the answer was
+        // missing -- the success path contributed nothing (matrix, fam250).
+        bash_build_or_else(
+          left: bash_build_and_then(left: answer_present_n, right: total_matches),
+          right: page_type_fail,
+        ),
+        // A page whose own admission jq refuses is a failed REQUIRED page: it
+        // must not silently contribute nothing (F4d).
+        bash_build_or_else(
+          left: bash_build_and_then(left: answer_present_n, right: append_plan),
+          right: page_type_fail,
+        ),
+      ]),
+      ),
+    ),
+    right: cmdl(ls: ["true"]),
+  )
+}
+
+fn release_bins_retention_delete(header: Node) -> Node {
+  let remove_header = cmd(ws: [lit(t: "rm"), lit(t: "-f"), header])
+  // xargs runs curl per id: curl and its arguments are WORDS of the xargs command -- xargs builds the
+  // argv itself, so no Command node can appear here. `RETENTION_ID` is xargs' replace placeholder, read
+  // by the shell only as the literal argument to -I.
+  let xargs_delete = cmd(ws: concat(
+    [lit(t: "xargs"), lit(t: "-r"), lit(t: "-n"), lit(t: "1"), lit(t: "-I"), lit(t: "RETENTION_ID")],
+    concat(
+      [lit(t: "timeout"), lit(t: release_bins_retention_curl_timeout_text()), lit(t: "curl"), lit(t: "-sSf"), lit(t: "--max-time"), lit(t: release_bins_retention_curl_max_time_text()), lit(t: "-o"), lit(t: "/dev/null"), lit(t: "-X"), lit(t: "DELETE")],
+      concat(
+        gunbc_ci_auth_header_file_args(header_path: header),
+        [lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"), release_bins_retention_delete_url_word()],
+      ),
+    ),
+  ))
+  let delete_pipe = bash_build_pipe(
+    left: cmd(ws: [lit(t: "printf"), lit(t: "%s\n"), var(n: "IDS")]),
+    right: xargs_delete,
+  )
+  bash_build_or_else(
+    left: bash_build_subshell_from_stmts(stmts: [
+      gunbc_ci_auth_header_file_write_statement(header_path: header, token_env: "GH_TOKEN"),
+      bash_build_or_else(
+        left: bash_build_and_then(left: delete_pipe, right: remove_header),
+        right: bash_build_subshell_from_stmts(stmts: [remove_header, release_bins_retention_warning(word: "delete-failed")]),
+      ),
+    ]),
+    right: release_bins_retention_warning(word: "delete-failed"),
+  )
+}
+
+// The decision block, split from the fetch so a witness can run it over a fixture answer without
+// touching the network (the lookup's decode_answer claims follow the same shape). Every outcome is a
+// typed line -- no-answer (fetch produced nothing readable), plan-failed (jq refused the answer),
+// nothing-due (plan ran, nothing older than KEEP), due=<ids> + delete-failed (deletion failed), done
+// -- and every arm exits zero: retention runs folded into the outcome step and must never fail the
+// job's real work (gunbc.design_argument::fail_closed: typed, located, countable).
+// The decision, as FIVE top-level statements in the admitted corpus -- and_then, or_else, test
+// words, statement-position redirection, subshell -- with no if/if_else at all: probe runs against
+// v2.workflow.bash_emit showed every one of these shapes admitted on their own while even a trivial
+// if_else(test ...; then ...; else ...; fi) is refused by the fold here, so the branch logic rides
+// on short-circuit operators instead (each statement ends exit-zero, so the step's set -e cannot
+// fire between them). The five lines spell the whole contract, every outcome typed and countable
+// (gunbc.design_argument::fail_closed):
+//   T1  answer present -> run the jq plan into the ids file; on jq failure remove the file the
+//       redirection truncated, so "plan failed" and "nothing due" are read apart by file absence.
+//   T2  answer absent or empty -> the typed line `no-answer` (the fetch already typed its own
+//       failure line; this names the decision that followed from it).
+//   T3  ids present and non-empty -> delete exactly those ids (the delete arm types `delete-failed`
+//       itself and prints `due=<ids>`, `deleting=N keep=16`, `done`).
+//   T4  answer present, ids ABSENT -> the plan itself was refused: the typed line `plan-failed`.
+//   T5  answer present, ids present but empty -> the honest empty: the typed line `nothing-due`.
+fn release_bins_retention_decide_statements() -> List<Node> {
+  let ids_file = rooted(file: release_bins_retention_ids_basename)
+  let answer_operand = lit(t: release_bins_retention_answer_file())
+  let answer_present = test_words(ws: [lit(t: "-s"), answer_operand])
+  let ids_present = test_words(ws: [lit(t: "-s"), ids_file])
+  let union_present = test_words(ws: [lit(t: "-s"), rooted(file: release_bins_retention_union_basename)])
+  let ids_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), ids_file])
+  let ids_exists = test_words(ws: [lit(t: "-e"), ids_file])
+  let nothing_arm = cmdl(ls: ["true"])
+  let jq_run = bash_build_or_else(
+    left: bash_build_with_redir_to_file(
+      inner: cmd(ws: release_bins_jq_words(plan: release_bins_retention_plan())),
+      path: ids_file,
+    ),
+    right: cmd(ws: [lit(t: "rm"), lit(t: "-f"), ids_file]),
+  )
+  // The ids file accumulates across pages, so pagination races can repeat an
+  // id; deletions run over the deduplicated set and the reported count counts
+  // THAT set, not the raw lines.
+  let delete_block = bash_build_subshell_from_stmts(stmts: [
+    bash_build_with_redir_to_file(inner: cmd(ws: [lit(t: "sort"), lit(t: "-n"), lit(t: "-u"), ids_file]), path: rooted(file: release_bins_retention_ids_dedup_basename)),
+    bash_build_assign(name: "IDS", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "cat"), rooted(file: release_bins_retention_ids_dedup_basename)]))),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: due="), var(n: "IDS")])]),
+    bash_build_assign(name: "COUNT", value: bash_build_word_cmdsubst(body: cmd(ws: [lit(t: "grep"), lit(t: "-c"), lit(t: "."), rooted(file: release_bins_retention_ids_dedup_basename)]))),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "release-bins retention: deleting="), var(n: "COUNT"), lit(t: " keep="), lit(t: release_bins_retention_keep_text())])]),
+    release_bins_retention_delete(header: temp(file: release_bins_retention_delete_header_basename)),
+    release_bins_retention_echo(word: "done"),
+  ])
+  let flag_operand = rooted(file: release_bins_retention_flag_basename)
+  // FLAGS are tested by EXISTENCE (-e), not size: they are created with
+  // touch, so a size test would never see them (matrix, page2fail case).
+  let flag_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), flag_operand])
+  let incomplete_operand = rooted(file: release_bins_retention_incomplete_basename)
+  let incomplete_absent = test_words(ws: [lit(t: "!"), lit(t: "-e"), incomplete_operand])
+  let incomplete_present = test_words(ws: [lit(t: "-e"), incomplete_operand])
+  [
+    // TOTAL comes first: it gates the over-cap declaration and every later
+    // page. An absent or non-numeric total leaves the variable empty, every
+    // numeric test below false, and the shape verdict to the plan.
+    // (Every scratch file was invalidated by the caller BEFORE the fetch --
+    // rm-ing any of them HERE would discard the answer this fetch just wrote.)
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: answer_present,
+        right: bash_build_assign(
+          name: "RELEASE_BINS_RETENTION_TOTAL",
+          value: bash_build_word_cmdsubst(body: cmd(ws: release_bins_retention_total_words(answer_path: release_bins_retention_answer_file()))),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // Past the pagination bound the guardian STOPS: no plan, no deletions, one
+    // typed line naming the total. Silent under-deletion from a partial listing
+    // is the failure this closes; guessing from page 1 alone is the other one.
+    bash_build_or_else(
+      left: bash_build_and_then(
+        // Same jq -e discipline as the page gates: no bracket-operator order
+        // to get wrong, no exit-2 that a `|| :` could hide.
+        left: bash_build_with_redir_to_file(
+          inner: cmd(ws: [
+            lit(t: "jq"),
+            lit(t: "-e"),
+            lit(t: join([".total_count > ", release_bins_retention_max_total_text()], "")),
+            release_bins_retention_answer_rooted(),
+          ]),
+          path: lit(t: "/dev/null"),
+        ),
+        right: bash_build_subshell_from_stmts(stmts: [
+          cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "::warning title=release-bins retention::release-bins retention: over-cap total="), var(n: "RELEASE_BINS_RETENTION_TOTAL")])]),
+          cmd(ws: [lit(t: "touch"), flag_operand]),
+        ]),
+      ),
+      right: nothing_arm,
+    ),
+    // Page 1 admits itself into the union file; a refused admission is the
+    // typed plan-failed (the plan cannot run without its first page) and takes
+    // the answer with it, so the pages gated on TOTAL never half-run.
+    // The over-cap refusal above already typed its own verdict and left the
+    // answer in place; re-admitting it here would only add a spurious
+    // plan-failed beside over-cap (a 501-entry answer is by construction not
+    // the admitted shape), so the admission is skipped once the flag exists.
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: answer_present,
+        right: bash_build_and_then(
+          left: flag_absent,
+          right: bash_build_or_else(
+          left: bash_build_with_redir_append_to_file(
+            inner: cmd(ws: release_bins_retention_page1_words()),
+            path: rooted(file: release_bins_retention_union_basename),
+          ),
+          right: bash_build_subshell_from_stmts(stmts: [
+            cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]),
+            release_bins_retention_warning(word: "plan-failed"),
+          ]),
+        ),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // Fetch and admit EVERY required page before any plan runs (F4a, review
+    // 96005): the old order planned right after page 1, so a 250-entry family
+    // deleted 84 ids from page 1 only and never looked at pages 2-3.
+    release_bins_retention_page_statements(n: 2, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 3, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 4, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    release_bins_retention_page_statements(n: 5, header: temp(file: release_bins_retention_header_basename), ids_file: rooted(file: release_bins_retention_union_basename)),
+    // Duplicate ids across pages mean the listing is INCOMPLETE (something was
+  // skipped), so the pages-incomplete flag is touched and every later gate --
+  // plan, delete -- refuses on it (side chat, #16596 review 2; preferred fix).
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(
+            left: flag_absent,
+            right: bash_build_or_else(
+              left: release_bins_retention_duplicate_present(),
+              right: cmd(ws: [lit(t: "touch"), incomplete_operand]),
+            ),
+          ),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // The typed reason for that refusal, separate from the generic pages line.
+    // jq tests UNIQUENESS, so the echo rides the `||` arm: it names duplicates
+    // exactly when the uniqueness test fails (an `&& echo` would name the
+    // healthy listing).
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_present,
+          right: bash_build_and_then(
+            left: flag_absent,
+            right: bash_build_or_else(
+              left: release_bins_retention_duplicate_present(),
+              right: release_bins_retention_warning(word: "duplicate-ids"),
+            ),
+          ),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // no-answer fires only when this invocation never held an answer at all AND
+    // never typed a refusal; a deliberate over-cap refusal also clears the
+    // answer, so the whole statement is made total with a trailing `|| :`
+    // (set -e must not abort the step on the flag path, and `||` chains without
+    // parens mis-associate -- a nested or_else here would echo no-answer always).
+    bash_build_or_else(
+      left: bash_build_or_else(
+        left: bash_build_and_then(left: answer_present, right: nothing_arm),
+        right: bash_build_and_then(left: flag_absent, right: release_bins_retention_warning(word: "no-answer")),
+      ),
+      right: cmd(ws: [lit(t: ":")]),
+    ),
+    // ONE plan, over the union of all admitted pages, only when every page
+    // this invocation needed admitted cleanly and the total is under the cap.
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(left: flag_absent, right: jq_run),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // Deletions ride only on a complete plan over a complete listing (F4d).
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: ids_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(left: flag_absent, right: delete_block),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    // The single admission for "a required page failed": the plan and the
+    // deletions above were gated on it, and this line names the refusal.
+    bash_build_or_else(
+      left: bash_build_and_then(left: incomplete_present, right: release_bins_retention_warning(word: "pages-incomplete")),
+      right: nothing_arm,
+    ),
+    bash_build_or_else(
+      left: bash_build_and_then(
+        left: union_present,
+        right: bash_build_and_then(
+          left: incomplete_absent,
+          right: bash_build_and_then(
+            left: flag_absent,
+            right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_absent, right: release_bins_retention_warning(word: "plan-failed"))),
+          ),
+        ),
+      ),
+      right: nothing_arm,
+    ),
+    bash_build_or_else(
+      left: bash_build_and_then(left: union_present, right: bash_build_and_then(left: test_words(ws: [lit(t: "!"), lit(t: "-s"), ids_file]), right: bash_build_and_then(left: ids_exists, right: release_bins_retention_echo(word: "nothing-due")))),
+      right: nothing_arm,
+    ),
+    // The shared auth header outlived the fetches on purpose (F4b); this is
+    // its only remaining consumer, so it goes last.
+    cmd(ws: [lit(t: "rm"), lit(t: "-f"), temp(file: release_bins_retention_header_basename)]),
+  ]
+}
+
+fn release_bins_retention_statements() -> List<Node> {
+  let header = temp(file: release_bins_retention_header_basename)
+  let true_arm = cmdl(ls: ["true"])
+  [
+    // On-carrier marker: the hand-shell gate asks every interim bash carrier
+    // to name what retires it (ctrl review policy; review 96043).
+    match bash_build_comment(text: join(["# ", dissolution_description(release_bins_retention_guard_dissolution_trigger)], "")) {
+      Present { value: n } => n
+      Absent => bash_build_command_from_lits(lits: ["echo", "release-bins retention: dissolve-on marker refused -- fix dissolution_description text"])
+    },
+    root_statement(),
+    // THE BEST-EFFORT BOUNDARY (F2, side chat 2026-11-17): the whole chore runs inside one
+    // subshell guarded by `|| echo chore-failed`, so no internal failure -- an uncaught
+    // non-zero, a scratch path staged as a directory, anything -- can abort the step before
+    // the outcome chain. Expiry/hang cannot either: every network call is individually
+    // bounded (timeout prefix + curl --max-time) and the delete phase is capped, so the
+    // chore's worst case is a closed arithmetic bound far inside the step's unchanged
+    // 5-minute budget. Inside the subshell `set -e` is inert (an ||-left context), which is
+    // exactly the best-effort semantics the chore needs; its own typed lines still classify.
+    bash_build_or_else(
+      left: bash_build_subshell_from_stmts(stmts: concat([
+        release_bins_retention_echo(word: join(["keep=", release_bins_retention_keep_text()], "")),
+        // Invalidate before fetching: a leftover answer (or over-cap flag) from
+        // anything earlier must never reach the plan -- only this invocation's
+        // own curl answers. Each removal is GUARDED (F2): an `rm -f` whose path
+        // is a directory exits non-zero even with -f, and an unguarded one could
+        // abort the chore -- the guard makes removal best-effort while the
+        // existence gates downstream still decide correctly.
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), release_bins_retention_answer_rooted()]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_flag_basename)]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_union_basename)]), right: true_arm),
+        // Every attempt-scoped scratch file is invalidated up front (F6, side
+        // chat #16596 review 2): a second invocation whose fetch fails must find
+        // no ids to delete and no stale flag to block a good run.
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_basename)]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_ids_dedup_basename)]), right: true_arm),
+        bash_build_or_else(left: cmd(ws: [lit(t: "rm"), lit(t: "-f"), rooted(file: release_bins_retention_incomplete_basename)]), right: true_arm),
+        release_bins_retention_fetch(header: header, answer: release_bins_retention_answer_rooted()),
+      ], release_bins_retention_decide_statements())),
+      right: release_bins_retention_warning(word: "chore-failed"),
+    ),
+  ]
+}
+
 
 // The two admitted refs, each with its jq ref expression and its answer file (workspace-relative,
 // because the lowered argv carries the path as a literal word).
@@ -1419,8 +2300,34 @@ fn release_bins_key_script_dispatch(pair_modes: List<String>) -> String {
   release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_key_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_key_script())
 }
 
+// THE BUILD JOB'S OUTCOME STEP RUNS ONE SCRIPT WITH TWO JOBS: decide and report the release-bins
+// outcome, then enforce bounded retention of the release-bins cache family. The retention statements
+// are appended HERE, at the workflow's step boundary, not inside release_bins_outcome_statements:
+// the witness and the retained executing controls replay the outcome runner as the workflow emitted
+// it, and deletion is a workflow-cache chore that belongs to CI, not to those controls.
+fn release_bins_outcome_with_retention_statements(product: ReleaseBinsProduct) -> List<Node> {
+  // The retention chore LEADS the step (review 96095). The build arm of the outcome chain must
+  // end in exit 0 -- falling through would run it into the reuse path's stored-pack verification,
+  // which refuses against the just-emptied $STAGE with a fabricated StoredEntryIncomplete -- and
+  // the build runs are exactly the ones that ADD cache entries, the runs retention exists for.
+  // A tail chore would therefore never run there. Leading makes both the build and the reuse
+  // path pay the bookkeeping; every retention outcome is typed and none can stop the step, so
+  // "Deletion never fails the job's real work" (constraint from bright-ibex-807's brief, carried
+  // through escalation msg_66b5d26e's default-approved option A)
+  // holds on both paths.
+  concat(release_bins_retention_statements(), release_bins_outcome_statements(product: product))
+}
+
+fn release_bins_outcome_with_retention_script_for(product: ReleaseBinsProduct) -> String {
+  release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_outcome_with_retention_statements(product: product)))
+}
+
+fn release_bins_outcome_with_retention_script() -> String {
+  release_bins_outcome_with_retention_script_for(product: fleet_release_bins_product())
+}
+
 fn release_bins_outcome_script_dispatch(pair_modes: List<String>) -> String {
-  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_outcome_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_outcome_script())
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_outcome_with_retention_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_outcome_with_retention_script())
 }
 
 fn release_bins_pack_script_dispatch(pair_modes: List<String>) -> String {
@@ -1517,6 +2424,7 @@ fn release_bins_scripts_admitted() -> Bool {
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_outcome_statements(product: fleet_release_bins_product()))),
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_pack_statements(product: fleet_release_bins_product()))),
       release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_consumer_statements(product: fleet_release_bins_product()))),
+      release_bins_script_accepted(outcome: release_bins_emitted(statements: release_bins_outcome_with_retention_statements(product: fleet_release_bins_product()))),
     ],
     init: true,
     f: (acc, b) => acc && b,

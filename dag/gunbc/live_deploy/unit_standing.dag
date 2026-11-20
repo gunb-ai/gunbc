@@ -2,6 +2,7 @@ module gunbc.live_deploy.unit_standing
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim, length, list_push }
+import std.list { first_where }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty,
@@ -9,7 +10,7 @@ import extdeps.systemd {
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
-  SystemdServiceDirective,
+  SystemdServiceDirective, SystemdServiceMode,
   SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged, MakeDirectory,
 }
 
@@ -631,3 +632,38 @@ fn observe_belt_oneshot_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> Be
 // in the witness module as a labeled TEST ORACLE, not here. Production derives a service unit's reads only
 // through the exhaustive classifier service_directive_required_reads_of_unit_file above (single authority);
 // a second production route to argv[0]/WorkingDirectory would be a meaning fork with no consumer.
+
+// The [Service] Type= of a unit file, from its OWN directives -- the unit's kind (oneshot, simple, ...).
+// Carried here (not re-derived at the gate) so the deploy-artifact gate can match a tree read's
+// converger to the leg that brings it up (oneshot -> start/restart, long-running -> enable).
+fn service_type_of_unit_file(file: SystemdUnitFile) -> SystemdServiceMode? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      fold(ds, init: none, f: (acc, d) => match acc {
+        Present { value: v } => Present { value: v }
+        Absent => match d {
+          ServiceType { mode: m } => Present { value: m }
+          _ => none
+        }
+      })
+    _ => none
+  }
+}
+
+// Does the unit declare ANY ExecStart=? Used with the CITED systemd.service(5) Type= default: a unit that
+// carries NO Type= line is `simple`, EXCEPT that it is `oneshot` when there is no ExecStart= (and no Type=
+// and no BusName=). This model has no BusName= directive, so that clause is always satisfied and the
+// deciding fact is whether an ExecStart= exists. Read straight off the unit's OWN directives -- no guessing.
+fn service_has_exec_start(file: SystemdUnitFile) -> Bool {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      fold(ds, init: false, f: (acc, d) => match acc {
+        true => true
+        false => match d {
+          ExecStart { command: _ } => true
+          _ => false
+        }
+      })
+    _ => false
+  }
+}
