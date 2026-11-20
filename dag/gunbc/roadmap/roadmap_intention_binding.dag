@@ -174,6 +174,13 @@ data intention_terminals: List<IntentionTerminals> = [
   // or reaches one along dependency edges; this row is what makes section 1's projection and section
   // 6's realization home checkable as done.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"), terminals: [nid(s: "roadmap-timeline-page"), nid(s: "roadmap-leaf-realized-duration"), nid(s: "roadmap-dispatch-carries-leaf"), nid(s: "roadmap-typed-handback"), nid(s: "roadmap-return-to-principal-records-acceptance")] },
+  // derived_types_keep_their_name's sink is the nickname retirement: the cut runs the argument-inhabitance
+  // root first, then NonEmptyStr as a checked nominal, then the brands reached by checked constructors, and
+  // retires the nickname aliases LAST (gunbc.design_ruling::where_refinements_retire_for_checked_constructors
+  // and the operator ruling the nickname node is blocked on). The four work items chain to this one node along
+  // the prerequisite edges in roadmap_authority::declared_roadmap_edges, so each is an ancestor of the terminal
+  // and reads as on a path.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "nickname-aliases-retire-to-one-authority")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {

@@ -6385,6 +6385,14 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "mtcollins1-boot-duty-retirement", parent: "srv4-site-pxe-edge-live-source-row"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "mtcollins1-boot-later-work"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "bobo-pxe-install-dispatch"),
+    // The derived-types-keep-their-name cut (sharp-stag-549, 2026-11-19), child waits on parent, the direction
+    // the binding witness reads (binding_on_a_path walks a terminal up its parent chain): the argument-inhabitance
+    // root is first, NonEmptyStr's checked nominal waits on it, the brands wait on NonEmptyStr, and the nickname
+    // retirement (the intention's terminal) waits on the brands. This makes each of the four bound nodes an
+    // ancestor of the terminal; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
+    edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
+    edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
+    edge(child: "nickname-aliases-retire-to-one-authority", parent: "brands-reached-by-checked-constructors"),
   ], guarantee_ladder_edges())
 }
 
