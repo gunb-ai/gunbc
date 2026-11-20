@@ -211,7 +211,10 @@ test fn fan_policy_phase_runs_before_the_power_cycle_and_not_inside_it() -> Bool
     ),
     s => fan_policy_phase_step_run_text(s: s),
   )
-  let fan = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
+  let fan = match gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() {
+    Accepted { value: t } => t
+    Rejected { diagnostics: _ } => ""
+  }
   filter(runs, r => r == fan_policy_phase_supplied_fleet_key || r == fan || r == fan_policy_phase_supplied_boot)
     == [fan_policy_phase_supplied_fleet_key, fan, fan_policy_phase_supplied_boot]
 }
