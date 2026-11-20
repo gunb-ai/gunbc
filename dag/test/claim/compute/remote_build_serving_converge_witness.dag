@@ -1328,8 +1328,8 @@ fn settled_slice_high(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimit
 // ── EnsureUserManagerLinger: the live manager the slice cgroup needs ──
 //
 // An empty user slice does not persist its cgroup unless the serving account's user manager is lingering;
-// on srv3 the daemon-reload and start both succeeded yet the slice read back unbounded, because the
-// transient user manager tore down before the readback. The converge therefore enables lingering BEFORE the
+// the transient manager can tear the slice's cgroup down before the readback, so a daemon-reload and start
+// that both succeed still read back uncapped. The converge therefore enables lingering BEFORE the
 // slice, and the executor halts at the first failed write -- so a manager that never lingers stops the pass
 // before a slice is ever written behind it. These claims pin the plan side: the not-lingering arm is a real
 // deviation that plans exactly one enable leg, that leg sorts ahead of the slice, and a REFUSED linger read

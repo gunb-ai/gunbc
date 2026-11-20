@@ -1304,8 +1304,8 @@ fn user_work_slice_install_command_argv(uid: Int) -> List<List<String>> {
 // unsettled slice stops the pass before the serve binary is ever written.
 // Bring the serving account's user manager into its lingering state, so the slice cgroup the NEXT leg
 // installs has a live manager to live under -- an empty user slice under a non-lingering account is torn
-// down before the readback can read it, which is what left srv3's slice 'unbounded' behind a successful
-// daemon-reload and start. Idempotent: a manager already lingering is settled with no write. The enable
+// down before the readback can read it, so the ceiling never lands even though daemon-reload and start
+// both succeed. Idempotent: a manager already lingering is settled with no write. The enable
 // verb is privileged so it rides sudo (loginctl_enable_linger_argv is the same argv the runner lane uses);
 // the decision is made by the SAME unelevated Linger read the observe used, so 'converged' and 'admitted'
 // are one reading. It is ranked below the slice, and the executor halts at the first failed write, so a
