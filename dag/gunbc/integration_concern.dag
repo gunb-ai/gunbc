@@ -4156,7 +4156,8 @@ data systemctl_user_show_omits_the_uid_machine_connector: IntegrationConcern = I
 }
 
 // CONVERGE MODES THAT ACT ON A MACHINE OTHER THAN THE ONE THEY RUN FROM, WITHOUT NAMING IT AS A SUBJECT
-// (filed 2026-11-20 on manager direction, from the bounded audit that folded the tailscale join arm).
+// (filed 2026-11-20 on manager direction, from the bounded audit taken while working out how to fold the
+// tailscale join arm -- that fold is a separate change, not this one).
 // What was inspected, so the scope is repeatable: every github.event.inputs.* name in
 // gunbc.fleet.fleet_converge_workflow -- host 33 times, subject_host 10, target 7, sweep_host 4,
 // reset_observer 4, arrival_subject 4, and no other name denotes a machine -- then the step function that
@@ -4170,7 +4171,7 @@ data systemctl_user_show_omits_the_uid_machine_connector: IntegrationConcern = I
 // chosen by the executor's own label. Two other shapes the same audit found are already carried: hostname
 // converge (its target input, SubjectRequiredAndDistinct, TargetHostDomain) and the two serving modes
 // (subject_host, may_be_executors_own, with srv4 run 44822470270 as the refusal receipt); the tailscale
-// join is folded in the change that files this row. Two shapes are excluded honestly rather than by
+// join fold is its own change, filed after this row. Two shapes are excluded honestly rather than by
 // silence: the two sweeps name a roster entry and a capture path uploaded by another run, and neither
 // runner_lost_boot_sweep_run nor runner_jit_dead_sweep_run contains a dial; host_reset_return's
 // reset_observer is a runner LABEL expression for the observer job, not a machine to act on; and
