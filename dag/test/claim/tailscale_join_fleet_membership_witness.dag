@@ -61,8 +61,11 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
   tailscale_self_tags_include,
+  tailscale_ping_verdict,
+  PingAnswered,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.fleet.fleet_enrollment {
   ci_runner_enrollment_participation,
   both_participation_enrollment_participation,
@@ -101,6 +104,7 @@ import gunbc.tailscale_join_converge {
   tailscale_join_outcome_receipt,
   tailscale_join_plan,
   tailscale_join_run_settled,
+  tailscale_ping_pong_is_expected,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -725,4 +729,45 @@ test fn w_the_apt_repo_install_plan_has_the_ten_step_order() -> Bool {
     ",",
   )
     == "KeyringDir,Mktemp,Fetch,ShowKeys,Guard,Dearmor,SourceLine,Update,Install,Cleanup"
+}
+
+// (d) THE READ-BACK PONG NAMED BY THE NODE LABEL. The srv4 join dispatch (fleet-converge run
+// 44757742976, 2026-11-20) installed tailscale through the shared apt walker and ran `tailscale up`, then
+// REFUSED at the read-back: "the pong named srv4, not srv4.tailecbe08.ts.net". The cause: `tailscale ping
+// <fqdn>` names the answering peer by its NODE LABEL ("srv4"), while the expected name is the MagicDNS FQDN;
+// string-equal, they never match, so a join that had in fact settled was refused. The fixture is that run's
+// pong -- the node name "srv4" is the observed fact; the address and route behind it never enter the
+// comparison -- transcribed here so a regression in the read-back goes red on the real bytes, not a guess.
+test fn w_the_srv4_pong_from_the_dispatch_settles_a_correct_join() -> Bool {
+  let srv4_pong = "pong from srv4 (100.120.40.7) via <derp-7> in 18ms"
+  match tailnet_host_from(machine: operator_host_srv4) {
+    Present { value: expected_fqdn } =>
+      match tailscale_ping_verdict(exit_code: 0, stdout: srv4_pong, stderr: "") {
+        PingAnswered { node_name: node_name, line: _ } =>
+          // The pong names srv4, and the read-back compares that node label to the model's first label
+          // (the canonical name ahead of the zone labels), so the correct join settles.
+          node_name == "srv4"
+            && tailscale_ping_pong_is_expected(expected: expected_fqdn, node_name: node_name)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE READ-BACK STILL FAILS CLOSED ON A WRONG NAME. The fix must not turn "compare like with like" into
+// "trust whoever answered": a pong naming a different node -- an address answering from a stale peer record
+// as somebody else -- is still refused. This is the guard the fix had to preserve; it goes red if the
+// comparison is loosened to "any pong at all".
+test fn w_a_pong_from_a_different_node_still_refuses_the_read_back() -> Bool {
+  let wrong_pong = "pong from srv3 (100.120.40.3) via <derp-7> in 21ms"
+  match tailnet_host_from(machine: operator_host_srv4) {
+    Present { value: expected_fqdn } =>
+      match tailscale_ping_verdict(exit_code: 0, stdout: wrong_pong, stderr: "") {
+        PingAnswered { node_name: node_name, line: _ } =>
+          node_name == "srv3"
+            && !tailscale_ping_pong_is_expected(expected: expected_fqdn, node_name: node_name)
+        _ => false
+      }
+    _ => false
+  }
 }
