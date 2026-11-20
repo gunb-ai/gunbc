@@ -317,7 +317,7 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
   // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent. The
   // argv goes through the extdeps constructor (gunbc.design_argument::interface_realization_policy).
-  let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ systemctl_disable_now_argv(unit: row.unit), coreutils_rm_force_argv(paths: [row.fragment_path]), systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
+  let _deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ systemctl_disable_now_argv(unit: row.unit), coreutils_rm_force_argv(paths: [row.fragment_path]), systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
   // The read batch, four reads. Beyond load-state, active state and the retained copy, the unit's INSTALL
   // STATE must be gone: a leftover enable symlink (review 96915) would keep is-enabled answering `enabled`
   // for a fragment that no longer exists, and a receipt printed over that state would fabricate "gone from
@@ -356,13 +356,31 @@ fn host_unit_retirement_ci_wet() -> ProcessExit {
                   match prepare_fleet_ssh_agent_context(attempt_raw: host_unit_retirement_attempt_raw) {
                     FleetSshContextRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the fleet ssh context is refused: ", reason))
                     FleetSshContextReady { context, receipt } =>
-                      fold(rows_of(subject_host), init: [] as List<HostUnitRetirementReadback>, f: fn(acc, r) { append(acc, items: [ host_unit_retirement_act_row(target, context, r) ]) })
-                      |> judge_run(subject_host: subject_host, executor_runner_name: executor_runner_name)
+                      host_unit_retirement_run(target, context, subject_host, executor_runner_name)
                   }
               }
           }
       }
   }
+}
+
+// THE PRE-DISABLE PASS (review 96922). Every row's unit is disabled and stopped BEFORE any fragment is
+// deleted. Two rows share one template fragment (strata-pool@a and @b from strata-pool@.service): asking
+// systemd to remove an instance's enable symlink AFTER the earlier row deleted the shared fragment is
+// unsettled ground -- a not-found unit may report no UnitFileState at all even with a dangling link, and
+// a receipt must never print `Retired` over that ambiguity. Disabling every named unit while all fragments
+// still stand removes the ambiguity entirely; the disable inside act_row's delete batch stays as the
+// per-row idempotent backstop. The pass's count is not a judgement: the readback is the only judge.
+fn host_unit_retirement_predisable_pass(target: SshTarget, context: FleetSshExecutionContext, rows: List<HostUnitRetirementRow>) -> Int {
+  fold(rows, init: 0 as Int, f: fn(acc, r) { let _out = host_unit_retirement_exec_all(target, context, [ systemctl_disable_now_argv(unit: r.unit), systemctl_stop_argv(unit: r.unit) ]); acc + 1 })
+}
+
+// THE WHOLE SUBJECT RUN: pre-disable pass first, then one acted row at a time, then the judgement.
+fn host_unit_retirement_run(target: SshTarget, context: FleetSshExecutionContext, subject_host: String, executor_runner_name: String) -> ProcessExit {
+  let rows = rows_of(subject_host)
+  let _pre = host_unit_retirement_predisable_pass(target, context, rows)
+  let readbacks = fold(rows, init: [] as List<HostUnitRetirementReadback>, f: fn(acc, r) { append(acc, items: [ host_unit_retirement_act_row(target, context, r) ]) })
+  readbacks |> judge_run(subject_host: subject_host, executor_runner_name: executor_runner_name)
 }
 
 fn rows_of(host: String) -> List<HostUnitRetirementRow> {
