@@ -138,12 +138,14 @@ test fn the_gate_step_binds_the_rule_and_the_script_tests_the_rule_not_the_mode(
 // keys on (fleet-converge.yml's `fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host))`)
 // and what the job's own facts describe; `subject_host` is the machine served. Control: the executor half
 // missing, or the two bindings collapsing to one, makes the label and the acted-on machine the same variable
-// again -- which is the conflation this whole routing removes.
+// again -- which is the conflation this whole routing removes. The third key is the mode's own rule, which the
+// entry reads to decide whether the served machine may be the executor's own: srv4 run 44822470270 is what
+// happens when the role split travels and the rule does not.
 test fn the_serving_steps_carry_the_subject_and_keep_the_executor_separate() -> Bool {
   let observe = fleet_converge_remote_build_serving_observe_step()
   let converge = fleet_converge_remote_build_serving_converge_step()
   all([observe, converge], s =>
-    env_keys(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name]
+    env_keys(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_subject_rule_env_name]
       && env_text(step: s, key: fleet_converge_subject_host_env_name) == concat("${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")
       && env_text(step: s, key: fleet_converge_expected_host_env_name) == "${{ github.event.inputs.host }}"
   )
@@ -363,8 +365,10 @@ test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Boo
   gate != ""
     && length(gated) == 5
     && length(filter(names, n => n == gate)) == 1
+    // appears_before alone would let a gated mode off free: if its step is renamed away, the gate is trivially
+    // "first". So every gated wire must have a step in the emitted list before the order means anything.
+    && all(gated, w => any(names, n => n == w))
     && all(gated, w => appears_before(names: names, before: gate, after: w))
-    && !appears_before(names: names, before: gate, after: gate)
 }
 
 // ---------------------------------------------------------------- helpers
@@ -461,9 +465,9 @@ fn step_id_text(step: Step) -> String {
   }
 }
 
-// Which of two named steps the runner reaches first. The first of the pair to appear in the emitted order
-// decides; a name missing from the list is not a pass but a refusal, so a renamed or dropped step fails the
-// claims that lean on it instead of quietly ordering nothing.
+// Which of two named steps the runner reaches first: the first of the pair to appear in the emitted order
+// decides. Note what this helper does NOT do -- if `after` is absent from the list it reports the pair as
+// ordered, so any claim using it must assert the second name exists. The claim above does.
 fn appears_before(names: List<String>, before: String, after: String) -> Bool {
   match first_where(xs: names, keep: n => n == before || n == after) {
     Present { value: n } => n == before
