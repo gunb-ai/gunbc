@@ -210,8 +210,18 @@ fn ssh_canonical_public_key_line_admitted(line: String) -> Bool {
 // So a key carrying it runs that one command and nothing a client asks for. restrict is the umbrella
 // for every restriction, including future ones; the individual no-* options are named here so a line
 // says exactly which it disables.
+//
+// from="pattern-list": the sshd(8) source-address restriction. The option "specifies that in addition
+// to public key type, the authorization ... requires that the remote host name or address match one of
+// the patterns in the ... comma-separated pattern-list"; a pattern is a "hostname/IP address or CIDR
+// pattern". So this is the option that admits a connection by WHERE it comes from -- the line carries the
+// set of source addresses it accepts. It is modeled as a list (not a pre-joined string) so the address
+// set has one structure the model can read, fold and cross-check against the network roster, and is joined
+// with commas only at render. permitopen= (which restricts the forwarded ENDPOINT) stays unmodeled; this
+// variant is the source-address restriction only.
 type AuthorizedKeyOption
   = ForcedCommandOption { command: AuthorizedKeyForcedCommand }
+  | FromSourceAddresses { patterns: List<NonEmptyStr> }
   | NoAgentForwardingOption
   | NoPortForwardingOption
   | NoPtyOption
@@ -232,9 +242,40 @@ fn authorized_key_forced_command(text: String) -> AuthorizedKeyForcedCommand? {
   }
 }
 
+// A FROM= PATTERN IS ADMITTED ONLY WHEN IT NEEDS NO QUOTING. Each pattern sits inside the option's double
+// quotes, so a double quote, a backslash, a line break or any whitespace in it would need escaping or an
+// embedding this module does not model -- and whitespace is exactly what would break sshd's comma-separated
+// split. The list must also be non-empty: an empty from=""/from= list is sshd's own "no host can match"
+// foot-gun and a typo'd address set, so it has no constructor here rather than a silently-inert line.
+fn authorized_key_from_source_addresses(patterns: List<String>) -> AuthorizedKeyOption? {
+  if patterns.length() == 0 {
+    none
+  } else {
+    let all_ok = fold(
+      patterns,
+      init: true,
+      f: (acc, p) =>
+        acc
+          && p != ""
+          && !p.contains("\"")
+          && !p.contains("\\")
+          && !p.contains(" ")
+          && !p.contains("\t")
+          && !p.contains("\n")
+          && !p.contains("\r"),
+    )
+    if all_ok {
+      Present { value: FromSourceAddresses { patterns: map(patterns, p => p as NonEmptyStr) } }
+    } else {
+      none
+    }
+  }
+}
+
 fn authorized_key_option_text(o: AuthorizedKeyOption) -> String {
   match o {
     ForcedCommandOption { command: c } => join(["command=\"", c.text as String, "\""], "")
+    FromSourceAddresses { patterns: ps } => join(["from=\"", join(map(ps, p => p as String), ","), "\""], "")
     NoAgentForwardingOption => "no-agent-forwarding"
     NoPortForwardingOption => "no-port-forwarding"
     NoPtyOption => "no-pty"
