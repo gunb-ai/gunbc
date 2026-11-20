@@ -42,7 +42,12 @@ data fleet_converge_split_missing_executor_marker: String = "REFUSED: fleet-conv
 
 type SplitPrecheck = SplitOk { executor_runner_name: String, subject_host: String } | SplitRefused { reason: SplitRefusalReason }
 
-type SplitRefusalReason = SelfSubject { executor_runner_name: String, subject_host: String } | SubjectAbsent | ExecutorIdentityAbsent | ModeDeclaresNoSubject
+type SplitRefusalReason = SelfSubject { executor_runner_name: String, subject_host: String } | SubjectAbsent | ExecutorIdentityAbsent
+
+// The install rule's OWN refusal vocabulary. Kept apart from SplitRefusalReason on purpose: the drain
+// precheck never answers these, and the install decision never answers SelfSubject -- so neither wall
+// can be read as carrying the other's rule.
+type InstallRefusalReason = ModeDeclaresNoSubject | DrainRuleDecidedInPrecheck | ExecutorIdentityAbsent | SubjectAbsent
 
 // THE PREDICATE, as one function both walls call. The executor side uses the SAME proving relation
 // the deploy gate uses (a slot named actions-runner@srv3-13 proves it lives on srv3), so "executor
@@ -91,8 +96,6 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
       join([fleet_converge_split_missing_subject_marker, ": FLEET_CONVERGE_SUBJECT_HOST is unset; a host-file mode acts on a named subject, never on an inferred one."], "")
     ExecutorIdentityAbsent =>
       join([fleet_converge_split_missing_executor_marker, ": RUNNER_NAME is unset; an unregistered process cannot prove it is not the subject, and fail-open here is the srv3 deadlock."], "")
-    ModeDeclaresNoSubject =>
-      join([fleet_converge_split_missing_subject_marker, ": ", fleet_converge_subject_rule_env_name, " carries no rule the facts table declares; the gate cannot tell a drain from an install, so nothing is actuated."], "")
   }
 }
 
@@ -107,8 +110,12 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
 //   SubjectMayBeTheExecutorsOwnMachine    -- the serving pair: a named subject, or the machine the
 //                                            job stands on, which is what an unnamed subject has
 //                                            always meant for these modes.
-// An unlisted mode gets the DRAIN rule: the default is the stricter one, so a new mode that forgets
-// to declare its rule is refused rather than served by accident (gunbc.design_argument::fail_closed).
+// There is NO default. Every mode in the facts table declares one of the three, and a mode that
+// declares none -- or a rule spelling this module does not know -- is refused at BOTH ends: the entry
+// read below answers ModeDeclaresNoSubject, and the workflow gate's own first statement refuses the
+// dispatch before any step runs. It does not fall back to the drain rule either: the two rules answer
+// different questions about the executor input (see fleet_converge_install_subject_decision), so
+// lending one to an undeclared mode would be a second authority deciding it (review 96966).
 type SplitSubjectRule
   = SubjectRuleNotApplicable
   | SubjectRequiredAndDistinct
@@ -149,7 +156,7 @@ fn fleet_converge_split_rule_of_wire(wire: String) -> SplitSubjectRule {
 type InstallSubjectOutcome =
     InstallSubjectOnNamedSubject { executor_runner_name: String, subject_host: String }
   | InstallSubjectOnExecutorsOwnMachine { executor_runner_name: String, host: String }
-  | InstallSubjectRefused { reason: SplitRefusalReason }
+  | InstallSubjectRefused { reason: InstallRefusalReason }
 
 // THE RUNTIME CONSUMER OF THE RULE. The entry does not choose a rule; it reads the one the facts table
 // declared for the dispatched mode, rendered by the emitter into FLEET_CONVERGE_SUBJECT_RULE, and this
@@ -172,20 +179,26 @@ fn env_text_or_empty(name: String) -> String {
   }
 }
 
-// THE DECISION, pure, so the rule is a fact a witness can drive: an executor name, a subject the
-// dispatch named ("" when it named none), and the executor's own machine from the expected-host input.
+// THE DECISION FOR THE INSTALL RULE, pure, so the rule is a fact a witness can drive: an executor name,
+// a subject the dispatch named ("" when it named none), and the executor's own machine from the
+// expected-host input. THE DRAIN RULE IS NOT DECIDED HERE. Under the drain rule the executor input is a
+// SLOT name, and "is this the machine the job stands on" is answered by the proving relation
+// runner_name_proves_host_identity inside fleet_converge_split_precheck above -- a plain string equality
+// here would have admitted exactly the actions-runner@srv3-13-on-srv3 self-drain of refused run
+// 40085967610 -- which is why fleet_converge_split_precheck's own comment insists on "the SAME proving
+// relation the deploy gate uses". So a dispatch under the drain rule that reaches this
+// install reader is refused with the route named, rather than re-judged here by weaker logic
+// (gunbc.design_argument::single_authority, review 96966 finding 1).
 fn fleet_converge_install_subject_decision(rule: SplitSubjectRule, executor_runner_name: String, named_subject: String, own_host: String) -> InstallSubjectOutcome {
   let executor = executor_runner_name
   let named = named_subject
   let own = own_host
   if rule == SubjectRuleNotApplicable {
     InstallSubjectRefused { reason: ModeDeclaresNoSubject }
+  } else if rule == SubjectRequiredAndDistinct {
+    InstallSubjectRefused { reason: DrainRuleDecidedInPrecheck }
   } else if executor == "" {
     InstallSubjectRefused { reason: ExecutorIdentityAbsent }
-  } else if rule == SubjectRequiredAndDistinct && named == "" {
-    InstallSubjectRefused { reason: SubjectAbsent }
-  } else if rule == SubjectRequiredAndDistinct && named == executor {
-    InstallSubjectRefused { reason: SelfSubject { executor_runner_name: executor, subject_host: named } }
   } else if named != "" {
     InstallSubjectOnNamedSubject { executor_runner_name: executor, subject_host: named }
   } else if own != "" {
@@ -199,14 +212,14 @@ fn fleet_converge_install_subject_decision(rule: SplitSubjectRule, executor_runn
 // dispatch did not name the machine it means" -- but the sentence is the one true for a mode that may
 // serve the machine it stands on: it names BOTH env names, because under this rule either of them
 // satisfies the subject and neither was given.
-fn fleet_converge_install_refusal_line(reason: SplitRefusalReason) -> String {
+fn fleet_converge_install_refusal_line(reason: InstallRefusalReason) -> String {
   match reason {
     SubjectAbsent =>
       join([fleet_converge_split_missing_subject_marker, ": neither ", fleet_converge_subject_host_env_name, " nor ", fleet_converge_expected_host_env_name, " names a machine; a serving mode converges the host the dispatch names, and never one it has to guess."], "")
     ExecutorIdentityAbsent =>
       join([fleet_converge_split_missing_executor_marker, ": RUNNER_NAME is unset; a host mutation performed by a process no registered lane owns has no executor to attribute it to."], "")
-    SelfSubject { executor_runner_name: name, subject_host: subject } =>
-      join([fleet_converge_split_refusal_marker, ": ", name, " on ", subject, " is not a refusal under the install rule; this line is unreachable for a serving mode."], "")
+    DrainRuleDecidedInPrecheck =>
+      join([fleet_converge_split_refusal_marker, ": this mode's rule is the drain rule, which only fleet_converge_split_precheck decides -- its executor is a slot name and fleet_converge_split_precheck proves what host that slot lives on. The install rule must not answer that question a second time."], "")
     ModeDeclaresNoSubject =>
       join([fleet_converge_split_missing_subject_marker, ": ", fleet_converge_subject_rule_env_name, " does not name a rule the facts table declares for this mode; a subject-taking entry was reached by a dispatch whose mode declares no subject at all."], "")
   }

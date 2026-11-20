@@ -22,6 +22,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split {
   fleet_converge_split_missing_executor_marker,
   fleet_converge_split_refusal_marker,
   ModeDeclaresNoSubject,
+  DrainRuleDecidedInPrecheck,
   SplitSubjectRule,
   SubjectRequiredAndDistinct,
   SubjectMayBeTheExecutorsOwnMachine,
@@ -186,11 +187,14 @@ test fn srv1_executing_for_a_butch_subject_is_admitted() -> Bool {
   }
 }
 
-// (7) THE DRAIN RULE STILL REFUSES A HOST ACTING ON ITSELF. Red control the manager asked for: a mode under
-// the drain rule whose executor proves its own subject is refused before any plan is read (the self-drain
-// deadlock, refused run 40085967610, actions-runner@srv3-13 draining srv3). Both spellings refuse -- a bare
-// host name and a full runner name. And a mode that declares NO rule falls back to the drain rule: the
-// default is the stricter one, so a new subject-naming mode is refused rather than served by accident.
+// (7) THE DRAIN RULE STILL REFUSES A HOST ACTING ON ITSELF, AT ONE AUTHORITY. Red control the manager asked
+// for: a mode under the drain rule whose executor PROVES its own subject is refused before any plan is read
+// (the self-drain deadlock, refused run 40085967610, actions-runner@srv3-13 draining srv3). Both spellings
+// refuse -- a bare host name and a full slot name -- because the precheck answers it with the proving
+// relation runner_name_proves_host_identity, not with string equality. And a mode that declares NO rule is
+// refused, not defaulted: the entry read answers ModeDeclaresNoSubject for it. The last arm is review 96966
+// finding 1: this module's install decision must NOT re-answer the drain rule with weaker logic, so a
+// drain-rule dispatch that reaches it is refused with the route named.
 test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
   match fleet_converge_mode_facts(mode: mode_named(name: "runner_host_withdraw")).subject_rule {
     SubjectRequiredAndDistinct => true
@@ -206,6 +210,14 @@ test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
     }
     && match fleet_converge_install_subject_decision(rule: fleet_converge_mode_facts(mode: mode_named(name: "qualification_attempt")).subject_rule, executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
       InstallSubjectRefused { reason: why } => match why { ModeDeclaresNoSubject => true  _ => false }
+      _ => false
+    }
+    // Not a fork: the install reader REFUSES a drain-rule dispatch instead of deciding it, so the only place
+    // "is this the machine the job stands on" is answered for a drain mode stays the precheck and its proving
+    // relation. A plain name comparison here would have admitted the srv3-13-on-srv3 pairing above.
+    && match fleet_converge_install_subject_decision(rule: SubjectRequiredAndDistinct, executor_runner_name: "actions-runner@srv3-13", named_subject: "srv3", own_host: "srv3") {
+      InstallSubjectRefused { reason: why } =>
+        match why { DrainRuleDecidedInPrecheck => string_contains(s: fleet_converge_install_refusal_line(reason: why), pattern: "fleet_converge_split_precheck")  _ => false }
       _ => false
     }
 }
@@ -284,10 +296,15 @@ test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
 // of the same gate would disagree.
 test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
+  let drain_half = filter(roster, w => drain_rule_admits_its_own_mode(mode: w))
+  let install_half = filter(roster, w => install_rule_admits_its_own_mode(mode: w))
   length(roster) == 5
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) != drain_rule_admits_its_own_mode(mode: w))
-    && all(map(filter(fleet_converge_workflow_modes, m => drain_rule_admits_its_own_mode(mode: fleet_converge_workflow_mode_wire(mode: m))), m => fleet_converge_workflow_mode_wire(mode: m) == "runner_host_file_converge" || fleet_converge_workflow_mode_wire(mode: m) == "runner_host_withdraw" || fleet_converge_workflow_mode_wire(mode: m) == "runner_host_restore" || fleet_converge_workflow_mode_wire(mode: m) == "hostname_converge")
+    && length(drain_half) == 3
+    && length(install_half) == 2
+    && all(drain_half, w => w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
+    && all(install_half, w => w == "remote_build_serving_observe" || w == "remote_build_serving_converge")
     && !any(roster, w => w == "runner_host_file_observe")
 }
 
@@ -328,10 +345,12 @@ fn install_rule_admits_its_own_mode(mode: String) -> Bool {
   }
 }
 
-// The other half of the same split: a mode the list does not name falls through to the drain rule, which is
-// what a NEW subject-naming mode (a host-unit teardown, say) gets by default -- strict, subject required,
-// executor different from the subject. Asserting the halves rather than a roster count is what lets a sixth
-// mode arrive without editing this witness: it must land on one side of the split or the claim goes red.
+// The other half of the same split. There is no fall-through: a mode whose facts row declares
+// SubjectRuleNotApplicable is on NEITHER half, and both ends refuse it -- the entry read answers
+// ModeDeclaresNoSubject (claim 7) and the gate's own first statement refuses the dispatch (claim 3). So a
+// sixth subject-naming mode (a host-unit teardown, say) must state which half it is on. Asserting the halves
+// rather than a roster count is what lets it arrive without editing this witness: it lands on one side, or
+// this claim goes red pointing at the row that declared no rule.
 fn drain_rule_admits_its_own_mode(mode: String) -> Bool {
   match fleet_converge_mode_facts(mode: mode_named(name: mode)).subject_rule {
     SubjectRequiredAndDistinct => true
