@@ -1142,7 +1142,7 @@ fn materialize_fleet_ssh_multiplex_directory() -> FleetSshMultiplexPreparation {
 // a success. The pure admission is left to the caller: the multiplex site adds its sun_path fits test and
 // agrees the owner with the job root it sits under, while the remote-build client's job root agrees the
 // owner with the running principal and requires a directory. ONE ensure-dir, not a hand-rolled second.
-data OwnerOnlyDirectoryReadBack
+type OwnerOnlyDirectoryReadBack
   = OwnerOnlyDirectoryUnreadable { path: String }
   | OwnerOnlyDirectoryObserved { path: String, created: Bool, mode_text: String, owner: String }
 
