@@ -1,0 +1,218 @@
+module v2.cli.migration_driver_tmp
+
+// TEMPORARY local driver (untracked, never committed): chunked plan/apply for the PR 3
+// corpus run, for a session whose door binary cannot be built. It drives the SAME
+// bound entry points the plan/apply verbs use, with the population supplied per chunk.
+
+import v2.cli.reference_migration_verbs { reference_migration_env, reference_migration_join, reference_migration_bound_paths, MigrationBoundPathsListed, MigrationBoundPathsRefused }
+import v2.cli.population_verbs { PopulationReport }
+import v2.compiler.module_acquisition { SourceRootBinding }
+import v2.workflow.reference_migration {
+  migration_context_policy_design,
+  migration_plan_complete,
+  migration_plan_edits,
+  migration_plan_render,
+  migration_plan_resolution_defects,
+  migration_plan_run_holds,
+  MigrationPlan,
+  MigrationApplyOutcome,
+  Applied,
+  Refused,
+  reference_migration_apply_bound,
+  reference_migration_plan_bound,
+  reference_migration_rules_parse,
+}
+import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map }
+import std.optional { Absent, Present }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.text { string_split }
+import std.integer { int_to_decimal_string }
+import std.algebra { FreeSemigroup }
+import std.types { Char }
+import std.types { Bool, String, Char }
+import std.coercion { unicode_scalar_unfold }
+import std.process { ExitSuccess, ExitFailure, ProcessExit }
+
+fn corpus_bindings() -> List<SourceRootBinding> {
+  Cons {
+    head: SourceRootBinding { tree: DagTree, host_directory: "dag" },
+    tail: Cons {
+      head: SourceRootBinding { tree: V2Tree, host_directory: "src/v2" },
+      tail: Empty,
+    },
+  }
+}
+
+data manifest_line_delimiter: Char = 10
+
+fn manifest_lines(content: String) -> List<String> {
+  string_split(
+    source: unicode_scalar_unfold(s: content),
+    delimiter: FreeSemigroup { head: manifest_line_delimiter, tail: Empty },
+  )
+}
+
+fn manifest_paths(manifest_path: String) -> List<String> {
+  let r = Filesystem.Read(path: manifest_path)
+  if !r.success {
+    Empty
+  } else {
+    manifest_lines(content: r.content)
+  }
+}
+
+fn report_lines(plan: MigrationPlan, defects: List<String>) -> String {
+  reference_migration_join(
+    lines: migration_plan_render(plan: plan)
+      + list_map(xs: defects, f: fn(defect) { "RESOLUTION DEFECT: " + defect }),
+  )
+}
+
+fn plan_chunk(manifest_path: String, rules_path: String, out_path: String) -> Bool {
+  let rr = Filesystem.Read(path: rules_path)
+  let input = reference_migration_rules_parse(content: rr.content)
+  let paths = manifest_paths(manifest_path: manifest_path)
+  match reference_migration_env(bindings: corpus_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      let policy = migration_context_policy_design()
+      let plan = reference_migration_plan_bound(
+        env: env,
+        paths: paths,
+        rules: input.rules,
+        policy: policy,
+        resolutions: input.resolutions,
+      )
+      let defects = migration_plan_resolution_defects(plan: plan, resolutions: input.resolutions)
+      let body = report_lines(plan: plan, defects: defects)
+      let verdict = "\nRUN_HOLDS="
+        + (if migration_plan_run_holds(plan: plan) && is_empty(xs: defects) { "yes" } else { "no" })
+        + "\nCOMPLETE=" + (if migration_plan_complete(plan: plan) { "yes" } else { "no" }) + "\n"
+      let w = Filesystem.Write(path: out_path, content: body + verdict)
+      w.success
+  }
+}
+
+fn apply_chunk(manifest_path: String, rules_path: String, out_path: String) -> Bool {
+  let rr = Filesystem.Read(path: rules_path)
+  let input = reference_migration_rules_parse(content: rr.content)
+  let paths = manifest_paths(manifest_path: manifest_path)
+  match reference_migration_env(bindings: corpus_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      let policy = migration_context_policy_design()
+      let plan = reference_migration_plan_bound(
+        env: env,
+        paths: paths,
+        rules: input.rules,
+        policy: policy,
+        resolutions: input.resolutions,
+      )
+      let defects = migration_plan_resolution_defects(plan: plan, resolutions: input.resolutions)
+      if !(migration_plan_run_holds(plan: plan) && is_empty(xs: defects)) {
+        let w = Filesystem.Write(
+          path: out_path,
+          content: "APPLY REFUSED: run does not hold\n" + report_lines(plan: plan, defects: defects),
+        )
+        w.success
+      } else {
+        let selected = list_map(xs: migration_plan_edits(plan: plan), f: fn(edit) { edit.id })
+        match reference_migration_apply_bound(
+          env: env,
+          paths: paths,
+          rules: input.rules,
+          policy: policy,
+          resolutions: input.resolutions,
+          plan: plan,
+          selected: selected,
+        ) {
+          Applied { written: written, contents: _ } =>
+            let w = Filesystem.Write(
+              path: out_path,
+              content: "APPLIED " + int_to_decimal_string(value: length(xs: written)) + " file(s)\n"
+                + reference_migration_join(lines: written),
+            )
+            w.success
+          Refused { refusals: refusals } =>
+            let w = Filesystem.Write(
+              path: out_path,
+              content: "APPLY REFUSED\n"
+                + reference_migration_join(
+                  lines: list_map(xs: refusals, f: fn(refusal) { refusal.id + ": " + refusal.reason }),
+                ),
+            )
+            w.success
+        }
+      }
+  }
+}
+
+fn write_manifest(out_path: String) -> Bool {
+  match reference_migration_env(bindings: corpus_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      match reference_migration_bound_paths(env: env) {
+        MigrationBoundPathsRefused { subject: _, cause: _ } => false
+        MigrationBoundPathsListed { paths: paths } =>
+          let w = Filesystem.Write(path: out_path, content: reference_migration_join(lines: paths))
+          w.success
+      }
+  }
+}
+
+type ChunkState {
+  current: List<String>
+  done: List<List<String>>
+}
+
+fn chunk_step(state: ChunkState, item: String) -> ChunkState {
+  if length(xs: state.current) + 1 >= 400 {
+    ChunkState { current: Cons { head: item, tail: Empty }, done: Cons { head: state.current, tail: state.done } }
+  } else {
+    ChunkState { current: Cons { head: item, tail: state.current }, done: state.done }
+  }
+}
+
+type RunState {
+  ok: Bool
+  i: Int
+}
+
+fn run_chunk_step(state: RunState, chunk: List<String>) -> RunState {
+  RunState {
+    ok: state.ok && plan_chunk_paths(paths: chunk, rules_path: "/tmp/bst227-pr3/rules-current.txt", out_path: "/tmp/bst227-pr3/plan-c" + int_to_decimal_string(value: state.i) + ".txt"),
+    i: state.i + 1,
+  }
+}
+
+fn plan_all(manifest_path: String) -> ProcessExit {
+  let paths = manifest_paths(manifest_path: manifest_path)
+  let st = fold_list(xs: paths, empty: ChunkState { current: Empty, done: Empty }, cons: chunk_step)
+  let chunks = Cons { head: st.current, tail: st.done }
+  let ran = fold_list(xs: chunks, empty: RunState { ok: true, i: 0 }, cons: run_chunk_step)
+  if ran.ok { ExitSuccess } else { ExitFailure { code: 1, reason: "migration driver chunk failed" } }
+}
+
+fn plan_chunk_paths(paths: List<String>, rules_path: String, out_path: String) -> Bool {
+  let rr = Filesystem.Read(path: rules_path)
+  let input = reference_migration_rules_parse(content: rr.content)
+  match reference_migration_env(bindings: corpus_bindings()) {
+    Absent => false
+    Present { value: env } =>
+      let policy = migration_context_policy_design()
+      let plan = reference_migration_plan_bound(
+        env: env,
+        paths: paths,
+        rules: input.rules,
+        policy: policy,
+        resolutions: input.resolutions,
+      )
+      let defects = migration_plan_resolution_defects(plan: plan, resolutions: input.resolutions)
+      let body = report_lines(plan: plan, defects: defects)
+      let verdict = "\nRUN_HOLDS="
+        + (if migration_plan_run_holds(plan: plan) && is_empty(xs: defects) { "yes" } else { "no" })
+        + "\nCOMPLETE=" + (if migration_plan_complete(plan: plan) { "yes" } else { "no" }) + "\n"
+      let w = Filesystem.Write(path: out_path, content: body + verdict)
+      w.success
+  }
+}
