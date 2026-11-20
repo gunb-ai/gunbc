@@ -1,6 +1,7 @@
 module test.claim.runner.runner_ci_width_ruled_zero_witness
 
 import std.types { Bool }
+import std.algebra { length }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv14 }
@@ -15,6 +16,8 @@ import gunbc.runner.runner_slot_allocation {
   HostRunnerSlotAllocation, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved,
   gunbc_committed_host_runner_slot_allocation, runner_slot_allocation_zero_is_authorized,
   gunbc_runner_slot_allocation_wall_holds,
+  committed_slot_identities, CommittedSlotPopulation, CommittedPopulationDerived,
+  CommittedPopulationWidthUnresolved,
 }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_from_width, runner_host_spec_for,
@@ -162,4 +165,22 @@ test fn the_allocation_wall_tolerates_only_the_authorized_zero() -> Bool {
     && !runner_slot_allocation_zero_is_authorized(a: hand_row(host: operator_host_srv3, slots: 0, slice_cap: byte_size(count: 0)))
     && !runner_slot_allocation_zero_is_authorized(a: hand_row(host: operator_host_srv14, slots: 0, slice_cap: byte_size(count: 429496729600)))
     && gunbc_runner_slot_allocation_wall_holds()
+}
+
+// THE POPULATION THAT THE WIDTH FEEDS IS EMPTY FOR BUTCH, AND AN EMPTY POPULATION IS NOT AN
+// UNRESOLVED ONE. The width is what the slot population is cut from, so the ruling that decides the
+// width also decides that butch has no CI slots -- derived members of length zero, NOT the
+// WidthUnresolved arm that every unrulled host with no offer still gets. srv3 is the control: same
+// fold, same host shape, a positive derived membership. This is the pin that makes the downstream
+// consequence auditable -- a consumer that asks "which slots does butch have" must read an empty
+// derived set, and a consumer that would treat "no slots" as "not modeled" reads a different arm.
+test fn butch_committed_ci_population_is_empty_and_srv3s_is_not() -> Bool {
+  match committed_slot_identities(host: operator_host_srv14) {
+    CommittedPopulationDerived { members: m } => length(m) == 0
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => false
+  }
+    && match committed_slot_identities(host: operator_host_srv3) {
+      CommittedPopulationDerived { members: m } => length(m) > 0
+      CommittedPopulationWidthUnresolved { host: _, cause: _ } => false
+    }
 }
