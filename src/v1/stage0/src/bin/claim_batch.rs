@@ -37,12 +37,6 @@ struct ResolveTimings {
     /// `v2.workflow.floor_terminal_ledger_wire render_ledger_from_outcomes` under `--outcomes-out`;
     /// nothing in this crate decodes it.
     outcome_rows: Vec<(String, OutcomeRowFacts)>,
-    /// One entry per claim run, in run order: the function name and its per-claim verdict
-    /// (`pass` | `fail` | `unobserved`), derived from the SAME `ClaimOutcome` whose PASS/FAIL/
-    /// UNOBSERVED line `report_outcome` prints — so the printed line and the structured verdict share
-    /// ONE authority (the producer). Emitted under `--verdicts-out` so a remote-build receipt carries
-    /// per-claim verdicts as data, never a reader re-deriving them from the log.
-    verdict_rows: Vec<(String, &'static str)>,
 }
 
 /// Exit composition, 1 (a finding) > 2 (no observation) > 0 (clean): the batch verdict is a
@@ -236,10 +230,6 @@ struct ParsedArgs {
     pre_push: bool,
     print_entry_closure: bool,
     outcomes_out: Option<String>,
-    /// A path for the per-claim verdict document (`{"claims":[{"name","verdict"}]}`), emitted under
-    /// `--verdicts-out`. Carries the claim verdicts as DATA so a remote-build receipt can return them
-    /// without any reader re-deriving them from the printed PASS/FAIL lines.
-    verdicts_out: Option<String>,
 }
 
 fn validate_explicit_functions(entry_groups: &[EntryGroup]) -> Result<(), ExitCode> {
@@ -296,7 +286,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut pre_push = false;
     let mut print_entry_closure = false;
     let mut outcomes_out: Option<String> = None;
-    let mut verdicts_out: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -365,10 +354,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 i += 1;
                 outcomes_out = Some(require_value(args, i, "--outcomes-out")?);
             }
-            "--verdicts-out" => {
-                i += 1;
-                verdicts_out = Some(require_value(args, i, "--verdicts-out")?);
-            }
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -396,7 +381,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         pre_push,
         print_entry_closure,
         outcomes_out,
-        verdicts_out,
     })
 }
 
@@ -550,30 +534,6 @@ fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
     }
 }
 
-/// The three SEMANTIC verdicts a claim carries, grouped exactly as `report_outcome` groups its
-/// printed lines: `Pass` -> "pass"; the arms that print a FAIL (and `Panicked`, whose line says
-/// PANICKED but still fails the batch) -> "fail"; the arms that print UNOBSERVED (`ExitFailure` code
-/// 2, `HostEffectRefused`) -> "unobserved". Exhaustive with NO wildcard, so a new `ClaimOutcome`
-/// variant must be classified here before the crate compiles — the same forced-sync discipline the
-/// unit tests check between `claim_outcome_kind` and the wire kind roster. This is the producer's
-/// single verdict authority; a reader never re-derives a verdict from the printed line.
-fn claim_outcome_verdict(outcome: &ClaimOutcome) -> &'static str {
-    match outcome {
-        ClaimOutcome::Pass => "pass",
-        ClaimOutcome::ExitFailure { code: 2, .. } => "unobserved",
-        ClaimOutcome::HostEffectRefused { .. } => "unobserved",
-        ClaimOutcome::Fail
-        | ClaimOutcome::NotBool { .. }
-        | ClaimOutcome::RuntimeError { .. }
-        | ClaimOutcome::BudgetInterrupted { .. }
-        | ClaimOutcome::CompletedOverBudget { .. }
-        | ClaimOutcome::HostToolUnresolved { .. }
-        | ClaimOutcome::Panicked { .. }
-        | ClaimOutcome::NotAttempted { .. }
-        | ClaimOutcome::ExitFailure { .. } => "fail",
-    }
-}
-
 /// The facts one claim contributes to a wire row beyond its name, as the values the seed holds.
 /// A field a variant does not carry is empty. Nothing here decides a tag or a disposition; that
 /// is the wire's. `reach` is the receipt's reachability observation spelled as the wire's
@@ -650,36 +610,6 @@ fn outcome_row_facts(
         cpu_ms: (receipt.cpu_nanos / 1_000_000) as i64,
         wall_ms: (receipt.wall_nanos / 1_000_000) as i64,
     }
-}
-
-/// Emit the per-claim verdict document in a total, machine-only format the provider parses into
-/// typed records: a fixed header line, then one `<name>\t<verdict>` line per claim in run order.
-/// This is the producer's verdict DATA, never the human PASS/FAIL log — the provider never re-derives
-/// a verdict from the printed line. The name is escaped for the two structural characters (tab,
-/// newline) only; a claim name containing one is encoded, never silently truncated.
-fn write_verdicts(path: &str, rows: &[(String, &'static str)]) -> Result<(), String> {
-    let mut body = String::from("gunbc-claim-verdicts v1\n");
-    for (name, verdict) in rows.iter() {
-        body.push_str(&encode_verdict_field(name));
-        body.push('\t');
-        body.push_str(verdict);
-        body.push('\n');
-    }
-    std::fs::write(path, body).map_err(|e| format!("write {path}: {e}"))
-}
-
-/// Escape the two characters that are structural in the verdict line format: tab and newline.
-fn encode_verdict_field(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '\t' => out.push_str("\\t"),
-            '\n' => out.push_str("\\n"),
-            '\\' => out.push_str("\\\\"),
-            c => out.push(c),
-        }
-    }
-    out
 }
 
 /// RENDER THROUGH THE ONE WIRE AUTHORITY AND WRITE THE BYTES. The render is
@@ -879,10 +809,6 @@ fn run_claim_timed(
     timings
         .outcome_rows
         .push((function.to_string(), outcome_row_facts(&outcome, &receipt)));
-    // ONE authority for the per-claim verdict: computed from the same `ClaimOutcome` that
-    // `report_outcome` renders its line from, captured just before that value moves into the report.
-    let verdict = claim_outcome_verdict(&outcome);
-    timings.verdict_rows.push((function.to_string(), verdict));
     report_outcome(
         function,
         outcome,
@@ -1400,18 +1326,6 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
         if let Err(cause) = written {
             eprintln!("claim_batch: NO OBSERVATION: --outcomes-out {out}: {cause}");
             timings.any_unobserved = true;
-        }
-    }
-
-    // Emit the per-claim verdict document from the rows already collected in run order. No entry
-    // group is required (a single run, any number of closures): the verdict is per function name.
-    if let Some(out) = parsed.verdicts_out.as_deref() {
-        match write_verdicts(out, &timings.verdict_rows) {
-            Ok(()) => {}
-            Err(cause) => {
-                eprintln!("claim_batch: NO OBSERVATION: --verdicts-out {out}: {cause}");
-                timings.any_unobserved = true;
-            }
         }
     }
 
