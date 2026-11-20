@@ -1,6 +1,6 @@
 module test.claim.runner.runner_ci_width_ruled_zero_witness
 
-import std.types { Bool }
+import std.types { Bool, Int, String }
 import std.algebra { length }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
@@ -10,7 +10,7 @@ import std.measure { ByteSize, byte_size }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_allocation {
   HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width,
-  RunnerWidthDerived, RunnerWidthUnresolved,
+  RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthResolution,
   WidthComputeOfferAbsent, CpuWidthOfferAbsent,
   ruled_zero_ci_widths, host_ci_width_is_ruled_zero,
   HostRunnerSlotAllocation, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved,
