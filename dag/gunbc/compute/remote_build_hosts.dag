@@ -61,7 +61,9 @@ import product.host_identity { HostIdentity }
 // below: admission follows an on-disk home, proven by re-observation). srv1's last such read-back is its
 // 08:57Z serving converge, and the promise has moved since: its pinned checkout predates 2387c5493bb9, so it
 // judges a `gate <label>` request with the ENTRY route's grammar and returns that route's refusal (the class
-// is recorded at @ref(gunbc.recurring_failure_mode.a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand)),
+// is filed in the failure-mode shelf as a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand,
+// PR #16797 -- named in prose, not with a @ref marker, because a marker to a declaration that is not on main
+// yet fails the marked-reference step of the required gate),
 // and its build pool holds a seat whose holder was killed before recording an exit, so it admits no work at
 // all. Listing it makes the client's first candidate a host that cannot serve the request -- and a typed
 // request-refusal is terminal in remote_build_next_step, so the request never reaches a host that could.
