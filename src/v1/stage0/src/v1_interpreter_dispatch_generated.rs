@@ -533,12 +533,14 @@ macro_rules! eval_call_bridge__v2_std_node_arm {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdHostTextArm {
     V4BridgeHostTextChars,
+    V4BridgeHostTextTextOfChars,
 }
 
 #[rustfmt::skip]
 pub fn lookup_eval_call_bridge_std_host_text(spelling: &str) -> Option<EvalCallBridgeStdHostTextArm> {
     match spelling {
         "chars" => Some(EvalCallBridgeStdHostTextArm::V4BridgeHostTextChars),
+        "text_of_chars" => Some(EvalCallBridgeStdHostTextArm::V4BridgeHostTextTextOfChars),
         _ => None,
     }
 }
@@ -546,6 +548,7 @@ pub fn lookup_eval_call_bridge_std_host_text(spelling: &str) -> Option<EvalCallB
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__std_host_text_arm {
     ("v4_bridge.host_text_chars") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdHostTextArm::V4BridgeHostTextChars };
+    ("v4_bridge.host_text_text_of_chars") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdHostTextArm::V4BridgeHostTextTextOfChars };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
