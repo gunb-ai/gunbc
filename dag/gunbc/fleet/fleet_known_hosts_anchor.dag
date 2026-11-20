@@ -31,7 +31,7 @@ import gunbc.remote_shell_command {
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Int }
 import extdeps.ssh.session {
-  SshSessionExecOutcome, ssh_session_exec_outcome,
+  SshSessionExecOutcome, ssh_session_exec_outcome, ssh_session_exec_result_from_password_wire,
   ssh_session_exec_portable_words, ssh_session_exec_portable_words_with_stdin,
 }
 import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
@@ -1042,11 +1042,13 @@ fn fleet_ssh_exec_password_leg_with_stdin(
 ) -> SshSessionExecOutcome {
   let armed = fleet_ssh_armed_password_leg(trust: trust, leg: leg)
   ssh_session_exec_outcome(
-    result: password_file_ssh_exec_portable_words_with_stdin(
-      password_file: password_file,
-      client_args: armed.client_args,
-      stdin_payload: stdin_payload,
-      wall_deadline: armed.wall_deadline,
+    result: ssh_session_exec_result_from_password_wire(
+      wire: password_file_ssh_exec_portable_words_with_stdin(
+        password_file: password_file,
+        client_args: armed.client_args,
+        stdin_payload: stdin_payload,
+        wall_deadline: armed.wall_deadline,
+      ),
     ),
   )
 }

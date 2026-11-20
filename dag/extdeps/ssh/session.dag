@@ -2,6 +2,7 @@ module extdeps.ssh.session
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ssh.password_session { PasswordSshExecResult }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit, String }
 import std.measure { Second }
 import std.optional { Absent }
@@ -86,6 +87,22 @@ fn ssh_session_exec_wire_refusal_text(fault: SshSessionWireFault) -> String {
   match fault {
     OverrunWithoutDeadline => "ssh session reported overran=true but echoed no wall deadline: a tripped per-leg deadline must be echoed as its value"
     DeadlineWithoutOverrun => "ssh session echoed a wall deadline but overran=false: a leg that completed does not report a deadline it never tripped"
+  }
+}
+
+// CARRYING THE PASSWORD TRANSPORT'S WIRE RECORD TO THAT ONE DECODE.
+// ssh.PasswordFileSsh populates its own record shape (`PasswordSshExecResult`, which other
+// dependencies also consume for their own purposes). Its six fields are the same wire fields as
+// `SshSessionExecResult`, including the overran/deadline pair, so this carries each one unchanged: it
+// decides NOTHING -- no default, no dropped field -- and the decode stays the single site it is.
+fn ssh_session_exec_result_from_password_wire(wire: PasswordSshExecResult) -> SshSessionExecResult {
+  SshSessionExecResult {
+    exit_code: wire.exit_code,
+    success: wire.success,
+    stdout: wire.stdout,
+    stderr: wire.stderr,
+    overran: wire.overran,
+    wall_deadline_seconds: wire.wall_deadline_seconds,
   }
 }
 
