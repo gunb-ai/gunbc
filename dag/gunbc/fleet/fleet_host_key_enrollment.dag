@@ -188,12 +188,6 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = list_append(
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
     provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
   },
-  // ken (operator_host_e2d4b7) is reached by its TAILNET name only, from the fleet_host_key_scan run
-  // 44804781923 (mode fleet_host_key_scan, executor srv1, 2026-11-20): ssh-keyscan -t ed25519 of
-  // ken.tailecbe08.ts.net returned outcome=observed with THIS key and fingerprint; the run's uploaded receipt is
-  // the sole source (ssh-keygen -lf of this base64 re-derives the fingerprint byte-for-byte). There is no LAN
-  // row: ken's 192.168.1.236 is the address srv9 held before it left the fleet, and the scan reached ken only
-  // over the tailnet -- which is the address anchored_ssh_target(ken) dials for the observe and converge legs.
   KnownHostKeyRow {
     host: "host-e2d4b7" as HostIdentity,
     address: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: fleet_machine_ken)),
