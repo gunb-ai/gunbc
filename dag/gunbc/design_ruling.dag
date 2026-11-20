@@ -998,6 +998,18 @@ data serve_entry_verdict_step_raised_to_45_minutes: DesignRuling = DesignRuling 
   provenance: "Operator, 2026-11-14, relayed verbatim by session neat-badger-614 (msg_a27efa77) to session bright-ibex-807. Question as put to the operator: raise the fleet-converge plan run's serve-entry compile verdict step bound from 30 to 45 minutes (gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, ci_job_budgets_closed_to_growth). Operator words, verbatim: \"yes thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; not a default-closed escalation. The raise this records: that one step, 30 -> 45 minutes. Evidence: plan run 43593733352 was killed at 30m in this step; on srv1 the child compile measured 1607 s and the step 1798 s wall, 13.6 GB peak. The fleet job backstop (gunbc_ci_fleet_job_backstop_timeout_minutes) does not add this term, so no job timeout changes. INTERPRETATION, not the operator's words: the selected remediation direction stays runtime reduction (a faster serve-entry compile), after which this bound comes back down; lowering it needs no sign-off.",
 }
 
+// The operator's sign-off for the arrival-converge budget raise, recorded under the rule that reserves
+// CI time and memory budgets to them (ci_job_budgets_closed_to_growth). The text was staged for review on
+// PR #16691 and is granted here; this same change flips the emitter's two call sites, so the permission and
+// the figures it authorizes cannot be separated. Reviews 96450, 96488, 96494, 96500, 96505 and 96506 are
+// what put it in this order.
+data srv15_arrival_converge_step_raised_to_21_minutes: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv15_arrival_converge_step_raised_to_21_minutes"),
+  decided: "2026-11-18",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-18T21:13Z (the answer was given in chat at about 21:13:23Z), relayed verbatim by session smart-crane-730 from its own session chat; there is no dashboard message id, so the citation is: operator chat to smart-crane-730, 2026-11-18T21:13Z. Question as put to the operator: \"#16691: raise the srv15 arrival step's time limit from 5 to 21 minutes, and its job's from 25 to 51. srv15 can't be installed until this is applied.\" Operator words, verbatim: \"1. yeah thats fine\". This is the explicit sign-off ci_job_budgets_closed_to_growth requires; it is not a default-closed escalation, and lowering these figures later needs no sign-off at all. The figures agreed to: the fleet-converge arrival-converge job's backstop 25 -> 51 minutes and its 'arrival converge under the standing grant and arrival interlock' step 5 -> 21 minutes. Both are generated, not hand-typed: gunbc.fleet.fleet_converge_workflow fleet_converge_arrival_converge_step_timeout_minutes builds the step figure as fleet_converge_gunbc_run_step_timeout_minutes over the Secret Manager read bound (gunbc_ci_sm_max_time), the door's IPMI legs (gunbc.machine_intake.arrival_run arrival_wet_ipmi_legs_bound) and the prior-life capture's legs (gunbc.machine_intake.prior_life_capture_live live_prior_life_legs_bound), on the existing resolve allowance (gunbc_ci_gunbc_run_resolve_step_timeout_minutes); fleet_converge_arrival_converge_job_backstop_timeout_minutes builds the job through checked_job_timeout_minutes, and fleet_converge_arrival_converge_backstop_holds refuses emission past max_job_timeout_minutes rather than clamping. Arithmetic, every term a declared row: step = ceiling(60 s + 302 s + 140 s + 59 s = 561 s) = 10 min plus one 5-minute allowance = 660 s = 21 min; job = prelude 5 + artifact transfer 10 + three 5-minute neighbours + 21 = 51, against the 360-minute ceiling. Evidence for the need: arrival run 44249358201 at 418bf0a1674 was killed at 05m00s in that step at 2026-11-18T07:17:51Z with the fold never entered -- [pre-entry] 107 s over 523 closure files, compile.frontend 80 s, process max_rss 2191 MB, the admission step before it green -- and zero ipmitool or curl lines in the step, so srv15's controller was contacted zero times and its lockout budget was untouched. INTERPRETATION, not the operator's words: the remediation direction stays the reduction of the pre-entry fixed cost (roadmap node gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation); when that cost comes down, this bound comes down with it.",
+}
+
 data mtcollins1_bmc_cold_reset_step_raised_to_67_minutes: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_bmc_cold_reset_step_raised_to_67_minutes"),
   decided: "2026-11-18",
@@ -1199,6 +1211,7 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
   provenance: "Operator decision 2026-11-19, escalation msg_dd4f5177 decided in msg_5d6b035d, option chosen verbatim: \"Lift it (I record a design_ruling row quoting you; rows 894/911 drop the gate)\". Supersedes the default-approved msg_91e05714, which was approved by default, not by the operator. WHAT THIS LIFTS: the 2026-10-03 fabric-bring-up-first gate on native SCM. Four deliverable rows (2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model, 2-claim-indexed-evidence) were held behind the fabric bring-up by a prerequisite edge onto the fabric-bringup project node; two sibling rows (2-scm-compatibility-shape, 2-scm-p0-landing-spine) carried the same 'revisited after the fabric bring-up (operator ruling 2026-10-03)' only in their contribution text. HISTORY: no 2026-10-03 design_ruling row ever existed -- that gate was asserted only in roadmap row text, never recorded in this ledger; this row is both its first record and its lifting record. The prerequisite edges onto the fabric-bringup project are deleted, the rows stay factory members, and the fabric-bringup red_control dispatch-gate sentence is removed.",
 }
 
+
 fn design_rulings() -> List<DesignRuling> {
   [
     ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
@@ -1334,6 +1347,7 @@ fn design_rulings() -> List<DesignRuling> {
     namespace_xl_migration_program_is_bankrupt,
     printer_ci_budget_raised_for_the_four_hour_card,
     serve_entry_verdict_step_raised_to_45_minutes,
+    srv15_arrival_converge_step_raised_to_21_minutes,
     mtcollins1_bmc_cold_reset_step_raised_to_67_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,

@@ -330,7 +330,7 @@ fn remote_build_admitted_entries(candidate: RemoteBuildCandidate) -> Optional<Li
     Present { value: _ } => {
       let entries = map(remote_build_admitted_client_keys, k => remote_build_authorized_entry(candidate: candidate, client_key: k))
       let rendered = flat_map(entries, e => match e { Absent => [], Present { value: v } => [v] })
-      if count(rendered) > 0 { Present { value: rendered } } else { none }
+      Present { value: rendered }
     }
   }
 }
