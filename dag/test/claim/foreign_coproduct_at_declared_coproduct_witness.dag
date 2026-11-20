@@ -32,7 +32,7 @@ module test.claim.foreign_coproduct_at_declared_coproduct_witness
 // ::declared_type_wall_keyed_on_the_value_being_a_kernel (the dated 2026-11-19 receipt `#calm-moth-138`).
 
 import std.types { Bool, Int, String }
-import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, DiagnosticCensus, CensusObserved, CensusNotRunnable, CensusRow, census_blocking_rows, census_rows_of_class, census_total_count }
+import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_total_count }
 
 fn blocking_of_class(source: String, wanted: String) -> Int {
   match compile_dag_diagnostic_census(source) {
