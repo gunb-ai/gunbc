@@ -275,12 +275,16 @@ type UserWorkSliceAdmission<Refusal>
 
 // Is the user-work slice capped at exactly `ceiling`, its memory.high at the ceiling's derived high, and
 // its swap forbidden -- decided by the same observed_cgroup_bound fold that admits the --user wrap, over the
-// cap the ONE reader observes: the slice's DECLARED MemoryMax / MemoryHigh / MemorySwapMax, read by the
-// remote-build serving converge with `systemctl --user --machine=<uid>@ show <slice>`. Those declared values
-// are the single source -- a started slice with no member unit has no memory.max cgroup file, so reading the
-// cgroup would refuse a correctly-capped slice forever. Both the converge settle and the --user wrap admit
-// feed THAT one read into THIS fold, so 'the slice is capped' and 'the wrap is admitted' are one judgment
-// over one source and cannot disagree. A control whose read REFUSED short-circuits to SliceUnknown before any
+// cap the remote-build serving converge observes: the slice's MemoryMax / MemoryHigh / MemorySwapMax as the
+// user manager reports them, read with `systemctl --user --machine=<uid>@ show <slice>`. This fold takes its
+// input from the caller, so the two callers answer two questions over the same fold: the converge settle
+// feeds it the manager's reported unit controls (what systemd will install into the cgroup when the first
+// member unit starts -- a started slice with no member has no memory.max file yet, so the manager's view is
+// what the converge can honestly settle on), while the --user wrap admit (user_work_scope_wrap_decision)
+// feeds it the MATERIALISED cgroup chain read live off the host. Those are complementary, not the same read:
+// the converge settles the unit's provisioned cap, and the live-cgroup check independently refuses work
+// placement under an unbounded materialised cgroup, so neither claim is forged by the other. A control whose
+// read REFUSED short-circuits to SliceUnknown before any
 // comparison, so an unread slice is never judged uncapped. Otherwise the declared max and swap go to
 // observed_cgroup_bound as a single-level chain -- the very fold that requires a positive hard limit AND a
 // forbidden swap -- and the declared memory.high (a throttle the fold ignores) is checked against the derived

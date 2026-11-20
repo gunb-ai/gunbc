@@ -66,13 +66,14 @@ import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_sli
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv, systemctl_user_show_for_uid_argv, systemctl_show_property_value }
-import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, systemd_unit_property_wire }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, systemd_unit_property_wire, SystemdCgroupMemoryLimit, MemoryLimitAbsent, MemoryLimitBytes, MemoryLimitUnbounded, parse_systemd_memory_limit_show }
 // The user-manager leg reads Linger and enables it through the one shared loginctl model (unelevated read,
 // elevated enable) -- the same argv the runner lane uses, never a second spelling.
 import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_enable_linger_argv, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
-// The one authority for cgroup memory.max / memory.swap.max reads, shared with the reader
-// (gunbc.compute.unit_bounds::observed_cgroup_bound), so the observe reads the cap the same way.
-import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
+// The slice's memory controls carry the same typed value the reader uses (gunbc.compute.unit_bounds::
+// observed_cgroup_bound), so the cap comparison and the wrap admission share one carrier; the VALUE itself is
+// decoded by the one systemctl-show authority, extdeps.systemd::parse_systemd_memory_limit_show, below.
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryUnlimited, CgroupMemoryLimited }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.github.actions_environment { github_sha_variable_name }
@@ -338,16 +339,19 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
   }
 }
 
-// The user-work slice's cap, observed in ONE place and judged by ONE fold. This is the single reader: the
-// slice's OWN declared MemoryMax / MemoryHigh / MemorySwapMax, read through the serving account's user
-// manager with `systemctl --user --machine=<uid>@ show <slice> --property=MemoryMax,MemoryHigh,MemorySwapMax`.
-// It reads the unit's DECLARED properties, which the manager answers whether or not the slice's cgroup has
+// The user-work slice's cap, observed for the converge in ONE place and judged by ONE fold. This is the
+// converge's single reader for the cap: the
+// slice's OWN MemoryMax / MemoryHigh / MemorySwapMax as the serving user manager reports them, read through
+// `systemctl --user --machine=<uid>@ show <slice> --property=MemoryMax,MemoryHigh,MemorySwapMax`.
+// It reads the manager's reported unit controls, which it answers whether or not the slice's cgroup has
 // populated -- a started slice with no member unit has no memory.max file, so reading the cgroup file would
-// refuse a correctly-capped slice forever (the srv3 failure). These are the only values the cap is ever
-// taken from: both the plan (serving_assess) and the read-back feed THIS read into user_work_slice_cgroup_admission
-// (unit_bounds::observed_cgroup_bound), and that admission IS the standard the --user wrap is admitted on --
-// one source, one fold, so 'settled' and 'the wrap is admitted' cannot disagree. The argv is built by the
-// shared systemctl builder over the shared systemd_unit_property_wire names, so a property has one spelling.
+// refuse a correctly-capped slice forever (the srv3 failure). Both the plan (serving_assess) and the read-back
+// feed THIS reading into user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound). That fold is
+// shared with the --user wrap admit but not shared with its INPUT: the wrap admit feeds it the materialised
+// cgroup chain read live off the host, so the converge settles the unit's provisioned cap while the live-cgroup
+// check independently guards work placement -- complementary checks, not one claim asserted twice. The argv is
+// built by the shared systemctl builder over the shared systemd_unit_property_wire names, so a property has one
+// spelling.
 type ServingSliceCap {
   max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
   high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
@@ -357,18 +361,23 @@ type ServingSliceCap {
 // The three memory controls the slice leg reads back, in one list so the argv and the parsed keys agree.
 data serving_slice_cap_properties: List<SystemdUnitProperty> = [MemoryMax, MemoryHigh, MemorySwapMax]
 
-// The value `systemctl show` prints for one memory control mapped to the slice's OWN typed value under the
-// read's ObservationAttempt. 'infinity' and 'max' (systemctl's spellings for no limit), an empty value, and
-// an ABSENT key all mean NO cap -- an absent control is unbounded, which licenses the install. A byte count
-// is a finite cap and is parsed by the shared cgroup parser. An unreadable value is never silently treated
-// as capped; it parses through the cgroup parser to an unbounded/unparseable value the admission refuses.
+// The value `systemctl show` prints for one memory control mapped to the slice's OWN typed carrier. The
+// decoding is delegated to the ONE systemctl-show authority, extdeps.systemd::parse_systemd_memory_limit_show
+// (which recognises systemctl's unbounded spelling `infinity`, a blank value, and a byte count) and its
+// SystemdCgroupMemoryLimit is then mapped onto the admission's carrier -- so `systemctl show` has exactly one
+// decoder, not a second spelling beside the cgroup-file parser. An ABSENT key, a blank, or anything the
+// decoder cannot turn into a byte count all mean NO cap is in force (an unbounded control is a `max`/blank on
+// a unit that never set one), which is the safe, install-licensing direction; only a decoded byte count is a
+// finite cap the admission can compare to the ceiling.
 fn serving_slice_property_value(value: String?) -> CgroupMemoryLimitValue {
-  match value {
-    Absent => CgroupMemoryUnlimited
-    Present { value: v } => {
-      let t = trim(s: v)
-      if t == "infinity" || t == "max" || t == "" { CgroupMemoryUnlimited } else { parse_cgroup_memory_limit(body: t) }
-    }
+  let raw = match value {
+    Absent => ""
+    Present { value: v } => trim(s: v)
+  }
+  match parse_systemd_memory_limit_show(raw: raw) {
+    MemoryLimitBytes { bytes: b } => CgroupMemoryLimited { bytes: b }
+    MemoryLimitUnbounded => CgroupMemoryUnlimited
+    MemoryLimitAbsent => CgroupMemoryUnlimited
   }
 }
 
@@ -510,12 +519,13 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: true } => Present { value: serving_leg_stat(item: "serve.binary.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.serve_binary)) }
     _ => Absent
   }
-  // THE USER-WORK SLICE cap, read from the slice's declared properties (serving_leg_slice_cap): the one
-  // place the cap is observed. The serving uid comes from the passwd read; an unresolvable uid (fresh host /
-  // unreadable passwd) reads every control refused, which serving_assess never treats as capped — so the
-  // apply installs. The same values feed user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound),
-  // the fold that is also the --user wrap-admit standard — one read, one fold, so 'settled' and 'the wrap
-  // is admitted' cannot disagree.
+  // THE USER-WORK SLICE cap, read from the slice's unit controls as the serving user manager reports them
+  // (serving_leg_slice_cap): the one place the cap is observed for the converge. The serving uid comes from
+  // the passwd read; an unresolvable uid (fresh host / unreadable passwd) reads every control refused, which
+  // serving_assess never treats as capped — so the apply installs. The same values feed
+  // user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound), the fold also used by the --user
+  // wrap-admit; that admit feeds it the live materialised cgroup instead, so it independently guards work
+  // placement while this settles the unit's provisioned cap.
   let passwd_opt = match passwd {
     ObservationEstablished { observed: t } => Present { value: t }
     ObservationRefused { cause: _ } => Absent
@@ -1330,6 +1340,13 @@ fn user_work_slice_start_command_argv(uid: Int) -> List<String> {
   systemctl_user_start_for_uid_argv(unit: user_work_slice_unit_name, uid: uid)
 }
 
+// The slice standing is the JOINT of its three memory controls (a cap on Max, a positive High below it, and
+// a swap of zero), so it is read as ONE `systemctl --user --machine=<uid>@ show <slice> -p MemoryMax,MemoryHigh,
+// MemorySwapMax`: one user-manager round-trip returns the three controls that together decide capped/uncapped,
+// where three separate single-property reads would need three round-trips for one standing and could straddle a
+// manager that stops mid-way. `systemctl_show_user_property_read` covers the single-property case over the host
+// transport; this is the multi-property user-bus read, built on the shared systemctl argv builder, the shared
+// property extractor (systemctl_show_property_value) and the shared decoder (parse_systemd_memory_limit_show).
 fn user_work_slice_show_command_argv(uid: Int) -> List<String> {
   systemctl_user_show_for_uid_argv(unit: user_work_slice_unit_name, properties: serving_slice_cap_properties, uid: uid)
 }
