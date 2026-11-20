@@ -263,14 +263,19 @@ test fn fan_policy_phase_unmodeled_failure_fails_loud_at_the_step() -> Bool {
 // own constant, removes the credential file on refusal, and the strict KVM lane keeps the old shape
 // (fetch failure dies under set -e, and no status file logic rides along in its script).
 test fn fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict() -> Bool {
-  let boot = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
-  let kvm = gunbc_ci_mtcollins1_kvm_observer_observe_invoke()
-  string_contains(s: boot, pattern: "||")
-    && string_contains(s: boot, pattern: mtcollins1_fan_credential_fetch_status_suffix)
-    && string_contains(s: boot, pattern: "fetch-failed")
-    && string_contains(s: boot, pattern: "'ok' > \"$STATUS_FILE\"")
-    && !string_contains(s: kvm, pattern: "STATUS_FILE")
-    && !string_contains(s: kvm, pattern: "fetch-failed")
+  match gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: boot } => match gunbc_ci_mtcollins1_kvm_observer_observe_invoke() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: kvm } =>
+        string_contains(s: boot, pattern: "||")
+          && string_contains(s: boot, pattern: mtcollins1_fan_credential_fetch_status_suffix)
+          && string_contains(s: boot, pattern: "fetch-failed")
+          && string_contains(s: boot, pattern: "'ok' > \"$STATUS_FILE\"")
+          && !string_contains(s: kvm, pattern: "STATUS_FILE")
+          && !string_contains(s: kvm, pattern: "fetch-failed")
+    }
+  }
 }
 
 // CONTROL (review round, blocker 1): the cleanup trap must never meet an unset variable. set -u is
@@ -281,26 +286,41 @@ test fn fan_policy_phase_credential_fetch_is_typed_and_kvm_stays_strict() -> Boo
 // CONTIGUOUS pairs rendered by the very builders the prelude uses (the real rm list, the real header
 // format), and the reverse of the first pair must be absent - a script that moved the assignment
 // after the trap fails this claim. The strict lane stays free of STATUS_FILE entirely.
+// Unwrap a rendered-bash Outcome to its String for byte-comparison in the claims below; a refused
+// render yields "" so a POSITIVE string_contains over it cannot pass vacuously against real content
+// (the boot/kvm Accepted guards above already fail the test closed if a producer refuses).
+fn fan_policy_phase_render(stmts: List<Node>) -> String {
+  match gunbc_ci_bash_rendered(stmts: stmts, set_e: false) {
+    Accepted { value: t } => t
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
 test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
-  let boot = gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()
-  let kvm = gunbc_ci_mtcollins1_kvm_observer_observe_invoke()
   let status_assign = bash_build_assign(name: "STATUS_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "DEST_FILE"), bash_build_word_lit(text: mtcollins1_fan_credential_fetch_status_suffix)]))
   let trap_stmt = bash_build_command_with_words(words: [
     bash_build_word_lit(text: "trap"),
-    bash_build_word_lit(text: gunbc_ci_bash_rendered(stmts: [bash_build_command_with_words(words: [
+    bash_build_word_lit(text: fan_policy_phase_render(stmts: [bash_build_command_with_words(words: [
       bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"),
       bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"),
       bash_build_word_var(name: "DEST_FILE"), bash_build_word_var(name: "STATUS_FILE"),
-    ])], set_e: false)),
+    ])])),
     bash_build_word_lit(text: "EXIT"),
   ])
   let rm_status = bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "STATUS_FILE")])
   let header_write = bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE"))
-  string_contains(s: boot, pattern: gunbc_ci_bash_rendered(stmts: [status_assign, trap_stmt], set_e: false))
-    && !string_contains(s: boot, pattern: gunbc_ci_bash_rendered(stmts: [trap_stmt, status_assign], set_e: false))
-    && string_contains(s: boot, pattern: gunbc_ci_bash_rendered(stmts: [trap_stmt, rm_status], set_e: false))
-    && string_contains(s: boot, pattern: gunbc_ci_bash_rendered(stmts: [rm_status, header_write], set_e: false))
-    && !string_contains(s: kvm, pattern: "STATUS_FILE")
+  match gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: boot } => match gunbc_ci_mtcollins1_kvm_observer_observe_invoke() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: kvm } =>
+        string_contains(s: boot, pattern: fan_policy_phase_render(stmts: [status_assign, trap_stmt]))
+          && !string_contains(s: boot, pattern: fan_policy_phase_render(stmts: [trap_stmt, status_assign]))
+          && string_contains(s: boot, pattern: fan_policy_phase_render(stmts: [trap_stmt, rm_status]))
+          && string_contains(s: boot, pattern: fan_policy_phase_render(stmts: [rm_status, header_write]))
+          && !string_contains(s: kvm, pattern: "STATUS_FILE")
+    }
+  }
 }
 
 // CONTROL: the receipt upload still fails the job when the phase wrote NOTHING (review 81077's
