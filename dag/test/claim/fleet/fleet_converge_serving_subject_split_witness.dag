@@ -3,6 +3,7 @@ module test.claim.fleet.fleet_converge_serving_subject_split_witness
 import std.types { Bool, String, List }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
+import std.list { first_where }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
 import v2.workflow.bash_emit { Accepted, Rejected }
@@ -228,11 +229,11 @@ test fn the_install_rule_admits_the_pair_the_drain_rule_refuses() -> Bool {
 // expected HOST names the machine.
 test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
   match fleet_converge_install_subject_decision(executor_runner_name: "srv1-03-1764067000-4213", named_subject: "", own_host: "") {
-    InstallSubjectRefused { reason: why } => match reason { SubjectAbsent => true  _ => false }
+    InstallSubjectRefused { reason: why } => match why { SubjectAbsent => true  _ => false }
     _ => false
   }
     && match fleet_converge_install_subject_decision(executor_runner_name: "", named_subject: "srv14", own_host: "srv1") {
-      InstallSubjectRefused { reason: why } => match reason { ExecutorIdentityAbsent => true  _ => false }
+      InstallSubjectRefused { reason: why } => match why { ExecutorIdentityAbsent => true  _ => false }
       _ => false
     }
     && match fleet_converge_install_subject_decision(executor_runner_name: "srv3-01-1764067000-1", named_subject: "", own_host: "srv3") {
@@ -240,7 +241,7 @@ test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
       _ => false
     }
     && match fleet_converge_install_subject_decision(executor_runner_name: "", named_subject: "", own_host: "") {
-      InstallSubjectRefused { reason: why } => match reason { ExecutorIdentityAbsent => true  _ => false }
+      InstallSubjectRefused { reason: why } => match why { ExecutorIdentityAbsent => true  _ => false }
       _ => false
     }
 }
@@ -273,14 +274,27 @@ test fn the_rule_list_and_the_roster_name_the_same_pair() -> Bool {
     && length(roster) == 5
     && all(fleet_converge_install_rule_mode_wires, w => any(roster, r => r == w))
     && all(roster, w => any(fleet_converge_install_rule_mode_wires, x => x == w) || w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
-    && all(fleet_converge_install_rule_mode_wires, w => match fleet_converge_split_rule_for_mode(mode: w) { SubjectMayBeTheExecutorsOwnMachine => true  _ => false })
-    && none(roster, w => w == "runner_host_file_observe")
+    && all(fleet_converge_install_rule_mode_wires, w => install_rule_admits_its_own_mode(mode: w))
+    && !any(roster, w => w == "runner_host_file_observe")
 }
 
 // ---------------------------------------------------------------- helpers
 
 fn mode_named(name: String) -> FleetConvergeWorkflowMode {
-  first(map(filter(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == name), m => m), default: HostMemoryObserve)
+  match first_where(xs: fleet_converge_workflow_modes, keep: m => fleet_converge_workflow_mode_wire(mode: m) == name) {
+    Present { value: m } => m
+    Absent => HostMemoryObserve
+  }
+}
+
+// The install-rule list must only ever name modes whose rule the module actually hands out. Written as a
+// named predicate because an inline match in a lambda body is a call site to the parser, and a call to no
+// function is exactly the mistake a green witness would hide.
+fn install_rule_admits_its_own_mode(mode: String) -> Bool {
+  match fleet_converge_split_rule_for_mode(mode: mode) {
+    SubjectMayBeTheExecutorsOwnMachine => true
+    _ => false
+  }
 }
 
 fn env_pairs(step: Step) -> List<YamlKeyValue> {
@@ -301,7 +315,10 @@ fn env_keys(step: Step) -> List<String> {
 }
 
 fn env_text(step: Step, key: String) -> String {
-  first(map(filter(env_pairs(step: step), e => e.key == key), e => value_text(value: e.value)), default: "")
+  match first_where(xs: env_pairs(step: step), keep: e => e.key == key) {
+    Present { value: e } => value_text(v: e.value)
+    Absent => ""
+  }
 }
 
 fn value_text(v: YamlValue) -> String {
