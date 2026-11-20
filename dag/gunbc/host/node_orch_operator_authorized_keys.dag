@@ -1,10 +1,13 @@
 module gunbc.host.node_orch_operator_authorized_keys
 
 // The two node-orch authorized_keys ENTRIES that sit on the OPERATOR (briansrls) account of srv1 and srv2,
-// with the source-address and forwarding OPTIONS each carries, recorded as the model's only home for them.
-// They were edited BY HAND on 2026-11-20 by session gentle-crab-832 with the operator's approval; each host
-// keeps a pre-edit backup at ~/.ssh/authorized_keys.bak-20261120. The reason they are OUT-OF-BAND residue
-// rather than fleet_ssh_access grants is stated in full below and is not a gap to close quietly.
+// with the source-address and forwarding OPTIONS each carries, recorded here as out-of-band residue of
+// gunbc.fleet.fleet_ssh_access. Their deviation from the roster's single admission is ADMITTED by ruling
+// gunbc.design_ruling.node_orch_operator_authorized_keys_out_of_band_2026_11_20, which each line carries typed as
+// its `admission` (a DesignRuling recording the operator's decision) and the witness reads. They were edited BY
+// HAND on 2026-11-20 by session gentle-crab-832; each host keeps a pre-edit backup at
+// ~/.ssh/authorized_keys.bak-20261120. The reason they are OUT-OF-BAND residue rather than fleet_ssh_access grants
+// is stated in full below and is not a gap to close quietly.
 //
 // WHY THE FLEET ROSTER DOES NOT OWN THESE LINES. gunbc.fleet.fleet_ssh_access::fleet_authorized_keys is the
 // single authority for the fleet host-administrator account's authorized_keys, and DESIGN's Single authority
@@ -53,6 +56,7 @@ import extdeps.ssh.keys {
   authorized_key_from_source_addresses,
 }
 import gunbc.fleet.fleet_ssh_access { node_orch_ssh_key }
+import gunbc.design_ruling { DesignRuling, node_orch_operator_authorized_keys_out_of_band_2026_11_20 }
 import gunbc.fleet.fleet_intent_network {
   operator_lan_segment,
   srv1_tailscale_endpoint,
@@ -61,9 +65,14 @@ import gunbc.fleet.fleet_intent_network {
 
 // srv1's own node-orch public key -- the key whose authorized_keys line sits on srv2's operator account. It is
 // NOT in gunbc.fleet.fleet_ssh_access: node-orch is granted to the host-administrator account only, and the one
-// node-orch key the roster knows (node_orch_ssh_key) is srv2's, whose line sits on srv1. This row is that key's
-// declared home. SINGLE AUTHORITY: srv1:~/.node-orch/id_ed25519.pub, read live 2026-11-20 by gentle-crab-832 and
-// matched byte-for-byte against the node-orch@srv1 line in srv2:~briansrls/.ssh/authorized_keys (SHA256:
+// node-orch key the roster knows (node_orch_ssh_key) is srv2's, whose line sits on srv1. Its material is spelled
+// here as an EXPLICIT OUT-OF-BAND RECORD, admitted -- not merely described -- by ruling
+// gunbc.design_ruling.node_orch_operator_authorized_keys_out_of_band_2026_11_20 (the operator's 2026-11-20 approval
+// of these hand-edited lines), which this module holds typed on each line as its `admission` and the witness reads.
+// It is deliberately NOT a fleet principal: adding it there would leak it into fleet_authorized_keys (which is
+// derived from the PRINCIPAL list, not grants, and is what install seeds / reconcile treats as owned) and silently
+// widen access. Provenance: srv1:~/.node-orch/id_ed25519.pub, read live 2026-11-20 by gentle-crab-832 and matched
+// byte-for-byte against the node-orch@srv1 line in srv2:~briansrls/.ssh/authorized_keys (SHA256:
 // jccXidl3iPXffPI04wflfdM4ipMnwVXXgWsV0lVqu/k); this is the only place its material is spelled.
 data node_orch_srv1_ssh_key: SshPublicKey = SshPublicKey {
   algorithm: Ed25519,
@@ -107,6 +116,7 @@ type NodeOrchOperatorAuthorizedKeyLine {
   key: SshPublicKey
   options: List<AuthorizedKeyOption>
   consumer: NodeOrchOperatorConsumer
+  admission: DesignRuling
 }
 
 // The line on srv1's operator account: srv2's node-orch key (single authority: node_orch_ssh_key), source
@@ -126,6 +136,7 @@ fn node_orch_srv1_authorized_key_line() -> NodeOrchOperatorAuthorizedKeyLine? {
           key: node_orch_ssh_key,
           options: [from_opt, NoAgentForwardingOption, NoX11ForwardingOption],
           consumer: node_orch_srv1_consumer,
+          admission: node_orch_operator_authorized_keys_out_of_band_2026_11_20,
         },
       }
   }
@@ -146,6 +157,7 @@ fn node_orch_srv2_authorized_key_line() -> NodeOrchOperatorAuthorizedKeyLine? {
           key: node_orch_srv1_ssh_key,
           options: [from_opt, NoPortForwardingOption, NoAgentForwardingOption, NoX11ForwardingOption],
           consumer: node_orch_srv2_consumer,
+          admission: node_orch_operator_authorized_keys_out_of_band_2026_11_20,
         },
       }
   }
