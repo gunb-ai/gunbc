@@ -2932,6 +2932,21 @@ type RestartLoopStanding
   | LoopUnread { unit: NonEmptyStr, why: String }
 
 // PURE, AND TESTED HERMETICALLY: the three facts as the host answered them, and nothing else.
+// THE TAIL THE TWO QUIET SHAPES SHARE. A reading can answer "the cgroup holds nothing" or "there is no
+// workload cgroup at all"; from there the admission decides one way, from one pair of facts. Spelled twice the
+// two copies drift -- which is gunbc.recurring_failure_mode.
+// a_restore_reopens_a_slot_the_host_never_provisioned arriving again inside one fold -- so it is spelled once
+// and the two arms differ only in the evidence they hand back.
+fn loop_quiet_or_refused(unit: NonEmptyStr, tree_absent_proven: Bool, registration_held: Bool, quiet_evidence: String) -> RestartLoopStanding {
+  if !tree_absent_proven {
+    LoopUnread { unit: unit, why: "the tree standing the admission was handed is not a proven absence, so the registration inside it is unproven too" }
+  } else if registration_held {
+    LoopLive { unit: unit, why: "the host still holds a registration for this slot, which could take a job the moment it is polled" }
+  } else {
+    LoopQuiet { unit: unit, evidence: quiet_evidence }
+  }
+}
+
 fn runner_slot_restart_loop_standing(unit: NonEmptyStr, show_stdout: String, registration_held: Bool, tree_absent_proven: Bool) -> RestartLoopStanding {
   match slot_actuation_reading_of(unit: unit, show_stdout: show_stdout) {
     Absent => LoopUnread { unit: unit, why: "systemctl show returned no complete block for the unit, so the stop has no facts to stand on" }
@@ -2948,24 +2963,22 @@ fn runner_slot_restart_loop_standing(unit: NonEmptyStr, show_stdout: String, reg
                 SlotTasksUnread { cause: c } => LoopUnread { unit: unit, why: join(["the unit cgroup's task count is unread: ", c], "") }
                 SlotTasks { count: n } =>
                   if n == 0 {
-                    if !tree_absent_proven {
-                      LoopUnread { unit: unit, why: "the tree standing the admission was handed is not a proven absence, so the registration inside it is unproven too" }
-                    } else if registration_held {
-                      LoopLive { unit: unit, why: "the host still holds a registration for this slot, which could take a job the moment it is polled" }
-                    } else {
-                      LoopQuiet { unit: unit, evidence: "MainPID=0, the unit cgroup holds no task, and no registration is held over a tree the listing proves absent" }
-                    }
+                    loop_quiet_or_refused(
+                      unit: unit,
+                      tree_absent_proven: tree_absent_proven,
+                      registration_held: registration_held,
+                      quiet_evidence: "MainPID=0, the unit cgroup holds no task, and no registration is held over a tree the listing proves absent",
+                    )
                   } else {
                     LoopLive { unit: unit, why: join(["the unit cgroup holds TasksCurrent=", to_string(n), ", so a process is running under it"], "") }
                   }
                 SlotCgroupAbsent =>
-                  if !tree_absent_proven {
-                    LoopUnread { unit: unit, why: "the tree standing the admission was handed is not a proven absence, so the registration inside it is unproven too" }
-                  } else if registration_held {
-                    LoopLive { unit: unit, why: "the host still holds a registration for this slot, which could take a job the moment it is polled" }
-                  } else {
-                    LoopQuiet { unit: unit, evidence: "MainPID=0, the unit has no workload cgroup at all, and no registration is held over a tree the listing proves absent" }
-                  }
+                  loop_quiet_or_refused(
+                    unit: unit,
+                    tree_absent_proven: tree_absent_proven,
+                    registration_held: registration_held,
+                    quiet_evidence: "MainPID=0, the unit has no workload cgroup at all, and no registration is held over a tree the listing proves absent",
+                  )
               }
           }
       }
