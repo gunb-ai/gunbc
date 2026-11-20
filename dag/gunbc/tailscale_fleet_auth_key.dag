@@ -152,7 +152,7 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // an ephemeral key removes the node when it goes offline -- and these hosts exist to be REACHED, so an
 // outage would delete the very node the router is trying to route to. The upstream gate that decides
 // which kinds may hold a fleet is
-// @ref(extdeps.tailscale.join::tailscale_auth_key_policy_admit) -- cited so the reference check covers
+// #extdeps.tailscale.join::tailscale_auth_key_policy_admit -- cited so the reference check covers
 // it, and it is the only classifier join.dag keeps (a separate per-kind "permanent membership" helper
 // was deliberately left out rather than kept as a second answer to one question).
 //
@@ -164,7 +164,7 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // It is deliberately NOT recorded as "pre-approved": that would assert a property the key never had (the
 // admin console offered no such option). A host must still never land in NeedsMachineAuth, and on a tailnet
 // with device approval off it cannot; tailscale_join_host fails closed on NeedsMachineAuth regardless
-// (@ref(gunbc.tailscale_join_converge::tailscale_join_host)), so the join is no less guarded for not claiming
+// (#gunbc.tailscale_join_converge::tailscale_join_host), so the join is no less guarded for not claiming
 // a pre-approval the key does not carry.
 //
 // TAGGED tag:ci, which is the setting that bounds what a leaked key can do. Upstream: a node created by a
@@ -175,7 +175,7 @@ data tailscale_fleet_auth_key_expected_project: NonEmptyStr = fleet_secrets_gcp_
 // extdeps.tailscale.acl::tag_ci is the fleet's ACL authority for this tag, the ACL is written against
 // it, and the join advertises exactly that identity; a hand-copied string here would be a second place
 // independently deciding the tag the ACL governs
-// (@ref(gunbc.design_argument::single_authority): "a second place that independently decides it is a
+// (#gunbc.design_argument::single_authority: "a second place that independently decides it is a
 // fork"), so the witness asserts this value and the ACL's word are one value.
 //
 // 30 DAYS, as the operator set it on the admin console when minting version 2 (upstream's ceiling is 90
@@ -223,7 +223,7 @@ data tailscale_fleet_auth_key_policy: TailscaleAuthKeyPolicy = tailscale_auth_ke
 // both_participation (InferenceServing + CiRunner), and the operator ruled the both_participation hosts carry
 // BOTH tags -- "C both tags is fine" (operator, in chat to smart-crane-730, 2026-11-18). The ruling is what
 // makes the serving tag a role projection rather than a per-host list someone must remember to edit.
-// @ref(gunbc.design_ruling::ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18)
+// #gunbc.design_ruling::ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18
 fn tailscale_serving_tag_for_participation(participation: List<FleetParticipation>) -> List<NonEmptyStr> {
   filter(
     [tag_serving],
@@ -234,7 +234,7 @@ fn tailscale_serving_tag_for_participation(participation: List<FleetParticipatio
 // THE DESIRED TAG SET for a host's participation: the fleet key's ci tag, plus serving when the role is
 // inference serving. A ci-only role (a hetzner guest, a ci_runner_and_session server) yields [tag:ci] and NOT
 // serving -- which is the proof serving is role-gated and not stamped on everyone.
-// @ref(gunbc.design_ruling::ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18)
+// #gunbc.design_ruling::ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18
 fn tailscale_desired_tags_for_participation(participation: List<FleetParticipation>) -> List<NonEmptyStr> {
   concat([tailscale_fleet_node_tag], tailscale_serving_tag_for_participation(participation: participation))
 }
@@ -399,7 +399,7 @@ data tailscale_fleet_auth_key_host_path: NonEmptyStr = "/etc/gunbc-tailscale/fle
 
 // THE TYPED FILE REFERENCE the join passes upstream. Constructed from the custody path rather than from a
 // literal a caller could vary, so "the file the join points at" and "the file custody placed" are the same
-// string by construction (@ref(gunbc.design_argument::single_authority)).
+// string by construction (#gunbc.design_argument::single_authority).
 data tailscale_fleet_auth_key_file: Optional<TailscaleAuthKeyFile> = tailscale_auth_key_file_at(
   path: tailscale_fleet_auth_key_host_path,
 )

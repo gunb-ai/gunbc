@@ -95,7 +95,7 @@ fn srv1_serving_wrapper_script_for(device_flag: NonEmptyStr) -> RetainedShellScr
 // single template reproduces the observed host script byte for byte, and any edit to the template's other lines
 // (image, LMCache flags, context cap) moves this hash too and turns the receipt witness red rather than leaving
 // the installed-vs-running comparison to report only a device-flag difference.
-// @ref(gunbc.design_argument::minimize_redundancy)
+// #gunbc.design_argument::minimize_redundancy
 data srv1_serving_wrapper_running_body: String =
   srv1_serving_wrapper_script_for(device_flag: join(["--device ", nvidia_cdi_all_gpu_device as String], "") as NonEmptyStr).body
 
@@ -595,7 +595,7 @@ fn srv1_serving_docker_device_words_of(members: List<Srv1ServingDeviceMember>) -
 // that a separate check keeps out — so every reader (the deploy's install leg, the boot unit's wrapper text,
 // the adoption sha) must match this sum, and a refused group cannot be hashed, staged or installed. The
 // `nvidia.com/gpu=all` wildcard is unwritable for the same reason: no arm spells it.
-// @ref(gunbc.design_argument::fail_closed) @ref(gunbc.design_argument::single_authority)
+// #gunbc.design_argument::fail_closed #gunbc.design_argument::single_authority
 type Srv1ServingWrapper
   = Srv1ServingWrapperInstallable { script: RetainedShellScript, device_words: List<NonEmptyStr> }
   | Srv1ServingWrapperRefused { reason: NonEmptyStr }

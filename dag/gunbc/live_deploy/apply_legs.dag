@@ -138,7 +138,6 @@ import gunbc.live_deploy.spec { deployment_oidc_config_steps, tailscale_default_
 import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
-import gunbc.live_deploy.emit { install_file_owner_only_mode }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned, TrackerWebOidcEnvironmentUnbound,
@@ -1337,9 +1336,17 @@ fn deploy_apply_oidc_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
                 ApplyPlanReady { legs: [] }
               } else {
                 ApplyPlanReady { legs: [
+                  // The config DOCUMENT is a world-readable NON-credential projected from
+                  // gunbc.host.host_layout srv1_gunbc_oidc_config_root (see that row). Its directory is
+                  // installed shared and the file installed SHARED (world-readable), NOT owner-only, for two
+                  // reasons: (1) the document embeds no secret -- it names the secret's PATH, and the secret
+                  // itself is custody's in the operator-only /etc/gunbc-oidc; and (2) the deploy's host-arm
+                  // observation reads this member as the runner principal, which can only read a world-readable
+                  // file under a world-traversable parent. An owner-only mode here would make
+                  // gunbc.live_deploy.member_observe observe_oidc_config_file refuse with MemberUnobservable.
                   apply_root_leg(step: "oidc-config-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: cfg.config_path as String))),
                   apply_install_file_leg(step: "oidc-config", dest: cfg.config_path as String,
-                    mode: install_file_owner_only_mode, owner: spec.service.service_user, group: spec.service.service_user,
+                    mode: install_file_shared_mode, owner: spec.service.service_user, group: spec.service.service_user,
                     source: Payload { bytes: tracker_web_oidc_config_document(cfg: cfg) }),
                 ] }
               }

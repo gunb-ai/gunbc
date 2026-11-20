@@ -1256,7 +1256,7 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
 }
 
 // THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). It reuses `belt_observe_once_cli` — the SAME
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16. It reuses `belt_observe_once_cli` — the SAME
 // zero-arg entry the operator runs by hand to force one observation pass — which runs exactly
 // `served_observation_observe_and_write_for_instance` (the fold) and nothing else: no spawn, no
 // launch, no teardown. This is deliberately NOT the retired belt timer (the event-units ruling heads

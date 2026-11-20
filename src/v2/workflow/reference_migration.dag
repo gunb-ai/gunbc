@@ -381,7 +381,7 @@ fn migration_rule_delete_for_citation(document: String, label: String, extent: M
 // becoming a codec.
 fn migration_subject_key(subject: MigrationSubject) -> String {
   match subject {
-    SubjectMarked { reference: r } => annotation_reference_marker + declaration_ref_display_key(ref: r) + ")"
+    SubjectMarked { reference: r } => annotation_reference_marker + declaration_ref_display_key(ref: r)
     SubjectCitation { document: d, label: l } => "cite:" + d + " " + l
   }
 }
@@ -400,7 +400,7 @@ fn migration_rules_for_subject(rules: List<MigrationRule>, subject: MigrationSub
 // nothing malformed is a target; anything else names none, so a rule can never name a target by
 // shape, by prefix or by guesswork.
 fn migration_reference_from_coordinate(coordinate: String) -> Optional<DeclarationRef> {
-  let extraction = annotation_references_text(text: annotation_reference_marker + coordinate + ")", start: 0)
+  let extraction = annotation_references_text(text: annotation_reference_marker + coordinate, start: 0)
   match extraction.malformed {
     Cons { head: _, tail: _ } => Absent
     Empty =>
@@ -416,7 +416,7 @@ fn migration_reference_from_coordinate(coordinate: String) -> Optional<Declarati
 // a replacement the checker could not read would otherwise surface as a refusal at apply time
 // instead of a refusal at plan time.
 fn migration_marker_of(reference: DeclarationRef) -> String {
-  annotation_reference_marker + declaration_ref_display_key(ref: reference) + ")"
+  annotation_reference_marker + declaration_ref_display_key(ref: reference)
 }
 
 fn migration_round_trips(reference: DeclarationRef) -> Bool {
@@ -755,7 +755,7 @@ fn migration_comment_malformed(file: String, octets: MigrationOctetTable, annota
   // One reverse for the file, not one list copy per annotation.
   list_reverse(xs: fold_list(xs: annotations, empty: Empty, cons: fn(acc, a) {
     fold_list(xs: list_map(xs: annotation_references(text: a.lexeme, start: a.start).malformed, f: fn(m) {
-      MigrationMalformed { file: file, marker: MalformedReferenceMarker { cause: m.cause, text: m.text, start: m.start, end: m.end } }
+      MigrationMalformed { file: file, marker: MalformedReferenceMarker { text: m.text, start: m.start, end: m.end } }
     }), empty: acc, cons: fn(inner, m) { Cons { head: m, tail: inner } })
   }))
 }
@@ -857,15 +857,14 @@ fn migration_span_occurrences(file: String, text: String, base: Int, policy: Mig
 }
 
 // A span with no ATTRIBUTING token holds no occurrence, and skipping it is a consequence of what a
-// citation is rather than a heuristic: a marked reference needs the at-sign marker (its opening is
-// spelled in the code below, never in prose here — prose that spells a marker becomes a malformed
-// marked reference in the very population this surface plans over, which v2-bootstrap's reference
-// controls proved the hard way), and a positional citation needs a § sign or one of the document /
-// external-specification tokens the policy names: a bare number or word is never a citation
-// (`migration_citation_open`). This is what keeps a whole-repository plan from reading every byte of
-// every file once per pass.
+// citation is rather than a heuristic: a marked reference needs the marker (its opening is read from
+// the one marker row in std.annotation_reference, never spelled again here) AND the `::` that makes
+// a span a marker at all — a hashtag that never reaches `::` is prose the grammar does not read —
+// and a positional citation needs a § sign or one of the document / external-specification tokens
+// the policy names: a bare number or word is never a citation (`migration_citation_open`). This is
+// what keeps a whole-repository plan from reading every byte of every file once per pass.
 fn migration_text_can_hold_reference(text: String, policy: MigrationContextPolicy, documents: List<String>) -> Bool {
-  string_contains(s: text, pattern: "@ref(")
+  (string_contains(s: text, pattern: annotation_reference_marker) && string_contains(s: text, pattern: "::"))
     || string_contains(s: text, pattern: "§")
     || fold_list(xs: documents + policy.documents + policy.external_specifications, empty: false, cons: fn(acc, token) {
         acc || (token != "" && string_contains(s: text, pattern: token))

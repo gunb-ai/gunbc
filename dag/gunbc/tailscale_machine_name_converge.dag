@@ -36,14 +36,14 @@ module gunbc.tailscale_machine_name_converge
 // hostname half -- the sibling hostname-converge mode's write, not this module's -- lands first, and this mode is
 // only ever owed its `set` from the state where `hostname -s` already answers the target. It enforces that instead
 // of trusting the window to be sequenced correctly: every device state whose OS half is behind is a refusal, with a
-// cause that names the missing half, before any write (@ref(gunbc.design_argument::fail_closed)).
+// cause that names the missing half, before any write (#gunbc.design_argument::fail_closed).
 //
 // WHY THE OBSERVE COMES FIRST. The same extdeps module records that whether a device's machine name
 // follows an OS hostname change on its own is a per-device pref (upstream: auto-generation is on by
 // default, updates land "the next time Tailscale is started up", and "to avoid these automatic name
 // changes, uncheck this box"), and that a de-duplicated name sticks. No reading of the documentation
 // says what THIS device is doing. So the mode does not assume: it reads, and the write happens only if
-// the read disagrees. That is @ref(gunbc.design_argument::epistemic_humility) -- the unknown is recorded at the
+// the read disagrees. That is #gunbc.design_argument::epistemic_humility -- the unknown is recorded at the
 // edge that would have acted on it.
 //
 // THE REVERSE DIRECTION IS NOT A SECOND MODE. A rename window's rollback is this same mode pointed at the old
@@ -303,7 +303,7 @@ type TailscaleMachineNameDeviceNames
 // asks it before a write and the read-back asks it after one, and both get the same verdict from the same
 // function -- a second place that decides convergence is a fork, and the fork here would be visible as a run
 // that reports a device converged in exactly the state a later start un-converges
-// (@ref(gunbc.design_argument::single_authority), @ref(gunbc.design_argument::fail_closed)).
+// (#gunbc.design_argument::single_authority, #gunbc.design_argument::fail_closed).
 //
 // THE TWO HALVES ARE NOT SYMMETRIC, and the asymmetry is forced by upstream: the tailnet name is re-derived from
 // the OS hostname the next time Tailscale starts. So the OS half decides whether this mode's write can hold, and
@@ -448,7 +448,7 @@ fn tailscale_machine_name_mode_wire(mode: TailscaleMachineNameMode) -> String {
 // same raw itself rather than handing over that capture, and the hostname-converge lane builds its OS half on that
 // carrier. Today both reduce to trim plus non-empty, so the two halves of the window step agree; that agreement is
 // a coincidence of two parsers until the carrier passes the capture through, which is the hostname lane's file to
-// change (@ref(gunbc.design_argument::single_authority)).
+// change (#gunbc.design_argument::single_authority).
 
 fn tailscale_machine_name_device_names_reading(
   status_document: String,

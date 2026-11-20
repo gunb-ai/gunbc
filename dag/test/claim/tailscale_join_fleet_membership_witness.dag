@@ -435,7 +435,7 @@ test fn w_a_ci_only_host_is_desired_to_carry_ci_and_not_serving() -> Bool {
 test fn w_hand_joined_specimen_reads_as_joined_but_not_a_fleet_member() -> Bool {
   match state_of(fixture: hand_joined_fixture_path) {
     // No `backend == "Running"` conjunct here: the arm IS that fact. Restating it would test the type
-    // rather than the reading (@ref(gunbc.design_argument::fail_closed): making the wrong state unwritable is
+    // rather than the reading (#gunbc.design_argument::fail_closed: making the wrong state unwritable is
     // stronger than catching it).
     JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
       tags.count() == 0
@@ -474,7 +474,7 @@ test fn w_not_joined_fixture_reads_as_not_joined() -> Bool {
 // A DOCUMENT THAT CANNOT ANSWER IS NOT THE TAGLESS ANSWER. Running with no `Self`: membership cannot be decided,
 // so this refuses rather than reading as "joined, no tags" -- which would route it into the very arm this change
 // adds, on evidence the document does not give. Fail-closed means the failure arm refuses; it does not widen into
-// whichever arm is nearest (@ref(gunbc.design_argument::fail_closed)).
+// whichever arm is nearest (#gunbc.design_argument::fail_closed).
 test fn w_running_without_self_refuses_rather_than_reading_tagless() -> Bool {
   match state_of(fixture: running_without_self_fixture_path) {
     JoinStateUnreadable { cause: cause } => cause != ""

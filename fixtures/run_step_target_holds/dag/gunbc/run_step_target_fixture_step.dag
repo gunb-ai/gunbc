@@ -4,7 +4,7 @@ import std.types { Int }
 import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
 
 // THE HOLDING CONTROL: a run-step target whose (module, function) pair names a real declaration in a module the
-// step does not even import. The check resolves the pair through the SAME context it builds for @ref markers.
+// step does not even import. The check resolves the pair through the SAME context it builds for marked references.
 data run_step_target_fixture_target: Int = gunbc_run_step_target(
   module: "gunbc.run_step_target_fixture_home",
   function: "run_step_target_fixture_entry",
