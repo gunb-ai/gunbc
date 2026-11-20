@@ -1648,6 +1648,20 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: list_of_type_variable("data_decl_type_fact_elem".to_string()),
     }));
+                __m.insert("extdeps_subject_ref_facts".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "pool_roots".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    })]),
+        returns: list_of_type_variable("extdeps_subject_ref_fact_elem".to_string()),
+    }));
                 __m.insert("fact_cardinality_decl_facts".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: list_of_type_variable("fact_cardinality_decl_fact_elem".to_string()),

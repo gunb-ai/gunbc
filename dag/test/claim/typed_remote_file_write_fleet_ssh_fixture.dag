@@ -23,8 +23,9 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
   FleetSshCredentialDerivationRefused,
+  FleetSshCredentialAdmissionEmpty,
   expected_public_key_line,
-  classify_derived_public_key_line,
+  classify_derived_public_key_line_any,
 }
 
 data fixture_attempt_raw: String = "typed-remote-file-write-witness"
@@ -79,9 +80,9 @@ data fixture_public_key: SshPublicKey = SshPublicKey {
 
 // A derivation whose stdout IS the expected line, so the match arm is reached honestly.
 fn fixture_credential_verification() -> FleetSshCredentialVerification {
-  classify_derived_public_key_line(
+  classify_derived_public_key_line_any(
     identity_file: fixture_identity_file,
-    expected_key: fixture_public_key,
+    admitted_keys: [fixture_public_key],
     derivation_succeeded: true,
     derivation_stdout: expected_public_key_line(key: fixture_public_key),
     derivation_stderr: "",
@@ -138,6 +139,7 @@ fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionCo
         }
         FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
         FleetSshCredentialDerivationRefused { cause: _ } => none
+        FleetSshCredentialAdmissionEmpty { observed_line: _ } => none
       }
     }
   }
@@ -173,9 +175,9 @@ fn fleet_ssh_execution_context_at_witness_fixture(
         )
       }
       let key = SshPublicKey { algorithm: Ed25519, material: key_material, comment: "typed-remote-file-write-witness" }
-      match classify_derived_public_key_line(
+      match classify_derived_public_key_line_any(
         identity_file: fixture_identity_file,
-        expected_key: key,
+        admitted_keys: [key],
         derivation_succeeded: true,
         derivation_stdout: expected_public_key_line(key: key),
         derivation_stderr: "",
@@ -190,6 +192,7 @@ fn fleet_ssh_execution_context_at_witness_fixture(
         }
         FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
         FleetSshCredentialDerivationRefused { cause: _ } => none
+        FleetSshCredentialAdmissionEmpty { observed_line: _ } => none
       }
     }
   }

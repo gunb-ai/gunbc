@@ -91,7 +91,7 @@ import extdeps.external_authority { TranscribedUncited }
 import gunbc.host.bmc_control_binding { BmcControlEndpointMismatch, bmc_control_route_observation }
 import gunbc.host.host_reset_subject_roster { admit_reset_subject, ResetSubjectAdmitted }
 import gunbc.machine_intake.mtcollins1_access_observation {
-  mtcollins1_access_observation, mtcollins1_current_build_firmware,
+  mtcollins1_access_observation, mtcollins1_current_build_firmware, mtcollins1_observed_at,
 }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
 import gunbc.host.boot_medium {
@@ -188,7 +188,11 @@ fn fixture_evidence_at(h: ManagedHost, firmware: BmcFirmwareReleaseIdentity) -> 
         firmware: firmware,
       },
       evidence: fixture_build_reading_evidence(),
-      observed_at: o.observed_at,
+      // THE READING'S INSTANT IS THE PASS'S OWN CLOCK READING, not the access receipt's time. A build
+      // reading is compared with other build readings by `<` and `>` in gunbc.host.megarac_operation_standing,
+      // so its field stays a point; and an observation's time is a captured band now, which has no lawful
+      // way into a point field (gunbc.design_argument::replacement_migration: a cut-over names its consumers).
+      observed_at: mtcollins1_observed_at,
     )
     BmcAccessUnobserved { endpoint: _ } => megarac_operation_evidence_fixture_none()
   }
@@ -854,7 +858,9 @@ test fn w_a_build_reading_for_another_controller_grounds_no_capability_row() -> 
         endpoint: other_endpoint,
         identity: o.identity,
         evidence: fixture_build_reading_evidence(),
-        observed_at: o.observed_at,
+        // Same source as the pairing above: the fixture pass's own clock reading. The band-shaped receipt
+        // time cannot enter a point field, and this claim's point is about the endpoint key, not about time.
+        observed_at: mtcollins1_observed_at,
       )
       BmcAccessUnobserved { endpoint: _ } => megarac_operation_evidence_fixture_none()
     }

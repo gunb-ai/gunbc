@@ -15,7 +15,7 @@ module test.claim.roadmap.roadmap_schedule_leaf_expansion_witness
 // matched on the count_source field directly -- a two-case type needs no redundant is_* wrapper.
 // The same row aimed at a stage the parent HAS is admitted.
 
-import std.types { Bool }
+import std.types { Bool, Int }
 import std.integer { nat_to_int }
 import std.algebra { contains }
 import gunbc.roadmap.roadmap_authority { nid }
@@ -26,6 +26,16 @@ import gunbc.roadmap.roadmap_decomposition {
   decomposition, waits, leaf, reading_family, piece, decision, join,
   Expanded, ExpansionRejected, DependencyClaimRefused, NonPositiveDeclaredCount, NotUniquelyDecomposed,
   Into, From, EndpointEmitsNoOccurrence, DecisionKind, piece_kind_eq,
+  LeafPricing, Priced, Unpriced,
+}
+
+// a match cannot be an operand of && in this dialect; this single-match predicate lets the composite report assert its
+// nested day total is Priced at `want` (Unpriced -- a nested unprobed FindingsOf family -- is not the day total 5).
+fn nested_days_eq(nested: LeafPricing, want: Int) -> Bool {
+  match nested {
+    Priced { days: d } => d == want
+    Unpriced { families: _ } => false
+  }
 }
 
 // THE FIRST SLICE. literal-elaboration is a real decomposition in the carrier: a probe leaf at stage 0, a
@@ -318,7 +328,7 @@ test fn a_composite_is_not_expanded_but_is_reported_with_its_nested_day_total() 
                && nat_to_int(n: c.path.stage) == 0
                && nat_to_int(n: c.path.piece) == 1
                && nat_to_int(n: c.path.member) == 0
-               && c.nested_days == 5)) == 1
+               && nested_days_eq(nested: c.nested_days, want: 5))) == 1
     ExpansionRejected { cause } => false
   }
 }
