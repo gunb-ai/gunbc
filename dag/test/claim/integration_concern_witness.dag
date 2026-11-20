@@ -214,5 +214,5 @@ test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and
 test fn every_row_renders_through_the_reading() -> Bool {
   let text: String = reading_text(title: "every row, rendered", rows: integration_concerns)
   string_contains(s: text, pattern: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer")
-    && string_contains(s: text, pattern: "which row owns 192.168.1.236 until the lease says otherwise")
+    && string_contains(s: text, pattern: "the lease table read naming which MAC holds 192.168.1.236")
 }
