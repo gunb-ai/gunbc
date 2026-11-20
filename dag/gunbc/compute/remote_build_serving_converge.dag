@@ -66,6 +66,9 @@ import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_sli
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv }
+// The user-manager leg reads Linger and enables it through the one shared loginctl model (unelevated read,
+// elevated enable) -- the same argv the runner lane uses, never a second spelling.
+import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_enable_linger_argv, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
 // The one authority for cgroup memory.max / memory.swap.max reads, shared with the reader
 // (gunbc.compute.unit_bounds::observed_cgroup_bound), so the observe reads the cap the same way.
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
@@ -398,6 +401,21 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
   }
 }
 
+// Whether the serving account's user manager is lingering, read unelevated: `loginctl show-user <account>
+// --property=Linger` answers for any caller, so no sudo rides it (the enable verb below IS elevated).
+// established-true is lingering, established-false is proven not-lingering (it licenses the enable write),
+// and a refused read is an unknown -- the assess never writes toward a linger state nobody read.
+fn serving_leg_linger(item: String, target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: loginctl_show_user_linger_command(subject: account))) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecConverged { result: r } => match loginctl_linger_reading(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+      LoginctlLingerEnabled => ObservationEstablished { observed: true }
+      LoginctlLingerDisabled => ObservationEstablished { observed: false }
+      LoginctlLingerUnread { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+    }
+  }
+}
+
 fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ServingObservedView {
   // The elevation precondition is read ONCE and handed to the sudo-dependent legs (typed precondition, not
   // a per-leg re-check). If 'sudo -n true' is refused, the 'test'-based legs short-circuit to refused, and
@@ -466,6 +484,18 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationRefused { cause: _ } => Absent
   }
   let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_passwd_uid(text: passwd_opt, name: d.account_name))
+  // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
+  // cgroup to persist, so it is observed in the same pass. It is GATED on the account being present, exactly
+  // as the rustup/toolchain legs are: a confirmed-absent account (a fresh host) has no user manager to ask
+  // loginctl about -- `loginctl show-user <nobody>` fails to look up the user, which is NOT a lingering
+  // answer and would otherwise poison the whole assessment as an unknown and stop the account leg ever
+  // planning. A proven-absent account therefore reads not-lingering (established-false), so the enable leg
+  // is planned and, ranked just above the account, runs right after useradd. Only a present (or unread) gate
+  // runs the live read; a refused read there stays an unknown.
+  let linger = match account_gate {
+    ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
+    _ => serving_leg_linger(item: "user_manager.linger", target: target, context: context, account: d.account_name as NonEmptyStr)
+  }
   let o = serving_observed_from_reads(
     elevation: elevation,
     account_name: d.account_name,
@@ -487,6 +517,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_work_slice_max: slice_cap.max,
     user_work_slice_high: slice_cap.high,
     user_work_slice_swap: slice_cap.swap,
+    user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
   )
@@ -605,7 +636,9 @@ type ConvergeAction =
   // carve reservation with swap forbidden, the wrap refuses and every remote build fails. This action
   // installs the slice unit at the host's ceiling (rendered by gunbc.live_deploy.emit's
   // user_work_slice_unit_file_for_host_ceiling) and reloads the serving user manager. Every value the
-  // write uses is a field here; expected_content is the rendered unit, compared back after install.
+  // write uses is a field here; expected_content is the rendered unit, compared back after install. The
+  // cgroup only comes into existence under a LIVE serving user manager -- `systemctl start` on the slice
+  // does not instantiate it on its own -- so EnsureUserManagerLinger is ranked ahead of this leg.
   | InstallUserWorkSlice { unit_name: NonEmptyStr, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, memory_swap_max: ByteSize, expected_content: String }
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
   // The serving binary's IDENTITY, written beside it at <install_path>.identity so a later serve
@@ -617,6 +650,10 @@ type ConvergeAction =
   // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
   | RecordServeIdentity { install_path: String, revision: String, sha256: String }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
+  // Put the serving account's user manager into its lingering state, immediately before the slice install:
+  // the slice's cgroup only persists under a live user manager (an empty user slice under a non-lingering
+  // account is torn down before anything can read it). Ranked just below the slice, above the account it acts on.
+  | EnsureUserManagerLinger { account: String }
 
 // The decision IS one of these; there is no Bool tag to keep in step with the fields (review 95922 #2 /
 // review 95928; gunbc.design_argument::fail_closed — "stronger than catching a wrong state is making it
@@ -743,6 +780,13 @@ fn converge_checkout(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: Serv
 // the emitted unit render at that ceiling, and the swap floor is the model's zero. A refused render or a
 // high gap above the ceiling fails the plan closed (converge_draft_unhandled) — an unrenderable slice
 // is never half-installed. The install path is srv1's own: gunbc.live_deploy.spec's user-work slice path.
+// The plan-side build for the user-manager leg: the single action that enables lingering on the serving
+// account, carrying the account name it acts on. The account is the same declared serve account the slice
+// leg installs under, so the manager that is kept live is the one that must hold that slice's cgroup.
+fn converge_ensure_user_manager_linger_plan(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([EnsureUserManagerLinger { account: d.account_name }], acc.writes), unhandled: acc.unhandled }
+}
+
 fn converge_install_user_work_slice_plan(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
   let ceiling = user_work_slice_memory_max_for_host(host: d.host)
   match user_work_slice_unit_file_for_host_ceiling(memory_max: ceiling) {
@@ -869,6 +913,10 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     // and before the serve binary.
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: _, rustup_home: _, cargo_home: _ } => 6
     EnsureToolchain { channel: _, as_user: _ } => 7
+    // The live user manager is the precondition for the slice cgroup, so linger runs with the ensure-tier
+    // legs and strictly before the slice install at rank 8; the executor halts at the first failed write,
+    // so a manager that never lingers stops the pass before a slice is ever written behind it.
+    EnsureUserManagerLinger { account: _ } => 7
     // The user-work slice is capped BEFORE the serve binary: a slice that never settles must stop the
     // pass (converge_execute_with halts at the first failed write) so no binary lands behind an
     // un-admitted slice.
@@ -891,6 +939,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureAuthorizedKeys { path: p, owner_user: _, content: _ } => concat("ak:", p)
     EnsureCheckout { dir: dd, clone_url: _, revision: _, as_user: _ } => concat("checkout:", dd)
     EnsureToolchain { channel: c, as_user: u } => concat("toolchain:", c, ":", u)
+    EnsureUserManagerLinger { account: a } => concat("linger:", a)
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: u, rustup_home: _, cargo_home: _ } => concat("rustup:", u)
     InstallUserWorkSlice { unit_name: n, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => concat("slice:", n)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
@@ -1017,6 +1066,7 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // The serving account's user-work slice is uncapped at the ceiling (decided by the reader's own
     // cgroup judgment upstream). Install the slice unit at the host ceiling; the ceiling and the unit
     // body come from the model (host_capacity reservation + emit render), never a seat count.
+    UserManagerNotLingering { account_name: _ } => converge_ensure_user_manager_linger_plan(acc, d)
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
@@ -1252,6 +1302,30 @@ fn user_work_slice_install_command_argv(uid: Int) -> List<List<String>> {
 // THE CAP BACK THROUGH THE SAME CGROUP READ the observe and the reader use: MemoryMax must equal the ceiling
 // and MemorySwapMax 0, or the step fails. converge_execute_with halts at the first failed write, so an
 // unsettled slice stops the pass before the serve binary is ever written.
+// Bring the serving account's user manager into its lingering state, so the slice cgroup the NEXT leg
+// installs has a live manager to live under -- an empty user slice under a non-lingering account is torn
+// down before the readback can read it, so the ceiling never lands even though daemon-reload and start
+// both succeed. Idempotent: a manager already lingering is settled with no write. The enable
+// verb is privileged so it rides sudo (loginctl_enable_linger_argv is the same argv the runner lane uses);
+// the decision is made by the SAME unelevated Linger read the observe used, so 'converged' and 'admitted'
+// are one reading. It is ranked below the slice, and the executor halts at the first failed write, so a
+// manager that never lingers stops the pass before any slice is written behind it.
+fn converge_enable_user_manager_linger(target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ConvergeStep {
+  let item = "user_manager.linger"
+  match serving_leg_linger(item: item, target: target, context: context, account: account) {
+    ObservationRefused { cause: c } => StepFailed { cause: concat("linger read refused before enable: ", c.cause) }
+    ObservationEstablished { observed: true } => StepDone
+    ObservationEstablished { observed: false } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: loginctl_enable_linger_argv(subject: account))) {
+      StepFailed { cause: c } => StepFailed { cause: concat("enable-linger: ", c) }
+      StepDone => match serving_leg_linger(item: item, target: target, context: context, account: account) {
+        ObservationEstablished { observed: true } => StepDone
+        ObservationEstablished { observed: false } => StepFailed { cause: "user manager still not lingering after enable-linger" }
+        ObservationRefused { cause: c } => StepFailed { cause: concat("linger read refused after enable: ", c.cause) }
+      }
+    }
+  }
+}
+
 fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, expected_content: String) -> ConvergeStep {
   let staging_local = "target/gunbc-user-work-slice.upload"
   let local_write = Filesystem.Write(path: staging_local, content: expected_content)
@@ -1376,6 +1450,7 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // profile under sudo -u.
     EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
     EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
+    EnsureUserManagerLinger { account: a } => converge_enable_user_manager_linger(target: target, context: context, account: a as NonEmptyStr)
     InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: mhigh, memory_swap_max: _, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_high: mhigh, expected_content: content)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
