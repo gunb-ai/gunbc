@@ -174,6 +174,11 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_fallback_grub_cfg,
   site_pxe_edge_grub_mac_path,
   site_pxe_edge_stale_install_paths,
+  site_pxe_edge_owned_install_path,
+  site_pxe_edge_empty_owned_install_dirs,
+  site_pxe_edge_served_root,
+  site_pxe_edge_http_root,
+  site_pxe_edge_seed_path,
   StaleInstallFilesNone, StaleInstallFilesFound, StaleInstallFilesUnobservable,
   StaleRemoved, StaleLeftObserveOnly, StaleRemovalRefused,
   SitePxeEdgeInstallBinding,
@@ -1824,6 +1829,101 @@ test fn a_surviving_stale_install_file_refuses_the_apply() -> Bool {
     && !site_pxe_edge_run_succeeded(run: blind)
     && site_pxe_edge_run_succeeded(run: observe)
     && !site_pxe_edge_run_succeeded(run: observe_blind)
+}
+
+// THE STAGING SUBTREE IS OWNED BECAUSE NOTHING HERE RENDERS A FILE IN IT, not because of what the directory is
+// called. The first two paths are the residue this fleet actually found on srv4 on 2026-11-19T20:55Z (the
+// hand-staged H11SSL stanza, and its directory); the third is the SAME KIND of residue under a name nobody chose
+// for it, which is the case a rule keyed to withdrawn-* would miss. The chain paths are the edge's own files: an
+// entry grub.cfg, a shipped loader, a served ISO -- none of them may become residue because they sit under the
+// same root. The last four lines are the family roots: a family is owned from INSIDE, so the directory that names
+// a family is where the fold writes and is never itself a removal candidate.
+test fn a_hand_staged_entry_under_the_edge_staging_subtree_is_stale() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let desired = install_files_of(b: b, image: servable_image())
+    let kept = map(desired, f => f.path as String)
+    let chain = ["/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg", "/srv/gunbc-site-pxe-edge/tftp/bootaa64.efi", "/srv/gunbc-site-pxe-edge/http/iso/ubuntu-24.04.3-live-server-arm64.iso"]
+    let hand_staged = ["/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg", "/srv/gunbc-site-pxe-edge/staging/ac:1f:6b:e6:75:eb.efi"]
+    site_pxe_edge_stale_install_paths(listed: kept + hand_staged + chain, desired: desired) == hand_staged
+      && site_pxe_edge_owned_install_path(path: "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg")
+      && !site_pxe_edge_owned_install_path(path: "/srv/gunbc-site-pxe-edge/staging")
+      && !site_pxe_edge_owned_install_path(path: "/srv/gunbc-site-pxe-edge/http/seed")
+      && !site_pxe_edge_owned_install_path(path: "/srv/gunbc-site-pxe-edge/tftp/grub/install")
+      && !site_pxe_edge_owned_install_path(path: site_pxe_edge_served_root())
+  })
+}
+
+// THE DIRECTORY A WITHDRAWAL EMPTIES GOES WITH THE FILES, and the family roots stay. This is the pair the residue
+// row describes: srv4 carries http/seed/ac-1f-6b-e6-75-eb and http/seed/9c-6b-00-e7-ca-63 as EMPTY directories
+// today, because run 44249605412 removed their user-data and meta-data and left the names behind. A seed directory
+// the run still renders into -- the bound client's own -- is not a candidate; neither is seed/, install/ or
+// staging/, which are the families' roots. Deepest path first: a chain of emptied directories must come out
+// bottom-up, because rmdir refuses a directory that still holds an entry.
+test fn a_directory_emptied_by_the_withdrawal_is_pruned_and_the_family_roots_stay() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let desired = install_files_of(b: b, image: servable_image())
+    let kept = map(desired, f => f.path as String)
+    let staged = "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg"
+    // The directory THIS RUN RENDERS CONTENT INTO, derived from the module's own roots rather than copied as a
+    // literal: it is listed by the probe, it is inside an owned family, and nothing stale sits under it -- so the
+    // only thing that keeps it off the prune list is site_pxe_edge_protected_install_dirs, which walks the
+    // ancestors of kept and rendered files. Remove that walk and this name starts disappearing from the edge.
+    let rendered_seed_dir = join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_path(mac: x86_mac)], "")
+    let emptied_seed_pair = ["/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/user-data", "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/meta-data"]
+    let listed = kept + [staged] + emptied_seed_pair
+    let stale = site_pxe_edge_stale_install_paths(listed: listed, desired: desired)
+    let dirs = [
+      "/srv/gunbc-site-pxe-edge",
+      "/srv/gunbc-site-pxe-edge/tftp",
+      "/srv/gunbc-site-pxe-edge/tftp/grub",
+      "/srv/gunbc-site-pxe-edge/tftp/grub/install",
+      "/srv/gunbc-site-pxe-edge/http",
+      "/srv/gunbc-site-pxe-edge/http/iso",
+      "/srv/gunbc-site-pxe-edge/http/seed",
+      "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c",
+      "/srv/gunbc-site-pxe-edge/staging",
+      "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new",
+      rendered_seed_dir,
+    ]
+    let pruned = site_pxe_edge_empty_owned_install_dirs(listed_dirs: dirs, listed_files: listed, stale_files: stale, desired: desired)
+    // Exactly the two emptied names, deepest first, and no root among them.
+    length(pruned) == 2
+      && pruned == ["/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c", "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new"]
+      // A chain empties bottom-up, and a directory holding a file this run keeps is never a candidate.
+      && site_pxe_edge_empty_owned_install_dirs(listed_dirs: ["/srv/gunbc-site-pxe-edge/staging/a", "/srv/gunbc-site-pxe-edge/staging/a/b"], listed_files: [], stale_files: [], desired: desired) == ["/srv/gunbc-site-pxe-edge/staging/a/b", "/srv/gunbc-site-pxe-edge/staging/a"]
+      && !any(pruned, d => d == "/srv/gunbc-site-pxe-edge/http/seed" || d == "/srv/gunbc-site-pxe-edge/staging" || d == "/srv/gunbc-site-pxe-edge")
+      // A directory the fold renders into is never a prune candidate, listed or not.
+      && !any(pruned, d => d == rendered_seed_dir)
+  })
+}
+
+// AN EMPTIED DIRECTORY WHOSE rmdir IS REFUSED FAILS THE RUN, the same way a refused file removal does: the
+// standing reports the path that refused and why, and a run that left install residue behind is not a success.
+test fn a_refused_directory_removal_refuses_the_apply() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let stale = ["/srv/gunbc-site-pxe-edge/http/seed/9c:6b:00:e7:ca:9c/user-data", "/srv/gunbc-site-pxe-edge/http/seed/9c:6b:00:e7:ca:9c/meta-data", "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg"]
+  let removed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale + ["/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c"], outcome: StaleRemoved }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
+  let dir_refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, stale_install_files: StaleInstallFilesFound { paths: stale + ["/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c"], outcome: StaleRemovalRefused { path: "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c", reason: "rmdir exit=1: Directory not empty" } }, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http, live_evidence: base.live_evidence }
+  site_pxe_edge_run_succeeded(run: removed)
+    && !site_pxe_edge_run_succeeded(run: dir_refused)
+}
+
+// THE RUN REPORTS THE PLACEMENT STEP BEFORE THE STALE LISTING. This pins the order of the REPORT, which is what an
+// attribution like the one in gunbc.machine_intake
+// ::supermicro_h11ssl_unit3_edge_residue_2026_11_19 reads off a converge log to say WHICH leg took a path away --
+// here the run prints placement= before stale-install-files=. It is NOT a proof of execution order: this module has
+// no step-order carrier to assert on, and building one is machinery this change does not carry. The execution-order
+// dependency of the staging rule -- the placement leg un-stages the fetched image before the stale listing is read,
+// so a path still under staging/ at listing time is hand-staged residue or the corpse of a fetch this run already
+// refused -- is stated in the rule's comment and in the PR body, and its cost if the order ever flips is a
+// re-download that is verified by digest again, never a bad served copy.
+test fn the_run_report_puts_the_placement_step_before_the_stale_listing() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let text = site_pxe_edge_run_text(run: base, overall_succeeded: site_pxe_edge_run_succeeded(run: base))
+  let after_stale = skip(split(s: text, delimiter: "stale-install-files="), n: 1)
+  contains(text, "stale-install-files=")
+    && contains(text, "placement=")
+    && !any(after_stale, part => contains(part, "placement="))
 }
 
 // ── The diskless live-boot binding ───────────────────────────────────────────────────────────────
