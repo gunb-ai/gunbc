@@ -337,8 +337,6 @@ test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
 // always() so an early-failing job still reports it, fail-closed on no-files-found.
 test fn fan_policy_phase_receipt_upload_fails_closed_under_always() -> Bool {
   match fleet_converge_fan_policy_phase_receipt_upload_step() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: upload, diagnostics: _ } => match upload {
     UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: i, continue_on_error: c, timeout_minutes: _ } =>
       match w {
         Present { value: with } =>
@@ -350,7 +348,6 @@ test fn fan_policy_phase_receipt_upload_fails_closed_under_always() -> Bool {
         Absent => false
       }
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
-  }
   }
 }
 
