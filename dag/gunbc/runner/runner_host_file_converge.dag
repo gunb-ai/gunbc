@@ -2,6 +2,7 @@ module gunbc.runner.runner_host_file_converge
 import std.algebra { length }
 import std.decl_ref { decl_ref }
 import std.optional { Absent, Optional, Present }
+import std.list { first_where }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
@@ -40,7 +41,7 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
-import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
+import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, release_slot_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
 import gunbc.runner.runner_slot_cap_converge { slot_cap_desired_at_unit, SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
@@ -2825,6 +2826,46 @@ fn rebuild_runner_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
   }
 }
 
+// RELEASING AN ADMISSION ON A SLOT THE HOST MAY NEVER HAVE INSTANTIATED. The bracket's release leg
+// (gunbc.runner.runner_host_cap_bracket::release_slot_over) starts a unit the withdraw masked and reads
+// back loaded/enabled/active -- and NOTHING ASKS WHETHER THE SLOT'S RUNNER TREE IS THERE. A kept slot
+// can be a unit whose tree the host never built: srv3-06 and srv3-07 are exactly that (withdraw 44595938568
+// masked thirteen kept units; restore 44606128349 reported srv3-06/07 ACTIVATED with a live MainPID and no
+// cgroup, and the caps converge 44621007740 then read REFUSED step=slot-tree 'slot tree absent while active'
+// for both). The unit starts, the listener never comes up, and the cap phase stays unsettled forever --
+// gunbc.recurring_failure_mode::a_restore_reopens_a_slot_the_host_never_provisioned. So the release of a
+// KEPT unit goes through the tree first: a tree proved absent takes the host's OWN queued-first-install
+// path (rebuild_runner_slot_tree), and a unit that has a process while its tree is absent is an anomaly and
+// REFUSES -- it is never started again to find out. This is the intake the converge's tree leg already
+// applies to its slots (converge_runner_slot_tree); the release route was the one that bypassed it.
+fn runner_slot_release_intake_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome {
+  let tree = first_where(xs: subject.slot_trees, keep: t => t.unit == unit)
+  match tree {
+    Absent => SlotActuationRefused { unit: unit, step: "slot-tree", reason: "the model declares no slot tree for this unit, so releasing its admission cannot be grounded in a tree the host can run" }
+    Present { value: target } => match observe_runner_slot_tree_presence(subject: subject, context: context, target: target) {
+      TreePresent => release_slot_over(target: subject.target, context: context, unit: unit)
+      TreePresenceUnreadable { cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: join(["the slot-tree presence read was refused, so no release was decided: ", why], "") }
+      TreeAbsent => match runner_slot_instantiation(unit: unit, read: read_slot_over(target: subject.target, context: context, unit: unit), presence: TreeAbsent) {
+        SlotNotInstantiated => match rebuild_runner_slot_tree(subject: subject, context: context, target: target) {
+          RunnerSlotTreeRebuilt { unit: _ } => release_slot_over(target: subject.target, context: context, unit: unit)
+          RunnerSlotTreeRefused { unit: _, cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: join(["the slot tree is absent and the first install was refused, so the admission was not released: ", why], "") }
+          RunnerSlotTreeHeld { unit: _ } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: "the slot tree is absent and its install is held by the host, so the admission was not released" }
+          RunnerSlotTreeQueuedForFirstInstall { unit: _ } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: "the slot tree is absent and its first install is queued behind the host's file write, so the admission was not released yet" }
+          RunnerSlotTreePending { unit: _, cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: join(["the slot tree is absent and its install is pending: ", why], "") }
+        }
+        SlotInstantiated { unit: _ } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: "the slot tree is absent while the unit reports a process -- an anomalous pairing; the unit was not started or released" }
+        SlotInstantiationAnomalous { detail: why } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: join(["the slot tree is absent while the unit is instantiated: ", why], "") }
+        SlotInstantiationUnreadable { cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: join(["the slot tree is absent and the unit behind it is unreadable: ", why], "") }
+      }
+    }
+  }
+}
+
+// EVERY KEPT UNIT'S RELEASE GOES THROUGH THAT INTAKE.
+fn runner_slot_release_intakes_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotActuationOutcome> {
+  map(units, u => runner_slot_release_intake_over(subject: subject, context: context, unit: u))
+}
+
 fn converge_runner_slot_tree(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -4623,7 +4664,7 @@ fn write_reload_and_restart_admitted_over(
   let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false, pending_on_manager: false)
   let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
-  let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
+  let readmitted = if written { [] } else { runner_slot_release_intakes_over(subject: subject, context: context, units: owned) }
   // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
   // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
   // AN ADMITTED IDLE LISTENER IS STOPPED ONLY AFTER ITS THREE READINGS ARE TAKEN AGAIN (stop_admitted_listener_over);
@@ -4694,7 +4735,7 @@ fn write_reload_and_restart_admitted_over(
 
 fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, owned: List<NonEmptyStr>, head: String) -> RunnerHostCapPhase
 {
-  let restored = release_owned_slots_over(target: subject.target, context: context, units: owned)
+  let restored = runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
   let left = host_left_of_readmit(units: owned, outcomes: restored)
   let discharged = match left { HostAdmitting => write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) HostLeftDrained { units: _ } => Present { value: "not admitting" } }
   CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
@@ -5367,7 +5408,7 @@ fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
             FleetSshContextReady { context: context, receipt: _ } => {
               let decision = release_decision_of(reading: read_bracket_obligation(host: subject.host as String))
               let outcomes = match decision {
-                ReleaseOwes { units: owned } => release_owned_slots_over(target: subject.target, context: context, units: owned)
+                ReleaseOwes { units: owned } => runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
                 _ => []
               }
               finish_runner_host_cap_release(host: raw_host, decision: decision, outcomes: outcomes)
