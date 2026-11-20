@@ -383,11 +383,11 @@ fn serving_serve_identity_deviation(binary_sha: String?, leg: ObservationAttempt
     Absent => []
     Present { value: want } => match leg {
       Absent => []
-      Present { value: ObservationEstablished { observed: SidecarAbsent } } => [ServingIdentityDrift { path: path, reason: IdentitySidecarMissing }]
-      Present { value: ObservationEstablished { observed: SidecarMalformed } } => [ServingIdentityDrift { path: path, reason: IdentitySidecarMalformed }]
+      Present { value: ObservationEstablished { observed: SidecarAbsent } } => [ServeIdentityDrift { path: path, reason: IdentitySidecarMissing }]
+      Present { value: ObservationEstablished { observed: SidecarMalformed } } => [ServeIdentityDrift { path: path, reason: IdentitySidecarMalformed }]
       Present { value: ObservationEstablished { observed: SidecarRecorded { sha256: v } } } => match v == want {
         true => []
-        false => [ServingIdentityDrift { path: path, reason: IdentityShaMismatch { sidecar_sha: v, binary_sha: want } }]
+        false => [ServeIdentityDrift { path: path, reason: IdentityShaMismatch { sidecar_sha: v, binary_sha: want } }]
       }
       Present { value: ObservationRefused { cause: _ } } => []
     }
