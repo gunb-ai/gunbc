@@ -36,7 +36,7 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
   slice_cap_uncapped_reason, slice_cap_reason_text,
 }
 import gunbc.compute.unit_bounds {
-  SliceCapObservation, SliceCapValue, SliceCapUnbounded, SliceCapUnparseable, SliceCapRefused, user_work_slice_cgroup_capped_at,
+  user_work_slice_cgroup_capped_at,
 }
 import extdeps.access.posix { FileMode, file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
@@ -64,12 +64,10 @@ import gunbc.live_deploy.emit { user_work_slice_unit_file_for_host_ceiling, User
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_swap_max, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv }
+import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv }
 // The one authority for cgroup memory.max / memory.swap.max reads, shared with the reader
 // (gunbc.compute.unit_bounds::observed_cgroup_bound), so the observe reads the cap the same way.
-import extdeps.linux.cgroup_v2_memory {
-  CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, parse_cgroup_memory_limit, parse_cgroup_nonnegative_bytes,
-}
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, parse_cgroup_memory_limit }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.github.actions_environment { github_sha_variable_name }
@@ -342,32 +340,29 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
 // renders to a ByteSize only for a finite limit (a cgroup 'max' = unlimited reads Absent, i.e. NOT
 // capped); swap reads its ByteSize so serving_assess can require swap 0. An unresolvable serving uid
 // (a fresh host, an unreadable passwd) reads both Absent — never capped — so the apply installs.
-type ServingSliceCap { max: SliceCapObservation, high: SliceCapObservation, swap: SliceCapObservation }
+type ServingSliceCap {
+  max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  swap: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+}
 
 fn serving_user_work_slice_cgroup_dir(uid: Int) -> String {
   concat("/sys/fs/cgroup/user.slice/user-", to_string(uid), ".slice/user@", to_string(uid), ".service/", user_work_slice_unit_name)
 }
 
-// A cgroup memory control body mapped to its typed outcome: a finite count is a value, 'max' is
-// unbounded, and anything else is unparseable with its raw body. The swap control maps the same way
-// (a 0 count is the forbidden value; 'max' reads unbounded, which never settles).
-fn serving_slice_cap_of_body(body: String) -> SliceCapObservation {
-  match parse_cgroup_memory_limit(body: body) {
-    CgroupMemoryLimited { bytes: b } => SliceCapValue { bytes: b }
-    CgroupMemoryUnlimited => SliceCapUnbounded
-    CgroupMemoryLimitUnparseable { body: b } => SliceCapUnparseable { body: b }
-  }
-}
-
-fn serving_slice_cap_of_read(read: ObservationAttempt<String, ServingLegFailure>) -> SliceCapObservation {
+// A cgroup memory control body mapped to the cgroup's OWN typed value: a finite count, 'max' (unbounded),
+// or the raw unparseable body -- carried under the read's ObservationAttempt so a refused read keeps its
+// cause instead of collapsing to a fake value. No parallel observation type: the cgroup parser's own
+// CgroupMemoryLimitValue is what both the deviation and the settle consume.
+fn serving_slice_cap_of_read(read: ObservationAttempt<String, ServingLegFailure>) -> ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> {
   match read {
-    ObservationEstablished { observed: body } => serving_slice_cap_of_body(body: body)
-    ObservationRefused { cause: c } => SliceCapRefused { cause: c }
+    ObservationEstablished { observed: body } => ObservationEstablished { observed: parse_cgroup_memory_limit(body: body) }
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
   }
 }
 
 fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, uid: Int?) -> ServingSliceCap {
-  let unknown = SliceCapRefused { cause: "account uid unknown; slice cgroup not locatable" }
+  let unknown = ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "account uid unknown; slice cgroup not locatable" } }
   match uid {
     Absent => ServingSliceCap { max: unknown, high: unknown, swap: unknown }
     Present { value: u } => {
@@ -1194,13 +1189,34 @@ fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionConte
 // account, then READ BACK its sha256 and require it to equal the pin. A binary that does not read back
 // to the pin's sha is a failed step (the re-observe agrees). It takes the install's own fields, so no
 // other action kind can reach it.
+// The systemctl verbs the install-slice leg issues to the serving account's user manager AFTER the unit
+// file is installed, in order. daemon-reload makes systemd read the new unit file; START then materialises
+// the slice's cgroup, which daemon-reload alone never creates for a slice that has never been active --
+// without it the cgroup readback would wait on a directory that never appears. Both carry the
+// --machine=UID@ connector so they reach the ACCOUNT's user manager (bare --user would reload root's), and
+// the start names the reader's own slice, so the settled cgroup is the unit the wrap binds into. This list
+// is the single ordered source both the wet leg and its witness read, so the two cannot drift.
+fn user_work_slice_reload_command_argv(uid: Int) -> List<String> {
+  systemctl_user_daemon_reload_argv(uid: uid)
+}
+
+fn user_work_slice_start_command_argv(uid: Int) -> List<String> {
+  systemctl_user_start_for_uid_argv(unit: user_work_slice_unit_name, uid: uid)
+}
+
+fn user_work_slice_install_command_argv(uid: Int) -> List<List<String>> {
+  [ user_work_slice_reload_command_argv(uid: uid), user_work_slice_start_command_argv(uid: uid) ]
+}
+
 // The wet install of the user-work slice unit, modelled on converge_install_content (the unit body is a
 // String, so it stages a local file, uploads to a private 0700 dir, and sudo-installs it 0644 root:root at
-// srv1's slice path). Then it reloads the SERVING account's user manager with `systemctl --user
+// srv1's slice path). Then, in order, it reloads the SERVING account's user manager with `systemctl --user
 // --machine=UID@ daemon-reload` (srv1's own reload argv — bare `--user` would reload root's manager) and
-// READS THE CAP BACK THROUGH THE SAME CGROUP READ the observe and the reader use: MemoryMax must equal the
-// ceiling and MemorySwapMax 0, or the step fails. converge_execute_with halts at the first failed write,
-// so an unsettled slice stops the pass before the serve binary is ever written.
+// STARTS the slice with `systemctl --user --machine=UID@ start <slice>`, so the slice's cgroup exists
+// before anything reads it (daemon-reload alone never creates a never-active slice's cgroup). It then READS
+// THE CAP BACK THROUGH THE SAME CGROUP READ the observe and the reader use: MemoryMax must equal the ceiling
+// and MemorySwapMax 0, or the step fails. converge_execute_with halts at the first failed write, so an
+// unsettled slice stops the pass before the serve binary is ever written.
 fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, expected_content: String) -> ConvergeStep {
   let staging_local = "target/gunbc-user-work-slice.upload"
   let local_write = Filesystem.Write(path: staging_local, content: expected_content)
@@ -1226,15 +1242,18 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
               }
               match serving_passwd_uid(text: passwd_opt, name: d.account_name) {
                 Absent => StepFailed { cause: "cannot resolve the serving uid for the user-manager daemon-reload" }
-                Present { value: uid } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_user_daemon_reload_argv(uid: uid))) {
+                Present { value: uid } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_reload_command_argv(uid: uid))) {
                   StepFailed { cause: c } => StepFailed { cause: concat("daemon-reload: ", c) }
-                  StepDone => {
-                    let cap = serving_leg_slice_cap(target: target, context: context, uid: Present { value: uid })
-                    let high_expected = Present { value: memory_high }
-                    if user_work_slice_cgroup_capped_at(max: cap.max, high: cap.high, swap: cap.swap, ceiling: memory_max, high_expected: high_expected) {
-                      StepDone
-                    } else {
-                      StepFailed { cause: join(["user-work slice did not settle after install: ", slice_cap_reason_text(reason: slice_cap_uncapped_reason(max: cap.max, high: cap.high, swap: cap.swap, ceiling: memory_max, high_expected: high_expected))], "") }
+                  StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_start_command_argv(uid: uid))) {
+                    StepFailed { cause: c } => StepFailed { cause: concat("slice start: ", c) }
+                    StepDone => {
+                      let cap = serving_leg_slice_cap(target: target, context: context, uid: Present { value: uid })
+                      let high_expected = Present { value: memory_high }
+                      if user_work_slice_cgroup_capped_at(max: cap.max, high: cap.high, swap: cap.swap, ceiling: memory_max, high_expected: high_expected) {
+                        StepDone
+                      } else {
+                        StepFailed { cause: join(["user-work slice did not settle after install: ", slice_cap_reason_text(reason: slice_cap_uncapped_reason(max: cap.max, high: cap.high, swap: cap.swap, ceiling: memory_max, high_expected: high_expected))], "") }
+                      }
                     }
                   }
                 }

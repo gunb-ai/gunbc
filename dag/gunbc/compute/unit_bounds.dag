@@ -10,6 +10,7 @@ import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_min }
 import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.systemd { SystemdUnitProperty, InaccessiblePathsProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
@@ -251,74 +252,46 @@ fn cgroup_bound_fallthrough_wire(bound: CgroupBound) -> String {
   }
 }
 
-// A slice cgroup control read back as its TYPED outcome, so an uncapped observation says WHICH control
-// and WHY rather than collapsing every failure to absent. SliceCapValue is a finite byte count;
-// SliceCapUnbounded is the cgroup 'max'; SliceCapUnparseable carries the raw body that failed to parse;
-// SliceCapRefused carries the cause the read itself refused for (unreadable, elevation, no uid).
-type SliceCapObservation
-  = SliceCapValue { bytes: ByteSize }
-  | SliceCapUnbounded
-  | SliceCapUnparseable { body: String }
-  | SliceCapRefused { cause: String }
-
-// Which control an uncapped observation failed on, and its typed outcome -- carried on the deviation and
-// the converge receipt so 'uncapped' names the leg and the reason.
-type UserWorkSliceUncappedReason
-  = WhichMax { outcome: SliceCapObservation }
-  | WhichHigh { outcome: SliceCapObservation }
-  | WhichSwap { outcome: SliceCapObservation }
-
-// The memory.max admission runs the value through observed_cgroup_bound -- the very judgment that admits
-// the --user wrap -- requiring a positive bound equal to `ceiling`. Swap is held forbidden so boundedness
-// depends on memory.max alone; the swap leg is checked separately by slice_cap_swap_forbidden.
-fn slice_cap_max_bound_eq(cap: SliceCapObservation, ceiling: ByteSize) -> Bool {
-  match cap {
-    SliceCapValue { bytes: m } => match observed_cgroup_bound(observation: CgroupChainRead {
-      levels: [ CgroupMemoryLevelRead { dir: user_work_slice_unit_name, max: CgroupMemoryLimited { bytes: m }, high: CgroupMemoryUnlimited } ],
-      swap_max: [ CgroupMemoryLimited { bytes: byte_size(0) } ],
-    }) {
-      CgroupBoundedBy { memory_max: bound } => byte_size_count(b: bound) == byte_size_count(b: ceiling)
-      CgroupChainUnbounded => false
-      CgroupChainNotObserved { detail: _ } => false
+// THE ADMISSION, in one call. Is the user-work slice's OWN cgroup capped at exactly `ceiling`, its
+// memory.high at the ceiling's derived high, and its swap forbidden -- decided by the same judgment that
+// admits the --user wrap (observed_cgroup_bound over the slice's cgroup)? The remote-build serving converge
+// settles on THIS, so 'the slice is capped' and 'the wrap is admitted' are one judgment and cannot disagree.
+// Each control is carried as the cgroup's own typed value (CgroupMemoryLimitValue) wrapped in the
+// observation Attempt -- no parallel observation type -- so an unbounded, unparseable or refused read can
+// never settle; the refusal cause is whatever the read produced and is opaque here. The slice's own
+// memory.max and swap.max go to observed_cgroup_bound as a single-level chain, so the fold that requires a
+// positive hard limit AND a forbidden swap is the very fold the reader runs; memory.high (a throttle, not a
+// limit, so observed_cgroup_bound ignores it) is checked separately against the derived high.
+fn user_work_slice_cgroup_capped_at<Refusal>(
+  max: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  high: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  swap: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  ceiling: ByteSize,
+  high_expected: ByteSize?,
+) -> Bool {
+  match max {
+    ObservationEstablished { observed: m } => match high {
+      ObservationEstablished { observed: h } => match swap {
+        ObservationEstablished { observed: w } => match observed_cgroup_bound(observation: CgroupChainRead {
+          levels: [ CgroupMemoryLevelRead { dir: user_work_slice_unit_name, max: m, high: h } ],
+          swap_max: [ w ],
+        }) {
+          CgroupBoundedBy { memory_max: bound } => byte_size_count(b: bound) == byte_size_count(b: ceiling) && match h {
+            CgroupMemoryLimited { bytes: hb } => match high_expected {
+              Present { value: he } => byte_size_count(b: hb) == byte_size_count(b: he)
+              Absent => false
+            }
+            _ => false
+          }
+          CgroupChainUnbounded => false
+          CgroupChainNotObserved { detail: _ } => false
+        }
+        ObservationRefused { cause: _ } => false
+      }
+      ObservationRefused { cause: _ } => false
     }
-    SliceCapUnbounded => false
-    SliceCapUnparseable { body: _ } => false
-    SliceCapRefused { cause: _ } => false
+    ObservationRefused { cause: _ } => false
   }
-}
-
-// The swap control must read back forbidden (0). Unbounded/unparseable/refused never settle.
-fn slice_cap_swap_forbidden(cap: SliceCapObservation) -> Bool {
-  match cap {
-    SliceCapValue { bytes: s } => byte_size_count(b: s) == 0
-    SliceCapUnbounded => false
-    SliceCapUnparseable { body: _ } => false
-    SliceCapRefused { cause: _ } => false
-  }
-}
-
-// The memory.high control must read back exactly the ceiling's derived high. A ceiling that derives no
-// high (the gap-exceeds-max model error) can never be settled.
-fn slice_cap_high_eq(cap: SliceCapObservation, expected: ByteSize?) -> Bool {
-  match expected {
-    Absent => false
-    Present { value: h } => match cap {
-      SliceCapValue { bytes: hh } => byte_size_count(b: hh) == byte_size_count(b: h)
-      SliceCapUnbounded => false
-      SliceCapUnparseable { body: _ } => false
-      SliceCapRefused { cause: _ } => false
-    }
-  }
-}
-
-// Is the user-work slice's OWN cgroup capped at exactly `ceiling`, its memory.high at the ceiling's
-// derived high, and its swap forbidden -- decided by the same judgment that admits the --user wrap
-// (observed_cgroup_bound over the slice's cgroup)? The remote-build serving converge settles on THIS, so
-// 'the slice is capped' and 'the wrap is admitted' are one judgment and cannot disagree. Each control is
-// its typed observation; only a finite, matching value settles, so an unbounded, unparseable or refused
-// read is never capped.
-fn user_work_slice_cgroup_capped_at(max: SliceCapObservation, high: SliceCapObservation, swap: SliceCapObservation, ceiling: ByteSize, high_expected: ByteSize?) -> Bool {
-  slice_cap_max_bound_eq(cap: max, ceiling: ceiling) && slice_cap_high_eq(cap: high, expected: high_expected) && slice_cap_swap_forbidden(cap: swap)
 }
 
 type SystemServiceCgroup

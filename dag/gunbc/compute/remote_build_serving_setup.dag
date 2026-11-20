@@ -46,12 +46,10 @@ import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, us
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_capped_at → observed_cgroup_bound) that
 // serving_user_work_slice_deviations settles on, plus the slice's canonical unit name.
-import gunbc.compute.unit_bounds {
-  user_work_slice_cgroup_capped_at, SliceCapObservation, SliceCapValue, SliceCapUnbounded, SliceCapUnparseable, SliceCapRefused,
-  UserWorkSliceUncappedReason, WhichMax, WhichHigh, WhichSwap, slice_cap_max_bound_eq, slice_cap_high_eq, slice_cap_swap_forbidden,
-}
+import gunbc.compute.unit_bounds { user_work_slice_cgroup_capped_at }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size_count }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode, PosixLoginShell, LoginShellObserved, LoginShellUnobserved }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
@@ -758,9 +756,9 @@ type ServingObserved {
   // ceiling, memory.high at the ceiling's derived high, swap forbidden (0). Any non-value outcome is an
   // unproven cap (never read as capped) -- the slice reads uncapped and the apply installs it, and the
   // deviation/receipt name which control failed and how.
-  user_work_slice_max: SliceCapObservation
-  user_work_slice_high: SliceCapObservation
-  user_work_slice_swap: SliceCapObservation
+  user_work_slice_max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>
+  user_work_slice_high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>
+  user_work_slice_swap: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>
   // the host_capacity ledger, read per row: one entry per ledger directory the observe read,
   // keyed BY PATH. A desired row with NO entry here is an unknown (nobody read it), NOT an
   // absence -- absence is proven only by a leg established to the empty string (stat 'No such
@@ -1026,26 +1024,62 @@ fn serving_user_work_slice_deviations(d: RemoteBuildServingDesired, o: ServingOb
 // Which control an uncapped slice failed on: the first whose observation is not a matching finite value
 // (memory.max, then memory.high, then swap), carrying that control's typed outcome so the deviation and
 // the receipt name the leg and the reason.
-fn slice_cap_uncapped_reason(max: SliceCapObservation, high: SliceCapObservation, swap: SliceCapObservation, ceiling: ByteSize, high_expected: ByteSize?) -> UserWorkSliceUncappedReason {
-  if slice_cap_max_bound_eq(cap: max, ceiling: ceiling) {
-    if slice_cap_high_eq(cap: high, expected: high_expected) {
-      WhichSwap { outcome: swap }
-    } else {
-      WhichHigh { outcome: high }
+// Which control an uncapped observation failed on, carrying that control's own cgroup value observation so
+// the deviation and the converge receipt name the leg AND the reason (unbounded, unparseable body, refused
+// cause, or a finite value that differs from what the ceiling demands). The value type is the cgroup's own
+// CgroupMemoryLimitValue wrapped in ObservationAttempt -- the reader's own observation, not a parallel type.
+type UserWorkSliceUncappedReason
+  = WhichMax { outcome: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> }
+  | WhichHigh { outcome: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> }
+  | WhichSwap { outcome: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> }
+
+// Blame the first control whose own reading is not the finite value the ceiling demands -- memory.max,
+// then memory.high, then swap. This is presentation only: the ADMIT/REFUSE decision is made by
+// user_work_slice_cgroup_capped_at through observed_cgroup_bound, and these value comparisons never
+// re-implement that fold; they only name which leg the receipt should point at.
+fn slice_cap_uncapped_reason(
+  max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  swap: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  ceiling: ByteSize,
+  high_expected: ByteSize?,
+) -> UserWorkSliceUncappedReason {
+  let max_ok = match max {
+    ObservationEstablished { observed: mv } => match mv {
+      CgroupMemoryLimited { bytes: m } => byte_size_count(b: m) == byte_size_count(b: ceiling)
+      _ => false
     }
+    ObservationRefused { cause: _ } => false
+  }
+  let high_ok = match high {
+    ObservationEstablished { observed: hv } => match hv {
+      CgroupMemoryLimited { bytes: h } => match high_expected {
+        Present { value: he } => byte_size_count(b: h) == byte_size_count(b: he)
+        Absent => false
+      }
+      _ => false
+    }
+    ObservationRefused { cause: _ } => false
+  }
+  if max_ok {
+    if high_ok { WhichSwap { outcome: swap } } else { WhichHigh { outcome: high } }
   } else {
     WhichMax { outcome: max }
   }
 }
 
-// A control's typed outcome as text: unbounded, unparseable (with the raw body), refused (with the cause),
-// or a value that simply differs from what the ceiling demands.
-fn slice_cap_outcome_text(outcome: SliceCapObservation) -> String {
+// A control's own cgroup reading as text: an established finite value that differs from the ceiling, an
+// unbounded 'max', an unparseable body, or a read that refused for a cause.
+fn slice_cap_outcome_text(outcome: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>) -> String {
   match outcome {
-    SliceCapValue { bytes: _ } => "value differs from the ceiling"
-    SliceCapUnbounded => "unbounded"
-    SliceCapUnparseable { body: b } => concat("unparseable (", b, ")")
-    SliceCapRefused { cause: c } => concat("refused (", c, ")")
+    ObservationEstablished { observed: v } => match v {
+      CgroupMemoryLimited { bytes: _ } => "value differs from the ceiling"
+      CgroupMemoryUnlimited => "unbounded"
+      CgroupMemoryLimitUnparseable { body: b } => concat("unparseable (", b, ")")
+    }
+    ObservationRefused { cause: c } => match c {
+      ServingLegFailure { item: i, cause: r } => concat("refused (", i, ": ", r, ")")
+    }
   }
 }
 
@@ -1392,12 +1426,14 @@ fn serving_observed_from_reads(
   // A3: the two file-mode legs, gated the same way — read only under a confirmed-present file.
   authorized_keys_mode: ObservationAttempt<String, ServingLegFailure>?,
   serve_binary_mode: ObservationAttempt<String, ServingLegFailure>?,
-  // The user-work slice cgroup cap, read from the cgroup files by the observe's slice leg as its typed
-  // outcome (value / unbounded / unparseable with its body / refused with its cause); any non-value
-  // outcome is never treated as capped by serving_assess, and the apply then installs the slice.
-  user_work_slice_max: SliceCapObservation,
-  user_work_slice_high: SliceCapObservation,
-  user_work_slice_swap: SliceCapObservation,
+  // The user-work slice cgroup cap, read from the cgroup files by the observe's slice leg as the cgroup's
+  // own typed value wrapped in the observation Attempt: an established CgroupMemoryLimited is a finite
+  // byte count, CgroupMemoryUnlimited is the cgroup 'max', CgroupMemoryLimitUnparseable carries the raw
+  // body, and an ObservationRefused carries the cause the read itself refused for. Any outcome that is not
+  // the matching finite value is never treated as capped by serving_assess, and the apply installs the slice.
+  user_work_slice_max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  user_work_slice_high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
+  user_work_slice_swap: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {

@@ -15,8 +15,9 @@ import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_wo
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import std.measure { byte_size_count }
 import std.measure { byte_size_count, byte_size, ByteSize }
-import gunbc.compute.unit_bounds { SliceCapObservation, SliceCapValue, SliceCapUnbounded }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited }
 import std.algebra { string_contains, non_empty_to_list }
+import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.list { first_duplicate_by_key, first_where }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -29,7 +30,7 @@ import gunbc.compute.remote_build_serving_setup {
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
   ObservationEstablished { observed: text }
@@ -103,7 +104,7 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -215,7 +216,7 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       ), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
@@ -272,7 +273,7 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -307,7 +308,7 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -376,7 +377,7 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -441,7 +442,7 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
         serve_binary_sha256: Absent, checkout_revision: Absent, authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s("riscv64"), ledger_rows: matched_ledger(d: d),
       )
       let plan = converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin), pin: pin, target_arch: est_s("riscv64"), rustup: est_absent())
@@ -472,7 +473,7 @@ test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let ws = plan_writes(converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok()))
@@ -539,7 +540,7 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -572,7 +573,7 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
         authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -610,7 +611,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
           target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
@@ -629,7 +630,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
@@ -648,7 +649,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
@@ -681,7 +682,7 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -700,7 +701,7 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -1067,7 +1068,7 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
-    user_work_slice_swap: SliceCapValue { bytes: user_work_slice_memory_swap_max },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -1108,9 +1109,9 @@ fn slice_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
-    user_work_slice_max: SliceCapUnbounded { },
-    user_work_slice_high: SliceCapUnbounded { },
-    user_work_slice_swap: SliceCapUnbounded { },
+    user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -1226,13 +1227,41 @@ test fn install_slice_sorts_before_serve_binary() -> Bool {
   }
 }
 
+// After the unit file is installed, the leg hands systemd exactly two verbs in order: daemon-reload (so
+// systemd reads the new unit) THEN start (so the slice's cgroup exists). daemon-reload alone never
+// instantiates a never-active slice's cgroup, so without the start the cgroup readback would wait on a
+// directory that never appears. Both reach the serving ACCOUNT's user manager via the --machine=UID@
+// connector (bare --user would reload root's manager), and the start names the reader's own slice, so the
+// settled cgroup is the very unit the wrap binds into. install (upload) and the cgroup readback bracket
+// these two structurally in the wet leg; this fixes their order and content so leg and reader cannot drift.
+test fn install_slice_reloads_then_starts_the_reader_unit() -> Bool {
+  let uid = 4242
+  let verbs = user_work_slice_install_command_argv(uid: uid)
+  let connector = systemctl_user_machine_connector(uid: uid)
+  let reload_is_first = match verbs.first() {
+    Absent => false
+    Present { value: v } => {
+      let j = join(v, " ")
+      string_contains(s: j, pattern: "daemon-reload") && string_contains(s: j, pattern: "--user") && string_contains(s: j, pattern: connector) && string_contains(s: j, pattern: "start") == false
+    }
+  }
+  let start_is_last = match reverse(verbs).first() {
+    Absent => false
+    Present { value: v } => {
+      let j = join(v, " ")
+      string_contains(s: j, pattern: "start") && string_contains(s: j, pattern: user_work_slice_unit_name) && string_contains(s: j, pattern: "--user") && string_contains(s: j, pattern: connector)
+    }
+  }
+  verbs.length() == 2 && reload_is_first && start_is_last
+}
+
 // Fixture caps: a settled observation carries the ceiling's value, its derived high, and the forbidden
 // swap; these build the two value caps the settle demands (a settled slice reads capped, an uncapped one
 // is built directly with unbounded caps).
-fn settled_slice_max(ceiling: ByteSize) -> SliceCapObservation { SliceCapValue { bytes: ceiling } }
-fn settled_slice_high(ceiling: ByteSize) -> SliceCapObservation {
+fn settled_slice_max(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> { ObservationEstablished { observed: CgroupMemoryLimited { bytes: ceiling } } }
+fn settled_slice_high(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> {
   match user_work_slice_memory_high_of(memory_max: ceiling) {
-    UserWorkSliceHighDerived { bytes: h } => SliceCapValue { bytes: h }
-    UserWorkSliceHighGapExceedsMax => SliceCapValue { bytes: byte_size(0) }
+    UserWorkSliceHighDerived { bytes: h } => ObservationEstablished { observed: CgroupMemoryLimited { bytes: h } }
+    UserWorkSliceHighGapExceedsMax => ObservationEstablished { observed: CgroupMemoryLimited { bytes: byte_size(0) } }
   }
 }
