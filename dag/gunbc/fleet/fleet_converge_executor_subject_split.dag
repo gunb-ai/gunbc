@@ -103,13 +103,19 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
   }
 }
 
-// THE RULE, PER MODE (operator ruling 2026-11-20). The two split refusals were written for the DRAIN
-// trio, where acting on the machine the job stands on drains the bracket that holds the job itself.
-// A mode that only INSTALLS files on a host has no such deadlock: remote_build_serving_observe / converge
-// write an account, a ledger home, a checkout, a toolchain and a serve binary -- they drain no bracket. And
-// a host converged by a lane ON THAT SAME HOST is a shape the fleet has already run: srv3 and srv4 were set
-// up from their own lanes (runs 44656574939 and 44660458690). Refusing that pair by the drain rule would make
-// it impossible to converge a host that has no second lane -- including srv1 itself.
+// THE RULE, PER MODE, AND ITS CARRIER IS THE FACTS TABLE: FleetConvergeModeFacts.subject_rule, one row per
+// mode, in gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts; the serving pair's row states
+// SubjectMayBeTheExecutorsOwnMachine. No operator ruling is claimed for that row, because there is none --
+// review 96977 asked for one and the manager's answer (2026-11-20) was that a design_ruling row records the
+// operator's words and there are none on this. So the rule rests on the row, the reason below, and claims.
+// The reason: the two split refusals were written for the DRAIN trio, where acting on the machine the job
+// stands on drains the bracket that holds the job itself. A mode that only INSTALLS files has no such
+// deadlock -- remote_build_serving_observe / converge write an account, a ledger home, a checkout, a toolchain
+// and a serve binary, and drain nothing. And the receipts are recorded fleet history, not argument:
+// remote_build_serving_converge dispatched with host = the machine served, run 44656574939 (srv3), run
+// 44660458690 (srv4), run 44658646391 (srv1). Refusing that pair by the drain rule would strand any host with
+// no second lane. Pinned by test.claim.fleet.fleet_converge_serving_subject_split_witness's
+// the_install_rule_admits_the_pair_the_drain_rule_refuses and the_roster_splits_into_the_two_rule_halves.
 // So ONE gate and ONE precheck carry a rule, and the mode picks it:
 //   SubjectRequiredAndDistinct            -- the drain trio: a named subject, never the executor.
 //   SubjectMayBeTheExecutorsOwnMachine    -- the serving pair: a named subject, or the machine the

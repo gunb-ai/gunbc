@@ -40,6 +40,7 @@ import gunbc.compute.unit_bounds {
   user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown,
 }
 import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
@@ -66,6 +67,9 @@ import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_sli
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv }
+// The user-manager leg reads Linger and enables it through the one shared loginctl model (unelevated read,
+// elevated enable) -- the same argv the runner lane uses, never a second spelling.
+import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_enable_linger_argv, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
 // The one authority for cgroup memory.max / memory.swap.max reads, shared with the reader
 // (gunbc.compute.unit_bounds::observed_cgroup_bound), so the observe reads the cap the same way.
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryUnlimited, parse_cgroup_memory_limit }
@@ -398,6 +402,21 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
   }
 }
 
+// Whether the serving account's user manager is lingering, read unelevated: `loginctl show-user <account>
+// --property=Linger` answers for any caller, so no sudo rides it (the enable verb below IS elevated).
+// established-true is lingering, established-false is proven not-lingering (it licenses the enable write),
+// and a refused read is an unknown -- the assess never writes toward a linger state nobody read.
+fn serving_leg_linger(item: String, target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: loginctl_show_user_linger_command(subject: account))) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecConverged { result: r } => match loginctl_linger_reading(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+      LoginctlLingerEnabled => ObservationEstablished { observed: true }
+      LoginctlLingerDisabled => ObservationEstablished { observed: false }
+      LoginctlLingerUnread { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+    }
+  }
+}
+
 fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ServingObservedView {
   // The elevation precondition is read ONCE and handed to the sudo-dependent legs (typed precondition, not
   // a per-leg re-check). If 'sudo -n true' is refused, the 'test'-based legs short-circuit to refused, and
@@ -466,6 +485,18 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationRefused { cause: _ } => Absent
   }
   let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_passwd_uid(text: passwd_opt, name: d.account_name))
+  // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
+  // cgroup to persist, so it is observed in the same pass. It is GATED on the account being present, exactly
+  // as the rustup/toolchain legs are: a confirmed-absent account (a fresh host) has no user manager to ask
+  // loginctl about -- `loginctl show-user <nobody>` fails to look up the user, which is NOT a lingering
+  // answer and would otherwise poison the whole assessment as an unknown and stop the account leg ever
+  // planning. A proven-absent account therefore reads not-lingering (established-false), so the enable leg
+  // is planned and, ranked just above the account, runs right after useradd. Only a present (or unread) gate
+  // runs the live read; a refused read there stays an unknown.
+  let linger = match account_gate {
+    ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
+    _ => serving_leg_linger(item: "user_manager.linger", target: target, context: context, account: d.account_name as NonEmptyStr)
+  }
   let o = serving_observed_from_reads(
     elevation: elevation,
     account_name: d.account_name,
@@ -487,6 +518,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_work_slice_max: slice_cap.max,
     user_work_slice_high: slice_cap.high,
     user_work_slice_swap: slice_cap.swap,
+    user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
   )
@@ -583,11 +615,14 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
 // What stays refused is the part that was never about the deadlock: a run that names no machine at all,
 // and a process that cannot name the lane it is standing on.
 fn remote_build_serving_observe_ci_wet() -> ProcessExit {
-  // THE SUBJECT, BY THE INSTALL RULE (operator ruling 2026-11-20). A zero-CI host like srv14 has no
+  // THE SUBJECT, BY THE INSTALL RULE -- the rule this mode's facts row declares (subject_rule:
+  // SubjectMayBeTheExecutorsOwnMachine, gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts).
+  // A zero-CI host like srv14 has no
   // runner lane of its own, so its serving can only be converged from ANOTHER host's executor lane --
   // the dispatch names the machine served in FLEET_CONVERGE_SUBJECT_HOST and the lane that runs the job
   // in the executor identity. A host that DOES have lanes may still be served from its own lane, which
-  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690): under this rule an unnamed
+  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690, 44658646391, each dispatched with
+  // host = the machine served): under this rule an unnamed
   // subject means that machine, named by the executor's expected host. What is refused is a run that
   // names no machine at all, or a process that names no lane -- never a pair that could not deadlock.
   match fleet_converge_install_subject_read() {
@@ -635,10 +670,24 @@ type ConvergeAction =
   // carve reservation with swap forbidden, the wrap refuses and every remote build fails. This action
   // installs the slice unit at the host's ceiling (rendered by gunbc.live_deploy.emit's
   // user_work_slice_unit_file_for_host_ceiling) and reloads the serving user manager. Every value the
-  // write uses is a field here; expected_content is the rendered unit, compared back after install.
+  // write uses is a field here; expected_content is the rendered unit, compared back after install. The
+  // cgroup only comes into existence under a LIVE serving user manager -- `systemctl start` on the slice
+  // does not instantiate it on its own -- so EnsureUserManagerLinger is ranked ahead of this leg.
   | InstallUserWorkSlice { unit_name: NonEmptyStr, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, memory_swap_max: ByteSize, expected_content: String }
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
+  // The serving binary's IDENTITY, written beside it at <install_path>.identity so a later serve
+  // receipt can name which binary served (the reader is gunbc.compute.remote_build_serve, PR-1a). It
+  // carries the dispatched revision and the local binary sha256 — the same two the settle gate holds
+  // the install to. RANKED after InstallServeBinary and written through the SAME content-install route
+  // (converge_install_content: stage, upload, sudo-install, read-back-equality); because the executor
+  // stops at the first failed write, the identity is written only once the binary itself has landed,
+  // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
+  | RecordServeIdentity { install_path: String, revision: String, sha256: String }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
+  // Put the serving account's user manager into its lingering state, immediately before the slice install:
+  // the slice's cgroup only persists under a live user manager (an empty user slice under a non-lingering
+  // account is torn down before anything can read it). Ranked just below the slice, above the account it acts on.
+  | EnsureUserManagerLinger { account: String }
 
 // The decision IS one of these; there is no Bool tag to keep in step with the fields (review 95922 #2 /
 // review 95928; gunbc.design_argument::fail_closed — "stronger than catching a wrong state is making it
@@ -765,6 +814,13 @@ fn converge_checkout(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: Serv
 // the emitted unit render at that ceiling, and the swap floor is the model's zero. A refused render or a
 // high gap above the ceiling fails the plan closed (converge_draft_unhandled) — an unrenderable slice
 // is never half-installed. The install path is srv1's own: gunbc.live_deploy.spec's user-work slice path.
+// The plan-side build for the user-manager leg: the single action that enables lingering on the serving
+// account, carrying the account name it acts on. The account is the same declared serve account the slice
+// leg installs under, so the manager that is kept live is the one that must hold that slice's cgroup.
+fn converge_ensure_user_manager_linger_plan(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([EnsureUserManagerLinger { account: d.account_name }], acc.writes), unhandled: acc.unhandled }
+}
+
 fn converge_install_user_work_slice_plan(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
   let ceiling = user_work_slice_memory_max_for_host(host: d.host)
   match user_work_slice_unit_file_for_host_ceiling(memory_max: ceiling) {
@@ -791,7 +847,10 @@ fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin
   match target_arch {
     ObservationEstablished { observed: a } => match a == pin.executor_arch {
       true => converge_bin_parent_dir(
-        ConvergeDraft { writes: concat([InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled },
+        ConvergeDraft { writes: concat([
+          RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
+          InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
+        ], acc.writes), unhandled: acc.unhandled },
         d,
       )
       false => converge_draft_unhandled(acc, "serve_binary.sha256")
@@ -888,11 +947,19 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     // and before the serve binary.
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: _, rustup_home: _, cargo_home: _ } => 6
     EnsureToolchain { channel: _, as_user: _ } => 7
+    // The live user manager is the precondition for the slice cgroup, so linger runs with the ensure-tier
+    // legs and strictly before the slice install at rank 8; the executor halts at the first failed write,
+    // so a manager that never lingers stops the pass before a slice is ever written behind it.
+    EnsureUserManagerLinger { account: _ } => 7
     // The user-work slice is capped BEFORE the serve binary: a slice that never settles must stop the
     // pass (converge_execute_with halts at the first failed write) so no binary lands behind an
-    // un-admitted slice. swift-tern-46's RecordServeIdentity will take rank 10, after this.
+    // un-admitted slice.
     InstallUserWorkSlice { unit_name: _, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => 8
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 9
+    // The identity sidecar is recorded AFTER the binary install it documents (and after the slice the
+    // binary depends on); the executor's stop-at-first-failure means it is written only once the
+    // binary itself has landed -- never provenance for a binary that failed to install.
+    RecordServeIdentity { install_path: _, revision: _, sha256: _ } => 10
   }
 }
 
@@ -906,9 +973,11 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureAuthorizedKeys { path: p, owner_user: _, content: _ } => concat("ak:", p)
     EnsureCheckout { dir: dd, clone_url: _, revision: _, as_user: _ } => concat("checkout:", dd)
     EnsureToolchain { channel: c, as_user: u } => concat("toolchain:", c, ":", u)
+    EnsureUserManagerLinger { account: a } => concat("linger:", a)
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: u, rustup_home: _, cargo_home: _ } => concat("rustup:", u)
     InstallUserWorkSlice { unit_name: n, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => concat("slice:", n)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
+    RecordServeIdentity { install_path: i, revision: _, sha256: _ } => concat("identity:", i)
   }
 }
 
@@ -1031,6 +1100,7 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // The serving account's user-work slice is uncapped at the ceiling (decided by the reader's own
     // cgroup judgment upstream). Install the slice unit at the host ceiling; the ceiling and the unit
     // body come from the model (host_capacity reservation + emit render), never a seat count.
+    UserManagerNotLingering { account_name: _ } => converge_ensure_user_manager_linger_plan(acc, d)
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
@@ -1266,6 +1336,30 @@ fn user_work_slice_install_command_argv(uid: Int) -> List<List<String>> {
 // THE CAP BACK THROUGH THE SAME CGROUP READ the observe and the reader use: MemoryMax must equal the ceiling
 // and MemorySwapMax 0, or the step fails. converge_execute_with halts at the first failed write, so an
 // unsettled slice stops the pass before the serve binary is ever written.
+// Bring the serving account's user manager into its lingering state, so the slice cgroup the NEXT leg
+// installs has a live manager to live under -- an empty user slice under a non-lingering account is torn
+// down before the readback can read it, so the ceiling never lands even though daemon-reload and start
+// both succeed. Idempotent: a manager already lingering is settled with no write. The enable
+// verb is privileged so it rides sudo (loginctl_enable_linger_argv is the same argv the runner lane uses);
+// the decision is made by the SAME unelevated Linger read the observe used, so 'converged' and 'admitted'
+// are one reading. It is ranked below the slice, and the executor halts at the first failed write, so a
+// manager that never lingers stops the pass before any slice is written behind it.
+fn converge_enable_user_manager_linger(target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ConvergeStep {
+  let item = "user_manager.linger"
+  match serving_leg_linger(item: item, target: target, context: context, account: account) {
+    ObservationRefused { cause: c } => StepFailed { cause: concat("linger read refused before enable: ", c.cause) }
+    ObservationEstablished { observed: true } => StepDone
+    ObservationEstablished { observed: false } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: loginctl_enable_linger_argv(subject: account))) {
+      StepFailed { cause: c } => StepFailed { cause: concat("enable-linger: ", c) }
+      StepDone => match serving_leg_linger(item: item, target: target, context: context, account: account) {
+        ObservationEstablished { observed: true } => StepDone
+        ObservationEstablished { observed: false } => StepFailed { cause: "user manager still not lingering after enable-linger" }
+        ObservationRefused { cause: c } => StepFailed { cause: concat("linger read refused after enable: ", c.cause) }
+      }
+    }
+  }
+}
+
 fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, expected_content: String) -> ConvergeStep {
   let staging_local = "target/gunbc-user-work-slice.upload"
   let local_write = Filesystem.Write(path: staging_local, content: expected_content)
@@ -1331,6 +1425,27 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
   }
 }
 
+// Record the serving binary's identity beside it, at <install_path>.identity. The bytes are the
+// dispatched revision and the local binary sha256 -- the two the settle gate already holds the binary
+// to -- as one JSON object the serve reader (PR-1a) parses. It goes out through the SAME content route
+// as every other owner-written file (converge_install_content: stage, upload, sudo-install, read-back
+// equality), so a sidecar that did not land byte-for-byte is a failed write, and the executor's
+// stop-at-first-failure means it is never written for a binary that did not install.
+// The canonical bytes of the serving binary's identity sidecar: one JSON object carrying string members
+// `revision` and `sha256`. This is the WRITER's one authority on the grammar; the reader in
+// gunbc.compute.remote_build_serve (PR-1a) parses exactly this shape. Kept as a pure function so a
+// witness can hold the real producer to that contract without standing up a host.
+fn serve_identity_document(revision: String, sha256: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "revision", value: json_string(s: revision)),
+    json_kv(key: "sha256", value: json_string(s: sha256)),
+  ]))
+}
+
+fn converge_record_serve_identity(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: FileMode, install_path: String, revision: String, sha256: String) -> ConvergeStep {
+  converge_install_content(target: target, context: context, staging_local: "target/gunbc-serve_identity.upload", path: concat(install_path, ".identity"), owner: owner, group: group, mode: mode, content: serve_identity_document(revision: revision, sha256: sha256))
+}
+
 // A write that did not settle: its key (converge_action_key, the name the plan and the receipt share)
 // and the cause its transport reported.
 type ConvergeWriteFailure { key: String, cause: String }
@@ -1369,8 +1484,10 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // profile under sudo -u.
     EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
     EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
+    EnsureUserManagerLinger { account: a } => converge_enable_user_manager_linger(target: target, context: context, account: a as NonEmptyStr)
     InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: mhigh, memory_swap_max: _, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_high: mhigh, expected_content: content)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
+    RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
   })
 }
@@ -1553,14 +1670,21 @@ fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
   }
 }
 
-// Same split as the observe: the served machine is the dispatch's SUBJECT, read through the one
-// mechanism, and an executor that is a slot on that subject refuses before a single write is planned.
+// Same split as the observe: the served machine is the dispatch's SUBJECT, read through the one mechanism.
+// What refuses, before a single write is planned, is a run that names no machine or names no lane. What does
+// NOT refuse is an executor standing on the machine it serves: this mode installs onto the host it runs from,
+// it drains no bracket, and its facts row says so (subject_rule: SubjectMayBeTheExecutorsOwnMachine,
+// gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts). Review 96977 finding 2 caught this sentence
+// saying the opposite of the code three lines below it.
 fn remote_build_serving_converge_ci_wet() -> ProcessExit {
-  // THE SUBJECT, BY THE INSTALL RULE (operator ruling 2026-11-20). A zero-CI host like srv14 has no
+  // THE SUBJECT, BY THE INSTALL RULE -- the rule this mode's facts row declares (subject_rule:
+  // SubjectMayBeTheExecutorsOwnMachine, gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts).
+  // A zero-CI host like srv14 has no
   // runner lane of its own, so its serving can only be converged from ANOTHER host's executor lane --
   // the dispatch names the machine served in FLEET_CONVERGE_SUBJECT_HOST and the lane that runs the job
   // in the executor identity. A host that DOES have lanes may still be served from its own lane, which
-  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690): under this rule an unnamed
+  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690, 44658646391, each dispatched with
+  // host = the machine served): under this rule an unnamed
   // subject means that machine, named by the executor's expected host. What is refused is a run that
   // names no machine at all, or a process that names no lane -- never a pair that could not deadlock.
   match fleet_converge_install_subject_read() {
