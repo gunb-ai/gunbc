@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import gunbc.compute.attempt_lifecycle { AttemptReserved }
 import gunbc.dispatch_credential_snapshot { ClaudeFromSnapshot, CursorFromSnapshot }
 import gunbc.dispatch_credential_acquisition {
-  CredentialAcquisitionRecord, credential_acquisition_reference, credential_record_decode, credential_record_json,
+  CredentialAcquisitionRecord, credential_acquisition_reference_text, credential_record_decode, credential_record_json,
   AttemptClaude, AttemptCursor, AttemptExecutor, CursorRuntimeRootRegistered, CursorRuntimeRootUnregistered,
   credential_attempt_executor_for,
 }
