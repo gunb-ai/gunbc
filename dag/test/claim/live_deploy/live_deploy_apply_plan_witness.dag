@@ -12,7 +12,7 @@ import std.algebra { Cons, Empty, fold_list, list_append, list_map }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch, tracker_web_test_console_readback_valid_until_epoch, tracker_web_test_oidc_config_host_path, tracker_web_test_oauth_client_secret_host_path, tracker_web_oidc_config_document, tracker_web_oidc_serve_placement, TrackerWebOidcServeReady, TrackerWebOidcServeUnadmitted }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch, tracker_web_test_console_readback_valid_until_epoch, tracker_web_test_oidc_config_host_path, tracker_web_test_oauth_client_secret_host_path }
 import gunbc.host.host_layout { srv1_gunbc_oidc_config_root }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
