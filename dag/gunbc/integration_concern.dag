@@ -4008,7 +4008,63 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
-  normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, three_spark_lan_endpoint_rows_answer_their_addresses_twice, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands]
+  normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, three_spark_lan_endpoint_rows_answer_their_addresses_twice, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands, edge_install_residue_lives_outside_the_fold_that_prunes_it]
+
+// The main revision the 2026-11-19 read-only edge listing was taken against. The ownership change this concern asks
+// for lands in a LATER change, and no revision is claimed for it here: gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains is exactly right that a citation must name a revision a reader can
+// stand on, and a pending change has none.
+data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
+
+// A HAND-STAGED INSTALL ENTRY SITS ON THE EDGE HOST OUTSIDE EVERY FAMILY THE PRUNE FOLD OWNS. The removals this
+// lane expected from the converge mostly happened -- see the sighting -- so this is not a story about a prune that
+// failed. It is about the residue the predicate never looks at: the fold lists every FILE under the edge root and
+// then keeps the paths site_pxe_edge_owned_install_path claims (tftp/grub/install/, tftp/grub/grub.cfg-01-*,
+// http/seed/). A hand-staged entry moved into the edge's staging/ subtree is listed and then dropped, so no future
+// run of the same fold will ever remove it; and a seed directory left empty by a prune is not a file at all, so the
+// same rule leaves it. The module's own words at the pruning rule call a leftover install file "a standing
+// authorization to erase whichever client reaches it", which is why leaving the residue is not the safe option.
+data edge_install_residue_lives_outside_the_fold_that_prunes_it: IntegrationConcern = IntegrationConcern {
+  identity: "edge_install_residue_lives_outside_the_fold_that_prunes_it",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
+    requirement: "every install residue left on a site PXE edge is inside the fold that prunes install residue, so that its removal is something the converge does rather than something a person does by hand",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_files"),
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_paths"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
+    ],
+  },
+  question: "What owns the install residue that the edge listing sees and the owned-path predicate excludes -- a hand-staged entry parked under the edge's staging/ subtree, and a seed directory emptied by an earlier apply? The lane rule is that a converge run removes edge install residue and a person never does it by hand, so leaving these two in place is not neutrality: it is an install authorization that outlives every future run of the fold that is supposed to retire it. Closing it needs the owned set drawn from WHAT THE FOLD RENDERS rather than from the name somebody gave a directory -- the fold renders nothing under the staging/ subtree, so everything found there is residue by construction -- plus a rule for a directory left empty once its files are pruned, inside the owned families only.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: edge_residue_read_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.a_revision_citation_that_no_landing_contains", decl_name: "a_revision_citation_that_no_landing_contains"),
+          },
+        ],
+      },
+      account: "Read off srv4 read-only on 2026-11-19T20:55-20:56Z and attributed to the fold by its own log, not by mtimes. TWO OF THE THREE ARTIFACTS ARE ALREADY GONE, BY THE CONVERGE: fleet-converge run 44249605412 (dispatched 2026-11-18T06:12:13Z, head 418bf0a167) prints at 06:29:46.827Z stale-install-files=removed: over five paths -- this unit's seed user-data and meta-data, srv15's seed pair, and srv15's install config -- and in the same run file dnsmasq-proxy-dhcp-config path=/etc/gunbc-site-pxe-edge.dnsmasq.conf before=differs outcome=written-and-read-back, which is what took the hand-added ken line out of the proxy config. THE THIRD SURVIVES: /srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg, whose own header says hand-staged 2026-11-15 (session 9a3ff854) … remove after install, still carrying a live autoinstall stanza. It is outside the owned families, and that run's log never contains h11new or withdrawn -- the fold has never listed it. The residue question is settled in DIRECTION by smart-crane-730 on 2026-11-19 (relayed to this session): extend site_pxe_edge_owned_install_path to the staging/ subtree as a whole, on the ground that the fold's rendering leg writes no lasting file there -- the placement leg fetches the installer image into it, verifies it and un-stages it inside one leg, which the run takes before the stale listing -- and do NOT model withdrawn-*, which is one person's naming convention and would mint vocabulary for a hand act; and extend the prune rule to a directory left empty after its files are removed, inside the owned roots only. WHAT THE RULING LEFT OPEN, and this row stays open on it: the removal on srv4 itself, which happens only through a fleet-converge dispatch that is the operator's to authorize (nothing is dispatched from here), and the re-read of the edge afterwards, which is what turns this row's read_obligation into a receipt. The DISPOSITION also stays Open on purpose even though the ownership change is in the same change as this row: closing it would need an integrated_at naming a revision that contains the new fold, and no such revision exists until the change lands. That is exactly the invalid state gunbc.recurring_failure_mode::a_revision_citation_that_no_landing_contains files, so the closure goes to a follow-up that can cite the landing revision, the way h11ssl_unit3_three_gpu_functions_against_two_reported_cards did.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

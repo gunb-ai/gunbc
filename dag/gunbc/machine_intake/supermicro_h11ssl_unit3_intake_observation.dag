@@ -220,6 +220,33 @@ data supermicro_h11ssl_unit3_edge_sighting: H11sslUnit3EdgeSighting = H11sslUnit
   read_obligation: "the in-band read that ties a MAC to a port on THIS board: ip -o link (or /sys/class/net with carrier state) on the installed OS; plus, for the edge side, srv4's dnsmasq package version (dnsmasq --version) so the log layout being counted is srv4's and not v2.90's." as NonEmptyStr,
 }
 
+// WHAT THE HAND-STAGED INSTALL LEFT ON THE EDGE HOST AFTER THE INSTALL, read off the host on 2026-11-19, with the
+// fold that removed most of it named by its run. Read-only ssh as briansrls@srv4.mynetworksettings.com (ls, cat,
+// head, find, grep only -- no sudo, nothing written) between 20:55Z and 20:56Z. The attribution below comes from
+// the CI log of a fleet-converge run, quoted verbatim, and not from file mtimes.
+type H11sslUnit3EdgeResidue {
+  observed_from: Rfc3339Timestamp,
+  observed_to: Rfc3339Timestamp,
+  paths_named: List<NonEmptyStr>,
+  receipt_label: NonEmptyStr,
+  account: NonEmptyStr,
+  read_obligation: NonEmptyStr,
+}
+
+data supermicro_h11ssl_unit3_edge_residue_2026_11_19: H11sslUnit3EdgeResidue = H11sslUnit3EdgeResidue {
+  observed_from: "2026-11-19T20:55:00Z",
+  observed_to: "2026-11-19T20:56:00Z",
+  paths_named: [
+    "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e6-75-eb" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-63" as NonEmptyStr,
+    "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg" as NonEmptyStr,
+    "/etc/gunbc-site-pxe-edge.dnsmasq.conf" as NonEmptyStr,
+  ],
+  receipt_label: "fleet-converge run 44249605412, dispatched 2026-11-18T06:12:13Z on head 418bf0a167, GitHub Actions log; the two lines this row rests on are printed at 2026-11-18T06:29:46.827Z. Read from the Actions log of that run, not from a committed artifact in this repository -- the newest committed PXE-edge receipt is still artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16." as NonEmptyStr,
+  account: "THREE HAND-STAGED ARTIFACTS, THREE DIFFERENT STATES, and the fold explains two of them. (1) THE SEED IS GONE, removed by the converge: that run prints stale-install-files=removed: with exactly five paths -- http/seed/ac-1f-6b-e6-75-eb/user-data and meta-data (this unit's hand-staged seed), http/seed/9c-6b-00-e7-ca-63/user-data and meta-data, and tftp/grub/install/9c:6b:00:e7:ca:63.cfg (srv15's stale seed pair and install config). The seed DIRECTORY for this unit is still there and EMPTY, as is srv15's; the run's own listing today shows no file under either. (2) THE dnsmasq LINE IS GONE the same way: /etc/gunbc-site-pxe-edge.dnsmasq.conf now carries three dhcp-host=…,set:onboarding-known lines -- 28:c1:3c:8a:d6:4a, 9c:6b:00:e7:ca:9c, 9c:6b:00:e7:ca:63 -- and no line naming ac:1f:6b:e6:75:eb anywhere in it; the same run prints file dnsmasq-proxy-dhcp-config path=/etc/gunbc-site-pxe-edge.dnsmasq.conf before=differs outcome=written-and-read-back, which is the converge replacing the file with its own rendering. (3) THE INSTALL ENTRY SURVIVES, listed by the fold and owned by none of it: /srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg, 450 bytes, file mtime 2026-11-15T22:04 with the directory created 22:28, and its first line is its own provenance -- hand-staged 2026-11-15 (session 9a3ff854): one-shot autoinstall of the new H11SSL at BMC 192.168.1.249; remove after install. The body is still a live-looking stanza: a gunbc autoinstall menu entry whose linux line carries ip=dhcp, an ISO URL on 192.168.1.196:8080 and a nocloud seed URL pointing back at the seed path this unit no longer has. NOTHING is claimed about who moved it into staging/withdrawn-h11new/ -- the read cannot see that, and the log of the converge run never contains the strings h11new or withdrawn, so the fold has never listed the file. The whole staging/ subtree holds exactly that one file, which is what makes it residue rather than someone's working area. THE SUBTREE IS NOT SPARE SPACE, and a reader of the fold should know that: gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_image_staging_root IS /srv/gunbc-site-pxe-edge/staging, and the placement leg fetches the installer image into it, verifies the digest there, hard-links the published copy out of it and removes the staged copy -- all inside one leg, which the run takes BEFORE the stale listing. So a path still sitting under staging/ when the listing is read is either hand-staged residue like this stanza or the corpse of a fetch this run already refused; that ordering is why the family can be owned whole, and it is pinned as far as it can be pinned in test.claim.fleet.site_pxe_edge_converge_witness::the_run_report_puts_the_placement_step_before_the_stale_listing. WHAT THIS ROW DOES NOT SAY: that any apply ran after this read; that the rollback-staged lines the same run logged (remove the unit, remove the config, apt-get remove dnsmasq-base) executed -- they are staged lines in a run whose conclusion was success; or that the empty directories are harmless, which is the question gunbc.integration_concern::edge_install_residue_lives_outside_the_fold_that_prunes_it asks." as NonEmptyStr,
+  read_obligation: "the re-read that closes this row: the same read-only listing of /srv/gunbc-site-pxe-edge taken AFTER a fleet-converge dispatch that carries the ownership change, expecting no ac-1f-6b-e6-75-eb path anywhere under the edge root and no file under staging/; plus the dispatch receipt itself, which is the operator's to authorize and is not in this repository yet." as NonEmptyStr,
+}
+
 // THE BASEBOARD ROW IS OWED AND HELD, and this records what it waits on rather than leaving that in chat.
 // The precedent is gunbc.fleet.fleet_intent::srv15_baseboard -- a ServerBaseboard pairing a catalog model with a
 // BmcEndpoint. This lane cannot write that row for this unit yet, and not for want of a place to put it: the row
