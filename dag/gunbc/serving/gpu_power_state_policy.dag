@@ -153,16 +153,16 @@ data srv1_pro_6000_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
 // What a retired decision still owes is its provenance, and that is what this note is -- RATIONALE, not a
 // machine claim: nothing in the corpus reads this text, and no verdict depends on it (gunbc.design_argument::
 // source_annotations permits an annotation to hold irreducible rationale for a construction's shape, which is
-// all this is). There is no longer a declaration for an @ref marker to resolve against, so the operator's words
+// all this is). There is no longer a declaration for a marked reference to resolve against, so the operator's words
 // are recorded here once, as the citation that made the retirement a fact rather than a guess. Decision of
 // 2026-11-10, recorded as OperatorDeclaredCap at 35 W with CappedQuantityUnstated bounds -- the operator said:
 // "operator: 2x2 at 35 W per card; two Strata engines each layer-split across two A2s". 35 W was the driver's lowest SETTABLE power
 // limit (the 2026-11-10 readings report min 35 / default 60 / max 60 W), kept deliberately distinct from the
 // product page's 40-60 W TDP envelope; see the reconciling note above nvidia_a2_board_facts in
 // extdeps.gpu.nvidia_a2, which still carries that range independently of the sold cards. The readings themselves
-// are typed, not quoted: @ref(gunbc.fleet.gpu_device_observation::retired_gpu_device_observations). The removal
+// are typed, not quoted: #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations. The removal
 // and the pending sale are typed too:
-// @ref(gunbc.fleet.fleet_physical_inventory::butch_a2s_removed_pending_sale).
+// #gunbc.fleet.fleet_physical_inventory::butch_a2s_removed_pending_sale.
 
 // host-6ce85c (h11-a16): the operator's 2026-11-12 decision for its Radeon AI PRO R9700s, a SUSTAINED cap at
 // 210 W -- the lowest the device's power1_cap accepts (its range reads 210-300 W). The operator wants it lower;
@@ -204,7 +204,7 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   // can satisfy. Where the two retired records actually live, since neither is restated here: the operator's
   // decision is quoted below this list at its own retirement note, and the 2026-11-10 device readings that
   // admitted it are held TYPED -- unchanged, field for field -- in
-  // @ref(gunbc.fleet.gpu_device_observation::retired_gpu_device_observations), which no current-state consumer
+  // #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations, which no current-state consumer
   // folds. They are NOT in current_gpu_device_observations: that list is read as present fact by
   // admit_gpu_cap_against and by the converge and boot-state paths, and butch enumerates no A2s today.
   // host-6ce85c: one decision for both R9700s. gpu_board_02 is inside its device's range and PENDING because no

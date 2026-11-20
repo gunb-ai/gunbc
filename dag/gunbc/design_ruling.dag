@@ -1179,7 +1179,7 @@ data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling 
 
 // The operator's 2026-11-18 tailnet ruling, carried as a TYPED row (not `//` prose) so its authority
 // cannot be deleted without the reference check failing. Cited by
-// gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation with @ref.
+// gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation by marker.
 data ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18"),
   decided: "2026-11-18",
@@ -1189,7 +1189,7 @@ data ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18: DesignRu
 
 // The operator's two 2026-11-18 admin-console ACL additions, carried as a TYPED row so the authority for
 // the new grant and tag-owner row cannot be deleted without the reference check failing. Cited from
-// extdeps.tailscale.acl::operator_tailscale_acl_grants and ::operator_tailscale_acl_tag_owners with @ref.
+// extdeps.tailscale.acl::operator_tailscale_acl_grants and ::operator_tailscale_acl_tag_owners by marker.
 data tailnet_serving_acl_admin_console_additions_2026_11_18: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailnet_serving_acl_admin_console_additions_2026_11_18"),
   decided: "2026-11-18",
@@ -1212,8 +1212,16 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
 }
 
 
+data reference_markers_are_hashtag_form: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "reference_markers_are_hashtag_form"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "source_annotations"),
+  provenance: "Operator, 2026-11-19, asked by session bold-stag-227 whether comment references should use the hashtag form #gunbc.design_argument::single_authority instead of the @ref(...) form, verbatim: \"yeah i'd like to use the hashtag thanks\". The marker is '#' immediately followed by a coordinate (module.path::decl, ::field or ::<T>); '#' preceded by an identifier character or '/' never opens a marker, a span is a marker only if it reaches '::', sentence punctuation is trimmed from the coordinate, and the escape is a backslash before '#'. ACCEPTED COST, stated and not argued away: under the old form every unescaped marker opening was accounted for, so a coordinate-shaped typo that never reaches '::' (a bare '#a.b:c') is now silent prose and is no longer a finding; this is a deliberate narrowing of the fail-closed accounting (gunbc.design_argument::fail_closed) taken for ergonomics, and the grammar module (std.annotation_reference) pins it as a witness rather than claiming parity with the old coverage.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    reference_markers_are_hashtag_form,
     ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
     estimates_are_one_representation_derived_upward,
     roadmap_scheduling_units_belong_to_factory,
