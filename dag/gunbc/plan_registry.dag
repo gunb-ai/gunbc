@@ -36,10 +36,9 @@ import gunbc.plans.first_customer_service { first_customer_service_plan }
 // (2026-11-10); planning_consolidation: plans are intentions; realization, execution and projection are downstream (rulings in gunbc.design_ruling, 2026-11-10 and 2026-11-11);
 // declaration_acquisition is the v2 adoption program for the gate, heal and regen closures (2026-11-11);
 // v2_self_host, factory_dogfood, debt_payoff and names_without_imports are the 2026 intentions of the root's programs (2026-11-16);
-// new_server_bringup is the site's boot and management edge program -- srv4 as the SitePxeEdge, bobo (srv15) as the first
-// host installed over it, butch (srv14) executor-only under the 2026-11-19 CI ruling, and mtcollins1's boot duties retired
-// onto modeled rows (written 2026-11-10, landed and re-derived from GitHub 2026-11-20; the rows it serves are under
-// realization is carried as work items on the roadmap at dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention).
+// new_server_bringup is the site's boot and management edge program: it holds the intention and cites its design
+// evidence, and its realization is carried as work items under site-boot-and-management-edge on the roadmap at
+// dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention.
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
