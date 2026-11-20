@@ -796,7 +796,7 @@ test fn w_the_fleet_join_argv_never_enables_tailscale_ssh() -> Bool {
         TailscaleUpJoinCommandBuilt { command: command } =>
           match first_where(
             xs: argv_words(command: command),
-            keep: (word) => string_contains(s: word, pattern: "--ssh")
+            keep: word => string_contains(s: word, pattern: "--ssh")
           ) {
             // Any word CARRYING --ssh (bare, --ssh=true, any spelling) would enable the host-side half.
             Absent => true
