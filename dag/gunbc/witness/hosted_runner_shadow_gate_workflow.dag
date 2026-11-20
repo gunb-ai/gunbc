@@ -33,6 +33,7 @@ import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 import gunbc.generated_artifact { HostedRunnerShadowGateYamlArtifact }
 import gunbc.generated_workflow_provenance { generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
+import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.tailscale_ci_oauth_client {
   ci_oauth_client_id_github_secret, ci_oauth_client_secret_github_secret, ci_oauth_client_tags,
 }
@@ -369,9 +370,57 @@ fn shadow_gate_remote_build_step() -> Step {
   }
 }
 
-// Build the remote steps: exactly one plumbing-proof step until remote_gate_cli lands.
+// THE PER-ROW GATE STEP (agreed shape with gunbc.compute.remote_build_client's remote_gate_cli,
+// sibling lane adhoc-7d2186ce-2c3): one step per emitted_subject_build_rows row, invoked with the
+// row's LABEL (so the remote side runs exactly the row the required v2-bootstrap job runs), the
+// checkout path, and a per-row receipt path. Exit codes follow the instrument law and are rendered
+// per the manager ruling of 2026-11-20: 0 held; 1 = code verdict -> step RED (the honest failure);
+// 2 = typed local refusal (label not a gate row, snapshot refused) -> RED, because that is a model
+// bug and must never pass quietly; 3 = no host admitted the reservation -> RED with the typed
+// 'no host admitted' error (a green check that did not run the gate is the silent pass
+// gunbc.design_argument::fail_closed forbids; while this job is non-required, red there costs
+// nothing and tells the truth); 4 = code verdict held but the client could not delete the origin
+// ref -> step green with a countable ::warning:: (cleanup fact, not a verdict on the code). The
+// receipt is cat-ed to the log on EVERY outcome, so the run always carries the typed attempts.
+fn shadow_gate_remote_gate_step(row: EmittedSubjectBuildRow) -> Step {
+  let label_text = emitted_subject_build_label_text(row: row)
+  RunStep {
+    name: Present { value: concat("Remote gate: ", label_text) },
+    id: Present { value: concat("gate-", row.step_id) },
+    run: concat(
+      join([
+        "set -uo pipefail",
+        "rc=0",
+        concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" || rc=$?"),
+        concat(concat("cat \"$RUNNER_TEMP/gate-", row.step_id), ".json\" || true"),
+        "case \"$rc\" in",
+        "  0) exit 0;;",
+        concat("  1) echo '::error::gate ", label_text, ": code verdict - did not hold'; exit 1;;"),
+        concat("  2) echo '::error::gate ", label_text, ": typed local refusal - nothing was sent to any host'; exit 1;;"),
+        concat("  3) echo '::error::gate ", label_text, ": no host admitted the reservation (capacity/infra)'; exit 1;;"),
+        concat("  4) echo '::warning::gate ", label_text, ": held, but an origin ref was left behind (cleanup fact; count these)'; exit 0;;"),
+        concat("  *) echo \"::error::gate ", label_text, ": unexpected exit code $rc\"; exit 1;;"),
+        "esac"
+      ], "\n"),
+      "\n"
+    ),
+    shell: Present { value: Bash },
+    working_directory: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The remote steps: the plumbing-proof step (tailnet+ssh reachability and the red control via the
+// pattern input) PLUS one gate step per emitted_subject_build_rows row once remote_gate_cli is on
+// main. The plumbing step is not named after a row and runs no row; the gate steps carry the rows.
 fn shadow_gate_remote_build_steps() -> List<Step> {
-  [shadow_gate_remote_build_step()]
+  list_append(
+    left: [shadow_gate_remote_build_step()],
+    right: list_map(xs: emitted_subject_build_rows(), f: shadow_gate_remote_gate_step)
+  )
 }
 
 // ── THE BUILD STEPS (hosted prelude: checkout, build gunbc) ──────────────────────────────────────
