@@ -102,6 +102,29 @@ data generic_coproduct_argument_source: String = "module probe_generic_coproduct
 // REDs above as vacuous.
 data kernel_at_coproduct_argument_source: String = "module probe_kernel_at_coproduct_argument\nimport std.types { String, Int }\ntype C = A { a: String } | B { b: String }\nfn h(c: C) -> Int { 1 }\nfn probe() -> Int { h(c: \"hello\") }\n"
 
+// --- LIST-LITERAL CONTROLS: a list literal at a FreeMonoid or List parameter stays clean. ---
+// THE DEFECT #16798's revert confused: the predicate fired on `right: refusal` (a bare coproduct
+// value at FreeMonoid<T>), which IS a genuine refusal. The list-literal form `right: [refusal]`
+// must stay clean, proving the wall does not mistake a container's ELEMENT head for the container.
+
+// One-element list literal at a generic FreeMonoid<T> parameter (the firmware shape).
+data list_lit_one_at_freemonoid_source: String = "module probe_list_lit_one_at_freemonoid\nimport std.types { String, Int }\nimport std.algebra { FreeMonoid, list_append }\ntype C = A { a: String } | B { b: String }\nfn make_c() -> C { A { a: \"hello\" } }\nfn probe(xs: FreeMonoid<C>) -> FreeMonoid<C> { list_append(left: xs, right: [make_c()]) }\n"
+
+// Multi-element list literal at a generic FreeMonoid<T> parameter.
+data list_lit_multi_at_freemonoid_source: String = "module probe_list_lit_multi_at_freemonoid\nimport std.types { String, Int }\nimport std.algebra { FreeMonoid, list_append }\ntype C = A { a: String } | B { b: String }\nfn make_c() -> C { A { a: \"hello\" } }\nfn probe(xs: FreeMonoid<C>) -> FreeMonoid<C> { list_append(left: xs, right: [make_c(), B { b: \"x\" }]) }\n"
+
+// List literal at a concrete List<C> parameter (not generic, uses the kernel container alias).
+data list_lit_at_concrete_list_source: String = "module probe_list_lit_at_concrete_list\nimport std.types { String, Int, List }\nimport std.algebra { FreeMonoid }\ntype C = A { a: String } | B { b: String }\nfn h(xs: List<C>) -> Int { 1 }\nfn probe() -> Int { h(xs: [A { a: \"hello\" }]) }\n"
+
+// Positive control: list literal at a FreeMonoid<Int> parameter (scalar element, no coproduct).
+data list_lit_at_freemonoid_scalar_control_source: String = "module probe_list_lit_at_freemonoid_scalar\nimport std.types { String, Int }\nimport std.algebra { FreeMonoid, list_append }\nfn probe(xs: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: xs, right: [1]) }\n"
+
+// Positive control: list literal at a concrete List<Int> parameter.
+data list_lit_at_concrete_list_scalar_control_source: String = "module probe_list_lit_at_concrete_list_scalar\nimport std.types { String, Int, List }\nimport std.algebra { FreeMonoid }\nfn h(xs: List<Int>) -> Int { 1 }\nfn probe() -> Int { h(xs: [42]) }\n"
+
+// Red control: a bare foreign coproduct (NOT a list literal) at a FreeMonoid return refuses.
+data bare_foreign_coproduct_at_freemonoid_source: String = "module probe_bare_foreign_coproduct_at_freemonoid\nimport std.types { String, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype C = A { a: String } | B { b: String }\ntype Pack = One { n: String } | Two { m: String }\nfn make_pack() -> Pack { One { n: \"x\" } }\nfn h() -> FreeMonoid<C> { make_pack() }\n"
+
 // --- RED: a foreign coproduct at a declared coproduct, one claim per position. ---
 test fn a_foreign_coproduct_at_a_declared_coproduct_return_refuses() -> Bool {
   blocking_of_class(source: foreign_coproduct_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
@@ -149,6 +172,33 @@ test fn an_applied_coproduct_at_its_own_applied_declaration_is_clean() -> Bool {
 
 test fn a_coproduct_value_at_a_generic_coproduct_parameter_is_clean() -> Bool {
   blocking_total(source: generic_coproduct_argument_source) == 0
+}
+
+// --- CONTROLS: list literals at FreeMonoid and List parameters stay clean. ---
+test fn a_one_element_list_literal_at_generic_freemonoid_is_clean() -> Bool {
+  blocking_total(source: list_lit_one_at_freemonoid_source) == 0
+}
+
+test fn a_multi_element_list_literal_at_generic_freemonoid_is_clean() -> Bool {
+  blocking_total(source: list_lit_multi_at_freemonoid_source) == 0
+}
+
+test fn a_list_literal_at_concrete_list_parameter_is_clean() -> Bool {
+  blocking_total(source: list_lit_at_concrete_list_source) == 0
+}
+
+// Positive controls: same shapes with scalar elements, proving the pass is not accidental.
+test fn a_list_literal_at_freemonoid_scalar_is_clean() -> Bool {
+  blocking_total(source: list_lit_at_freemonoid_scalar_control_source) == 0
+}
+
+test fn a_list_literal_at_concrete_list_scalar_is_clean() -> Bool {
+  blocking_total(source: list_lit_at_concrete_list_scalar_control_source) == 0
+}
+
+// A bare foreign coproduct (not a list literal) at a FreeMonoid parameter MUST refuse.
+test fn a_bare_foreign_coproduct_at_freemonoid_refuses() -> Bool {
+  blocking_of_class(source: bare_foreign_coproduct_at_freemonoid_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
 // --- NOT-IDLE. ---
