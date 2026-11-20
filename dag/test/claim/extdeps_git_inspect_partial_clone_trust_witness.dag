@@ -1,0 +1,140 @@
+module test.claim.extdeps_git_inspect_partial_clone_trust_witness
+
+import std.logic { Bool }
+import std.types { String, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
+
+// WITNESS: the three partial-clone probes in extdeps.git.inspect -- ConfigGetInRepo,
+// ConfigGetRegexpInRepo and IsShallowRepository -- build a `git` argv that carries the per-invocation
+// trust grant `-c safe.directory=<repository_path>` IMMEDIATELY BEFORE `-C <repository_path>`, the same
+// shape their already-trusted siblings (HeadCommitIn, ReadTreeIntoIndex, StatusAgainstIndex,
+// IgnoredAgainstIndex, IndexFlagsIn) carry and the same words extdeps.git git_in_trusted_repository_args
+// builds for the transported legs.
+//
+// WHY THIS IS WITNESSED RATHER THAN ASSERTED IN PROSE. inspect.dag's own header paragraph records that
+// a flag living inside a `transport shell` literal "cannot be called by a test" and so "nothing stops a
+// later reader deleting this flag as noise; the protection is this paragraph ... strictly weaker than a
+// witness". std.operation_argv shell_materialize_operation_argv lifts the literal out far enough to READ
+// it: it answers the declaration's own realized argv, with the operation's declared inputs bound by name,
+// so the grant is checked against the declaration that actually ships rather than against prose.
+//
+// WHY THE PROBES NEEDED THE GRANT AT ALL. Their consumer, extdeps.git partial_clone
+// object_source_serve_admission, is run by repository_convergence_placement's owner leg as the service
+// user against the runner's checkout (a tree another principal owns). Without the grant the read dies at
+// git's dubious-ownership gate -- `git config extensions.partialClone` exits 128 -- the model reads that
+// as fail-closed and refuses operands. The model's refusal on 128 is correct; the defect was the argv.
+// The grant is derived from the input path, so it can name neither a different repository nor the
+// wildcard, and it writes nothing to any config.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data inspect_module_path: String = "dag/extdeps/git/inspect.dag"
+data inspect_service: String = "git.Inspect"
+
+// The runner checkout srv1 tree-sync reads as a different principal; the SHAPE is asserted, not the
+// location, so this fixed absolute path stands in for the host-specific one.
+data probe_repo: String = "/opt/actions-runner/srv1-09/_work/gunbc/gunbc"
+// The exact operand the real probe carries: extensions.partialClone for the config get, the promisor key
+// regexp for the config get-regexp.
+data partial_clone_key: String = "extensions.partialClone"
+data promisor_pattern: String = "remote\\..*\\.promisor"
+
+fn argv_join(argv: List<String>) -> String {
+  join(argv, " ")
+}
+
+fn config_get_in_repo_realized() -> String {
+  argv_join(
+    argv: operation_argv_tokens_or_refusal_label(
+      m: shell_materialize_operation_argv(
+        inspect_module_path,
+        inspect_service,
+        "ConfigGetInRepo",
+        [
+          operation_argv_bind_text(name: "repository_path", text: probe_repo),
+          operation_argv_bind_text(name: "key", text: partial_clone_key)
+        ]
+      )
+    )
+  )
+}
+
+fn config_get_regexp_in_repo_realized() -> String {
+  argv_join(
+    argv: operation_argv_tokens_or_refusal_label(
+      m: shell_materialize_operation_argv(
+        inspect_module_path,
+        inspect_service,
+        "ConfigGetRegexpInRepo",
+        [
+          operation_argv_bind_text(name: "repository_path", text: probe_repo),
+          operation_argv_bind_text(name: "pattern", text: promisor_pattern)
+        ]
+      )
+    )
+  )
+}
+
+fn is_shallow_repository_realized() -> String {
+  argv_join(
+    argv: operation_argv_tokens_or_refusal_label(
+      m: shell_materialize_operation_argv(
+        inspect_module_path,
+        inspect_service,
+        "IsShallowRepository",
+        [
+          operation_argv_bind_text(name: "repository_path", text: probe_repo)
+        ]
+      )
+    )
+  )
+}
+
+// THE GOLDEN. The grant tokens sit at positions 1 and 2, immediately before the `-C` and `<repository_path>`
+// at positions 3 and 4. Pinning the WHOLE realized argv (not merely the presence of `-c safe.directory=...`)
+// is what makes "immediately before `-C`" the assertion: a grant placed anywhere else, a second `-C`, or a
+// bare `git -C <repo>`, none of them join to this string.
+data expected_config_get_in_repo: String = "git -c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get extensions.partialClone"
+data expected_config_get_regexp_in_repo: String = "git -c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get-regexp remote\\..*\\.promisor"
+data expected_is_shallow_repository: String = "git -c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc rev-parse --is-shallow-repository"
+
+// THE NAMED MUTATED STATE. The same three argv with the `-c safe.directory=<repository_path>` grant removed --
+// the pre-fix spelling. Each positive test also asserts the realized argv is NOT this string, so if the grant
+// is deleted from the operation the equality fails (it is no longer the golden) AND the inequality fails (it
+// has become the mutated state): the claim is red by execution at the named mutated state.
+data mutated_config_get_in_repo: String = "git -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get extensions.partialClone"
+data mutated_config_get_regexp_in_repo: String = "git -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get-regexp remote\\..*\\.promisor"
+data mutated_is_shallow_repository: String = "git -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc rev-parse --is-shallow-repository"
+
+// POSITIVE. The realized argv is exactly the grant-carrying golden. Deleting the grant from the
+// operation turns this red by execution: the materializer would answer the grant-removed spelling,
+// which does not join to this golden.
+test fn config_get_in_repo_carries_the_trusted_repository_grant() -> Bool {
+  config_get_in_repo_realized() == expected_config_get_in_repo
+}
+
+test fn config_get_regexp_in_repo_carries_the_trusted_repository_grant() -> Bool {
+  config_get_regexp_in_repo_realized() == expected_config_get_regexp_in_repo
+}
+
+test fn is_shallow_repository_carries_the_trusted_repository_grant() -> Bool {
+  is_shallow_repository_realized() == expected_is_shallow_repository
+}
+
+// RED-BY-EXECUTION CONTROL AT THE NAMED MUTATED STATE. Each is its own executed control, not a
+// conjunct of the positive test (where it would be a tautology). It asserts the realized argv is NOT
+// the grant-removed spelling, so it is green while the grant ships and goes red by execution the
+// instant the grant is deleted -- the materializer then answers the bare `git -C <repo> ...` row and
+// the inequality fails. Two independent red signals for one mutation, per gunbc.design_argument::fail_closed.
+test fn config_get_in_repo_is_not_the_grant_removed_form() -> Bool {
+  config_get_in_repo_realized() != mutated_config_get_in_repo
+}
+
+test fn config_get_regexp_in_repo_is_not_the_grant_removed_form() -> Bool {
+  config_get_regexp_in_repo_realized() != mutated_config_get_regexp_in_repo
+}
+
+test fn is_shallow_repository_is_not_the_grant_removed_form() -> Bool {
+  is_shallow_repository_realized() != mutated_is_shallow_repository
+}
