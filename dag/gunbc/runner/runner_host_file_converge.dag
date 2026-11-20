@@ -4664,7 +4664,7 @@ fn write_reload_and_restart_admitted_over(
   let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false, pending_on_manager: false)
   let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
-  let readmitted = if written { [] } else { runner_slot_release_intakes_over(subject: subject, context: context, units: owned) }
+  let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
   // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
   // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
   // AN ADMITTED IDLE LISTENER IS STOPPED ONLY AFTER ITS THREE READINGS ARE TAKEN AGAIN (stop_admitted_listener_over);
@@ -4735,7 +4735,7 @@ fn write_reload_and_restart_admitted_over(
 
 fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, owned: List<NonEmptyStr>, head: String) -> RunnerHostCapPhase
 {
-  let restored = runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
+  let restored = release_owned_slots_over(target: subject.target, context: context, units: owned)
   let left = host_left_of_readmit(units: owned, outcomes: restored)
   let discharged = match left { HostAdmitting => write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) HostLeftDrained { units: _ } => Present { value: "not admitting" } }
   CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
@@ -5408,7 +5408,7 @@ fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
             FleetSshContextReady { context: context, receipt: _ } => {
               let decision = release_decision_of(reading: read_bracket_obligation(host: subject.host as String))
               let outcomes = match decision {
-                ReleaseOwes { units: owned } => runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
+                ReleaseOwes { units: owned } => release_owned_slots_over(target: subject.target, context: context, units: owned)
                 _ => []
               }
               finish_runner_host_cap_release(host: raw_host, decision: decision, outcomes: outcomes)

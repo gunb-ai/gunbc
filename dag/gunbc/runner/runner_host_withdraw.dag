@@ -240,7 +240,7 @@ fn complete_withdraw(subject: RunnerHostFileSubject, context: FleetSshExecutionC
 // release route (or a later withdraw's acquire) is the only thing that may discharge it.
 fn undo_then_refuse(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, host: String, owned: List<NonEmptyStr>, units: List<NonEmptyStr>, refusal: WithdrawalRefusal) -> WithdrawalOutcome {
   let target = subject.target
-  let outcomes = runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
+  let outcomes = release_owned_slots_over(target: target, context: context, units: owned)
   let _kept = outcomes
   let _cleared = clear_withdrawn_record(host: host)
   WithdrawalRefused { refusal: refusal, left: read_back_host_state(target: target, context: context, units: units) }
@@ -297,7 +297,7 @@ fn restore_host_split_ok(subject: RunnerHostFileSubject, context: FleetSshExecut
 
 fn run_restore(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> RestorationOutcome {
   let target = subject.target
-  let outcomes = runner_slot_release_intakes_over(subject: subject, context: context, units: units)
+  let outcomes = release_owned_slots_over(target: target, context: context, units: units)
   let unsettled = filter(outcomes, o => !slot_actuation_settled(o: o))
   if length(unsettled) > 0 {
     // Still out of admission, still recorded -- the truth the observer must keep seeing.
