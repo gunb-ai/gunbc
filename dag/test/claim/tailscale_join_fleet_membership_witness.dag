@@ -75,7 +75,7 @@ import gunbc.fleet.fleet_enrollment {
 import gunbc.output_policy { ExpectSuccess }
 import extdeps.exec.command { argv_words }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
-import std.list { list_member }
+import std.list { list_member, first_where }
 
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
@@ -794,11 +794,14 @@ test fn w_the_fleet_join_argv_never_enables_tailscale_ssh() -> Bool {
     Present { value: name } =>
       match tailscale_join_up_command(hostname: name) {
         TailscaleUpJoinCommandBuilt { command: command } =>
-          !list_member(
+          match first_where(
             xs: argv_words(command: command),
-            x: "--ssh",
-            eq: (a, b) => a == b
-          )
+            keep: (word: String) => string_contains(s: word, pattern: "--ssh")
+          ) {
+            // Any word CARRYING --ssh (bare, --ssh=true, any spelling) would enable the host-side half.
+            Absent => true
+            Present { value: _ } => false
+          }
         TailscaleUpJoinCommandRefused { cause: _ } => false
       }
     Absent => false
