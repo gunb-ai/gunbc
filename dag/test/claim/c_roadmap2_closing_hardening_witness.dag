@@ -38,7 +38,7 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
   dashboard_metering_closing_marker_census_decision, dashboard_metering_closing_cgroup_answer,
 }
 import gunbc.roadmap.roadmap_attempt_metering {
-  attempt_metering_read_derived, attempt_metering_roster_entry_read,
+  attempt_metering_read_derived, attempt_metering_roster_entry_read, attempt_metering_member_name, AttemptMeteringMemberName,
   OptionalFileRead, OptionalFileContent, OptionalFileAbsent, OptionalFileRefused,
   RosterEntryRead, metering_closing_hold_key,
 }
@@ -359,7 +359,10 @@ test fn traversal_read_cannot_escape_the_directory() -> Bool {
   let sub_made = shell.Mkdir.Parents(path: sub as FilePath).success
   // A real, readable file one member-level down: the sandbox admits it; only the member listing can veto.
   let planted_sub = Filesystem.Write(path: join([sub, "/metering.json"], "") as FilePath, content: "not a declared member\n").success
-  let nested = attempt_metering_read_derived(dir: dir, name: "sub/metering.json" as NonEmptyStr)
+  let nested = match attempt_metering_member_name(raw: "sub/metering.json") {
+    Present { value: v } => attempt_metering_read_derived(dir: dir, name: v)
+    none => OptionalFileAbsent
+  }
   let nested_refused = match nested {
     OptionalFileContent { content: _ } => false
     OptionalFileAbsent => true
@@ -368,7 +371,10 @@ test fn traversal_read_cannot_escape_the_directory() -> Bool {
   // (2) the sandbox-layer control cell.
   let outside = join([root, "/secret-metering"], "")
   let planted = Filesystem.Write(path: outside as FilePath, content: "bytes that live one level up\n").success
-  let read = attempt_metering_read_derived(dir: dir, name: "../secret-metering" as NonEmptyStr)
+  let read = match attempt_metering_member_name(raw: "../secret-metering") {
+    Present { value: v } => attempt_metering_read_derived(dir: dir, name: v)
+    none => OptionalFileAbsent
+  }
   let traversal_refused = match read {
     OptionalFileContent { content: _ } => false
     OptionalFileAbsent => true
@@ -386,7 +392,7 @@ test fn declared_member_read_returns_its_content() -> Bool {
   let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
   let planted = Filesystem.Write(path: join([dir, "/metering-roster.json"], "") as FilePath, content: "declared bytes\n").success
-  let read = attempt_metering_read_derived(dir: dir, name: "metering-roster.json" as NonEmptyStr)
+  let read = attempt_metering_read_derived(dir: dir, name: "metering-roster.json" as AttemptMeteringMemberName)
   made && planted && match read {
     OptionalFileContent { content: c } => c == "declared bytes\n"
     OptionalFileAbsent => false

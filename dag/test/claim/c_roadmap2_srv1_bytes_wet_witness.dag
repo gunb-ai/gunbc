@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolate
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_event_snapshot_census { SnapshotCensusReceiptStore, SnapshotCensusReceiptStoreReading, SnapshotCensusReceiptStoreReady, SnapshotCensusReceiptStoreUnready, SnapshotCensusReceiptContent, SnapshotCensusReceiptContentRead, SnapshotCensusReceiptContentAbsent, SnapshotCensusReceiptContentUnreadable, SnapshotCensusReceiptRead, SnapshotCensusReceiptDecoded, SnapshotCensusReceiptUndecodable, RoadmapSnapshotCensusReceipt, snapshot_census_receipt_slots, snapshot_census_receipt_store, snapshot_census_receipt_content, snapshot_census_receipt_decode }
 import gunbc.roadmap.roadmap_served_observation { ServedObservationStore, ServedObservationStoreReading, ServedObservationStoreReady, ServedObservationStoreUnready, ServedObservationRead, ServedObservationPresent, ServedObservationKind, AttemptsJson, served_observation_slots, served_observation_store, served_observation_read_for_instance, served_observation_body_observe }
-import gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready, AttemptMeteringIndexStore, AttemptMeteringIndexStoreReading, AttemptMeteringIndexStoreReady, AttemptMeteringIndexStoreUnready, AttemptMeteringListing, AttemptMeteringListingRead, AttemptMeteringListingUnreadable, OptionalFileRead, OptionalFileContent, OptionalFileAbsent, RowDecode, RowDecoded, RowUndecodable, AttemptMeteringRecord, MeteredRole, MeteredAuditor, MeteredReviewer, attempt_metering_store, attempt_metering_index_store, attempt_metering_read, attempt_metering_index_read, attempt_metering_index_listing, attempt_metering_decode, metering_roster_entry_decode, metering_launch_entry_name }
+import gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringStoreReading, AttemptMeteringStoreReady, AttemptMeteringStoreUnready, AttemptMeteringIndexStore, AttemptMeteringIndexStoreReading, AttemptMeteringIndexStoreReady, AttemptMeteringIndexStoreUnready, AttemptMeteringListing, AttemptMeteringListingRead, AttemptMeteringListingUnreadable, OptionalFileRead, AttemptMeteringMemberName, OptionalFileContent, OptionalFileAbsent, RowDecode, RowDecoded, RowUndecodable, AttemptMeteringRecord, MeteredRole, MeteredAuditor, MeteredReviewer, attempt_metering_store, attempt_metering_index_store, attempt_metering_read, attempt_metering_index_read, attempt_metering_index_listing, attempt_metering_decode, metering_roster_entry_decode, metering_launch_entry_name }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptMeteringRecordFile, attempt_state_directory_text, attempt_state_member_name }
 import gunbc.roadmap.roadmap_attempt_request_record { AttemptRequestBindingStore, AttemptRequestBindingStoreReading, AttemptRequestBindingStoreReady, AttemptRequestBindingStoreUnready, AttemptRequestBinding, AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable, attempt_request_binding_store, attempt_request_binding_read }
 
@@ -184,7 +184,7 @@ test fn the_srv1_metering_record_is_read_by_the_sealed_reader() -> Bool {
     AttemptMeteringStoreReady { store: store } =>
       attempt_state_member_name(member: AttemptMeteringRecordFile) == name &&
         plant(root: attempt_state_directory_text(instance: instance, node_id: node, attempt_key: key, directory: AttemptDirectoryRoot), name: name, content: bytes) &&
-        match attempt_metering_read(store: store, entry: name as NonEmptyStr) {
+        match attempt_metering_read(store: store, entry: name as AttemptMeteringMemberName) {
           OptionalFileContent { content: c } => c == bytes &&
             match attempt_metering_decode(raw: c) {
               RowDecoded { row: record } => record.node_id == node as String && record.attempt_key == key
@@ -228,7 +228,7 @@ test fn the_srv1_launch_entries_are_read_by_the_sealed_reader() -> ProcessExit {
       AttemptMeteringStoreReady { store: store } => {
         let root = attempt_state_directory_text(instance: instance, node_id: auditor_node, attempt_key: auditor_key, directory: AttemptDirectoryRoot)
         if !plant(root: root, name: auditor_name, content: auditor_bytes) { "plant-auditor-failed" }
-        else { match attempt_metering_read(store: store, entry: auditor_name as NonEmptyStr) {
+        else { match attempt_metering_read(store: store, entry: auditor_name as AttemptMeteringMemberName) {
           OptionalFileContent { content: c } => if c != auditor_bytes { "auditor-raw-bytes-differ" }
             else { match metering_roster_entry_decode(node_id: auditor_node as String, attempt_key: auditor_key, name: auditor_name, raw: c) {
               RowDecoded { row: role } => if role != auditor_role { "auditor-decode-differs" }
@@ -237,7 +237,7 @@ test fn the_srv1_launch_entries_are_read_by_the_sealed_reader() -> ProcessExit {
                   AttemptMeteringStoreReady { store: rstore } => {
                     let rroot = attempt_state_directory_text(instance: instance, node_id: reviewer_node, attempt_key: reviewer_key, directory: AttemptDirectoryRoot)
                     if !plant(root: rroot, name: reviewer_name, content: reviewer_bytes) { "plant-reviewer-failed" }
-                    else { match attempt_metering_read(store: rstore, entry: reviewer_name as NonEmptyStr) {
+                    else { match attempt_metering_read(store: rstore, entry: reviewer_name as AttemptMeteringMemberName) {
                       OptionalFileContent { content: r } => if r != reviewer_bytes { "reviewer-raw-bytes-differ" }
                         else { match metering_roster_entry_decode(node_id: reviewer_node as String, attempt_key: reviewer_key, name: reviewer_name, raw: r) {
                           RowDecoded { row: rrole } => if rrole != reviewer_role { "reviewer-decode-differs" } else { "ok" }
@@ -274,7 +274,7 @@ test fn the_srv1_metering_index_entry_is_listed_and_read_by_the_sealed_index_sto
           AttemptMeteringListingRead { names: listed } => any(listed, n => n == name)
           AttemptMeteringListingUnreadable { detail: _ } => false
         } &&
-        match attempt_metering_index_read(store: store, entry: name as NonEmptyStr) {
+        match attempt_metering_index_read(store: store, entry: name as AttemptMeteringMemberName) {
           OptionalFileContent { content: c } => c == bytes
           _ => false
         }

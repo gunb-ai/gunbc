@@ -17,7 +17,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.durable_cas_file_store { cas_file_slot_path, ExpectSlotAbsent, ExpectSlotGeneration }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import gunbc.roadmap.roadmap_attempt_metering {
-  AttemptMeteringCommitted, AttemptMeteringCommitLostRace,
+  AttemptMeteringCommitted, AttemptMeteringCommitLostRace, AttemptMeteringMemberName,
   MeteredWorker,
   MeteringAlreadyFinal, MeteringObserved, MeteringPersisted, MeteringProvisional, MeteringRefused,
   MeteringRecordHeadCommitted, MeteringRecordHeadRefused,
@@ -158,7 +158,7 @@ test fn a_second_persist_over_the_final_head_refuses_and_leaves_the_winner_untou
                  MeteringRecordHeadCommitted { generation: g, content: raw } =>
                    cas_generation_count(g: g) == cas_generation_count(g: first_gen)
                      && raw == bytes
-                     && match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+                     && match attempt_metering_read(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName) {
                           OptionalFileAbsent => true
                           _ => false
                         }
@@ -322,14 +322,14 @@ test fn a_plain_record_adopts_and_the_reader_then_reads_the_committed_generation
   match fx_store(instance: instance, key: key) {
     Absent => false
     Present { value: store } => sealed
-      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && attempt_metering_create_once(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName, content: bytes) is AttemptMeteringCreated
       && match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
            Adopted { generation: g } => match metering_record_head(store: store) {
              MeteringRecordHeadCommitted { generation: head_gen, content: head } =>
                cas_generation_count(g: head_gen) == cas_generation_count(g: cas_generation_first())
                  && cas_generation_count(g: g) == cas_generation_count(g: cas_generation_first())
                  && head == bytes
-                 && match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+                 && match attempt_metering_read(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName) {
                      // THE PLAIN NAME IS RETIRED BY THE ACT ITSELF, and what the reader serves is the
                      // committed generation.
                      OptionalFileAbsent => match metering_observe_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key) {
@@ -359,7 +359,7 @@ test fn adopting_a_record_twice_leaves_the_head_exactly_as_the_first_adopt_left_
   match fx_store(instance: instance, key: key) {
     Absent => false
     Present { value: store } => sealed
-      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && attempt_metering_create_once(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName, content: bytes) is AttemptMeteringCreated
       && match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
            Adopted { generation: first_gen } => match metering_record_head(store: store) {
              MeteringRecordHeadCommitted { generation: before_gen, content: before } =>
@@ -410,10 +410,10 @@ test fn an_unverifiable_plain_record_refuses_adoption_and_stays_exactly_where_it
   match fx_store(instance: instance, key: key) {
     Absent => false
     Present { value: store } => sealed
-      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && attempt_metering_create_once(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName, content: bytes) is AttemptMeteringCreated
       && match attempt_metering_adopt_pre_seal_record(instance: instance, node_id: fx_node(), attempt_key: key) {
            AdoptVerificationRefused { detail: _ } => match metering_record_head(store: store) {
-             MeteringRecordHeadRefused { cause: _ } => match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+             MeteringRecordHeadRefused { cause: _ } => match attempt_metering_read(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName) {
                OptionalFileContent { content: still } => still == bytes
                _ => false
              }
@@ -462,7 +462,7 @@ test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> 
   match fx_store(instance: instance, key: key) {
     Absent => false
     Present { value: store } => sealed
-      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && attempt_metering_create_once(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName, content: bytes) is AttemptMeteringCreated
       && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: key) {
            Present { value: _ } => false
            Absent => match belt_metering_departed(instance: instance, attempts: [] as List<WorkflowAttemptProgress>).first() {
@@ -470,7 +470,7 @@ test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> 
                MeteringRecordHeadCommitted { generation: g, content: head } =>
                  cas_generation_count(g: g) == cas_generation_count(g: cas_generation_first())
                    && head == bytes
-                   && match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+                   && match attempt_metering_read(store: store, entry: (metering_attempt_record_name() as String) as AttemptMeteringMemberName) {
                        OptionalFileAbsent => true
                        _ => false
                      }
