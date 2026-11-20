@@ -2,8 +2,9 @@ module test.claim.runner.runner_slot_provision_witness
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, List, String }
-import std.algebra { length }
+import std.algebra { string_contains, length }
 import extdeps.toolchain.types { Aarch64 }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.github.actions_runner {
   actions_runner_registration_decode,
   ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
@@ -42,6 +43,7 @@ import gunbc.runner.runner_slot_provision {
   runner_slot_enumeration_postcondition,
   RunnerSlotEnumerationMatched,
   RunnerSlotEnumerationMismatch,
+  RunnerSlotEnumerationWidthUnresolved,
   RunnerSlotMember,
   runner_slot_provision_has_width_increase,
   RunnerSlotObservation,
@@ -52,6 +54,7 @@ import gunbc.runner.runner_slot_provision {
   RunnerSlotConvergeRefused,
   runner_slot_converge_verdict,
   runner_slot_member_from_instance_name,
+  runner_slot_member_key,
 }
 import gunbc.membership_reconcile {
   membership_added_count,
@@ -70,7 +73,7 @@ import gunbc.runner.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   host_fabric_slot_count,
   committed_slot_identities, CommittedPopulationDerived, CommittedPopulationWidthUnresolved, identity_in_list,
-  host_memory_admitted_width,
+  memory_admitted_total_width,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import extdeps.exec.command { shell_command_render }
@@ -415,55 +418,66 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // The relation that must hold in every case is the inequality: materialization may commit fewer
 // slots than memory would admit, never more. That is falsifiable -- a deploy row raised past its
 // memory admission fails here -- and it does not collapse into f(x) == f(x).
+//
+// The ceiling is the TOTAL wall a deploy row may sit under, not the memory axis alone.
+// host_memory_admitted_width is deliberately the base-only fleet-row PROJECTION (recorded in
+// #gunbc.integration_concern::srv14_slot_admission_answered_by_envelope_and_verdict), while
+// materialization may commit a host's single transitional CI slot on top of it -- the committed
+// path #gunbc.runner.runner_slot_allocation::derived_runner_slots_of_over adds
+// host_transitional_ci_slot_count. srv1 commits 8 (7 memory-admitted + 1 transitional srv1-01);
+// comparing runner_count against the base-only projection alone falsely failed it.
 test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
   all(
     fleet_runner_host_deploys,
-    d => d.runner_count <= host_memory_admitted_width(host: d.host_label as HostIdentity)
-      && d.runner_count > 0
+    d =>
+      d.runner_count <= memory_admitted_total_width(host: d.host_label as HostIdentity)
+        && d.runner_count > 0
   )
 }
 
 // --- the fabric carve reaches the provisioning target --------------------------------------------
 
-// THE DESIRED SET MUST NOT CONTAIN srv3-06, AND THIS IS THE ROW THAT SAYS SO.
+// THE DESIRED SET MUST NOT CONTAIN THE FABRIC EXECUTION SLOTS, AND THIS IS THE ROW THAT SAYS SO.
 //
 // desired_runner_slot_members built 1..runner_count until 2026-08-23, which meant converge would
-// have proposed installing a GitHub Actions runner over srv3's fabric execution slot -- and
-// reconcile would have seen it as an ordinary missing member, so apply would have done it with no
-// refusal anywhere. The width says how many slots exist; it does not say what they are for.
-// srv3-07 MOVED SIDES (2026-09-18) AND THAT IS WHY THIS ROW IS EDITED RATHER THAN LEFT ALONE. It was
-// the positive control here -- the index just above the canary, asserted PRESENT to prove the row
-// excludes the fabric member specifically rather than truncating the desired set. srv3-07 is now the
-// second fabric member, so it must be absent for exactly the reason srv3-06 is, and the control
-// moves up to srv3-08.
+// have proposed installing a GitHub Actions runner over a fabric execution slot -- and reconcile
+// would have seen it as an ordinary missing member, so apply would have done it with no refusal
+// anywhere. The width says how many slots exist; it does not say what they are for.
 //
-// THE CONTROL IS STILL LOAD-BEARING and must not be dropped just because there are two exclusions
-// now: without an index asserted PRESENT above the excluded ones, a desired set that simply stopped
-// at srv3-05 would satisfy every other clause.
+// THE CARVE MOVED TO srv1 (operator decision 2026-09-21, kept by the 2026-09-26 ruling, and funded
+// by 2026-10-18 when srv1-14 joined the authored microVM slot list -- PR #14316). The fabric
+// execution population is now srv1-13 (microVM shakedown) and srv1-14 (revision job); srv3 and srv4
+// carry NO fabric members. This row therefore exercises the exclusion on srv1: both fabric indices
+// must be absent from srv1's desired CI set, while the set still holds every other committed slot.
+//
+// THE CONTROL IS STILL LOAD-BEARING and must not be dropped just because there are two exclusions:
+// without asserting the desired set has exactly the committed width minus those two, a set that
+// simply truncated would satisfy the two absence clauses vacuously.
 test fn the_fabric_slots_are_not_provisioning_targets() -> Bool {
   let names = map(
-    desired_runner_slot_members(deploy: wt_srv3_deploy()),
+    desired_runner_slot_members(deploy: wt_srv1_deploy()),
     m => runner_slot_member_key(m: m) as String,
   )
-  (any(names, n => n == "srv3-06") == false)
-    && (any(names, n => n == "srv3-07") == false)
-    && any(names, n => n == "srv3-05")
-    && any(names, n => n == "srv3-08")
+  (any(names, n => n == "srv1-13") == false)
+    && (any(names, n => n == "srv1-14") == false)
+    && length(xs: names) == provision_width_of(host: operator_host_srv1) - 2
 }
 
 // THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
-// that is simply too small. srv3 and srv4 each give up exactly two slots to the fabric; srv1 gives up
-// one, its microVM shakedown slot srv1-13 (operator decision 2026-09-21). This row read "srv1 loses
-// nothing" and passed only while srv1-13 had fallen outside the committed width, which is the
-// dropped-slot defect gunbc#12339 fixes.
+// that is simply too small. The fabric execution carve sits ENTIRELY on srv1 -- srv1-13 (microVM
+// shakedown) and srv1-14 (revision job), per the operator decisions of 2026-09-21 and 2026-09-26 and
+// the 2026-10-18 funding of srv1-14 (PR #14316) -- so srv1 gives up two slots and srv3 and srv4 give
+// up none. This row previously read "srv3 and srv4 each give up two; srv1 gives up one"; that predates
+// the carve moving to srv1 and is the reason it was never green (the entry had not run since the
+// closure broke, so the drift was never caught).
 //
 // THE COUNTS ARE AUTHORED POLICY AND THE WIDTHS ARE DERIVED, which is why the two appear
 // differently. The committed width is RESOLVED rather than transcribed -- a width literal here
 // would go stale the next time an axis moves, as the prose in the authority did across the
-// 2026-08-22 DIMM upgrade -- while the per-host fabric count IS a declared decision (operator,
-// 2026-09-18: two execution slots on each of srv3 and srv4) and is therefore written as the literal
-// it is. Widening the population without editing this row leaves the subtraction disagreeing with
-// the authority, which is the discrimination this control exists to provide.
+// 2026-08-22 DIMM upgrade -- while the per-host fabric count IS a declared decision (operator: both
+// execution slots live on srv1) and is therefore written as the literal it is. Widening the
+// population without editing this row leaves the subtraction disagreeing with the authority, which is
+// the discrimination this control exists to provide.
 fn provision_width_of(host: HostIdentity) -> Int {
   match gunbc_runner_committed_width(host: host) {
     RunnerWidthUnresolved { cause: _ } => 0 - 1
@@ -479,15 +493,15 @@ fn resolution_count_is(r: RunnerWidthResolution, expected: Int) -> Bool {
 }
 
 test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
-  length(xs: desired_runner_slot_members(deploy: wt_srv3_deploy()))
-    == provision_width_of(host: operator_host_srv3) - 2
-    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv3), expected: 2)
-    && length(xs: desired_runner_slot_members(deploy: wt_srv4_deploy()))
-         == provision_width_of(host: operator_host_srv4) - 2
-    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv4), expected: 2)
-    && length(xs: desired_runner_slot_members(deploy: wt_srv1_deploy()))
-         == provision_width_of(host: operator_host_srv1) - 2
+  length(xs: desired_runner_slot_members(deploy: wt_srv1_deploy()))
+    == provision_width_of(host: operator_host_srv1) - 2
     && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv1), expected: 2)
+    && length(xs: desired_runner_slot_members(deploy: wt_srv3_deploy()))
+         == provision_width_of(host: operator_host_srv3)
+    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv3), expected: 0)
+    && length(xs: desired_runner_slot_members(deploy: wt_srv4_deploy()))
+         == provision_width_of(host: operator_host_srv4)
+    && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv4), expected: 0)
 }
 
 

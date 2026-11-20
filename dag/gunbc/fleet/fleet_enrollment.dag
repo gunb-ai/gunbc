@@ -99,8 +99,10 @@ fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
 //
 // A REPORT IS NOT AN ADMITTANCE, and the reason is not the missing credential -- it is the address. The
 // fleet can be told a host's keys are in place while no read has logged in, and this fleet was told exactly
-// that about host-e2d4b7 on 2026-11-16. That report puts the unit's ssh answer at 192.168.1.236, which
-// gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as srv9's address, and this arm sits in
+// that about host-e2d4b7 on 2026-11-16. That report puts the unit's ssh answer at 192.168.1.236 -- an address
+// the model holds only as a dated lease observation of this unit (gunbc.fleet.fleet_intent_network
+// ::ken_host_lan_endpoint; it was srv9's endpoint row until srv9 was sold and retired), and nothing read says
+// WHICH machine answers there. This arm sits in
 // front of sudo-bearing recovery effects (gunbc.runner.runner_connectivity_recovery::
 // host_reach_admission_for_fleet_host). An effect admitted on the report could therefore land on a DIFFERENT
 // machine than the row names -- which is the failure fail_closed refuses, not a caution. So
@@ -254,8 +256,8 @@ data fleet_enrollments: List<HostEnrollmentIntent> = concat([
   // account (the operator's and fleet-automation's already there, node-orch's added), ubuntu with
   // passwordless sudo, ssh answering at 192.168.1.236 -- is carried as data where it was reported and where
   // it collides: the intake rows in gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation (whose
-  // address standing cites gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint, because .236 is modelled
-  // as srv9's), and the open register row
+  // address standing cites gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint, a dated observation that
+  // reserves nothing), and the open register row
   // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which names
   // the ONE dispatch that would ground the report: a fleet-converge read as the fleet-automation principal,
   // returning host-authored output and a receipt, together with the lease/ARP read that says who holds .236.

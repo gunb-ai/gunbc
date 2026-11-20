@@ -1,0 +1,78 @@
+module test.claim.fleet.ken_build_host_gate_witness
+
+// WHAT THE SERVING CHARGE LEAVES HOST-E2D4B7 (ken) FOR BUILD. ken serves Strata over its three T10 cards and
+// serving has priority: a build seat may be carved only from what the serving charge leaves, and a serving
+// charge is never shrunk by this fleet's arithmetic to make room -- it moved only when the OPERATOR trimmed the
+// serving side and signed the number (gunbc.design_ruling::ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
+// MemoryMax 112 GiB -> 56 GiB, read live at 2026-11-19T22:18:37Z). The seat arithmetic here is what that
+// dissolved: gunbc.serving.serving_reservation::h11ssl_unit3_serving_charge_blocks_build_seat_frontier claimed
+// no seat could be carved, and it went when these two tests went red at 112 GiB and green at the read 56 GiB.
+//
+// WHAT THIS WITNESS DOES NOT DECIDE. Two seats of arithmetic is not an enrollment: ken is still not a
+// remote-build serving host -- it stays out of gunbc.compute.remote_build_serving_setup
+// ::remote_build_serving_candidate_hosts until its build-pool join has a ledger home, and the tailnet SSH
+// transport gap (this unit carries tag:serving, which the fleet ACL gives no SSH, reported to the build lane at
+// gunbc.serving.serving_host_key_login) is a separate gate on the same enrollment. Those rows are untouched
+// here; this file only prices the bytes.
+//
+// Both figures come from their own homes -- the reserved serving charge through
+// gunbc.serving.serving_reservation::host_memory_reserved, and the usable RAM through
+// gunbc.host.host_memory_observation::host_usable_ram_ceiling_bytes -- and the tests assert only their
+// RELATIONSHIP to the build slot in gunbc.runner.runner_slot_desired. No figure here is a hand-kept copy of a
+// carrier's own literal; the referent is the ssh read recorded in each row's provenance, and each row has a
+// single home (gunbc.design_argument::single_authority). Each arm that cannot observe what it needs returns
+// false rather than a plausible width (gunbc.design_argument::fail_closed): a missing reservation row or an
+// unmeasured ceiling must RED, never pass by defaulting.
+
+import std.types { Bool, Int }
+import std.measure { byte_size_count }
+import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import gunbc.serving.serving_reservation { host_memory_reserved }
+import gunbc.serving.serving_host_memory { ServingMemoryRead, ken_strata_engine_memory }
+import gunbc.host.host_memory_observation { host_usable_ram_ceiling_bytes }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
+
+// The fold must actually carry the engine's declared ceiling. Reaching the ceiling through the serving row --
+// not a copied number -- means the check cannot pass on a value nobody wired in: a deleted reservation row
+// makes the fold report zero (its no-row arm), and an Unread/Assumed ceiling has no bytes to fold, so both red.
+test fn ken_serving_charge_is_read_into_its_ci_seat() -> Bool {
+  match ken_strata_engine_memory.memory_max {
+    ServingMemoryRead { bytes: ceiling, provenance: _ } => match host_memory_reserved(host: operator_host_e2d4b7) {
+      Present { value: reserved } => byte_size_count(b: reserved) as Int == byte_size_count(b: ceiling) as Int
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+// THE ARITHMETIC THE OPERATOR SIGNED: TWO BUILD SEATS, GIVEN THE SERVING CHARGE IS PAID FIRST. Red at the
+// withdrawn 112 GiB ceiling (a 14619443200 B residual is under one 26843545600 B slot), green at the 56 GiB the
+// unit carries now (74748985344 B left, which is 2 slots and 21061894144 B over). It fails closed in both
+// directions: a refused reservation row or an Unread ceiling gives no bytes to fold, and
+// host_usable_ram_ceiling_bytes reports zero for an unmeasured host, which would otherwise saturate the
+// residual to zero and fake a full seat.
+test fn ken_carves_two_build_seats_over_its_serving_charge() -> Bool {
+  match host_memory_reserved(host: operator_host_e2d4b7) {
+    Absent => false,
+    Present { value: serving } => {
+      let usable = byte_size_count(b: host_usable_ram_ceiling_bytes(host: operator_host_e2d4b7)) as Int
+      let charge = byte_size_count(b: serving) as Int
+      usable >= charge && usable - charge >= 2 * gunbc_runner_slot_memory_max_bytes
+    }
+  }
+}
+
+// THE OTHER EDGE OF THE SAME FIGURE: A THIRD SEAT IS NOT ON THE TABLE, and the row that signed the number said
+// so -- 69.6 GiB of residual is 2 x 25 GiB plus about 20 GiB left for the OS, not three seats. Keeping this
+// claim is what stops two seats from being read as spare capacity: if the charge is ever cut again the claim
+// goes red and the seat count is re-derived from a reading instead of drifting upward in prose.
+test fn ken_third_build_seat_is_outside_what_serving_leaves() -> Bool {
+  match host_memory_reserved(host: operator_host_e2d4b7) {
+    Absent => false,
+    Present { value: serving } => {
+      let usable = byte_size_count(b: host_usable_ram_ceiling_bytes(host: operator_host_e2d4b7)) as Int
+      let charge = byte_size_count(b: serving) as Int
+      usable >= charge && usable - charge < 3 * gunbc_runner_slot_memory_max_bytes
+    }
+  }
+}

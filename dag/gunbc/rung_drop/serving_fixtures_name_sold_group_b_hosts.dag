@@ -18,6 +18,17 @@ import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 // identity and endpoint data symbols are retained for remaining fixture witnesses; glm_serving_load
 // was deleted with Spark serving production. Nothing rostered reaches the sold hosts.
 //
+// ONE FIXTURE HAS SINCE FALLEN, and it fell for a reason this drop did not anticipate. On 2026-11-18 the srv9
+// LAN endpoint row (gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint, 192.168.1.236) was retired: a
+// LIVE machine -- the H11SSL unit the operator calls ken, host-e2d4b7 -- is now observed answering at that
+// same address, so keeping a sold cage pinned to it is not inert test data any more, it is the shape that
+// makes a later reader conclude the address belongs to the sold box. The witness claim that pinned it was
+// renamed rather than narrowed (fleet_intent_network_srv9_to_srv11_enrolled_at_their_reserved_addresses ->
+// fleet_intent_network_srv10_and_srv11_enrolled_at_their_reserved_addresses), and a new claim holds the
+// after-state: srv9 answers no LAN address and exactly one topology row names .236, ken's. The identity rows
+// for srv9-srv12 and the srv10/srv11 endpoint fixtures stay, so this population is now one row and one claim
+// narrower than the paragraph above describes.
+//
 // WHAT DOES NOT FALL. No fleet-converge target, host roster, enrolment, binding, reservation or LAN
 // endpoint list names a sold unit, so no mode can dispatch to one. serving_enrolled_groups was the
 // leftover production roster that still named FabricGroupB after the sale; emptied 2026-10-12

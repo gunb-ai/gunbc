@@ -128,7 +128,8 @@ test fn the_conservation_tree_charges_a_serving_reservation() -> Bool {
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced,
     served_deployment: ServedDeploymentNotPlaced,
-    serving: Present { value: byte_size(0) }
+    serving: Present { value: byte_size(0) },
+    build_pool: byte_size(0)
   ) {
     HostAllocationConserves => true
     HostAllocationOversubscribed => false
@@ -143,7 +144,8 @@ test fn the_conservation_tree_charges_a_serving_reservation() -> Bool {
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced,
     served_deployment: ServedDeploymentNotPlaced,
-    serving: Present { value: byte_size(112 * 1073741824) }
+    serving: Present { value: byte_size(112 * 1073741824) },
+    build_pool: byte_size(0)
   ) {
     HostAllocationConserves => false
     HostAllocationOversubscribed => true
@@ -165,7 +167,8 @@ test fn the_conservation_tree_refuses_an_unmeasured_serving_reservation() -> Boo
     compile_pool: byte_size(0),
     control_plane: ControlPlaneNotPlaced,
     served_deployment: ServedDeploymentNotPlaced,
-    serving: Absent
+    serving: Absent,
+    build_pool: byte_size(0)
   ) {
     HostAllocationConserves => false
     HostAllocationOversubscribed => false

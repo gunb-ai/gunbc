@@ -9,8 +9,13 @@ import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_row_for_label, EmittedSubjectRowLookup, EmittedSubjectNoRow,
+  EmittedSubjectOneRow, EmittedSubjectDuplicateRows,
+}
+import extdeps.bazel.label { Label, render_label, parse_label, LabelParsed, LabelRefused }
 import gunbc.compute.work_request {
-  WorkOperation, CompileEntry, RunClaims, work_default_build,
+  WorkOperation, CompileEntry, RunClaims, TestGateSubject, work_default_build,
   WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
@@ -66,15 +71,23 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 // map onto gunbc.compute.work_request WorkOperation one-to-one below, so the provider sees exactly the
 // operation the local route would have sent. BuildGunbcBinaries is not offered: its outputs are host
 // binaries for the far host's architecture, and nothing on the requesting side consumes them.
+//
+// THE GATE SUBJECT IS THE THIRD, and it is the reason the route exists: the required CI gate's subject
+// step for one gate row, run on a serving host. Its label is admitted as a typed Label by
+// gunbc.emitted_subject_build_gate -- the module that OWNS the rows -- so a request cannot name a
+// subject the gate does not have, and this adapter cannot be talked into running something else under
+// the gate's name.
 type RemoteBuildOperation
   = RemoteCompileEntry { entry: FilePath }
   | RemoteRunClaims { entry: FilePath, functions: List<NonEmptyStr> }
+  | RemoteGateSubject { label: Label }
 
 fn remote_build_work_operation(op: RemoteBuildOperation) -> WorkOperation {
   match op {
     RemoteCompileEntry { entry } => CompileEntry { entry: entry }
     RemoteRunClaims { entry, functions } =>
       RunClaims { entry: entry, functions: join(map(functions, f => f as String), ",") as NonEmptyStr, hermetic: true, window: none }
+    RemoteGateSubject { label: l } => TestGateSubject { label: l }
   }
 }
 
@@ -120,15 +133,22 @@ type RemoteBuildRequest {
 //
 //   remote-build-v1 <commit hex> <source ref id> compile <entry>
 //   remote-build-v1 <commit hex> <source ref id> claims <entry> <function> [<function> ...]
+//   remote-build-v1 <commit hex> <source ref id> gate <label>
+//
+// A gate label is ONE word: extdeps.bazel.label's grammar admits exactly the characters the portable
+// set admits, so the canonical rendering of a Label is always one portable word, and a label that
+// needs quoting was never a label.
 
 data remote_build_protocol_word: NonEmptyStr = "remote-build-v1"
 data remote_build_compile_word: NonEmptyStr = "compile"
 data remote_build_claims_word: NonEmptyStr = "claims"
+data remote_build_gate_word: NonEmptyStr = "gate"
 
 fn remote_build_operation_words(op: RemoteBuildOperation) -> List<String> {
   match op {
     RemoteCompileEntry { entry } => [remote_build_compile_word as String, entry as String]
     RemoteRunClaims { entry, functions } => concat([remote_build_claims_word as String, entry as String], map(functions, f => f as String))
+    RemoteGateSubject { label } => [remote_build_gate_word as String, render_label(l: label)]
   }
 }
 
@@ -153,6 +173,14 @@ type RemoteBuildRequestRefusal
   | RequestEntryOutsideCorpus { entry: String }
   | RequestCompileTakesOneEntry { word_count: Int }
   | RequestClaimsNameNoFunction
+  // A gate request's operand is a LABEL, and two separate facts can be wrong about it: it may not be
+  // a label at all (extdeps.bazel.label's grammar refuses it), or it may be a well-formed label that
+  // is NOT a row of the required gate. Only the second is a statement about the gate's contents, so
+  // they are separate causes, and neither is a silent substitution for the other.
+  | RequestGateTakesOneLabel { word_count: Int }
+  | RequestGateLabelUnparsable { text: String }
+  | RequestGateLabelNotAGateRow { text: String }
+  | RequestGateLabelAmbiguousRows { text: String, count: Int }
 
 type RemoteBuildRequestDecode
   = RemoteBuildRequestDecoded { request: RemoteBuildRequest }
@@ -218,10 +246,18 @@ type RemoteBuildOperationDecode
   = RemoteBuildOperationDecoded { operation: RemoteBuildOperation }
   | RemoteBuildOperationRefused { cause: RemoteBuildRequestRefusal }
 
+// THE VERB IS DISPATCHED FIRST, and the operand's SHAPE is adjudicated under its own verb. The entry
+// corpus rule used to run ahead of the verb because every verb took an entry; a gate request's operand
+// is a LABEL, and no .dag corpus rule can be applied to one. Keeping the entry check where it was would
+// have refused a well-formed gate request with `the entry is not a .dag file`, which is not the fact
+// about it -- and the ordering of the two remaining checks inside each verb is unchanged, so the
+// existing red controls (a climbing path under compile, an unknown verb) still refuse as they did.
 fn remote_build_decode_operation(words: List<String>) -> RemoteBuildOperationDecode {
   let verb = remote_build_word_at(words: words, i: 0)
   let entry = remote_build_word_at(words: words, i: 1)
-  if !remote_build_entry_admitted(entry: entry) {
+  if verb == (remote_build_gate_word as String) {
+    remote_build_decode_gate_subject(words: words, operand: entry)
+  } else if !remote_build_entry_admitted(entry: entry) {
     RemoteBuildOperationRefused { cause: RequestEntryOutsideCorpus { entry: entry } }
   } else if verb == (remote_build_compile_word as String) {
     if count(words) == 2 {
@@ -241,6 +277,41 @@ fn remote_build_decode_operation(words: List<String>) -> RemoteBuildOperationDec
   }
 }
 
+// A GATE SUBJECT IS ADOPTED ONLY BY THE MODULE THAT OWNS THE ROWS. Three separate facts can fail, and
+// they are three causes because a requester needs to know which one moved: the verb took more or fewer
+// than one operand; the operand is not a label at all under extdeps.bazel.label's grammar; or it is a
+// well-formed label that is NOT a row of the required gate. The third is the one the gate's own
+// authority answers -- gunbc.emitted_subject_build_gate::emitted_subject_build_rows is what says which
+// subjects the gate has -- so this adapter never decides for itself what counts as a gate subject, and
+// a label that is a perfectly good INSTRUMENT but not a gate ROW is refused here rather than run.
+fn remote_build_decode_gate_subject(words: List<String>, operand: String) -> RemoteBuildOperationDecode {
+  if count(words) != 2 {
+    RemoteBuildOperationRefused { cause: RequestGateTakesOneLabel { word_count: count(words) } }
+  } else {
+    match parse_label(text: operand) {
+      LabelRefused { cause: _ } => RemoteBuildOperationRefused { cause: RequestGateLabelUnparsable { text: operand } }
+      LabelParsed { label: label } =>
+        match remote_build_gate_row_refusal(text: render_label(l: label), lookup: emitted_subject_build_row_for_label(l: label)) {
+          Present { value: cause } => RemoteBuildOperationRefused { cause: cause }
+          Absent => RemoteBuildOperationDecoded { operation: RemoteGateSubject { label: label } }
+        }
+    }
+  }
+}
+
+// WHICH REFUSAL A ROW LOOKUP MEANS, ANSWERED WHERE THE LOOKUP'S ARMS CAN BE SEPARATE. The lookup has
+// three answers and the request side must be able to tell a label the gate does not have from a gate
+// that names one subject twice: the first is the requester's fact, the second is THIS repository's
+// defect, and collapsing them blames the wrong party. Split out as a function so the distinction has a
+// witness of its own -- the duplicate cannot be provoked from outside a closed table.
+fn remote_build_gate_row_refusal(text: String, lookup: EmittedSubjectRowLookup) -> RemoteBuildRequestRefusal? {
+  match lookup {
+    EmittedSubjectOneRow { row: _ } => none
+    EmittedSubjectNoRow => Present { value: RequestGateLabelNotAGateRow { text: text } }
+    EmittedSubjectDuplicateRows { count } => Present { value: RequestGateLabelAmbiguousRows { text: text, count: count } }
+  }
+}
+
 fn remote_build_request_refusal_text(cause: RemoteBuildRequestRefusal) -> String {
   match cause {
     RequestNotThisProtocol { first_word } => concat("not a remote-build-v1 request; first word: ", first_word)
@@ -248,10 +319,14 @@ fn remote_build_request_refusal_text(cause: RemoteBuildRequestRefusal) -> String
     RequestTooShort { word_count } => concat("a request needs at least five words; saw ", to_string(value: word_count))
     RequestCommitNotAnObjectId { text } => concat("the commit word is not a git object id: ", text)
     RequestSourceRefInvalid { text } => concat("the source ref id is not one portable word without '/': ", text)
-    RequestOperationUnknown { word } => concat("unknown operation (compile or claims): ", word)
+    RequestOperationUnknown { word } => concat("unknown operation (compile, claims or gate): ", word)
     RequestEntryOutsideCorpus { entry } => concat("the entry is not a .dag file under dag/ without '.' or '..' segments: ", entry)
     RequestCompileTakesOneEntry { word_count } => concat("compile takes exactly one entry; operation words: ", to_string(value: word_count))
     RequestClaimsNameNoFunction => "a claims request names no function"
+    RequestGateTakesOneLabel { word_count } => concat("a gate request takes exactly one label; operation words: ", to_string(value: word_count))
+    RequestGateLabelUnparsable { text } => concat("the gate operand is not a canonical //package:target label: ", text)
+    RequestGateLabelNotAGateRow { text } => concat("the label is not a row of the required gate's emitted subject rows: ", text)
+    RequestGateLabelAmbiguousRows { text, count } => concat("the gate's rows name this label ", to_string(value: count), " times -- a defect in the gate table, not in the request: ", text)
   }
 }
 
@@ -482,6 +557,79 @@ data remote_build_ssh_key: SshPublicKey = SshPublicKey {
 // a witness derives it from the material, so a mistyped key and a mistyped fingerprint cannot agree.
 data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2QqAPPPpqs8xW21IA2VsgF81aW8"
 
+// ── ADMITTED REMOTE-BUILD CLIENT KEYS ─────────────────────────────────────────────────────────────────
+//
+// The gunbc-build forced-command account admits a CLOSED LIST of client keys. Each renders through the
+// same restrict + forced-command entry (gunbc.compute.remote_build_serve::remote_build_authorized_entry);
+// the account's authorized_keys is that list rendered and NOTHING ELSE (no hand-added keys). This is the
+// admitted-scaffold path (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold) — NOT
+// the fleet roster (fleet_ssh_access.dag): these keys must never grant fleet admin reach.
+//
+// WHO MINTS EACH KEY:
+//   operator  — the operator host (the existing key, minted outside any custody system before this model)
+//   session   — ctrl mints; the private half never leaves ctrl's custody; gentle-crab-832 owns provisioning
+//   hosted-ci — the operator mints; private half stored as a GitHub Actions secret (GUNBC_REMOTE_BUILD_CI_SSH_KEY)
+//
+// Each new member lands in the change that carries its REAL public half (clever-raven-401, 2026-11-19:
+// a placeholder public key is a fabricated value; an admission list carrying one is worse than a shorter
+// list — gunbc.design_argument::fail_closed).
+type RemoteBuildClientKey {
+  label: NonEmptyStr
+  public_key: SshPublicKey
+  fingerprint: NonEmptyStr
+}
+
+// The operator key — the existing scaffold key (see the provenance doc on remote_build_ssh_key above).
+data remote_build_client_key_operator: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "operator",
+  public_key: remote_build_ssh_key,
+  fingerprint: remote_build_ssh_key_fingerprint,
+}
+
+// The session key — minted by ctrl (gentle-crab-832), private half in the dashboard secret store,
+// provisioned per-container by the ctrl session image at $HOME/.config/ctrl/remote-build/id_ed25519.
+data remote_build_client_key_session: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "session",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIPIuf7p1w+jsp+zluvCE/IOtG1rHrZW3iIsuhhqbwCzY",
+    comment: "gunbc-remote-build-session",
+  },
+  fingerprint: "SHA256:/ufkCsksYwFQOdqvHgaKCYA1LrLuLtxyvB1iGbjO1Fo",
+}
+
+// The hosted-CI key — minted by the OPERATOR (2026-11-19); the private half is stored as the GitHub
+// Actions secret GUNBC_REMOTE_BUILD_CI_SSH_KEY, and setting that secret is the operator's step, not this
+// model's. The material and fingerprint below are the operator's relayed REAL values, admitted per the
+// rule that a member lands only in the change carrying its real public half (fail_closed — no placeholder).
+// ssh-keygen -lf over this material prints exactly this fingerprint, and the serve witness
+// (test.claim.compute.remote_build_serve_witness::the_ci_key_has_the_relayed_fingerprint) re-derives it
+// from the material, so a mistyped key and a mistyped fingerprint cannot both stand.
+data remote_build_client_key_ci: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "hosted-ci",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIJensE0/BGahkF3Duz42EBwvWg9h0NUEcOiHjY1cyoUk",
+    comment: "gunbc-remote-build-ci",
+  },
+  fingerprint: "SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM",
+}
+
+// THE CLOSED LIST. Three members: operator, session, and hosted-ci. Each joins in the change that
+// carries its REAL public half — never a placeholder (a placeholder is a fabricated value; an admission
+// list carrying one is worse than a shorter list — gunbc.design_argument::fail_closed). The hosted-ci key
+// landed with its operator-minted public half on 2026-11-19; its private half is the GitHub Actions secret
+// GUNBC_REMOTE_BUILD_CI_SSH_KEY, which the operator sets.
+data remote_build_admitted_client_keys: List<RemoteBuildClientKey> = [
+  remote_build_client_key_operator,
+  remote_build_client_key_session,
+  remote_build_client_key_ci,
+]
+
+// The admitted public keys projected out of the closed list, for client-side verification. The client
+// accepts its identity file iff the derived public half matches any admitted key.
+data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_admitted_client_keys, k => k.public_key)
+
 // ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
 //
 // The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the
@@ -640,6 +788,29 @@ fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, s
 // host failing to hand over a build it just produced or attached, which is the host, not the work.
 fn remote_build_dependency_operation() -> WorkOperation {
   work_default_build()
+}
+
+// WHETHER THE REQUEST NEEDS THE SEED BUILD AS A SEPARATE OPERATION. Compile and claims depend on the
+// gunbc binary of the commit and ATTACH to it, which is why the build is asked for first: its own
+// typed outcome is what distinguishes "the build failed" from "this host could not run it".
+//
+// THE GATE SUBJECT IS THE EXCEPTION, AND THE GUARD IS WHY. `gunbc test` measures the binary it is
+// running against the dep-info beside it and refuses one whose inputs are not this checkout's, so the
+// attached binary -- a verified blob out of the materialization store -- is exactly what that guard
+// cannot judge; the operation carries its own seed build in its argv instead (work_provider_local's
+// arm for it). And the build-first shape would hold two reservations on one request: the build's and
+// the gate profile's, which on a host whose build pool is one CI slot divided into seats do not both
+// fit, so the gate would read capacity-full from its own preceding step.
+type RemoteBuildDependencyRule
+  = RemoteBuildBuildsTheSeedFirst
+  | RemoteBuildCarriesItsOwnSeedBuild
+
+fn remote_build_dependency_rule(op: RemoteBuildOperation) -> RemoteBuildDependencyRule {
+  match op {
+    RemoteCompileEntry { entry: _ } => RemoteBuildBuildsTheSeedFirst
+    RemoteRunClaims { entry: _, functions: _ } => RemoteBuildBuildsTheSeedFirst
+    RemoteGateSubject { label: _ } => RemoteBuildCarriesItsOwnSeedBuild
+  }
 }
 
 fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBuildServeEnding {

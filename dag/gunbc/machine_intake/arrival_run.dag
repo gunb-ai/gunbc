@@ -144,7 +144,6 @@ import gunbc.machine_intake.arrival_unit_captures {
   current_manager_read_of,
 }
 import extdeps.boards.types { ServerBaseboard }
-import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected }
 import gunbc.machine_intake.mtjade1_access_observation {
   mint_committed_bmc_fru_capture,
   BmcFruCaptureRow,
@@ -185,11 +184,11 @@ import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 import extdeps.bmc.ipmi { ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
 import gunbc.fleet.convergence_fold { ConvergenceRunId, StepSubjectKey }
-import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialFetch, SecretCredentialReady }
 import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
-import gunbc.auth.private_secret_file { with_private_secret_file, PrivateSecretFileBracket, PrivateSecretFileCompleted }
+import gunbc.auth.private_secret_file { PrivateSecretFileCompleted }
+import gunbc.auth.managed_accessor_credential { with_managed_accessor_credential, managed_accessor_credential_refusal, ManagedAccessorCredentialCompleted, ManagedAccessorCredentialRefused }
 import gunbc.auth.netrc_binding { with_private_netrc_binding, NetrcBinding }
-import gunbc.secret_provision { SecretRef, read_obligation_of_standing }
+import gunbc.secret_provision { SecretRef }
 import gunbc.auth.arrival_federation_pair { arrival_federation_pair_for_host, arrival_secret_grants, arrival_accessor_ref, ArrivalFederationPair }
 
 fn arrival_converge_wet() -> ProcessExit uses fs: std.resources.Filesystem {
@@ -753,6 +752,46 @@ fn arrival_retain_response(root: FilePath, bytes: String) -> PrivateEvidenceByte
 // anything until the channel's own bytes say 802.3 LAN.
 data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
+// THE DOOR'S OWN IPMI LEGS IN ONE PLACE, for the reason gunbc.machine_intake.prior_life_capture_live
+// declares its own (gunbc.design_argument::single_authority), and named by the run that needed it:
+// 44249358201 put this door's CI step on a hand-picked figure, paid ~107 s of load plus 80 s of frontend
+// plus 4 s of normalize, and was killed with reconcile still open -- zero contact with the controller.
+// A consumer that wants the door's wall folds these rows instead of typing a number:
+//   * ONE ChannelInfo probe per candidate channel. The walk stops at the first channel whose bytes say
+//     802.3 LAN, so the walk's UPPER bound is the whole candidate list (arrival_candidate_channel_numbers).
+//   * ONE LanPrint: the read of the controller's SERVED bad-password threshold, which the roster refuses
+//     to assume (the refusal text at the threshold read names it "ipmi.LanPrint").
+//   * ONE call per counted census op: the map at arrival_counted_census_ops.map issues exactly that list,
+//     and it is the same list the lockout gate counts -- so a leg added to the census is counted against
+//     the lockout AND against the wall, from one row.
+// Each call is bounded by the pair the door itself passes as argv (arrival_read_policy): ipmitool's
+// --deadline plus --kill-after, the wall past which the transport kills the tool, so the retry bound
+// INSIDE the tool cannot extend the wall.
+// The door issues exactly one IPMI call outside the channel walk and the census: the managed account's
+// own lan print, bound to `lan` inside arrival_wet_read_account_state, whose refusal
+// ARRIVAL WET LAN PRINT INCOMPLETE is the only thing that can stop the run after it. This row is that
+// call's single home in the budget: a hand-maintained roster is the weakness the review named, so the rule
+// here is that an IPMI call counts IF AND ONLY IF it has a row in one of the three lists the fold reads --
+// arrival_candidate_channel_numbers (the walk's upper bound), this list, or arrival_counted_census_ops (the
+// map the census issues its calls FROM, so census calls cannot drift). A fourth kind of call added to the
+// door without a row here makes the fold too small, and the fold IS the shipped figure now: the operator's
+// ruling gunbc.design_ruling srv15_arrival_converge_step_raised_to_21_minutes authorizes the step's 21
+// minutes and the job's 51 (the ban ci_job_budgets_closed_to_growth required that row), so this roster is a
+// budget, not documentation. The pairing claim
+// test.claim.fleet.fleet_converge_arrival_step_budget_witness the_shipped_raise_carries_its_ledger_row
+// refuses a shipped figure whose ruling row has been removed or re-pointed.
+data arrival_threshold_read_legs: List<NonEmptyStr> = ["ipmi.LanPrint"]
+
+fn arrival_ipmi_leg_bound() -> Second {
+  second(count: (second_count(s: arrival_read_policy.deadline) as Int) + (second_count(s: arrival_read_policy.kill_after) as Int))
+}
+
+fn arrival_wet_ipmi_legs_bound() -> Second {
+  let per_call = second_count(s: arrival_ipmi_leg_bound()) as Int
+  let calls = (length(xs: arrival_candidate_channel_numbers) as Int) + (length(xs: arrival_threshold_read_legs) as Int) + (length(xs: arrival_counted_census_ops) as Int)
+  second(count: per_call * calls)
+}
+
 // A roster probe result carried with the channel number it answered: the op result is copied into
 // plain fields because an operation's output record is not a nameable type.
 fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
@@ -859,18 +898,30 @@ fn arrival_lan_members(row: ArrivalUnitCaptureRow, channel: IpmiChannelNumber) -
 }
 
 // The credential epoch the reference binds: the resolved secret version's own
-// number, the digits after the final slash of the projected version id. The
-// door does not invent an epoch; the version that was read IS the epoch.
-fn arrival_epoch_from_version(version: NonEmptyStr) -> Int {
+// number, the digits after the final slash of the projected version id. The door
+// does not invent an epoch; the version that was read IS the epoch.
+// The reading is typed, and its refusal is a value the caller surfaces. An `Int`
+// position is inhabited only by an `Int` (the declared-type wall, PR #16699), so a
+// refusal has no lawful exit through one -- the old body returned a ProcessExit
+// carrier there, which is what the compiler refused at this line. The refusal is
+// returned instead, and the door's wet skin, the position already declared to end a
+// process, surfaces it. It is also read BEFORE the secret brackets open, so a
+// version id with no version number places neither a netrc nor a password file.
+type ArrivalEpochReading
+  = ArrivalEpochRead { epoch: Int }
+  | ArrivalEpochVersionEmpty { version: NonEmptyStr }
+  | ArrivalEpochNoIntegerVersion { version: NonEmptyStr }
+
+fn arrival_epoch_from_version(version: NonEmptyStr) -> ArrivalEpochReading {
   let parts = split(s: version as String, delimiter: "/")
   let head = parts.skip(n: length(parts) - 1)
   match first(head) {
     Present { value: digits } =>
       match parse_int(s: digits) {
-        none => exit_failure(reason: "ARRIVAL WET EPOCH UNREADABLE: the resolved secret version id carries no integer version number, so the credential reference cannot bind an epoch")
-        Present { value: n } => n
+        none => ArrivalEpochNoIntegerVersion { version: version }
+        Present { value: n } => ArrivalEpochRead { epoch: n }
       }
-    Absent => exit_failure(reason: "ARRIVAL WET EPOCH UNREADABLE: the projected secret version id is empty")
+    Absent => ArrivalEpochVersionEmpty { version: version }
   }
 }
 
@@ -889,45 +940,39 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
       match row.bmc_binding {
         Absent => exit_failure(reason: "ARRIVAL WET NO BMC BINDING: the fleet names no server BMC binding for this unit; its door runs from committed captures, not live reads")
         Present { value: binding } => {
-          match arrival_federation_pair_for_host(subject.host) {
-            Absent => exit_failure(reason: "ARRIVAL WET NO FEDERATION PAIR: no arrival lane carries this unit's accessor grant")
-            Present { value: pair } => {
-              let host = binding.bmc.host
-              // THE PIN GUARD BEFORE ANY SECRET TRAFFIC: while the accessor version's standing is
-              // not CitedToAuthority, gunbc.secret_provision's gate yields no ref at all -- the run
-              // refuses naming the obligation; a fabricated version is never fetched (reviews 94066,
-              // 94085). The same gate feeds the pair, so guard and fetch can never disagree.
-              match arrival_accessor_ref(pair) {
-                Absent => exit_failure(reason: concat("ARRIVAL WET ACCESSOR PIN NOT CITED: ", read_obligation_of_standing(pair.accessor_standing) as String))
-                Present { value: accessor } =>
-              match select_access_token_source() {
-                AccessTokenSourceUnavailable { cause: cause } => exit_failure(reason: concat("ARRIVAL WET WIF UNAVAILABLE: ", cause as String))
-                AccessTokenSourceSelected { source: source } => {
-                  match fetch_secret_ref_credential(secret_ref: accessor, token_source: source) {
-                    SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
-                      match sm_resolved_version_id(identity: resolved_version) {
-                        SmVersionIdProjected { version: version } => {
-                          match with_private_netrc_binding(machine: host, login: row.managed_account, password: credential, use: fn(netrc) {
-                            match with_private_secret_file(file_name: "arrival-bmc-managed-password" as PathSegment, content: credential, use: fn(password_file) {
-                              arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: arrival_epoch_from_version(version), subject: subject, run_wire: run_wire, accessor: accessor)
-                            }) {
-                              PrivateSecretFileCompleted { value: inner } => inner
-                              _ => exit_failure(reason: "ARRIVAL WET SECRET BRACKET: the managed password file was not cleanly removed after the run")
-                            }
-                          }) {
-                            PrivateSecretFileCompleted { value: inner } => inner
-                            _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
-                          }
-                        }
-                        _ => exit_failure(reason: "ARRIVAL WET SECRET VERSION: the resolved accessor version is not a version resource")
-                      }
-                    }
-                    _ => exit_failure(reason: "ARRIVAL WET ACCESSOR SECRET UNREADABLE: the managed accessor secret needs an access upsert or its payload did not decode")
-                  }
+          let host = binding.bmc.host
+          // THE FIVE-STAGE CREDENTIAL RULE IS THE SHARED BRACKET (gunbc.auth.managed_accessor_credential),
+          // implemented once and called by both lanes: pair row, THE pin gate (an uncited standing yields no
+          // ref and the operator is handed the citation obligation -- reviews 94066, 94085), the job's own
+          // token source, the Secret Manager read, and the 0600 password-file bracket, each refused typed
+          // and located. The netrc binding is arrival's own and opens inside the credential bracket.
+          // The epoch reading (#16717 class, site 1 of 2, #16736) is handled HERE, before any bracket
+          // this lane opens: a version id with no version number surfaces as a typed, located refusal
+          // naming the version, and never reaches arrival_run_wet_gated's Int parameter.
+          match with_managed_accessor_credential(
+            host: subject.host,
+            file_name: "arrival-bmc-managed-password" as PathSegment,
+            use: fn(bundle) {
+              match arrival_epoch_from_version(bundle.version) {
+                ArrivalEpochVersionEmpty { version: v } => exit_failure(reason: concat("ARRIVAL WET EPOCH UNREADABLE: the projected secret version id is empty, so the credential reference has no epoch to bind: ", v as String))
+                ArrivalEpochNoIntegerVersion { version: v } => exit_failure(reason: concat("ARRIVAL WET EPOCH UNREADABLE: the resolved secret version id carries no integer version number, so the credential reference cannot bind an epoch: ", v as String))
+                ArrivalEpochRead { epoch: credential_epoch } => match with_private_netrc_binding(machine: host, login: row.managed_account, password: bundle.credential, use: fn(netrc) {
+                  arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: bundle.credential_file, credential_epoch: credential_epoch, subject: subject, run_wire: run_wire, accessor: bundle.accessor)
+                }) {
+                  PrivateSecretFileCompleted { value: inner } => inner
+                  _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
                 }
               }
-            }
-              }
+            },
+          ) {
+            ManagedAccessorCredentialCompleted { value: outcome } => outcome
+            ManagedAccessorCredentialRefused { stage: stage } =>
+              exit_failure(reason: managed_accessor_credential_refusal(
+                lane: "ARRIVAL WET" as NonEmptyStr,
+                host: subject.host,
+                stage: stage,
+                consequence: "the arrival performs no controller traffic and writes nothing" as NonEmptyStr,
+              ))
           }
         }
       }

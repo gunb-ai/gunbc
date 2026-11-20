@@ -61,8 +61,8 @@ import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hardware_thread_count }
 import product.host_identity { HostIdentity, host_identity_eq }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory, butch_a_strata_engine_memory, butch_b_strata_engine_memory }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
+import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory, butch_a_strata_engine_memory, butch_b_strata_engine_memory, ken_strata_engine_memory }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -278,6 +278,23 @@ data serving_host_reservations: List<ServingHostReservation> = [
       },
     ],
   },
+  // host-e2d4b7: one Strata server across its three T10 cards on :18081 (the serving read this unit still
+  // carries). It charges MEMORY (its measured cgroup HARD ceiling, the same fail-closed figure srv3/srv4/butch
+  // charge); its engine cpuset was never read, so CPU is Absent and says so (review 93413 precedent). This is
+  // the serving charge that leaves the host's CI seat too small for one build slot -- recorded on the frontier
+  // below, and never here by shrinking the ceiling to make room (serving has priority; the operator fixes
+  // allocations fleet-wide later).
+  ServingHostReservation {
+    host: operator_host_e2d4b7,
+    replicas: [
+      ReplicaReservation {
+        cpu: Absent,
+        // ken charges its strata engine's cgroup HARD ceiling (MemoryMax), read ONCE into
+        // serving_host_memory.ken_strata_engine_memory.memory_max and DERIVED here -- not restated (review 93375).
+        memory: ken_strata_engine_memory.memory_max,
+      },
+    ],
+  },
 ]
 
 // DECLARED FRONTIER for the butch facts that have NO CONSUMER YET (gunbc.design_argument::consumption, review
@@ -339,6 +356,7 @@ data srv14_serving_deferred_consumer_frontier: DissolutionCondition = unbound_di
 data srv14_serving_memory_charge_retirement_frontier: DissolutionCondition = unbound_dissolution(
   description: "Delete when both triggers land: (1) strata-pool@a, strata-pool@b and a2-power-cap.service retired live on butch, by the converge dispatch routed through the butch CI runner lane (tidy-swift-586) after its srv14 address PR and the tailnet join; and (2) a re-measured quiescent /proc/meminfo high-water read on butch after that retirement. Only then may srv14_strata_reservation's serving memory charge (2 x 96 GiB MemoryMax from gunbc.serving.serving_host_memory butch_a/b_strata_engine_memory), the butch_a/b engine-memory rows, and the srv14_strata_engine_residency_at_read subtraction in gunbc.host.host_memory_observation be retired together -- and any CI memory budget rise they imply needs the operator's explicit sign-off with the measured number attached. Deleting the reservation row before this dissolves RAISES butch's runner memory envelope by 192 GiB and reds test.claim.runner.srv14_runner_capacity_witness. While this is unbound, srv14 is also not enrollable as a remote-build serving host: it stays out of gunbc.compute.remote_build_serving_setup remote_build_serving_candidate_hosts, and no remote-build observe or converge may be dispatched to it, because gunbc.compute.host_capacity host_capacity_build_seat prices a builder's seat against the same envelope this charge is holding back -- the converger would install a builder over bytes no quiescent read has measured." as NonEmptyStr
 )
+
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
   match filter(serving_host_reservations, r => host_identity_eq(r.host, host)) |> first() {

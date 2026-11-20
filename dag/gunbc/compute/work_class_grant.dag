@@ -2,8 +2,11 @@ module gunbc.compute.work_class_grant
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
-import std.measure { Kibibyte, kibibyte, kibibyte_count, byte_size_count }
-import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, cargo_profile_wire, work_operation_canonical }
+import std.measure { ByteSize, Kibibyte, kibibyte, kibibyte_count, byte_size_count }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
+import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, TestGateSubject, CargoProfile, cargo_profile_wire, work_operation_canonical }
 import extdeps.systemd.systemd_run {
   SystemdRunWaitSummary, SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported, systemd_formatted_bytes_upper,
   MemoryPeakFormatNotGrounded, summary_format_standing_wire,
@@ -46,13 +49,97 @@ type WorkClass
   | WorkClassCompile
   | WorkClassClaims
   | WorkClassAgentSession
+  // THE GATE SUBJECT IS ITS OWN CLASS, not a build or a claims run. It builds the seed AND runs the
+  // required gate's subject step, so its peak is the seed build's plus the subject's, and the bound it
+  // is admitted under today is a published fact about the CI job rather than a number this module can
+  // sample from a build class. Putting it in the same class as a build would size a gate run from
+  // build samples it does not have.
+  | WorkClassGateSubject
 
 fn work_class_of(op: WorkOperation) -> WorkClass {
   match op {
     BuildGunbcBinaries { profile, bins: _ } => WorkClassBuild { profile: profile }
     CompileEntry { entry: _ } => WorkClassCompile
     RunClaims { entry: _, functions: _, hermetic: _, window: _ } => WorkClassClaims
+    TestGateSubject { label: _ } => WorkClassGateSubject
   }
+}
+
+// THE GATE-SUBJECT WORKLOAD PROFILE: a typed carrier, and its standing travels with it.
+//
+// WHAT IT IS: the worst case this workload may be RESERVED at -- an upper bound that the ledger then
+// adjudicates against the host's live availability. It is not a grant sized from samples: no
+// gate-subject attempt has ever run under a provider unit, so work_class_grant_rows stays empty for
+// this class and the ceiling fallback is what answers, which is exactly the fail-closed arm of
+// work_class_grant.
+//
+// WHERE THE NUMBER COMES FROM: the same subject step, run today by the required CI gate, is admitted
+// in a runner slot whose MemoryMax is gunbc.runner.runner_slot_desired::gunbc_runner_slot_memory_max
+// (25 GiB). That is the bound the work is known to survive, stated by the fleet's own slot fact, and
+// it is the ONLY standing figure for this workload. It is carried as an upper bound and NOT as a
+// measurement: it can be too big (the peak may sit well under it), it cannot be too small, and a
+// request that does not fit a host's live availability is refused typed rather than queued.
+//
+// WHAT WOULD REPLACE IT: samples taken on the provider's own route (compute_run_and_settle writes the
+// per-attempt record; WorkClassPeakSample reads it back), which is the follow-up node
+// workload-profiles-replace-seats. Until then this profile, not the build seat, is the ceiling -- the
+// seat is what a BUILD is split into, and sizing a gate run by dividing a build pool by a slot count
+// would under-reserve a workload that has never been in that pool.
+// THE STANDING IS A TYPE, NOT PROSE. Which kind of warrant a bound carries is the one thing a consumer
+// must be able to branch on, and a String field whose only purpose is commentary is the shape
+// gunbc.design_argument::source_annotations forbids.
+//
+// WHY NOT extdeps.external_authority::CitedFigureStanding, the corpus's standing carrier for figures
+// (Conformance, stated because the shapes look adjacent and are not): its CitedToAuthority arm cites an
+// EXTERNAL upstream by URI, and extdeps.external_authority is scoped to independently governed
+// upstreams; its ObservedByReceipt arm is minted only through the admit-gated observed_receipt over a
+// downstream declaration. The warrant here is neither kind. This bound is QUOTED FROM A DECLARATION OF
+// THIS CORPUS -- the fleet's own runner-slot fact -- so the carrier names that declaration, and a reader
+// can ask "which fact?" of the type without reading a sentence.
+//
+// THE SECOND ARM IS THE FUTURE, NAMED. Once the class has run under a provider unit, its own samples
+// replace the quoted bound; the arm exists so that replacement is a change of value, not a change of
+// type, and so a quoted upper bound can never be silently consumed as if it were a measurement.
+type WorkloadProfileStanding
+  = QuotedFromFleetFact { fact: DeclarationRef }
+  | MeasuredFromSamples { samples: List<WorkClassPeakSample> }
+
+type WorkloadProfile {
+  class: WorkClass
+  worst_case: ByteSize
+  standing: WorkloadProfileStanding
+}
+
+data compute_gate_workload_profile: WorkloadProfile = WorkloadProfile {
+  class: WorkClassGateSubject,
+  worst_case: gunbc_runner_slot_memory_max,
+  // QUOTED, NOT MEASURED: the bound is the MemoryMax of the slot this subject step is admitted under in
+  // the required CI gate today. The arm says so, and the fact it is quoted from is named.
+  standing: QuotedFromFleetFact { fact: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_memory_max") },
+}
+
+// ONE PROFILE PER CLASS, searched by the class and not by position. A class with no profile answers
+// with none, and its ceiling stays the host's compute build ceiling -- the seat -- which is correct
+// for the classes that have always been priced that way. The match is exhaustive over the classes on
+// purpose: a new class has to say here whether it carries a profile.
+fn workload_profile_for(class: WorkClass) -> WorkloadProfile? {
+  match class {
+    WorkClassBuild { profile: _ } => Absent
+    WorkClassCompile => Absent
+    WorkClassClaims => Absent
+    WorkClassAgentSession => Absent
+    WorkClassGateSubject => Present { value: compute_gate_workload_profile }
+  }
+}
+
+// A PROFILE'S BOUND IN THE UNIT THE LEDGER AND THE CGROUP BOTH SPEAK -- kibibytes, the unit the
+// reservation and the cgroup's MemoryMax are both stated in. Rounding is UP: std.measure's only
+// conversion floors, and a bound floored to a smaller kibibyte count would reserve less than the
+// workload is known to need. Under-reserving is the direction that OOMs, so the arithmetic is done
+// here rather than borrowed from the flooring helper. (The bound as published, 25 GiB, divides exactly,
+// so this is not a correction to today's number -- it is the rule for the next one.)
+fn workload_profile_worst_case_kibibyte(p: WorkloadProfile) -> Kibibyte {
+  kibibyte((byte_size_count(b: p.worst_case) + 1023) / 1024)
 }
 
 fn work_class_wire(c: WorkClass) -> String {
@@ -61,6 +148,7 @@ fn work_class_wire(c: WorkClass) -> String {
     WorkClassCompile => "compile"
     WorkClassClaims => "claims"
     WorkClassAgentSession => "agent-session"
+    WorkClassGateSubject => "gate-subject"
   }
 }
 

@@ -4,7 +4,7 @@ import std.types { String, List, Bool }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact,
-  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact,
+  HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, DesignArtifact,
   DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -121,6 +121,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     HealPublisherWorkflowYamlArtifact => []
     DriftWatchWorkflowYamlArtifact => []
     BranchRunGrantBrokerWorkflowYamlArtifact => []
+    HostedRunnerShadowGateYamlArtifact => []
     GitignoreArtifact => []
     GitattributesArtifact => []
     CargoConfigArtifact => []
@@ -156,6 +157,11 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     ApproveIosOperationErrorsSwiftArtifact => []
     ApproveIosEnrolmentMachineTestsSwiftArtifact => []
     ApproveIosOperationErrorsTestsSwiftArtifact => []
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => []
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => []
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => []
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => []
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
   }

@@ -816,7 +816,7 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
     // It is a service identity, not a login account and not the CI job user -- the listener accepts the
     // job, the job user (ghrunner) does the work -- so it holds NO sudo of its own. Its login name is THIS
     // module's authority, fleet_posix_runner_listener_login
-    // (@ref(gunbc.fleet.fleet_posix_accounts::fleet_posix_runner_listener_login)), which
+    // (#gunbc.fleet.fleet_posix_accounts::fleet_posix_runner_listener_login), which
     // gunbc.runner.runner_host_medium re-exports as runner_host_medium_runner_account -- never a second
     // literal; the account is host-assigned, so it carries policy and no operating-system label, exactly as
     // the automation and service identities already do.

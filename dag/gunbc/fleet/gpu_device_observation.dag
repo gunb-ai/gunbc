@@ -7,8 +7,8 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.pci.identity { PciAddress }
 import extdeps.linux.amdgpu_hwmon { AmdgpuHwmonPowerAttribute, Power1Cap }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 , gpu_board_11, gpu_board_12, gpu_board_13 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -174,7 +174,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
   // why: the readings were not deleted, nor retyped into annotations. A dated observation is a receipt, and
   // gunbc.design_argument::source_annotations puts receipts in a typed carrier and forbids an annotation from
   // restating what a declaration says -- "the project reserves the right to delete any comment at any time", so
-  // @ref(gunbc.fleet.gpu_device_observation::retired_gpu_device_observations) below, which no current-state consumer
+  // #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations below, which no current-state consumer
   // folds. DO NOT "FIX" THE ABSENCE HERE BY ADDING GpuDeviceNotEnumerated ROWS FOR srv14: not-enumerated is the
   // state of a card that IS seated and fails to show up, and these cards are seated nowhere -- the honest
   // current state is no row, not a device with a fault.
@@ -210,6 +210,53 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     board: gpu_board_03,
     cause: "installed (operator, 2026-11-12) and no second 1002:7551 function is on the bus; its power feed and slot state are unread" as NonEmptyStr,
     read_on: "2026-11-12 host-6ce85c lspci and amdgpu sysfs" as NonEmptyStr,
+  },
+  // ken (host-e2d4b7), read ON THE CARDS 2026-11-18 in one admitted read-only session: `nvidia-smi -q -d
+  // POWER` for the ranges and the current limit, `nvidia-smi --query-gpu=pci.bus_id,uuid,serial` for the
+  // identities (artifacts/host-observations/ken-gpu-read-2026-11-18/: unit_read3.txt is the power output,
+  // gpu_identity_query.txt the identities, SHA256SUMS pins both). All three functions report the SAME range
+  // -- 100 W floor, 150 W ceiling, 150 W default -- and all three sit at 100 W now, which is what the
+  // hand-written `t10-power-cap` unit on that machine leaves behind at boot (see gunbc.machine_intake.
+  // supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_power_cap_setter_prior_life). The
+  // driver addresses each card by UUID and takes a power-limit write through `nvidia-smi -pl`, which is the
+  // NvidiaSmiPowerLimit control below -- the same route srv1's Max-Q card uses, no new instrument. The
+  // `-q -d POWER` block prints each field twice: the second set reads N/A, which is an instantaneous-draw
+  // field, not a limit; the four limits above are the first set.
+  GpuDeviceEnumerated {
+    host: operator_host_e2d4b7,
+    board: gpu_board_11,
+    gpu_uuid: Present { value: "GPU-c4177907-3dc8-12be-4146-431ea120f818" },
+    pci_address: "0000:01:00.0",
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 150),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 150) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_e2d4b7,
+    board: gpu_board_12,
+    gpu_uuid: Present { value: "GPU-8327ce9a-6011-f8cf-0012-4af9596c3124" },
+    pci_address: "0000:81:00.0",
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 150),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 150) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_e2d4b7,
+    board: gpu_board_13,
+    gpu_uuid: Present { value: "GPU-a56f81eb-df65-ec75-e5ee-06c01ce8509e" },
+    pci_address: "0000:c1:00.0",
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 150),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 150) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
   },
 ]
 

@@ -12,15 +12,17 @@ import std.types { Bool, List, NonEmptyStr }
 import std.algebra { FreeSemigroup, fold_list, length, string_contains }
 import std.decl_ref { DeclarationRef }
 import extdeps.network.mac { Eui48Address, render_mac_address }
-import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq }
+import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq, render_ipv4_address }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments, HostEnrollmentIntent, HostKeyLoginAdmitted, HostKeyLoginRefused, HostReachPolicy }
 import gunbc.runner.runner_connectivity_recovery { host_reach_admission_for_fleet_host }
 import gunbc.runner.runner_broker_progress_watchdog { HostReachAdmitted, HostReachRefused }
 import gunbc.fleet.fleet_fan_tach_expectation { fleet_fan_tach_expectations, HostFanTachExpectation }
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts, supermicro_h11ssl_unit3_host, ComputeHost }
+import gunbc.fleet.fleet_intent_network { ken_host_lan_endpoint }
 import gunbc.integration_concern {
   ConcernDisposition, ConcernKind, ConcernSighting, Distinct, Integrated, IntegrationConcern, Open,
   RequirementEstablished,
@@ -30,6 +32,7 @@ import gunbc.integration_concern {
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
   h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
+  edge_install_residue_fold_integrated_revision,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_intake_sighting_revision,
   h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
@@ -60,6 +63,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_bios_version,
   supermicro_h11ssl_unit3_cmos_battery_outstanding,
   supermicro_h11ssl_unit3_baseboard_row_standing,
+  supermicro_h11ssl_unit3_edge_residue_2026_11_19,
   supermicro_h11ssl_unit3_edge_sighting,
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
@@ -129,10 +133,13 @@ test fn witness_bmc_address_is_not_the_install_nic_address() -> Bool {
   )
 }
 
-// THE INSTALL NIC CLAIMS NO NETWORK ENDPOINT. Its address stands only as a stale neighbour pairing, and
-// the standing must name whom that address is already modelled as belonging to -- otherwise a later
-// reader (or a later row) treats the pairing as a lease.
-test fn witness_install_nic_address_is_unconfirmed_and_names_its_collision() -> Bool {
+// THE INSTALL NIC CLAIMS NO NETWORK ENDPOINT ROW OF ITS OWN. Its address stands only as a stale neighbour
+// pairing, and the standing must name the row that holds that address -- otherwise a later reader (or a
+// later row) treats the pairing as a lease. As of 2026-11-18 the named row is
+// gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint, a dated OBSERVATION of this unit; before that it
+// was srv9's endpoint row, and the pairing was a collision between two hosts. Either way the standing is the
+// unconfirmed arm and the obligation stays non-empty, which is what this claim actually holds.
+test fn witness_install_nic_address_is_unconfirmed_and_names_the_row_that_holds_it() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry {
       address: seen,
@@ -140,7 +147,7 @@ test fn witness_install_nic_address_is_unconfirmed_and_names_its_collision() -> 
       read_obligation: owed,
     } =>
       ipv4_address_eq(a: seen, b: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 236))
-        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint")
+        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
         && (text(owed) != "")
     AddressConfirmed { address: _, confirmed_at: _ } => false
   }
@@ -229,7 +236,7 @@ test fn witness_bmc_credential_stands_as_factory_in_force() -> Bool {
       (text(attested_by) != "")
         && (match route {
             RotationRouteNotYetRunnable {
-              secret_name_convention: _, secret_name_blocked_on: _, route_authority: _,
+              secret_name: _, secret_name_allocated_by: _, route_blocked_on: _, route_authority: _,
               secret_ref_precedent: _, gate_precedent: _, secret_placement: _, who_owes_which_step: _,
             } => true
             RotationRouteStandingCommitted { standing: _ } => false
@@ -267,6 +274,7 @@ test fn witness_every_reported_figure_owes_its_read() -> Bool {
     supermicro_h11ssl_unit3_install_nic_port_label,
     supermicro_h11ssl_unit3_seen_host_key_fingerprint,
     supermicro_h11ssl_unit3_gpu_report,
+    supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19,
     supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported,
     supermicro_h11ssl_unit3_fan_zone_duty_needed_reported,
     supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported,
@@ -326,29 +334,65 @@ fn matches_open(disposition: ConcernDisposition) -> Bool {
   }
 }
 
-test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool {
+// THE HAND WORK STANDS AS TWO OPEN GAPS AND ONE CLOSED ONE. The roster half and the disk-capture half are still
+// open, and this claim refuses any shape where they are quietly written off. The edge-artifact half closed when the
+// prune fold grew to reach the staging subtree it used to miss -- and it closed ONLY by citing a revision that
+// contains that fold, which is what edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for checks.
+test fn witness_the_register_carries_the_hand_work_as_two_open_gaps_and_one_closed() -> Bool {
   all(
     [
-      h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
       h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
       h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
     ],
     gap_stands_open,
   )
+    && edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for()
+}
+
+// A CLOSED GAP NAMES THE FOLD THAT CLOSED IT, at a revision a reader can stand on. The replacement must be the
+// ownership fold -- not a receipt, not a prose note -- and integrated_at must be the landing datum, whose exact sha
+// is pinned here so that re-pointing the datum somewhere the fold does not live reddens this claim instead of
+// quietly re-anchoring the closure. The execution results are retained (three) because the closure claims an
+// executed control, and a closure no run discriminates is the failure mode gunbc.design_argument::fail_closed
+// refuses.
+fn edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for() -> Bool {
+  match h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition {
+    Integrated { evidence: evidence } =>
+      ((evidence.integrated_at as String) == (edge_install_residue_fold_integrated_revision as String))
+        && ((edge_install_residue_fold_integrated_revision as String) == "6f1e4de1eac8ee3db1a307ec616980229fc74fd4")
+        && decl_ref_names(
+             ref: evidence.replacement.head,
+             module_path: "gunbc.fleet.site_pxe_edge_converge",
+             decl_name: "site_pxe_edge_owned_install_path",
+           )
+        && any(evidence.replacement.tail, d => decl_ref_names(ref: d, module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_served_root"))
+        && any(evidence.replacement.tail, d => decl_ref_names(ref: d, module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_empty_owned_install_dirs"))
+        && (length(evidence.executions.tail) == 2)
+    Open => false
+    Triaged { home: _, preserve: _, next: _ } => false
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+  }
 }
 
 // THE DISK-CAPTURE GAP POINTS AT THE INSTALL SUBJECT'S OWN ADMISSION, so the gap is about the model that
 // demands the capture and not about some unrelated standing.
 // A LATER SIGHTING IS APPENDED TO ITS ROW, never minted as a second row -- the register says so at
-// ConcernSighting itself. The edge gap grew a SECOND sighting, at a different main revision, for a second
-// and worse half of the same obstacle: the first says the model cannot show a converge what to delete; the
-// second says a session branch cannot even LOOK at the edge it is proposing to clean (the read-only
-// observation mode was refused by the workflow's own workload-identity gate, run 43786925157). This claim
-// refuses the shape where that new half shows up as a fourth open row, which would double-count one
-// obstacle and hide that it is the same gap deepened.
+// ConcernSighting itself. The edge gap has grown by SIGHTINGS, never by rows: a second sighting at a
+// different main revision for a second and worse half of the same obstacle (the first says the model cannot
+// show a converge what to delete; the second says a session branch cannot even LOOK at the edge it is
+// proposing to clean -- the read-only observation mode was refused by the workflow's own workload-identity
+// gate, run 43786925157); then the self-correction of that one, then the hold, and now a fifth for what the
+// 2026-11-19 and 2026-11-20 read-only listings found -- residue the prune fold lists and then drops, because
+// the owned-path predicate never reaches the edge's staging/ subtree, and directories a completed removal left
+// empty, which a file-only listing cannot see at all. This claim refuses the shape where any of those halves
+// shows up as another open row: one obstacle, one row, deepened in place.
+// The growth is in the SIGHTINGS (four in the tail) and the row was never duplicated -- and when the gap closed, it
+// closed as Integrated on that SAME row, with the fold it asked for as the replacement. Open here would mean the
+// fold never grew; a second row anywhere would mean the register forgot this obstacle is one thing.
 test fn witness_the_edge_gap_grew_sightings_rather_than_rows() -> Bool {
-  matches_open(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition)
-    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 3)
+  (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 4)
+    && edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for()
 }
 
 test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
@@ -359,38 +403,46 @@ test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satis
   }
 }
 
-// THE NAME SIGHTING AND THE ADDRESS STANDING AGREE, and both point at the address srv9's endpoint row
-// already claims. Two rows about one address that disagree would be exactly the fork the register exists
-// to catch, so the agreement is asserted rather than assumed.
+// THE NAME SIGHTING AND THE ADDRESS STANDING AGREE, and both point at the address the model now holds as
+// ken_host_lan_endpoint. Two rows about one address that disagree would be exactly the fork the register
+// exists to catch, so the agreement is asserted rather than assumed.
 test fn witness_the_lan_name_sighting_and_the_address_standing_name_one_address() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: claimed_by, read_obligation: _ } =>
       ipv4_address_eq(a: supermicro_h11ssl_unit3_lan_name_sighting.answered_with, b: seen)
-        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv9_host_lan_endpoint")
+        && decl_ref_names(ref: claimed_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
     AddressConfirmed { address: _, confirmed_at: _ } => false
   }
 }
 
-// THE GPU FIGURE OWES THE BUS-TO-SLOT PAIRING, not just a device count: the cooling lane cites slots,
-// and a count without a slot pairing cannot be used by it.
+// THE GPU FIGURE HAS HAD ITS PCI IDS READ AND STILL OWES THE BUS-TO-SLOT PAIRING: the cooling lane cites
+// slots, and a function list without a slot pairing cannot be used by it. The vendor:device pair is read off
+// the unit (domain-prefixed sysfs), so this claim pins BOTH halves: the ids present, the pairing still unread.
+// If someone deletes the read half this reds, and if someone claims the pairing without building the route it
+// reds.
 test fn witness_the_gpu_figure_reads_ids_by_sysfs_and_leaves_the_pairing_unread() -> Bool {
   match supermicro_h11ssl_unit3_gpu_report.standing {
     TranscribedUncited { read_obligation: owed } =>
-      string_contains(s: text(owed), pattern: "/sys/bus/pci/devices")
-        && string_contains(s: text(owed), pattern: "UNREAD")
+      string_contains(s: text(owed), pattern: "vendor=0x10de")
+        && string_contains(s: text(owed), pattern: "device=0x1e37")
+        && string_contains(s: text(owed), pattern: "stays UNREAD")
     CitedToAuthority { authority: _ } => false
     ObservedByReceipt { observed: _ } => false
   }
 }
 
 // THE ROTATION IS NOT RUNNABLE YET, AND WHAT IT IS WAITING ON IS CITED, NOT DESCRIBED. The standing must
-// be the variant that says no route is committed, and it must point by citation at (a) the authority that
-// owns the fleet name the credential id is keyed to, (b) the BmcSecure standing that does not exist yet,
-// (c) srv15's secret-ref row and (d) the deployment-environment gate that carries srv15's arrival. Rename
-// any of those four and this reds -- a paragraph naming them in prose would not. And the credential name
-// is carried as a FORM with the name still blank: a concrete id here before the allocation authority
-// fills the slot would be minting an identity through a side door.
-test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Bool {
+// be the variant that says no route is committed, and it must point by citation at (a) the allocation that
+// supplies the fleet name the credential id is keyed to, (b) the predicate that refuses an ungrounded route,
+// (c) the BmcRotationRouteStanding the controller does not have yet, (d) srv15's secret-ref row and (e) the
+// deployment-environment gate that carries srv15's arrival. Rename any of those and this reds -- a paragraph
+// naming them in prose would not. The credential id is no longer a blank to be filled: the allocation
+// authority drew "ken" for this slot on 2026-11-16, so the row carries bmc-ken-admin, and the claim DERIVES
+// that id from the registry row through canonical_hostname_for_fleet_slot rather than comparing it to a
+// spelled literal -- if the slot is ever renamed, the row goes red instead of keeping a stale secret name.
+// Naming the id is still not custody: the row stays RotationRouteNotYetRunnable, and no SecretRef for this
+// controller is minted in gunbc.secret_provision until the operator places the secret.
+test fn witness_bmc_rotation_is_planned_and_its_secret_id_follows_the_allocation() -> Bool {
   match supermicro_h11ssl_unit3_bmc_credential_standing {
     FactoryCredentialInForce {
       attested_by: _,
@@ -400,19 +452,25 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
     } =>
       match route {
         RotationRouteNotYetRunnable {
-          secret_name_convention: convention,
-          secret_name_blocked_on: name_gate,
+          secret_name: secret_name,
+          secret_name_allocated_by: name_allocation,
+          route_blocked_on: route_blocker,
           route_authority: route_authority,
           secret_ref_precedent: secret_precedent,
           gate_precedent: gate_precedent,
           secret_placement: placement,
           who_owes_which_step: _,
         } =>
-          decl_ref_names(ref: name_gate, module_path: "gunbc.hostname_allocation", decl_name: "hostname_allocation_admission")
+          decl_ref_names(ref: name_allocation, module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry")
+            && decl_ref_names(ref: route_blocker, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "rotation_route_is_grounded")
+            && (match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_e2d4b7) {
+                Present { value: allocated } => text(secret_name) == join(["bmc-", allocated as String, "-admin"], "")
+                Absent => false
+              })
             && decl_ref_names(ref: route_authority, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "BmcRotationRouteStanding")
             && decl_ref_names(ref: secret_precedent, module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref")
             && decl_ref_names(ref: gate_precedent, module_path: "gunbc.auth.srv15_arrival_federation_provision", decl_name: "srv15_arrival_environment_creation_frontier")
-            && string_contains(s: text(convention), pattern: "-admin")
+            && string_contains(s: text(secret_name), pattern: "-admin")
             && string_contains(s: text(placement), pattern: "stdin")
         RotationRouteStandingCommitted { standing: _ } => false
       }
@@ -506,15 +564,35 @@ test fn witness_the_edge_hold_is_attributed_without_ruling_authority() -> Bool {
   }
 }
 
-// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Four sightings stand on this
-// concern (the original, the branch-ref refusal, the self-correction of the second, and the hold), and at least
-// one of them states that the hold sits out of gunbc.design_ruling. That is the record's shape for an
-// instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
+// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Five sightings stand on this
+// concern (the original, the branch-ref refusal, the self-correction of the second, the hold, and the edge-
+// residue read of 2026-11-19/20, which is a SIGHTING on the same row rather than a second row about the same
+// residue), and at least one of them states that the hold sits out of gunbc.design_ruling. That is the
+// record's shape for an instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
 test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
   let concern = h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model
-  length(concern.sightings.tail) == 3
+  length(concern.sightings.tail) == 4
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "NOT entered in gunbc.design_ruling")
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "smart-crane-730")
+}
+
+// THE EDGE-RESIDUE ROW IS THE RECEIPT FOR THREE HAND-STAGED ARTIFACTS IN THREE STATES, and it is read here
+// rather than left as prose on a host. Two of the three are gone BY THE CONVERGE, and the row cites the run's own
+// wire lines for it (stale-install-files=removed over five paths, and the dnsmasq config rendered with
+// outcome=written-and-read-back); the third survived both read-only listings because the owned-path predicate
+// never reaches the edge's staging/ subtree, and the row says so without claiming who put it there. The row also
+// owes the re-read that would turn it into a closure, and names whose authorization that re-read waits on -- so it
+// cannot be read as a removal that has happened.
+test fn witness_the_edge_residue_row_splits_three_artifacts_by_state() -> Bool {
+  let row = supermicro_h11ssl_unit3_edge_residue_2026_11_19
+  any(row.paths_named, p => string_contains(s: text(p), pattern: "staging/withdrawn-h11new"))
+    && any(row.paths_named, p => string_contains(s: text(p), pattern: "http/seed/"))
+    && string_contains(s: text(row.account), pattern: "stale-install-files=removed")
+    && string_contains(s: text(row.account), pattern: "THE INSTALL ENTRY SURVIVES")
+    && string_contains(s: text(row.account), pattern: "never contains the strings h11new or withdrawn")
+    && string_contains(s: text(row.receipt_label), pattern: "fleet-converge run 44249605412")
+    && string_contains(s: text(row.read_obligation), pattern: "no file under staging/")
+    && string_contains(s: text(row.read_obligation), pattern: "the operator's to authorize")
 }
 
 // ── THE OPERATOR'S REPORT DOES NOT OPEN THE GATE ───────────────────────────────────────────────
@@ -523,8 +601,10 @@ test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
 // lets the fleet dispatch at a host (gunbc.runner.runner_connectivity_recovery::
 // host_reach_admission_for_fleet_host). The operator reported on 2026-11-16 that the three fleet access
 // principals' keys sit on this unit's ubuntu account with passwordless sudo -- and the same report puts
-// the unit's ssh answer at the address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint models as
-// srv9's. So an effect admitted on that word could be applied at a DIFFERENT machine than the row names.
+// the unit's ssh answer at an address the model held as srv9's endpoint row (now retired as sold) and
+// holds now only as the dated observation gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint. Nothing
+// read says WHICH machine answers there, so an effect admitted on the report could still be applied at a
+// different machine than the row names.
 // The claims here hold the line the rework drew: this host's row is refused, the transport gate is shut,
 // and the report stands in the register as an open row that names the read which would ground it. None of
 // this says the report is false; it says the model has not repeated it.
@@ -575,19 +655,41 @@ test fn an_opened_gate_dissolves_the_no_read_row_or_reds() -> Bool {
   }
 }
 
-// The unit is REPORTED to answer ssh on the very address a fleet authority claims for srv9. The link
-// between those facts is a citation, not a paragraph: the row that reports the address must name, as a
-// declaration, the authority that claims the same address for another host. The address VALUE is not
-// re-stated here -- witness_the_lan_name_sighting_and_the_address_standing_name_one_address already binds
-// the two sightings of it -- so this claim checks only the link, and retires when the lease read lands.
-test fn the_address_under_conflict_names_the_authority_that_claims_it() -> Bool {
+// The unit is REPORTED to answer ssh at an address the model holds only as a dated observation. The link
+// between those facts is a citation, not a paragraph: the standing must name, as a declaration, the row that
+// holds the address. It used to name srv9's endpoint row -- a claim for ANOTHER host, which made this a
+// collision; that row was retired when srv9 (spark-0c75) was sold, and the row named now is
+// ken_host_lan_endpoint, which reserves nothing. The address VALUE is not re-stated here --
+// witness_the_lan_name_sighting_and_the_address_standing_name_one_address already binds the two sightings of
+// it -- so this claim checks only the link, and retires when the lease read lands.
+test fn the_address_standing_names_the_row_that_holds_the_address() -> Bool {
   match supermicro_h11ssl_unit3_install_nic_address_standing {
     AddressSeenOnlyInStaleNeighbourEntry { address: _, claimed_by_authority: conflict, read_obligation: _ } =>
       (conflict.module_path as String) == "gunbc.fleet.fleet_intent_network"
-        && (conflict.decl_name as String) == "srv9_host_lan_endpoint"
+        && (conflict.decl_name as String) == "ken_host_lan_endpoint"
     // Once the lease/ARP read lands the standing moves to its confirmed variant and there is no
     // competing authority left to name: the claim retires with the collision it was guarding.
     AddressConfirmed { address: _, confirmed_at: _ } => true
+  }
+}
+
+// OBSERVATION, NOT INTENT -- the distinction the 2026-11-18 retirement rests on, stated instead of tolerated
+// as a duplicate row on one address. gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint holds
+// 192.168.1.236 as a DATED LEASE OBSERVATION of this unit. Three things must stay true while that is so, and
+// this claim binds them together so a future edit cannot promote the observation by accident: the address the
+// observation carries is the SAME address this unit's standing calls unconfirmed; the standing keeps a
+// non-empty read obligation (the lease table, the in-band address read, the console-confirmed host key); and
+// the effect gate for this host is still the refusal, so the extra row buys no reach. Mark the standing
+// confirmed without doing the reads, or open the gate on the strength of this row, and this reds.
+test fn the_held_address_is_an_observation_while_the_standing_and_the_effect_gate_stay_shut() -> Bool {
+  match supermicro_h11ssl_unit3_install_nic_address_standing {
+    AddressSeenOnlyInStaleNeighbourEntry { address: seen, claimed_by_authority: held_by, read_obligation: owed } =>
+      render_ipv4_address(addr: seen) == ken_host_lan_endpoint.address
+        && decl_ref_names(ref: held_by, module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint")
+        && (text(owed) != "")
+        && this_unit_is_enrolled()
+        && this_unit_reaches_as_refused()
+    AddressConfirmed { address: _, confirmed_at: _ } => false
   }
 }
 

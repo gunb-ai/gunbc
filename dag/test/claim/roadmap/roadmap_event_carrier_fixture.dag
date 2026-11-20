@@ -59,7 +59,7 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  back, and returned `RoadmapEventCarrierMintRefused` without removing the directory mktemp had just created — so a
 //  caller who passed `/var/tmp/...` left a directory on disk, while the seal-planting arm did remove its own. One
 //  function, two refusal postures, opposite residue. That ordering is a tracked failure class, not a note to self:
-//  @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect)
+//  #gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect
 //  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and the control
 //  that pins it is `a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind` at the foot of this
 //  file. The distinction the row insists on is the reason the admission is its own earlier decision rather than a
@@ -289,7 +289,7 @@ fn roadmap_event_carrier_run_scoped(template: NonEmptyStr, body: fn(RoadmapEvent
 fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarrierMint {
   //  THE ADMISSION RUNS BEFORE THE CREATE. The shape question is decidable from the template's text, so nothing has to
   //  exist to ask it, and asking it afterwards meant every refusal downstream of the create implied a tidy-up nobody
-  //  performed -- the class that records this is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect),
+  //  performed -- the class that records this is #gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect,
   //  and the
   //  control that pins it is a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind in this file.
   //  The gate asks the SAME predicate the post-create check asks, by calling it rather than restating it, so the answer
@@ -325,17 +325,17 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
 }
 
 // ONE OBSERVATION OF ONE PATH, DECODED TWICE. `ls -l -n -d --` on the path itself, bound to LC_ALL=C. The
-// command words come from @ref(extdeps.tools.ls::ls_long_numeric_entries_command) — that module owns ls's own
+// command words come from #extdeps.tools.ls::ls_long_numeric_entries_command — that module owns ls's own
 // interface shape, and copying them into this file would be a second home for them
-// @ref(gunbc.design_argument::single_authority). The only words added here are the `env` wrapper and its locale
-// binding, which is this caller's share of the route: @ref(extdeps.filesystem.filesystem_io::FilesystemEntryLookup)
+// #gunbc.design_argument::single_authority. The only words added here are the `env` wrapper and its locale
+// binding, which is this caller's share of the route: #extdeps.filesystem.filesystem_io::FilesystemEntryLookup
 // assigns it there, "The caller binds LC_ALL=C so the failure text matches ls_entry_query_missing_diagnostic
 // exactly", and the wrapper idiom is already executed in
-// @ref(test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution).
+// #test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution.
 // Each predicate makes ONE observation of the path and reads that one value through the fold or folds it needs:
 // the absence predicate consults the lookup fold alone, the presence predicate consults the lookup fold and then the
 // entry fold over the SAME listing, which is the property
-// @ref(extdeps.filesystem.filesystem_io::FilesystemListingAbsence) states for the listing folds ("there is ONE
+// #extdeps.filesystem.filesystem_io::FilesystemListingAbsence states for the listing folds ("there is ONE
 // Filesystem.List per listing, and both folds are pure decoders over that one channel value"). What the two
 // predicates do NOT share is one sampling. Each runs its own `ls` when it is called, and they are called at
 // different moments by design — presence is asked before a delete and absence after it, so a single shared listing
@@ -350,7 +350,7 @@ fn roadmap_carrier_observe_entry(path: String) -> RoadmapCarrierEntryObservation
 }
 
 // ABSENCE IS ESTABLISHED BY TESTIMONY, NOT BY A COLLAPSED EXIT. The first version of this predicate asked
-// `test -d` and read exit 1 as absence. @ref(extdeps.filesystem.filesystem_io::FilesystemEntryLookup) rejects
+// `test -d` and read exit 1 as absence. #extdeps.filesystem.filesystem_io::FilesystemEntryLookup rejects
 // that probe in as many words: "A `test -e` /
 // `test -L` probe cannot answer it either, and the first version of this route used one. `test` collapses EVERY
 // stat and lstat failure into exit 1 — no such file, an I/O error, an ACL or LSM denial on the entry itself —
@@ -374,7 +374,7 @@ fn roadmap_carrier_path_is_absent(path: String) -> Bool {
 // still not satisfied by "listed" alone: it requires the entry to be listed AS A DIRECTORY, which is what the
 // mint actually creates (`shell.Mkdir.NewOwnerOnly`) and what the provenance door is really asking. A stray
 // regular FILE wearing the seal's name must not satisfy a door whose whole job is proving this fixture built the
-// tree. The kind comes from the same channel value, through @ref(extdeps.tools.ls::ls_entry_query_reading_of_output).
+// tree. The kind comes from the same channel value, through #extdeps.tools.ls::ls_entry_query_reading_of_output.
 fn roadmap_carrier_path_is_present(path: String) -> Bool {
   let seen = roadmap_carrier_observe_entry(path: path)
   match filesystem_entry_lookup_reading_of_exit(path: path, exit_code: seen.exit_code, stdout: seen.stdout, stderr: seen.stderr) {
@@ -789,7 +789,7 @@ test fn the_shape_admission_refuses_a_foreign_root_a_parent_escape_the_bare_pref
 //  directory may exist under the control's own parent when the call returns. Not "refused loudly" -- the refusal arms
 //  were always loud, and loudness is what hid this defect: a reader auditing error handling sees three correct
 //  refusals and walks past the one thing wrong with them, which is that the create happened first. The row this
-//  control came from is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect).
+//  control came from is #gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect.
 //
 //  WHY A PRIVATE PARENT INSTEAD OF SCANNING /var/tmp. The first version of this control listed the shared /var/tmp
 //  and filtered by stem. It went red -- but for the wrong reason: an entry belonging to another session made the

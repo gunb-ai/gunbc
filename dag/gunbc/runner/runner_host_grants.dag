@@ -628,10 +628,33 @@ fn deploy_slot_privileged_operations(spec: RunnerHostSpec) -> List<ExecutorPrivi
   }
 }
 
+// THE CAP BRACKET'S OWN LINES, one set per modelled member: the stop the drain issues over a slot whose
+// restart path it has proven inhibited, the mask it issues over a slot it has proven STOPPED, and the
+// restart override put on and taken back off. These are exact per-unit lines, never a pattern, and they
+// are granted per MEMBER of the modelled population -- the same set runner_slot_activation_operations
+// grants the start for, so a host that can bring a slot up is a host whose bracket can take it down.
+// The interrupt these lines make possible is the OPERATOR's, not the code's: the bracket stops a slot only
+// where gunbc.runner.runner_slot_retirement host_drain_interruption_authorization names that unit, and a
+// unit with no line here cannot be stopped or masked by sudo whatever the model decides. Two scopes, one
+// command: the model's row says the operator permitted it, this line says the host will. And it is scoped
+// twice over by the bracket's own rule -- a unit this attempt does not own is never acted on
+// (runner_host_cap_bracket drain_actions_apply_over), and the drain never stops a unit whose cgroup shows a
+// live Runner.Worker.
+fn runner_slot_cap_bracket_operations(members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
+  flat_map(members, m => {
+    let unit = runner_unit_name_of_registration(registration_name: m.instance_name)
+    [
+      SystemdStopUnit { unit: unit },
+      SystemdMaskUnit { unit: unit },
+    ]
+  })
+}
+
 fn runner_host_privileged_operations_of(spec: RunnerHostSpec, members: List<RunnerSlotMember>) -> List<ExecutorPrivilegedOperation> {
   runner_slot_teardown_grant_operations(spec: spec)
     + runner_slot_member_install_operations(spec: spec, members: members)
     + runner_slot_activation_operations(members: members)
+    + runner_slot_cap_bracket_operations(members: members)
     + runner_slot_retirement_mask_operations(spec: spec)
     + fabric_cell_privileged_operations(spec: spec)
     + fabric_allocation_store_privileged_operations(spec: spec)

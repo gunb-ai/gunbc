@@ -1,0 +1,103 @@
+module test.claim.compute.user_work_slice_seat_authority_witness
+
+// THE ONE SEAT AUTHORITY FOR THE USER-WORK SLICE (node adhoc-c0a6f401-440).
+//
+// WHY THIS EXISTS. A remote build sent to srv3/srv4 was refused with UserWorkSliceUncapped because no
+// fleet-converge mode ever wrote gunbc-user-work.slice with a finite cap on those hosts. The serve-
+// converge leg installs the slice, and the cap it installs -- MemoryMax -- must come from the SAME
+// rows the srv3/srv4 build-pool carve reads, so there is ONE seat authority and not a second number
+// that can drift. This file pins that: the ceiling is read from the reservation row
+// (gunbc.compute.host_capacity user_work_slice_memory_max_for_host -> gunbc.runner.runner_slot_desired
+// host_build_pool_reservation), and it is count- and carve-agnostic -- no 6, no 7, no srv1 width.
+//
+// WHAT IS *NOT* CLAIMED HERE. The high/swap relation (MemoryHigh = max - gap, MemorySwapMax = 0) is
+// the slice authority's own (gunbc.live_deploy.slice_bounds), asserted by the live_deploy emission
+// oracle; this file only re-reads it through the per-host render so a carved host is shown to inherit
+// the SAME relation srv1 carries. The CI_width * slot + reservation == envelope conservation wall is
+// sleek-koi-601's carve PR (gunbc.runner capacity_plan); this file pins the seat-count side of the
+// anti-double-count (seat x count == reservation) so a seat-count drift reds here, locally.
+
+import std.types { Bool, String }
+import std.measure { ByteSize, byte_size_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, capacity_seat_for_reservation, compute_pool_slots }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation, build_pool_carve_is_due, gunbc_runner_slot_memory_max }
+import gunbc.live_deploy.slice_bounds { user_work_slice_memory_max_of, user_work_slice_memory_swap_max }
+import gunbc.live_deploy.emit {
+  user_work_slice_unit_file_for_host_ceiling, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
+  SystemdUnitFile, serialize_systemd_unit_file,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The ceiling for a carved host IS its build-pool reservation, byte for byte, and is positive. Read
+// from the reservation row: when sleek-koi-601's carve moves the row (count 6->7, or seat size), this
+// re-reads -- it never pins a literal width. srv3 and srv4 are today's carved hosts (rostered, no
+// dashboard instance to carry their own ledger), so host_build_pool_reservation is one CI slot for each.
+fn ceiling_is_the_reservation(host: HostIdentity) -> Bool {
+  byte_size_count(b: user_work_slice_memory_max_for_host(host: host))
+    == byte_size_count(b: host_build_pool_reservation(host: host))
+    && byte_size_count(b: user_work_slice_memory_max_for_host(host: host)) > 0
+}
+
+test fn a_carved_host_ceiling_is_exactly_its_build_pool_reservation() -> Bool {
+  build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
+    && ceiling_is_the_reservation(host: operator_host_srv3)
+    && ceiling_is_the_reservation(host: operator_host_srv4)
+}
+
+// THE ANTI-DOUBLE-COUNT (sleek-koi's invariant, count side). For a carved host the seat derived from the
+// reservation (capacity_seat_for_reservation) times the pool's seat count (compute_pool_slots) closes
+// back onto the reservation EXACTLY -- the slot leaves CI and the ledger pool holds it, once. Asserted
+// against compute_pool_slots today; the carve PR switches the count row and this still closes because it
+// reads, not hardcodes. If a seat-count drift ever lets count x seat != reservation, this reds locally
+// without waiting for the carve run.
+fn seat_count_closes_on_reservation(host: HostIdentity) -> Bool {
+  let reservation = host_build_pool_reservation(host: host)
+  let seat = capacity_seat_for_reservation(reservation: reservation)
+  byte_size_count(b: reservation) > 0
+    && byte_size_count(b: seat) * compute_pool_slots == byte_size_count(b: reservation)
+}
+
+test fn the_seat_times_the_pool_count_reproduces_the_reservation() -> Bool {
+  seat_count_closes_on_reservation(host: operator_host_srv3)
+    && seat_count_closes_on_reservation(host: operator_host_srv4)
+}
+
+// SRV1 IS NEVER SIZED AT THE CARVE, AND THE CARVE IS NEVER SIZED AT SRV1. srv1 carries its own ledger,
+// so its reservation row is 0 and its ceiling comes from the STANDING pool: 2 x 22 GiB -- byte-equal to
+// the slice authority user_work_slice_memory_max_of(2) the slice carries today (no srv1 fork). srv3/srv4
+// take their OWN reservation instead. The two arms are structurally disjoint, so "size srv3/srv4 at
+// srv1's value" cannot happen: srv1's ceiling is read from the standing-pool arm, srv3/srv4's from the
+// reservation row, and they are not the same source.
+test fn srv1_keeps_the_standing_pool_and_is_not_the_carve() -> Bool {
+  byte_size_count(b: host_build_pool_reservation(host: operator_host_srv1)) == 0
+    && byte_size_count(b: user_work_slice_memory_max_for_host(host: operator_host_srv1))
+         == byte_size_count(b: user_work_slice_memory_max_of(slots: 2))
+    && byte_size_count(b: user_work_slice_memory_max_of(slots: 2)) > 0
+}
+
+// INHABITANCE THROUGH THE REAL RENDER ROUTE. The per-host ceiling, fed to the real render entry
+// (user_work_slice_unit_file_for_host_ceiling -> the shared render_user_work_slice_from_max the srv1
+// route uses), produces an installable slice whose MemoryMax is the ceiling and whose MemorySwapMax is 0.
+// This is not a re-derivation of the directives -- it serializes the emitted unit and reads the rendered
+// line, so a change to the render that drops the cap or the swap-zero reds here for a carved host, and
+// for srv1 through the same shared body.
+fn rendered_ceiling_and_swap_zero(host: HostIdentity) -> Bool {
+  let ceiling = user_work_slice_memory_max_for_host(host: host)
+  match user_work_slice_unit_file_for_host_ceiling(memory_max: ceiling) {
+    UserWorkSliceUnitFileRefused { cause: _ } => false
+    UserWorkSliceUnitFileReady { file } =>
+      string_contains(s: serialize_systemd_unit_file(file: file), pattern: join(["MemoryMax=", to_string(byte_size_count(b: ceiling))], ""))
+        && string_contains(s: serialize_systemd_unit_file(file: file), pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], ""))
+        && string_contains(s: serialize_systemd_unit_file(file: file), pattern: "MemoryHigh=")
+  }
+}
+
+test fn the_per_host_render_inhabits_the_real_slice_route() -> Bool {
+  byte_size_count(b: user_work_slice_memory_swap_max) == 0
+    && rendered_ceiling_and_swap_zero(host: operator_host_srv3)
+    && rendered_ceiling_and_swap_zero(host: operator_host_srv4)
+    && rendered_ceiling_and_swap_zero(host: operator_host_srv1)
+}

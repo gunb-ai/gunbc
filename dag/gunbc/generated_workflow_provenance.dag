@@ -1,7 +1,7 @@
 module gunbc.generated_workflow_provenance
 
 import std.types { String, List }
-import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, ReleaseBinsConsumerCheckScriptArtifact }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact, InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact, BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, ReleaseBinsConsumerCheckScriptArtifact }
 import std.optional { Present, Absent }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -44,6 +44,10 @@ fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProve
     BranchRunGrantBrokerWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.fleet.branch_run_grant_broker_workflow expected_branch_run_grant_broker_workflow_yml",
       authority: "gunbc.fleet.branch_run_grant_broker_workflow branch_run_grant_broker_workflow",
+    } }
+    HostedRunnerShadowGateYamlArtifact => Present { value: GeneratedWorkflowProvenance {
+      generator: "gunbc.witness.hosted_runner_shadow_gate_workflow expected_hosted_runner_shadow_gate_yml",
+      authority: "gunbc.witness.hosted_runner_shadow_gate_workflow shadow_gate_workflow",
     } }
     HealPublisherWorkflowYamlArtifact => Present { value: GeneratedWorkflowProvenance {
       generator: "gunbc.heal_publisher_workflow expected_heal_publisher_workflow_yml",

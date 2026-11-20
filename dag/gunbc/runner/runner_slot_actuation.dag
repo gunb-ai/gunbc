@@ -142,6 +142,12 @@ fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
 type SlotActuationOutcome
   = SlotActuationNoop { unit: NonEmptyStr, state: String }
   | SlotActivated { unit: NonEmptyStr }
+  // THE ACTIVATION IS HELD BY THE WITHDRAWN RECORD. This host is out of admission until runner_host_restore
+  // clears the record, so a converge over it writes its files and its caps onto the stopped units and plans
+  // NO unmask, enable or start. Nothing on the unit was touched, and the arm is NOT settled: while the
+  // record stands the host is not at its live desired population, and a run that claimed otherwise would BE
+  // the withdrawal undone by the next converge (gunbc.recurring_failure_mode, the class this closes).
+  | SlotActivationHeldByWithdrawal { unit: NonEmptyStr, cause: NonEmptyStr }
   | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
@@ -175,6 +181,7 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
   match o {
     SlotActuationNoop { unit: _, state: _ } => true
     SlotActivated { unit: _ } => true
+    SlotActivationHeldByWithdrawal { unit: _, cause: _ } => false
     SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
@@ -190,6 +197,7 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
   match o {
     SlotActuationNoop { unit: u, state: st } => join(["actuation ", u as String, " noop ", st], "")
     SlotActivated { unit: u } => join(["actuation ", u as String, " activated-and-read-back"], "")
+    SlotActivationHeldByWithdrawal { unit: u, cause: c } => join(["actuation ", u as String, " ACTIVATION-HELD-BY-WITHDRAWAL ", c as String], "")
     SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
@@ -666,10 +674,14 @@ fn slot_actuation_elevated(command: List<String>) -> List<String> {
 fn slot_actuation_argvs(unit: NonEmptyStr) -> List<List<String>> {
   concat(
     [systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties), ps_unit_comm_listing_argv(), systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])],
-    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated; the drain's mask and stop stay the words this
-    // module spells, because those two are the retirement side this change deliberately does NOT widen
-    // (gunbc.runner.runner_slot_retirement host_maskable_units is whose mask line is granted, and an
-    // ungranted stop or mask is what the operator's interruption authorization has to decide).
+    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated, and so are the cap bracket's two: the plain
+    // mask and the stop the drain issues. Those two words were spelled here before the bracket had a stop
+    // leg, and no line authorized them for a KEPT slot: the retire side grants `mask --now` for the units
+    // its own authorization names (runner_slot_retirement host_maskable_units), which is not this verb and
+    // not this population. They are granted now, per MODELLED member, by
+    // gunbc.runner.runner_host_grants runner_slot_cap_bracket_operations, on the strength of the host's
+    // drain row (host_drain_interruption_authorization) -- and that is also what scopes them: a unit
+    // outside the modelled population has no line, so sudo refuses it.
     concat(
       map(runner_slot_activation_step_argvs(steps: runner_slot_activation_steps(), unit: unit), c => slot_actuation_elevated(command: c)),
       map([systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit)], c => slot_actuation_elevated(command: c)),
