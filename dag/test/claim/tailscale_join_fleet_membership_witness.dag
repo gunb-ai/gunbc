@@ -76,11 +76,10 @@ import extdeps.package_managers.apt {
   apt_third_party_repo_install_script,
   apt_third_party_keyring_check_shell,
   apt_third_party_repo_install_script_scaffold,
+  apt_third_party_guard_run_command,
 }
 import std.disposition { Scaffold, RealizationDispatch }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
-import extdeps.exec.command { argv_command }
-import extdeps.exec.program { uncataloged_program }
 import extdeps.tailscale.apt_repo { tailscale_apt_repo_noble, tailscale_packages }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
@@ -667,14 +666,10 @@ test fn w_a_wrong_key_fingerprint_refuses_the_repo_route() -> Bool {
   let wrong_fixture = "/tmp/bobo-guard-wrong.colons"
   let _a = Filesystem.Write(path: accept_fixture, content: gpg_colons_with_fingerprint(fp: pinned as String))
   let _w = Filesystem.Write(path: wrong_fixture, content: gpg_colons_with_fingerprint(fp: "1111111111111111111111111111111111111111"))
-  let accept_cmd = argv_command(
-    program: uncataloged_program(invocation: "bash"),
-    arguments: ["-c", apt_third_party_keyring_check_shell(pinned: pinned, colons_path: accept_fixture, source: "fixture")],
-  )
-  let wrong_cmd = argv_command(
-    program: uncataloged_program(invocation: "bash"),
-    arguments: ["-c", apt_third_party_keyring_check_shell(pinned: pinned, colons_path: wrong_fixture, source: "fixture")],
-  )
+  let accept_cmd = apt_third_party_guard_run_command(guard_script: apt_third_party_keyring_check_shell(
+    pinned: pinned, colons_path: accept_fixture, source: "fixture"),)
+  let wrong_cmd = apt_third_party_guard_run_command(guard_script: apt_third_party_keyring_check_shell(
+    pinned: pinned, colons_path: wrong_fixture, source: "fixture"),)
   process_outcome_admitted(outcome: run_shell_command_capture(command: accept_cmd, transport: LocalExec))
     && !process_outcome_admitted(outcome: run_shell_command_capture(command: wrong_cmd, transport: LocalExec))
 }
@@ -726,10 +721,8 @@ test fn w_b_two_key_output_containing_the_pin_refuses() -> Bool {
     path: two_fixture,
     content: gpg_colons_two_keys_containing(first_fp: pinned as String, second_fp: "2222222222222222222222222222222222222222"),
   )
-  let two_cmd = argv_command(
-    program: uncataloged_program(invocation: "bash"),
-    arguments: ["-c", apt_third_party_keyring_check_shell(pinned: pinned, colons_path: two_fixture, source: "fixture")],
-  )
+  let two_cmd = apt_third_party_guard_run_command(guard_script: apt_third_party_keyring_check_shell(
+    pinned: pinned, colons_path: two_fixture, source: "fixture"),)
   !process_outcome_admitted(outcome: run_shell_command_capture(command: two_cmd, transport: LocalExec))
 }
 

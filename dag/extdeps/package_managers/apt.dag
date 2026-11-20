@@ -3,12 +3,14 @@ module extdeps.package_managers.apt
 import std.types { String, NonEmptyStr, FilePath, Bool, List, Unit }
 import std.operation_argv { operation_argv_bind_text }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import extdeps.exec.program { uncataloged_program }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command {
   ArgvCommand,
+  argv_command,
   operation_row_argv_command,
   OperationRowArgvCommandReady,
   OperationRowArgvCommandRefused,
@@ -320,6 +322,13 @@ fn apt_third_party_repo_source_line(repo: ThirdPartyAptRepo) -> String {
 // extdeps.sudo.elevation before shell quoting; the pipes and redirection belong to the surrounding shell, so
 // gpg and tee still consume stdin while sudo refuses without prompting.
 //
+// ONE sanctioned builder for running the guard for real under `bash -c`, so the argv_command and
+// uncataloged_program allow-lists admit exactly this caller; the witness runs it and the install route embeds
+// the guard string directly. Returns `bash -c <guard>` as an ArgvCommand for run_shell_command_capture.
+fn apt_third_party_guard_run_command(guard_script: String) -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: "bash"), arguments: ["-c", guard_script])
+}
+
 // THE single apt signing-key fingerprint guard. ONE string, used verbatim by the install route AND executed wet
 // by the witness against fixture colon files, so the artifact that protects `signed-by=` is the artifact that is
 // tested -- they cannot drift green. Trust a fetched key only if gpg --with-colons shows EXACTLY one primary key
