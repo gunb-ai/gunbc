@@ -51,8 +51,11 @@ import gunbc.runner.runner_host_withdraw_record {
   runner_host_withdraw_identity, runner_host_withdraw_record_path,
   runner_host_withdraw_observe_line_for,
 }
+import gunbc.runner.runner_slot_actuation { slot_actuation_reading_of, SlotReadingTyped }
+import gunbc.runner.runner_slot_retirement { host_drain_unit_scope }
 import test.claim.runner.runner_host_cap_bracket_witness {
   u, minted, registration_of, runner_json, roster_of, org_ok, slot_current_mint_tag, bracket_grant, remote_side_of,
+  systemctl_show_fixture,
 }
 
 data shell_posix_command_check_operation: OperationRef = OperationRef { path: "dag/extdeps/shell.dag", service: "shell.PosixCommandV", operation: "Check" }
@@ -155,10 +158,18 @@ fn slot_put(w: WithdrawWorld, unit: String, s: SlotWorld) -> WithdrawWorld {
   WithdrawWorld { slots: map(w.slots, x => if slot_match(s: x, unit: unit) { s } else { x }), fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts, trees_absent: w.trees_absent }
 }
 
+// THE SAME SIX WORDS THE REAL SERVICE MANAGER ANSWERS, from the bracket witness's faithful fixture.
+// gunbc.runner.runner_slot_actuation.slot_actuation_reading_of REFUSES a `systemctl show` block that omits
+// ANY of Id/LoadState/UnitFileState/ActiveState/Result/MainPID, so the five-word block this world used to
+// answer with made every read come back SlotReadRefused: bracket acquisition then refused with
+// ownership-unproven BEFORE a single leg was dispatched, and every control that needs the legs went red
+// while looking like a route regression. MainPID and Result are not decoration -- MainPID is what says an
+// active unit has a listener, Result is what distinguishes a cleanly stopped slot from a failed one, and
+// the drain's stop leg decides on exactly those words.
 fn show_answer(s: SlotWorld) -> ShellExchangeObservation {
   ShellProcessExited {
     exit_code: 0,
-    stdout: concat("Id=", u(n: s.n) as String, "\nLoadState=", s.load, "\nUnitFileState=", s.file, "\nActiveState=", s.active, "\nNeedDaemonReload=no\n"),
+    stdout: systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active),
     stderr: "",
   }
 }
@@ -221,10 +232,16 @@ fn ssh_answer(state: WithdrawWorld, cmd: String) -> SshAnswer {
     SshAnswer { world: state, answer: world_listing(w: state) }
   } else {
     match slot_of(w: state, unit: cmd) {
-      Absent => if cmd == actions_runner_base_dir {
+      Absent => if cmd == actions_runner_base_dir || string_contains(s: cmd, pattern: concat("ls -1 -A -- ", actions_runner_base_dir)) {
         // ls -1 -A -- /opt/actions-runner: the slot-tree presence read that releasing an admission now
         // makes before it starts anything. The answer is this world's tree state -- the install dirs the
-        // host actually built, and nothing for a slot it never instantiated.
+        // host actually built, and nothing for a slot it never instantiated. BOTH spellings are matched
+        // because the remote side of the leg depends on how the transport renders the elevation: the bare
+        // parent path when a "--" marker is present in the argv list, the rendered elevated command when
+        // the whole command arrives as one item. A world that guesses one spelling answers the read with
+        // 'no such command' (exit 255), and the classifier deliberately refuses rather than calling an
+        // unread parent a clean absence -- so the caller sees an unreadable tree, not a missing one.
+        // No other parent is listed anywhere on the withdrawal route, so this cannot shadow another read.
         SshAnswer { world: state, answer: tree_listing_answer(w: state) }
       } else { SshAnswer { world: state, answer: unmatched(cmd: cmd) } }
       Present { value: s } =>
@@ -274,7 +291,11 @@ fn slot_roster_id(n: String) -> Int {
 }
 
 fn roster_answer(w: WithdrawWorld, busy_override: Bool) -> String {
-  roster_of(entries: map(filter(w.slots, s => s.registered), s => runner_json(id: slot_roster_id(n: s.n), name: minted(n: s.n, tag: slot_current_mint_tag), busy: busy_override)))
+  // A slot with a Worker process in its cgroup is BUSY in the org's own report -- that is what makes a
+  // job-carrying listener busy at both grains at once, which is the only state the drain will wait out
+  // instead of stopping. A slot that is merely an idle listener with no Worker stays idle in the roster,
+  // so the stop leg is what closes it.
+  roster_of(entries: map(filter(w.slots, s => s.registered), s => runner_json(id: slot_roster_id(n: s.n), name: minted(n: s.n, tag: slot_current_mint_tag), busy: busy_override || s.worker)))
 }
 
 // THE REALIZATION. The clock is virtual and advances ONLY through the sleep route, by exactly the
@@ -407,7 +428,12 @@ test fn withdraw_leaves_every_slot_masked_inactive_with_a_record() -> Bool {
   match r {
     WithdrawRunEnded { cause: _ } => false
     WithdrawRunReturned { value: Withdrawn { units: us, certified: cs, record_written: rw }, world: w } =>
-      rw && length(us) == 2 && length(cs) == 2
+      // cs is EMPTY here, and that is the drain's fold, not a gap: `certified` counts listeners the
+      // mask closed WHILE THEY WERE STILL LISTENING (RunListenerIdle under a closed admission, with the
+      // roster agreeing they hold no job). This world's listeners were closed by the stop leg -- after
+      // it they read RunStopped under a closed admission, which the drain classifies DRAINED, and a
+      // drained slot carries no certified registration. The certified arm is the world below this one.
+      rw && length(us) == 2 && length(cs) == 0
         && all(w.slots, s => s.load == "masked" && s.active == "inactive" && !s.worker && !s.listener)
         && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String)
           && string_contains(s: f.content, pattern: "\"actions-runner@srv3-01.service\"")
@@ -473,7 +499,7 @@ test fn restore_refuses_a_kept_slot_whose_tree_the_host_never_built() -> Bool {
             // Still withdrawn, still recorded: the host has not been told it is back in service.
             && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
             // And the release really did ask the host for its trees before deciding anything.
-            && any(w.acts, a => a == actions_runner_base_dir)
+            && any(w.acts, a => string_contains(s: a, pattern: concat("ls -1 -A -- ", actions_runner_base_dir)))
         _ => false
       }
     _ => false
@@ -496,7 +522,7 @@ test fn restore_admits_a_kept_slot_whose_tree_is_present() -> Bool {
           length(us) == 2
             && all(w.slots, s => s.load == "loaded" && s.file == "enabled" && s.active == "active")
             && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
-            && any(w.acts, a => a == actions_runner_base_dir)
+            && any(w.acts, a => string_contains(s: a, pattern: concat("ls -1 -A -- ", actions_runner_base_dir)))
         _ => false
       }
     _ => false
@@ -515,8 +541,13 @@ test fn a_drain_past_the_bound_refuses_and_never_claims_withdrawn() -> Bool {
   })
   match r {
     WithdrawRunEnded { cause: _ } => false
-    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalDrainBound { busy: b, unproven: _, waited: _ }, left: _ }, world: _ } =>
-      length(b) == 1 && match first(b) { Present { value: x } => (x as String) == (u(n: "02") as String) Absent => false }
+    WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalDrainBound { busy: b, unproven: up, waited: _ }, left: _ }, world: _ } =>
+      // The slot that keeps a Runner.Worker is the one the bracket cannot close: mask_slot_only acts only
+      // on a unit ALREADY proven stopped, and the stop leg stops admitted LISTENERS, never a
+      // worker-carrying cgroup -- that is the point of never masking a running unit. So it sits in
+      // `unproven` for the whole bound. `busy` is the narrower reading -- a worker live under an
+      // admission the mask had already closed -- and this world's admission never closed, so it is empty.
+      length(b) == 0 && length(up) == 1 && match first(up) { Present { value: x } => (x as String) == (u(n: "02") as String) Absent => false }
     WithdrawRunReturned { value: _, world: _ } => false
   }
 }
@@ -630,4 +661,35 @@ test fn a_split_ok_withdraw_actuates_so_the_empty_ledgers_mean_something() -> Bo
       length(w.acts) > 0 && any(w.acts, c => string_contains(s: c, pattern: " mask "))
     _ => false
   }
+}
+
+// THE WIRES THIS WORLD ANSWERS ARE READ BY THE PRODUCTION READER, not by a copy of it. The bracket
+// witness has carried this guard for its own fixture since the stop leg landed; this world was answering
+// `systemctl show` by hand in FIVE words while
+// gunbc.runner.runner_slot_actuation::slot_actuation_reading_of refuses a block missing ANY of the six
+// properties it requests (Id, LoadState, UnitFileState, ActiveState, Result, MainPID). Every read came
+// back refused, bracket acquisition refused with ownership-unproven before a leg was dispatched, and
+// eight controls went red three layers below the fixture that was wrong. If the reader's contract moves
+// again, THIS control fails, and it names the fixture.
+fn show_stdout_of(s: SlotWorld) -> String { systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active) }
+
+test fn the_withdrawal_worlds_show_block_parses_through_the_slot_reader() -> Bool {
+  all([
+    SlotWorld { n: "01", load: "loaded", file: "enabled", active: "active", worker: false, listener: true, registered: true },
+    SlotWorld { n: "02", load: "masked", file: "masked", active: "inactive", worker: false, listener: false, registered: true },
+    SlotWorld { n: "01", load: "loaded", file: "enabled", active: "inactive", worker: false, listener: false, registered: true },
+  ], s => match slot_actuation_reading_of(unit: u(n: s.n), show_stdout: show_stdout_of(s: s)) {
+    Present { value: SlotReadingTyped { reading: _ } } => true
+    _ => false
+  })
+}
+
+// THE FIXTURE ASSERTS ITS OWN PREMISE: the host it dials is a host that can stop the units its world
+// answers for. The drain's permission is host grain
+// (gunbc.runner.runner_slot_retirement::host_drain_unit_scope, derived from the width authority), so a
+// fixture naming units of another host has no drain at all -- and its refusal is indistinguishable, at
+// the dispatcher, from a route regression. This control fails BY NAME if the two ever disagree again.
+test fn the_fixture_units_lie_inside_the_scope_the_declared_host_derives() -> Bool {
+  let scope = map(host_drain_unit_scope(host: "srv3" as HostIdentity), x => x as String)
+  all(map(admitted_slots(), s => u(n: s.n) as String), n => any(scope, x => x == n))
 }
