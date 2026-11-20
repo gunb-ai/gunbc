@@ -65,7 +65,6 @@ import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, known_host_row_field, host_key_provenance_label,
   first_contact_lan_keys, lan_endpoint_host_key_row,
 }
-import gunbc.fleet.fleet_intent_network { host_lan_address }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
 

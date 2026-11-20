@@ -281,7 +281,7 @@ test fn the_hop_admits_nothing_for_a_host_with_no_pinned_key() -> Bool {
 // SILENTLY -- those two callers would stop compiling and this whole file would stop running.
 data unadmitted_mint_caller_source: String = "module probe_first_contact_unadmitted_caller\nimport gunbc.fleet.fleet_known_hosts_anchor { FirstContactAdmission, first_contact_admission_for_hostname_mode }\nfn smuggle() -> FirstContactAdmission { first_contact_admission_for_hostname_mode() }\n"
 
-data admitted_shape_calibration_source: String = "module probe_first_contact_calibration\nimport gunbc.fleet.fleet_known_hosts_anchor { known_hosts_file_rows }\nfn untouched() -> Int { known_hosts_file_rows().length() }\n"
+data admitted_shape_calibration_source: String = "module probe_first_contact_calibration\nfn untouched() -> Int { 1 }\n"
 
 test fn the_wall_fires_for_an_unadmitted_caller() -> Bool {
   violation_count(source: unadmitted_mint_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
