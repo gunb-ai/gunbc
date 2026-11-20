@@ -1095,7 +1095,7 @@ fn fresh_host_observed(d: RemoteBuildServingDesired) -> ServingObserved {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
-    user_manager_linger: ObservationEstablished { observed: true },
+    user_manager_linger: ObservationEstablished { observed: false },
     target_arch: pin_arch_leg(),
     ledger_rows: absent_ledger(d: d),
   )

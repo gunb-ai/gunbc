@@ -382,7 +382,7 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
-    user_manager_linger: ObservationEstablished { observed: true },
+    user_manager_linger: ObservationEstablished { observed: false },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -1340,6 +1340,13 @@ fn is_enable_linger(a: ConvergeAction) -> Bool {
   }
 }
 
+fn is_ensure_account(a: ConvergeAction) -> Bool {
+  match a {
+    EnsureAccount { name: _ } => true
+    _ => false
+  }
+}
+
 // Everything but the slice cap is correct AND the user manager is proven not lingering: the minimal-delta
 // positive for the enable arm. It carries BOTH deviations (uncapped slice + not-lingering), so one plan
 // proves the enable leg appears and (via the order cell) that it lands ahead of the slice it unblocks.
@@ -1454,6 +1461,25 @@ test fn refused_linger_writes_no_enable_leg() -> Bool {
           length(filter(plan_writes(plan), x => is_enable_linger(x))) == 0
         }
       }
+    }
+  }
+}
+
+// RED-CONTROL PARTNER for the account-presence gate on the linger read. On a fresh host the serving account
+// is proven absent (passwd ''), so the linger read is gated OFF and yields established-false -- never an
+// unknown. The plan must therefore still run and carry the enable leg beside the account leg. If a future
+// change let an absent account's linger read refuse, this host would go indeterminate and this cell goes red.
+test fn fresh_host_with_absent_account_plans_enable_not_refused() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false
+        && plan_is_unhandled(plan) == false
+        && length(plan_writes(plan)) > 0
+        && length(filter(plan_writes(plan), x => is_enable_linger(x))) == 1
+        && length(filter(plan_writes(plan), x => is_ensure_account(x))) != 0
     }
   }
 }

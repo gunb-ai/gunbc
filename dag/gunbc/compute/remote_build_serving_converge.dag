@@ -484,8 +484,17 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   }
   let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_passwd_uid(text: passwd_opt, name: d.account_name))
   // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
-  // cgroup to persist, so it is observed in the same pass. A refused read is an unknown, never a write.
-  let linger = serving_leg_linger(item: "user_manager.linger", target: target, context: context, account: d.account_name as NonEmptyStr)
+  // cgroup to persist, so it is observed in the same pass. It is GATED on the account being present, exactly
+  // as the rustup/toolchain legs are: a confirmed-absent account (a fresh host) has no user manager to ask
+  // loginctl about -- `loginctl show-user <nobody>` fails to look up the user, which is NOT a lingering
+  // answer and would otherwise poison the whole assessment as an unknown and stop the account leg ever
+  // planning. A proven-absent account therefore reads not-lingering (established-false), so the enable leg
+  // is planned and, ranked just above the account, runs right after useradd. Only a present (or unread) gate
+  // runs the live read; a refused read there stays an unknown.
+  let linger = match account_gate {
+    ObservationEstablished { observed: false } => ObservationEstablished { observed: false }
+    _ => serving_leg_linger(item: "user_manager.linger", target: target, context: context, account: d.account_name as NonEmptyStr)
+  }
   let o = serving_observed_from_reads(
     elevation: elevation,
     account_name: d.account_name,
