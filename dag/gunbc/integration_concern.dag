@@ -880,6 +880,10 @@ data third_party_apt_repo_leaves_sighting_revision: CommitSha = "600e6a835afbcdc
 // operator_host_e2d4b7 (#16802), whose fingerprint the read checked its ssh-keygen -lf output against. As with
 // the rows above, the revision is the tree that was read, not the sha of the commit that writes it down.
 data h11ssl_unit3_console_host_key_confirmation_revision: CommitSha = "3db1b5f096294903c63dfa43496523dcd2562996"
+// Capability gap, filed unfixed at the build lane's direction: the self-hosted fleet-converge job pins its
+// runner label's machine-architecture slot to arm64 (fleet_converge_host_runner_expression_body), so a mode whose
+// executor host is x86 can never be scheduled. The label slot should derive from the executor's modeled arch.
+data fleet_converge_arm64_label_sighting_revision: CommitSha = "d4d5088c216cb93fb83bf286ed0ef08e3c646be7"
 
 // THREE LEAVES OF ONE RULE, NOT YET ONE SHAPE. A third-party apt repository -- URI, suite, components,
 // architecture, a signed-by keyring path, and a pinned signing-key fingerprint the fetched key must match or
