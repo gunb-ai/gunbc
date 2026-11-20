@@ -96,24 +96,37 @@ fn remote_build_client_git(worktree: String, args: List<String>) -> ComputeExec 
 // fleet automation key: the file's public half is derived and compared before a binding exists, so a
 // rotated or wrong key refuses here and no host is contacted.
 fn remote_build_client_context(attempt_raw: String) -> FleetSshContextPreparation {
-  match fleet_ssh_attempt_identity(raw: attempt_raw) {
-    Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
-    Present { value: attempt } =>
-      match remote_build_client_identity_file() {
-        Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
-        Present { value: identity_file } =>
-          match verify_fleet_ssh_credential(identity_file: identity_file, expected_key: remote_build_ssh_key) {
-            FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
-              FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
-            FleetSshCredentialDerivationRefused { cause } =>
-              FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
-            FleetSshCredentialVerified { binding } =>
-              ssh_context_from_verified_binding_under(
-                attempt: attempt,
-                binding: binding,
-                rows: fleet_known_hosts_rows(),
-                job_root: Present { value: remote_build_client_job_root_child },
-              )
+  // The client's own working directory (remote_build_client_job_root_child) is the root under which the
+  // known-hosts anchor and the control-socket directory live. A fresh worktree or a hosted runner has no
+  // such directory; the fleet layer creates only the multiplex CHILD under this root and STAT's the root
+  // itself -- it never creates the root, so a missing root refuses the whole run with "the multiplex
+  // directory ... could not be created or read back". The context therefore ensures its own root first,
+  // owner-only -- the same admission the multiplex child uses. NewOwnerOnly fails when the name already
+  // exists, so an existing root is adopted unchanged and the effect is idempotent; the result is consumed
+  // by a wildcard arm and does NOT gate the run, because an existing (CI) root must proceed.
+  // (gunbc.fleet.fleet_known_hosts_anchor materialize_fleet_ssh_multiplex_directory_under)
+  let job_root = shell.Mkdir.NewOwnerOnly(path: remote_build_client_job_root_child as FilePath)
+  match job_root.success {
+    _ =>
+      match fleet_ssh_attempt_identity(raw: attempt_raw) {
+        Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
+        Present { value: attempt } =>
+          match remote_build_client_identity_file() {
+            Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
+            Present { value: identity_file } =>
+              match verify_fleet_ssh_credential(identity_file: identity_file, expected_key: remote_build_ssh_key) {
+                FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
+                  FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
+                FleetSshCredentialDerivationRefused { cause } =>
+                  FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
+                FleetSshCredentialVerified { binding } =>
+                  ssh_context_from_verified_binding_under(
+                    attempt: attempt,
+                    binding: binding,
+                    rows: fleet_known_hosts_rows(),
+                    job_root: Present { value: remote_build_client_job_root_child },
+                  )
+              }
           }
       }
   }
