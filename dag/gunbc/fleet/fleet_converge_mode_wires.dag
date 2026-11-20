@@ -11,3 +11,5 @@ import std.types { NonEmptyStr }
 data hostname_converge_wire: NonEmptyStr = "hostname_converge"
 
 data tailscale_join_converge_wire: NonEmptyStr = "tailscale_join_converge"
+
+data host_credential_custody_converge_wire: NonEmptyStr = "host_credential_custody_converge"

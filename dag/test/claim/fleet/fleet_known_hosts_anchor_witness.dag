@@ -37,6 +37,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   known_hosts_anchor_path,
   fleet_known_hosts_registry_identity,
 }
+import test.claim.sole_constructor_completeness_audit_probe { violation_count }
 import std.content_hash { compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 
 // The constructor is partial, so a fixture must decide what an unsafe id means. Refusing to a
@@ -269,4 +270,23 @@ test fn the_hop_admits_nothing_for_a_host_with_no_pinned_key() -> Bool {
     SshTargetResolved { target: _ } => false
     SshTargetRefused { endpoint: _, refusal: _ } => true
   }
+}
+
+// THE WALL FIRING, EXECUTED (review 96923). A synthetic THIRD module -- not on either mint's
+// admit_callers roster -- calls the mint; the compiler must answer ConstructorCallAdmissionRefused,
+// naming the function. The green half of the same wall is the tree itself: the two real callers
+// (gunbc.host.host_hostname_converge::hostname_converge_transport_target and
+// gunbc.tailscale_join_converge::tailscale_join_host) and the witness calls above COMPILE, which every
+// claim run of this file and every CI of the touching paths proves. A misspelt roster entry would seal
+// SILENTLY -- those two callers would stop compiling and this whole file would stop running.
+data unadmitted_mint_caller_source: String = "module probe_first_contact_unadmitted_caller\nimport gunbc.fleet.fleet_known_hosts_anchor { FirstContactAdmission, first_contact_admission_for_hostname_mode }\nfn smuggle() -> FirstContactAdmission { first_contact_admission_for_hostname_mode() }\n"
+
+data admitted_shape_calibration_source: String = "module probe_first_contact_calibration\nimport gunbc.fleet.fleet_known_hosts_anchor { known_hosts_file_rows }\nfn untouched() -> Int { known_hosts_file_rows().length() }\n"
+
+test fn the_wall_fires_for_an_unadmitted_caller() -> Bool {
+  violation_count(source: unadmitted_mint_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn the_calibration_module_compiles_without_the_refusal() -> Bool {
+  violation_count(source: admitted_shape_calibration_source, wanted: "ConstructorCallAdmissionRefused") == 0
 }

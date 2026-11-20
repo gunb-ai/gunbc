@@ -275,26 +275,46 @@ fn known_hosts_file_rows() -> List<KnownHostKeyRow> {
 // declaring module is a compile diagnostic), so no module but this one can mint a variant -- a
 // third mode cannot spell `HostnameMode` as an expression at all. The token list itself is TYPO-
 // AND DRIFT-PROOF, and the Optional<...> Absent arm forces every non-admitted caller to SAY so.
-// The constructors below are the ONLY mint entry points, one per OWNING mode, named for its owner
-// (gunbc.design_argument::conformance-phase-admission: "a phase is a carrier type whose only constructor is
-// the function that establishes it"). THE HONEST RESIDUE: the language has no caller identity, so
-// any module may CALL these two named constructors -- what remains short of a full seal is
-// tracked as a rung row, NOT by this comment: gunbc.integration_concern::
-// first_contact_admission_mint_lacks_caller_identity, whose trigger names per-caller-identity
-// refusal. The behavioural reds sit in the witnesses (the token-less caller refused by named
-// variant; the anchored and supersession arms run on every CI of the touching paths).
+// THE HONEST RESIDUE: the mint CALLS are sealed by COMPILED per-caller rosters (admit_callers below,
+// enforced as ConstructorCallAdmissionRefused -- the ceiling this carrier can reach is DERIVED, not
+// aspirational), and an admitted caller that FORWARDS a token outward would be the next rung (gunbc.
+// recurring_failure_mode::admitted_call_edge_with_unrestricted_value_egress); neither production caller
+// forwards today, so that rung has no live edge, and the witnesses keep proving only the BEHAVIOUR of
+// the refusals (the token-less caller refused by named variant; the anchored and supersession arms run
+// on every CI of the touching paths). The seal itself was the answer to review 96908 and 96923, which
+// caught two earlier comments claiming the language lacked this wall.
 type FirstContactAdmission sole_constructor = HostnameMode | TailscaleJoinMode
 
-// THE ONE MINT ENTRY FOR THE HOSTNAME MODE, spelled only here and called by its owner
-// (host_hostname_converge::bind_transport). No other production caller exists; a new caller is a
-// roster change the rung row and the witnesses make visible.
-fn first_contact_admission_for_hostname_mode() -> FirstContactAdmission {
+// THE ONE MINT ENTRY FOR THE HOSTNAME MODE, spelled only here, called by its owner and its witness
+// and by NOBODY ELSE: admit_callers is the per-caller roster the compiler enforces (ConstructorCallAdmissionRefused
+// names an unlisted caller at typecheck -- the same wall extdeps.apple.app_attest rests on). Neither listed
+// caller forwards the token, so the egress wall (gunbc.recurring_failure_mode::
+// admitted_call_edge_with_unrestricted_value_egress) has nothing to catch here today; growing either roster
+// is a visible, greppable edit to this list, not a new import.
+fn first_contact_admission_for_hostname_mode() -> FirstContactAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.host_hostname_converge", decl_name: "hostname_converge_transport_target"),
+    decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "the_hop_admits_only_the_token_holding_modes"),
+  ]
+{
   HostnameMode
 }
 
-// THE ONE MINT ENTRY FOR THE TAILSCALE JOIN MODE, spelled only here and called by its owner
-// (tailscale_join_converge's custody hop). Same roster discipline as its sibling above.
-fn first_contact_admission_for_tailscale_join_mode() -> FirstContactAdmission {
+// THE ONE MINT ENTRY FOR THE TAILSCALE JOIN MODE, spelled only here, called by its owner (the custody
+// hop in tailscale_join_converge) and the named witnesses, sealed by the same compiled roster as its
+// sibling above.
+fn first_contact_admission_for_tailscale_join_mode() -> FirstContactAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.tailscale_join_converge", decl_name: "tailscale_join_host"),
+    decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "the_hop_admits_only_the_token_holding_modes"),
+    decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "the_hop_admits_nothing_for_a_host_with_no_pinned_key"),
+    decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "the_join_mode_admits_the_pre_anchor_host_over_the_hop"),
+    decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "an_anchored_host_is_reached_on_its_anchor_even_when_the_hop_is_admitted"),
+    decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "an_anchored_host_has_no_hop_row_at_all"),
+    decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "the_hop_admits_nothing_without_a_pinned_key"),
+    decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "hostname_and_custody_targets_are_unchanged_for_anchored_hosts"),
+  ]
+{
   TailscaleJoinMode
 }
 
