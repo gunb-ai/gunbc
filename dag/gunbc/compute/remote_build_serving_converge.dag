@@ -1077,7 +1077,8 @@ fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
   let r7 = filter(ws, a => converge_kind_rank(a) == 7)
   let r8 = filter(ws, a => converge_kind_rank(a) == 8)
   let r9 = filter(ws, a => converge_kind_rank(a) == 9)
-  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, concat(r7, concat(r8, r9)))))))))
+  let r10 = filter(ws, a => converge_kind_rank(a) == 10)
+  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, concat(r7, concat(r8, concat(r9, r10))))))))))
 }
 
 // B4 (side-chat review of 2026-11-16): an EXTRA member — observed but not declared anywhere in the
