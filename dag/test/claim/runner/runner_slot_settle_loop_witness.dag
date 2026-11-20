@@ -278,9 +278,9 @@ test fn an_admitted_loop_is_stopped_and_read_back_before_anything_else_moves() -
 }
 
 test fn an_unadmitted_loop_issues_no_actuation_at_all() -> Bool {
-  // The same world with one fact changed: the cgroup holds a worker. The refusal must leave the ledger
-  // EMPTY -- not merely "no mask" -- because the harm this admission exists to prevent is a stop issued
-  // beside a running job.
+  // The same world with one fact changed: the cgroup holds a worker. The refusal must carry no actuation,
+  // and the claim must not be written as an empty ledger -- the leg reads before it refuses, and reading
+  // is the behaviour we want, so an empty-ledger assertion would go green for a leg that never looked.
   let w = world_with(slots: loop_slots_busy(), mask_sticks: true, trees_absent: ["06"])
   match withdraw_run(initial: w, busy_override: false, body: fn(_t, context, sj) {
     settle_unprovisioned_slot_loop_over(subject: settle_subject(sj: sj), context: context, unit: u(n: "06"), presence: loop_presence())
