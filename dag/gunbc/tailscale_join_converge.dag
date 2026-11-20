@@ -100,7 +100,6 @@ import extdeps.tailscale.join {
   tailscale_ping_verdict,
   tailscale_up_join_command,
   tailscale_up_join_spec_of,
-  tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
 }
 import extdeps.units.iso8601_calendar {
@@ -124,7 +123,7 @@ import gunbc.auth.secret_ref_credential {
 }
 import gunbc.fleet.fleet_ssh_locus { FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import product.host_identity { host_identity_eq }
-import extdeps.tailscale.machine_name { tailscale_status_json_argv }
+import extdeps.tailscale.machine_name { tailscale_status_json_command }
 import extdeps.dns.domain_name { DnsLabel }
 import gunbc.file_access { FileTreeScope }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
@@ -242,7 +241,7 @@ fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
 // THE STATUS READ, from the host itself. The argv row is machine_name's, not a fork: same binary, same
 // document, and this module reads a different member of it (extdeps.tailscale.join).
 fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleJoinState {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: tailscale_status_json_argv()) {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: tailscale_status_json_command())) {
     TypedArgvExecRefused { reason: reason } => JoinStateUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -277,19 +276,6 @@ fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionC
           stderr: r.stderr,
         )
       }
-  }
-}
-
-// The package answer the PLAN needs, which is the query only when a query can change an action.
-fn tailscale_join_package_state_for(
-  state: TailscaleJoinState,
-  subject: CustodyHost,
-  context: FleetSshExecutionContext,
-) -> DpkgInstalledState {
-  if tailscale_up_join_state_is_joined(state: state) {
-    DpkgPackageInstalled
-  } else {
-    tailscale_join_observe_package(target: subject.target, context: context)
   }
 }
 
@@ -346,65 +332,85 @@ fn tailscale_join_plan(
         Absent =>
           JoinPlanRefused { host: host, cause: "the tailnet name is absent while the hostname is present" }
         Present { value: tailnet_name } =>
-          match join_state {
-            // THE NOOP, FIRST AND UNCONDITIONAL: no key check, no package check. An existing member of the
-            // tag-keyed tailnet is not a candidate for either, and this is the arm that keeps a routine fleet
-            // converge from re-placing a reusable enrollment key on hosts that joined long ago. It is
-            // unconditional over a FLEET MEMBER, and a fleet member is a JOINED HOST THAT CARRIES THE FLEET
-            // TAG -- `BackendState == Running` alone never reaches this arm
-            // (extdeps.tailscale.join: WHETHER A HOST IS JOINED -- AND UNDER WHICH IDENTITY).
-            JoinStateJoinedWithRequiredTag { self_tags: _ } =>
-              JoinPlanNoop {
+          match package_state {
+            // DPkg DECIDES FIRST. A host whose apt package dpkg cannot see is not installed, and a host
+            // without the binary CANNOT report a join state -- its status leg only echoes the missing
+            // program (srv4's status leg exited 127; run 44643376146 is the receipt). So the install arms
+            // do not consult the join state at all: there is nothing for it to answer yet.
+            // dpkg having NO RECORD of an apt package means it is not installed: dpkg.dag records
+            // DpkgPackageUnknown as an ANSWER ("unknown to dpkg"), not as unreadable, and the sibling
+            // site_pxe_edge_converge installs on the same shape. srv4's dpkg read -- exit 1 carrying the
+            // "no information is available" marker -- is DpkgPackageUnknown under dpkg_query_status_verdict_of.
+            // The NeedsMachineAuth check inside plan_requiring_key cannot fire on these arms: a host without
+            // tailscale is not parked awaiting machine approval. "" is passed for state for that reason.
+            DpkgPackageNotInstalled { status: _ } =>
+              tailscale_join_plan_requiring_key(
                 host: host,
                 tailnet_name: tailnet_name,
-                reason: "backend state is Running and the node carries the fleet tag",
-              }
-            // JOINED, BUT NOT AS THE FLEET TAG -- SO NOT A FLEET MEMBER, AND NOT A Noop. ken is the specimen
-            // (operator_host_e2d4b7, read 2026-11-18 by still-fox-404): Running under a personal account,
-            // presenting no tags, resolvable under the tailnet's MagicDNS suffix and outside every grant the
-            // fleet's policy is keyed on. Reporting Noop over that is a silent success over the wrong state.
-            // THE CONVERGE DOES NOT RE-JOIN IT EITHER: `tailscale up --force-reauth` with the fleet key would
-            // replace an identity the OPERATOR chose (a node is a member as the tag of the key that enrolled
-            // it, or as the person who joined it -- tailscale.com/kb/1085/auth-keys), and silently changing a
-            // host's tailnet identity is not this converge's authority. It refuses, typed and located, and
-            // names the remedy the operator performs (@ref(gunbc.design_argument::fail_closed)).
-            JoinStateJoinedWithoutRequiredTag { self_tags: self_tags } =>
-              JoinPlanNotFleetMember {
+                hostname: hostname,
+                state: "",
+                key_usable: key_usable,
+                package_action: JoinPackageInstall,
+              )
+            DpkgPackageUnknown =>
+              tailscale_join_plan_requiring_key(
                 host: host,
                 tailnet_name: tailnet_name,
-                required_tag: tailscale_fleet_node_tag,
-                observed_tags: self_tags,
-              }
-            JoinStateUnreadable { cause: cause } =>
-              JoinPlanRefused { host: host, cause: concat("join state unreadable: ", cause) }
-            JoinStateNotJoined { state: state } =>
-              match package_state {
-                DpkgPackageUnknown =>
-                  JoinPlanRefused {
-                    host: host,
-                    cause: "dpkg reports the package as unknown, and install-versus-skip cannot be guessed",
-                  }
-                DpkgQueryUndecidable { reason: reason } =>
-                  JoinPlanRefused { host: host, cause: concat("package state undecidable: ", reason) }
-                DpkgPackageNotInstalled { status: _ } =>
-                  tailscale_join_plan_requiring_key(
-                    host: host,
-                    tailnet_name: tailnet_name,
-                    hostname: hostname,
-                    state: state,
-                    key_usable: key_usable,
-                    package_action: JoinPackageInstall,
-                  )
-                DpkgPackageInstalled =>
-                  tailscale_join_plan_requiring_key(
-                    host: host,
-                    tailnet_name: tailnet_name,
-                    hostname: hostname,
-                    state: state,
-                    key_usable: key_usable,
-                    package_action: JoinPackageAlreadyInstalled,
-                  )
-              }
+                hostname: hostname,
+                state: "",
+                key_usable: key_usable,
+                package_action: JoinPackageInstall,
+              )
+            // UNDECIDABLE IS NOT ABSENT: dpkg itself failed to answer, so nothing establishes that the
+            // package is missing and no install is authorized
+            // (extdeps.package_managers.dpkg: "Undecidable is never read as absent, because absent
+            // authorizes an install and nothing was established").
+            DpkgQueryUndecidable { reason: reason } =>
+              JoinPlanRefused { host: host, cause: concat("package state undecidable: ", reason) }
+            // INSTALLED -- only now can a join state mean anything, and the wet read it for exactly this host.
+            DpkgPackageInstalled => match join_state {
+              // THE NOOP: an existing member of the tag-keyed tailnet is not a candidate for a key or a
+              // package. This is the arm that keeps a routine fleet converge from re-placing a reusable
+              // enrollment key on hosts that joined long ago. A fleet member is a JOINED HOST THAT CARRIES
+              // THE FLEET TAG -- `BackendState == Running` alone never reaches this arm
+              // (extdeps.tailscale.join: WHETHER A HOST IS JOINED -- AND UNDER WHICH IDENTITY).
+              JoinStateJoinedWithRequiredTag { self_tags: _ } =>
+                JoinPlanNoop {
+                  host: host,
+                  tailnet_name: tailnet_name,
+                  reason: "backend state is Running and the node carries the fleet tag",
+                }
+              // JOINED, BUT NOT AS THE FLEET TAG -- SO NOT A FLEET MEMBER, AND NOT A Noop. ken is the specimen
+              // (operator_host_e2d4b7, read 2026-11-18 by still-fox-404): Running under a personal account,
+              // presenting no tags, resolvable under the tailnet's MagicDNS suffix and outside every grant the
+              // fleet's policy is keyed on. Reporting Noop over that is a silent success over the wrong state.
+              // THE CONVERGE DOES NOT RE-JOIN IT EITHER: `tailscale up --force-reauth` with the fleet key would
+              // replace an identity the OPERATOR chose (a node is a member as the tag of the key that enrolled
+              // it, or as the person who joined it -- tailscale.com/kb/1085/auth-keys), and silently changing a
+              // host's tailnet identity is not this converge's authority. It refuses, typed and located, and
+              // names the remedy the operator performs (@ref(gunbc.design_argument::fail_closed)).
+              JoinStateJoinedWithoutRequiredTag { self_tags: self_tags } =>
+                JoinPlanNotFleetMember {
+                  host: host,
+                  tailnet_name: tailnet_name,
+                  required_tag: tailscale_fleet_node_tag,
+                  observed_tags: self_tags,
+                }
+              // INSTALLED YET UNREADABLE is a daemon / custody fault, NOT an absent package: the binary is
+              // present (dpkg said installed) but its status leg failed. The key is not blindly re-placed;
+              // it refuses as unknown, the same non-zero refusal tailscale_join_observe_status records.
+              JoinStateUnreadable { cause: cause } =>
+                JoinPlanRefused { host: host, cause: concat("join state unreadable: ", cause) }
+              JoinStateNotJoined { state: state } =>
+                tailscale_join_plan_requiring_key(
+                  host: host,
+                  tailnet_name: tailnet_name,
+                  hostname: hostname,
+                  state: state,
+                  key_usable: key_usable,
+                  package_action: JoinPackageAlreadyInstalled,
+                )
+            }
           }
       }
   }
@@ -714,8 +720,18 @@ fn tailscale_join_host(
         // through: a host with no runner spec is not a host a converge may write a credential onto.
         CustodyHostSubjectRefused { cause: cause } => JoinRefused { host: host, cause: cause }
         CustodyHostSubjectAdmitted { subject: subject } => {
-          let state = tailscale_join_observe_status(target: subject.target, context: context)
-          let package_state = tailscale_join_package_state_for(state: state, subject: subject, context: context)
+          // DPkg FIRST: read the package before the status, and read the status only when the package is
+          // actually present. A host without the binary cannot answer a status query -- forcing one only
+          // echoes the missing program (srv4's status leg exited 127; run 44643376146) -- and the plan
+          // ignores the join state unless the package is installed, so for the not-installed and
+          // undecidable cases a placeholder state is passed and never inspected.
+          let package_state = tailscale_join_observe_package(target: subject.target, context: context)
+          let state = match package_state {
+            DpkgPackageInstalled => tailscale_join_observe_status(target: subject.target, context: context)
+            DpkgPackageNotInstalled { status: _ } => JoinStateNotJoined { state: "" }
+            DpkgPackageUnknown => JoinStateNotJoined { state: "" }
+            DpkgQueryUndecidable { reason: _ } => JoinStateNotJoined { state: "" }
+          }
           let plan = tailscale_join_plan(
             host: host,
             join_state: state,
