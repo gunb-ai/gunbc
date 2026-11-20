@@ -501,14 +501,14 @@ fn remote_gate_exit_code(o: RemoteGateOutcome) -> Int {
   }
 }
 
-fn remote_gate_cli(worktree: String, label: String, receipt_path: String) -> ProcessExit {
+fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String?) -> ProcessExit {
   match remote_build_decode_gate_subject(words: [remote_build_gate_word as String, label], operand: label) {
     RemoteBuildOperationRefused { cause } =>
       ExitFailure { code: 2, reason: join(["gunbc remote gate: ", remote_build_request_refusal_text(cause: cause)], "") }
     RemoteBuildOperationDecoded { operation } =>
       match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
         SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote gate: snapshot refused at ", step, ": ", detail], "") }
-        SnapshotResolved { commit } => remote_gate_run_and_exit(worktree: worktree, commit: commit, operation: operation, receipt_path: receipt_path)
+        SnapshotResolved { commit } => remote_gate_run_and_exit(worktree: worktree, commit: commit, operation: operation, receipt_path: receipt_path, identity_file: identity_file)
       }
   }
 }
@@ -516,8 +516,8 @@ fn remote_gate_cli(worktree: String, label: String, receipt_path: String) -> Pro
 // THE RUN, THE RECEIPT, THEN THE CODE. The receipt is written whether or not anything was served --
 // the attempts and their answer words are the record a human reads when the exit says "no host admitted
 // this" -- and the exit code is the class, never a re-derivation of it.
-fn remote_gate_run_and_exit(worktree: String, commit: String, operation: RemoteBuildOperation, receipt_path: String) -> ProcessExit {
-  let run = remote_build_run(worktree: worktree, commit_text: commit, operations: [operation])
+fn remote_gate_run_and_exit(worktree: String, commit: String, operation: RemoteBuildOperation, receipt_path: String, identity_file: String?) -> ProcessExit {
+  let run = remote_build_run(worktree: worktree, commit_text: commit, operations: [operation], identity_file: identity_file)
   let document = serialize_json(v: remote_build_run_json(r: run, declined: [], failed: []))
   let receipt = Filesystem.Write(path: receipt_path, content: document)
   if !receipt.success {

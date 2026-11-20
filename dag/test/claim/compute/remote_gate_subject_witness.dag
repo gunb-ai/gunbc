@@ -13,6 +13,7 @@ import gunbc.compute.host_capacity {
 }
 import gunbc.compute.work_class_grant {
   work_class_of, compute_gate_workload_profile, workload_profile_for, workload_profile_worst_case_kibibyte,
+  WorkloadProfileStanding, QuotedFromFleetFact, MeasuredFromSamples,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max, gunbc_runner_slot_job_cgroup_ownership }
 import gunbc.emitted_subject_build_gate {
@@ -94,8 +95,9 @@ test fn every_gate_row_decodes_through_the_real_request_route() -> Bool {
                     count_where(remote_build_operation_words(op: op), w => w == text) == 1 &&
                     render_label(l: label) == render_label(l: mapped) &&
                     render_label(l: mapped) == text
-                RemoteCompileEntry { entry: _ } => false
-                RemoteRunClaims { entry: _, functions: _ } => false
+                BuildGunbcBinaries { profile: _, bins: _ } => false
+                CompileEntry { entry: _ } => false
+                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => false
               }
             RemoteCompileEntry { entry: _ } => false
             RemoteRunClaims { entry: _, functions: _ } => false
@@ -189,9 +191,14 @@ test fn the_gate_class_is_admitted_at_its_profile_and_not_at_the_build_seat() ->
       Present { value: p } =>
         kibibyte_count(k: workload_profile_worst_case_kibibyte(p: p)) ==
           kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max)) &&
-        // THE STANDING TRAVELS WITH THE NUMBER. A bound with no stated authority is a guess wearing a
-        // unit; the claim does not read the prose, it only refuses a profile that carries none.
-        p.standing != "" as NonEmptyStr
+        // THE STANDING TRAVELS WITH THE NUMBER, AS A BRANCH. A quoted bound must not be consumable as if
+        // it were a measurement, and the quote must name the fact it is quoted from.
+        match p.standing {
+          QuotedFromFleetFact { fact } =>
+            fact.module_path == ("gunbc.runner.runner_slot_desired" as NonEmptyStr) &&
+              fact.decl_name == ("gunbc_runner_slot_memory_max" as NonEmptyStr)
+          MeasuredFromSamples { samples: _ } => false
+        }
     } &&
     match workload_profile_for(class: work_class_of(op: build_op)) {
       Absent => true
@@ -256,7 +263,7 @@ test fn the_gate_operation_hands_the_envelope_to_the_seed_that_reads_it() -> Boo
   count(ci_env) > 0 &&
     count(env) == count(ci_env) + 1 &&
     count_where(xs: ci_env, predicate: i =>
-      count_where(xs: env, predicate: b => b.name == i.env_name as NonEmptyStr) == 1) == count(ci_env) &&
+      count_where(xs: env, predicate: b => b.name == (i.env_name as NonEmptyStr)) == 1) == count(ci_env) &&
     // AND the operation asks the seed to judge the code with the SAME words the required gate's step
     // uses: `gunbc test <label>`, the label spelled by the row itself.
     count(words) == 2 &&

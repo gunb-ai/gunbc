@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { ByteSize, Kibibyte, kibibyte, kibibyte_count, byte_size_count }
 import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.work_request { WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, TestGateSubject, CargoProfile, cargo_profile_wire, work_operation_canonical }
 import extdeps.systemd.systemd_run {
@@ -84,16 +85,37 @@ fn work_class_of(op: WorkOperation) -> WorkClass {
 // workload-profiles-replace-seats. Until then this profile, not the build seat, is the ceiling -- the
 // seat is what a BUILD is split into, and sizing a gate run by dividing a build pool by a slot count
 // would under-reserve a workload that has never been in that pool.
+// THE STANDING IS A TYPE, NOT PROSE. Which kind of warrant a bound carries is the one thing a consumer
+// must be able to branch on, and a String field whose only purpose is commentary is the shape
+// gunbc.design_argument::source_annotations forbids.
+//
+// WHY NOT extdeps.external_authority::CitedFigureStanding, the corpus's standing carrier for figures
+// (Conformance, stated because the shapes look adjacent and are not): its CitedToAuthority arm cites an
+// EXTERNAL upstream by URI, and extdeps.external_authority is scoped to independently governed
+// upstreams; its ObservedByReceipt arm is minted only through the admit-gated observed_receipt over a
+// downstream declaration. The warrant here is neither kind. This bound is QUOTED FROM A DECLARATION OF
+// THIS CORPUS -- the fleet's own runner-slot fact -- so the carrier names that declaration, and a reader
+// can ask "which fact?" of the type without reading a sentence.
+//
+// THE SECOND ARM IS THE FUTURE, NAMED. Once the class has run under a provider unit, its own samples
+// replace the quoted bound; the arm exists so that replacement is a change of value, not a change of
+// type, and so a quoted upper bound can never be silently consumed as if it were a measurement.
+type WorkloadProfileStanding
+  = QuotedFromFleetFact { fact: DeclarationRef }
+  | MeasuredFromSamples { samples: List<WorkClassPeakSample> }
+
 type WorkloadProfile {
   class: WorkClass
   worst_case: ByteSize
-  standing: NonEmptyStr
+  standing: WorkloadProfileStanding
 }
 
 data compute_gate_workload_profile: WorkloadProfile = WorkloadProfile {
   class: WorkClassGateSubject,
   worst_case: gunbc_runner_slot_memory_max,
-  standing: "the MemoryMax the same subject step is admitted under in the required CI gate today (gunbc.runner.runner_slot_desired::gunbc_runner_slot_memory_max); an upper bound from the fleet's slot fact, not an observation from a provider unit",
+  // QUOTED, NOT MEASURED: the bound is the MemoryMax of the slot this subject step is admitted under in
+  // the required CI gate today. The arm says so, and the fact it is quoted from is named.
+  standing: QuotedFromFleetFact { fact: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "gunbc_runner_slot_memory_max") },
 }
 
 // ONE PROFILE PER CLASS, searched by the class and not by position. A class with no profile answers
