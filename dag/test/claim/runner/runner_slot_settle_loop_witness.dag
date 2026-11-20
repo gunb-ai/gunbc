@@ -277,7 +277,7 @@ test fn an_admitted_loop_is_stopped_and_read_back_before_anything_else_moves() -
   }
 }
 
-test fn an_unadmitted_loop_dispatches_nothing_at_all() -> Bool {
+test fn an_unadmitted_loop_issues_no_actuation_at_all() -> Bool {
   // The same world with one fact changed: the cgroup holds a worker. The refusal must leave the ledger
   // EMPTY -- not merely "no mask" -- because the harm this admission exists to prevent is a stop issued
   // beside a running job.
@@ -289,7 +289,14 @@ test fn an_unadmitted_loop_dispatches_nothing_at_all() -> Bool {
       match v {
         LoopRefusedForInstall { unit: _, step: st, why: _ } =>
           (st as String) == "stop-admission"
-            && length(ww.acts) == 0
+            // NOT "the ledger is empty": the leg looked before it refused, and the ledger records reads
+            // too (runner_host_withdraw_witness:246 appends every command). What must be absent is the
+            // MUTATION -- the harm this admission exists to prevent is a stop issued beside a running job.
+            && any(ww.acts, a => string_contains(s: a, pattern: "systemctl show"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl stop"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl start"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl mask"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl unmask"))
             && any(ww.slots, s => s.n == "06" && s.active == "activating")
         _ => false
       }
