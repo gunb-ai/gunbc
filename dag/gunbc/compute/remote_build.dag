@@ -84,7 +84,7 @@ fn remote_build_work_operation(op: RemoteBuildOperation) -> WorkOperation {
     RemoteCompileEntry { entry } => CompileEntry { entry: entry }
     RemoteRunClaims { entry, functions } =>
       RunClaims { entry: entry, functions: join(map(functions, f => f as String), ",") as NonEmptyStr, hermetic: true, window: none }
-    TestGateSubject { label: l } => TestGateSubject { label: l }
+    RemoteGateSubject { label: l } => TestGateSubject { label: l }
   }
 }
 

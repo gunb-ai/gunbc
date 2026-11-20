@@ -80,11 +80,10 @@ fn g_refusal(text: String) -> RemoteBuildRequestRefusal? {
 // special-cased one label, or that dropped the label on the way to the WorkOperation, reds here.
 test fn every_gate_row_decodes_through_the_real_request_route() -> Bool {
   let rows = emitted_subject_build_rows()
-  count(rows) > 0 &&
-    count(rows) == count(list_map(xs: rows, f: fn(row) {
+  count_where(list_map(xs: rows, f: fn(row) {
       let text = emitted_subject_build_label_text(row: row)
       match g_decode(text: g_request_text(label_text: text)) {
-        Absent => 0
+        Absent => false
         Present { value: op } =>
           match op {
             RemoteGateSubject { label } =>
@@ -95,15 +94,14 @@ test fn every_gate_row_decodes_through_the_real_request_route() -> Bool {
                     count_where(remote_build_operation_words(op: op), w => w == text) == 1 &&
                     render_label(l: label) == render_label(l: mapped) &&
                     render_label(l: mapped) == text
-                BuildGunbcBinaries { profile: _, bins: _ } => false
-                CompileEntry { entry: _ } => false
-                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => false
+                RemoteCompileEntry { entry: _ } => false
+                RemoteRunClaims { entry: _, functions: _ } => false
               }
             RemoteCompileEntry { entry: _ } => false
             RemoteRunClaims { entry: _, functions: _ } => false
           }
       }
-    }))
+    }), b => b) == count(rows) && count(rows) > 0
 }
 
 // THE DEPENDENCY RULE, ON THE SIDE THE SERVE READS IT. A gate request must NOT be sent down the
