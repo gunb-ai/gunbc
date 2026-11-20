@@ -3145,7 +3145,7 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
   identity: "h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_pinned_members"),
-    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry is not in the stale set, so the model cannot say where it lives or that removing it is the converge's job. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
+    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry sat outside every family the fold claims, so the model could not say where it lived or that removing it was the converge's job. The ENTRY half is drawn in by the change this row now carries a sighting for: site_pxe_edge_owned_install_path takes the edge's staging/ subtree as a whole, derived from site_pxe_edge_served_root rather than from a second constant naming the same directory, and site_pxe_edge_empty_owned_install_dirs retires a directory the removal has emptied, inside the owned families only. That leaves the half quoted above -- a dnsmasq line with no line-level delta the model can read -- as what still stands unmodelled on this edge. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
     standing: RequirementEstablished {
       by: CitesArtifact {
         label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (srv4's own answers: stale-install-files=found naming this unit's seed paths; dnsmasq config before=differs; nothing written)",
@@ -3161,6 +3161,9 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
       decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_paths"),
       decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
       decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_mac"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_empty_owned_install_dirs"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
     ],
   },
   question: "The stale fold owns files under the edge's install roots. What owns the live state that is not such a file -- a dnsmasq line the model never rendered, an install entry that is not in the roots the fold lists -- and what does a converge run have to read before it removes one?",
@@ -3221,6 +3224,23 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
           ],
         },
         account: "Sighted on 2026-11-16 by still-fox-404 at smart-crane-730's instruction, and it is why this lane holds its own apply even though its read is done. Three of the five stale paths the observe listed are not this unit's: they carry 9c:6b:00:e7:ca:63, which gunbc.machine_intake.srv15_host_nic_observation records as SRV15's install NIC. So one stale set spans two hosts and two lanes -- the files this bring-up wants removed, and the hand-staged install entry and seed that srv15's arrival (the lane of #16357) targets. Deleting them before that lane admits its own binding would be a converge acting on a host whose model is mid-flight, and that is exactly what the stale fold cannot see: it computes staleness per edge, not per host's lifecycle stage. The hold is smart-crane-730's instruction inside his own bring-up-plan lane. It is NOT entered in gunbc.design_ruling: that ledger carries dated rulings of the operator, and nobody gave this one operator authority -- the MAC-to-srv15 fact it rests on is this repository's own record (gunbc.machine_intake.srv15_host_nic_observation), read here by a read-only observe. Held CONDITIONAL, per smart-crane-730, and not to be chased: the stale set is 'install files no admitted binding renders', so those three paths leave the stale set iff the install binding admitted on this edge renders exactly those paths; if the render lands elsewhere, they stay stale and the hand-staged files stay on the box. Whether they land at those three paths is a property of the render, not of any lane's intent -- and proud-badger's arrival renders nothing on this edge, so that is not the question to ask anyone. Nothing here says the render does or does not name them.",
+      },
+      ConcernSighting {
+        revision: edge_residue_read_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.a_revision_citation_that_no_landing_contains", decl_name: "a_revision_citation_that_no_landing_contains"),
+            },
+          ],
+        },
+        account: "Read off srv4 read-only on 2026-11-19T20:55Z and again on 2026-11-20T06:19:53Z, and attributed to the fold by its OWN LOG rather than by mtimes. TWO OF THE THREE HAND-STAGED ARTIFACTS ARE ALREADY GONE, BY THE CONVERGE: fleet-converge run 44249605412 (dispatched 2026-11-18T06:12:13Z at head 418bf0a167) prints at 06:29:46.827Z stale-install-files=removed: over five paths -- this unit's seed user-data and meta-data, srv15's seed pair, and srv15's install config -- and in the same run, file dnsmasq-proxy-dhcp-config path=/etc/gunbc-site-pxe-edge.dnsmasq.conf before=differs outcome=written-and-read-back, which is what took the hand-added ken line out of the proxy config: the file now carries three dhcp-host lines and none of them names this unit's install MAC. THE THIRD SURVIVES BOTH READS: /srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg, 450 bytes, whose own header reads hand-staged 2026-11-15 (session 9a3ff854): one-shot autoinstall of the new H11SSL at BMC 192.168.1.249; remove after install, and which still carries a live autoinstall stanza naming srv4's installer image and seed URLs. It sits outside every family the owned-path predicate claims, and that run's log never contains h11new or withdrawn -- the fold has never listed it. The second read adds what a file-only rule cannot see at all: the directories the removal left empty -- http/seed/ac-1f-6b-e6-75-eb and http/seed/9c-6b-00-e7-ca-63, both emptied by that run at 06:29:46Z, http/seed/9c-6b-00-e7-ca-9c, empty since 2026-11-10, and tftp/grub/install. DIRECTION is settled by smart-crane-730's ruling of 2026-11-19, relayed to this session: draw the owned set from WHAT THE FOLD RENDERS, not from the name somebody gave a directory -- the fold renders nothing under the served root's staging/ subtree, so anything found there is residue by construction -- and refuse to model withdrawn-*, which is one person's naming convention and would mint vocabulary for a hand act. The change rides in this row's own diff: the staging subtree joins the owned roots through site_pxe_edge_served_root, and site_pxe_edge_empty_owned_install_dirs retires a directory the removal has emptied, inside the owned families only, deepest first. The ordering that change depends on is stated where it can be read rather than assumed: the placement leg stages the installer image under that same subtree, verifies it by digest and un-stages it inside one leg, and the run takes that leg BEFORE the stale listing; the witness pins the order the run reports, and if the order ever flipped the cost is a re-download verified by digest again, never a corrupted served copy. WHAT KEEPS THIS ROW OPEN is the dnsmasq half quoted in the requirement -- a line-level delta the model cannot read -- plus the removal on srv4 itself, which happens only through a fleet-converge dispatch the operator authorizes (nothing is dispatched from this lane) and the re-read afterwards that turns the read obligation into a receipt. The DISPOSITION stays Open deliberately even though the ownership change rides in the same diff: closing it would need an integrated_at naming a revision that already contains the new fold, and no such revision exists until this lands -- the invalid state gunbc.recurring_failure_mode::a_revision_citation_that_no_landing_contains files. The closure goes to a follow-up that can name the landing revision, the way h11ssl_unit3_three_gpu_functions_against_two_reported_cards did.",
       },
     ],
   },
@@ -4008,63 +4028,15 @@ data integration_concerns: List<IntegrationConcern> = [site_pxe_edge_pinned_chai
   h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
-  normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, three_spark_lan_endpoint_rows_answer_their_addresses_twice, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands, edge_install_residue_lives_outside_the_fold_that_prunes_it]
+  normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, three_spark_lan_endpoint_rows_answer_their_addresses_twice, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands]
 
-// The main revision the 2026-11-19 read-only edge listing was taken against. The ownership change this concern asks
-// for lands in a LATER change, and no revision is claimed for it here: gunbc.recurring_failure_mode
-// ::a_revision_citation_that_no_landing_contains is exactly right that a citation must name a revision a reader can
-// stand on, and a pending change has none.
+// The main revision the 2026-11-19 and 2026-11-20 read-only edge listings were taken against -- the ref those
+// readings are a statement about. The ownership change they evidence is carried by this row's fifth sighting; no
+// revision is claimed for the landing itself, because gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
+// stand on, and a pending change has none until it lands.
 data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
 
-// A HAND-STAGED INSTALL ENTRY SITS ON THE EDGE HOST OUTSIDE EVERY FAMILY THE PRUNE FOLD OWNS. The removals this
-// lane expected from the converge mostly happened -- see the sighting -- so this is not a story about a prune that
-// failed. It is about the residue the predicate never looks at: the fold lists every FILE under the edge root and
-// then keeps the paths site_pxe_edge_owned_install_path claims (tftp/grub/install/, tftp/grub/grub.cfg-01-*,
-// http/seed/). A hand-staged entry moved into the edge's staging/ subtree is listed and then dropped, so no future
-// run of the same fold will ever remove it; and a seed directory left empty by a prune is not a file at all, so the
-// same rule leaves it. The module's own words at the pruning rule call a leftover install file "a standing
-// authorization to erase whichever client reaches it", which is why leaving the residue is not the safe option.
-data edge_install_residue_lives_outside_the_fold_that_prunes_it: IntegrationConcern = IntegrationConcern {
-  identity: "edge_install_residue_lives_outside_the_fold_that_prunes_it",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
-    requirement: "every install residue left on a site PXE edge is inside the fold that prunes install residue, so that its removal is something the converge does rather than something a person does by hand",
-    standing: RequirementEstablished {
-      by: CitesDeclaration {
-        declaration: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_files"),
-      },
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
-    tail: [
-      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_paths"),
-      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
-    ],
-  },
-  question: "What owns the install residue that the edge listing sees and the owned-path predicate excludes -- a hand-staged entry parked under the edge's staging/ subtree, and a seed directory emptied by an earlier apply? The lane rule is that a converge run removes edge install residue and a person never does it by hand, so leaving these two in place is not neutrality: it is an install authorization that outlives every future run of the fold that is supposed to retire it. Closing it needs the owned set drawn from WHAT THE FOLD RENDERS rather than from the name somebody gave a directory -- the fold renders nothing under the staging/ subtree, so everything found there is residue by construction -- plus a rule for a directory left empty once its files are pruned, inside the owned families only.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: edge_residue_read_revision,
-      evidence: FreeSemigroup {
-        head: CitesDeclaration {
-          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
-        },
-        tail: [
-          CitesDeclaration {
-            declaration: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
-          },
-          CitesDeclaration {
-            declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.a_revision_citation_that_no_landing_contains", decl_name: "a_revision_citation_that_no_landing_contains"),
-          },
-        ],
-      },
-      account: "Read off srv4 read-only on 2026-11-19T20:55-20:56Z and attributed to the fold by its own log, not by mtimes. TWO OF THE THREE ARTIFACTS ARE ALREADY GONE, BY THE CONVERGE: fleet-converge run 44249605412 (dispatched 2026-11-18T06:12:13Z, head 418bf0a167) prints at 06:29:46.827Z stale-install-files=removed: over five paths -- this unit's seed user-data and meta-data, srv15's seed pair, and srv15's install config -- and in the same run file dnsmasq-proxy-dhcp-config path=/etc/gunbc-site-pxe-edge.dnsmasq.conf before=differs outcome=written-and-read-back, which is what took the hand-added ken line out of the proxy config. THE THIRD SURVIVES: /srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg, whose own header says hand-staged 2026-11-15 (session 9a3ff854) … remove after install, still carrying a live autoinstall stanza. It is outside the owned families, and that run's log never contains h11new or withdrawn -- the fold has never listed it. The residue question is settled in DIRECTION by smart-crane-730 on 2026-11-19 (relayed to this session): extend site_pxe_edge_owned_install_path to the staging/ subtree as a whole, on the ground that the fold's rendering leg writes no lasting file there -- the placement leg fetches the installer image into it, verifies it and un-stages it inside one leg, which the run takes before the stale listing -- and do NOT model withdrawn-*, which is one person's naming convention and would mint vocabulary for a hand act; and extend the prune rule to a directory left empty after its files are removed, inside the owned roots only. WHAT THE RULING LEFT OPEN, and this row stays open on it: the removal on srv4 itself, which happens only through a fleet-converge dispatch that is the operator's to authorize (nothing is dispatched from here), and the re-read of the edge afterwards, which is what turns this row's read_obligation into a receipt. The DISPOSITION also stays Open on purpose even though the ownership change is in the same change as this row: closing it would need an integrated_at naming a revision that contains the new fold, and no such revision exists until the change lands. That is exactly the invalid state gunbc.recurring_failure_mode::a_revision_citation_that_no_landing_contains files, so the closure goes to a follow-up that can cite the landing revision, the way h11ssl_unit3_three_gpu_functions_against_two_reported_cards did.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
