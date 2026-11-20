@@ -1,7 +1,7 @@
 module gunbc.witness.hosted_runner_shadow_gate_workflow
 
 
-import std.types { String, Int, List }
+import std.types { String, Int, List, bool_text }
 import std.optional { Present, Absent }
 import std.algebra { list_map, list_head, list_append }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -152,7 +152,10 @@ fn shadow_gate_config_check_script() -> String {
 // or Terraform cleanup. The tailscale/github-action's post step logs the node out.
 
 data shadow_gate_tailscale_tags: String = join(ci_oauth_client_tags, ",")
-data shadow_gate_tailscale_args: String = "--accept-dns=false --ephemeral"
+// `tailscale up` args for the runner node. --ephemeral is DERIVED from the credential's ephemeral
+// row (a non-ephemeral OAuth-minted node would linger on a GitHub-hosted runner forever; the
+// standing is one fact with one home: ci_oauth_client_ephemeral).
+data shadow_gate_tailscale_args: String = concat("--accept-dns=false --ephemeral=", bool_text(b: ci_oauth_client_ephemeral))
 
 // ── THE CONFIG-CHECK STEP ─────────────────────────────────────────────────────────────────────────
 //
