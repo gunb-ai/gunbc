@@ -4,19 +4,24 @@ import std.types { Bool, String, List }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import std.list { first_where }
-import gunbc.actions_run_binding { fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name }
+import gunbc.actions_run_binding { fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name, fleet_converge_subject_rule_env_name }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
 import v2.workflow.bash_emit { Accepted, Rejected }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_converge_executor_subject_split {
   fleet_converge_split_precheck,
   fleet_converge_install_subject_decision,
-  fleet_converge_split_rule_for_mode,
+  fleet_converge_split_rule_wire,
+  fleet_converge_split_rule_of_wire,
+  SubjectRuleNotApplicable,
+  split_rule_wire_not_applicable,
+  split_rule_wire_required_and_distinct,
+  split_rule_wire_may_be_executors_own,
   fleet_converge_split_gate_script,
   fleet_converge_split_missing_subject_marker,
   fleet_converge_split_missing_executor_marker,
   fleet_converge_split_refusal_marker,
-  fleet_converge_install_rule_mode_wires,
+  ModeDeclaresNoSubject,
   SplitSubjectRule,
   SubjectRequiredAndDistinct,
   SubjectMayBeTheExecutorsOwnMachine,
@@ -43,8 +48,7 @@ import gunbc.fleet.fleet_converge_workflow {
   step_condition_text,
   FleetConvergeWorkflowMode,
   HostMemoryObserve,
-  ExecutorDomain,
-}
+  ExecutorDomain,, fleet_converge_mode_facts, fleet_converge_subject_rule_expression, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes }
 import gunbc.fleet.fleet_known_hosts_anchor { anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, SshTargetResolved, SshTargetRefused }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { Step, RunStep, UsesStep }
@@ -100,20 +104,23 @@ test fn a_mode_that_names_no_subject_gets_neither_the_gate_nor_the_env() -> Bool
 // against the same list the entries read. The empty-script arm is refused by the generation gate
 // (fleet_converge_split_gate_script_admitted), so a script the fold rejects stops the yml being emitted at
 // all rather than shipping a syntax error.
-test fn the_gate_step_binds_the_mode_and_the_script_carries_the_rule_test() -> Bool {
+test fn the_gate_step_binds_the_rule_and_the_script_tests_the_rule_not_the_mode() -> Bool {
   let gate = fleet_converge_executor_subject_split_gate_step()
   let script = fleet_converge_split_gate_script(
     executor_env_name: fleet_converge_expected_host_env_name,
     subject_env_name: fleet_converge_subject_host_env_name,
-    mode_env_name: fleet_converge_mode_env_name
+    rule_env_name: fleet_converge_subject_rule_env_name
   )
-  env_keys(step: gate) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name]
-    && env_text(step: gate, key: fleet_converge_mode_env_name) == "${{ github.event.inputs.mode }}"
+  env_keys(step: gate) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_subject_rule_env_name]
+    && env_text(step: gate, key: fleet_converge_subject_rule_env_name) == "${{ " + serialize_expression(expression: fleet_converge_subject_rule_expression()) + " }}"
     && match script {
       Accepted { value: s, diagnostics: _ } =>
-        string_contains(s: s, pattern: concat("$", fleet_converge_mode_env_name))
-          && all(fleet_converge_install_rule_mode_wires, w => string_contains(s: s, pattern: w))
+        string_contains(s: s, pattern: concat("$", fleet_converge_subject_rule_env_name))
+          && all([split_rule_wire_required_and_distinct, split_rule_wire_not_applicable], w => string_contains(s: s, pattern: concat("'", w, "'")))
           && string_contains(s: s, pattern: "!=")
+          // The script no longer names ANY mode: the mode names disappeared with the hand-typed list, so
+          // there is nothing here for a rename to miss (review 96951).
+          && !string_contains(s: s, pattern: "remote_build_serving_converge")
           && string_contains(s: s, pattern: fleet_converge_split_missing_subject_marker)
           && string_contains(s: s, pattern: fleet_converge_split_missing_executor_marker)
           && string_contains(s: s, pattern: fleet_converge_split_refusal_marker)
@@ -184,7 +191,7 @@ test fn srv1_executing_for_a_butch_subject_is_admitted() -> Bool {
 // host name and a full runner name. And a mode that declares NO rule falls back to the drain rule: the
 // default is the stricter one, so a new subject-naming mode is refused rather than served by accident.
 test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
-  match fleet_converge_split_rule_for_mode(mode: "runner_host_withdraw") {
+  match fleet_converge_mode_facts(mode: mode_named(name: "runner_host_withdraw")).subject_rule {
     SubjectRequiredAndDistinct => true
     _ => false
   }
@@ -196,8 +203,8 @@ test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
       SplitRefused { reason: _ } => true
       _ => false
     }
-    && match fleet_converge_split_rule_for_mode(mode: "qualification_attempt") {
-      SubjectRequiredAndDistinct => true
+    && match fleet_converge_install_subject_decision(rule: fleet_converge_mode_facts(mode: mode_named(name: "qualification_attempt")).subject_rule, executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
+      InstallSubjectRefused { reason: why } => match why { ModeDeclaresNoSubject => true  _ => false }
       _ => false
     }
 }
@@ -208,19 +215,19 @@ test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
 // the drain rule to these modes would leave a host with no second lane impossible to converge, and srv1 --
 // which serves remote builds and is its own executor -- unconvergeable forever.
 test fn the_install_rule_admits_the_pair_the_drain_rule_refuses() -> Bool {
-  match fleet_converge_split_rule_for_mode(mode: "remote_build_serving_converge") {
+  match fleet_converge_mode_facts(mode: mode_named(name: "remote_build_serving_converge")).subject_rule {
     SubjectMayBeTheExecutorsOwnMachine => true
     _ => false
   }
-    && match fleet_converge_split_rule_for_mode(mode: "remote_build_serving_observe") {
+    && match fleet_converge_mode_facts(mode: mode_named(name: "remote_build_serving_observe")).subject_rule {
       SubjectMayBeTheExecutorsOwnMachine => true
       _ => false
     }
-    && match fleet_converge_install_subject_decision(executor_runner_name: "actions-runner@srv14-01", named_subject: "srv14", own_host: "srv1") {
+    && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "actions-runner@srv14-01", named_subject: "srv14", own_host: "srv1") {
       InstallSubjectOnNamedSubject { executor_runner_name: e, subject_host: s } => e == "actions-runner@srv14-01" && s == "srv14"
       _ => false
     }
-    && match fleet_converge_install_subject_decision(executor_runner_name: "srv3-01-1764067000-1", named_subject: "srv3", own_host: "srv3") {
+    && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "srv3-01-1764067000-1", named_subject: "srv3", own_host: "srv3") {
       InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: s } => s == "srv3"
       _ => false
     }
@@ -234,19 +241,19 @@ test fn the_install_rule_admits_the_pair_the_drain_rule_refuses() -> Bool {
 // executor to attribute it to. The one admissible same-machine case is the historical one: the executor's own
 // expected HOST names the machine.
 test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
-  match fleet_converge_install_subject_decision(executor_runner_name: "srv1-03-1764067000-4213", named_subject: "", own_host: "") {
+  match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "srv1-03-1764067000-4213", named_subject: "", own_host: "") {
     InstallSubjectRefused { reason: why } => match why { SubjectAbsent => true  _ => false }
     _ => false
   }
-    && match fleet_converge_install_subject_decision(executor_runner_name: "", named_subject: "srv14", own_host: "srv1") {
+    && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "", named_subject: "srv14", own_host: "srv1") {
       InstallSubjectRefused { reason: why } => match why { ExecutorIdentityAbsent => true  _ => false }
       _ => false
     }
-    && match fleet_converge_install_subject_decision(executor_runner_name: "srv3-01-1764067000-1", named_subject: "", own_host: "srv3") {
+    && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "srv3-01-1764067000-1", named_subject: "", own_host: "srv3") {
       InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: h } => h == "srv3"
       _ => false
     }
-    && match fleet_converge_install_subject_decision(executor_runner_name: "", named_subject: "", own_host: "") {
+    && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "", named_subject: "", own_host: "") {
       InstallSubjectRefused { reason: why } => match why { ExecutorIdentityAbsent => true  _ => false }
       _ => false
     }
@@ -276,11 +283,10 @@ test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
 // of the same gate would disagree.
 test fn the_rule_list_and_the_roster_name_the_same_pair() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
-  length(fleet_converge_install_rule_mode_wires) == 2
-    && all(fleet_converge_install_rule_mode_wires, w => any(roster, r => r == w))
-    && all(fleet_converge_install_rule_mode_wires, w => install_rule_admits_its_own_mode(mode: w))
-    && all(roster, w => install_rule_admits_its_own_mode(mode: w) == any(fleet_converge_install_rule_mode_wires, x => x == w))
+  length(roster) == 5
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
+    && all(roster, w => install_rule_admits_its_own_mode(mode: w) != drain_rule_admits_its_own_mode(mode: w))
+    && all(map(filter(fleet_converge_workflow_modes, m => drain_rule_admits_its_own_mode(mode: fleet_converge_workflow_mode_wire(mode: m))), m => fleet_converge_workflow_mode_wire(mode: m) == "runner_host_file_converge" || fleet_converge_workflow_mode_wire(mode: m) == "runner_host_withdraw" || fleet_converge_workflow_mode_wire(mode: m) == "runner_host_restore" || fleet_converge_workflow_mode_wire(mode: m) == "hostname_converge")
     && !any(roster, w => w == "runner_host_file_observe")
 }
 
@@ -293,11 +299,29 @@ fn mode_named(name: String) -> FleetConvergeWorkflowMode {
   }
 }
 
-// The install-rule list must only ever name modes whose rule the module actually hands out. Written as a
-// named predicate because an inline match in a lambda body is a call site to the parser, and a call to no
-// function is exactly the mistake a green witness would hide.
+// (12) THE EMITTED RULE PAIRS EVERY GATED MODE WITH THE RULE ITS FACTS ROW DECLARES. This is the claim
+// that makes the environment value a RENDERING of the table rather than a second list: it compares the
+// expression the emitter produces against the rule each facts row carries, spell-checked with quotes so a
+// rule cannot be smuggled in as a substring of another word. The trailing not_applicable is the fail-closed
+// arm -- a mode outside the roster that somehow reaches a subject-taking entry is refused by the entry
+// (claim 7), never served by a default.
+test fn the_emitted_rule_pairs_each_gated_mode_with_its_own_rule() -> Bool {
+  let rendered = serialize_expression(expression: fleet_converge_subject_rule_expression())
+  all(fleet_converge_modes_naming_a_subject(), m =>
+    string_contains(s: rendered, pattern: concat("'", fleet_converge_workflow_mode_wire(mode: m), "'"))
+      && string_contains(s: rendered, pattern: concat("'", fleet_converge_split_rule_wire(rule: fleet_converge_mode_facts(mode: m).subject_rule), "'"))
+  )
+    && string_contains(s: rendered, pattern: concat("'", split_rule_wire_not_applicable, "'"))
+    && fleet_converge_split_rule_wire(rule: SubjectRequiredAndDistinct) == split_rule_wire_required_and_distinct
+    && fleet_converge_split_rule_of_wire(wire: split_rule_wire_may_be_executors_own) == SubjectMayBeTheExecutorsOwnMachine
+    && match fleet_converge_install_subject_decision(rule: fleet_converge_split_rule_of_wire(wire: "required_and_distinct_"), executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
+      InstallSubjectRefused { reason: why } => match why { ModeDeclaresNoSubject => true  _ => false }
+      _ => false
+    }
+}
+
 fn install_rule_admits_its_own_mode(mode: String) -> Bool {
-  match fleet_converge_split_rule_for_mode(mode: mode) {
+  match fleet_converge_mode_facts(mode: mode_named(name: mode)).subject_rule {
     SubjectMayBeTheExecutorsOwnMachine => true
     _ => false
   }
@@ -308,7 +332,7 @@ fn install_rule_admits_its_own_mode(mode: String) -> Bool {
 // executor different from the subject. Asserting the halves rather than a roster count is what lets a sixth
 // mode arrive without editing this witness: it must land on one side of the split or the claim goes red.
 fn drain_rule_admits_its_own_mode(mode: String) -> Bool {
-  match fleet_converge_split_rule_for_mode(mode: mode) {
+  match fleet_converge_mode_facts(mode: mode_named(name: mode)).subject_rule {
     SubjectRequiredAndDistinct => true
     _ => false
   }
