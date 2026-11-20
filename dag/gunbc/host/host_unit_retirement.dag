@@ -1,0 +1,272 @@
+module gunbc.host.host_unit_retirement
+
+// B3b Group B, trigger (1): retire the serving residue on butch (srv14). The operator's 2026-11-19
+// ruling (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
+// recorded from the operator's direct words: "yes you can retire its serving engines, remote build is
+// more important") removes the reason these units exist: butch takes no CI jobs and no serving, and the
+// memory its engines were charged for moves to the remote-build ledger. The units are:
+//   strata-pool@a.service / strata-pool@b.service -- the two Strata engines (gunbc.serving.serving_host_memory
+//     butch_a/b_strata_engine_memory; both read Inactive in the committed capture, retired by the same
+//     ruling that retired their cap intents at gunbc.serving.gpu_power_state_policy);
+//   a2-power-cap.service -- the boot power cap for four A2s the operator reports PHYSICALLY REMOVED from
+//     butch to be sold; the unit reads FAILED and gunbc.serving.gpu_power_state_policy names THIS dispatch
+//     as its retirement route ("residue for the converge dispatch named in this PR's follow-up").
+// The run is a fleet-converge apply: executor = the dispatch's `host` (srv1 today), subject = `subject_host`
+// (srv14), enforced distinct by gunbc.fleet.fleet_converge_executor_subject_split before this step runs --
+// so the act needs no CI capacity on butch, which the ruled zero width (gunbc.runner.runner_slot_allocation
+// ruled_zero_ci_widths) would otherwise refuse.
+//
+// TEARDOWN, NOT MASK. A masked unit still loads (LoadState=loaded, UnitFileState=masked); the frontier this
+// dispatch dissolves asks the units be GONE from the system manager, with the fragment kept outside the
+// unit search path so an operator can re-inspect what was torn down. Each fragment is copied to the
+// retained directory under its unit name BEFORE deletion, and the readback is what the refusal below names:
+// retired means LoadState=not-found AND inactive AND a retained copy readable at the retained path.
+// A unit that is merely stopped is NOT retired and the run refuses on it.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { Cons, Empty, string_contains, trim, list_head }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.design_ruling { hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, fleet_converge_split_refusal_line, SplitOk, SplitRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_is_active_argv }
+import extdeps.tools.mkdir { mkdir_parents_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_file_argv }
+import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.exec.command { argv_words }
+
+data srv14_host_name: String = operator_host_srv14 as String
+
+// The retained-copy home: OUTSIDE every path systemd searches for unit fragments (/etc/systemd/system,
+// /run/systemd/system, /usr/lib/systemd/system), so a retained fragment cannot be re-loaded by accident.
+data host_unit_retirement_retained_dir: String = "/var/lib/gunbc/retired-units"
+
+// The CI job user's own fleet-automation identity names the attempt; the ssh session authenticates as the
+// administrator principal (the anchored address + pinned key decide where and as whom), and the acts are
+// root's: stop, copy, delete, reload.
+data host_unit_retirement_attempt_raw: String = "fleet-automation@host-unit-retirement"
+
+// The receipt the dispatch leaves on the EXECUTOR: the post-frontier cut (Group B (c)) cites this run's
+// receipt as the reason the srv14 serving charges may be retired, so the run that tore the units down must
+// say so in a file, not only in its exit message.
+data gunbc_ci_host_unit_retirement_receipt_path: String = "target/host-unit-retirement-receipt.txt"
+
+// THE PLAN, as data. One row per unit the ruling retires on butch, with the per-row no-consumer reason:
+// who today still reads this unit's state, and why nothing needs it any more. A row without a reason is
+// not a retirement, it is a disappearance -- the reason is what the reviewer and the receipt both read.
+type HostUnitRetirementRow {
+  host: String,
+  unit: NonEmptyStr,
+  fragment_path: String,
+  retained_path: String,
+  no_consumer_reason: NonEmptyStr,
+}
+
+fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
+  [
+    HostUnitRetirementRow {
+      host: srv14_host_name,
+      unit: "strata-pool@a.service" as NonEmptyStr,
+      fragment_path: "/etc/systemd/system/strata-pool@a.service",
+      retained_path: "/var/lib/gunbc/retired-units/strata-pool@a.service",
+      no_consumer_reason: "no consumer: the operator ruling gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign retires butch's serving engines -- butch serves nothing and runs no CI jobs; the engine's MemoryMax charge (serving_host_memory butch_a_strata_engine_memory) is retired against the runner envelope by the post-frontier cut that cites this dispatch's receipt" as NonEmptyStr,
+    },
+    HostUnitRetirementRow {
+      host: srv14_host_name,
+      unit: "strata-pool@b.service" as NonEmptyStr,
+      fragment_path: "/etc/systemd/system/strata-pool@b.service",
+      retained_path: "/var/lib/gunbc/retired-units/strata-pool@b.service",
+      no_consumer_reason: "no consumer: same ruling retires the second engine; butch_b_strata_engine_memory's charge is retired by the post-frontier cut citing this dispatch's receipt" as NonEmptyStr,
+    },
+    HostUnitRetirementRow {
+      host: srv14_host_name,
+      unit: "a2-power-cap.service" as NonEmptyStr,
+      fragment_path: "/etc/systemd/system/a2-power-cap.service",
+      retained_path: "/var/lib/gunbc/retired-units/a2-power-cap.service",
+      no_consumer_reason: "no consumer: the four A2s it capped were physically removed from butch to be sold (operator report 2026-11-17, held at gunbc.serving.gpu_power_state_policy's retirement note, which names THIS dispatch as the unit's residue route); the unit reads FAILED and its intent rows are already retired" as NonEmptyStr,
+    },
+  ]
+}
+
+fn host_unit_retirement_rows_for(host: String) -> List<HostUnitRetirementRow> {
+  filter(host_unit_retirement_rows(), r => r.host == host)
+}
+
+// THE OBSERVED RETIREMENT, as data. EMPTY today because the units are standing on the machine (committed
+// capture, runner_host_butch_capture_witness 2026-11-14: engines loaded+inactive, a2-power-cap loaded+FAILED).
+// When the live dispatch runs, the following-up commit fills these rows FROM THE RUN'S RECEIPT -- one row
+// per unit with the receipt's own reads and its run id -- exactly as the runner capture rows carry their
+// observation. A row here without a real dispatch behind it is a lie about a machine; only the receipt
+// may fill this list.
+type HostUnitRetirementObservation {
+  unit: NonEmptyStr,
+  load_state: String,
+  active_state: String,
+  retained_readable: Bool,
+  probed_at: NonEmptyStr,
+  dispatch_run_id: NonEmptyStr,
+}
+
+data host_unit_retirement_observed_readings: List<HostUnitRetirementObservation> = []
+
+// The receipt's reads, judged through the SAME readback the wet entry applies to its own acts.
+fn host_unit_retirement_observed_row_readback(o: HostUnitRetirementObservation) -> HostUnitRetirementReadback {
+  host_unit_retirement_read_row(
+    HostUnitRetirementRow {
+      host: srv14_host_name,
+      unit: o.unit,
+      fragment_path: concat("/etc/systemd/system/", o.unit as String),
+      retained_path: concat(host_unit_retirement_retained_dir, "/", o.unit as String),
+      no_consumer_reason: "observed" as NonEmptyStr,
+    },
+    o.load_state,
+    o.active_state,
+    o.retained_readable,
+  )
+}
+
+fn host_unit_retirement_committed_readbacks() -> List<HostUnitRetirementReadback> {
+  map(host_unit_retirement_observed_readings, o => host_unit_retirement_observed_row_readback(o))
+}
+
+// THE READBACK, per row, from the reads the wet entry takes. Retired is the only accepting shape.
+type HostUnitRetirementReadback
+  = Retired { unit: NonEmptyStr, retained_path: String }
+  | UnitStillLoaded { unit: NonEmptyStr, load_state: String }
+  | UnitActive { unit: NonEmptyStr, active_state: String }
+  | RetainedCopyAbsent { unit: NonEmptyStr, retained_path: String }
+
+fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String, active_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
+  if load_state != "not-found" then
+    UnitStillLoaded { unit: row.unit, load_state: load_state }
+  else if active_state != "inactive" then
+    UnitActive { unit: row.unit, active_state: active_state }
+  else if !retained_readable then
+    RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
+  else
+    Retired { unit: row.unit, retained_path: row.retained_path }
+}
+
+fn host_unit_retirement_readback_line(readback: HostUnitRetirementReadback) -> String {
+  match readback {
+    Retired { unit, retained_path } => concat("retired ", unit as String, " retained=", retained_path)
+    UnitStillLoaded { unit, load_state } => concat("STILL-PRESENT ", unit as String, " load-state=", load_state)
+    UnitActive { unit, active_state } => concat("ACTIVE ", unit as String, " active-state=", active_state)
+    RetainedCopyAbsent { unit, retained_path } => concat("RETAINED-ABSENT ", unit as String, " path=", retained_path)
+  }
+}
+
+fn is_retired_readback(readback: HostUnitRetirementReadback) -> Bool {
+  match readback {
+    Retired { unit: _, retained_path: _ } => true
+    _ => false
+  }
+}
+
+fn host_unit_retirement_all_retired(readbacks: List<HostUnitRetirementReadback>) -> Bool {
+  match filter(readbacks, rb => !is_retired_readback(rb)) {
+    Empty => true
+    _ => false
+  }
+}
+
+// THE RULING IS THE CAUSE. The mode exists because one ruling row says so; the first row names it, and
+// this claim pins that the named ruling is the live datum -- deleting or renaming the ruling turns the
+// mode's justification red rather than silently stranding the units.
+fn host_unit_retirement_rows_cite_the_live_ruling() -> Bool {
+  let ruling_decl = hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.reference.decl_name as String
+  match host_unit_retirement_rows() {
+    Empty => false
+    Cons { head: r, tail: _ } => string_contains(s: r.no_consumer_reason as String, pattern: ruling_decl)
+  }
+}
+
+// THE ACTS, over the fleet-ssh exec channel as the administrator. Every leg that exits non-zero reads as
+// a failed Convergence (result.success), never as an implicit pass.
+fn host_unit_retirement_exec_all(target: SshTarget, context: FleetSshExecutionContext, commands: List<List<String>>) -> List<TypedArgvExecOutcome> {
+  map(commands, c => typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: c))
+}
+
+fn host_unit_retirement_ok(outcome: TypedArgvExecOutcome) -> Bool {
+  match outcome {
+    TypedArgvExecConverged { result: r } => r.exit_code == 0
+    TypedArgvExecRefused { reason: _ } => false
+  }
+}
+
+fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome) -> String {
+  match outcome {
+    TypedArgvExecConverged { result: r } => match list_head(split(s: r.stdout, delimiter: "\n")) {
+      Present { value: l } => trim(s: l)
+      Absent => ""
+    }
+    TypedArgvExecRefused { reason: _ } => ""
+  }
+}
+
+// ONE ROW, acted: stop (idempotent), retain-then-delete (the delete runs only when the copy's own leg
+// succeeded -- a row never deletes what was not copied), reload, then read all three facts back.
+fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionContext, row: HostUnitRetirementRow) -> HostUnitRetirementReadback {
+  let acts = host_unit_retirement_exec_all(target, context, [
+    systemctl_stop_argv(unit: row.unit),
+    systemctl_daemon_reload_argv(),
+    mkdir_parents_argv(path: host_unit_retirement_retained_dir),
+    coreutils_install_file_argv(mode: "0444" as NonEmptyStr, source: row.fragment_path, dest: row.retained_path),
+  ])
+  let copy_ok = host_unit_retirement_ok(acts.at(3))
+  // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
+  // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent.
+  let deletes = if copy_ok then host_unit_retirement_exec_all(target, context, [ ["rm", "-f", row.fragment_path], systemctl_daemon_reload_argv() ]) else []
+  let back = host_unit_retirement_exec_all(target, context, [
+    systemctl_show_load_state_argv(unit: row.unit),
+    systemctl_is_active_argv(unit: row.unit),
+    argv_words(command: test_regular_file_command(path: row.retained_path)),
+  ])
+  if !copy_ok then
+    RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
+  else
+    host_unit_retirement_read_row(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_ok(back.at(2)))
+}
+
+// THE WET ENTRY: dispatched by the fleet-converge job (host = executor, subject_host = the subject).
+// Reads the split, requires the subject's RunnerHostSpec (the one storage of its ssh identity -- B2),
+// resolves the anchored administrator target, acts each row, and exits with every terminal state named
+// in the receipt it writes on the executor.
+fn host_unit_retirement_ci_wet() -> ProcessExit {
+  let split_pre = fleet_converge_split_read()
+  switch split_pre:
+    SplitRefused { reason } -> exit_failure(reason: concat("host_unit_retirement: the dispatch split is refused: ", fleet_converge_split_refusal_line(reason)))
+    SplitOk { executor_runner_name, subject_host } ->
+      let rows = host_unit_retirement_rows_for(subject_host)
+      switch rows:
+        Empty -> exit_failure(reason: concat("host_unit_retirement: no retirement rows are modeled for subject ", subject_host, "; the ruling retires units on srv14 only"))
+        Cons { head, tail } ->
+          switch runner_host_spec_for(operator_host_srv14):
+            RunnerHostSpecAbsent { host: _ } -> exit_failure(reason: concat("host_unit_retirement: ", subject_host, " has no RunnerHostSpec; there is nothing to dial"))
+            RunnerHostSpecFound { spec: _ } ->
+              switch administrator_ssh_target(host: operator_host_srv14):
+                SshTargetRefused { reason } -> exit_failure(reason: concat("host_unit_retirement: the administrator target for ", subject_host, " is refused: ", reason))
+                SshTargetResolved { target } ->
+                  switch prepare_fleet_ssh_agent_context(attempt_raw: host_unit_retirement_attempt_raw):
+                    FleetSshContextRefused { reason } -> exit_failure(reason: concat("host_unit_retirement: the fleet ssh context is refused: ", reason))
+                    FleetSshContextReady { context, receipt } ->
+                      let readbacks = fold(rows, init: [], f: fn(acc, r) { append(acc, items: [ host_unit_retirement_act_row(target, context, r) ]) })
+                      let header = [ concat("host_unit_retirement subject=", subject_host, " executor=", executor_runner_name, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String) ]
+                      let body = join(append(header, items: map(readbacks, rb => host_unit_retirement_readback_line(rb))), "\n")
+                      let w = Filesystem.Write(path: gunbc_ci_host_unit_retirement_receipt_path, content: body)
+                      if !w.success then
+                        exit_failure(reason: concat("host_unit_retirement: receipt write failed: ", w.error))
+                      else if host_unit_retirement_all_retired(readbacks) then
+                        ExitSuccess
+                      else
+                        exit_failure(reason: body)
+      end
+}

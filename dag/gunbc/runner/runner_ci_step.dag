@@ -18,6 +18,7 @@ import gunbc.runner.runner_host_file_converge {
   gunbc_ci_runner_host_cap_release_receipt_path,
   gunbc_ci_runner_host_file_converge_receipt_path,
 }
+import gunbc.host.host_unit_retirement { gunbc_ci_host_unit_retirement_receipt_path }
 import gunbc.runner.runner_host_withdraw {
   gunbc_ci_runner_host_restore_receipt_path,
   gunbc_ci_runner_host_withdraw_receipt_path,
@@ -113,12 +114,28 @@ fn gunbc_ci_runner_host_file_converge_invoke() -> String {
     receipt_rel: gunbc_ci_runner_host_file_converge_receipt_path
   )
 }
+// B3b Group B trigger (1): the host-unit retirement apply (fleet-converge mode `host_unit_retirement`).
+// Tears down butch's ruled-retired serving residue units (strata-pool@a/@b, a2-power-cap) over the split
+// route: executor = the dispatch's host, subject = subject_host; the split gate runs before this step.
+data gunbc_ci_host_unit_retirement_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.host.host_unit_retirement",
+  function: "host_unit_retirement_ci_wet",
+)
 fn gunbc_ci_runner_host_cap_release_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_runner_host_cap_release_target,
     claim_run: false,
     receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
+  )
+}
+
+fn gunbc_ci_host_unit_retirement_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_host_unit_retirement_target,
+    claim_run: false,
+    receipt_rel: gunbc_ci_host_unit_retirement_receipt_path
   )
 }
 // THE WITHDRAW AND RESTORE WET ENTRYPOINTS (gunbc.runner.runner_host_withdraw) are separate dag files

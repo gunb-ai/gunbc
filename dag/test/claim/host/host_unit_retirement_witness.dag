@@ -1,0 +1,103 @@
+module test.claim.host.host_unit_retirement_witness
+
+// B3b Group B trigger (1): the retirement mode's claims. They drive the CORE (gunbc.host.host_unit_retirement)
+// directly -- the same rows, readback judgements and refusal names the wet entry uses -- so the witness and
+// the dispatch cannot drift apart.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.algebra { Cons, Empty, string_contains }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow_modes,
+  fleet_converge_mode_facts,
+  fleet_converge_host_unit_retirement_step_if,
+  FleetConvergeWorkflowMode,
+  HostUnitRetirement,
+}
+import gunbc.host.host_unit_retirement {
+  HostUnitRetirementRow,
+  HostUnitRetirementReadback,
+  Retired,
+  UnitStillLoaded,
+  UnitActive,
+  RetainedCopyAbsent,
+  host_unit_retirement_rows,
+  host_unit_retirement_rows_for,
+  host_unit_retirement_read_row,
+  host_unit_retirement_readback_line,
+  host_unit_retirement_all_retired,
+  host_unit_retirement_rows_cite_the_live_ruling,
+  host_unit_retirement_committed_readbacks,
+  host_unit_retirement_retained_dir,
+}
+
+// THE PLAN IS THE RULING'S, VERBATIM IN SIZE AND IDENTITY.
+test fn host_unit_retirement_plan_is_the_ruled_three() -> Bool {
+  let units = map(host_unit_retirement_rows(), r => r.unit as String)
+  units == [ "strata-pool@a.service", "strata-pool@b.service", "a2-power-cap.service" ]
+}
+
+test fn host_unit_retirement_rows_are_srv14_only() -> Bool {
+  length(filter(host_unit_retirement_rows(), r => r.host != (operator_host_srv14 as String))) == 0
+    && length(host_unit_retirement_rows_for("srv1")) == 0
+    && length(filter(host_unit_retirement_rows_for(operator_host_srv14 as String), r => r.unit as String == "strata-pool@a.service")) == 1
+}
+
+test fn host_unit_retirement_fragments_retain_outside_the_search_path() -> Bool {
+  length(filter(host_unit_retirement_rows(), r => !starts_with(s: r.retained_path, prefix: host_unit_retirement_retained_dir))) == 0
+    && length(filter(host_unit_retirement_rows(), r => string_contains(s: r.retained_path, pattern: "/etc/systemd/system"))) == 0
+}
+
+// THE CAUSE IS ONE RULING ROW, and the rows say so by reference name.
+test fn host_unit_retirement_rows_cite_the_ruling() -> Bool {
+  host_unit_retirement_rows_cite_the_live_ruling()
+}
+
+// THE READBACK MEANS WHAT THE WORDS SAY. Stopped-but-loaded is NOT retired; active is NOT retired;
+// a missing retained copy is NOT retired. Only not-found + inactive + readable copy accepts.
+test fn host_unit_retirement_readback_refuses_half_states() -> Bool {
+  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr }
+  let loaded = host_unit_retirement_read_row(row, "loaded", "inactive", true)
+  let active = host_unit_retirement_read_row(row, "not-found", "active", true)
+  let unretained = host_unit_retirement_read_row(row, "not-found", "inactive", false)
+  let gone = host_unit_retirement_read_row(row, "not-found", "inactive", true)
+  match loaded { UnitStillLoaded { unit: _, load_state: _ } => true _ => false }
+    && match active { UnitActive { unit: _, active_state: _ } => true _ => false }
+    && match unretained { RetainedCopyAbsent { unit: _, retained_path: _ } => true _ => false }
+    && match gone { Retired { unit: _, retained_path: _ } => true _ => false }
+}
+
+test fn host_unit_retirement_all_retired_needs_every_row() -> Bool {
+  let good = Retired { unit: "a" as NonEmptyStr, retained_path: "/r/a" }
+  let bad = UnitStillLoaded { unit: "b" as NonEmptyStr, load_state: "loaded" }
+  host_unit_retirement_all_retired([ good, good ]) && !host_unit_retirement_all_retired([ good, bad ])
+}
+
+// THE MODE IS DISPATCHABLE UNDER ITS WIRE NAME and its steps carry its gate alone.
+test fn host_unit_retirement_mode_is_dispatchable_by_wire() -> Bool {
+  length(filter(fleet_converge_workflow_modes, m => match m { HostUnitRetirement => true _ => false })) == 1
+    && (fleet_converge_mode_facts(mode: HostUnitRetirement)).wire == "host_unit_retirement"
+    && string_contains(s: fleet_converge_host_unit_retirement_step_if, pattern: "host_unit_retirement")
+}
+
+// THE UNITS ARE STILL STANDING (committed capture, runner_host_butch_capture_witness 2026-11-14: the two
+// engine units loaded+inactive, a2-power-cap loaded+FAILED). Read through the SAME readback the wet run
+// must satisfy, that state refuses every row -- the run's acceptance is exactly what is missing today.
+test fn host_unit_retirement_live_units_still_refuse_retired() -> Bool {
+  let rows = host_unit_retirement_rows()
+  let a_state = host_unit_retirement_read_row(rows.at(0), "loaded", "inactive", false)
+  let b_state = host_unit_retirement_read_row(rows.at(1), "loaded", "inactive", false)
+  let cap_state = host_unit_retirement_read_row(rows.at(2), "loaded", "failed", false)
+  !host_unit_retirement_all_retired([ a_state, b_state, cap_state ])
+}
+
+// THE CLAIM THAT GOES GREEN ONLY WITH THE LIVE RUN: every ruled row has a committed observation, taken
+// from the dispatch's own receipt, reading retired. Until the dispatch runs AND its receipt is committed
+// as observation rows, this is RED -- and red for the true reason: nothing has torn these units down yet.
+// It is the acceptance evidence of trigger (1), stated as a claim, not as prose. The follow-up commit that
+// fills host_unit_retirement_observed_readings from the receipt names the run id in the PR.
+test fn host_unit_retirement_units_are_retired() -> Bool {
+  let readbacks = host_unit_retirement_committed_readbacks()
+  length(host_unit_retirement_rows_for(operator_host_srv14 as String)) == length(readbacks)
+    && host_unit_retirement_all_retired(readbacks)
+}
