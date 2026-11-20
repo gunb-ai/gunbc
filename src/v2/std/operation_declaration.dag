@@ -230,6 +230,30 @@ data operation_declaration_roster: List<OperationDeclaration> = [
   ),
   operation_declaration_row(
     module_path: "std.host_text",
+    decl_name: "text_of_chars",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "scalar_list_assembly") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.host_text",
+    decl_name: "char_at",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_scalar_selection") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.host_text",
+    decl_name: "substring",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_scalar_window") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.host_text",
     decl_name: "string_length",
     requirement: RequiresNone,
     semantics: Pure,
