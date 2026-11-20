@@ -471,7 +471,7 @@ data srv1_router_upstream_launch_facts: Srv1RouterUpstreamLaunchFacts = Srv1Rout
 // disagree with the group it counts.
 
 // The operator's declaration of which installed boards the served configuration runs on. Membership is
-// a decision with a decider and a date (DESIGN 5), not a wildcard that silently reinterprets itself.
+// a decision with a decider and a date (gunbc.design_argument::fail_closed), not a wildcard that silently reinterprets itself.
 type Srv1ServingGpuGroup {
   decider: NonEmptyStr
   decided_on: NonEmptyStr
