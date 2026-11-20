@@ -3,7 +3,7 @@ module test.claim.resolved_host_realization
 import std.host_text { HostText, chars }
 import std.types { Char, List }
 import std.algebra { trim }
-import test.claim.fixtures.unbound_host_spelling { an_unbound_legacy_position_read_keeps_its_legacy_contract }
+import test.claim.unbound_host_spelling { an_unbound_legacy_position_read_keeps_its_legacy_contract }
 
 test fn an_unrelated_host_module_does_not_create_an_explicit_binding() -> Bool {
   an_unbound_legacy_position_read_keeps_its_legacy_contract()

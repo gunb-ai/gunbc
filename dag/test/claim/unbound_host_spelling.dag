@@ -1,4 +1,4 @@
-module test.claim.fixtures.unbound_host_spelling
+module test.claim.unbound_host_spelling
 
 // Merely loading std.host_text must not import char_at into this caller's lexical scope.
 import std.host_text { HostText }
