@@ -264,6 +264,7 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: converged_ledger(d: d),
   )
 }
@@ -338,6 +339,7 @@ test fn wrong_uid_diverges_the_account() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -367,6 +369,7 @@ test fn group_without_the_account_diverges() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -396,6 +399,7 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -428,6 +432,7 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -460,6 +465,7 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -496,6 +502,7 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -528,6 +535,7 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -559,6 +567,7 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let r = serving_assessment_receipt_text(a: serving_assess(d: d, o: o, pin: pin_ok()))
@@ -639,6 +648,7 @@ fn reads_over(
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: ledger,
   )
 }
@@ -866,6 +876,7 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -892,6 +903,7 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -918,6 +930,7 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -945,6 +958,7 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -978,6 +992,7 @@ test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -1010,6 +1025,7 @@ test fn refused_elevation_beats_a_real_drift() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -1036,6 +1052,7 @@ test fn established_elevation_still_reports_store_drift() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -1078,6 +1095,7 @@ fn fresh_host_observed(d: RemoteBuildServingDesired) -> ServingObserved {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: pin_arch_leg(),
     ledger_rows: absent_ledger(d: d),
   )
@@ -1121,6 +1139,7 @@ fn wrong_channel_observed(dline: String, d: RemoteBuildServingDesired) -> Servin
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: converged_ledger(d: d),
   )
 }
@@ -1173,6 +1192,7 @@ test fn rustup_leg_unreadable_is_an_unknown() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       )
       match serving_assess(d: d, o: o, pin: pin_ok()) {
@@ -1213,6 +1233,7 @@ test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1245,6 +1266,7 @@ test fn unread_subject_presence_leaves_the_value_leg_unread() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1278,6 +1300,7 @@ test fn present_subject_with_never_read_value_is_indeterminate() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1313,6 +1336,7 @@ test fn world_writable_authorized_keys_with_right_line_is_a_drift() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1341,6 +1365,7 @@ test fn world_writable_serve_binary_with_right_hash_is_a_drift() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1371,6 +1396,7 @@ test fn declared_spellings_of_the_same_file_mode_are_settled() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
@@ -1401,6 +1427,7 @@ test fn unreadable_file_mode_under_present_subject_is_indeterminate() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       )
