@@ -1362,3 +1362,11 @@ fn expected_design_rulings_md() -> String {
     ),
   })
 }
+
+
+data text_of_chars_is_a_whole_list_host_realization: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_of_chars_is_a_whole_list_host_realization"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
+  provenance: "Operator decision msg_65796359-9ec0-4dec-b4a3-b2e29621206a: revise the 2026-10-25 NOT A SEAM decision and model std.host_text::text_of_chars as a declaration-identity host realization. The existing operation is the total whole-list inverse of chars over Unicode scalar values, realized by a linear host writer. This neither declares nor equates the arbitrary-window chars_to_string operation: its clamping and invalid-Int behavior remain separate. Preserve round trips and linear cost; no copied-accumulator .dag substitute and no ambient-name resolver exception.",
+}
