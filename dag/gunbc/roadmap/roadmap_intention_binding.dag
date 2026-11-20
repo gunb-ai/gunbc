@@ -149,7 +149,6 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "derived-type-argument-inhabitance-root", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
   serves(node: "nonempty-str-becomes-a-checked-nominal", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
   serves(node: "brands-reached-by-checked-constructors", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
-  serves(node: "nickname-aliases-retire-to-one-authority", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -174,13 +173,18 @@ data intention_terminals: List<IntentionTerminals> = [
   // or reaches one along dependency edges; this row is what makes section 1's projection and section
   // 6's realization home checkable as done.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"), terminals: [nid(s: "roadmap-timeline-page"), nid(s: "roadmap-leaf-realized-duration"), nid(s: "roadmap-dispatch-carries-leaf"), nid(s: "roadmap-typed-handback"), nid(s: "roadmap-return-to-principal-records-acceptance")] },
-  // derived_types_keep_their_name's sink is the nickname retirement: the cut runs the argument-inhabitance
-  // root first, then NonEmptyStr as a checked nominal, then the brands reached by checked constructors, and
-  // retires the nickname aliases LAST (gunbc.design_ruling::where_refinements_retire_for_checked_constructors
-  // and the operator ruling the nickname node is blocked on). The four work items chain to this one node along
-  // the prerequisite edges in roadmap_authority::declared_roadmap_edges, so each is an ancestor of the terminal
-  // and reads as on a path.
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "nickname-aliases-retire-to-one-authority")] },
+  // derived_types_keep_their_name's sink is the brands reached by checked constructors: the plan's done-when
+  // (section 3 and its retirement condition) commits ONLY to (i) no base value standing in for a derived type at
+  // an argument position -- decided by the argument-inhabitance root -- and (ii) every where-refinement reached by
+  // a checked constructor -- the NonEmptyStr node and the brands node. Those three chain (root <- nonempty <-
+  // brands along the prerequisite edges in roadmap_authority::declared_roadmap_edges), so each bound node is an
+  // ancestor of this terminal and reads as on a path, and the terminal is a true leaf (nothing waits on it).
+  // The nickname retirement is deliberately NOT the terminal and NOT a work item of this intention: the plan's
+  // honest scope says removing the bare-alias form is an operator decision for a ruling that does not yet exist,
+  // and section 3 lists it only as an ordering constraint ("reasoning, not a phase list"). Making it the terminal
+  // would turn the plan into "retire nicknames", a bigger target than it states, and would put an unruled decision
+  // at the end of the critical path (gunbc.design_argument::plans_are_intentions).
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "brands-reached-by-checked-constructors")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {

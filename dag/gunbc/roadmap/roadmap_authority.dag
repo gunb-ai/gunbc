@@ -5717,23 +5717,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Every branded carrier name is reached by a checked constructor, so the brand means something the checker enforces."),
     ),
-    roadmap_node(
-      identity: "rn_1650Q244TUU06OOZV8UDC5TSSC",
-      id: "nickname-aliases-retire-to-one-authority",
-      owner: "nominal-typing",
-      carriers: carrier(path: "dag/gunbc/plans/derived_types_keep_their_name.dag"),
-      line: ticket(t: fields(
-        headline: "Nickname aliases retire to the one authority each stands for",
-        boundary: "Serves gunbc.plans.derived_types_keep_their_name. For each bare nickname of a kernel carrier (type CommitSha = String, Email = String, Bit = Bool, ...) name the one authority it duplicates (gunbc.design_argument::single_authority) and move call sites to it. GATED ON AN OPERATOR RULING: whether the bare-alias declaration form itself leaves the language is an operator decision recorded in gunbc.design_ruling, not an inference from single_authority; do not proceed until that ruling exists. Runs only AFTER derived-type-argument-inhabitance-root refuses the interchange, so no site quietly relying on the collapse is broken.",
-        displaced_cost: "A second name for one concept invites two places to decide what it means; today they collapse, so the nickname and its base are interchangeable at the argument.",
-        first_slice: "With the operator ruling in hand, take the smallest surviving nickname cluster, migrate its call sites to the one authority, and remove that one declaration; prove the base value at its old parameter now refuses.",
-        red_control: "After a nickname alias is removed and its sites moved, a base value at the position that took the authority refuses; the surviving authority's own checks are unchanged; and no parameterized-abbreviation or Compose/phantom alias is affected.",
-        out_of_scope: "Refusing parameterized abbreviations or Compose/phantom aliases; removing the bare-alias declaration FORM from the language before the operator ruling; any site whose nickname was not yet migrated.",
-        handback: "The operator ruling cited, each migrated nickname with its call-site move, and the base-at-that-parameter refusal green -- only after the argument interchange is refused."
-      )),
-      dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "A nickname loses its second name to the one authority it stood for, once the operator has ruled the form may go."),
-    ),
     // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
     // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
     // Nothing in the authority covered it: no boot row, no PXE-install row, no mtcollins1
@@ -6386,13 +6369,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "mtcollins1-boot-duty-retirement", parent: "mtcollins1-boot-later-work"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "bobo-pxe-install-dispatch"),
     // The derived-types-keep-their-name cut (sharp-stag-549, 2026-11-19), child waits on parent, the direction
-    // the binding witness reads (binding_on_a_path walks a terminal up its parent chain): the argument-inhabitance
-    // root is first, NonEmptyStr's checked nominal waits on it, the brands wait on NonEmptyStr, and the nickname
-    // retirement (the intention's terminal) waits on the brands. This makes each of the four bound nodes an
-    // ancestor of the terminal; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
+    // the binding witness reads (binding_on_a_path walks the terminal up its parent chain): the argument-inhabitance
+    // root is first, NonEmptyStr's checked nominal waits on it, and the brands (the intention's terminal) wait on
+    // NonEmptyStr. This makes each of the three bound nodes an ancestor of the terminal and keeps the terminal a
+    // true leaf; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
     edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
-    edge(child: "nickname-aliases-retire-to-one-authority", parent: "brands-reached-by-checked-constructors"),
   ], guarantee_ladder_edges())
 }
 
