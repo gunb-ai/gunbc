@@ -217,7 +217,7 @@ test fn entries_keep_element_absence_and_payload() -> Bool {
 }
 
 test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
-  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 103]
+  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 101]
 }
 
 // THE POSITION READ INSIDE THE TEXT IS PRESENT, under either dispatch, so this half holds at step 1 and
@@ -226,18 +226,10 @@ test fn a_position_read_inside_the_text_is_present() -> Bool {
   tag_position_read(x: char_at(text: "ab", pos: 1)) == 103
 }
 
-// THE POSITION READ AT THE END, RECORDED AS AN EXECUTED PROBE AND NOT AS THE CONTRACT. MEASURED AT THIS
-// head: the read past the end answers PRESENT (tag 103), not Absent (tag 101) — the checker binds this
-// call to std.host_text's declaration, while the interpreter still picks the VALUE of a free call by
-// SPELLING, so the ambient builtin's empty text answers (the runtime half of
-// gunbc.recurring_failure_mode.host_seam_realization_is_keyed_by_primitive_spelling). The probe asserts
-// THAT answer, so it is green on main and cannot survive the fix: once a free call evaluates by the call
-// target the checker resolved, this arm becomes == 101, and that flip is the discriminating pair this
-// specimen exists to record — a realization that answers absence with the empty text, or that indexes
-// bytes instead of code points, still answers Present past the end. It is not landed as a red: a failing
-// claim on main is a main red, not a stamp.
-test fn the_end_of_a_text_reads_as_a_present_until_resolved_target_dispatch_lands() -> Bool {
-  tag_position_read(x: char_at(text: "ab", pos: 5)) == 103
+// The declared Optional result keeps absence distinct from the legacy empty-text sentinel.
+// Supersedes the dated wrong-answer probe once evaluation consumes the resolved declaration.
+test fn the_end_of_a_text_is_absent_under_resolved_target_dispatch() -> Bool {
+  tag_position_read(x: char_at(text: "ab", pos: 5)) == 101
 }
 
 // THE DISCRIMINATING CONTROL: a realization that flattened Present(Absent) to Absent, or read an

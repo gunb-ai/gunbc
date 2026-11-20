@@ -1,0 +1,31 @@
+module test.claim.resolved_host_realization
+
+import std.host_text { HostText, chars }
+import std.types { Char, List }
+
+// The host declaration is in the same closure. This declaration must still run its own body.
+fn text_of_chars(scalars: List<Char>) -> HostText { "source declaration" }
+
+test fn the_qualified_host_crossing_keeps_its_selected_declaration() -> Bool {
+  std.host_text.text_of_chars(scalars: chars(text: "aé😀")) == "aé😀"
+}
+
+test fn a_same_named_source_declaration_is_not_the_host_crossing() -> Bool {
+  text_of_chars(scalars: []) == "source declaration"
+}
+
+test fn a_qualified_source_declaration_is_not_the_host_crossing() -> Bool {
+  test.claim.resolved_host_realization.text_of_chars(scalars: []) == "source declaration"
+}
+
+fn call_through_local(text_of_chars: fn(List<Char>) -> HostText) -> HostText {
+  text_of_chars([])
+}
+
+test fn a_callable_local_keeps_the_source_declaration_it_holds() -> Bool {
+  call_through_local(text_of_chars: text_of_chars) == "source declaration"
+}
+
+test fn a_callable_local_keeps_the_host_declaration_it_holds() -> Bool {
+  call_through_local(text_of_chars: std.host_text.text_of_chars) == ""
+}

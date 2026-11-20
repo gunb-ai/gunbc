@@ -6944,9 +6944,8 @@ impl PreparedScopeIndexes {
     ///
     /// A bare reference resolves first through the site file's OWN module's qualified
     /// declaration, then through the module that file explicitly imported the name FROM — and
-    /// both only for a name the shared slot cannot represent unambiguously, which is the
-    /// condition that makes the tiers worth consulting at all. `None` means no tier answered and
-    /// the reference reaches the shared bare slot below.
+    /// also when the spelling is unique in the closure: presence in the shared slot is not an
+    /// explicit binding. `None` leaves the legacy ambient tier available to the caller.
     ///
     /// `InterpContext::lookup_fn_from` IS this method plus that slot, and the bare-name
     /// ambiguity census asks this same method whether a reference falls through to it. They
@@ -6960,10 +6959,10 @@ impl PreparedScopeIndexes {
     /// A wildcard import binds no names and contributes nothing here, which is the residue the
     /// census exists to find.
     fn site_resolved_fn(&self, site_file: &str, name: &str) -> Option<&Rc<Node>> {
-        if name.contains('.')
-            || site_file.is_empty()
-            || !self.ambiguous_bare_function_names.contains(name)
-        {
+        if name.contains('.') {
+            return self.fn_nodes.get(name);
+        }
+        if site_file.is_empty() {
             return None;
         }
         if let Some(module_path) = self.file_module_paths.get(site_file) {
@@ -8488,6 +8487,9 @@ fn call_function_inner(
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
     if let Some(result) = try_v2_std_collection_map_primitive_grounding(ctx, fn_node, args) {
+        return result;
+    }
+    if let Some(result) = try_resolved_declaration_realization(ctx, fn_node, args, env) {
         return result;
     }
 
@@ -11812,12 +11814,16 @@ macro_rules! v1_bridge_family_arms {
             }
             // std.host_text chars (operator ruling H4): a HostRealizedSeam reached by DECLARATION, the
             // module literal below, never by the bare spelling -- `is_v4_bridge_family` admits the arm
-            // only when the item registry says the called `chars` IS std.host_text's. Unicode scalar
+            // only when the selected declaration's source owner IS std.host_text. Unicode scalar
             // values in source order: a Rust `char` is exactly one scalar value.
             family STD_HOST_TEXT_BRIDGE_FNS "std.host_text"
                 lookup_eval_call_bridge_std_host_text eval_call_bridge__std_host_text_arm {
                 arm "v4_bridge.host_text_chars" { "chars" } =>
                     eval_host_text_chars(&$args),
+                arm "v4_bridge.host_text_text_of_chars" { "text_of_chars" } =>
+                    eval_host_text_text_of_chars(&$args),
+                arm "v4_bridge.host_text_char_at" { "char_at" } =>
+                    eval_host_text_char_at(&$args, $ctx),
             }
             // std.machine_word machine_word_native_operate: a HostRealizedSeam reached by DECLARATION
             // (same admission as std.host_text above). The operator rows are v1_rt's, the same table the
@@ -11854,13 +11860,13 @@ macro_rules! v1_bridge_dispatch {
          $(arm $id:tt { $lit:literal } => $body:expr ,)*
      })*) => {
         $(
-            if is_v4_bridge_family($c, &$f, $cname, $module) {
-                return match $crate::v1_interpreter_dispatch_generated::$lookup_fn(&$f) {
+            if is_v4_bridge_family($c, $n, $cname, $module) {
+                return Some(match $crate::v1_interpreter_dispatch_generated::$lookup_fn(&$f) {
                     Some(arm) => match arm {
                         $( $arm_macro!($id) => $body , )*
                     },
                     None => unreachable!("bridge fn set mismatch: {}", $module),
-                };
+                });
             }
         )*
     };
@@ -11872,6 +11878,42 @@ fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value>
     let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
     let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
     Ok(list_value(items))
+}
+
+fn eval_host_text_text_of_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
+    let scalars = args
+        .first()
+        .and_then(|(_, value)| free_monoid_items(value))
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "text_of_chars expects Unicode scalars".into(),
+        })?;
+    let mut text = String::new();
+    for value in scalars.iter() {
+        let scalar = match value {
+            Value::Int(cp) => u32::try_from(*cp).ok().and_then(char::from_u32),
+            _ => None,
+        }
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "text_of_chars: invalid Unicode scalar representation".into(),
+        })?;
+        text.push(scalar);
+    }
+    Ok(str_value(text))
+}
+
+fn eval_host_text_char_at(
+    args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let text = expect_str_free_monoid(args.first().map(|(_, value)| value), "char_at")?;
+    let position = expect_int(args.get(1).map(|(_, value)| value), "char_at position")?;
+    match usize::try_from(position)
+        .ok()
+        .and_then(|position| text.chars().nth(position))
+    {
+        Some(scalar) => Ok(optional_present(str_value(scalar.to_string()), ctx)),
+        None => Ok(optional_absent(ctx)),
+    }
 }
 
 /// std.machine_word machine_word_native_operate: one operator row applied to residues; an operand or
@@ -11894,13 +11936,14 @@ fn eval_machine_word_native_operate(args: &[(Option<String>, Value)]) -> InterpR
 
 /// One guard for every bridge family.
 /// predicates that differed only in their name list and module string.
-fn is_v4_bridge_family(ctx: &InterpContext, func_name: &str, names: &[&str], module: &str) -> bool {
-    if !names.contains(&func_name) {
+fn is_v4_bridge_family(ctx: &InterpContext, node: &Rc<Node>, names: &[&str], module: &str) -> bool {
+    if !names.contains(&node.name.as_str()) {
         return false;
     }
-    ctx.item_registry
-        .get(func_name)
-        .is_some_and(|info| info.module_name == module)
+    ctx.indexes
+        .file_module_paths
+        .get(node.span.file.as_str())
+        .is_some_and(|owner| owner == module)
 }
 
 /// Handler bodies for v2.std.collection map grounding. Roster authority is
@@ -11965,9 +12008,10 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
     if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
         return false;
     }
-    ctx.item_registry
-        .get(&fn_node.name)
-        .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
+    ctx.indexes
+        .file_module_paths
+        .get(fn_node.span.file.as_str())
+        .is_some_and(|owner| owner == V2_STD_COLLECTION_MODULE)
 }
 
 /// THE `get` PRIMITIVE'S TOTAL PROJECTION (`v2.std.collection` `list_at_optional`). A native list is
@@ -12070,6 +12114,47 @@ macro_rules! v1_native_intercept_dispatch {
     };
 }
 
+// The node is already bound, including for a callable passed through a local variable.
+// Read its owner from the prepared source index; never rebind its name in item_registry.
+fn try_resolved_declaration_realization(
+    ctx: &InterpContext,
+    node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> Option<InterpResult<Value>> {
+    let owner = ctx.indexes.file_module_paths.get(node.span.file.as_str())?;
+    let func_name = node.name.clone();
+    v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
+    // These are realizations of the declared list folds, not names that may shadow another fn.
+    if owner == "std.algebra" {
+        match func_name.as_str() {
+            "fold_list" => return Some(eval_fold_list_native(args, env, ctx)),
+            "fold_list_right" => return Some(eval_fold_list_right_native(args, env, ctx)),
+            _ => {}
+        }
+    }
+    let target = crate::v1_compiler_infer_lookup::resolved_declaration_call_target(Rc::new(
+        crate::v1_std_core::DeclaredCallableIdentity {
+            owner_module_path: owner.clone(),
+            decl_name: func_name.clone(),
+        },
+    ));
+    match target.as_ref() {
+        crate::v1_std_core::CallTargetIdentity::RuntimePrimitiveCall {
+            primitive_name,
+            projected_from,
+        } => match eval_builtin(primitive_name, args, ctx) {
+            Ok(Some(value)) => Some(Ok(value)),
+            Err(error) => Some(Err(error)),
+            Ok(None) if projected_from.is_some() => None,
+            Ok(None) => Some(Err(InterpError::TypeError {
+                msg: format!("no host realization for {owner}.{func_name} ({primitive_name})"),
+            })),
+        },
+        _ => None,
+    }
+}
+
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
         let key = Rc::as_ptr(node) as usize;
@@ -12127,9 +12212,12 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         _ => None,
     };
 
-    if lexically_bound_fn.is_none() {
-        v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
-
+    let declared_fn = lexically_bound_fn.or_else(|| {
+        ctx.indexes
+            .site_resolved_fn(node.span.file.as_str(), &func_name)
+            .cloned()
+    });
+    if declared_fn.is_none() {
         v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);
 
         if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
@@ -12142,7 +12230,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // `Value::Closure` AFTER `ctx.lookup_fn`) is deleted, not kept beside the gate: it was the
     // lower-rung duplicate of the same decision (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority) and where the shadowing defect
     // landed, since reaching it required the free-function table to answer first.
-    let fn_node = match lexically_bound_fn {
+    let fn_node = match declared_fn {
         Some(node) => node,
         None => match ctx.lookup_fn_from(&func_name, node.span.file.as_str()) {
             Some(node) => node.clone(),
