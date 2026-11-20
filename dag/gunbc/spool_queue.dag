@@ -1,7 +1,7 @@
 module gunbc.spool_queue
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, path_segment_is_safe }
-import std.nat { Nat, Zero, Succ, nat_to_decimal_string }
+import std.nat { Nat, nat_to_decimal_string }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
@@ -1029,10 +1029,14 @@ data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
 //
 // The keyed `SpoolStore` above (kind: SpoolKind) mints and moves entry KEYS within one instance root. The
 // compute-exit spool below has NO keys: it files one record per seat under a per-PRINCIPAL directory the
-// kernel already fixed for the writing process (`<root>/<root_name>/<uid>/done`), so its store carries the
-// uid and mints nothing. Because the shapes differ, neither is expressed as an arm of the other: the keyed
-// operations keep `SpoolStore` and never gain a partitioned arm to refuse, and the partitioned store exposes
-// only its base/role paths and the one mint. A mismatched value is UNWRITABLE, not runtime-refused.
+// kernel already fixed for the writing process (`<root>/<root_name>/<uid>/done`). Because the shapes differ,
+// neither is expressed as an arm of the other: the keyed operations keep `SpoolStore` and never gain a
+// partitioned arm to refuse. spool_queue owns the closed partitioned KIND, its ONE declaration, and the pure
+// path derivation over that declaration; the sealed PartitionedSpoolStore and its SINGLE admitting mint live
+// in the compute layer (gunbc.compute.host_capacity), where the instance root and the principal uid are
+// admitted by authority (compute_root on the instance, and the process's own effective uid) -- so there is
+// NO path-taking store mint in this leaf for a foreign module to aim at an arbitrary tree. A mismatched
+// value is UNWRITABLE, not runtime-refused (review 95668).
 // ================================================================================================
 
 // THE CLOSED PARTITIONED KINDS, DISJOINT from SpoolKind: the compute-exit spool is its OWN kind (never the
@@ -1059,43 +1063,25 @@ fn partitioned_spool_declaration(kind: PartitionedSpoolKind) -> PartitionedSpool
   }
 }
 
-// THE SEALED PARTITIONED STORE. sole_constructor: only spool_open_uid mints it. The uid is a Nat -- a real
-// principal id, never a path and never a sign-bearing Int -- and it is PART OF THE STORE, so every read of
-// the spool carries the uid it is scoped to; no caller can point a partitioned read at the shared root.
-type PartitionedSpoolStore sole_constructor {
-  kind: PartitionedSpoolKind
-  instance_root: String
-  uid: Nat
-}
-
-// THE ONE DERIVATION. base = <instance_root>/<root_name>; the per-uid directory adds <uid>; the terminal adds
-// <done_directory>. Provisioning's owned root target and the hook/reader's terminal path are BOTH spelled here,
-// so a dropped segment breaks provisioning and the read TOGETHER (the realization witness's provisioning-drop
-// RED) rather than letting one drift from the other.
+// THE ONE DERIVATION, and the ONE authority for the two path segments. base = <instance_root>/<root_name>;
+// the per-uid directory adds <uid>; the terminal adds <done_directory>. These are PURE path facts over the
+// closed declaration: they take the business key (the closed kind, the admitted instance root, the principal
+// uid as a Nat) and return STRINGS -- they build NO store and perform no filesystem or privilege action. The
+// sealed PartitionedSpoolStore, which is the ONLY value compute_attempt_exit_hook and compute_attempt_exit_record_listing
+// accept, is declared and minted in gunbc.compute.host_capacity, where instance_root comes from compute_root
+// of the admitted instance and uid from the process's own effective uid -- so a foreign module cannot forge a
+// store or aim a read/hook at a caller-chosen tree (review 95668). Provisioning's owned root target and the
+// reader's terminal path are BOTH spelled here, so a dropped segment breaks provisioning and the read TOGETHER
+// (the realization witness's provisioning-drop RED), never one alone.
 fn partitioned_spool_base_dir(kind: PartitionedSpoolKind, instance_root: String) -> String {
   join([instance_root, "/", partitioned_spool_declaration(kind: kind).root_name], "")
 }
 
-fn partitioned_spool_uid_dir(store: PartitionedSpoolStore) -> String {
-  join([partitioned_spool_base_dir(kind: store.kind, instance_root: store.instance_root), "/", nat_to_decimal_string(value: store.uid)], "")
+fn partitioned_spool_uid_dir(kind: PartitionedSpoolKind, instance_root: String, uid: Nat) -> String {
+  join([partitioned_spool_base_dir(kind: kind, instance_root: instance_root), "/", nat_to_decimal_string(value: uid)], "")
 }
 
-// THE TERMINAL DIRECTORY: where the seat's exit record is planted and read back, always under this store's uid.
-fn partitioned_spool_done_dir(store: PartitionedSpoolStore) -> String {
-  join([partitioned_spool_uid_dir(store: store), "/", partitioned_spool_declaration(kind: store.kind).done_directory], "")
-}
-
-// THE PARTITIONED MINT. It takes the business key (instance root + principal uid), NEVER a path. The uid-0
-// refusal is a HOST POLICY with no string cause to carry -- root (uid 0) never owns a seat's exit partition --
-// so it is the closed NULLARY fact SpoolOpenUidRoot, not a reason the caller must parse (review 93215 finding 2).
-type SpoolOpenVerdict
-  = SpoolOpenReady { store: PartitionedSpoolStore }
-  | SpoolOpenUidRoot
-
-fn spool_open_uid(kind: PartitionedSpoolKind, instance_root: String, uid: Nat) -> SpoolOpenVerdict {
-  if uid == Zero {
-    SpoolOpenUidRoot
-  } else {
-    SpoolOpenReady { store: PartitionedSpoolStore { kind: kind, instance_root: instance_root, uid: uid } }
-  }
+// THE TERMINAL DIRECTORY: where the seat's exit record is planted and read back, always under this uid.
+fn partitioned_spool_done_dir(kind: PartitionedSpoolKind, instance_root: String, uid: Nat) -> String {
+  join([partitioned_spool_uid_dir(kind: kind, instance_root: instance_root, uid: uid), "/", partitioned_spool_declaration(kind: kind).done_directory], "")
 }

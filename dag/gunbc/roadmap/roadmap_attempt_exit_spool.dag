@@ -10,8 +10,8 @@ import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryon
 import gunbc.spool_queue {
   SpoolAttemptExit, RolePending, RoleHandedOff, RoleClaimed, RoleDone, RoleRefused,
   SpoolListing, SpoolListed, SpoolListingUnreadable, spool_open, spool_queue_list, spool_directory_listing, spool_role_path, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused,
-  PartitionedSpoolStore, partitioned_spool_done_dir,
 }
+import gunbc.compute.host_capacity { PartitionedSpoolStore, attempt_exit_spool_done_dir }
 import extdeps.systemd.service_exec {
   ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
   ServiceResult, service_result_of_wire, ServiceExitCode, service_exit_code_of_wire,
@@ -348,7 +348,7 @@ fn compute_attempt_exit_hook(store: PartitionedSpoolStore, identity: String, rec
   if !path_segment_is_safe(raw: identity) {
     AttemptExitHookRefused { reason: "identity is not a safe path segment" as NonEmptyStr }
   } else {
-    let done_dir = partitioned_spool_done_dir(store: store)
+    let done_dir = attempt_exit_spool_done_dir(store: store)
     match exec_word_render(parts: compute_attempt_exit_entry_parts(done_dir: done_dir, identity: identity)) {
       ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
       // THE RECORD IS CREATED OWNED BY THE PROVIDER THAT READS IT BACK -- the same owner the deploy route
@@ -370,7 +370,7 @@ fn compute_attempt_exit_hook(store: PartitionedSpoolStore, identity: String, rec
 // sealed fact (a PartitionedSpoolKind is only SpoolComputeExit, and it carries its uid), so there is no
 // cross-kind or shared-root arm to write.
 fn compute_attempt_exit_record_listing(store: PartitionedSpoolStore) -> SpoolListing {
-  spool_directory_listing(directory: partitioned_spool_done_dir(store: store))
+  spool_directory_listing(directory: attempt_exit_spool_done_dir(store: store))
 }
 
 // ONE DECODED RECORD. The process END is a closed pair: an exit with a status, or a signal. They are

@@ -9,7 +9,7 @@ import extdeps.posix.signal {
 }
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.posix.identity { PosixOwnerNames }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import gunbc.systemd_unit_names {
   dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
   belt_attempt_obligation_unit_name,
@@ -41,7 +41,9 @@ import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal,
 
 // The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
 // variables spelled as systemd expansions and no shell anywhere.
-import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable, SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenUidRoot }
+import gunbc.spool_queue { SpoolListed, SpoolListingUnreadable }
+import gunbc.compute.host_capacity { compute_attempt_exit_spool_open, PartitionedSpoolStore, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
 
 fn drain_principal() -> PosixOwnerNames {
   PosixOwnerNames { user: "svc" as NonEmptyStr, group: "grp" as NonEmptyStr }
@@ -479,33 +481,46 @@ test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refu
 // a foreign module cannot even BUILD a PartitionedSpoolStore. These claims cover what the type does NOT already
 // prove: the hook renders through the store's uid partition, refuses an unsafe identity, and the reader is
 // FAIL-CLOSED (a missing done directory is unreadable, never empty) when reading through the sealed store.
+// The sealed store is obtained ONLY through the sole admitting mint, which takes the admitted INSTANCE (never a
+// path or a uid a caller sets -- review 95668). The instance's compute root is srv1's, whose exit spool does not
+// exist on this runner, so the reader's done directory is genuinely absent (the fail-closed case) and the hook
+// renders purely from the store. The mint refuses the root uid; the witnesses run unprivileged, so a real
+// principal uid is admitted. Absent means the witness ran as root -- a false here is a clear environment fault.
+fn sealed_exit_store() -> Optional<PartitionedSpoolStore> {
+  match compute_attempt_exit_spool_open(instance: srv1_live_dashboard_instance()) {
+    SpoolOpenReady { store } => Present { value: store }
+    SpoolOpenUidUnreadable => Absent
+    SpoolOpenUidRoot => Absent
+  }
+}
+
 test fn the_compute_exit_hook_renders_through_the_sealed_partitioned_store() -> Bool {
-  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
-    SpoolOpenReady { store } => match compute_attempt_exit_hook(store: store, identity: "atm-1", record_owner: drain_principal()) {
+  match sealed_exit_store() {
+    Present { value: store } => match compute_attempt_exit_hook(store: store, identity: "atm-1", record_owner: drain_principal()) {
       AttemptExitHookRendered { exec_line: _ } => true
       AttemptExitHookRefused { reason: _ } => false
     }
-    SpoolOpenUidRoot => false
+    Absent => false
   }
 }
 
 test fn the_compute_exit_hook_refuses_an_unsafe_identity() -> Bool {
-  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero }) {
-    SpoolOpenReady { store } => match compute_attempt_exit_hook(store: store, identity: "atm 1/../../etc", record_owner: drain_principal()) {
+  match sealed_exit_store() {
+    Present { value: store } => match compute_attempt_exit_hook(store: store, identity: "atm 1/../../etc", record_owner: drain_principal()) {
       AttemptExitHookRefused { reason: _ } => true
       AttemptExitHookRendered { exec_line: _ } => false
     }
-    SpoolOpenUidRoot => false
+    Absent => false
   }
 }
 
 test fn the_compute_exit_record_listing_is_fail_closed_over_the_partitioned_store() -> Bool {
-  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root/definitely-not-a-real-spool-root", uid: Succ { prev: Zero }) {
-    SpoolOpenReady { store } => match compute_attempt_exit_record_listing(store: store) {
+  match sealed_exit_store() {
+    Present { value: store } => match compute_attempt_exit_record_listing(store: store) {
       SpoolListingUnreadable { reason: _ } => true
       SpoolListed { names: _ } => false
     }
-    SpoolOpenUidRoot => false
+    Absent => false
   }
 }
 

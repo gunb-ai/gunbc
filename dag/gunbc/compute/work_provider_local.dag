@@ -12,7 +12,6 @@ import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEvery
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, GitRef, EpochSecs, Seconds }
 import std.optional { Optional, Present, Absent }
 import std.nat { Nat }
-import std.checked_arithmetic { checked_int_to_nat }
 import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -112,10 +111,10 @@ import gunbc.compute.host_capacity {
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
   ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing, compute_capacity_standing_wire,
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root, compute_exit_spool_open,
+  compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root, compute_attempt_exit_spool_open,
+  PartitionedSpoolStore, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
 }
-import gunbc.spool_queue { PartitionedSpoolStore, SpoolOpenReady, SpoolOpenUidRoot }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
   ComputeProducerLeases, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_producer_leases, compute_producer_leases_reading_label, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused,
@@ -802,27 +801,27 @@ fn compute_launching_uid() -> Int? {
   }
 }
 
-// THE SEALED SPOOL STORE FOR THIS PROVIDER'S SEATS: the uid-partitioned done directory, opened through the
-// spool_queue mint. A process that cannot name its own uid gets NO store: it is not permitted to fall back
-// to the spool root, to another uid's directory, or to "there is no record" -- each of those would let an
-// absence this provider never observed stand for a seat's end. The caller keeps the seat and says why.
+// THE SEALED SPOOL STORE FOR THIS PROVIDER'S SEATS: the uid-partitioned done directory, admitted through the
+// compute-layer mint compute_attempt_exit_spool_open, which derives the instance root from compute_root and
+// takes the principal uid from THIS process's own effective uid -- neither is a value this caller can set, so
+// the store cannot be aimed at an arbitrary tree or another uid (review 95668). A process that cannot name its
+// own uid gets NO store: it is not permitted to fall back to the spool root, to another uid's directory, or to
+// "there is no record" -- each of those would let an absence this provider never observed stand for a seat's
+// end. The caller keeps the seat and says why.
 type ComputeSeatExitSpoolDir
   = ComputeSeatExitSpoolDirResolved { store: PartitionedSpoolStore }
   | ComputeSeatExitSpoolDirUidUnreadable { cause: String }
 
 fn compute_seat_exit_spool_dir(instance: HostDashboardInstance) -> ComputeSeatExitSpoolDir {
-  match compute_launching_uid() {
-    Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "/proc/self/status names no effective uid for this provider process" }
-    Present { value: uid } => match checked_int_to_nat(n: uid) {
-      Absent => ComputeSeatExitSpoolDirUidUnreadable { cause: "the effective uid is negative" }
-      Present { value: uid_nat } => match compute_exit_spool_open(instance: instance, uid: uid_nat) {
-        SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
-        // Root (uid 0) never owns a seat's exit partition: no per-uid spool exists for it, so there is no
-        // record to read and no observability claim -- the same disposition as an unreadable uid, the caller
-        // keeps the seat. The mint's refusal is the closed nullary fact, not a string to parse.
-        SpoolOpenUidRoot => ComputeSeatExitSpoolDirUidUnreadable { cause: "the effective uid is 0, which never owns a seat's exit partition" }
-      }
-    }
+  match compute_attempt_exit_spool_open(instance: instance) {
+    SpoolOpenReady { store } => ComputeSeatExitSpoolDirResolved { store: store }
+    // An unreadable uid (procfs names none, or a negative one) and the root uid are TYPED facts from the mint;
+    // the cause strings here are seat-facing DISPLAY, not the authority the mint branched on. Either way there
+    // is no store, so there is no record to read and no observability claim -- the caller keeps the seat.
+    SpoolOpenUidUnreadable => ComputeSeatExitSpoolDirUidUnreadable { cause: "this provider process cannot name its own effective uid (/proc/self/status unreadable or negative)" }
+    // Root (uid 0) never owns a seat's exit partition: no per-uid spool exists for it, so there is no record to
+    // read and no observability claim -- the same disposition as an unreadable uid, the caller keeps the seat.
+    SpoolOpenUidRoot => ComputeSeatExitSpoolDirUidUnreadable { cause: "the effective uid is 0, which never owns a seat's exit partition" }
   }
 }
 

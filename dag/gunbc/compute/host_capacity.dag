@@ -2,9 +2,11 @@ module gunbc.compute.host_capacity
 
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
 import std.algebra { empty_map, map_insert, map_lookup }
-import std.nat { Nat }
+import std.nat { Nat, Zero }
 import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count, measure_fits, Fits, Below }
-import extdeps.linux.procfs
+import extdeps.linux.procfs { procfs_status_effective_uid }
+import std.optional { Optional, Present, Absent }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
@@ -33,7 +35,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_compute_ledger_group_name }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
-import gunbc.spool_queue { SpoolComputeExit, partitioned_spool_base_dir, spool_open_uid, SpoolOpenVerdict }
+import gunbc.spool_queue { SpoolComputeExit, PartitionedSpoolKind, partitioned_spool_base_dir, partitioned_spool_done_dir }
 import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_shared_directory,
@@ -236,11 +238,82 @@ fn compute_attempt_exit_spool_directory(instance: HostDashboardInstance) -> Owne
   }
 }
 
-// THE TYPED MINT FOR THE COMPUTE EXIT SPOOL: takes the business key (the instance plus the principal uid)
-// and derives the instance root from the compute layout, so no caller spells the path. This is the only way
-// to open a SpoolComputeExit store.
-fn compute_exit_spool_open(instance: HostDashboardInstance, uid: Nat) -> SpoolOpenVerdict {
-  spool_open_uid(kind: SpoolComputeExit {}, instance_root: compute_root(instance: instance) as String, uid: uid)
+// THE SEALED PARTITIONED STORE FOR THE COMPUTE EXIT SPOOL. sole_constructor: NOTHING outside this module can
+// build it, and this module builds it ONLY through compute_attempt_exit_spool_open, which admits the instance
+// root (compute_root on the admitted instance) and the principal uid (the process's own effective uid). There
+// is NO path-taking mint anywhere: a foreign module cannot name a tree or a uid, so it cannot aim the
+// full-privilege ExecStopPost hook or the reader's directory listing at a tree it chose (review 95668). The
+// fields are READ by the consumers, which feed them to spool_queue's pure derivation; they are never inputs a
+// caller supplies. The store lives here, not in spool_queue, because the authorities that make it lawful --
+// compute_root of the instance and the process's own uid -- are visible only in the compute layer; a mint in
+// the spool_queue leaf could not bind them without importing the instance, which runs the wrong direction.
+type PartitionedSpoolStore sole_constructor {
+  kind: PartitionedSpoolKind
+  instance_root: String
+  uid: Nat
+}
+
+// THE CLOSED VERDICTS OF THE SOLE MINT. An unreadable uid (procfs names none, or a negative one) and the root
+// uid are TYPED nullary facts, never strings to parse: a provider that cannot name its own uid gets NO store,
+// and root (uid 0) never owns a seat's exit partition -- each keeps the seat rather than falling back to the
+// shared root or to another uid's directory (review 93215 finding 2, review 95668).
+type SpoolOpenVerdict
+  = SpoolOpenReady { store: PartitionedSpoolStore }
+  | SpoolOpenUidUnreadable
+  | SpoolOpenUidRoot
+
+// The process's own effective uid, read fresh from procfs. The kernel fixed it for the process; it does not
+// change under it, so two reads inside one launch agree. Nothing is memoized and nothing is guessed.
+fn compute_exit_spool_effective_uid() -> Int? {
+  let status = Filesystem.Read(path: "/proc/self/status")
+  if !status.success {
+    none
+  } else {
+    procfs_status_effective_uid(content: status.content)
+  }
+}
+
+// THE CLOSED PRINCIPAL-UID POLICY the sole mint applies: root (uid 0) never owns a seat's exit partition, because
+// seats run under unprivileged principals. It takes ONLY the uid and returns a CLOSED decision -- it builds no
+// store and touches no path -- so the policy can be witnessed directly WITHOUT any forgeable path-taking route
+// (review 95668: no public mint takes a tree or a uid). The mint is its only production caller; the witness calls
+// it to show Zero is refused and a real principal is admitted -- dropping this fact would be a policy regression.
+type AttemptExitSpoolUidPolicy = AttemptExitSpoolUidRoot | AttemptExitSpoolUidAdmissible
+
+fn attempt_exit_spool_uid_policy(uid: Nat) -> AttemptExitSpoolUidPolicy {
+  if uid == Zero {
+    AttemptExitSpoolUidRoot
+  } else {
+    AttemptExitSpoolUidAdmissible
+  }
+}
+
+// THE SOLE ADMITTING MINT FOR THE COMPUTE EXIT SPOOL. It takes ONLY the business key -- the admitted instance
+// -- and derives the instance root from compute_root and the principal uid from the process's own effective
+// uid. Neither is a parameter a caller can set: the bad store value (an arbitrary tree, or another uid) is
+// UNWRITABLE, not runtime-refused. The former public `spool_open_uid` (path + arbitrary uid) and the
+// `compute_exit_spool_open` wrapper beside it are DELETED -- no path-to-store route remains (review 95668).
+fn compute_attempt_exit_spool_open(instance: HostDashboardInstance) -> SpoolOpenVerdict {
+  match compute_exit_spool_effective_uid() {
+    Absent => SpoolOpenUidUnreadable
+    Present { value: uid } => match checked_int_to_nat(n: uid) {
+      Absent => SpoolOpenUidUnreadable
+      Present { value: uid_nat } => match attempt_exit_spool_uid_policy(uid: uid_nat) {
+        AttemptExitSpoolUidRoot => SpoolOpenUidRoot
+        AttemptExitSpoolUidAdmissible =>
+          SpoolOpenReady { store: PartitionedSpoolStore { kind: SpoolComputeExit {}, instance_root: compute_root(instance: instance) as String, uid: uid_nat } }
+      }
+    }
+  }
+}
+
+// THE READ/HOOK PATH DERIVATION FOR AN ADMITTED STORE. A thin forwarder in the STORE'S OWN module: only here
+// may the store's fields be projected, and the string itself is produced by spool_queue's ONE derivation. The
+// consumers (compute_attempt_exit_hook / compute_attempt_exit_record_listing) pass the sealed store, never a
+// path and never the fields, so no caller can aim them at a tree it chose (review 95668). This is NOT the
+// deleted hand-joined `compute_attempt_exit_spool_done_dir`; it delegates to the one derivation authority.
+fn attempt_exit_spool_done_dir(store: PartitionedSpoolStore) -> String {
+  partitioned_spool_done_dir(kind: store.kind, instance_root: store.instance_root, uid: store.uid)
 }
 
 fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
