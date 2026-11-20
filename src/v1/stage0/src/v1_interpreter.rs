@@ -18268,7 +18268,8 @@ fn declared_shell_leg_ceiling(
         None => return Ok((None, None)),
         Some(ceiling_node) => ceiling_node,
     };
-    match eval_expr(&ceiling_node, param_env, ctx)? {
+    let declared = eval_expr(&ceiling_node, param_env, ctx)?;
+    match &declared {
         Value::Variant { variant_name, .. } if ctx.resolve(*variant_name) == "Absent" => {
             Ok((None, None))
         }
@@ -18286,7 +18287,7 @@ fn declared_shell_leg_ceiling(
                     msg: format!("{intent}: shell transport wall_deadline must be a positive number of seconds (a per-leg deadline is never 0-means-none)"),
                 });
             }
-            Ok((Some(std::time::Duration::from_secs(secs as u64)), Some(second)))
+            Ok((Some(std::time::Duration::from_secs(secs as u64)), Some(second.clone())))
         }
         other => Err(InterpError::TypeError {
             msg: format!("{intent}: shell transport wall_deadline must be Optional<Second>, found `{other}`"),
@@ -29462,11 +29463,11 @@ mod wall_deadline_kill_tests {
         let argv_expr = make_expr_node(
             occ.clone(),
             Rc::new(ExprData::ExprLiteral {
-                value: Rc::new(LiteralValue::LiteralString {
-                    text: "true".to_string(),
+                value: Rc::new(LiteralValue::LitStr {
+                    value: "true".to_string(),
                 }),
             }),
-            Rc::new(vec![]),
+            Rc::new(im_vec![]),
             None,
             no_span(),
         );
@@ -29482,7 +29483,7 @@ mod wall_deadline_kill_tests {
             occ.clone(),
             "wall_deadline".to_string(),
             Rc::new(ExprData::ExprVar { binding_kind: None }),
-            Rc::new(vec![]),
+            Rc::new(im_vec![]),
             None,
             no_span(),
             kernel_span("wall_deadline".to_string()),
@@ -29496,15 +29497,15 @@ mod wall_deadline_kill_tests {
         );
         let bare_transport = make_transport_node(
             occ.clone(),
-            Rc::new(vec![argv_field.clone()]),
-            Rc::new(vec![]),
+            Rc::new(im_vec![argv_field.clone()]),
+            Rc::new(im_vec![]),
             None,
             no_span(),
         );
         let declared_transport = make_transport_node(
             occ.clone(),
-            Rc::new(vec![argv_field, ceiling_field]),
-            Rc::new(vec![]),
+            Rc::new(im_vec![argv_field, ceiling_field]),
+            Rc::new(im_vec![]),
             None,
             no_span(),
         );
