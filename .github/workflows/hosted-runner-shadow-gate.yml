@@ -54,15 +54,9 @@ jobs:
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\n' "${{ secrets.GUNBC_REMOTE_BUILD_CI_SSH_KEY }}" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519 && eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519
         shell: bash
-      - name: "Plumbing proof (remote_test_cli): emit_build_self_host"
-        id: remote-build-emit_build_self_host
+      - name: "Plumbing proof: remote_test_cli over the plumbing-proof pattern"
+        id: remote-build-plumbing-proof
         run: |
           set -euo pipefail && echo '--- remote gate step ---' && ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv1.tailecbe08.ts.net true
-          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=//dag/test/claim/compute/host_capacity_seal_witness.dag --arg receipt_path=/tmp/shadow-gate-receipt-emit_build_self_host.json
-        shell: bash
-      - name: "Plumbing proof (remote_test_cli): emit_build_v2_native_cli"
-        id: remote-build-emit_build_v2_native_cli
-        run: |
-          set -euo pipefail && echo '--- remote gate step ---' && ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv1.tailecbe08.ts.net true
-          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=//dag/test/claim/compute/host_capacity_seal_witness.dag --arg receipt_path=/tmp/shadow-gate-receipt-emit_build_v2_native_cli.json
+          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=//dag/test/claim/compute/host_capacity_seal_witness.dag --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json
         shell: bash

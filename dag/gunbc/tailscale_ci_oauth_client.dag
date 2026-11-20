@@ -2,7 +2,8 @@ module gunbc.tailscale_ci_oauth_client
 
 // THE CI-DISPATCH ENROLLMENT CREDENTIAL, AS A PINNED-OAUTH CLIENT WITH ONE RECORD OF WHAT IT IS.
 //
-// The hosted-runner shadow gate joins the tailnet as an ephemeral node tagged tag:ci-dispatch. The
+// The hosted-runner shadow gate joins the tailnet as an ephemeral node tagged tag:ci-dispatch (@ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign). The
 // tailscale/github-action authenticates via an OAuth client (not an auth key), so the credential's
 // identity is an OAuth client_id (public) and client_secret (private, held as a GitHub repository
 // secret). This module is the single home of the client's identity: which scope, which tag, whether

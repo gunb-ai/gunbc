@@ -18,7 +18,8 @@ import extdeps.github.action_release {
 //
 // The OAuth client must have the writable `auth_keys` scope (README at v4.4.0: "OAuth clients used
 // for this purpose must have the writable auth_keys scope"). At least one tag is required on the
-// OAuth client; this repository uses tag:ci per the operator ruling of 2026-11-19.
+// OAuth client; this repository uses tag:ci-dispatch per the operator ruling @ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

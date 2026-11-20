@@ -39,7 +39,9 @@ data tag_dashboard: NonEmptyStr = "tag:dashboard"
 // ruling that the fleet's both_participation hosts carry this alongside tag:ci (2026-11-18, chat).
 data tag_serving: NonEmptyStr = "tag:serving"
 // THE CI-DISPATCH TAG: ephemeral hosted-runner nodes that drive the remote build over the tailnet.
-// Operator ruling 2026-11-19: "OK for ci-dispatch, as long as its all modeled/recorded for tailscale
+// Operator ruling (@ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign):
+// "OK for ci-dispatch, as long as its all modeled/recorded for tailscale
 // convergence." The node is ephemeral (self-expires), tagged by the OAuth client, and reaches only the
 // remote-build hosts on ssh_tcp_port. It is NOT tag:ci: tag:ci is quarantined (reaches only the dashboard
 // on tcp:3737); a hosted runner joining as tag:ci would reach no build host.
