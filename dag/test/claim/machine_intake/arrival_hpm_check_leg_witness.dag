@@ -4,7 +4,6 @@ import std.types { Bool, NonEmptyStr, FilePath }
 import std.algebra { string_contains }
 import std.measure { second, second_count }
 import gunbc.machine_intake.arrival_run {
-  arrival_wet_hpm_check_source,
   arrival_wet_hpm_check_refusal,
   arrival_wet_hpm_retention_refusal,
   arrival_wet_hpm_check_path,
@@ -18,8 +17,6 @@ import gunbc.fleet.fleet_converge_workflow { fleet_converge_arrival_converge_ste
 // gunbc.machine_intake.bmc_firmware_hpm_read::bmc_hpm_check_transport -- the same function the
 // boot lane calls) and executes only where a controller answers. What is established hermetically
 // here is the lane's contract, exactly as the boot lane's witness establishes its own:
-//  - the source line names the command, the ARRIVAL endpoint (not the boot lane's), the probed
-//    instant and the credential FILE's role -- never a credential string;
 //  - the two failure arms render two DIFFERENT causes, and the retention arm never claims a
 //    controller exit code, never says "was not read", and never reaches for the credential
 //    (review 96635's rule, held per lane: a local write failure must never send the operator to
@@ -30,6 +27,11 @@ import gunbc.fleet.fleet_converge_workflow { fleet_converge_arrival_converge_ste
 //    carries the signed 21-minute figure -- the leg entered the fold inside the 21-minute band,
 //    so no budget raise was needed (if a future term pushes the sum past the band, the pairing
 //    witness goes red and the raise must come with a ruling row, never silently).
+// No Ok-arm source line exists: the Ok arm retains only the table file and records no provenance
+// text, so a renderer for one would be a dangling leaf (review 96957; gunbc.design_argument::
+// consumption) -- it was deleted with its claim rather than witnessed into existence. The live
+// table's provenance is committed by the follow-up evidence PR, which mints the real text from the
+// real run.
 // The discriminating pairs: exit 124 vs exit 1 render different causes (a timeout is not a
 // session failure is not a refused read); the retention refusal is distinct from BOTH transport
 // renderings; drop the phase or change the bound and the budget claims below go red while the
@@ -38,16 +40,6 @@ import gunbc.fleet.fleet_converge_workflow { fleet_converge_arrival_converge_ste
 data arrival_controller_host: NonEmptyStr = "192.168.1.247"
 data at_instant: NonEmptyStr = "2026-11-20T08:40:00Z"
 data run_wire_key: NonEmptyStr = "44134741714"
-
-test fn w_the_arrival_source_line_names_the_command_the_endpoint_and_instant_and_no_credential() -> Bool {
-  let path = arrival_wet_hpm_check_path(evidence_root: "/srv15/evidence" as FilePath, run_wire: run_wire_key)
-  let source = arrival_wet_hpm_check_source(host: arrival_controller_host, at: at_instant, retained_path: path) as String
-  string_contains(s: source, pattern: "ipmitool hpm check at ")
-    && string_contains(s: source, pattern: arrival_controller_host as String)
-    && string_contains(s: source, pattern: at_instant as String)
-    && string_contains(s: source, pattern: "/srv15/evidence")
-    && !string_contains(s: source, pattern: "password")
-}
 
 test fn w_the_transport_refusal_names_the_cause_and_no_credential_and_the_two_causes_differ() -> Bool {
   let timeout = arrival_wet_hpm_check_refusal(

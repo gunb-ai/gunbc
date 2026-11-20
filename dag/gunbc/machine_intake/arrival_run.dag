@@ -811,13 +811,6 @@ fn arrival_wet_hpm_check_path(evidence_root: FilePath, run_wire: NonEmptyStr) ->
   concat(evidence_root as String, concat("/hpm-check-", run_wire as String)) as NonEmptyStr
 }
 
-// The read's source line: what was run, at which endpoint, at which probed instant. Pure, so the
-// witness asserts its shape without a live controller. It names NO credential: the password reached
-// ipmitool only through the bracketed 0600 file, and only the file's role appears here.
-fn arrival_wet_hpm_check_source(host: NonEmptyStr, at: NonEmptyStr, retained_path: NonEmptyStr) -> NonEmptyStr {
-  join(["ipmitool hpm check at ", at as String, " against controller ", host as String, " with the credential file at ", retained_path as String], "") as NonEmptyStr
-}
-
 // The transport arm's refusal, in this lane's words (never routed through the boot lane's
 // classifier: the arrival refusals stay distinct and located, and a wrong answer here would send
 // the operator to inspect the wrong component).
