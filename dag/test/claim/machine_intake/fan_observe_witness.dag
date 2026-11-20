@@ -21,6 +21,7 @@ import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_prob
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
   fleet_converge_fan_policy_phase_step,
+  fleet_converge_fan_policy_phase_step_if,
   fleet_converge_fan_policy_phase_receipt_upload_step,
   fleet_converge_mtcollins1_boot_steps_around,
   fleet_converge_mtcollins1_fan_observe_step,
@@ -333,8 +334,12 @@ test fn fan_policy_phase_trap_names_no_unsettled_variable() -> Bool {
 
 // CONTROL: the receipt upload still fails the job when the phase wrote NOTHING (review 81077's
 // wrong-place-failure finding is closed at the other end: every modeled path writes a receipt, so a
-// missing file now means the step itself died - and it already failed at the fan step). Under
-// always() so an early-failing job still reports it, fail-closed on no-files-found.
+// missing file now means the step itself died - and it already failed at the fan step). Its condition
+// is a COMPOSITION, not a bare literal: always() so an early-failing job still reports it, AND the fan
+// step's own condition, because the series exists only where that step ran (it is skipped in the
+// controller cold-reset mode). So the shipped string must start with "always() && " and the remainder
+// must be exactly fleet_converge_fan_policy_phase_step_if - the same data the fan step itself is given.
+// fail-closed on no-files-found.
 test fn fan_policy_phase_receipt_upload_fails_closed_under_always() -> Bool {
   match fleet_converge_fan_policy_phase_receipt_upload_step() {
     UsesStep { name: _, id: _, uses: _, with: w, env: _, if_condition: i, continue_on_error: c, timeout_minutes: _ } =>
@@ -343,7 +348,11 @@ test fn fan_policy_phase_receipt_upload_fails_closed_under_always() -> Bool {
           with |> any(k =>
             k.key == "if-no-files-found"
               && match k.value { YamlString { value: v } => v == "error"  _ => false })
-            && match i { Present { value: "always()" } => true  _ => false }
+            && match i {
+                 Present { value: cond } =>
+                   starts_with(s: cond, prefix: "always() && ")
+                     && cond == join(["always() && ", fleet_converge_fan_policy_phase_step_if], "")
+                 _ => false }
             && match c { Absent => true  _ => false }
         Absent => false
       }

@@ -40,9 +40,18 @@ import std.algebra { length, string_contains }
 import std.roster_frontier { frontier_rows_well_formed }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { FilePath, String }
-import extdeps.filesystem.filesystem_io
+// Selective import: a whole-module `import extdeps.filesystem.filesystem_io` leaves the bare `Filesystem`
+// below ambiguous with `std.resources` and does not bind `filesystem_io` as a qualifier; `{ Filesystem }`
+// binds the one symbol the witness reads. Matches host_memory_observation.dag / dmi_id / sha256sum.
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tailscale.acl { tag_serving }
-import extdeps.package_managers.dpkg { DpkgPackageInstalled }
+import extdeps.package_managers.dpkg {
+  DpkgInstalledState,
+  DpkgPackageInstalled,
+  DpkgPackageNotInstalled,
+  DpkgPackageUnknown,
+  DpkgQueryUndecidable,
+}
 import extdeps.tailscale.join {
   TailscaleJoinState,
   JoinStateJoinedWithRequiredTag,
@@ -60,12 +69,26 @@ import gunbc.fleet.fleet_enrollment {
 }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
   JoinPlanNotFleetMember,
   JoinPlanPlaceAndJoin,
   JoinPlanRefused,
   JoinRefusedNotFleetMember,
+  JoinObsInstalled,
+  JoinObsInstall,
+  JoinObsRefused,
+  TailscaleJoinObservation,
+  StatusParsed,
+  StatusBinaryAbsent,
+  StatusUnreadable,
+  tailscale_join_observation_of,
+  tailscale_join_package_verdict_of,
+  TailscaleJoinPackageAction,
+  JoinPackageInstall,
+  JoinPackageAlreadyInstalled,
   TailscaleJoinPlan,
   tailscale_join_observed_tags_word,
   tailscale_join_outcome_receipt,
@@ -119,10 +142,211 @@ fn state_of(fixture: FilePath) -> TailscaleJoinState {
 fn plan_for(document: String, key_usable: Bool) -> TailscaleJoinPlan {
   tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag),
-    package_state: DpkgPackageInstalled,
+    observation: JoinObsInstalled { join_state: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag) },
     key_usable: key_usable,
   )
+}
+
+// THE OBSERVATION SUM + ITS GUARDS (the fix for srv4, run 44643376146, and reviews 96824 + 96828).
+// tailscale_join_plan takes a single TailscaleJoinObservation sum: JoinObsInstall / JoinObsRefused /
+// JoinObsInstalled{join_state}. w_package_decides_before_the_join_state exercises the plan arms;
+// w_install_requires_binary_absent_or_positive_not_joined witnesses tailscale_join_observation_of -- the builder.
+// The destructive `tailscale up --force-reauth` is authorized ONLY for JoinObsInstall, which the builder emits
+// only when the status is 127 (binary absent) or positively NotJoined. A host dpkg cannot see but which IS joined
+// stays JoinObsInstalled (Noop / NotFleetMember); an UNREADABLE status (not 127) REFUSES -- it does not prove
+// "not joined" (review 96828).
+fn plan_installs(p: TailscaleJoinPlan) -> Bool {
+  match p {
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action } =>
+      action == JoinPackageInstall
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+  }
+}
+
+fn plan_refused(p: TailscaleJoinPlan) -> Bool {
+  match p {
+    JoinPlanRefused { host: _, cause: cause } => cause != ""
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+  }
+}
+
+fn obs_is_install(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsInstall { status_string: _ } => true
+    JoinObsInstalled { join_state: _ } => false
+    JoinObsRefused { cause: _ } => false
+  }
+}
+
+fn obs_is_installed(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsInstalled { join_state: _ } => true
+    JoinObsInstall { status_string: _ } => false
+    JoinObsRefused { cause: _ } => false
+  }
+}
+
+fn obs_is_refused(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsRefused { cause: cause } => cause != ""
+    JoinObsInstalled { join_state: _ } => false
+    JoinObsInstall { status_string: _ } => false
+  }
+}
+
+test fn w_package_decides_before_the_join_state() -> Bool {
+  let install = tailscale_join_plan(
+    host: operator_host_srv1,
+    observation: JoinObsInstall { status_string: Absent },
+    key_usable: true,
+  )
+  let refused = tailscale_join_plan(
+    host: operator_host_srv1,
+    observation: JoinObsRefused { cause: "dpkg could not answer whether tailscale is installed" },
+    key_usable: true,
+  )
+  let installed_unreadable = tailscale_join_plan(
+    host: operator_host_srv1,
+    observation: JoinObsInstalled { join_state: JoinStateUnreadable { cause: "status leg exited non-zero with the binary present" } },
+    key_usable: true,
+  )
+  plan_installs(install)
+    && plan_refused(refused)
+    && plan_refused(installed_unreadable)
+}
+
+// The dpkg leg's wet decoding, witnessed at the decision the wet makes. `dpkg-query -s <absent>` exits 1 and
+// prints "... is not installed and no information is available" -- a dpkg ANSWER (Unknown = definite absence),
+// NOT an execution failure. The wet used to short-circuit ANY non-zero exit to Undecidable, so srv4 (live run
+// 44677315667) refused to install tailscale on a host that simply did not have it. Now a CONVERGED leg is decoded
+// by dpkg_query_status_verdict_of: the exit-1-marker shape -> Unknown -> (with a 127 binary-absent status) ->
+// JoinObsInstall -> the plan INSTALLS; a transport refusal and a genuine non-0/non-1 dpkg failure stay Undecidable
+// and refuse. Mirrors the proven sibling observe_site_pxe_edge_package.
+fn pkg_is_unknown(s: DpkgInstalledState) -> Bool {
+  match s {
+    DpkgPackageUnknown => true
+    _ => false
+  }
+}
+
+fn pkg_is_undecidable(s: DpkgInstalledState) -> Bool {
+  match s {
+    DpkgQueryUndecidable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn w_fresh_host_dpkg_answer_installs_not_refuses() -> Bool {
+  let fresh_host = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecConverged {
+      result: SshSessionExecResult {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "dpkg-query: package 'tailscale' is not installed and no information is available\nUse dpkg --info (= dpkg-deb --info) to examine archive files.",
+      },
+    },
+  )
+  let transport_down = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecRefused { reason: "ssh transport down" },
+  )
+  let dpkg_broken = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecConverged {
+      result: SshSessionExecResult {
+        exit_code: 2,
+        success: false,
+        stdout: "",
+        stderr: "dpkg-query: an unexpected failure with no recognizable answer",
+      },
+    },
+  )
+  let install_obs = tailscale_join_observation_of(package: fresh_host, status: StatusBinaryAbsent)
+  let refusal_transport = tailscale_join_observation_of(package: transport_down, status: StatusBinaryAbsent)
+  let refusal_broken = tailscale_join_observation_of(package: dpkg_broken, status: StatusBinaryAbsent)
+  pkg_is_unknown(fresh_host)
+    && obs_is_install(install_obs)
+    && plan_installs(
+      tailscale_join_plan(
+        host: operator_host_srv1,
+        observation: install_obs,
+        key_usable: true,
+      )
+    )
+    && pkg_is_undecidable(transport_down)
+    && obs_is_refused(refusal_transport)
+    && pkg_is_undecidable(dpkg_broken)
+    && obs_is_refused(refusal_broken)
+}
+
+// The guard (reviews 96824 + 96828). Install (and its destructive `tailscale up --force-reauth`) is authorized
+// ONLY on a binary-absent (127) or a positive NotJoined reading. A host dpkg cannot see but which IS joined stays
+// JoinObsInstalled (so the plan keeps Noop / NotFleetMember and never overwrites an operator identity), and an
+// UNREADABLE status that is not 127 refuses -- it is not evidence of "not joined".
+test fn w_install_requires_binary_absent_or_positive_not_joined() -> Bool {
+  let unknown_tagged = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusParsed { state: JoinStateJoinedWithRequiredTag { self_tags: ["tag:ci"] } },
+  )
+  let not_installed_notag = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "" },
+    status: StatusParsed { state: JoinStateJoinedWithoutRequiredTag { self_tags: [] } },
+  )
+  let unknown_binary_absent = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusBinaryAbsent,
+  )
+  let not_installed_not_joined = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "deinstall ok config-files" },
+    status: StatusParsed { state: JoinStateNotJoined { state: "BackendState: NeedsLogin" } },
+  )
+  // THE REGRESSION opus caught (review 96846). A non-apt tailscale (static/snap/purged record) that dpkg cannot
+  // see, whose parsed status is a NOT-JOINED whose BackendState string is "NeedsMachineAuth". The builder still
+  // classifies it install-eligible (a parsed not-joined => JoinObsInstall), but it MUST carry the observed string,
+  // because a host running tailscale in NeedsMachineAuth must REFUSE at the plan's key guard -- installing the apt
+  // package over a running tailscale and force-reauthing it with the fleet key is the exact harm the guard exists
+  // to stop. Pre-fix JoinObsInstall dropped the string, the plan passed Absent, and the guard's `Absent => false`
+  // was a fabricated default for a status that WAS read -- so this host re-joined. Now: obs_is_install is true
+  // (the builder's classification is unchanged) AND plan_refused is true (the guard now sees the carried string).
+  let needs_machine_auth_on_hidden_tailscale = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusParsed { state: JoinStateNotJoined { state: "NeedsMachineAuth" } },
+  )
+  let unknown_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusUnreadable { cause: "status leg exit=1 (daemon unreachable)" },
+  )
+  let not_installed_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "" },
+    status: StatusUnreadable { cause: "status leg refused" },
+  )
+  let broken = tailscale_join_observation_of(
+    package: DpkgQueryUndecidable { reason: "dpkg itself failed" },
+    status: StatusParsed { state: JoinStateNotJoined { state: "ignored" } },
+  )
+  obs_is_installed(unknown_tagged)
+    && obs_is_installed(not_installed_notag)
+    && obs_is_install(unknown_binary_absent)
+    && obs_is_install(not_installed_not_joined)
+    && obs_is_refused(unknown_unreadable)
+    && obs_is_refused(not_installed_unreadable)
+    && obs_is_refused(broken)
+    // review 96846 regression guard. The builder still classifies the NeedsMachineAuth host install-eligible
+    // (obs_is_install true), but the PLAN must REFUSE it -- JoinObsInstall now carries the observed string so the
+    // key guard's NeedsMachineAuth arm fires instead of the fabricated `Absent => false`.
+    && obs_is_install(
+      needs_machine_auth_on_hidden_tailscale
+    )
+    && plan_refused(
+      tailscale_join_plan(
+        host: operator_host_srv1,
+        observation: needs_machine_auth_on_hidden_tailscale,
+        key_usable: true,
+      )
+    )
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
