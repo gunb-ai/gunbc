@@ -453,6 +453,31 @@ fn capacity_seat_for_reservation(reservation: ByteSize) -> ByteSize {
   }
 }
 
+// THE USER-WORK SLICE CEILING FOR A HOST -- THE ONE SEAT AUTHORITY (node adhoc-c0a6f401-440).
+// The gunbc-user-work.slice MemoryMax is the host's BUILD-POOL APPROPRIATION, and it is read from the
+// SAME rows the carve reads -- never a second, parallel number. For a carved host (srv3, srv4) the
+// carve holds the build pool in exactly host_build_pool_reservation(host): the seat derived from that
+// reservation (capacity_seat_for_reservation) times the pool's seat count (compute_pool_slots) reproduces
+// the carved slot EXACTLY (the anti-double-count invariant gunbc.compute.host_capacity_seal_witness pins),
+// so the slice ceiling IS the reservation. Read the reservation and the ceiling follows -- when the carve
+// row moves (slot count or seat size), this re-renders with NO edit here, and srv3/srv4 are never sized
+// at a hard-coded width. A host with NO reservation (srv1, srv2) keeps the STANDING user-work pool:
+// compute_build_memory_ceiling_default (the compute-seat default, equal by fact to the slice's own
+// user_work_slot_memory_max, 22 GiB) times compute_pool_slots -- srv1's 2 x 22 GiB, the same number the
+// slice authoritatively carries today, so no srv1 fork is introduced. This is count- and carve-agnostic:
+// it is a pure read of the reservation row, not a literal 6 (the interim count is the operator's and may
+// move to 7); no witness or caller hardcodes a width. The high/swap relation is NOT restated here -- the
+// render derives MemoryHigh from this max via gunbc.live_deploy.slice_bounds user_work_slice_memory_high_of
+// and sets MemorySwapMax to user_work_slice_memory_swap_max (0), so this leaf owns only the ceiling.
+fn user_work_slice_memory_max_for_host(host: HostIdentity) -> ByteSize {
+  let reservation = host_build_pool_reservation(host: host)
+  if byte_size_count(reservation) > 0 {
+    reservation
+  } else {
+    byte_size(byte_size_count(compute_build_memory_ceiling_default) * compute_pool_slots)
+  }
+}
+
 // THE ONE TABLE: WHERE EACH HOST'S LEDGER LIVES, found by host. A host on the remote-build roster
 // has ONE capacity home at /opt/gunbc/compute/capacity and it is found HERE, by host identity -- not by
 // walking gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host to whatever instance the
