@@ -352,7 +352,7 @@ fn has_decomposition_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) ->
 // THE ONE PRICING READ over a carried table: it folds the ONE pricing function (stages_leaf_days) with merge_pricing.
 // It returns a typed LeafPricing -- Priced only when no FindingsOf family in the node's pieces is unprobed, otherwise
 // Unpriced naming every unprobed family and its probe -- so a caller CANNOT price an unmeasured population by forgetting
-// to check: the type forces the unprobed case to be handled (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)).
+// to check: the type forces the unprobed case to be handled (#gunbc.design_ruling::estimates_are_one_representation_derived_upward).
 fn decomposition_work_days_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> LeafPricing {
   fold(decompositions_in(pieces: pieces, node: node), init: Priced { days: 0 }, f: fn(acc, d) { merge_pricing(a: acc, b: stages_leaf_days(stages: d.stages)) })
 }
@@ -377,7 +377,7 @@ fn decomposition_leaf_count(node: RoadmapNodeId) -> LeafCount {
 
 // Does this node's decomposition PRICE it? A decomposition that exists but carries an unprobed FindingsOf family does
 // NOT price the node -- it leaves it unsized. So a node with only such a decomposition is not "estimated": it is
-// listed, never priced (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)).
+// listed, never priced (#gunbc.design_ruling::estimates_are_one_representation_derived_upward).
 fn decomposition_prices_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> Bool {
   if has_decomposition_in(pieces: pieces, node: node) {
     match decomposition_work_days_in(pieces: pieces, node: node) {
@@ -682,7 +682,7 @@ type UnsizedWhy
   | FindingsUnprobed { family: String, probe: String }
 
 // The cause an unpriced decomposition gives: name the FIRST unprobed family and its probe, deterministically. The
-// Unpriced total's `families` is a FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup)), so
+// Unpriced total's `families` is a FreeSemigroup (nonempty by construction, #std.algebra::FreeSemigroup), so
 // there is no empty state to fall back to -- an "unpriced but nameless" total is unwritable and no made-up cause is
 // ever returned. This reads the head; it does not re-decide cardinality.
 fn findings_unprobed_cause(families: FreeSemigroup<UnprobedFamily>) -> UnsizedWhy {

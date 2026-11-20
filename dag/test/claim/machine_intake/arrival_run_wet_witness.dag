@@ -37,6 +37,10 @@ import std.content_hash { content_hash_of_value }
 import std.dissolution { dissolution_description }
 import gunbc.machine_intake.arrival_run {
   arrival_wet_prefix_record,
+  arrival_epoch_from_version,
+  ArrivalEpochRead,
+  ArrivalEpochVersionEmpty,
+  ArrivalEpochNoIntegerVersion,
   ArrivalRunCaptures,
   ArrivalWetRunRecord,
   ArrivalRunObserved,
@@ -553,5 +557,25 @@ test fn a_failed_live_read_refuses_the_run_closed() -> Bool {
   ) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "FAILED CLOSED")
     ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+}
+
+// THE EPOCH READING REFUSES AS A VALUE, NOT AS A PROCESS THAT ENDED. The door reads the credential
+// epoch out of the projected secret version id, and that id can fail to carry a number in two ways.
+// The reading used to be typed `-> Int` and to end the process on both: the refusal then had no carrier
+// at all, and an `Int` position was inhabited by a process-exit value -- the shape the declared-type wall
+// (PR #16699) refuses at that line, and the shape PR #16717 cleared at five other sites. RED until the
+// reading returns its refusal: the number, or the version id that failed to carry one, which the door's
+// wet skin surfaces at the position already declared to end a process.
+test fn the_epoch_reading_refuses_as_a_value_not_a_process_exit() -> Bool {
+  match arrival_epoch_from_version("projects/gunbc-machine-intake-bmc-managed/versions/12") {
+    ArrivalEpochRead { epoch: n } => n == 12
+    ArrivalEpochVersionEmpty { version: _v } => false
+    ArrivalEpochNoIntegerVersion { version: _v } => false
+  }
+  && match arrival_epoch_from_version("projects/gunbc-machine-intake-bmc-managed/versions/latest") {
+    ArrivalEpochRead { epoch: _n } => false
+    ArrivalEpochVersionEmpty { version: _v } => false
+    ArrivalEpochNoIntegerVersion { version: v } => v == "projects/gunbc-machine-intake-bmc-managed/versions/latest"
   }
 }

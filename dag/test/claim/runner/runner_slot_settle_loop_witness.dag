@@ -1,0 +1,337 @@
+module test.claim.runner.runner_slot_settle_loop_witness
+
+// ── A KEPT SLOT THE HOST NEVER PROVISIONED ──────────────────────────────────────────────────────
+//
+// Two claim families, one production fold. gunbc.runner.runner_host_file_converge decided in the field
+// (srv3, runs 44593179957 and 44621007740) that srv3-06 and srv3-07 could not be capped: their units sit
+// in a failing restart loop with no slot tree, so the tree leg refuses "slot tree absent while active",
+// the actuation never settles, and the cap plan for EVERY slot on the host is withheld with
+// ALLOCATION-NOT-EFFECTIVE -- two units that were never provisioned hold the whole host's ceiling. The
+// fold under test quiets such a loop with a stop (never a mask) so the existing first-install arm can
+// build the tree.
+//
+// The hermetic claims read the ADMISSION, which is where the danger is: a stop issued beside a running
+// job is the srv3-13 class of harm. The wet claims read the LEG: an admitted stop is dispatched and read
+// back, and a refused admission leaves the ledger EMPTY.
+//
+// The world and the `systemctl show` block are the withdrawal witness's, not a second copy: a fixture
+// here that independently decided what the host's command IS would be the defect
+// gunbc.recurring_failure_mode::a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces.
+
+import std.types { Bool, String, NonEmptyStr, Int, List }
+
+import gunbc.runner.runner_host_file_converge {
+  RunnerHostFileSubject,
+  RunnerSlotTreeTarget,
+  RunnerSlotTreePresence,
+  RunnerSlotInstantiation,
+  SlotInstantiationAnomalous,
+  TreeAbsent,
+  RestartLoopStanding,
+  LoopQuiet,
+  LoopLive,
+  LoopUnread,
+  runner_slot_restart_loop_standing,
+  runner_slot_loop_settlement_is_due,
+  settle_unprovisioned_slot_loop_over,
+  LoopStoppedForInstall,
+  LoopRefusedForInstall,
+}
+import gunbc.runner.runner_slot_job_role { CiJobSlot }
+import extdeps.github.actions_runner { actions_runner_base_dir }
+import extdeps.systemd { ControlGroup, TasksCurrent, systemd_unit_property_wire }
+
+import test.claim.runner.runner_host_cap_bracket_witness { u, registration_of, systemctl_show_fixture }
+import test.claim.runner.runner_host_withdraw_witness {
+  WithdrawWorld, SlotWorld, WithdrawRunReturned, WithdrawRunEnded, withdraw_run, world_with,
+  world_with_stop_not_sticking,
+}
+
+// ── the block the host answers with ────────────────────────────────────────────────────────────
+//
+// THE SIX WORDS ARE NOT SPELLED HERE: they come from the bracket witness's `systemctl_show_fixture`, the
+// same fixture the wet world answers with, so this module cannot drift from what
+// gunbc.runner.runner_slot_actuation.slot_actuation_reading_of requires without reddening there too
+// (gunbc.recurring_failure_mode.a_restore_reopens_a_slot_the_host_never_provisioned is exactly the cost of
+// that drift). What is spelled here is the two words the cgroup count lives in, named through the property
+// wire so a rename in extdeps.systemd reddens HERE rather than quietly changing what the admission sees.
+// `tasks` is what the cgroup holds: zero for a unit whose ExecStart has nothing to run, one for a slot with
+// a listener or worker under it. `cg_line` says whether the host printed ControlGroup at all; a printed but
+// EMPTY ControlGroup is the manager saying the unit has no workload cgroup, which is a different answer
+// from silence (gunbc.runner.runner_slot_retirement control_group_property_means_cgroup_absent).
+fn loop_cgroup_words(n: String, cg_line: Bool, control_group: Bool, tasks: String, task_line: Bool) -> String {
+  let cg = if !cg_line { "" } else if control_group {
+    concat(concat(systemd_unit_property_wire(property: ControlGroup) as String, "=system.slice/"), concat(u(n: n) as String, ".service\n"))
+  } else {
+    concat(concat(systemd_unit_property_wire(property: ControlGroup) as String, "=\n"), "")
+  }
+  let tc = if task_line { concat(concat(systemd_unit_property_wire(property: TasksCurrent) as String, "="), concat(tasks, "\n")) } else { "" }
+  concat(cg, tc)
+}
+
+fn loop_show(n: String, active: String, tasks: String, cg_line: Bool, control_group: Bool, task_line: Bool) -> String {
+  concat(
+    systemctl_show_fixture(n: n, load: "loaded", file: "enabled", active: active),
+    loop_cgroup_words(n: n, cg_line: cg_line, control_group: control_group, tasks: tasks, task_line: task_line),
+  )
+}
+
+// THE ONE BLOCK THE SHARED FIXTURE CANNOT ANSWER WITH: a MainPID that is not a number. The fixture derives
+// the word from the unit's activeness, and a host that prints a word systemd would never print is a read
+// this fold must refuse, not a world it may model any other way.
+fn loop_show_unread_pid(n: String, active: String, tasks: String) -> String {
+  concat(
+    concat("Id=", u(n: n) as String, "\nLoadState=loaded\nUnitFileState=enabled\nActiveState=", active, "\nResult=success\nMainPID=not-a-pid\n"),
+    loop_cgroup_words(n: n, cg_line: true, control_group: true, tasks: tasks, task_line: true),
+  )
+}
+
+// ── 1. THE ADMISSION: ONE QUIET OBSERVATION OPENS THE STOP ─────────────────────────────────────
+test fn a_quiet_loop_is_admitted_on_the_three_facts_read_together() -> Bool {
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "0", cg_line: true, control_group: true, task_line: true),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopQuiet { evidence: _ } => true
+    _ => false
+  }
+}
+
+// ── 2-4. AN UNREAD FACT IS AN UNKNOWN, NEVER A ZERO (manager condition, 2026-11-20) ─────────────
+test fn a_loop_with_no_task_count_line_refuses_without_stopping() -> Bool {
+  // The block carries the six words, so the READING itself is typed; only the count is missing.
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "0", cg_line: true, control_group: true, task_line: false),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopUnread { why: _ } => true
+    _ => false
+  }
+}
+
+test fn a_loop_with_no_control_group_line_at_all_refuses_without_stopping() -> Bool {
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "0", cg_line: false, control_group: true, task_line: true),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopUnread { why: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unparseable_main_pid_refuses_without_stopping() -> Bool {
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show_unread_pid(n: "06", active: "activating", tasks: "0"),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopUnread { why: _ } => true
+    _ => false
+  }
+}
+
+// ── 5-7. A FACT THAT ANSWERS AND SAYS LIVE CLOSES IT ───────────────────────────────────────────
+test fn a_loop_with_a_live_process_is_never_stopped() -> Bool {
+  // The process alone closes the admission, even with an empty cgroup count beside it: the count is a
+  // second opinion, not a licence to stop a unit the manager says has a main process.
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "active", tasks: "0", cg_line: true, control_group: true, task_line: true),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopLive { why: _ } => true
+    _ => false
+  }
+}
+
+test fn a_loop_whose_cgroup_holds_a_task_is_never_stopped() -> Bool {
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "1", cg_line: true, control_group: true, task_line: true),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopLive { why: _ } => true
+    _ => false
+  }
+}
+
+test fn a_loop_holding_a_registration_is_never_stopped() -> Bool {
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "0", cg_line: true, control_group: true, task_line: true),
+    registration_held: true,
+    tree_absent_proven: true,
+  ) {
+    LoopLive { why: _ } => true
+    _ => false
+  }
+}
+
+// ── 8. THE EMPTY-CGROUP SHAPE, WHICH IS WHAT A RESTART-DELAY UNIT ACTUALLY PRINTS ──────────────
+//
+// A unit between failed starts can have no workload cgroup at all. The manager's blank ControlGroup is an
+// ANSWER -- the unit has nothing anywhere under it -- and with the listing having proven the install
+// directory absent, it admits the stop. Over a tree whose absence was never proven it does not.
+test fn a_loop_whose_cgroup_is_gone_is_quieted_when_the_tree_absence_is_proven() -> Bool {
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "0", cg_line: true, control_group: false, task_line: false),
+    registration_held: false,
+    tree_absent_proven: true,
+  ) {
+    LoopQuiet { evidence: _ } => true
+    _ => false
+  }
+}
+
+test fn a_loop_whose_cgroup_is_gone_without_a_proven_tree_absence_refuses() -> Bool {
+  // The registration file lives INSIDE the tree directory, so nothing proves the registration absent until
+  // the listing proves the directory absent. A failed read of the file itself is how every unread read in
+  // this domain looks, and proves nothing on its own.
+  match runner_slot_restart_loop_standing(
+    unit: u(n: "06"),
+    show_stdout: loop_show(n: "06", active: "activating", tasks: "0", cg_line: true, control_group: true, task_line: true),
+    registration_held: false,
+    tree_absent_proven: false,
+  ) {
+    LoopUnread { why: _ } => true
+    _ => false
+  }
+}
+
+// ── 9. THE LEG IS ONLY FOR KEPT SLOTS (manager condition 1) ────────────────────────────────────
+//
+// A unit the desired roster does not name is being withdrawn: its tree stays unbuilt and its activation
+// stays held, exactly as before -- building a slot the fleet has decided to retire would create work for
+// the retirement to undo.
+test fn a_slot_the_roster_withdraws_is_never_quieted_or_built() -> Bool {
+  let anomalous = SlotInstantiationAnomalous { unit: u(n: "06"), detail: "the tree is absent while the unit is activating" }
+  !runner_slot_loop_settlement_is_due(instantiation: anomalous, presence: TreeAbsent, kept: false)
+    && runner_slot_loop_settlement_is_due(instantiation: anomalous, presence: TreeAbsent, kept: true)
+}
+
+// ── 8-9. THE LEG OVER THE WORLD ───────────────────────────────────────────────────────────────
+//
+// 06 is the slot the host never built: loaded, enabled, Activating, no task in its cgroup, no
+// registration, no install dir -- srv3-06 read verbatim. 01 is an ordinary provisioned slot beside it,
+// so the claim can say what did NOT happen to the rest of the host.
+fn loop_slot_row() -> SlotWorld {
+  SlotWorld { n: "06", load: "loaded", file: "enabled", active: "activating", worker: false, listener: false, registered: false }
+}
+
+fn loop_slots() -> List<SlotWorld> {
+  [loop_slot_row(), SlotWorld { n: "01", load: "loaded", file: "enabled", active: "active", worker: false, listener: true, registered: true }]
+}
+
+fn loop_slots_busy() -> List<SlotWorld> {
+  [SlotWorld { n: "06", load: "loaded", file: "enabled", active: "activating", worker: true, listener: false, registered: false }, SlotWorld { n: "01", load: "loaded", file: "enabled", active: "active", worker: false, listener: true, registered: true }]
+}
+
+fn loop_presence() -> RunnerSlotTreePresence {
+  TreeAbsent
+}
+
+// THE SUBJECT FOR THIS WORLD: 06 is KEPT by the desired roster (it sits inside srv3's width) and the
+// model declares its tree -- which is what makes the leg eligible, and why the retired case is witnessed
+// above by the not-due claim instead.
+fn settle_subject(sj: RunnerHostFileSubject) -> RunnerHostFileSubject {
+  RunnerHostFileSubject {
+    host: sj.host,
+    target: sj.target,
+    desired_units: [u(n: "01"), u(n: "06")],
+    retired_units: [],
+    fabric_units: [],
+    slot_trees: [
+      RunnerSlotTreeTarget { unit: u(n: "01"), slot_dir: concat(actions_runner_base_dir, "/", registration_of(n: "01")) as NonEmptyStr, role: CiJobSlot, owner: "ghrunner" as NonEmptyStr },
+      RunnerSlotTreeTarget { unit: u(n: "06"), slot_dir: concat(actions_runner_base_dir, "/", registration_of(n: "06")) as NonEmptyStr, role: CiJobSlot, owner: "ghrunner" as NonEmptyStr },
+    ],
+  }
+}
+
+test fn an_admitted_loop_is_stopped_and_read_back_before_anything_else_moves() -> Bool {
+  let w = world_with(slots: loop_slots(), mask_sticks: true, trees_absent: ["06"])
+  match withdraw_run(initial: w, busy_override: false, body: fn(_t, context, sj) {
+    settle_unprovisioned_slot_loop_over(subject: settle_subject(sj: sj), context: context, unit: u(n: "06"), presence: loop_presence())
+  }) {
+    WithdrawRunReturned { value: v, world: ww } =>
+      match v {
+        // The stop went out and NOTHING else did: no mask, no start, no enable, no install leg -- the
+        // tree is built by the existing arm, on the readback this leg handed it.
+        LoopStoppedForInstall { unit: _, read: _, evidence: _ } =>
+          any(ww.acts, a => string_contains(s: a, pattern: "systemctl stop"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl mask"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl start"))
+            && any(ww.slots, s => s.n == "06" && s.active == "inactive")
+            && any(ww.slots, s => s.n == "01" && s.active == "active")
+        _ => false
+      }
+    WithdrawRunEnded { cause: _ } => false
+  }
+}
+
+test fn an_unadmitted_loop_issues_no_actuation_at_all() -> Bool {
+  // The same world with one fact changed: the cgroup holds a worker. The refusal must carry no actuation,
+  // and the claim must not be written as an empty ledger -- the leg reads before it refuses, and reading
+  // is the behaviour we want, so an empty-ledger assertion would go green for a leg that never looked.
+  let w = world_with(slots: loop_slots_busy(), mask_sticks: true, trees_absent: ["06"])
+  match withdraw_run(initial: w, busy_override: false, body: fn(_t, context, sj) {
+    settle_unprovisioned_slot_loop_over(subject: settle_subject(sj: sj), context: context, unit: u(n: "06"), presence: loop_presence())
+  }) {
+    WithdrawRunReturned { value: v, world: ww } =>
+      match v {
+        LoopRefusedForInstall { unit: _, step: st, why: _ } =>
+          (st as String) == "stop-admission"
+            // NOT "the ledger is empty": the leg looked before it refused, and the ledger records reads
+            // too (runner_host_withdraw_witness:246 appends every command). What must be absent is the
+            // MUTATION -- the harm this admission exists to prevent is a stop issued beside a running job.
+            && any(ww.acts, a => string_contains(s: a, pattern: "systemctl show"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl stop"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl start"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl mask"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl unmask"))
+            && any(ww.slots, s => s.n == "06" && s.active == "activating")
+        _ => false
+      }
+    WithdrawRunEnded { cause: _ } => false
+  }
+}
+
+// ── 13. THE STOP THAT DOES NOT STICK IS CAUGHT BY THE READ-BACK ───────────────────────────────
+//
+// The other half of the stop: the world answers a stop with exit 0 and puts the unit straight back on its
+// ExecStart, which is what a restart loop does. `systemctl stop` SUCCEEDED and the stop did not happen, the
+// one place in this domain where those come apart. The leg's answer must be a refusal naming the read-back --
+// not a tree built under a unit the manager still sees starting, and not a second stop issued to find out
+// what happens. The withdrawal fixture honours every stop by default, so this control asks for the world that
+// does not (`world_with_stop_not_sticking`); no other route in this family reaches for it.
+test fn an_admitted_stop_that_does_not_stick_refuses_at_the_readback_and_builds_no_tree() -> Bool {
+  let w = world_with_stop_not_sticking(slots: loop_slots(), mask_sticks: true, trees_absent: ["06"])
+  match withdraw_run(initial: w, busy_override: false, body: fn(_t, context, sj) {
+    settle_unprovisioned_slot_loop_over(subject: settle_subject(sj: sj), context: context, unit: u(n: "06"), presence: loop_presence())
+  }) {
+    WithdrawRunReturned { value: v, world: ww } =>
+      match v {
+        LoopRefusedForInstall { unit: _, step: st, why: _ } =>
+          (st as String) == "stop-readback"
+            // The stop went out, the read-back saw it fail, and the install arm never opened: no staging
+            // directory, no unpack, no start.
+            && any(ww.acts, a => string_contains(s: a, pattern: "systemctl stop"))
+            && any(ww.acts, a => string_contains(s: a, pattern: "systemctl show"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "deploy-slot-runner-stage"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl start"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl mask"))
+            && any(ww.slots, s => s.n == "06" && s.active == "activating")
+        _ => false
+      }
+    WithdrawRunEnded { cause: _ } => false
+  }
+}

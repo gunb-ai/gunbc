@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // Ctrl receipt (review 80383) for the hand-Rust that makes plain `gunbc run` acquire an
 // entry through gunbc.source_layout instead of tokenizing every --source-root file.
 // read_set_record (2026-11-08) is the read-set receipt the operator admitted as the one seed addition for the
-// planning fast lane (@ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)); it dissolves with this walk.
+// planning fast lane (#gunbc.design_ruling::seed_read_set_receipt_is_admitted); it dissolves with this walk.
 // Dissolution is the native compiler owning that lookup (v2.compiler.source_authority
 // module_file / v2.compiler.module_acquisition), not a smaller seed rewrite of the same walk.
 data run_demand_acquire_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {

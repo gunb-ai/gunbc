@@ -883,7 +883,7 @@ fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -
 }
 
 // THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). Same stem discipline as the credential-recovery
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). Same stem discipline as the credential-recovery
 // backstop; the oneshot runs `belt_observe_once_cli` and the timer re-arms it every
 // belt_standings_refresh_backstop seconds.
 fn deployment_belt_standings_refresh_unit_name(names: DeploymentNames) -> NonEmptyStr {
@@ -1063,7 +1063,7 @@ fn deployment_pair_delivery_timer_unit_path(names: DeploymentNames) -> NonEmptyS
 }
 
 // WHETHER A DEPLOYMENT RUNS A RELEASE PAIR is the instance's own declaration, carried on its DesiredDeployment
-// row and realized onto the service config. @ref(gunbc.design_argument::single_authority): the per-revision
+// row and realized onto the service config. #gunbc.design_argument::single_authority: the per-revision
 // release locus root the wet CLI places into and reads the served binding from is NOT derivable from
 // instance_root, and it used to sit in a single global `data` beside these names — a fork against the
 // per-deployment fact the comment living there claimed it to be. It now lives ONLY in PairDelivered; every

@@ -192,11 +192,11 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 }
 
 // srv9 (router label spark-0c75) IS SOLD, and its .236 LAN endpoint row is RETIRED here. The sale is a
-// modeled datum, not a rumour: @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) records
+// modeled datum, not a rumour: #gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 records
 // the operator's ruling of 2026-10-10 ("Group B (srv9-srv12) is sold too: every one of the eight procured
 // units is now sold, and none may remain a reachable fleet host"), and
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries spark-0c75 at former slot srv9 as a
-// sold asset. The scoped cut @ref(gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts::serving_fixtures_name_sold_group_b_hosts)
+// #gunbc.spark.dgx_procurement::dgx_spark_disposed_units carries spark-0c75 at former slot srv9 as a
+// sold asset. The scoped cut #gunbc.rung_drop.serving_fixtures_name_sold_group_b_hosts::serving_fixtures_name_sold_group_b_hosts
 // already removed
 // srv9-srv12 from this topology's endpoint roster, which is why no mode could dispatch to them; what stayed
 // behind was this declaration, existing only to be cited by the intake module. Deleting it removes the last
@@ -212,7 +212,7 @@ data srv3_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 // row does NOT confirm the address and does not discharge the owed reads: the lease table read naming which
 // MAC holds .236, an in-band address read on the installed OS, and a host key confirmed from this unit's own
 // console are still owed, and are carried as the read_obligation on
-// @ref(gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_install_nic_address_standing).
+// #gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_install_nic_address_standing.
 // It is a lease, so it is dynamic: nothing durable may bind to it, and reach for this host anchors on its
 // tailnet name once the fleet join lands. Nothing acts on it today -- ken has no HostPrimaryNetworkDesired
 // row (gunbc.host.host_primary_network), is not a harness replica (gunbc.harness.harness_wire), the runner
@@ -229,9 +229,9 @@ data ken_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 }
 
 // THE OTHER THREE GROUP B SLOTS FOLLOW srv9, ABOVE, FOR THE SAME REASON AND ON THE SAME RULING.
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) is the operator's ruling of 2026-10-10:
+// #gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 is the operator's ruling of 2026-10-10:
 // "Group B (srv9-srv12) is sold too: every one of the eight procured units is now sold, and none may remain a
-// reachable fleet host", and @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries each of these
+// reachable fleet host", and #gunbc.spark.dgx_procurement::dgx_spark_disposed_units carries each of these
 // router labels at its former slot as a sold asset. srv10_host_lan_endpoint (.237), srv11_host_lan_endpoint
 // (.238) and srv12_host_lan_endpoint (.239) are deleted here for that reason -- not rostered, not annotated as
 // reserved: a sold unit that keeps a LAN endpoint declaration is exactly the "reachable fleet host" the ruling

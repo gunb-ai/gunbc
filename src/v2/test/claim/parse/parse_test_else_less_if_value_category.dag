@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // NOT refuse a well-formed else-less `if` it is handed. The value it owes is refused by the value-owing
 // CONSUMER, not at the `if`: that consumer refusal is guarded on the target/serialize route by the
 // closure-emission member row
-// @ref(v2.test.claim.self_host.closure_emission::a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds)
+// #v2.test.claim.self_host.closure_emission::a_closure_member_whose_body_does_not_lower_is_its_own_typed_refusal_holds
 // (its `ce_refusing_fn` is the SAME SHAPE: a value-position else-less `if` with an expression arm,
 // `if p { p }`), which refuses with `target_value_expr_reason_branch_else_less_as_value`. The
 // readers are handed the parsed node rather than reached through a whole normalize. The real path is
@@ -129,7 +129,7 @@ fn elif_guard_admitted(parsed: Optional<Node>) -> Bool {
 
 // The value-position else-less `if` is ADMITTED by the if reader `body_lower_if_expr` (it lowers to the
 // else-less Branch); it is NOT refused at the `if`. The value it owes is the CONSUMER's to refuse, guarded
-// on the target/serialize route by the closure-emission member row (see the file header @ref). This row
+// on the target/serialize route by the closure-emission member row (see the file header's marked citation). This row
 // goes red if the if reader ever refuses this well-formed shape again -- a real discriminant, not a tautology.
 fn elif_value_if_expr_admits(parsed: Optional<Node>) -> Bool {
   match parsed {

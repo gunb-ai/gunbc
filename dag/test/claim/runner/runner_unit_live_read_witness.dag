@@ -79,7 +79,7 @@ fn matching_swap_max_row() -> RunnerUnitLiveReadRow {
 fn drifted_swap_max_row() -> RunnerUnitLiveReadRow {
   // One MiB of swap-backed memory (1048576, a systemd Show byte count), which is
   // precisely what the envelope ruling forbids
-  // (@ref(gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired) sets
+  // (#gunbc.runner.runner_slot_desired::gunbc_runner_slot_desired sets
   // memory_swap_max to byte_size(0) -- operator 2026-11-04, "no thrashing allowed",
   // class gunbc.recurring_failure_mode swap_zero_read_as_a_thrash_refusal). The raw is
   // written the way the production fixture writes its own raws ("0", "infinity"), not

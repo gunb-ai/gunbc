@@ -399,8 +399,8 @@ fn host_installed_components(host: HostIdentity) -> List<PhysicalAssetIdentity> 
 // its figure never covered and srv1 REFUSES that figure until it is remeasured.
 // An INFERRED figure describes its BASIS host's build, not the subject host's, so its declared configuration
 // must be that basis build mapped onto the subject's own units -- never the subject's present parts list, which
-// would assert a measurement that was never taken (@ref(gunbc.design_argument::epistemic_humility): do not assert as deduced
-// what is only inferred; @ref(gunbc.design_argument::fail_closed): no plausible output is fabricated). srv2 was inferred from srv1's accelerator-free build and srv2's own
+// would assert a measurement that was never taken (#gunbc.design_argument::epistemic_humility: do not assert as deduced
+// what is only inferred; #gunbc.design_argument::fail_closed: no plausible output is fabricated). srv2 was inferred from srv1's accelerator-free build and srv2's own
 // build has no accelerator either, so the two agree and srv2 keeps pricing. srv3 also came from srv1 but adds
 // a liquid cooler; a cooler changes no power-relevant part of the draw, so the figure is still declared to
 // apply to srv3's cooled build and it keeps pricing. srv4 was inferred from the SAME accelerator-free srv1

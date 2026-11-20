@@ -40,9 +40,18 @@ import std.algebra { length, string_contains }
 import std.roster_frontier { frontier_rows_well_formed }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { FilePath, String }
-import extdeps.filesystem.filesystem_io
+// Selective import: a whole-module `import extdeps.filesystem.filesystem_io` leaves the bare `Filesystem`
+// below ambiguous with `std.resources` and does not bind `filesystem_io` as a qualifier; `{ Filesystem }`
+// binds the one symbol the witness reads. Matches host_memory_observation.dag / dmi_id / sha256sum.
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tailscale.acl { tag_serving }
-import extdeps.package_managers.dpkg { DpkgPackageInstalled }
+import extdeps.package_managers.dpkg {
+  DpkgInstalledState,
+  DpkgPackageInstalled,
+  DpkgPackageNotInstalled,
+  DpkgPackageUnknown,
+  DpkgQueryUndecidable,
+}
 import extdeps.tailscale.join {
   TailscaleJoinState,
   JoinStateJoinedWithRequiredTag,
@@ -52,25 +61,50 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
   tailscale_self_tags_include,
+  tailscale_ping_verdict,
+  PingAnswered,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.fleet.fleet_enrollment {
   ci_runner_enrollment_participation,
   both_participation_enrollment_participation,
 }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.package_managers.apt {
+  apt_third_party_repo_source_line,
+  apt_third_party_repo_install_plan,
+  apt_third_party_keyring_colons_are_pinned,
+  apt_repo_install_step_kind_name,
+}
+import extdeps.tailscale.apt_repo { tailscale_apt_repo_noble, tailscale_packages }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
   JoinPlanNotFleetMember,
   JoinPlanPlaceAndJoin,
   JoinPlanRefused,
   JoinRefusedNotFleetMember,
+  JoinObsInstalled,
+  JoinObsInstall,
+  JoinObsRefused,
+  TailscaleJoinObservation,
+  StatusParsed,
+  StatusBinaryAbsent,
+  StatusUnreadable,
+  tailscale_join_observation_of,
+  tailscale_join_package_verdict_of,
+  TailscaleJoinPackageAction,
+  JoinPackageInstall,
+  JoinPackageAlreadyInstalled,
   TailscaleJoinPlan,
   tailscale_join_observed_tags_word,
   tailscale_join_outcome_receipt,
   tailscale_join_plan,
   tailscale_join_run_settled,
+  tailscale_ping_pong_is_expected,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -119,10 +153,211 @@ fn state_of(fixture: FilePath) -> TailscaleJoinState {
 fn plan_for(document: String, key_usable: Bool) -> TailscaleJoinPlan {
   tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag),
-    package_state: DpkgPackageInstalled,
+    observation: JoinObsInstalled { join_state: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag) },
     key_usable: key_usable,
   )
+}
+
+// THE OBSERVATION SUM + ITS GUARDS (the fix for srv4, run 44643376146, and reviews 96824 + 96828).
+// tailscale_join_plan takes a single TailscaleJoinObservation sum: JoinObsInstall / JoinObsRefused /
+// JoinObsInstalled{join_state}. w_package_decides_before_the_join_state exercises the plan arms;
+// w_install_requires_binary_absent_or_positive_not_joined witnesses tailscale_join_observation_of -- the builder.
+// The destructive `tailscale up --force-reauth` is authorized ONLY for JoinObsInstall, which the builder emits
+// only when the status is 127 (binary absent) or positively NotJoined. A host dpkg cannot see but which IS joined
+// stays JoinObsInstalled (Noop / NotFleetMember); an UNREADABLE status (not 127) REFUSES -- it does not prove
+// "not joined" (review 96828).
+fn plan_installs(p: TailscaleJoinPlan) -> Bool {
+  match p {
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action } =>
+      action == JoinPackageInstall
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+  }
+}
+
+fn plan_refused(p: TailscaleJoinPlan) -> Bool {
+  match p {
+    JoinPlanRefused { host: _, cause: cause } => cause != ""
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+  }
+}
+
+fn obs_is_install(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsInstall { status_string: _ } => true
+    JoinObsInstalled { join_state: _ } => false
+    JoinObsRefused { cause: _ } => false
+  }
+}
+
+fn obs_is_installed(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsInstalled { join_state: _ } => true
+    JoinObsInstall { status_string: _ } => false
+    JoinObsRefused { cause: _ } => false
+  }
+}
+
+fn obs_is_refused(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsRefused { cause: cause } => cause != ""
+    JoinObsInstalled { join_state: _ } => false
+    JoinObsInstall { status_string: _ } => false
+  }
+}
+
+test fn w_package_decides_before_the_join_state() -> Bool {
+  let install = tailscale_join_plan(
+    host: operator_host_srv1,
+    observation: JoinObsInstall { status_string: Absent },
+    key_usable: true,
+  )
+  let refused = tailscale_join_plan(
+    host: operator_host_srv1,
+    observation: JoinObsRefused { cause: "dpkg could not answer whether tailscale is installed" },
+    key_usable: true,
+  )
+  let installed_unreadable = tailscale_join_plan(
+    host: operator_host_srv1,
+    observation: JoinObsInstalled { join_state: JoinStateUnreadable { cause: "status leg exited non-zero with the binary present" } },
+    key_usable: true,
+  )
+  plan_installs(install)
+    && plan_refused(refused)
+    && plan_refused(installed_unreadable)
+}
+
+// The dpkg leg's wet decoding, witnessed at the decision the wet makes. `dpkg-query -s <absent>` exits 1 and
+// prints "... is not installed and no information is available" -- a dpkg ANSWER (Unknown = definite absence),
+// NOT an execution failure. The wet used to short-circuit ANY non-zero exit to Undecidable, so srv4 (live run
+// 44677315667) refused to install tailscale on a host that simply did not have it. Now a CONVERGED leg is decoded
+// by dpkg_query_status_verdict_of: the exit-1-marker shape -> Unknown -> (with a 127 binary-absent status) ->
+// JoinObsInstall -> the plan INSTALLS; a transport refusal and a genuine non-0/non-1 dpkg failure stay Undecidable
+// and refuse. Mirrors the proven sibling observe_site_pxe_edge_package.
+fn pkg_is_unknown(s: DpkgInstalledState) -> Bool {
+  match s {
+    DpkgPackageUnknown => true
+    _ => false
+  }
+}
+
+fn pkg_is_undecidable(s: DpkgInstalledState) -> Bool {
+  match s {
+    DpkgQueryUndecidable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn w_fresh_host_dpkg_answer_installs_not_refuses() -> Bool {
+  let fresh_host = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecConverged {
+      result: SshSessionExecResult {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "dpkg-query: package 'tailscale' is not installed and no information is available\nUse dpkg --info (= dpkg-deb --info) to examine archive files.",
+      },
+    },
+  )
+  let transport_down = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecRefused { reason: "ssh transport down" },
+  )
+  let dpkg_broken = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecConverged {
+      result: SshSessionExecResult {
+        exit_code: 2,
+        success: false,
+        stdout: "",
+        stderr: "dpkg-query: an unexpected failure with no recognizable answer",
+      },
+    },
+  )
+  let install_obs = tailscale_join_observation_of(package: fresh_host, status: StatusBinaryAbsent)
+  let refusal_transport = tailscale_join_observation_of(package: transport_down, status: StatusBinaryAbsent)
+  let refusal_broken = tailscale_join_observation_of(package: dpkg_broken, status: StatusBinaryAbsent)
+  pkg_is_unknown(fresh_host)
+    && obs_is_install(install_obs)
+    && plan_installs(
+      tailscale_join_plan(
+        host: operator_host_srv1,
+        observation: install_obs,
+        key_usable: true,
+      )
+    )
+    && pkg_is_undecidable(transport_down)
+    && obs_is_refused(refusal_transport)
+    && pkg_is_undecidable(dpkg_broken)
+    && obs_is_refused(refusal_broken)
+}
+
+// The guard (reviews 96824 + 96828). Install (and its destructive `tailscale up --force-reauth`) is authorized
+// ONLY on a binary-absent (127) or a positive NotJoined reading. A host dpkg cannot see but which IS joined stays
+// JoinObsInstalled (so the plan keeps Noop / NotFleetMember and never overwrites an operator identity), and an
+// UNREADABLE status that is not 127 refuses -- it is not evidence of "not joined".
+test fn w_install_requires_binary_absent_or_positive_not_joined() -> Bool {
+  let unknown_tagged = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusParsed { state: JoinStateJoinedWithRequiredTag { self_tags: ["tag:ci"] } },
+  )
+  let not_installed_notag = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "" },
+    status: StatusParsed { state: JoinStateJoinedWithoutRequiredTag { self_tags: [] } },
+  )
+  let unknown_binary_absent = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusBinaryAbsent,
+  )
+  let not_installed_not_joined = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "deinstall ok config-files" },
+    status: StatusParsed { state: JoinStateNotJoined { state: "BackendState: NeedsLogin" } },
+  )
+  // THE REGRESSION opus caught (review 96846). A non-apt tailscale (static/snap/purged record) that dpkg cannot
+  // see, whose parsed status is a NOT-JOINED whose BackendState string is "NeedsMachineAuth". The builder still
+  // classifies it install-eligible (a parsed not-joined => JoinObsInstall), but it MUST carry the observed string,
+  // because a host running tailscale in NeedsMachineAuth must REFUSE at the plan's key guard -- installing the apt
+  // package over a running tailscale and force-reauthing it with the fleet key is the exact harm the guard exists
+  // to stop. Pre-fix JoinObsInstall dropped the string, the plan passed Absent, and the guard's `Absent => false`
+  // was a fabricated default for a status that WAS read -- so this host re-joined. Now: obs_is_install is true
+  // (the builder's classification is unchanged) AND plan_refused is true (the guard now sees the carried string).
+  let needs_machine_auth_on_hidden_tailscale = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusParsed { state: JoinStateNotJoined { state: "NeedsMachineAuth" } },
+  )
+  let unknown_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusUnreadable { cause: "status leg exit=1 (daemon unreachable)" },
+  )
+  let not_installed_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "" },
+    status: StatusUnreadable { cause: "status leg refused" },
+  )
+  let broken = tailscale_join_observation_of(
+    package: DpkgQueryUndecidable { reason: "dpkg itself failed" },
+    status: StatusParsed { state: JoinStateNotJoined { state: "ignored" } },
+  )
+  obs_is_installed(unknown_tagged)
+    && obs_is_installed(not_installed_notag)
+    && obs_is_install(unknown_binary_absent)
+    && obs_is_install(not_installed_not_joined)
+    && obs_is_refused(unknown_unreadable)
+    && obs_is_refused(not_installed_unreadable)
+    && obs_is_refused(broken)
+    // review 96846 regression guard. The builder still classifies the NeedsMachineAuth host install-eligible
+    // (obs_is_install true), but the PLAN must REFUSE it -- JoinObsInstall now carries the observed string so the
+    // key guard's NeedsMachineAuth arm fires instead of the fabricated `Absent => false`.
+    && obs_is_install(
+      needs_machine_auth_on_hidden_tailscale
+    )
+    && plan_refused(
+      tailscale_join_plan(
+        host: operator_host_srv1,
+        observation: needs_machine_auth_on_hidden_tailscale,
+        key_usable: true,
+      )
+    )
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -200,7 +435,7 @@ test fn w_a_ci_only_host_is_desired_to_carry_ci_and_not_serving() -> Bool {
 test fn w_hand_joined_specimen_reads_as_joined_but_not_a_fleet_member() -> Bool {
   match state_of(fixture: hand_joined_fixture_path) {
     // No `backend == "Running"` conjunct here: the arm IS that fact. Restating it would test the type
-    // rather than the reading (@ref(gunbc.design_argument::fail_closed): making the wrong state unwritable is
+    // rather than the reading (#gunbc.design_argument::fail_closed: making the wrong state unwritable is
     // stronger than catching it).
     JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
       tags.count() == 0
@@ -239,7 +474,7 @@ test fn w_not_joined_fixture_reads_as_not_joined() -> Bool {
 // A DOCUMENT THAT CANNOT ANSWER IS NOT THE TAGLESS ANSWER. Running with no `Self`: membership cannot be decided,
 // so this refuses rather than reading as "joined, no tags" -- which would route it into the very arm this change
 // adds, on evidence the document does not give. Fail-closed means the failure arm refuses; it does not widen into
-// whichever arm is nearest (@ref(gunbc.design_argument::fail_closed)).
+// whichever arm is nearest (#gunbc.design_argument::fail_closed).
 test fn w_running_without_self_refuses_rather_than_reading_tagless() -> Bool {
   match state_of(fixture: running_without_self_fixture_path) {
     JoinStateUnreadable { cause: cause } => cause != ""
@@ -396,4 +631,143 @@ test fn w_the_join_and_key_refusal_arms_are_unchanged() -> Bool {
 test fn w_a_the_desired_tag_derivation_is_classified_as_a_named_later_consumer_not_dangling() -> Bool {
   let rows = tailscale_fleet_auth_key_later_consumer_frontier_rows
   frontier_rows_well_formed(rows: rows) && (length(rows) == 2)
+}
+
+// ---------------------------------------------------------------------------
+// THE tailscale APT REPOSITORY ROUTE (PR #16779): the keyring Guard is now a PURE fold over gpg's machine
+// output, so its security property is witnessed without a host, a shell, or a subprocess. A wrong key must
+// refuse; a two-key listing that carries the pin must refuse (the multi-key bypass); the plan must be the ten
+// ordered steps; the source line must be apt-shaped. A happy-path live srv3/srv4 run can only ever show the key
+// MATCHING, so the security property -- a key whose fingerprint differs from the row's, or that smuggles a
+// second key beside it, refuses before the keyring is ever trusted -- lives only in these pure claims.
+// ---------------------------------------------------------------------------
+
+// A gpg `--show-keys --with-colons` sample carrying ONE primary-key `pub` record followed by its `fpr` field
+// (field index 9, the fingerprint of the listing format) and a `uid`. This is the colon text the pure guard
+// reads; the shape mirrors gpg's machine output (gpg(1), MACHINE-PARSABLE LISTING).
+fn gpg_colons_with_fingerprint(fp: String) -> String {
+  join(
+    [
+      "pub:-:4096:1:0B4423A0D19062A6D4E4F5D2C1B0A9E8F7D6C5B4:1700000000:::::::::::\n",
+      "fpr:::::::::",
+      fp,
+      ":\n",
+      "uid:-::::::::Tailscale <pkg@tailscale.com>:::::::\n",
+    ],
+    "",
+  )
+}
+
+// A two-KEY gpg --with-colons sample: TWO `pub` records, the FIRST carrying `first_fp`. This is the fail-open
+// case -- a fetched file holding the genuine key PLUS a second key. A substring grep would wave it through and
+// signed-by would trust both; the guard's exactly-one-pub count is what refuses it.
+fn gpg_colons_two_keys_containing(first_fp: String, second_fp: String) -> String {
+  join(
+    [
+      "pub:-:4096:1:0B4423A0D19062A6D4E4F5D2C1B0A9E8F7D6C5B4:1700000000:::::::::::\n",
+      "fpr:::::::::",
+      first_fp,
+      ":\n",
+      "uid:-::::::::Tailscale <pkg@tailscale.com>:::::::\n",
+      "pub:-:4096:1:11AA22BB33CC44DD55EE66FF77889900AABBCCDD:1700000000:::::::::::\n",
+      "fpr:::::::::",
+      second_fp,
+      ":\n",
+    ],
+    "",
+  )
+}
+
+// (a) THE PURE FOLD RED CONTROL, on fixture colon text -- no shell, no host, no subprocess. The fold accepts a
+// single-key listing whose `fpr` equals the row's pinned fingerprint, and refuses a single-key listing whose
+// fingerprint differs. An accepted wrong pin would be written as `signed-by=`, i.e. trusted.
+test fn w_a_wrong_key_fingerprint_refuses_the_repo_route() -> Bool {
+  let pinned = tailscale_apt_repo_noble(arch: "amd64").keyring_fingerprint
+  apt_third_party_keyring_colons_are_pinned(
+    colons: gpg_colons_with_fingerprint(fp: pinned.value as String),
+    pinned: pinned,
+  )
+    && !apt_third_party_keyring_colons_are_pinned(
+      colons: gpg_colons_with_fingerprint(fp: "1111111111111111111111111111111111111111"),
+      pinned: pinned,
+    )
+}
+
+// (b) THE SOURCE LINE for the tailscale row is exactly the apt shape every vendor documents: signed-by at the
+// pinned keyring path, the ARCH FROM THE INPUT (proving arch is the host's, not a pinned constant), the noble
+// suite, the main component, the published repo base.
+test fn w_tailscale_repo_source_line_is_apt_shaped() -> Bool {
+  apt_third_party_repo_source_line(repo: tailscale_apt_repo_noble(arch: "arm64"))
+    == "deb [arch=arm64 signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main"
+}
+
+// (b2) THE TWO-KEY PURE RED CONTROL. A listing that carries the pinned fingerprint AND a second `pub` key must
+// FAIL the fold -- it is not the single genuine key. This is the exact fail-open a substring grep would wave
+// through, letting signed-by= trust both keys; the exactly-one-pub count is why it refuses even though the pin
+// is present.
+test fn w_b_two_key_output_containing_the_pin_refuses() -> Bool {
+  let pinned = tailscale_apt_repo_noble(arch: "amd64").keyring_fingerprint
+  !apt_third_party_keyring_colons_are_pinned(
+    colons: gpg_colons_two_keys_containing(
+      first_fp: pinned.value as String,
+      second_fp: "2222222222222222222222222222222222222222",
+    ),
+    pinned: pinned,
+  )
+}
+
+// (c) THE STEP-ORDER WITNESS. The plan apt.dag publishes is the ten steps in the order the security property
+// depends on: keyrings dir, private staging dir, fetch, show-keys, the keyring GUARD (before any dearmor --
+// verify before trust), dearmor, the signed-by source line, apt update, install, then the staging cleanup last.
+// If the plan is ever reordered the walker runs the wrong sequence, and this goes red.
+test fn w_the_apt_repo_install_plan_has_the_ten_step_order() -> Bool {
+  join(
+    map(
+      apt_third_party_repo_install_plan(repo: tailscale_apt_repo_noble(arch: "amd64"), packages: tailscale_packages),
+      fn(step) { apt_repo_install_step_kind_name(step: step) },
+    ),
+    ",",
+  )
+    == "KeyringDir,Mktemp,Fetch,ShowKeys,Guard,Dearmor,SourceLine,Update,Install,Cleanup"
+}
+
+// (d) THE READ-BACK PONG NAMED BY THE NODE LABEL. The srv4 join dispatch (fleet-converge run
+// 44757742976, 2026-11-20) installed tailscale through the shared apt walker and ran `tailscale up`, then
+// REFUSED at the read-back: "the pong named srv4, not srv4.tailecbe08.ts.net". The cause: `tailscale ping
+// <fqdn>` names the answering peer by its NODE LABEL ("srv4"), while the expected name is the MagicDNS FQDN;
+// string-equal, they never match, so a join that had in fact settled was refused. The fixture is that run's
+// pong -- the node name "srv4" is the observed fact; the address and route behind it never enter the
+// comparison -- transcribed here so a regression in the read-back goes red on the real bytes, not a guess.
+test fn w_the_srv4_pong_from_the_dispatch_settles_a_correct_join() -> Bool {
+  let srv4_pong = "pong from srv4 (100.120.40.7) via <derp-7> in 18ms"
+  match tailnet_host_from(machine: operator_host_srv4) {
+    Present { value: expected_fqdn } =>
+      match tailscale_ping_verdict(exit_code: 0, stdout: srv4_pong, stderr: "") {
+        PingAnswered { node_name: node_name, line: _ } =>
+          // The pong names srv4, and the read-back compares that node label to the model's first label
+          // (the canonical name ahead of the zone labels), so the correct join settles.
+          node_name == "srv4"
+            && tailscale_ping_pong_is_expected(expected: expected_fqdn, node_name: node_name)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE READ-BACK STILL FAILS CLOSED ON A WRONG NAME. The fix must not turn "compare like with like" into
+// "trust whoever answered": a pong naming a different node -- an address answering from a stale peer record
+// as somebody else -- is still refused. This is the guard the fix had to preserve; it goes red if the
+// comparison is loosened to "any pong at all".
+test fn w_a_pong_from_a_different_node_still_refuses_the_read_back() -> Bool {
+  let wrong_pong = "pong from srv3 (100.120.40.3) via <derp-7> in 21ms"
+  match tailnet_host_from(machine: operator_host_srv4) {
+    Present { value: expected_fqdn } =>
+      match tailscale_ping_verdict(exit_code: 0, stdout: wrong_pong, stderr: "") {
+        PingAnswered { node_name: node_name, line: _ } =>
+          node_name == "srv3"
+            && !tailscale_ping_pong_is_expected(expected: expected_fqdn, node_name: node_name)
+        _ => false
+      }
+    _ => false
+  }
 }

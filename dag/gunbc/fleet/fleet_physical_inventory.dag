@@ -395,7 +395,7 @@ data gpu_board_06_asset: PhysicalAsset = PhysicalAsset {
 // is a receipt and receipts keep a typed carrier (gunbc.design_argument::source_annotations -- "Nothing may
 // depend on a comment for correctness", an annotation "must not restate what the declaration says", and "the
 // project reserves the right to delete any comment at any time"). They are held, field for field, in
-// @ref(gunbc.fleet.gpu_device_observation::retired_gpu_device_observations), which no current-state consumer folds;
+// #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations, which no current-state consumer folds;
 // the claim witness_the_retired_butch_a2_readings_survive_typed_in_no_current_state_list is what keeps that
 // list intact. The settable range (35 floor, 60 default, 60 ceiling) is ALSO carried independently of these
 // cards in extdeps.gpu.nvidia_a2, kept distinct from the product page's 40-60 W TDP envelope, so a future A2

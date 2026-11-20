@@ -1256,7 +1256,7 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
 }
 
 // THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). It reuses `belt_observe_once_cli` — the SAME
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16. It reuses `belt_observe_once_cli` — the SAME
 // zero-arg entry the operator runs by hand to force one observation pass — which runs exactly
 // `served_observation_observe_and_write_for_instance` (the fold) and nothing else: no spawn, no
 // launch, no teardown. This is deliberately NOT the retired belt timer (the event-units ruling heads
@@ -1630,39 +1630,49 @@ type UserWorkSliceUnitFile
   = UserWorkSliceUnitFileReady { file: SystemdUnitFile }
   | UserWorkSliceUnitFileRefused { cause: String }
 
-fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
-  match user_work_pool_slots() {
-    UserWorkPoolSlotsDerived { slots } => {
-      let max = user_work_slice_memory_max_of(slots: slots)
-      match user_work_cgroup_peak_check(bound: max) {
-        PeakBoundExceeded { excess: _ } =>
-          UserWorkSliceUnitFileRefused {
-            cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
-          }
-        PeakBoundHolds { margin: _ } =>
-      match user_work_slice_memory_high_of(memory_max: max) {
-        UserWorkSliceHighGapExceedsMax =>
-          UserWorkSliceUnitFileRefused {
-            cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
-          }
-        UserWorkSliceHighDerived { bytes: high } =>
-          UserWorkSliceUnitFileReady {
-            file: SliceUnitFile {
-              unit: [
-                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
-              ],
-              slice: [
-                slice_memory_max(bytes: max),
-                slice_memory_high(bytes: high),
-                slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
-              ],
-              install: NotInstallable,
-            },
-          }
+// THE SHARED RENDER BODY. Both the srv1 route and the per-host route below funnel the derived
+// MemoryMax through HERE, so MemoryHigh (user_work_slice_memory_high_of) and MemorySwapMax
+// (user_work_slice_memory_swap_max = 0) are computed identically for every host -- an inhabitance
+// claim that exercises one route is an inhabitance of the relation, not of a private copy.
+fn render_user_work_slice_from_max(max: ByteSize) -> UserWorkSliceUnitFile {
+  match user_work_slice_memory_high_of(memory_max: max) {
+    UserWorkSliceHighGapExceedsMax =>
+      UserWorkSliceUnitFileRefused {
+        cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
       }
+    UserWorkSliceHighDerived { bytes: high } =>
+      UserWorkSliceUnitFileReady {
+        file: SliceUnitFile {
+          unit: [
+            Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
+          ],
+          slice: [
+            slice_memory_max(bytes: max),
+            slice_memory_high(bytes: high),
+            slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
+          ],
+          install: NotInstallable,
+        },
       }
-    }
   }
+}
+
+// THE PER-HOST RENDER (node adhoc-c0a6f401-440). The remote-build serve-converge leg and the
+// live-deploy apply plan BOTH render the
+// gunbc-user-work.slice for the host it is acting on, with the ceiling read from the carve
+// (gunbc.compute.host_capacity user_work_slice_memory_max_for_host) and passed here as a number, so
+// emit keeps a single import surface and never imports compute. It SHARES render_user_work_slice_from_max
+// with the srv1 route, so MemoryHigh/MemorySwapMax derive identically; an inhabitance claim on this entry
+// goes through the SAME code the srv1 receipt attests. The renderer itself does NOT apply srv1's recorded
+// cgroup peak check: that receipt is srv1's OWN observed user-work peak (its standing 2 x 22 GiB pool),
+// which is the wrong bound for a carved host whose ceiling is its reservation-derived appropriation. The
+// host's bound is the ceiling the caller read from the reservation row. The fail-closed guarantees differ by
+// caller and live OUTSIDE this renderer: the serve-converge leg settles only when MemoryMax and
+// MemorySwapMax=0 read back equal, and the live-deploy apply plan applies the srv1 recorded-peak admission
+// (refuse, never widen) gated to the uncarved branch (gunbc.live_deploy.apply_legs
+// deploy_apply_user_work_slice_unit_file).
+fn user_work_slice_unit_file_for_host_ceiling(memory_max: ByteSize) -> UserWorkSliceUnitFile {
+  render_user_work_slice_from_max(max: memory_max)
 }
 
 type AttemptWorkerSliceUnitFile
