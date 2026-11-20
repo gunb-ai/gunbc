@@ -3052,6 +3052,45 @@ data emitter_string_return_carries_no_typed_refusal: IntegrationConcern = Integr
   },
   disposition: Integrated { evidence: IntegrationEvidence {
     integrated_at: "9064f371ee2456eb1a95b63cd22cf33e7adb6954" as CommitSha,
+    superseded: [
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_emit_refused_poison_prefix" },
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_unsafe_poison" },
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_step_orch_refused_poison" },
+      HistoricalDeclaration { at: "bcc9f6370160fec55fcdee919590b533ffccfc4a" as CommitSha, module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_unstored_poison_prefix" },
+    ],
+    replacement: FreeSemigroup {
+      head: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_invoke_word_wall_diagnostic"),
+      tail: [
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_command"),
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
+        decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_target_entry_or_refusal"),
+        decl_ref(module_path: "gunbc.generated_artifact_emit", decl_name: "artifact_generate"),
+      ],
+    },
+    executions: FreeSemigroup {
+      head: RetainedExecutionResult {
+        control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_deploy_matches_pre_migration_golden_holds"),
+        run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions <all> --hermetic, srv1 systemd-run scope MemoryMax=40G, at 9064f37",
+        conclusion: "PASS: the deploy positive control renders BYTE-IDENTICAL to the pre-migration golden under the typed Outcome<String> carry; the retyped family changes no rendered byte.",
+      },
+      tail: [
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions <all> --hermetic, srv1, at 9064f37",
+          conclusion: "PASS: an Absent entry path refuses at the artifact boundary with a located typed ArtifactGenerationRefused, not the deleted __GUNBC_INVOKE_EMIT_REFUSED__ string scan.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_word_wall_admits_ordinary_entry_holds"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions <all> --hermetic, srv1, at 9064f37",
+          conclusion: "PASS: an ordinary entry renders through the retyped family to byte-identical workflow shell.",
+        },
+        RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.gunbc_invoke_witness", decl_name: "gunbc_invoke_word_wall_refuses_metacharacter_entry_holds"),
+          run: "claim_batch --source-root dag --source-root src/v2 --entry dag/test/claim/gunbc_invoke_witness.dag --functions gunbc_invoke_word_wall_refuses_metacharacter_entry_holds --hermetic, srv1, at 9064f37; AND the same witness on the origin/main tip tree (main's own sentinel witness, main's checker) at 4e98809",
+          conclusion: "RED, NOT a regression from this change: the step-emitter path (gunbc_run_step_script -> gunbc_run_step_intent -> gunbc_invoke_step_emit_pipeline, orch_emit_pipeline only) does not cross the word wall -- only gunbc_run_command does -- so a hostile metacharacter entry is admitted on BOTH main and this head. Confirmed identical red on the origin/main-tip control. The step-emitter word-wall-coverage gap is owned elsewhere and is deliberately NOT fixed here; this witness is rewritten to assert the TYPED Rejected with the word-wall REASON so it turns green when that coverage lands.",
+        },
+      ],
+    },
   } },
 }
 
