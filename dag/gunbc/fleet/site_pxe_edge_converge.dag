@@ -2957,7 +2957,7 @@ fn site_pxe_edge_ancestor_directories(path: String) -> List<String> {
 // fold is quadratic, and gunbc.design_argument::how_to_work fixes a proven cost shape regardless of the realized n.
 fn site_pxe_edge_protected_install_dirs(listed_files: List<String>, stale_files: List<String>, desired: List<SitePxeEdgeFile>) -> Set<String> {
   let stale = site_pxe_edge_stale_file_set(stale_files: stale_files)
-  let kept = flat_map(listed_files, f => if set_contains(stale, f) then [] else site_pxe_edge_ancestor_directories(path: f))
+  let kept = flat_map(listed_files, f => if set_contains(stale, f) { [] } else { site_pxe_edge_ancestor_directories(path: f) })
   let rendered = flat_map(desired, x => site_pxe_edge_ancestor_directories(path: x.path as String))
   (kept + rendered) |> fold(init: empty_set() as Set<String>, f: (acc, d) => set_insert(acc, d))
 }
