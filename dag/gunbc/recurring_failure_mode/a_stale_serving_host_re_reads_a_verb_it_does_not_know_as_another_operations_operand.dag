@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand: RecurringFailureMode = RecurringFailureMode {
+  // THE WIRE NAMED THE WORK BY POSITION, NOT BY A NAME THE SERVER COULD REFUSE TO OWN. That is the
+  // whole defect; everything else follows from where the verb set lives.
+  identity: "a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyImpossible,
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      trigger_capability: "every remote-build request names its operation with a verb the decoder must RECOGNISE -- entry included, not the positional default -- and the decoder refuses any verb it does not know; and the serving host is rolled to a checkout at or above the revision that added the refusal, because a host below that revision cannot be made to refuse from here"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE: a remote-build request is decoded by WHICHEVER HOST ANSWERS, from the verb set of THAT HOST'S CHECKOUT, and a verb the host does not know is not refused -- the operands fall through to the route that needs no verb (the entry corpus route). A client asking for operation A can therefore have operation B executed, or a B-shaped refusal returned, by a host whose serving checkout is older than the request. The request carries no verb set, no protocol version, and no capability negotiation: the only version fact is the host's own revision, which the client never reads and the wire never names.**",
+
+    "WHERE THE VERB SET LIVES, so the state is not mysterious: gunbc.compute.remote_build_serve remote_build_forced_command_words runs the installed serve binary with --source-root <repo_root>/dag and --entry <repo_root>/dag/gunbc/compute/remote_build_serve.dag, where repo_root is the instance's PINNED checkout (roadmap_dashboard_instance: repo_root, admitted_revision). The grammar that judges a request is therefore the grammar of the host's pinned revision, not of the client that sent the request, and the two are only equal when the serving converge has run since the verb was added.",
+
+    "FOUND: 2026-11-20 17:39Z, srv1, the first live run of the gate subject through the remote-build client. The client sent `gate //gunbc/instruments:v2-native-cli` (a row of gunbc.emitted_subject_build_gate emitted_subject_build_rows, admitted client-side by remote_build_decode_gate_subject). srv1 answered request-refused -- terminal in remote_build_next_step, so the request never reached the next host -- with the ENTRY route's own words: `remote-build: the entry is not a .dag file under dag/ without '.' or '..' segments: //gunbc/instruments:v2-native-cli`. srv1's serving checkout is from its 08:57Z converge, before #16771 landed (2387c5493bb9); srv3, converged to 767af989deb2, has the arm. The label was read as a path.",
+
+    "WHY `gate <label>` WAS HARMLESS HERE AND THE CLASS IS NOT. The re-read operand failed the corpus wall, so nothing ran, no seat was taken and no reservation was charged; the cost was one full serving-side corpus evaluation (about five minutes of a serving host). The class is not bounded by that: the fall-through route is chosen by SHAPE, so a request whose operands happen to be well-formed for the older route -- an operand that IS a .dag under dag/, a commit and source ref both valid -- would be RUN as the older operation, with the caller's commit checked out and a seat charged for it, while the client believes it asked for something else. And the client cannot tell: the answer arrives as a well-formed typed ending of the wrong decision.",
+
+    "WHAT THE PROBE DOES NOT GIVE. The probe (remote_build_probe_text, `remote-build-v1 probe`) is asked before any work, and only a probe failure moves a request to the next host; it establishes that a host RUNS THIS CONTRACT, and it was srv1's probe that answered ready here. It cannot enumerate verbs, and it cannot be made to: a host predating the fix answers a verb-carrying probe with the grammar it has, so CAPABILITY OF A STALE HOST IS NOT OBSERVABLE THROUGH THE CONTRACT IT SPEAKS. Any client-side standing that excludes a stale host must therefore come from a fact the client can read without asking the host -- a served-revision record written by the serving converge -- not from the host's answers. The client's candidate standing vocabulary (gunbc.compute.remote_build remote_build_host_standing: RemoteBuildHostAdmitted | RemoteBuildHostWithoutStore, decided by the instance's declared materialization_store_root) has no such arm, and the only host-exclusion vocabulary in the corpus is the self-hosted runner's withdrawal standing, which is the frozen machinery and not this route.",
+
+    "RUNG FOUND AT: mitigatable -- the state is a grammar defect plus a rollout, both fixable with the machinery in place. CEILING: structurally impossible -- once every request names its verb explicitly (the entry route included, so there is no positional default) and the decoder refuses any verb it does not recognise, a request a host cannot interpret is REFUSED BY THAT HOST rather than re-interpreted, and the class cannot recur at any skew, because the only remaining reading of an unknown verb is refusal. NEXT-RUNG TRIGGER, named so a narrower repair cannot satisfy it: the decoder refuses unknown verbs AND every host in remote_build_serving_hosts is converged at or above the revision that added that refusal. Half the pair is not enough: refusing unknown verbs protects only hosts that run the new decoder, so HOSTS BELOW THAT REVISION REMAIN FAIL-OPEN UNTIL CONVERGED -- a rollout is part of the fix, not a follow-up to it.",
+
+    "RECOGNITION RULE, ONE QUESTION: for every wire this corpus speaks to a host it does not pin, ask what an OLD PEER does with a token it does not know. If the answer is 'it falls through to the default route', the wire is carrying a version the peer cannot check, and adding a verb to the client is a change to the peer's grammar that the peer will not notice. Name the token, refuse the unknown, and name the peer's revision as part of the fix.",
+  ],
+
+  evidence: [],
+}
