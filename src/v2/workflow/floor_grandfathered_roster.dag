@@ -32,10 +32,13 @@ import std.algebra { Cons, Empty, list_flat_map, length, contains }
 //   no longer holds (so the subtraction happened). Until review 65986 that fold asserted the
 //   REMOVED rows were still members, which described a contract with no downward direction.
 //
-//   AN ADDITION IS REFUSED BY `roster_change_verdict` -- WHICH NOTHING ON THE ACCEPTANCE PATH
-//   CALLS AGAINST THIS ROSTER. Its only executing consumers are three-row fixtures in
-//   `test.claim.floor_eval_step_budget_witness`. So the refusal is modeled and exercised at
-//   fixture scale, and is a DECLARED FRONTIER at corpus scale; the frontier and its trigger are
+//   AN ADDITION IS REFUSED BY `roster_change_verdict`, AND THE FOLD NOW RUNS AGAINST THIS ROSTER.
+//   Four claims in `test.claim.floor_eval_step_budget_witness` call it with the live cut (3,795
+//   rows) and the live disposition rows (449): a live identity the cut has never held refuses as an
+//   addition, a live cut row does not, and a live departure whose disposition row is gone refuses
+//   as an undisposed removal. What stays a DECLARED FRONTIER is the corpus-wide disposition arm --
+//   the whole roster as `current`, which pays more eval steps than the ceiling this lane declares
+//   (72,300 for an identity the roster does not exempt) -- and the frontier and its trigger are
 //   stated where the verdict is declared, further down this file.
 //
 // THAT DISTINCTION IS NOT PEDANTIC, AND THIS CHANGE IS THE PROOF. Three witnesses THIS LANE ADDED
@@ -174,10 +177,6 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
     identity: "test.claim.self_host_peano_literal_operator_realization_witness.w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword" as NonEmptyStr,
     deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak; that declaration is deleted, so the leak has nothing to leak from and the red is unwritable (gunbc.design_argument::guarantee_ladder (dissolution on climb) dissolution). Not re-subjected to a user-declared structural Bool, which is the separately tracked local_bool_coproduct_probe class; the host control w_kernel_bool_at_native_bool_boundary_stays_the_keyword stays enrolled" as NonEmptyStr
-  },
-  WitnessDeleted {
-    identity: "v2.test.claim.compiler.kernel_value_type_roster_witness.kvr_a_named_calls_bool_formal_is_counted_not_judged_holds" as NonEmptyStr,
-    deleted_in: "gunbc#12506 typed a call's callee reference by its declaration, so the counted-not-judged state this pin held no longer exists (it went red on main, as its comment said it would); its successor asserting the refusal is v2.test.claim.compiler.kernel_value_type_roster_witness.kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds" as NonEmptyStr
   },
   WitnessDeleted {
     identity: "v2.test.claim.self_host.peano_nat_structural_realization.bool_row_is_found_by_exact_destination" as NonEmptyStr,
@@ -1336,7 +1335,6 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.claim.workflow.body_lowering_retention_census.two_productions_at_one_node_shape_stay_two_families" as NonEmptyStr,
     deleted_in: "the census retirement (gunbc.design_ruling bad_process_is_worse_than_no_process): the census instrument this witness tested was deleted without a successor, and its witness module with it" as NonEmptyStr,
   },
-
   WitnessDeleted {
     identity: "test.claim.compiler_frontend_program_status_witness.act0_startability_names_only_chain_stages" as NonEmptyStr,
     deleted_in: "the namespace-XL migration program bankruptcy (gunbc.design_ruling namespace_xl_migration_program_is_bankrupt): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
@@ -1760,6 +1758,178 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
     identity: "v2.test.claim.namespace_step0_canary_v2_witness.the_same_class_and_subject_at_two_severities_are_two_buckets" as NonEmptyStr,
     deleted_in: "the namespace-XL migration program bankruptcy (gunbc.design_ruling namespace_xl_migration_program_is_bankrupt): the migration machinery this witness tested was deleted without a successor, and the witness with it" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_two_new_instruments_are_awaited_at_the_right_grain" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/compiler_frontend_program_status_witness.dag declares no test fn/test data named the_two_new_instruments_are_awaited_at_the_right_grain and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_wave_admission_enrolment_fold_answers_both_ways" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/compiler_frontend_program_status_witness.dag declares no test fn/test data named the_wave_admission_enrolment_fold_answers_both_ways and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.the_wave_admission_milestone_is_wired_to_the_phase_roster" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/compiler_frontend_program_status_witness.dag declares no test fn/test data named the_wave_admission_milestone_is_wired_to_the_phase_roster and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.compiler_frontend_program_status_witness.xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/compiler_frontend_program_status_witness.dag declares no test fn/test data named xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_emitted_call_target_realization_witness.w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/self_host_emitted_call_target_realization_witness.dag declares no test fn/test data named w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_generation_identity_witness.perturbing_one_axis_leaves_the_other_five_agreeing" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/self_host_generation_identity_witness.dag declares no test fn/test data named perturbing_one_axis_leaves_the_other_five_agreeing and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "test.claim.witness_floor_workflow_consolidation_witness.w_concurrency_group_resolves_push_to_github_ref" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): dag/test/claim/witness_floor_workflow_consolidation_witness.dag declares no test fn/test data named w_concurrency_group_resolves_push_to_github_ref and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.body_lowering_wrapper_retained.body_lowering_wrapper_retained_diagnostics_holds" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/body_lowering_wrapper_retained.dag declares no test fn/test data named body_lowering_wrapper_retained_diagnostics_holds and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compile_door_ledger_ownership.affected_set_diff_failure_refuses_fail_closed" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/compile_door_ledger_ownership.dag declares no test fn/test data named affected_set_diff_failure_refuses_fail_closed and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compile_door_ledger_ownership.affected_set_non_dag_changes_ledger_empty" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/compile_door_ledger_ownership.dag declares no test fn/test data named affected_set_non_dag_changes_ledger_empty and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compile_door_ledger_ownership.dag_module_paths_keeps_only_dag_modules" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/compile_door_ledger_ownership.dag declares no test fn/test data named dag_module_paths_keeps_only_dag_modules and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.effect_demand.effect_demand_floor_join.floor_join_witness_live_seam_modules_are_the_fourteen_seams_homes" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/effect_demand/effect_demand_floor_join.dag declares no test fn/test data named floor_join_witness_live_seam_modules_are_the_fourteen_seams_homes and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.effect_plan_bash_materialize.effect_plan_bash_RED_every_unsupported_step_arm_is_typed" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/effect_plan_bash_materialize.dag declares no test fn/test data named effect_plan_bash_RED_every_unsupported_step_arm_is_typed and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.execution.floor_diff_observe_witness.witness_present_path_yields_declared_test_fn_names" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/execution/floor_diff_observe_witness.dag declares no test fn/test data named witness_present_path_yields_declared_test_fn_names and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.a_pending_row_for_a_refused_identity_collides_and_is_named" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named a_pending_row_for_a_refused_identity_collides_and_is_named and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.a_pending_row_for_an_already_admitted_identity_collides_and_is_named" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named a_pending_row_for_an_already_admitted_identity_collides_and_is_named and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.a_pending_row_for_an_undecided_identity_reports_no_collision" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named a_pending_row_for_an_undecided_identity_reports_no_collision and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.a_re_proposed_refused_identity_collides_and_is_named" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named a_re_proposed_refused_identity_collides_and_is_named and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.a_roster_that_re_proposes_nothing_reports_no_collision" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named a_roster_that_re_proposes_nothing_reports_no_collision and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.an_empty_refused_roster_collides_with_nothing" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named an_empty_refused_roster_collides_with_nothing and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.every_re_proposed_refused_identity_is_reported_not_just_the_first" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named every_re_proposed_refused_identity_is_reported_not_just_the_first and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.the_live_pending_candidates_are_decided_by_neither_roster" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named the_live_pending_candidates_are_decided_by_neither_roster and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.the_live_rosters_admit_nothing_this_roster_has_refused" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named the_live_rosters_admit_nothing_this_roster_has_refused and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.floor.pure_producer_share_refusal.the_pending_roster_carries_identities" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/floor/pure_producer_share_refusal.dag declares no test fn/test data named the_pending_roster_carries_identities and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.manual.bash_emit_command.bash_emit_bound_words_holds" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/manual/bash_emit_command.dag declares no test fn/test data named bash_emit_bound_words_holds and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.manual.field_access_emit.field_access_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/manual/field_access_emit.dag declares no test fn/test data named field_access_grammar_inverse_holds and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.manual.record_construct_emit.record_construct_grammar_inverse_holds" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/manual/record_construct_emit.dag declares no test fn/test data named record_construct_grammar_inverse_holds and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.normalized_tree_admission.a_clean_root_is_admitted_positive_control" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/normalized_tree_admission.dag declares no test fn/test data named a_clean_root_is_admitted_positive_control and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.normalized_tree_admission.a_retained_root_is_refused_at_the_carrier_door" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/normalized_tree_admission.dag declares no test fn/test data named a_retained_root_is_refused_at_the_carrier_door and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.normalized_tree_admission.an_unrelated_diagnostic_does_not_refuse_RED" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/normalized_tree_admission.dag declares no test fn/test data named an_unrelated_diagnostic_does_not_refuse_RED and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.normalized_tree_admission.plural_admission_refuses_a_retained_batch" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/normalized_tree_admission.dag declares no test fn/test data named plural_admission_refuses_a_retained_batch and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.normalized_tree_admission.retention_is_found_past_the_diagnostic_head_RED" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/normalized_tree_admission.dag declares no test fn/test data named retention_is_found_past_the_diagnostic_head_RED and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.normalized_tree_admission.the_production_retention_producer_is_refused_by_the_door" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/normalized_tree_admission.dag declares no test fn/test data named the_production_retention_producer_is_refused_by_the_door and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.regen_convergence_transaction_witness.producer_stage_defers_seed_subject_until_promoted_generation" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/claim/regen_convergence_transaction_witness.dag declares no test fn/test data named producer_stage_defers_seed_subject_until_promoted_generation and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.floor_enrolment_margin.the_enrolment_budget_is_the_derived_p90_clean_run_figure" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/floor_enrolment_margin.dag declares no test fn/test data named the_enrolment_budget_is_the_derived_p90_clean_run_figure and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_disposition_redundancy.disposition_redundancy.redundancy_region_bmc_fires_on_all_successors_present" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/lens_disposition_redundancy/disposition_redundancy.dag declares no test fn/test data named redundancy_region_bmc_fires_on_all_successors_present and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_disposition_redundancy.disposition_redundancy.redundancy_region_bmc_green_against_nonmatching" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/lens_disposition_redundancy/disposition_redundancy.dag declares no test fn/test data named redundancy_region_bmc_green_against_nonmatching and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_disposition_redundancy.disposition_redundancy.redundancy_region_bmc_marks_nonempty" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/lens_disposition_redundancy/disposition_redundancy.dag declares no test fn/test data named redundancy_region_bmc_marks_nonempty and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_disposition_redundancy.disposition_redundancy.redundancy_region_rust_gates_fires_on_staged_selector_present" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/lens_disposition_redundancy/disposition_redundancy.dag declares no test fn/test data named redundancy_region_rust_gates_fires_on_staged_selector_present and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_disposition_redundancy.disposition_redundancy.redundancy_region_rust_gates_green_against_nonmatching" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/lens_disposition_redundancy/disposition_redundancy.dag declares no test fn/test data named redundancy_region_rust_gates_green_against_nonmatching and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.lens_disposition_redundancy.disposition_redundancy.redundancy_region_rust_gates_marks_nonempty" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): src/v2/test/lens_disposition_redundancy/disposition_redundancy.dag declares no test fn/test data named redundancy_region_rust_gates_marks_nonempty and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.typescript_eager_materialize_serialize.ts_arc1_eager_serialize_source_holds" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): module v2.test.manual.typescript_eager_materialize_serialize.dag is absent from the tree and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.typescript_eager_materialize_serialize.ts_arc1_pr3_eager_serialize_source_holds" as NonEmptyStr,
+    deleted_in: "measured dead on a live-population join (aarch64 release-bins gunbc, fleet-converge run 43660976659, rev d547e06dac7): module v2.test.manual.typescript_eager_materialize_serialize.dag is absent from the tree and the required floor plans no such claim; retired with its subject, no successor" as NonEmptyStr,
   },
 ]
 
@@ -2579,11 +2749,18 @@ fn floor_grandfathered_cut_size() -> Int {
 // exemption the new-witness tier exists to deny. So an addition REFUSES -- it is not reported, not
 // warned about, and not admitted with a note.
 //
-// DECLARED FRONTIER (gunbc.design_argument::consumption): the executing consumer today is
-// `test.claim.floor_eval_step_budget_witness`. The consumer that lands next is the roster's
-// own regeneration gate, which must run this verdict against the discovery producer's current
-// output before writing the file -- so that a regen which would ADD a row refuses instead of
-// silently resetting the baseline. Trigger: the first change that re-derives this roster.
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the executing consumer is
+// `test.claim.floor_eval_step_budget_witness`, and since debt-grandfathered-fold-enrolled it calls
+// this verdict ON THE ROSTER'S OWN ROWS: the live cut at whole-roster scale for the addition arm
+// (22,700 eval steps for the three struck identities, 60,902 on a cold corpus), eight live chunks for the disposition arm (8,618); the counts are `claim_batch` measurements, run linked at gunbc#16610.
+// What no claim executes is the corpus-wide disposition arm -- `current` as the whole 3,795-row
+// roster pays a cut scan per row, which is not a number under the ceiling this lane declares. The
+// consumer that lands next is the roster's own regeneration gate, which must run this verdict
+// against the discovery producer's current output before writing the file -- so that a regen which
+// would ADD a row refuses instead of silently resetting the baseline. Trigger: the first change
+// that re-derives this roster. Neither consumer is CI: the required lane
+// (`.github/workflows/witnesses.yml`) fires on pull_request, merge_group and main push and invokes
+// no `claim_batch` on any of them, so it parses and typechecks these claims and executes none.
 type RosterChangeVerdict =
     RosterChangeAdmitted
   | RosterAdditionRefused { added: String }

@@ -1,6 +1,6 @@
 module extdeps.ebay.ebay_contracts
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.serialization { CoproductWireContract, StringVariant, ScreamingSnakeCase }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -10,6 +10,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "developer.ebay.com/api-docs/static/ebay-rest-landing.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ebay.ebay_contracts",
+      decl_name: "marketplace_wire_contract",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data marketplace_wire_contract: CoproductWireContract = {

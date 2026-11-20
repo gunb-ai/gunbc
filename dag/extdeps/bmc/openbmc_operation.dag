@@ -1,6 +1,6 @@
 module extdeps.bmc.openbmc_operation
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Https, Uri }
 import std.measure {
   Celsius,
@@ -9,12 +9,25 @@ import std.measure {
   Second,
 }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
   },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.openbmc_operation",
+      decl_name: "OpenBmcFanConfigQuery",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data openbmc_busctl_authority: ExternalAuthority = extdeps_external_authority_anchor

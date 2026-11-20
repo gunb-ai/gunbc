@@ -2,9 +2,10 @@ module gunbc.runner.runner_slot_retirement
 
 import std.types { Bool, List, String, NonEmptyStr }
 import std.algebra { trim, list_head, length }
+import std.optional { Absent, Present }
 import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -302,9 +303,23 @@ fn interruption_authorization_covers(auth: InterruptionAuthorization, unit: Stri
 // work must not be forgeable by whatever code happens to want it, including a test that would
 // rather not be blocked.
 //
-// THE SCOPE IS THE EXACT UNITS, ENUMERATED. srv4's committed width becomes 12, so slots 13..21 are
-// the surplus population and they are named one by one rather than expressed as a range or a glob.
-// A range would silently acquire new members if the width moved again; an enumeration cannot.
+// THE SCOPE IS AUTHORED, AND IT MUST BE NARROWER THAN A DATE. This row was written on 2026-09-12, when
+// srv4's committed width was 12, with its scope typed out as 13..21 on that footing. The width the model
+// commits to now is 15 (gunbc.runner.runner_slot_allocation::gunbc_runner_committed_width), so 13, 14 and
+// 15 are CI members today -- and the list could not notice: it kept minting 'mask and stop' authority over
+// slots the model intends to keep, which is the run-time dangling grant of
+// gunbc.roadmap.fleet-mask-grants-cover-slots-the-model-keeps. So the list is narrowed to 16..21, the set
+// gunbc.runner.runner_width_transition::required_retirees_for_host declares for srv4 -- that is the set the
+// operator's decision was ever about, the surplus internal CI slots.
+//
+// IT IS NARROWED, NOT DERIVED, and the rule is the one on the fabric row below (review 68854): permission is
+// authored and checked OVER the derived obligation, never substituted for it, because a scope read from the
+// population authority acquires members the operator never named. What replaces the stale list is a control,
+// not a derivation: no_mask_grant_names_a_slot_the_width_commits in the runner_slot_retirement witness is red
+// whenever a mask grant names a slot inside the committed population, and its companion is red when the grant
+// no longer covers the declared obligation. A width move therefore surfaces as a failing witness -- the
+// refusal doing its job -- instead of either going stale behind a live bracket or minting permission on its
+// own.
 //
 // WHAT THE OPERATOR DECIDED, and the boundary of it: the surplus INTERNAL CI slots on srv4 carry
 // disposable dev/test jobs and may be interrupted for this transition. That is not permission to
@@ -313,9 +328,6 @@ fn interruption_authorization_covers(auth: InterruptionAuthorization, unit: Stri
 // declared row with a scope rather than an environment test in the writer.
 data srv4_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
   scope: [
-    "actions-runner@srv4-13.service" as NonEmptyStr,
-    "actions-runner@srv4-14.service" as NonEmptyStr,
-    "actions-runner@srv4-15.service" as NonEmptyStr,
     "actions-runner@srv4-16.service" as NonEmptyStr,
     "actions-runner@srv4-17.service" as NonEmptyStr,
     "actions-runner@srv4-18.service" as NonEmptyStr,
@@ -323,7 +335,7 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
     "actions-runner@srv4-20.service" as NonEmptyStr,
     "actions-runner@srv4-21.service" as NonEmptyStr,
   ],
-  operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+  operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host. Narrowed to 16-21 on 2026-11-19: srv4's committed width is 15, so 13-15 are kept CI members and this row must not name them" as NonEmptyStr,
 }
 
 // srv1'S SURPLUS IS THE 50-SLOT REMAINDER, NOT THE NINE-SLOT 21-TO-12 DELTA ALONE.
@@ -358,6 +370,95 @@ data srv1_width_cut_2026_10_16_interruption_authorization: InterruptionAuthoriza
   operator_reason: "operator decision 2026-10-16 (escalation msg_62d72f56-a906-4379-9223-7e366c11aa45), scoped to srv1 internal CI slots 03-06: the retirees of the 7-to-5 and 5-to-3 width cuts may be interrupted; the decision does not extend to srv1-01, srv1-02, the shakedown slot 13, or anything else srv1 runs" as NonEmptyStr,
 }
 
+// srv3'S WIDTH CUT TO 13 IS ITS OWN DECISION. Admitting srv3 to the remote-build serving roster
+// (gunb-ai/gunbc#16658) carved one CI slot into its build pool, taking its committed width to 13 while 21
+// slots stood on the host, so srv3-14..21 became required retirees with no permission covering them and
+// the runner converge withheld the host (run 44227331401). The operator chose to apply the converge on
+// srv3 and srv4 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided as msg_c20ceb2b), with the
+// retirement of the surplus CI runners stated in the question. Enumerated, like srv4's, so a later width
+// change cannot widen it (the rule and its history are on the fabric row below, review 68854); what the list
+// must name is the set gunbc.runner.runner_width_transition::required_retirees_for_host declares for srv3, and
+// the witness claim no_mask_grant_names_a_slot_the_width_commits is red if that ever stops being true.
+data srv3_width_cut_2026_11_18_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: [
+    "actions-runner@srv3-14.service" as NonEmptyStr,
+    "actions-runner@srv3-15.service" as NonEmptyStr,
+    "actions-runner@srv3-16.service" as NonEmptyStr,
+    "actions-runner@srv3-17.service" as NonEmptyStr,
+    "actions-runner@srv3-18.service" as NonEmptyStr,
+    "actions-runner@srv3-19.service" as NonEmptyStr,
+    "actions-runner@srv3-20.service" as NonEmptyStr,
+    "actions-runner@srv3-21.service" as NonEmptyStr,
+  ],
+  operator_reason: "operator decision 2026-11-18 (escalation msg_69d4410c-b034-4683-a9b7-1581a2767212, decided msg_c20ceb2b-75c7-4ab0-a8a7-ec30cd24703c), scoped to srv3 surplus internal CI slots 14-21: the retirees of the cut to 13 (remote-build build-pool carve and the earlier engine charge) may be interrupted; the decision does not extend to srv3's committed slots, its sessions or its serving engine" as NonEmptyStr,
+}
+
+// THE HOST DRAIN IS ITS OWN PERMISSION, AND IT IS NOT THE WIDTH DECISION. The cap bracket takes a whole
+// host out of admission: it stops every slot it owns, INCLUDING the ones the width decision keeps and
+// re-admits minutes later. The width rows deliberately do not reach those units -- srv4's names 16-21,
+// srv3's names 14-21 -- and the drain must not inherit a permission it was not given. Without a row here
+// the drain cannot take an uncorroborated listener out of service at all, which is what run 44232633417
+// timed out on: srv4's slots are JIT, their current registrations are absent from the org roster, so no
+// roster reading corroborates idleness, and 13 kept slots sat active for 5415s.
+//
+// WHAT THE OPERATOR DECIDED, in their words relayed the same day as the width cut: "yeah you can drain
+// the hosts, np". That is permission to interrupt, not a measurement that nothing was running -- the
+// distinction this module already draws (proposition 1 vs proposition 2).
+// THE SCOPE IS DERIVED, NOT TYPED OUT. The operator authorized at HOST grain -- "drain the hosts" -- and
+// the population that permission covers is the one the width authority already owns: this host's committed
+// members, less the fabric population no runner route may touch. Writing the units out by hand would mint a
+// second authority over that population (gunbc.design_argument::single_authority: "a second place that
+// independently decides it is a fork"), and it would rot exactly the way roadmap_authority node
+// fleet-mask-grants-cover-slots-the-model-keeps records srv4's mask grants rotting -- a list written once at
+// one width, a width that moved, and a list now naming slots the model does not intend. So a width change
+// moves the drained set with no edit here, and where the width cannot be derived the scope is EMPTY: fail
+// closed, the drain stops nothing and the refusal names why (gunbc.design_argument::fail_closed).
+fn host_drain_unit_scope(host: HostIdentity) -> List<NonEmptyStr> {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthDerived { slots: w } =>
+      desired_unit_names_range(host: host, slot: 1, limit: w)
+        |> map(u => u as NonEmptyStr)
+        |> filter(u => !any(fabric_execution_slot_identities(), f => (runner_slot_unit_name(slot: f) as String) == (u as String)))
+    RunnerWidthUnresolved { cause: _ } => [] as List<NonEmptyStr>
+  }
+}
+
+data srv4_host_drain_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: host_drain_unit_scope(host: operator_host_srv4),
+  operator_reason: "operator decision 2026-11-18 (relayed by session clever-raven-401, msg_dd355648-562b-4f67-9aa9-fee2e5255448, quoting the operator verbatim: 'yeah you can drain the hosts, np'), given at host grain: the cap bracket's host drain on srv4 may stop that host's committed CI slots, which may be holding a job, in order to apply its committed width. The scope is the committed population the width authority derives for srv4, not a hand-written list, so it follows a width move. The decision does not extend to srv4's sessions, the deployment service, or anything else the host runs" as NonEmptyStr,
+}
+
+// srv3's is the same decision on the same day. It is minted here rather than derived from
+// srv3_width_cut_2026_11_18_interruption_authorization: that row is the permission to interrupt the RETIREES
+// (14-21), and reaching the kept population through it would be a prefix-style widening of a permission whose
+// whole point is that it names a bounded set.
+data srv3_host_drain_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: host_drain_unit_scope(host: operator_host_srv3),
+  operator_reason: "operator decision 2026-11-18 (relayed by session clever-raven-401, msg_dd355648-562b-4f67-9aa9-fee2e5255448, quoting the operator verbatim: 'yeah you can drain the hosts, np'), given at host grain on the same day as the srv3 width cut of gunb-ai/gunbc#16665: the cap bracket's host drain on srv3 may stop that host's committed CI slots, which may be holding a job, in order to apply its committed width. The scope is the committed population the width authority derives for srv3, not a hand-written list. It does not reach srv3-14..21, which the width-cut row names, nor srv3's sessions or its serving engine" as NonEmptyStr,
+}
+
+// WHICH HOSTS HAVE A DRAIN ROW IS DATA: one entry per authorized host, filtered by the host it belongs to.
+// A new host is another entry here, never an arm in a function (gunbc.design_argument::root_generalization:
+// "a new ordinary case is data rather than control flow"). Unnamed is not a hole: a host with no row here
+// simply never gets an authorized stop of an uncorroborated listener, and the drain waits and refuses instead.
+type HostDrainRow sole_constructor { host: HostIdentity, authorization: InterruptionAuthorization }
+
+data runner_host_drain_authorization_rows: List<HostDrainRow> = [
+  HostDrainRow { host: operator_host_srv4, authorization: srv4_host_drain_interruption_authorization },
+  HostDrainRow { host: operator_host_srv3, authorization: srv3_host_drain_interruption_authorization },
+]
+
+type HostDrainAuthorization
+  = HostDrainNamed { authorization: InterruptionAuthorization }
+  | HostDrainUnnamed
+
+fn host_drain_interruption_authorization(host: HostIdentity) -> HostDrainAuthorization {
+  match list_head(xs: filter(runner_host_drain_authorization_rows, r => (r.host as String) == (host as String))) {
+    Absent => HostDrainUnnamed
+    Present { value: row } => HostDrainNamed { authorization: row.authorization }
+  }
+}
+
 // srv1 HOLDS TWO WIDTH DECISIONS, so its width permission is their union and its reason names both,
 // joined rather than rewritten, the same composition host_interruption_reason applies to the fabric
 // reassignment.
@@ -376,7 +477,7 @@ type HostInterruptionAuthorizationStanding
 
 // THE FABRIC REASSIGNMENT IS ITS OWN OPERATOR DECISION AND ITS OWN SCOPE, carried beside the width
 // decisions rather than folded into them. Neither width decision reaches these units: srv4's names
-// 13-21 and srv1's says outright that it "does not name srv1-01..12". The reassigned identities are
+// 16-21 and srv1's says outright that it "does not name srv1-01..12". The reassigned identities are
 // all inside the committed width, so without this row every one of them is a required retiree that
 // no authorization permits -- which is a refusal, correctly, and not a state this change may leave
 // standing while declaring the cells.
@@ -395,7 +496,7 @@ type HostInterruptionAuthorizationStanding
 // The earlier annotation stated that auto-widening as a FEATURE ("a cell added later carries the
 // same permission"), which is the tell: a sentence praising a mechanism for granting itself scope.
 //
-// SO THE CELLS ARE ENUMERATED, for the same reason srv4's 13-21 row enumerates rather than
+// SO THE CELLS ARE ENUMERATED, for the same reason srv4's surplus row enumerates rather than
 // ranges: an authored list cannot silently acquire a member. A fifth cell added tomorrow is a
 // required retiree that this authorization does not name, so the transition REFUSES until an
 // operator adds it -- which is the refusal doing its job rather than a gap.
@@ -464,6 +565,8 @@ type WidthDecisionAuthorization
 fn host_width_interruption_authorization(host: HostIdentity) -> WidthDecisionAuthorization {
   if (host as String) == (operator_host_srv1 as String) {
     WidthDecisionNamed { authorization: srv1_width_interruption_authorization }
+  } else if (host as String) == (operator_host_srv3 as String) {
+    WidthDecisionNamed { authorization: srv3_width_cut_2026_11_18_interruption_authorization }
   } else if (host as String) == (operator_host_srv4 as String) {
     WidthDecisionNamed { authorization: srv4_transition_interruption_authorization }
   } else {

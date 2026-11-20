@@ -54,7 +54,7 @@ fn ev(kind: RoadmapEventKind, parent: RoadmapEventId?, author: EventPrincipal, a
 }
 
 fn self_claim(parent: RoadmapEventId?, author: EventPrincipal, at: String) -> RoadmapEventEnvelope {
-  ev(kind: Claimed { assignee: author, return_to: author }, parent: parent, author: author, at: at)
+  ev(kind: Claimed { assignee: author, return_to: author , grain: Pathless }, parent: parent, author: author, at: at)
 }
 
 // DISCRIMINATING: the id is a function of the event's content. The same event twice is one id; a
@@ -70,7 +70,7 @@ test fn the_event_id_is_content_addressed() -> Bool {
 // the assignee (reassignment is a different event, never a silent edit); a wire whose id does not
 // match its content refuses.
 test fn the_v3_wire_form_round_trips_the_principals_and_a_mismatched_id_refuses() -> Bool {
-  let claimed = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: none, author: human_principal(), at: "2026-09-05T20:00:00Z")
+  let claimed = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "2026-09-05T20:00:00Z")
   let receipt = ev(kind: ReceiptReferenced { obligation: "verification" as NonEmptyStr, address: "verification/86dd.json" as NonEmptyStr, verdict: "passed" as NonEmptyStr }, parent: Present { value: claimed.id }, author: human_principal(), at: "t2")
   let ok = match roadmap_event_decode(text: roadmap_event_wire_text(env: receipt)) {
     RoadmapEventDecoded { envelope } => (envelope.id as String) == (receipt.id as String) && (match envelope.event.parent { Present { value: p } => (p as String) == (claimed.id as String)  Absent => false })
@@ -107,7 +107,7 @@ test fn a_v3_event_with_a_malformed_principal_refuses() -> Bool {
 // event did not). The legacy email is NEVER auto-matched: it stays an email, no minting of a
 // current principal.
 test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matched() -> Bool {
-  let e = RoadmapEvent { node: node(), author: legacy("session-a"), parent: none, kind: Claimed { assignee: legacy("teammate@gunb.ai"), return_to: legacy("lead@gunb.ai") }, recorded_at: "t1" }
+  let e = RoadmapEvent { node: node(), author: legacy("session-a"), parent: none, kind: Claimed { assignee: legacy("teammate@gunb.ai"), return_to: legacy("lead@gunb.ai") , grain: Pathless }, recorded_at: "t1" }
   let id = roadmap_event_id_for(e: e, schema: roadmap_event_schema_v2)
   let wire = join(["{\"id\":\"", id as String, "\",\"event\":{\"schema\":\"roadmap-event/v2\",\"node\":\"demo-node\",\"author\":\"session-a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"t1\",\"assignee\":\"teammate@gunb.ai\",\"return_to\":\"lead@gunb.ai\"}}"], "")
   match roadmap_event_decode(text: wire) {
@@ -142,7 +142,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
 // A V1 CLAIMED EVENT still reads as a self-claim over the legacy wrapper — both names = the
 // author email, the only assignment v1 could state — with the id pinned to its own v1 bytes.
 test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
-  let e = RoadmapEvent { node: node(), author: legacy("session-a"), parent: none, kind: Claimed { assignee: legacy("session-a"), return_to: legacy("session-a") }, recorded_at: "t1" }
+  let e = RoadmapEvent { node: node(), author: legacy("session-a"), parent: none, kind: Claimed { assignee: legacy("session-a"), return_to: legacy("session-a") , grain: Pathless }, recorded_at: "t1" }
   let id = roadmap_event_id_for(e: e, schema: roadmap_event_schema_v1)
   let wire = join(["{\"id\":\"", id as String, "\",\"event\":{\"schema\":\"roadmap-event/v1\",\"node\":\"demo-node\",\"author\":\"session-a\",\"parent\":\"\",\"kind\":\"claimed\",\"recorded_at\":\"t1\"}}"], "")
   match roadmap_event_decode(text: wire) {
@@ -220,8 +220,8 @@ test fn a_fork_and_a_missing_parent_are_their_own_standings() -> Bool {
 // THE STANDING'S CLAIM STEP NAMES THE HOLDER, NOT THE RECORDER: a reassignment is a newer Claimed,
 // the newest wins — `by` is the latest assignee principal, the recording author stays on the event.
 test fn reassignment_is_newest_claimed_wins() -> Bool {
-  let e1 = ev(kind: Claimed { assignee: human_principal(), return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
-  let e2 = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
+  let e1 = ev(kind: Claimed { assignee: human_principal(), return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
+  let e2 = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() , grain: Pathless }, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
   let shuffled = [e2, e1]
   let expect_fabric = event_principal_authenticated(ref: fabric_workflow_principal())
   (match roadmap_node_standing(envs: shuffled) { NodeClaimed { by, since: _ } => event_principal_label(p: by) == event_principal_label(p: expect_fabric)  _ => false })
@@ -231,7 +231,7 @@ test fn reassignment_is_newest_claimed_wins() -> Bool {
 // THE ASSIGNMENT PROJECTION carries the return_to explicitly (default recorded by the caller as the
 // requester — never derived here), reports no holder on open/forked histories, and clears on release.
 test fn the_assignment_projection_carries_return_to_and_clears_on_release() -> Bool {
-  let e1 = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let e1 = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
   let e2 = ev(kind: Released, parent: Present { value: e1.id }, author: human_principal(), at: "t2")
   let held = roadmap_issue_assignment(envs: [e1])
   let released = roadmap_issue_assignment(envs: [e1, e2])
@@ -252,10 +252,10 @@ test fn the_assignment_projection_carries_return_to_and_clears_on_release() -> B
 // principal never collide, never auto-match), only Claimed events feed it, and an unprobed-clock
 // event (empty recorded_at) sorts oldest — absence is not a timestamp.
 test fn the_recents_derivation_dedupes_newest_first_only_claimed() -> Bool {
-  let a_old = ev(kind: Claimed { assignee: legacy("a@gunb.ai"), return_to: human_principal() }, parent: none, author: human_principal(), at: "2026-09-01T00:00:00Z")
-  let b = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() }, parent: Present { value: a_old.id }, author: human_principal(), at: "2026-09-03T00:00:00Z")
-  let a_new = ev(kind: Claimed { assignee: legacy("a@gunb.ai"), return_to: human_principal() }, parent: Present { value: b.id }, author: human_principal(), at: "2026-09-02T00:00:00Z")
-  let unprobed = ev(kind: Claimed { assignee: legacy("c@gunb.ai"), return_to: human_principal() }, parent: none, author: human_principal(), at: "")
+  let a_old = ev(kind: Claimed { assignee: legacy("a@gunb.ai"), return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "2026-09-01T00:00:00Z")
+  let b = ev(kind: Claimed { assignee: event_principal_authenticated(ref: fabric_workflow_principal()), return_to: human_principal() , grain: Pathless }, parent: Present { value: a_old.id }, author: human_principal(), at: "2026-09-03T00:00:00Z")
+  let a_new = ev(kind: Claimed { assignee: legacy("a@gunb.ai"), return_to: human_principal() , grain: Pathless }, parent: Present { value: b.id }, author: human_principal(), at: "2026-09-02T00:00:00Z")
+  let unprobed = ev(kind: Claimed { assignee: legacy("c@gunb.ai"), return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "")
   let note = ev(kind: Progress { note: "not an assignment" as NonEmptyStr }, parent: none, author: human_principal(), at: "2026-09-04T00:00:00Z")
   let recents = roadmap_recent_claimed_assignees(envs: [note, a_new, unprobed, b, a_old])
   let labels = map(recents, r => event_principal_label(p: r))
@@ -361,7 +361,7 @@ test fn an_edit_or_delete_with_an_unknown_comment_id_is_an_honest_no_op() -> Boo
 // human completion action (publication never closes the issue).
 test fn the_publication_handoff_reassigns_to_the_return_to_of_the_results_claim() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
-  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
   let pub = ev(kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: claim.id, outcome: ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } }, parent: Present { value: claim.id }, author: fabric, at: "t2")
   let folded = roadmap_node_standing(envs: [claim, pub])
   let key_ok = roadmap_node_standing_key(s: folded) == "ready_for_review"
@@ -389,7 +389,7 @@ test fn the_publication_handoff_reassigns_to_the_return_to_of_the_results_claim(
 // result, so a result that is not a candidate never reads as ready for review.
 test fn an_unpublished_result_changes_no_holder_and_no_standing() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
-  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
   let outcomes = [
     ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr },
     ResultHandedBack { reason: "the worker declared blocked" as NonEmptyStr },
@@ -468,7 +468,7 @@ fn evlog_not_admitted_at(a: RoadmapResultAdmission, step: String) -> Bool {
 // because the generic append has no binding to check it against; every other kind is admitted.
 test fn the_generic_append_admits_no_result_event() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
-  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
   let first_result = RoadmapEvent { node: node(), author: fabric, parent: Present { value: claim.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: claim.id, outcome: evlog_failed_outcome() }, recorded_at: "t2" }
   let note = RoadmapEvent { node: node(), author: fabric, parent: Present { value: claim.id }, kind: Progress { note: "n" as NonEmptyStr }, recorded_at: "t2" }
   !roadmap_event_admitted_after(envs: [claim], event: first_result)
@@ -481,7 +481,7 @@ test fn the_generic_append_admits_no_result_event() -> Bool {
 // log and names its event.
 test fn a_bound_result_is_admitted_once_on_the_head_and_recognised_when_already_there() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
-  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
   let note = note_env(parent: claim.id)
   let admitted = match roadmap_bound_result_admission(envs: [claim, note], binding: evlog_binding(claim: claim.id), outcome: evlog_failed_outcome()) {
     ResultAdmitted { parent } => match parent { Present { value: p } => (p as String) == (note.id as String)  Absent => false }
@@ -505,13 +505,13 @@ test fn a_bound_result_is_admitted_once_on_the_head_and_recognised_when_already_
 // has no head to follow.
 test fn a_bound_result_is_refused_for_a_second_answer_a_foreign_claim_or_another_issue() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
-  let c1 = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
-  let c2 = ev(kind: Claimed { assignee: fabric, return_to: legacy("lead@gunb.ai") }, parent: Present { value: c1.id }, author: human_principal(), at: "t2")
+  let c1 = ev(kind: Claimed { assignee: fabric, return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t1")
+  let c2 = ev(kind: Claimed { assignee: fabric, return_to: legacy("lead@gunb.ai") , grain: Pathless }, parent: Present { value: c1.id }, author: human_principal(), at: "t2")
   let failed = ev(kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: c1.id, outcome: evlog_failed_outcome() }, parent: Present { value: c2.id }, author: fabric, at: "t3")
   let revised = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, failed], binding: evlog_binding(claim: c1.id), outcome: evlog_published_outcome()), step: "result-duplicate")
   let reclaimed = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, failed], binding: evlog_binding(claim: c2.id), outcome: evlog_failed_outcome()), step: "result-duplicate")
   let other_node = "other-node" as RoadmapNodeId
-  let b1 = roadmap_event_envelope(e: RoadmapEvent { node: other_node, author: human_principal(), parent: none, kind: Claimed { assignee: fabric, return_to: human_principal() }, recorded_at: "t1" })
+  let b1 = roadmap_event_envelope(e: RoadmapEvent { node: other_node, author: human_principal(), parent: none, kind: Claimed { assignee: fabric, return_to: human_principal() , grain: Pathless }, recorded_at: "t1" })
   let on_b = roadmap_event_envelope(e: RoadmapEvent { node: other_node, author: fabric, parent: Present { value: b1.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: b1.id, outcome: evlog_published_outcome() }, recorded_at: "t2" })
   let elsewhere = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, b1, on_b], binding: evlog_binding(claim: c1.id), outcome: evlog_failed_outcome()), step: "result-elsewhere")
   let absent_claim = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2], binding: evlog_binding(claim: "0000000000000000" as RoadmapEventId), outcome: evlog_failed_outcome()), step: "result-claim")
@@ -525,7 +525,7 @@ test fn a_bound_result_is_refused_for_a_second_answer_a_foreign_claim_or_another
 
 test fn progress_actor_does_not_replace_the_committed_holder() -> Bool {
   let holder = event_principal_authenticated(ref: fabric_workflow_principal())
-  let claim = ev(kind: Claimed { assignee: holder, return_to: human_principal() }, parent: none, author: human_principal(), at: "t9")
+  let claim = ev(kind: Claimed { assignee: holder, return_to: human_principal() , grain: Pathless }, parent: none, author: human_principal(), at: "t9")
   let progress = ev(kind: Progress { note: "working" }, parent: Present { value: claim.id }, author: human_principal(), at: "t1")
   let state = roadmap_issue_state(envs: [progress, claim])
   state.assignment.holder == Present { value: holder }

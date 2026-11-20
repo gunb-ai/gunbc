@@ -5,7 +5,7 @@ import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SiteP
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
 import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path_is, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds, Set }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
 import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
@@ -18,6 +18,7 @@ import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKey
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout, UbuntuAutoinstallLiveCommands }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_live_commands, mtcollins1_census_image, CensusImageDerived, CensusImageRefused }
+import gunbc.runner.runner_host_medium { RunnerHostMediumHost, RunnerHostBakedRelease, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image, runner_host_medium_live_commands }
 import std.os.types { NobleNumbat2404Lts }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
@@ -35,11 +36,6 @@ import gunbc.provisioning.install_target_disk {
   InstallTargetDiskAdmitted,
   InstallTargetDiskWithheld,
 }
-import gunbc.fleet.machine_target_disk_observations {
-  target_disk_reading_for,
-  site_pxe_edge_disk_identity_admission_window,
-}
-import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import gunbc.fleet.srv4_segment_name_resolution_observation { srv4_segment_resolver_answer, srv4_segment_resolver_observed_at }
 import std.decl_ref { decl_ref, DeclarationRef }
@@ -108,7 +104,7 @@ import gunbc.typed_remote_file_write { NoValidation,
   converge_typed_remote_file,
 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.runner.runner_host_file_converge { elevated_argv }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread, site_pxe_edge_request_window, site_pxe_edge_client_requests_unread, site_pxe_edge_client_requests_argv, site_pxe_edge_client_requests_of, site_pxe_edge_client_requests_wire }
 import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
@@ -513,14 +509,17 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 // The disk reading a request carries is that host's ROW in gunbc.fleet.machine_target_disk_observations, keyed by
 // machine — not a second copy of what each disk is. A host whose row says no serial was ever read has its install
 // withheld by name for that reason: this edge is where that is decided, and the reading file has no say.
-data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
-  SitePxeEdgeInstallRequest {
-    client: srv15_install_client,
-    target_disk: target_disk_reading_for(host: operator_host_srv15),
-    disk_admission_window: site_pxe_edge_disk_identity_admission_window,
-    architecture: Aarch64,
-  },
-]
+// THERE IS NO STANDING INSTALL REQUEST, ON PURPOSE. A standing request is a standing binding, and a binding
+// here wipes a disk: this edge re-renders whatever it serves, so a host that finished installing would have its
+// installer file put back by the next converge — and a later PXE boot of a machine that is already running an OS
+// would erase it again, with nothing in any journal to stop it. So an install request belongs to the ONE RUN that
+// stages it, and the standing SitePxeEdgeConverge mode serves NO install file: `run_site_pxe_edge` takes its
+// requests as an input, and the mode's own entry passes the empty list. That makes the standing converge the
+// WITHDRAWAL by construction — the removal path d5d8218a2ca added is the only thing it can do with install files.
+// A run that stages a binding is gunbc.host.network_install (PXE 2c), which builds the request from the unit's
+// install-client NIC and its dated target-disk row (network_install_requests_for) and withdraws it in the same
+// run; its own witness file owns the "srv15's request binds exactly once" claim. srv15's request lived here until
+// 2026-11-11, when that repeat-wipe path was found while wiring 2c (ruling msg_40c346af).
 
 // THE INSTANT AN INSTALL IS AUTHORIZED AT IS AN INPUT, NOT A ROW. A request is what a machine's provisioning
 // record says; WHEN the edge decides is a property of the deciding run, so the instant arrives at the boundary
@@ -1078,7 +1077,7 @@ type SitePxeEdgeInstallBinding {
 // particular decision; the instant the edge authorizes at belongs to the run, and arrives as an input at
 // site_pxe_edge_request_admission / site_pxe_edge_seed_rendering / run_site_pxe_edge. A `decided_at` field here
 // would have to be filled from data, and data does not advance — which is precisely how a staleness gate gets
-// frozen (review 93312 on gunbc#16275; see the note above site_pxe_edge_install_requests). The window IS a
+// frozen (review 93312 on gunbc#16275; see the note above srv14_install_client's withdrawal). The window IS a
 // request field because how fresh an identity must be is policy the request declares; the NOW it is measured
 // against is not.
 //
@@ -1352,7 +1351,7 @@ fn site_pxe_edge_install_files(serves: List<SitePxeEdgeInstallServe>, bind: Ipv4
 // the same per-MAC grub routing (grub/install/<mac>.cfg, loaded by site_pxe_edge_fallback_grub_cfg).
 //
 // THE IMAGE'S OWN FACTS HAVE ONE AUTHORITY: the request carries the UbuntuSeededInstallMediaBuildInput the ISO is built
-// from (for the census, the input of mtcollins1_census_image). Admission checks seed identity, build identity and the client's
+// from (for the census role, the input of mtcollins1_census_image; for the runner role, runner_host_medium_image). Admission checks seed identity, build identity and the client's
 // architecture against it, and does not interpret kernel arguments: the build input still holds its grub_kernel_cmdline as one
 // serialized string, and constructing typed KernelCmdlineArgs from it is deferred to the placement change with the remaster producer.
 //
@@ -1371,7 +1370,37 @@ type SitePxeEdgeLiveImage {
   digest: ContentHash
 }
 
+// THE IMAGE'S ROLE SELECTS ITS IDENTITY (design_ruling boot_delivery_persistence_and_role_are_independent_axes: delivery, persistence and role are independent
+// axes, so the edge's admission is not fixed to one role). A role names the authoritative derivation its image must be: the census capture image, or the diskless
+// runner host image, whose derivation takes the host's parameters and the baked release. There is no role-free admission and no census default.
+type SitePxeEdgeLiveRole
+  = LiveRoleCensus
+  | LiveRoleRunner { host: RunnerHostMediumHost, baked: RunnerHostBakedRelease }
+
+type SitePxeEdgeLiveRoleIdentity
+  = LiveRoleIdentity { build: UbuntuSeededInstallMediaBuildInput, commands: UbuntuAutoinstallLiveCommands }
+  | LiveRoleIdentityRefused { reason: String }
+
+// THE ROLE'S IDENTITY IS ITS OWN AUTHORITY'S DERIVATION, never restated here: the census row reads mtcollins1_census_image and its live commands, the runner row
+// reads runner_host_medium_image and its live commands. A derivation that refuses leaves the role no identity, and every admission against it refuses typed.
+fn site_pxe_edge_live_role_identity(role: SitePxeEdgeLiveRole) -> SitePxeEdgeLiveRoleIdentity {
+  match role {
+    LiveRoleCensus =>
+      match mtcollins1_census_image {
+        CensusImageRefused { reason: r } => LiveRoleIdentityRefused { reason: r }
+        CensusImageDerived { input: i } => LiveRoleIdentity { build: i, commands: mtcollins1_census_live_commands }
+      }
+    LiveRoleRunner { host: h, baked: b } =>
+      match runner_host_medium_image(host: h, baked: b) {
+        RunnerHostMediumRunnerUnpublished { binary_release: _ } => LiveRoleIdentityRefused { reason: "the runner host image has no published arm64 runner tarball for the release (runner_host_medium_image)" }
+        RunnerHostMediumUserDataRefused { reason: r } => LiveRoleIdentityRefused { reason: r }
+        RunnerHostMediumImageDerived { input: i, runner: _ } => LiveRoleIdentity { build: i, commands: runner_host_medium_live_commands }
+      }
+  }
+}
+
 type SitePxeEdgeLiveRequest {
+  role: SitePxeEdgeLiveRole
   client: MacParseResult
   architecture: Architecture
   image: SitePxeEdgeLiveImage
@@ -1392,23 +1421,26 @@ type SitePxeEdgeLiveSeedStanding
   = LiveSeedIsTheImages
   | LiveSeedNotTheImages { reason: String }
 
-// THE ONLY SEED ADMITTED TO A DISKLESS LIVE BOOT IS THE CENSUS CAPTURE PROGRAM'S OWN: early_commands are arbitrary shell, and no
-// scan of them can establish safety, so admission is by IDENTITY with the typed authority (mtcollins1_census_live_commands, built by
-// census_live_commands from the census program's location), never by what the commands say. A disk-writing early command is not
-// that program and is refused, whether or not a build document was made to match it.
-fn site_pxe_edge_live_seed_standing(build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveSeedStanding {
-  match autoinstall_live_commands_user_data(payload: mtcollins1_census_live_commands) {
-    AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
-    AutoinstallUserDataRendered { content: authority } =>
-      match autoinstall_live_commands_user_data(payload: seed) {
+// THE ONLY SEED ADMITTED TO A DISKLESS LIVE BOOT IS THE ROLE'S OWN: early_commands are arbitrary shell, and no scan of them can establish safety, so
+// admission is by IDENTITY with the role's typed authority (site_pxe_edge_live_role_identity), never by what the commands say. A disk-writing early command
+// is not that program and is refused, whether or not a build document was made to match it.
+fn site_pxe_edge_live_seed_standing(role: SitePxeEdgeLiveRole, build: UbuntuSeededInstallMediaBuildInput, seed: UbuntuAutoinstallLiveCommands) -> SitePxeEdgeLiveSeedStanding {
+  match site_pxe_edge_live_role_identity(role: role) {
+    LiveRoleIdentityRefused { reason: r } => LiveSeedNotTheImages { reason: r }
+    LiveRoleIdentity { build: _, commands: authority_commands } =>
+      match autoinstall_live_commands_user_data(payload: authority_commands) {
         AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
-        AutoinstallUserDataRendered { content: c } =>
-          if (c as String) != (authority as String) {
-            LiveSeedNotTheImages { reason: "the live commands are not the census capture program's own (mtcollins1_census_live_commands); only that program is an established safe seed" }
-          } else if (c as String) == (build.user_data_body as String) {
-            LiveSeedIsTheImages
-          } else {
-            LiveSeedNotTheImages { reason: "the typed live commands do not render to the user-data the image is built with" }
+        AutoinstallUserDataRendered { content: authority } =>
+          match autoinstall_live_commands_user_data(payload: seed) {
+            AutoinstallUserDataRefused { reason: r } => LiveSeedNotTheImages { reason: r }
+            AutoinstallUserDataRendered { content: c } =>
+              if (c as String) != (authority as String) {
+                LiveSeedNotTheImages { reason: "the live commands are not the selected role's own program (site_pxe_edge_live_role_identity); only that program is an established safe seed" }
+              } else if (c as String) == (build.user_data_body as String) {
+                LiveSeedIsTheImages
+              } else {
+                LiveSeedNotTheImages { reason: "the typed live commands do not render to the user-data the image is built with" }
+              }
           }
       }
   }
@@ -1421,25 +1453,25 @@ type SitePxeEdgeLiveBuildStanding
   = LiveBuildNotTheImages { reason: String }
   | LiveBuildEstablished
 
-// THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the authoritative census derivation (mtcollins1_census_image),
+// THE WHOLE BUILD INPUT IS ADMITTED BY ONE IDENTITY: the build key of the selected role's authoritative derivation (site_pxe_edge_live_role_identity),
 // which folds the seed files (the capture program's own bytes), seed artifacts, user-data, cmdline, stock artifact, volume and
 // pinned dates. Not field by field: any field that differs is a different key. The derivation record is a SEALED relation the publisher's own record
 // was read back into and the file re-measured against (gunbc.fleet.site_pxe_edge_live_build_relation); a reading that is not that relation refuses.
-fn site_pxe_edge_live_build_standing(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
-  site_pxe_edge_live_build_standing_at(build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
+fn site_pxe_edge_live_build_standing(role: SitePxeEdgeLiveRole, build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage) -> SitePxeEdgeLiveBuildStanding {
+  site_pxe_edge_live_build_standing_at(role: role, build: build, reading: reading, image: image, served_path: site_pxe_edge_live_iso_path(image: image))
 }
 
 // THE RELATION BELONGS TO ONE PATH: it was minted for the absolute path the edge serves one image at, so a relation minted for image A does not
 // establish image B even when the digest and the build input agree. `served_path` is the absolute path of the image being admitted.
-fn site_pxe_edge_live_build_standing_at(build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
+fn site_pxe_edge_live_build_standing_at(role: SitePxeEdgeLiveRole, build: UbuntuSeededInstallMediaBuildInput, reading: SitePxeEdgeLiveBuildReading, image: SitePxeEdgeLiveImage, served_path: NonEmptyStr) -> SitePxeEdgeLiveBuildStanding {
   match reading {
     BuildRelationUnread { reason: r } => LiveBuildNotTheImages { reason: concat("the build-to-image relation was not read back from the publisher: ", r) }
     BuildRelationRead { relation: rel } =>
-      match mtcollins1_census_image {
-        CensusImageRefused { reason: r } => LiveBuildNotTheImages { reason: r }
-        CensusImageDerived { input: authority } =>
+      match site_pxe_edge_live_role_identity(role: role) {
+        LiveRoleIdentityRefused { reason: r } => LiveBuildNotTheImages { reason: r }
+        LiveRoleIdentity { build: authority, commands: _ } =>
           if (seeded_install_media_build_key(input: build) as String) != (seeded_install_media_build_key(input: authority) as String) {
-            LiveBuildNotTheImages { reason: "the build input is not the census image's own derivation (mtcollins1_census_image): its build key differs" }
+            LiveBuildNotTheImages { reason: "the build input is not the selected role's own derivation (site_pxe_edge_live_role_identity): its build key differs" }
           } else if (rel.built.build_key as String) != (seeded_install_media_build_key(input: build) as String) {
             LiveBuildNotTheImages { reason: "the derivation record names another build key than this build input's" }
           } else if (rel.path as String) != (served_path as String) {
@@ -1514,13 +1546,13 @@ fn site_pxe_edge_live_request_admission_at(request: SitePxeEdgeLiveRequest, iso_
   match request.client {
     MacParseFailed { error: e } => LiveClientUnparseable { error: e }
     MacParsed { address: mac } =>
-      match site_pxe_edge_live_seed_standing(build: request.build, seed: request.seed) {
+      match site_pxe_edge_live_seed_standing(role: request.role, build: request.build, seed: request.seed) {
         LiveSeedNotTheImages { reason: r } => LiveSeedRefused { mac: mac, reason: r }
         LiveSeedIsTheImages =>
           match site_pxe_edge_live_architecture_standing(build: request.build, claimed: request.architecture) {
             Present { value: r } => LiveArchitectureRefused { mac: mac, reason: r }
             Absent =>
-              match site_pxe_edge_live_build_standing_at(build: request.build, reading: request.build_reading, image: request.image, served_path: iso_path) {
+              match site_pxe_edge_live_build_standing_at(role: request.role, build: request.build, reading: request.build_reading, image: request.image, served_path: iso_path) {
                 LiveBuildNotTheImages { reason: r } => LiveBuildRefused { mac: mac, reason: r }
                 LiveBuildEstablished =>
                   match request.evidence_reading {
@@ -1739,7 +1771,7 @@ data site_pxe_edge_live_partial_placement_frontier: SitePxeEdgeLiveUnexecutedArm
 
 data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = SitePxeEdgeLiveUnexecutedArm {
   withheld_at: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_live_sources"),
-  trigger: climbs_when(capability: "srv4's dnsmasq has observed the MAC mtcollins1's data NIC sends in a PXE request and that MAC is read back from the edge, after which one SitePxeEdgeLiveSource (that MAC, the census image, its served path and digest, the build input and the declared live args) is added"),
+  trigger: climbs_when(capability: "srv4's dnsmasq has observed the MAC mtcollins1's data NIC sends in a PXE request and that MAC is read back from the edge, after which one SitePxeEdgeLiveSource (that MAC, the role the image serves, its served path and digest, the build input and the declared live args) is added"),
 }
 
 // A LIVE CLIENT'S REQUEST BEFORE ANY READING: what the run is asked to boot, and where the evidence is read from. The extraction receipt and the
@@ -1747,6 +1779,8 @@ data site_pxe_edge_live_client_mac_frontier: SitePxeEdgeLiveUnexecutedArm = Site
 // edge, at the paths below. The ISO is read where the edge serves it (site_pxe_edge_http_root + the image's served_path), the members are
 // extracted into the staging root, and the served pair is read at site_pxe_edge_tftp_root, the same root the dnsmasq config renders as tftp-root.
 type SitePxeEdgeLiveSource {
+  // WHICH ROLE the image serves; its identity is derived from the role, never from a census global.
+  role: SitePxeEdgeLiveRole
   // WHOSE NIC the client MAC is: the row binds the client to a host, so a boot selects its own host's row and never another client's.
   host: HostIdentity
   client: MacParseResult
@@ -1778,6 +1812,7 @@ fn site_pxe_edge_live_source_admission(host: CommandHost, source: SitePxeEdgeLiv
         LiveExtractionRefused { mac: mac, reason: "a live source image path escapes the HTTP root or has an empty segment; nothing was dispatched" }
       } else {
       site_pxe_edge_live_request_admission(request: SitePxeEdgeLiveRequest {
+        role: source.role,
         client: source.client,
         architecture: source.architecture,
         image: source.image,
@@ -2141,7 +2176,7 @@ fn site_pxe_edge_package_remove_argv() -> List<String>? {
 fn site_pxe_edge_package_leg() -> SitePxeEdgeRollbackStep? {
   match site_pxe_edge_package_remove_argv() {
     Absent => none
-    Present { value: argv } => Present { value: SitePxeEdgeRollbackStep { step: "apt-get remove dnsmasq-base", argv: elevated_argv(command: argv) } }
+    Present { value: argv } => Present { value: SitePxeEdgeRollbackStep { step: "apt-get remove dnsmasq-base", argv: sudo_elevate_argv(command: argv) } }
   }
 }
 
@@ -2151,10 +2186,10 @@ fn site_pxe_edge_rollback_steps() -> List<SitePxeEdgeRollbackStep> {
     Present { value: leg } => [leg]
   }
   concat([
-    SitePxeEdgeRollbackStep { step: "disable --now unit", argv: elevated_argv(command: systemctl_disable_now_argv(unit: site_pxe_edge_unit_name)) },
-    SitePxeEdgeRollbackStep { step: "remove unit and config", argv: elevated_argv(command: ["rm", "-f", "--", site_pxe_edge_unit_path as String, site_pxe_edge_config_path as String]) },
-    SitePxeEdgeRollbackStep { step: "remove tftp root", argv: elevated_argv(command: ["rm", "-rf", "--", site_pxe_edge_tftp_root as String]) },
-    SitePxeEdgeRollbackStep { step: "daemon-reload", argv: elevated_argv(command: systemctl_daemon_reload_argv()) },
+    SitePxeEdgeRollbackStep { step: "disable --now unit", argv: sudo_elevate_argv(command: systemctl_disable_now_argv(unit: site_pxe_edge_unit_name)) },
+    SitePxeEdgeRollbackStep { step: "remove unit and config", argv: sudo_elevate_argv(command: ["rm", "-f", "--", site_pxe_edge_unit_path as String, site_pxe_edge_config_path as String]) },
+    SitePxeEdgeRollbackStep { step: "remove tftp root", argv: sudo_elevate_argv(command: ["rm", "-rf", "--", site_pxe_edge_tftp_root as String]) },
+    SitePxeEdgeRollbackStep { step: "daemon-reload", argv: sudo_elevate_argv(command: systemctl_daemon_reload_argv()) },
   ], package_leg)
 }
 
@@ -2284,7 +2319,7 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
 fn observe_site_pxe_edge_client_requests(target: SshTarget, context: FleetSshExecutionContext, decided_at: EpochMs) -> SitePxeEdgeClientRequestReading
 {
   let window = site_pxe_edge_request_window(until_epoch_ms: decided_at)
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: elevated_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
     TypedArgvExecRefused { reason: why } => ClientRequestsUnread { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success { site_pxe_edge_client_requests_of(journal: r.stdout, window: window) } else { ClientRequestsUnread { reason: join(["journalctl exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
@@ -2354,7 +2389,7 @@ fn ensure_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionCon
             match site_pxe_edge_package_install_argv() {
               Absent => PackageInstallRefused { step: "install argv", reason: "the apt InstallExactNonRemoving row did not materialize" }
               Present { value: argv } =>
-                match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: argv), what: "apt-get install dnsmasq-base") {
+                match site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: argv), what: "apt-get install dnsmasq-base") {
                   SitePxeEdgeProbeHeld => {
                     let after = observe_site_pxe_edge_package(target: target, context: context)
                     let binary = observe_site_pxe_edge_package_binary(target: target, context: context)
@@ -2521,17 +2556,17 @@ fn activate_site_pxe_edge_unit(target: SshTarget, context: FleetSshExecutionCont
 
 fn activate_site_pxe_edge_named_unit(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SitePxeEdgeProbe
 {
-  match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
+  match site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
     SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
     SitePxeEdgeProbeUnobservable { reason: r } => SitePxeEdgeProbeUnobservable { reason: r }
     SitePxeEdgeProbeNotAttempted { reason: r } => SitePxeEdgeProbeNotAttempted { reason: r }
     SitePxeEdgeProbeHeld =>
-      match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_enable_argv(unit: unit)), what: "enable") {
+      match site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_enable_argv(unit: unit)), what: "enable") {
         SitePxeEdgeProbeObservedNegative { reason: r } => SitePxeEdgeProbeObservedNegative { reason: r }
         SitePxeEdgeProbeUnobservable { reason: r } => SitePxeEdgeProbeUnobservable { reason: r }
         SitePxeEdgeProbeNotAttempted { reason: r } => SitePxeEdgeProbeNotAttempted { reason: r }
         SitePxeEdgeProbeHeld =>
-          site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_restart_argv(unit: unit)), what: "restart")
+          site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: systemctl_restart_argv(unit: unit)), what: "restart")
       }
   }
 }
@@ -2561,14 +2596,14 @@ type SitePxeEdgePlacementOutcome
   | PlacementVerified { placed: List<NonEmptyStr> }
 
 fn site_pxe_edge_posix_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, step: String) -> String? {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: argv)) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: argv)) {
     TypedArgvExecRefused { reason: why } => Present { value: why }
     TypedArgvExecConverged { result: r } => if r.success { Absent } else { Present { value: join([step, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
   }
 }
 
 fn site_pxe_edge_posix_digest(target: SshTarget, context: FleetSshExecutionContext, path: NonEmptyStr) -> SitePxeEdgeChainloaderObservation {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["sha256sum", path as String])) {
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["sha256sum", path as String])) {
     TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
     TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: path, success: r.success, line: r.stdout)
   }
@@ -2829,27 +2864,118 @@ fn site_pxe_edge_placement_wire(placement: SitePxeEdgePlacementOutcome) -> Strin
 }
 
 // THE INSTALL SURFACE THIS EDGE OWNS, AND WHAT A WITHDRAWAL MUST REMOVE FROM IT. Writing the desired files is
-// not enough to withdraw an install: a binding dropped from site_pxe_edge_install_requests leaves its served files
-// behind, and an install file left on disk is a standing authorization to erase whichever client reaches it. So
-// the edge owns three paths outright -- grub/install/ (the per-host configurations the entry grub.cfg loads),
-// grub/grub.cfg-01-* (the per-MAC names the signed GRUB never read, left by every run before 2026-11-10) and the
-// HTTP seed/ tree -- and every file under them that no admitted binding renders is stale. Apply removes each one,
-// whatever the gate says, because removing an install can only make the edge less destructive; observe reports
-// them. A listing that cannot be read is unobservable and fails the run, never "nothing stale".
+// not enough to withdraw an install: a request a run stops passing leaves its served files behind, and an install
+// file left on disk is a standing authorization to erase whichever client reaches it. So the edge owns four
+// families outright -- grub/install/ (the per-host configurations the entry grub.cfg loads), grub/grub.cfg-01-*
+// (the per-MAC names the signed GRUB never read, left by every run before 2026-11-10), the HTTP seed/ tree, and
+// the edge staging/ subtree -- and every file under them that no admitted binding renders is stale. Apply removes
+// each one, whatever the gate says, because removing an install can only make the edge less destructive; observe
+// reports them. A listing that cannot be read is unobservable and fails the run, never "nothing stale".
+//
+// THE FOURTH FAMILY IS THE STAGING SUBTREE, AND IT IS OWNED BECAUSE NOTHING HERE RENDERS A FILE IN IT. The fold
+// that writes the edge has no path under staging/, so whatever a run finds there was put there by a hand for one
+// install and will outlive it. The alternative rule -- own the particular directory some session happened to
+// create -- keys a safety rule to one person's naming habit and misses the next hand staging step whatever it is
+// called; that is how a hand-staged stanza sat on srv4 under staging/withdrawn-h11new/ through two converge runs
+// that each printed stale-install-files=removed and never named it. The sighting is
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_edge_residue_2026_11_19
+// and the open gap is
+// gunbc.integration_concern::edge_install_residue_lives_outside_the_fold_that_prunes_it.
+//
+// WHY OWNING THE SUBTREE WHOLE IS SAFE WITHOUT A NAME-BY-NAME EXCLUSION. The ordering dependency is real: the
+// placement leg (site_pxe_edge_place_image) fetches the installer image INTO this directory
+// (site_pxe_edge_image_staging_root IS /srv/gunbc-site-pxe-edge/staging), reads its digest there, publishes by
+// hard-link plus rename, and removes the staged copy -- all inside that leg, and the run takes placement
+// (:3114 region) before this listing (:3164 region). So at listing time a path here is either hand-staged residue
+// or the corpse of a fetch this run already refused, and the leg itself deletes the latter. If the order ever
+// flipped the cost is a re-download: the next placement fetches again and the digest is re-verified, and the
+// SERVED copy is never affected, because publishing is verify-then-link and the served file is digest-checked
+// after it lands. Two converge runs against this host do not race each other either: .github/workflows
+// /fleet-converge.yml:980 puts every mode that is not specially listed into the concurrency group
+// gunbc-host-mutation-<host> with cancel-in-progress false, and site_pxe_edge_observe / site_pxe_edge_converge are
+// not specially listed, so a second dispatch on srv4 queues behind the first. That is CI-level serialization per
+// host, not a lock on the host: a hand run of this module on srv4 would not be covered by it, which is the same
+// reason the lane rule says a person does not edit the edge by hand.
+//
+// A DIRECTORY THE REMOVAL HAS EMPTIED IS PART OF THE SAME WITHDRAWAL, inside the owned families only. An install's
+// seed lives in a directory named for the client that booted it, so removing its two files leaves the name behind,
+// and a directory whose only explanation is an install that no longer runs is where the next person re-derives a
+// hand step off the edge. The family roots themselves are never removed -- they are where this fold writes, and the
+// owned prefixes all end at them -- and a path outside the owned families is not this converge's to touch.
 type SitePxeEdgeStaleOutcome
   = StaleLeftObserveOnly
   | StaleRemoved
   | StaleRemovalRefused { path: String, reason: String }
 
+// The residue a run found under the served root. The `paths` list carries both halves of the withdrawal -- a file no
+// admitted binding renders, and a directory inside an owned family that the removal has emptied -- because a run
+// retires one install, and the file and the name it leaves behind are one withdrawal, reported on one wire line.
 type SitePxeEdgeStaleStanding
   = StaleInstallFilesUnobservable { reason: String }
   | StaleInstallFilesNone
   | StaleInstallFilesFound { paths: List<String>, outcome: SitePxeEdgeStaleOutcome }
 
+// WHERE THE EDGE LIVES, said once. The served root is the parent of the tftp root, which stays the single authority
+// for where an edge is; a second constant naming the same directory would be a fork.
+fn site_pxe_edge_served_root() -> String {
+  path_parent_directory(path: site_pxe_edge_tftp_root as String)
+}
+
+// THE OWNED FAMILIES, as prefixes, read by both halves of the withdrawal -- the file rule and the emptied-directory
+// rule -- so neither can be widened without the other. Every prefix ends inside its family: the three that name a
+// directory carry the trailing separator, so the directory named by the prefix itself is NOT inside its own family
+// and is never a removal candidate. The grub.cfg-01- family has no directory to protect: it is a name pattern the
+// edge owns outright.
+fn site_pxe_edge_owned_install_roots() -> List<String> {
+  [
+    join([site_pxe_edge_tftp_root as String, "/grub/install/"], ""),
+    join([site_pxe_edge_tftp_root as String, "/grub/grub.cfg-01-"], ""),
+    join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_root], ""),
+    join([site_pxe_edge_served_root(), "/staging/"], ""),
+  ]
+}
+
 fn site_pxe_edge_owned_install_path(path: String) -> Bool {
-  starts_with(s: path, prefix: join([site_pxe_edge_tftp_root as String, "/grub/install/"], ""))
-    || starts_with(s: path, prefix: join([site_pxe_edge_tftp_root as String, "/grub/grub.cfg-01-"], ""))
-    || starts_with(s: path, prefix: join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_root], ""))
+  any(site_pxe_edge_owned_install_roots(), root => starts_with(s: path, prefix: root))
+}
+
+// EVERY DIRECTORY A PATH SITS IN, the path itself excluded. One segment walk per path: the walk stops where
+// path_parent_directory returns its argument, which std.filesystem defines for `/`, so it terminates on absolute and
+// relative paths alike.
+fn site_pxe_edge_ancestor_directories(path: String) -> List<String> {
+  let parent = path_parent_directory(path: path)
+  if parent == path {
+    []
+  } else {
+    [parent] + site_pxe_edge_ancestor_directories(path: parent)
+  }
+}
+
+// THE DIRECTORIES THAT STILL HOLD SOMETHING AFTER THE WITHDRAWAL. A file this run keeps -- one the listing names that
+// is not in the stale set, or one the run itself renders -- marks every directory above it, so emptiness is decided
+// by a set lookup per candidate rather than a scan per candidate: membership over the listing inside the candidate
+// fold is quadratic, and gunbc.design_argument::how_to_work fixes a proven cost shape regardless of the realized n.
+fn site_pxe_edge_protected_install_dirs(listed_files: List<String>, stale_files: List<String>, desired: List<SitePxeEdgeFile>) -> Set<String> {
+  let stale = site_pxe_edge_stale_file_set(stale_files: stale_files)
+  let kept = flat_map(listed_files, f => if set_contains(stale, f) { [] } else { site_pxe_edge_ancestor_directories(path: f) })
+  let rendered = flat_map(desired, x => site_pxe_edge_ancestor_directories(path: x.path as String))
+  (kept + rendered) |> fold(init: empty_set(), f: (acc, d) => set_insert(acc, d))
+}
+
+fn site_pxe_edge_stale_file_set(stale_files: List<String>) -> Set<String> {
+  fold(stale_files, init: empty_set(), f: (acc, p) => set_insert(acc, p))
+}
+
+// THE EMPTY-DIRECTORY HALF OF THE SAME DECISION, as a pure fold over the two listings so the withdrawal stays
+// decidable from supplied values: an owned directory that holds no kept file at any depth and under which this run
+// renders nothing. Longest path first, which is what makes a chain of empty directories come out bottom-up: no
+// directory is a prefix of another at the same length, so ordering by length orders every ancestor pair, and rmdir
+// -- which refuses a directory that still has an entry -- is never reached while a child is left standing.
+fn site_pxe_edge_empty_owned_install_dirs(listed_dirs: List<String>, listed_files: List<String>, stale_files: List<String>, desired: List<SitePxeEdgeFile>) -> List<String> {
+  let protected = site_pxe_edge_protected_install_dirs(listed_files: listed_files, stale_files: stale_files, desired: desired)
+  filter(listed_dirs, d => site_pxe_edge_owned_install_path(path: d) && !set_contains(protected, d))
+    |> sort_by(d => string_length(s: d))
+    |> reverse()
 }
 
 // The stale set as a pure fold over a listing, so the withdrawal is decidable from supplied values: every owned
@@ -2873,25 +2999,56 @@ fn site_pxe_edge_remove_stale(target: SshTarget, context: FleetSshExecutionConte
   }
 }
 
+// AN EMPTIED DIRECTORY GOES WITH rmdir, not with rm: the rule is that the directory has nothing left in it, and a
+// removal that could take a subtree would be a wider authority than the listing just read. A refusal is reported the
+// same way a refused file removal is, with the path that refused and why.
+fn site_pxe_edge_remove_empty_install_dirs(target: SshTarget, context: FleetSshExecutionContext, dirs: List<String>) -> SitePxeEdgeStaleOutcome {
+  match dirs.first() {
+    Absent => StaleRemoved
+    Present { value: d } =>
+      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["rmdir", "--", d], step: "rmdir emptied install dir") {
+        Present { value: why } => StaleRemovalRefused { path: d, reason: why }
+        Absent => site_pxe_edge_remove_empty_install_dirs(target: target, context: context, dirs: skip(xs: dirs, n: 1))
+      }
+  }
+}
+
 // The served root may not exist on an edge that never ran; that is nothing stale, read as such by a second probe,
 // not assumed from find's failure.
 fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode, desired: List<SitePxeEdgeFile>) -> SitePxeEdgeStaleStanding {
-  let root = path_parent_directory(path: site_pxe_edge_tftp_root as String)
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: elevated_argv(command: ["find", root, "-type", "f"])) {
+  let root = site_pxe_edge_served_root()
+  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "f"])) {
     TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        let stale = site_pxe_edge_stale_install_paths(listed: site_pxe_edge_listing_paths(stdout: r.stdout), desired: desired)
-        if length(stale) == 0 {
-          StaleInstallFilesNone
-        } else {
-          StaleInstallFilesFound {
-            paths: stale,
-            outcome: match mode {
-              SitePxeEdgeObserveOnly => StaleLeftObserveOnly
-              SitePxeEdgeApply => site_pxe_edge_remove_stale(target: target, context: context, paths: stale)
-            },
-          }
+        let listed_files = site_pxe_edge_listing_paths(stdout: r.stdout)
+        let stale = site_pxe_edge_stale_install_paths(listed: listed_files, desired: desired)
+        // The directory listing is read the same way the file listing is, and its failure makes the whole standing
+        // unobservable rather than "nothing empty": an unreadable listing has never been allowed to read as clear.
+        match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "d"])) {
+          TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: join(["directory listing refused: ", why], "") }
+          TypedArgvExecConverged { result: d } =>
+            if !d.success {
+              StaleInstallFilesUnobservable { reason: join(["find -type d exit=", to_string(d.exit_code), " ", trim(s: d.stderr)], "") }
+            } else {
+              let emptied = site_pxe_edge_empty_owned_install_dirs(listed_dirs: site_pxe_edge_listing_paths(stdout: d.stdout), listed_files: listed_files, stale_files: stale, desired: desired)
+              let residue = stale + emptied
+              if length(residue) == 0 {
+                StaleInstallFilesNone
+              } else {
+                StaleInstallFilesFound {
+                  paths: residue,
+                  outcome: match mode {
+                    SitePxeEdgeObserveOnly => StaleLeftObserveOnly
+                    SitePxeEdgeApply => match site_pxe_edge_remove_stale(target: target, context: context, paths: stale) {
+                      StaleLeftObserveOnly => StaleLeftObserveOnly
+                      StaleRemovalRefused { path: p, reason: why } => StaleRemovalRefused { path: p, reason: why }
+                      StaleRemoved => site_pxe_edge_remove_empty_install_dirs(target: target, context: context, dirs: emptied)
+                    },
+                  },
+                }
+              }
+            }
         }
       } else {
         match site_pxe_edge_posix_leg(target: target, context: context, argv: ["test", "-d", root], step: "test -d served root") {
@@ -2950,15 +3107,22 @@ fn run_site_pxe_edge(
   target: SshTarget,
   context: FleetSshExecutionContext,
   mode: SitePxeEdgeMode,
+  // THE INSTALL BINDINGS THIS RUN SERVES, and by absence the ones it withdraws. There is no standing list to
+  // read (see the note above srv14_install_client's withdrawal): the standing SitePxeEdgeConverge mode passes the
+  // empty list and so serves no install file at all, while gunbc.host.network_install passes the one request it
+  // derived for the unit it is installing, and then passes the empty list again to withdraw it. Every install file
+  // at the edge is therefore accounted for by a run that named it, which is what the removal path can be trusted
+  // to converge against.
+  install_requests: List<SitePxeEdgeInstallRequest>,
   // THE INSTANT THIS RUN AUTHORIZES INSTALLS AT, read from the observer clock by the caller that started the run
-  // (see the note above site_pxe_edge_install_requests). It is an input rather than a reading taken in here so a
-  // caller that cannot state the time cannot start an actuation, and so every part of the run — including the
+  // (see the note above srv14_install_client's withdrawal). It is an input rather than a reading taken in here so
+  // a caller that cannot state the time cannot start an actuation, and so every part of the run — including the
   // receipt — can be shown the one instant the decisions were made at.
   decided_at: EpochMs,
 ) -> SitePxeEdgeRun
 {
   let pins = site_pxe_edge_chain_pins
-  let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
+  let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: sudo_elevate_argv(command: ["true"]), what: "non-interactive sudo")
   let package = ensure_site_pxe_edge_package(target: target, context: context, mode: mode, privilege: privilege)
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let first_observations = map(site_pxe_edge_blob_members(pins: pins), m => observe_site_pxe_edge_member(target: target, context: context, member: m))
@@ -2972,7 +3136,7 @@ fn run_site_pxe_edge(
   }
   let standings = map(pins, p => site_pxe_edge_chain_standing(pin: p, observations: observations))
   let servable = site_pxe_edge_servable_chains(standings: standings)
-  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: decided_at))
+  let admissions = map(install_requests, r => site_pxe_edge_request_admission(request: r, decided_at: decided_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   let live_admissions = map(site_pxe_edge_live_sources, r => site_pxe_edge_live_source_admission(host: FleetSshCommandHost { target: target, context: context }, source: r, placement: site_pxe_edge_live_placement_of(mode: mode)))
   let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
@@ -3254,7 +3418,9 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
                 exit_failure(reason: join(["site_pxe_edge_converge: the observer clock is unreadable (", d, "); installs cannot be authorized against a time nobody can state"], ""))
               ObserverClockObserved { instant: instant } => {
                 let decided_at = observer_instant_millis(instant: instant)
-                let run = run_site_pxe_edge(target: target, context: context, mode: mode, decided_at: decided_at)
+                let run = run_site_pxe_edge(
+                  target: target, context: context, mode: mode, install_requests: [], decided_at: decided_at
+                )
                 let client_requests = site_pxe_edge_client_requests_for_mode(mode: mode, target: target, context: context, decided_at: decided_at)
                 let overall_succeeded = site_pxe_edge_overall_succeeded(run: run, requests: client_requests)
                 let body = join([
@@ -3292,5 +3458,7 @@ fn site_pxe_edge_converge_ci_wet() -> ProcessExit
 }
 
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared with the writer, and imported by
-// ci_spec's run-step target and the upload step (the import graph runs ci_spec -> converge, toward the writer).
+// the step module's run-step targets and the upload step (the import graph runs from the step module and
+// gunbc.fleet.fleet_converge_workflow, and from the roster module gunbc.instruments.ci_run_step_roster, toward
+// the writer).
 data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"

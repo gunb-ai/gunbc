@@ -497,6 +497,37 @@ data conformance_domains: List<ConformanceDomain> = [
       ],
     },
   },
+  ConformanceDomain {
+    key: "conformance-phase-admission",
+    label: "Phase admission",
+    question: "Does the change hand a later stage a carrier that only the earlier stage's own function can construct -- or can a bare representation (a Node, a map, a list of facts) be presented as if a phase had established it?",
+    tells: [
+      "a stage's input type is an alias of a raw representation (a Node, a facts table) rather than a sealed carrier",
+      "a second constructor for a phase carrier outside the function that establishes the phase",
+      "a partial analysis (a not-derived grounding, an unresolved provider, a deferred obligation) reaching evaluation or emission because no checked carrier stands between them",
+      "a roster of tolerated unknowns standing where a carrier with no constructor for the unknown was available"
+    ],
+    owns: "The admission of each compiler phase: a phase is a carrier type whose only constructor is the function that establishes it (the sole_constructor modifier), so the states are types and the transitions are the only constructors (gunbc.design_ruling::phase_admission_is_a_conformance_pattern, operator 2026-11-17). Evaluation and emission consume only the checked carrier.",
+    boundaries: [
+      "What a phase establishes (its judgments) belongs to the phase's own module; this domain owns only that nothing bypasses its admission.",
+      "Tooling may read partial analyses; a build may not.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Sealed phase carriers",
+        purpose: "the existing carriers with one constructor each",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "v2.compiler.normalized_tree", decl_name: "NormalizedTree"),
+          tail: [
+            decl_ref(module_path: "v2.compiler.normalized_tree", decl_name: "CensusTree"),
+            decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "BodyLoweredTree"),
+            decl_ref(module_path: "v2.compiler.module_acquisition", decl_name: "HeldSourceRead"),
+          ],
+        },
+      },
+      tail: [],
+    },
+  },
 ]
 
 fn conformance_review_part(d: ConformanceDomain) -> PropositionReview {

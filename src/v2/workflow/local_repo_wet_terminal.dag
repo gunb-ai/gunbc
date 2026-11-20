@@ -3939,6 +3939,36 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
       function: "w_an_equality_between_unrelated_records_is_refused",
       expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_write_absent_dir_wet_witness", function: "a_generated_artifact_written_into_an_absent_directory_is_created_and_read_back_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_write_absent_dir_wet_witness.dag",
+      function: "a_generated_artifact_written_into_an_absent_directory_is_created_and_read_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.generated_artifact_write_absent_dir_wet_witness", function: "the_same_write_without_the_directory_step_refuses_by_real_execution" },
+      entry: "dag/test/claim/generated_artifact_write_absent_dir_wet_witness.dag",
+      function: "the_same_write_without_the_directory_step_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    // gunbc.instruments.extdeps_scope_placement_gate's MEMBERSHIP arm, on the floor's own wet lane
+    // (roadmap node dp-m3-extdeps-scope-halved, gunbc#15583). The gate had three modeled enrollments
+    // and no executing route: its arms read a MOVING base (`origin/main...HEAD`), so no published
+    // mock_response can serve them and hermetic admission is structurally unavailable (unlike
+    // test.claim.external_model_scope_witness, whose base is the frozen anchor). The operator scoped
+    // this row to the membership arm on 2026-11-15: measured on a blobless clone, that read is 0.5 s,
+    // while the freeze/remove-only reads of `legacy_manifest_freeze_sha..HEAD` measured 61 s each and
+    // the job budgets are closed to growth (gunbc.design_ruling::ci_job_budgets_closed_to_growth).
+    // The pair of rows for this identity is completed by the `WitnessExclusionRow` of
+    // gunbc.ci.ci_layer_roots::witness_exclusion_frontier classifying the file LocalRepoWetLane; the
+    // execution itself is NOT yet evidenced — see the module header for the trigger and the receipt
+    // that discharges it.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.extdeps_scope_placement_gate_live_wet_witness", function: "the_membership_arm_verdict_passes_on_the_prepared_subject" },
+      entry: "dag/test/claim/extdeps_scope_placement_gate_live_wet_witness.dag",
+      function: "the_membership_arm_verdict_passes_on_the_prepared_subject",
+      expectation: ExpectedToHold {}
     }
   ]
 }

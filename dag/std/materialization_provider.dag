@@ -123,10 +123,11 @@ import std.materialization_ladder { DemandNature, PureComputation, IdempotentEff
 // gunbc.compute.work_request, and restating it here would fork it. That module imports nothing that
 // reaches this one, so the edge is acyclic, which is the import graph's only law (gunbc.design_argument::single_authority).
 import gunbc.compute.work_request {
-  WorkSubject, AdmittedToolchain, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
+  WorkSubject, AdmittedToolchain, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, TestGateSubject, WorkToolchainIdentity,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name,
   CargoRelease, CargoDebug,
 }
+import extdeps.bazel.label { render_label }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash }
 import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.bytes { bytes_octets, utf8_encode_bytes }
@@ -985,6 +986,10 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
         length_prefixed_encode(s: "claims"), length_prefixed_encode(s: entry as String),
         length_prefixed_encode(s: functions as String), length_prefixed_encode(s: if hermetic { "hermetic" } else { "wet" }),
       ], "") as NonEmptyStr
+    // The label is keyed as its canonical rendering, which extdeps.bazel.label documents to round
+    // trip through parse(render(label)); the length prefix keeps it injective like every other field.
+    TestGateSubject { label } =>
+      join([length_prefixed_encode(s: "gate"), length_prefixed_encode(s: render_label(l: label))], "") as NonEmptyStr
   }
 }
 
@@ -1005,6 +1010,7 @@ fn compute_work_window_component(operation: WorkOperation) -> IdentityComponent 
         Present { value: w } => identity_structural_component(digest: w.identity)
         Absent => identity_text_component(content: "no-window")
       }
+    TestGateSubject { label: _ } => identity_text_component(content: "no-window")
   }
 }
 
@@ -1020,6 +1026,7 @@ fn compute_work_binary_outputs(operation: WorkOperation) -> List<ArtifactOutputI
     BuildGunbcBinaries { profile: _, bins } => bins |> map(b => compute_work_binary_output(b: b))
     CompileEntry { entry: _ } => []
     RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
+    TestGateSubject { label: _ } => []
   }
 }
 
@@ -1028,6 +1035,13 @@ fn compute_work_demand_nature(operation: WorkOperation) -> DemandNature {
     BuildGunbcBinaries { profile: _, bins: _ } => IdempotentEffect
     CompileEntry { entry: _ } => IdempotentEffect
     RunClaims { entry: _, functions: _, hermetic, window: _ } => if hermetic { IdempotentEffect } else { FreshEffect }
+    // FRESH, and it is not a hedge: the subject's answer is its exit AND the envelope it was measured
+    // under, both facts OF THIS RUN. A stored record of an earlier run of the same label on the same
+    // commit could answer the first and could not answer the second -- the envelope refusal comes from
+    // the cgroup the run lived in and the swap and OOM accounting of that attempt -- so the materializer
+    // must never satisfy this demand from the store. It is the same reason the wet claim run is fresh:
+    // the demand is for an execution, and a record of one is a different kind of thing.
+    TestGateSubject { label: _ } => FreshEffect
   }
 }
 

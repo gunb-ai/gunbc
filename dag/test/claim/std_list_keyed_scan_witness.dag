@@ -2,8 +2,11 @@ module test.claim.std_list_keyed_scan_witness
 
 import std.logic { Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, List }
+import std.types { String, List, Int }
 import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { count_where }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { any_class_census, census_exit, census_verdict, census_verdict_all, total_blocking_census }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -39,4 +42,39 @@ test fn w_distinct_by_key_keeps_the_first_element_in_first_seen_order() -> Bool 
 
 test fn w_keyed_scans_of_an_empty_list_are_empty() -> Bool {
   count(duplicated_by_key([], key_of)) == 0 && count(distinct_by_key([], key_of)) == 0
+}
+
+// THE DISCRIMINATING RED FOR THE SILENT-PREDICATE DEFECT (gunbc.recurring_failure_mode
+// builtin_predicate_actual_accepted_and_ignored). `count` is the 1-argument builtin; `count_where` is the
+// one authority for "how many satisfy P". A predicate actual handed to `count` used to be ACCEPTED and
+// DROPPED -- count([1,2,3], x => false) returned 3, a silent wrong answer under every witness that used
+// it. The repair refuses the surplus positional at type check (the builtin route skipped the arity wall
+// the direct-call route passes). So the RED asserts the surplus cell is refused with a blocking
+// CallPositionalSurplus, and the controls prove the refusal is located at the arity, not a crash:
+//   * the 1-argument count still resolves clean and counts correctly (count([1,2,3]) == 3);
+//   * count_where consults its predicate, so count_where([1,2,3], x => false) == 0 and
+//     count_where([1,2,3], x => x == 1) == 1 -- the value the vacuous 2-arg count claimed was 3.
+// On the pre-repair seed the surplus cell reports zero CallPositionalSurplus rows, so this RED is red
+// before the fix and green after (rung honesty: mechanically-preventable, executed evidence).
+data count_surplus_predicate_source: String =
+  "module test.claim.tmp_count_arity_probe\nimport std.types { Int }\nimport std.logic { Bool }\nfn probe() -> Int { count([1, 2, 3], fn(x) { false }) }\n"
+
+data count_one_argument_source: String =
+  "module test.claim.tmp_count_arity_probe\nimport std.types { Int }\nfn probe() -> Int { count([1, 2, 3]) }\n"
+
+test fn w_count_refuses_a_surplus_predicate_actual() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: any_class_census(source: count_surplus_predicate_source, wanted_class: "CallPositionalSurplus"), holds: fn(n) { n > 0 }),
+    census_verdict(census: any_class_census(source: count_surplus_predicate_source, wanted_class: "InternalError"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn w_one_argument_count_still_resolves_clean() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: count_one_argument_source), holds: fn(n) { n == 0 }))
+}
+
+test fn w_count_where_consults_its_predicate() -> Bool {
+  count_where(xs: [1, 2, 3], predicate: fn(x) { false }) == 0 &&
+    count_where(xs: [1, 2, 3], predicate: fn(x) { x == 1 }) == 1 &&
+    count(xs: [1, 2, 3]) == 3
 }

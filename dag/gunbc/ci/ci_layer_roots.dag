@@ -499,6 +499,10 @@ data excl_local_repo_wet_host_command_tree_pack_reason: String = "real host-effe
 
 data excl_local_repo_wet_host_command_tree_pack_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for the shell RunArgvOutcome host effect that gunbc.host_command_binding host_command over LocalCommandHost reaches, at a strength SUFFICIENT FOR an archive's listing and digest to be functions of the tree the argv packed -- stdout, stderr and exit status bound to the argv and to the files it read -- so these claims assert under the mock what they assert by execution today. Then they re-enroll as hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes. Per-call canned responses do NOT discharge it: a canned listing is the supplied value test.claim.runner.runner_host_baked_release_build_witness already supplies, and this file is that boundary's pairing claim.")
 
+data excl_local_repo_wet_extdeps_placement_gate_reason: String = "real host-effect witness whose reading is the PREPARED SUBJECT's OWN git history: git.Core.DiffNameStatus over origin/main...HEAD, the MEMBERSHIP arm of gunbc.instruments.extdeps_scope_placement_gate asking whether a dag/extdeps file added by this change enrolled in a scope roster. The base is a MOVING ref, so no mock_response can be authored for it in advance: a canned diff satisfies the assertion while the unenrolled new extdeps file still ships, which is the supplied-value failure this frontier exists to pair. DISTINCT FROM ITS NEIGHBOURS AND NAMED RATHER THAN FOLDED IN: no repository is created, written or packed and no temp directory is used -- the claim reads the checkout the floor prepared and writes nothing (not excl_local_repo_wet_reason, not excl_local_repo_wet_argv_execution_reason, not excl_local_repo_wet_tempdir_write_reason). Scheduled in v2.workflow.local_repo_wet_terminal local_repo_wet_schedule as the MEMBERSHIP ARM ONLY (operator decision 2026-11-15: the membership read measured 0.5s on a blobless clone against 61s for a freeze-base read, and gunbc.design_ruling::ci_job_budgets_closed_to_growth closes the budgets); the freeze and remove-only arms stay offline with hermetic cover cited at test.claim.external_model_scope_witness::manifest_freeze_holds. No network, no cargo, no remote host, no sudo."
+
+data excl_local_repo_wet_extdeps_placement_gate_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for DiffNameStatus over a MOVING base -- a response BOUND to the candidate's own origin/main and HEAD, sufficient for the verdict to be a function of what the change added rather than of an authored list. Then the identity re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes. Per-call canned diffs do NOT discharge it: they decouple the verdict from the change the verdict is about, which is the pairing this file carries.")
+
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
     pattern: "lifecycle_survivor_corpus_census.dag",
@@ -1362,6 +1366,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_local_repo_wet_tempdir_write_reason,
     dissolution: excl_local_repo_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "generated_artifact_write_absent_dir_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_tempdir_write_reason,
+    dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "approval_decision_store_wet_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tempdir_write_reason,
@@ -1483,8 +1492,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "workspace_network_real_reader_witness.dag",
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_tun_real_reader_reason,
-    dissolution: excl_local_repo_wet_tun_real_reader_dissolve}
-
+    dissolution: excl_local_repo_wet_tun_real_reader_dissolve},
+  WitnessExclusionRow {
+    pattern: "extdeps_scope_placement_gate_live_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_extdeps_placement_gate_reason,
+    dissolution: excl_local_repo_wet_extdeps_placement_gate_dissolve}
 ]
 
 fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {

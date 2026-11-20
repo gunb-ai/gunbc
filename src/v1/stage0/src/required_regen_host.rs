@@ -12732,7 +12732,7 @@ pub fn regen_module_names(workspace: &Path) -> Vec<String> {
 
 pub fn regen_module_edges(
     workspace: &Path,
-) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+) -> Result<(Vec<(Rc<str>, Rc<str>)>, Vec<String>), String> {
     let abs_roots: Vec<String> = super::regen_source_roots()
         .all()
         .iter()
@@ -12743,8 +12743,34 @@ pub fn regen_module_edges(
                 .into_owned()
         })
         .collect();
-    let index = super::build_multi_entry_index(&abs_roots);
-    let edge_index = super::whole_pool_closure_edge_index(&index)?;
+    // ONE CORPUS INDEX PER PROCESS, WHERE THE POOLS AGREE. This call used to build its OWN
+    // whole-corpus index on top of the process-shared one, so the corpus was parsed and typechecked
+    // twice in one process and both copies stayed resident. Same construction, same canonical roots
+    // key, so the shared index is a cache hit and not a behavior change
+    // (gunbc.design_argument::single_authority -- distinct consumers of one pool resolve it once).
+    // SCOPED, BECAUSE IT IS NOT UNIVERSAL: the hit needs the demanding route's pool to be the pool
+    // the process already resolved. On the heal route it is not -- this round's pool is `src/v1` plus
+    // `dag` while the same child resolved `dag` plus `src/v2` for the model -- so the shared build is
+    // refused with `SharedIndexSecondResidentPool` and the cold build still runs there (measured, run
+    // 43784443590). A refused shared build takes the cold build rather than answering from anything
+    // weaker, and SAYS so, because a round that degraded must not read as the repaired route
+    // (gunbc.design_argument::fail_closed -- every degradation is typed, located and countable). The
+    // cause the shared build gave is carried into the line.
+    let index: Rc<super::MultiEntryIndex> = match super::try_process_shared_index(&abs_roots) {
+        Ok(index) => index,
+        Err(cause) => {
+            eprintln!("required-regen: shared-corpus-index refused, cold rebuild follows: {cause}");
+            Rc::new(super::build_multi_entry_index(&abs_roots))
+        }
+    };
+    // UNCOMPOSED ROWS FOR A REVERSE WALK. The affected set is the reachability this route's own
+    // reverse walk takes, so the rows it is handed are the DIRECT dependencies the route reads --
+    // a reference target, or a resolved bare-name provider for a source that declares no `import`
+    // line -- not each endpoint that target's import closure reaches. Spelling the closure cost
+    // 34x the rows on a drain-shaped pool (2,065,084 against 61,044, run 43817027204) and the round
+    // died evaluating them in the model, while the walked member sets were identical on nine edited
+    // sets. Same admission, same fail-closed refusals, same eligibility roster.
+    let edge_index = super::whole_pool_generator_edge_index(&index)?;
     let mut module_of_path: HashMap<String, String> = HashMap::new();
     let mut modules: BTreeSet<String> = BTreeSet::new();
     for (module, source) in index.source_files.iter() {
@@ -12754,7 +12780,28 @@ pub fn regen_module_edges(
         );
         modules.insert(module.clone());
     }
-    let mut edges: BTreeSet<(String, String)> = BTreeSet::new();
+    // DEDUPLICATED BY MODULE RANK, NOT BY OWNED STRING PAIRS. A closure-expanded corpus names
+    // two orders of magnitude more endpoints than it has modules, so a set of `(String, String)`
+    // pairs is a second full copy of the corpus inside one round, compared by string on every
+    // insert. Ranks come from the sorted module roster, so ordering the rank pairs is EXACTLY the
+    // lexicographic `(from, to)` order the set form produced -- the emitted edge list is identical,
+    // pair for pair and in the same order.
+    if modules.len() > u32::MAX as usize {
+        return Err(format!(
+            "refusal: {} modules exceed the rank width the edge list is deduplicated by",
+            modules.len()
+        ));
+    }
+    let roster: Vec<Rc<str>> = modules
+        .iter()
+        .map(|module| Rc::from(module.as_str()))
+        .collect();
+    let rank: HashMap<&str, u32> = roster
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (&**module, index as u32))
+        .collect();
+    let mut endpoints: BTreeSet<u64> = BTreeSet::new();
     let mut unmapped: BTreeSet<String> = BTreeSet::new();
     for table in [&edge_index.ref_out, &edge_index.bare_out] {
         for (from_path, to_paths) in table {
@@ -12763,11 +12810,19 @@ pub fn regen_module_edges(
                 unmapped.insert(from_key);
                 continue;
             };
-            for to_path in to_paths {
+            let from_rank = *rank.get(from.as_str()).ok_or_else(|| {
+                format!("refusal: module '{from}' names an edge endpoint but is not rostered")
+            })?;
+            for to_path in to_paths.iter() {
                 let to_key = super::workspace_relative_repo_path(to_path);
                 match module_of_path.get(&to_key) {
                     Some(to) if to != from => {
-                        edges.insert((from.clone(), to.clone()));
+                        let to_rank = *rank.get(to.as_str()).ok_or_else(|| {
+                            format!(
+                                "refusal: module '{to}' names an edge endpoint but is not rostered"
+                            )
+                        })?;
+                        endpoints.insert(((from_rank as u64) << 32) | (to_rank as u64));
                     }
                     Some(_) => {}
                     None => {
@@ -12785,21 +12840,27 @@ pub fn regen_module_edges(
             unmapped.iter().take(8).collect::<Vec<_>>()
         ));
     }
-    Ok((edges.into_iter().collect(), modules.into_iter().collect()))
+    let edges: Vec<(Rc<str>, Rc<str>)> = endpoints
+        .iter()
+        .map(|key| {
+            (
+                Rc::clone(&roster[(key >> 32) as usize]),
+                Rc::clone(&roster[(key & u32::MAX as u64) as usize]),
+            )
+        })
+        .collect();
+    Ok((edges, modules.into_iter().collect()))
 }
 
 /// The host's reverse walk: every module from which an edited module is reachable. The model's
 /// `regen_reverse_closure` is the same relation as a bounded fold; `lockstep` holds them equal.
 pub fn regen_reverse_closure_host(
     edited: &[String],
-    edges: &[(String, String)],
+    edges: &[(Rc<str>, Rc<str>)],
 ) -> BTreeSet<String> {
     let mut dependents_of: HashMap<&str, Vec<&str>> = HashMap::new();
     for (from, to) in edges {
-        dependents_of
-            .entry(to.as_str())
-            .or_default()
-            .push(from.as_str());
+        dependents_of.entry(&**to).or_default().push(&**from);
     }
     let mut reached: BTreeSet<String> = edited.iter().cloned().collect();
     let mut frontier: Vec<String> = edited.to_vec();
@@ -12993,19 +13054,25 @@ fn affected_set_model_args(
     walk_roots: &[String],
     edited: &[String],
     unlocatable: &[String],
-    edges: &[(String, String)],
+    edges: &[(Rc<str>, Rc<str>)],
     compared: &[(String, String)],
 ) -> Vec<(Option<String>, crate::v1_interpreter::Value)> {
     use crate::v1_interpreter::{str_value, Value};
     let reached = regen_reverse_closure_host(walk_roots, edges);
+    // Both endpoints are CLONES OF THE ONE ALLOCATION this route already holds for that module --
+    // the roster `regen_module_edges` built -- rather than a fresh spelling per edge; an edge handed
+    // to the model would otherwise be the third copy of the same handful of strings. The closure
+    // half of the index shares through `intern_module_path` instead, and that pairing is pinned by
+    // `interned_import_closures_share_one_allocation_per_module`.
+    let shared_value = |path: &Rc<str>| Value::Str(crate::v1_rt::RcStr::new(Rc::clone(path)));
     let edge_values: Vec<Value> = edges
         .iter()
-        .filter(|(_, to)| reached.contains(to))
+        .filter(|(_, to)| reached.contains(&**to))
         .map(|(from, to)| Value::Record {
             type_name: ctx.sym("DependencyEdge"),
             fields: Rc::new(vec![
-                (ctx.sym("from"), str_value(from.clone())),
-                (ctx.sym("to"), str_value(to.clone())),
+                (ctx.sym("from"), shared_value(from)),
+                (ctx.sym("to"), shared_value(to)),
             ]),
         })
         .collect();
@@ -13051,7 +13118,7 @@ pub fn render_affected_set_bound(
     population_changes: &[String],
     edited: &[String],
     unlocatable: &[String],
-    edges: &[(String, String)],
+    edges: &[(Rc<str>, Rc<str>)],
     compared: &[(String, String)],
 ) -> Result<AffectedSetBound, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};

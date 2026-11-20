@@ -32,6 +32,7 @@ type Srv1RootMutationMode
   | ApprovalBrokerDarkInstall
   | MicrovmControllerInstall
   | ApprovalNtfyRetire
+  | DesiredInstanceDeploy
 
 // THE WIRE NAME, SPELLED ONCE. The dispatch's `mode` input takes these values, and
 // gunbc.fleet.fleet_converge_workflow fleet_converge_workflow_mode_wire DELEGATES to this fn for the
@@ -42,6 +43,7 @@ fn srv1_root_mutation_mode_wire(mode: Srv1RootMutationMode) -> String {
     ApprovalBrokerDarkInstall => "approval_broker_dark_install"
     MicrovmControllerInstall => "microvm_controller_install"
     ApprovalNtfyRetire => "approval_ntfy_retire"
+    DesiredInstanceDeploy => "desired_instance_deploy"
   }
 }
 
@@ -52,6 +54,7 @@ fn srv1_root_mutation_mode_job_id(mode: Srv1RootMutationMode) -> String {
     ApprovalBrokerDarkInstall => "approval-broker-dark-install"
     MicrovmControllerInstall => "microvm-controller-install"
     ApprovalNtfyRetire => "approval-ntfy-retire"
+    DesiredInstanceDeploy => "desired-instance-deploy"
   }
 }
 
@@ -81,6 +84,10 @@ fn srv1_root_mutation_mode_authority(mode: Srv1RootMutationMode) -> Srv1RootMuta
       destructive: true,
       purpose_note: "Run one srv1 ntfy retirement on the selection below: it stops and disables the gunbc-ntfy unit BY NAME, removes the gunbc-ntfy ACCOUNT and the gunbc-ntfy GROUP the account leaves behind, deletes the unit file, the config directory /etc/gunbc-ntfy, the state root /var/lib/gunbc-ntfy and the hand-installed binary /usr/local/bin/ntfy, and takes the tailscale front door off 8443; these deletions are not undone by any later step of this run." as NonEmptyStr,
     }
+    DesiredInstanceDeploy => Srv1RootMutationModeAuthority {
+      destructive: false,
+      purpose_note: "Run one srv1 desired-deployment apply for the ONE instance named by the run's instance input on the selection below: it converges only that roster row -- installs its staged units, files and sudoers drop-ins under /etc, /usr/local, /opt/gunbc and /var/lib/gunbc, checks the sudoers policy with visudo and reloads systemd; it acts on no other instance and takes nothing off the host." as NonEmptyStr,
+    }
   }
 }
 
@@ -93,6 +100,7 @@ data srv1_root_mutation_modes: List<Srv1RootMutationMode> = [
   ApprovalBrokerDarkInstall,
   MicrovmControllerInstall,
   ApprovalNtfyRetire,
+  DesiredInstanceDeploy,
 ]
 
 type Srv1RootMutationModeRead

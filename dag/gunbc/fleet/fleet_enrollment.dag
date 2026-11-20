@@ -26,6 +26,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv4,
   operator_host_srv14,
   operator_host_mtcollins1,
+  operator_host_e2d4b7,
 }
 
 // THE FLEET'S ENROLLMENT ROOT. Which hosts are in the fleet, what each is for and what supplies it
@@ -91,6 +92,27 @@ fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
 // gunbc.runner.runner_broker_progress_watchdog's `HostReachAdmission`, which gunbc.runner.runner_connectivity_recovery
 // reports -- is BUILT from the host actually asked about, so the machine a refusal names is the machine
 // that was queried (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed).
+// Whether effects may be dispatched at a host. The gate has to say which of these admits effects, which
+// refuses, and why the refusal names the host it queried -- a refusal's reason text reaches an operator,
+// and a refusal that does not name its own subject is indistinguishable from a copy-pasted refusal about
+// another host (the copied-receipt failure at this grain).
+//
+// A REPORT IS NOT AN ADMITTANCE, and the reason is not the missing credential -- it is the address. The
+// fleet can be told a host's keys are in place while no read has logged in, and this fleet was told exactly
+// that about host-e2d4b7 on 2026-11-16. That report puts the unit's ssh answer at 192.168.1.236 -- an address
+// the model holds only as a dated lease observation of this unit (gunbc.fleet.fleet_intent_network
+// ::ken_host_lan_endpoint; it was srv9's endpoint row until srv9 was sold and retired), and nothing read says
+// WHICH machine answers there. This arm sits in
+// front of sudo-bearing recovery effects (gunbc.runner.runner_connectivity_recovery::
+// host_reach_admission_for_fleet_host). An effect admitted on the report could therefore land on a DIFFERENT
+// machine than the row names -- which is the failure fail_closed refuses, not a caution. So
+// HostKeyLoginAdmitted is minted only by a read that returns host-authored output.
+//
+// THE REPORT IS NOT DELETED FOR WANT OF AN ARM. It stands as data in the intake layer
+// (gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation) and as an open row in the register
+// (gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat), which
+// names the one dispatch that would ground it. When that receipt exists, the row below moves to
+// HostKeyLoginAdmitted, and the register row dissolves with it.
 type HostReachPolicy
   = HostKeyLoginAdmitted
   | HostKeyLoginRefused { reason: NonEmptyStr }
@@ -218,6 +240,46 @@ data fleet_enrollments: List<HostEnrollmentIntent> = concat([
   // facts bind via gunbc.fleet.machine_board (srv14_baseboard -> fleet_intent_board).
   HostEnrollmentIntent { host: operator_host_srv14, participation: ci_runner_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_srv14) },
     apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation },
+  // SUPERMICRO H11SSL UNIT 3 (host-e2d4b7), the board whose OS was installed BY HAND on the operator's
+  // console from srv4's PXE edge on 2026-11-15. This row is where the converge, and not a person, takes
+  // the machine over: every fleet population -- the standup phase matrix, the runner population, capacity
+  // control, session residency -- is derived from this roster, so the alternative to writing it here is
+  // remembering the box by hand. Its ROLE is the operator's decision (both participations), not an
+  // inference from the fact that it has GPUs. The backing is the owned-BMC route: the machine is ours and
+  // its BMC is how it is controlled, and its unit comes from the one physical-binding admission like every
+  // owned row, so it is Absent until `dmidecode -t baseboard` yields a serial -- the hand install never read
+  // one. Reach is REFUSED, on the same convention srv3 and srv4 carry: no read in this repository has
+  // established host-key login at this host, and a report -- even the operator's -- does not open a
+  // sudo-bearing gate. Read-only probes from srv1 (2026-11-15 and 2026-11-16) are refused, and correctly so,
+  // because srv1 holds none of the three fleet principals' private keys; they describe srv1, not this host.
+  // What the operator reported on 2026-11-16 -- all three principals' public keys now on this box's ubuntu
+  // account (the operator's and fleet-automation's already there, node-orch's added), ubuntu with
+  // passwordless sudo, ssh answering at 192.168.1.236 -- is carried as data where it was reported and where
+  // it collides: the intake rows in gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation (whose
+  // address standing cites gunbc.fleet.fleet_intent_network::ken_host_lan_endpoint, a dated observation that
+  // reserves nothing), and the open register row
+  // gunbc.integration_concern::h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which names
+  // the ONE dispatch that would ground the report: a fleet-converge read as the fleet-automation principal,
+  // returning host-authored output and a receipt, together with the lease/ARP read that says who holds .236.
+  // Until that receipt exists the gate stays shut -- an effect aimed at this host on the strength of a report
+  // could be applied at srv9. What was true when this row was first written (2026-11-15: publickey refused
+  // for briansrls, ubuntu, gunbc and admin; no roster seeded; host key unconfirmed) stays
+  // in the register as
+  // gunbc.integration_concern::h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
+  // which stays Open: the concern is about the INSTALL ROUTE, and keys placed by hand on one box are what
+  // gunbc.design_ruling::fleet_authorized_keys_on_every_install_route refuses as a route.
+  // NO BUILD-POOL SLOT IS HELD FOR THIS HOST, AND NOTHING HERE PRETENDS ONE. A build-pool carve is granted in ONE
+  // place, from host facts: gunbc.runner.runner_slot_desired::host_build_pool_reservation carves a slot's memory
+  // when the host is on the serving roster (gunbc.compute.remote_build_hosts::remote_build_host_is_serving) AND
+  // resolves no dashboard instance of its own. This host is on neither footing, so the capacity plan converts zero
+  // carve into zero held slots -- and it converts, it does not decide: that is why no per-host entry naming this
+  // unit sits in the capacity plan (gunbc.design_argument::single_authority). What IS recorded is the pending join,
+  // which is a decision and not a membership: gunbc.integration_concern::
+  // h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home, pointing at that same carve authority.
+  HostEnrollmentIntent { host: operator_host_e2d4b7, participation: both_participation_enrollment_participation, backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: machine_unit_standing(machine: operator_host_e2d4b7) },
+    apply_mode: ExistingHostQuiescentReload,
+    reach_policy: HostKeyLoginRefused { reason: host_key_login_unavailable_reason },
+    run_scoped_federation: NoRunScopedFederation },
   // mtcollins1 boots a RAM image over its BMC: controlled (Bmc), never installed (RamImageBoot). Every
   // owned row's unit is read from the one physical-binding admission (gunbc.fleet.fleet_machine_unit_binding,
   // A2 of gunbc.plans.fleet_machine_authority): Absent until that machine's board serial is observed.

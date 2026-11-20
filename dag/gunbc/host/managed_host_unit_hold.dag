@@ -709,6 +709,7 @@ fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree: Hos
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet_admitted"),
   ]
 {
   match unit_hold_admission_for(host: host as NonEmptyStr) {
@@ -937,7 +938,14 @@ fn unit_hold_release_outcome(proof: UnitHoldProof) -> UnitHoldReleaseOutcome {
 }
 
 fn unit_hold_release(proof: UnitHoldProof, outcome: ProcessExit) -> ProcessExit {
-  match unit_hold_release_outcome(proof: proof) {
+  unit_hold_release_compose(proof: proof, released: unit_hold_release_outcome(proof: proof), outcome: outcome)
+}
+
+// THE STEP'S OUTCOME COMBINED WITH ONE RELEASE ATTEMPT'S OUTCOME. A caller that must also report the release on its own
+// (handoff failure with a clean release versus handoff success with the hold left held) makes the single release attempt
+// itself and composes here, so the release runs once and the two facts stay separate.
+fn unit_hold_release_compose(proof: UnitHoldProof, released: UnitHoldReleaseOutcome, outcome: ProcessExit) -> ProcessExit {
+  match released {
     UnitHoldReleasedCleanly => outcome
     UnitHoldLeftHeld { cause: c } =>
       exit_failure(reason: join(["unit hold ", proof.subject.key as String, " left held (", c as String, "); step outcome was: ", match outcome {

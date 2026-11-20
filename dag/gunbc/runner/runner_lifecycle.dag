@@ -30,6 +30,7 @@ import gunbc.host.host_converge {
   gunbc_runner_per_slot_high_dropin_path,
 }
 import extdeps.github.actions_runner { actions_runner_base_dir }
+import gunbc.file_access { FileTreeScope }
 
 // PR B seam (operator 2026-08-06): vivid-eagle-131 owns gunbc.apply plan + typed actions;
 // still-ram-738 owns these HostEffect arms + ADD sequence + shared RunnerSlotIdentity;
@@ -349,6 +350,14 @@ fn runner_lifecycle_per_slot_caps() -> RunnerPerSlotMemoryCaps {
 }
 
 data runner_lifecycle_jit_wrapper_path: String = join([actions_runner_base_dir, "/jit-runner.sh"], "")
+
+// THE WRAPPER'S WRITE SCOPE, NAMED AND DECLARED BESIDE THE PATH IT ROOTS. The wrapper lives in the runner's
+// own install root, NOT in /etc, so it is sealed against THIS scope, exactly as gunbc.host.host_primary_network_apply
+// seals its staged files against the named primary_network_netplan_run_scope rather than borrowing another row's
+// tree (gunbc.design_argument::single_authority: the scope that authorizes a write is the row's own declaration,
+// not whichever scope the consuming module happens to hold). Its root is the path datum's own prefix, so the
+// wrapper and its scope cannot drift: both read actions_runner_base_dir.
+data runner_lifecycle_jit_wrapper_scope: FileTreeScope = FileTreeScope { root_path: actions_runner_base_dir as NonEmptyStr }
 
 data runner_lifecycle_systemd_template_unit: String = gunbc_runner_unit_template
 

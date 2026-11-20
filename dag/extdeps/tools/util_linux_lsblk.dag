@@ -2,7 +2,15 @@ module extdeps.tools.util_linux_lsblk
 
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.uri { Uri, Https }
+
+// THE PROGRAM, as one identity. The invocation is absolute because the consumer that reads a fleet host's block
+// layout runs this over ssh (gunbc.host.network_install_host_reader), where the remote PATH is the remote
+// administrator's PATH and not the fleet's; a bare "lsblk" there would be a lookup, and a lookup that resolves to
+// a different binary is a different program.
+fn lsblk_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/lsblk")
 
 // lsblk(8), util-linux: "lsblk lists information about all available or the specified block devices". Its TYPE
 // column is the device type; the man page names the column but not its values, which lsblk computes in
@@ -34,3 +42,11 @@ type LsblkDeviceType
   | LsblkLoop
   | LsblkRom
   | LsblkOtherType { word: NonEmptyStr }
+
+// ONE REPORT OF THE NAMED COLUMNS, as lsblk(8) defines its output options: -P prints each device as
+// KEY="value" pairs ("--pairs"), so an empty column stays an empty value rather than shifting the next one;
+// -p prints full device paths; -b prints SIZE in bytes rather than a rounded human unit. Which columns to ask
+// for is the consumer's question, so the list is a parameter.
+fn lsblk_pairs_command(columns: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: lsblk_program(), arguments: ["-b", "-p", "-P", "-o", columns as String])
+}

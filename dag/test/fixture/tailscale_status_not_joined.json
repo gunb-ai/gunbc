@@ -1,0 +1,8 @@
+{
+  "Version": "1.88.3",
+  "BackendState": "NeedsLogin",
+  "AuthURL": "https://login.tailscale.com/a/fixture",
+  "MagicDNSSuffix": "",
+  "Self": null,
+  "Peer": {}
+}

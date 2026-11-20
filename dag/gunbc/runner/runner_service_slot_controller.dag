@@ -19,10 +19,11 @@ import extdeps.tools.findutils { find_path_probe_command }
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.auth.jws { JwsSigningKeyRef }
 import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
+import gunbc.fleet.host_credential_custody_roster {
+  host_credential_custody_row, HostCredentialCustodyRow, ServiceSlotAppKey
+}
 import gunbc.fleet.host_credential_custody_converge {
-  host_credential_custody_row, HostCredentialCustodyRow, ServiceSlotAppKey, custody_row_readable_by, custody_row_placement, CustodyPlaced, CustodyPlacementRefused,
-  custody_file_legs, custody_dir_legs, CustodyPathLegs, CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathUnobservable, custody_path_metadata_wire,
-  custody_path_metadata_of_reads, FindAnswer, FindUnobservable, classify_find_answer, custody_owner_clause, custody_perm_clause, custody_mount_table_path,
+  custody_row_readable_by, custody_row_placement, CustodyPlaced, CustodyPlacementRefused, custody_file_legs, custody_dir_legs, CustodyPathLegs, CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathUnobservable, custody_path_metadata_wire, custody_path_metadata_of_reads, FindAnswer, FindUnobservable, classify_find_answer, custody_owner_clause, custody_perm_clause, custody_mount_table_path
 }
 import extdeps.github.actions_jit_runner { EncodedJitConfig }
 import product.host_identity { HostIdentity }

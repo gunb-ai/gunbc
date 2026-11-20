@@ -1,0 +1,17 @@
+{
+  "Version": "1.88.3",
+  "BackendState": "Running",
+  "MagicDNSSuffix": "tailecbe08.ts.net",
+  "CurrentTailnet": { "MagicDNSSuffix": "tailecbe08.ts.net" },
+  "Self": {
+    "ID": "n000000000FIXTURE",
+    "HostName": "h11-a16",
+    "DNSName": "h11-a16.tailecbe08.ts.net.",
+    "OS": "linux",
+    "TailscaleIPs": ["100.109.228.127"],
+    "Tags": ["tag:serving"],
+    "Online": true,
+    "InNetworkMap": true
+  },
+  "Peer": {}
+}

@@ -32,21 +32,39 @@ import gunbc.machine_intake.mtjade1_factory_network {
 }
 import std.types { NonEmptyStr, String, Bool, Int, EpochMs }
 import std.algebra { length, string_contains }
+import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import std.content_hash { content_hash_of_value }
 import std.dissolution { dissolution_description }
 import gunbc.machine_intake.arrival_run {
   arrival_wet_prefix_record,
+  arrival_epoch_from_version,
+  ArrivalEpochRead,
+  ArrivalEpochVersionEmpty,
+  ArrivalEpochNoIntegerVersion,
   ArrivalRunCaptures,
   ArrivalWetRunRecord,
   ArrivalRunObserved,
   ArrivalRunRefused,
   arrival_roster_probe_is_credential_refusal,
+  ArrivalLivePriorLife,
+  LiveFacts,
+  LiveStoppedOnAuthRefusal,
+  LiveFailedOnRead,
 }
-import std.process {
-  ProcessExit,
-  ExitSuccess,
-  exit_failure,
+import gunbc.machine_intake.prior_life_boundary {
+  live_prior_life_archive_plan,
+  LivePriorLifeFacts,
+  LiveArchiveWriteFacts,
+  prior_life_carriers_all,
+  CarrierCapture,
+  CarrierCaptured,
+  PowerStatePayload,
+  PriorLifeSelAndEventLogs,
+  dry_prior_life_instant,
+  ObserverClockInstant,
 }
+import gunbc.machine_intake.prior_life_capture_live { LiveCaptureStop, LiveCaptureFailure }
+import gunbc.bmc_model { BmcPowerOn }
 import gunbc.machine_intake.subject { MachineIntakeSubject, IntakeAttemptId, UnitKey, BoardUnitKey, QualificationSubject }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiPrivilegeNoAccess }
@@ -89,6 +107,7 @@ import gunbc.secret_provision {
 import std.optional { Present, Absent }
 import gunbc.auth.arrival_federation_pair {
   arrival_federation_pair_for_host,
+  arrival_federation_pairs,
   arrival_lane_environment,
   arrival_lane_wif_pool_id,
   arrival_lane_wif_provider_id,
@@ -137,7 +156,7 @@ data witness_srv15_accessor_ref: SecretRef = secret_ref_pin_version(ref: srv15_b
 data srv15_manager_stand_in: String = "{\n  \"@odata.id\": \"/redfish/v1/Managers/bmc\",\n  \"@odata.type\": \"#Manager.v1_14_0.Manager\",\n  \"Actions\": {\n    \"#Manager.Reset\": {\n      \"@Redfish.ActionInfo\": \"/redfish/v1/Managers/bmc/ResetActionInfo\",\n      \"target\": \"/redfish/v1/Managers/bmc/Actions/Manager.Reset\"\n    },\n    \"#Manager.ResetToDefaults\": {\n      \"ResetType@Redfish.AllowableValues\": [\n        \"ResetAll\"\n      ],\n      \"target\": \"/redfish/v1/Managers/bmc/Actions/Manager.ResetToDefaults\"\n    }\n  },\n  \"DateTime\": \"2026-10-29T12:16:52+00:00\",\n  \"DateTimeLocalOffset\": \"+00:00\",\n  \"Description\": \"Baseboard Management Controller\",\n  \"EthernetInterfaces\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/EthernetInterfaces\"\n  },\n  \"FanControl\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/FanControl\"\n  },\n  \"FirmwareVersion\": \"3.22.00\",\n  \"GraphicalConsole\": {\n    \"ConnectTypesSupported\": [\n      \"KVMIP\"\n    ],\n    \"MaxConcurrentSessions\": 4,\n    \"ServiceEnabled\": true\n  },\n  \"HostInterfaces\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/HostInterfaces\"\n  },\n  \"Id\": \"bmc\",\n  \"LastResetTime\": \"2026-10-29T12:07:44+00:00\",\n  \"Links\": {\n    \"ActiveSoftwareImage\": {\n      \"@odata.id\": \"/redfish/v1/UpdateService/FirmwareInventory/14c085a0\"\n    },\n    \"ManagerForChassis\": [\n      {\n        \"@odata.id\": \"/redfish/v1/Chassis/ALTRAD8UD_1L2T\"\n      }\n    ],\n    \"ManagerForChassis@odata.count\": 1,\n    \"ManagerForServers\": [\n      {\n        \"@odata.id\": \"/redfish/v1/Systems/system\"\n      }\n    ],\n    \"ManagerForServers@odata.count\": 1,\n    \"ManagerInChassis\": {\n      \"@odata.id\": \"/redfish/v1/Chassis/ALTRAD8UD_1L2T\"\n    },\n    \"SoftwareImages\": [\n      {\n        \"@odata.id\": \"/redfish/v1/UpdateService/FirmwareInventory/14c085a0\"\n      }\n    ],\n    \"SoftwareImages@odata.count\": 1\n  },\n  \"LogServices\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/LogServices\"\n  },\n  \"ManagerDiagnosticData\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/ManagerDiagnosticData\"\n  },\n  \"ManagerType\": \"BMC\",\n  \"Model\": \"OpenBmc\",\n  \"Name\": \"OpenBmc Manager\",\n  \"NetworkProtocol\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc/NetworkProtocol\"\n  },\n  \"Oem\": {\n    \"@odata.id\": \"/redfish/v1/Managers/bmc#/Oem\",\n    \"@odata.type\": \"#OemManager.Oem\",\n    \"OpenBmc\": {\n      \"@odata.id\": \"/redfish/v1/Managers/bmc#/Oem/OpenBmc\",\n      \"@odata.type\": \"#OemManager.OpenBmc\",\n      \"Certificates\": {\n        \"@odata.id\": \"/redfish/v1/Managers/bmc/Truststore/Certificates\"\n      }\n    }\n  },\n  \"PowerState\": \"On\",\n  \"SerialConsole\": {\n    \"ConnectTypesSupported\": [\n      \"IPMI\",\n      \"SSH\"\n    ],\n    \"MaxConcurrentSessions\": 15,\n    \"ServiceEnabled\": true\n  },\n  \"ServiceEntryPointUUID\": \"6e884505-ba5e-49f2-af66-cedf82ef8d8c\",\n  \"Status\": {\n    \"Health\": \"OK\",\n    \"State\": \"Enabled\"\n  },\n  \"UUID\": \"\"\n}"
 
 fn srv15_wet_captures() -> ArrivalRunCaptures {
-  srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"])
+  srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"], prior_life: srv15_wet_live_facts(read_back: srv15_wet_live_read_back()))
 }
 
 // The in-band second source, MINTED THE ONLY LEGAL WAY: the committed capture row
@@ -146,10 +165,92 @@ fn srv15_wet_captures() -> ArrivalRunCaptures {
 // saw on the wire (srv15_host_nic_mac).
 
 fn srv15_wet_captures_census(census_text: String) -> ArrivalRunCaptures {
-  srv15_wet_captures_accounts(census_text: census_text, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"])
+  srv15_wet_captures_accounts(census_text: census_text, account_bodies: ["{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}"], prior_life: srv15_wet_live_facts(read_back: srv15_wet_live_read_back()))
 }
 
-fn srv15_wet_captures_accounts(census_text: String, account_bodies: List<String>) -> ArrivalRunCaptures {
+// The subject the fixture's captures are observed under, in ONE place so the archive plan the fixture
+// commits and the captures' own observation_subject can never drift apart.
+fn srv15_wet_intake_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: QualificationSubject {
+      unit_key: UnitKey { kind: BoardUnitKey, value: "srv15" as NonEmptyStr },
+      assembly_manifest_digest: content_hash_of_value(srv15_census_stand_in),
+      firmware_manifest_digest: content_hash_of_value(srv15_fru_stand_in),
+    },
+    attempt_id: "arrival-witness-attempt" as IntakeAttemptId,
+  }
+}
+
+// THE CARRIER CAPTURES THE ALTRAD8UD ROW REQUIRES, one per required carrier. A serviceable observation
+// of the kind each surface answers with stands in for all of them, the convention the boundary module's
+// own witness established. These fixtures prove the ROUTE and the REFUSALS; they do NOT prove srv15's
+// controller answers in this shape -- the run's dissolution carries that as the inhabitance obligation
+// discharged by the first live srv15 arrival.
+fn srv15_wet_carrier_captures() -> List<CarrierCapture> {
+  map(prior_life_carriers_all, c => CarrierCaptured { carrier: c, payload: PowerStatePayload { power: BmcPowerOn } })
+}
+
+fn srv15_wet_live_instant() -> ObserverClockInstant {
+  // The boundary module's own modeled-instant mint: the fixture's realization is stated in the live-facts
+  // comment -- these are run-pure fixtures, not a controller read; the inhabitance check belongs to the
+  // first live srv15 arrival.
+  dry_prior_life_instant(millis: 1762400000000)
+}
+
+// THE LIVE ARM AS THE DOOR CARRIES IT: the required captures, the plan THIS module derives from them,
+// and the store's read-back of exactly those bytes. Passing a different read-back builds the incomplete
+// cases; passing Absent builds the store-refused case.
+fn srv15_wet_live_facts(read_back: Optional<NonEmptyStr>) -> ArrivalLivePriorLife {
+  let at = srv15_wet_live_instant()
+  let caps = srv15_wet_carrier_captures()
+  let plan = live_prior_life_archive_plan(subject: srv15_wet_intake_subject(), captures: caps, read_at: at)
+  LiveFacts {
+    facts: LivePriorLifeFacts {
+      captures: caps,
+      read_at: at,
+      write: LiveArchiveWriteFacts {
+        write_started_at: at,
+        write_returned_at: at,
+        store_read_back: read_back,
+      },
+    },
+  }
+}
+
+fn srv15_wet_live_read_back() -> Optional<NonEmptyStr> {
+  Present {
+    value: live_prior_life_archive_plan(
+      subject: srv15_wet_intake_subject(),
+      captures: srv15_wet_carrier_captures(),
+      read_at: srv15_wet_live_instant(),
+    ).body,
+  }
+}
+
+// THE STOPPED ARM: the mint halted at an authenticated refusal. The mint keeps its decided rows in its
+// own outcome; this fixture carries none and says so rather than inventing any.
+fn srv15_wet_live_stopped() -> ArrivalLivePriorLife {
+  LiveStoppedOnAuthRefusal {
+    stop: LiveCaptureStop {
+      carrier: PriorLifeSelAndEventLogs,
+      op_label: "ipmi-sel-eliste" as NonEmptyStr,
+      detail: "witness fixture: the controller refused the managed credential on this authenticated read" as NonEmptyStr,
+    },
+    rows: [],
+  }
+}
+
+fn srv15_wet_live_failed() -> ArrivalLivePriorLife {
+  LiveFailedOnRead {
+    failure: LiveCaptureFailure {
+      op_label: "redfish-logservices" as NonEmptyStr,
+      detail: "witness fixture: the read failed closed with no authenticated refusal" as NonEmptyStr,
+    },
+    rows: [],
+  }
+}
+
+fn srv15_wet_captures_accounts(census_text: String, account_bodies: List<String>, prior_life: ArrivalLivePriorLife) -> ArrivalRunCaptures {
   ArrivalRunCaptures {
     census_text: census_text,
     manager_body: srv15_manager_stand_in,
@@ -166,16 +267,10 @@ fn srv15_wet_captures_accounts(census_text: String, account_bodies: List<String>
     observation_time: 1762400000000,
     attempt: "arrival-witness-attempt" as AttemptIdentity,
     credential_epoch: 1,
-    observation_subject: MachineIntakeSubject {
-      subject: QualificationSubject {
-        unit_key: UnitKey { kind: BoardUnitKey, value: "srv15" as NonEmptyStr },
-        assembly_manifest_digest: content_hash_of_value(srv15_census_stand_in),
-        firmware_manifest_digest: content_hash_of_value(srv15_fru_stand_in),
-      },
-      attempt_id: "arrival-witness-attempt" as IntakeAttemptId,
-    },
+    observation_subject: srv15_wet_intake_subject(),
     census_channel: 1,
     channel_info_store_paths: ["arrival-evidence/channel-info-1" as NonEmptyStr],
+    prior_life: prior_life,
     // The srv15 in-band second source, decoded through the PUBLIC reader over the
     // committed capture row's own bytes (the shape of the committed
     // artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt sections).
@@ -332,29 +427,55 @@ test fn the_accessor_ref_gate_is_closed_until_the_pin_is_cited() -> Bool {
   }
 }
 
-test fn the_arrival_job_dispatch_names_follow_the_pair_rule_for_the_dispatch_host() -> Bool {
-  let dispatch_text = match fleet_converge_arrival_dispatch_host {
+// THE ARRIVAL LANE IS KEYED ON THE ARRIVAL ROW, NOT THE EXECUTOR HOST. The dispatch template stands in for the unit; substituting each pair row's unit for it must give exactly that
+// row's environment, pool, provider and service account (the pair module's own derivation). The template must name the arrival_subject input, never the executor host input, whose options
+// cannot name an arrival unit (a host-keyed template resolved srv1-arrival, an environment with no reviewers). Every option the input offers has a pair row and every pair row is offered.
+fn arrival_dispatch_resolved(expr: String, unit: String) -> String {
+  expr.replace(from: arrival_dispatch_text(), to: unit)
+}
+
+fn arrival_dispatch_text() -> String {
+  match fleet_converge_arrival_dispatch_host {
     Template { text: t } => t
   }
-  match arrival_federation_pair_for_host(host: operator_host_srv15) {
-    Present { value: pair } =>
-      (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "srv15-arrival"
-      && (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival"
-      && (arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String) == "github-srv15-arrival-oidc"
-      && (arrival_lane_service_account_id(pair: pair, lane: "install" as NonEmptyStr) as String) == "srv15-install"
-      && fleet_converge_arrival_environment_expression() == join([dispatch_text, "-arrival"], "")
-      && fleet_converge_arrival_pool_id_expression() == join(["github-", dispatch_text, "-arrival"], "")
-      && string_contains(s: fleet_converge_arrival_provider_resource_expression(), pattern: "-arrival-oidc")
-      && string_contains(s: fleet_converge_arrival_service_account_expression(), pattern: "-arrival@")
-    Absent => false
-  }
+}
+
+fn arrival_pair_resolves_from_dispatch(pair: ArrivalFederationPair) -> Bool {
+  let unit = pair.unit as String
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == (arrival_lane_environment(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == (arrival_lane_wif_pool_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: arrival_lane_wif_provider_id(pair: pair, lane: "arrival" as NonEmptyStr) as String)
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(arrival_lane_service_account_id(pair: pair, lane: "arrival" as NonEmptyStr) as String, "@"))
+}
+
+// The two named members, each as its own literal from the cited row (no count of the population is asserted): environment <unit>-arrival, pool github-<unit>-arrival, provider
+// github-<unit>-arrival-oidc, service account <unit>-arrival@.
+fn arrival_pinned_member_resolves(unit: String) -> Bool {
+  arrival_dispatch_resolved(expr: fleet_converge_arrival_environment_expression(), unit: unit) == concat(unit, "-arrival")
+    && arrival_dispatch_resolved(expr: fleet_converge_arrival_pool_id_expression(), unit: unit) == concat("github-", concat(unit, "-arrival"))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_provider_resource_expression(), unit: unit), pattern: concat("github-", concat(unit, "-arrival-oidc")))
+    && string_contains(s: arrival_dispatch_resolved(expr: fleet_converge_arrival_service_account_expression(), unit: unit), pattern: concat(unit, "-arrival@"))
+}
+
+test fn the_arrival_job_dispatch_names_resolve_to_each_pair_row() -> Bool {
+  all(arrival_federation_pairs(), p => arrival_pair_resolves_from_dispatch(pair: p))
+    && arrival_pinned_member_resolves(unit: "mtjade1")
+    && arrival_pinned_member_resolves(unit: "srv15")
+    && arrival_dispatch_text() == "${{ github.event.inputs.arrival_subject }}"
+    && !string_contains(s: arrival_dispatch_text(), pattern: "inputs.host")
+}
+
+test fn every_arrival_subject_option_has_a_pair_row_and_every_pair_row_is_offered() -> Bool {
+  let options = arrival_converge_subject_options()
+  all(options, o => any(arrival_federation_pairs(), p => (p.unit as String) == o))
+    && all(arrival_federation_pairs(), p => any(options, o => o == (p.unit as String)))
 }
 
 // REVIEW 94099 (fail-closed census): a served account body that no committed decoder accepts is
 // a TYPED REFUSAL, never a silently dropped row -- the fold must not reason on a census that
 // omits an account the controller serves.
 test fn the_unreadable_account_body_refuses_the_run() -> Bool {
-  let broken = srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["not-json-at-all"])
+  let broken = srv15_wet_captures_accounts(census_text: srv15_census_stand_in, account_bodies: ["not-json-at-all"], prior_life: srv15_wet_live_facts(read_back: srv15_wet_live_read_back()))
   match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "witness-run-0006" as NonEmptyStr, captures: broken, accessor: witness_srv15_accessor_ref) {
     ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "failed to decode")
     _ => false
@@ -383,11 +504,78 @@ test fn an_uncited_non_srv15_host_refuses_with_its_own_obligation() -> Bool {
 
 
 
-// DEBUG BISECT (temporary): the kernel's refusal, PRINTED. A ProcessExit-returning witness whose
-// FAIL line carries the kernel's own located reason (claim_batch prints ExitFailure reasons).
-test fn debug_kernel_reason() -> ProcessExit {
-  match arrival_wet_prefix_record(unit: operator_host_srv15, run_wire: "1db-debug" as NonEmptyStr, captures: srv15_wet_captures(), accessor: witness_srv15_accessor_ref) {
-    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => ExitSuccess
-    ArrivalRunRefused { reason: reason } => exit_failure(reason: reason as String)
+
+// THE LIVE ARM IS THE ONLY ARM. With the door carrying the live prior-life facts -- every required
+// carrier captured and the store's own read-back matching the body this module re-derives -- the run
+// OBSERVES, and the obligation it carries is the INHABITANCE one: these are mock cases, and the first
+// live srv15 arrival is what proves the controller answers this shape.
+test fn the_live_arm_carries_the_run_to_the_inhabitance_obligation() -> Bool {
+  match arrival_wet_prefix_record(
+    unit: operator_host_srv15,
+    run_wire: "witness-run-0101" as NonEmptyStr,
+    captures: srv15_wet_captures(),
+    accessor: witness_srv15_accessor_ref,
+  ) {
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: dissolution } =>
+      string_contains(s: dissolution_description(condition: dissolution) as String, pattern: "inhabitance")
+    ArrivalRunRefused { reason: _reason } => false
+  }
+}
+
+// CAN-FAIL CONTROL AGAINST A DRY FALLBACK -- the one thing this lane must not get wrong. When the live
+// read stops at an authenticated refusal the door REFUSES the run with that typed cause. Were the door
+// to keep a dry world beside the live one -- archiving a controller it never read -- it would return
+// Observed here and this claim would go red.
+test fn a_stopped_live_read_refuses_the_run_and_never_falls_back_to_dry() -> Bool {
+  match arrival_wet_prefix_record(
+    unit: operator_host_srv15,
+    run_wire: "witness-run-0102" as NonEmptyStr,
+    captures: srv15_wet_captures_accounts(
+      census_text: srv15_census_stand_in,
+      account_bodies: [ "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}" ],
+      prior_life: srv15_wet_live_stopped(),
+    ),
+    accessor: witness_srv15_accessor_ref,
+  ) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "AUTHENTICATED REFUSAL")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+}
+
+// THE FAILED READ REFUSES TOO: a carrier read that failed closed, with no authenticated refusal, is a
+// typed refusal of the whole run -- not a boundary stop over a partial archive.
+test fn a_failed_live_read_refuses_the_run_closed() -> Bool {
+  match arrival_wet_prefix_record(
+    unit: operator_host_srv15,
+    run_wire: "witness-run-0103" as NonEmptyStr,
+    captures: srv15_wet_captures_accounts(
+      census_text: srv15_census_stand_in,
+      account_bodies: [ "{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\",\"Id\":\"1\",\"UserName\":\"root\",\"Enabled\":true,\"RoleId\":\"priv-admin\"}" ],
+      prior_life: srv15_wet_live_failed(),
+    ),
+    accessor: witness_srv15_accessor_ref,
+  ) {
+    ArrivalRunRefused { reason: reason } => string_contains(s: reason as String, pattern: "FAILED CLOSED")
+    ArrivalRunObserved { observation: _observation, fru_read: _fru_read, managed_user: _managed_user, published_user: _published_user, policy: _policy, verdict: _verdict, dissolution: _dissolution } => false
+  }
+}
+
+// THE EPOCH READING REFUSES AS A VALUE, NOT AS A PROCESS THAT ENDED. The door reads the credential
+// epoch out of the projected secret version id, and that id can fail to carry a number in two ways.
+// The reading used to be typed `-> Int` and to end the process on both: the refusal then had no carrier
+// at all, and an `Int` position was inhabited by a process-exit value -- the shape the declared-type wall
+// (PR #16699) refuses at that line, and the shape PR #16717 cleared at five other sites. RED until the
+// reading returns its refusal: the number, or the version id that failed to carry one, which the door's
+// wet skin surfaces at the position already declared to end a process.
+test fn the_epoch_reading_refuses_as_a_value_not_a_process_exit() -> Bool {
+  match arrival_epoch_from_version("projects/gunbc-machine-intake-bmc-managed/versions/12") {
+    ArrivalEpochRead { epoch: n } => n == 12
+    ArrivalEpochVersionEmpty { version: _v } => false
+    ArrivalEpochNoIntegerVersion { version: _v } => false
+  }
+  && match arrival_epoch_from_version("projects/gunbc-machine-intake-bmc-managed/versions/latest") {
+    ArrivalEpochRead { epoch: _n } => false
+    ArrivalEpochVersionEmpty { version: _v } => false
+    ArrivalEpochNoIntegerVersion { version: v } => v == "projects/gunbc-machine-intake-bmc-managed/versions/latest"
   }
 }

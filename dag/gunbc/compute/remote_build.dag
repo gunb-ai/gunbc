@@ -1,0 +1,844 @@
+module gunbc.compute.remote_build
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import product.host_identity { HostIdentity }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex, git_object_id_eq }
+import extdeps.ssh.keys { SshPublicKey, Ed25519 }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
+import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_row_for_label, EmittedSubjectRowLookup, EmittedSubjectNoRow,
+  EmittedSubjectOneRow, EmittedSubjectDuplicateRows,
+}
+import extdeps.bazel.label { Label, render_label, parse_label, LabelParsed, LabelRefused }
+import gunbc.compute.work_request {
+  WorkOperation, CompileEntry, RunClaims, TestGateSubject, work_default_build,
+  WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
+  WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
+  SubjectUnresolved, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
+  SeatStopObservationUnrenderable,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, dashboard_instance_child, dashboard_execution_environment_for_toolchain,
+  DashboardExistingProviderState, dashboard_named_tmux_server, DashboardObserveOnly, DashboardExistingRepo,
+  fleet_admitted_revision_source, DispatchStateInstanceOwned, WorkerIsServiceUser,
+  dispatch_worker_memory_ceiling, compute_build_memory_ceiling_default, belt_obligation_memory_max_default,
+  belt_reviewer_memory_max_default, belt_max_concurrent_default,
+  IsolatedJobToolchainHomes, fleet_compute_hermetic_toolchain,
+}
+import gunbc.provider_account { CodexDefaultAccount, codex_roadmap_account_evidence, admitted_single_session_binding }
+import gunbc.deployment_risk { DeploymentId, deployment_id }
+import std.materialization_store_grant { PersistentInstanceWorkspace }
+import gunbc.persistent_instance_roots { RemoteBuildServing, persistent_instance_scope_root }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+
+// ── REMOTE BUILD: RUN THE EXISTING LOCAL PROVIDER ON ANOTHER HOST ────────────────────────────────────
+//
+// WHAT THIS IS. A session's build, compile or claim run is served today only by the host the session
+// is on: gunbc.compute.test_run snapshots the worktree to a commit and hands it to
+// gunbc.compute.work_provider_local compute_provide with TargetIsExecutingHost. Everything that makes
+// that provider safe -- subject resolution, toolchain admission, a memory reservation out of the host's
+// ComputeBuildPool, a unit capped at that reservation, deduplication by work identity, a typed outcome
+// and receipt -- is a property of the provider, not of where its caller sits. This module is the
+// contract for asking the SAME provider on a different host: what is sent, to which hosts, and how the
+// answer is read. It adds no second provider and no second capacity ledger.
+//
+// IT IS AN ADMITTED SCAFFOLD (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold).
+// The terminal route is the work-execution-redesign program's durable route (roadmap node
+// work-exec-2-durable-route-first-consumer): durable acceptance, a fenced attempt on a scheduler, and a
+// bound receipt. What dissolves when that lands is the TRANSPORT and the HOST ORDER below -- one SSH
+// call per request against a fixed roster, tried in order. The request vocabulary, the source-shipping
+// rule and the provider it reaches are meant to survive into that route.
+//
+// CONFORMANCE, STATED (gunbc.design_argument::conformance). Fabric / compute owns selection and
+// placement of compute (product.fabric.selection select_supply). This module DIVERGES WITH A REASON:
+// it picks the first roster host whose own provider admits the work, and a host's refusal for capacity
+// sends the request to the next. That is not a selection over priced offers and does not claim to be;
+// the selection belongs to the scheduler work-exec-1 chooses, and this order is deleted with the
+// transport. The capacity authority is NOT bypassed: each host's ComputeBuildPool reservation, made by
+// the provider on that host, is what admits or refuses.
+
+// ── WHAT IS ASKED FOR ────────────────────────────────────────────────────────────────────────────────
+//
+// THE OPERATIONS A REMOTE REQUEST MAY CARRY are the two the session-side test and compile routes run
+// (gunbc.compute.test_run): a hermetic claim run with no diff window, and a compile of one entry. They
+// map onto gunbc.compute.work_request WorkOperation one-to-one below, so the provider sees exactly the
+// operation the local route would have sent. BuildGunbcBinaries is not offered: its outputs are host
+// binaries for the far host's architecture, and nothing on the requesting side consumes them.
+//
+// THE GATE SUBJECT IS THE THIRD, and it is the reason the route exists: the required CI gate's subject
+// step for one gate row, run on a serving host. Its label is admitted as a typed Label by
+// gunbc.emitted_subject_build_gate -- the module that OWNS the rows -- so a request cannot name a
+// subject the gate does not have, and this adapter cannot be talked into running something else under
+// the gate's name.
+type RemoteBuildOperation
+  = RemoteCompileEntry { entry: FilePath }
+  | RemoteRunClaims { entry: FilePath, functions: List<NonEmptyStr> }
+  | RemoteGateSubject { label: Label }
+
+fn remote_build_work_operation(op: RemoteBuildOperation) -> WorkOperation {
+  match op {
+    RemoteCompileEntry { entry } => CompileEntry { entry: entry }
+    RemoteRunClaims { entry, functions } =>
+      RunClaims { entry: entry, functions: join(map(functions, f => f as String), ",") as NonEmptyStr, hermetic: true, window: none }
+    RemoteGateSubject { label: l } => TestGateSubject { label: l }
+  }
+}
+
+// THE SOURCE TRAVELS THROUGH ORIGIN, NOT THROUGH THE SSH CHANNEL. The provider never fetches: it
+// resolves a commit that is already in its repo_root (gunbc.compute.work_provider_local
+// compute_resolve_subject). The requester pushes its snapshot commit to a hidden ref on origin,
+// refs/remote-build/<id>, and the serving host fetches that ref by name and admits it only if it
+// resolves to the commit the request names. gunb-ai/gunbc is a public repository, so the fetch needs no
+// credential on the serving host, and the SSH channel carries only words. Pushing the snapshot
+// publishes the worktree's tracked and unignored files exactly as pushing a branch does.
+type RemoteBuildSourceRef sole_constructor { id: NonEmptyStr }
+
+data remote_build_source_ref_namespace: NonEmptyStr = "refs/remote-build/"
+
+// An id is one portable word with no '/', so the ref it names is exactly one level under the
+// namespace and cannot climb out of it.
+fn remote_build_source_ref(id: String) -> RemoteBuildSourceRef? {
+  if id.length() > 0 && typed_argv_portable_argv_token(token: id) && !id.contains("/") && id != "." && id != ".." {
+    Present { value: RemoteBuildSourceRef { id: id as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn remote_build_source_ref_name(r: RemoteBuildSourceRef) -> NonEmptyStr {
+  concat(remote_build_source_ref_namespace as String, r.id as String) as NonEmptyStr
+}
+
+type RemoteBuildRequest {
+  commit: GitObjectId
+  source: RemoteBuildSourceRef
+  operation: RemoteBuildOperation
+}
+
+// ── THE WIRE: WORDS, BECAUSE A FORCED COMMAND RECEIVES ONE STRING ────────────────────────────────────
+//
+// sshd runs the key's forced command and hands the client's request to it only as
+// SSH_ORIGINAL_COMMAND (extdeps.ssh.keys). So a request is a sequence of words joined by single spaces,
+// every word admitted by gunbc.typed_argv_exec typed_argv_portable_argv_token: no space, quote,
+// separator or expansion can appear in one, so splitting on " " is the exact inverse of joining, and
+// the serving side never hands the string to a shell. Claim functions are separate words for the same
+// reason (',' is outside the portable set).
+//
+//   remote-build-v1 <commit hex> <source ref id> compile <entry>
+//   remote-build-v1 <commit hex> <source ref id> claims <entry> <function> [<function> ...]
+//   remote-build-v1 <commit hex> <source ref id> gate <label>
+//
+// A gate label is ONE word: extdeps.bazel.label's grammar admits exactly the characters the portable
+// set admits, so the canonical rendering of a Label is always one portable word, and a label that
+// needs quoting was never a label.
+
+data remote_build_protocol_word: NonEmptyStr = "remote-build-v1"
+data remote_build_compile_word: NonEmptyStr = "compile"
+data remote_build_claims_word: NonEmptyStr = "claims"
+data remote_build_gate_word: NonEmptyStr = "gate"
+
+fn remote_build_operation_words(op: RemoteBuildOperation) -> List<String> {
+  match op {
+    RemoteCompileEntry { entry } => [remote_build_compile_word as String, entry as String]
+    RemoteRunClaims { entry, functions } => concat([remote_build_claims_word as String, entry as String], map(functions, f => f as String))
+    RemoteGateSubject { label } => [remote_build_gate_word as String, render_label(l: label)]
+  }
+}
+
+fn remote_build_request_words(r: RemoteBuildRequest) -> List<String> {
+  concat(
+    [remote_build_protocol_word as String, git_object_id_wire_hex(oid: r.commit) as String, r.source.id as String],
+    remote_build_operation_words(op: r.operation),
+  )
+}
+
+fn remote_build_request_text(r: RemoteBuildRequest) -> String {
+  join(remote_build_request_words(r: r), " ")
+}
+
+type RemoteBuildRequestRefusal
+  = RequestNotThisProtocol { first_word: String }
+  | RequestWordNotPortable { word: String }
+  | RequestTooShort { word_count: Int }
+  | RequestCommitNotAnObjectId { text: String }
+  | RequestSourceRefInvalid { text: String }
+  | RequestOperationUnknown { word: String }
+  | RequestEntryOutsideCorpus { entry: String }
+  | RequestCompileTakesOneEntry { word_count: Int }
+  | RequestClaimsNameNoFunction
+  // A gate request's operand is a LABEL, and two separate facts can be wrong about it: it may not be
+  // a label at all (extdeps.bazel.label's grammar refuses it), or it may be a well-formed label that
+  // is NOT a row of the required gate. Only the second is a statement about the gate's contents, so
+  // they are separate causes, and neither is a silent substitution for the other.
+  | RequestGateTakesOneLabel { word_count: Int }
+  | RequestGateLabelUnparsable { text: String }
+  | RequestGateLabelNotAGateRow { text: String }
+  | RequestGateLabelAmbiguousRows { text: String, count: Int }
+
+type RemoteBuildRequestDecode
+  = RemoteBuildRequestDecoded { request: RemoteBuildRequest }
+  | RemoteBuildRequestRefused { cause: RemoteBuildRequestRefusal }
+
+fn remote_build_word_at(words: List<String>, i: Int) -> String {
+  match words |> skip(n: i) |> first {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+// AN ENTRY IS A .dag FILE UNDER THE CORPUS ROOT, named relative to the repository, with no '..'
+// segment: the serving side resolves it inside a worktree of the fetched commit and must not be able
+// to name anything outside it.
+fn remote_build_entry_admitted(entry: String) -> Bool {
+  starts_with(s: entry, prefix: "dag/")
+    && ends_with(s: entry, suffix: ".dag")
+    && !(split(s: entry, delimiter: "/") |> any(seg => seg == ".." || seg == "." || seg == ""))
+}
+
+fn remote_build_first_unportable_word(words: List<String>) -> String? {
+  words |> filter(w => !typed_argv_portable_argv_token(token: w)) |> first
+}
+
+fn remote_build_decode_request(text: String) -> RemoteBuildRequestDecode {
+  let words = split(s: trim(text), delimiter: " ")
+  match remote_build_first_unportable_word(words: words) {
+    Present { value: w } => RemoteBuildRequestRefused { cause: RequestWordNotPortable { word: w } }
+    Absent =>
+      if count(words) < 5 {
+        RemoteBuildRequestRefused { cause: RequestTooShort { word_count: count(words) } }
+      } else {
+        remote_build_decode_words(words: words)
+      }
+  }
+}
+
+fn remote_build_decode_words(words: List<String>) -> RemoteBuildRequestDecode {
+  let protocol = remote_build_word_at(words: words, i: 0)
+  let commit_text = remote_build_word_at(words: words, i: 1)
+  let source_text = remote_build_word_at(words: words, i: 2)
+  if protocol != (remote_build_protocol_word as String) {
+    RemoteBuildRequestRefused { cause: RequestNotThisProtocol { first_word: protocol } }
+  } else {
+    match git_object_id_from_untagged_hex(hex: commit_text) {
+      Absent => RemoteBuildRequestRefused { cause: RequestCommitNotAnObjectId { text: commit_text } }
+      Present { value: commit } =>
+        match remote_build_source_ref(id: source_text) {
+          Absent => RemoteBuildRequestRefused { cause: RequestSourceRefInvalid { text: source_text } }
+          Present { value: source } =>
+            match remote_build_decode_operation(words: words |> skip(n: 3)) {
+              RemoteBuildOperationRefused { cause } => RemoteBuildRequestRefused { cause: cause }
+              RemoteBuildOperationDecoded { operation } =>
+                RemoteBuildRequestDecoded { request: RemoteBuildRequest { commit: commit, source: source, operation: operation } }
+            }
+        }
+    }
+  }
+}
+
+type RemoteBuildOperationDecode
+  = RemoteBuildOperationDecoded { operation: RemoteBuildOperation }
+  | RemoteBuildOperationRefused { cause: RemoteBuildRequestRefusal }
+
+// THE VERB IS DISPATCHED FIRST, and the operand's SHAPE is adjudicated under its own verb. The entry
+// corpus rule used to run ahead of the verb because every verb took an entry; a gate request's operand
+// is a LABEL, and no .dag corpus rule can be applied to one. Keeping the entry check where it was would
+// have refused a well-formed gate request with `the entry is not a .dag file`, which is not the fact
+// about it -- and the ordering of the two remaining checks inside each verb is unchanged, so the
+// existing red controls (a climbing path under compile, an unknown verb) still refuse as they did.
+fn remote_build_decode_operation(words: List<String>) -> RemoteBuildOperationDecode {
+  let verb = remote_build_word_at(words: words, i: 0)
+  let entry = remote_build_word_at(words: words, i: 1)
+  if verb == (remote_build_gate_word as String) {
+    remote_build_decode_gate_subject(words: words, operand: entry)
+  } else if !remote_build_entry_admitted(entry: entry) {
+    RemoteBuildOperationRefused { cause: RequestEntryOutsideCorpus { entry: entry } }
+  } else if verb == (remote_build_compile_word as String) {
+    if count(words) == 2 {
+      RemoteBuildOperationDecoded { operation: RemoteCompileEntry { entry: entry as FilePath } }
+    } else {
+      RemoteBuildOperationRefused { cause: RequestCompileTakesOneEntry { word_count: count(words) } }
+    }
+  } else if verb == (remote_build_claims_word as String) {
+    let functions = words |> skip(n: 2)
+    if count(functions) == 0 {
+      RemoteBuildOperationRefused { cause: RequestClaimsNameNoFunction }
+    } else {
+      RemoteBuildOperationDecoded { operation: RemoteRunClaims { entry: entry as FilePath, functions: map(functions, f => f as NonEmptyStr) } }
+    }
+  } else {
+    RemoteBuildOperationRefused { cause: RequestOperationUnknown { word: verb } }
+  }
+}
+
+// A GATE SUBJECT IS ADOPTED ONLY BY THE MODULE THAT OWNS THE ROWS. Three separate facts can fail, and
+// they are three causes because a requester needs to know which one moved: the verb took more or fewer
+// than one operand; the operand is not a label at all under extdeps.bazel.label's grammar; or it is a
+// well-formed label that is NOT a row of the required gate. The third is the one the gate's own
+// authority answers -- gunbc.emitted_subject_build_gate::emitted_subject_build_rows is what says which
+// subjects the gate has -- so this adapter never decides for itself what counts as a gate subject, and
+// a label that is a perfectly good INSTRUMENT but not a gate ROW is refused here rather than run.
+fn remote_build_decode_gate_subject(words: List<String>, operand: String) -> RemoteBuildOperationDecode {
+  if count(words) != 2 {
+    RemoteBuildOperationRefused { cause: RequestGateTakesOneLabel { word_count: count(words) } }
+  } else {
+    match parse_label(text: operand) {
+      LabelRefused { cause: _ } => RemoteBuildOperationRefused { cause: RequestGateLabelUnparsable { text: operand } }
+      LabelParsed { label: label } =>
+        match remote_build_gate_row_refusal(text: render_label(l: label), lookup: emitted_subject_build_row_for_label(l: label)) {
+          Present { value: cause } => RemoteBuildOperationRefused { cause: cause }
+          Absent => RemoteBuildOperationDecoded { operation: RemoteGateSubject { label: label } }
+        }
+    }
+  }
+}
+
+// WHICH REFUSAL A ROW LOOKUP MEANS, ANSWERED WHERE THE LOOKUP'S ARMS CAN BE SEPARATE. The lookup has
+// three answers and the request side must be able to tell a label the gate does not have from a gate
+// that names one subject twice: the first is the requester's fact, the second is THIS repository's
+// defect, and collapsing them blames the wrong party. Split out as a function so the distinction has a
+// witness of its own -- the duplicate cannot be provoked from outside a closed table.
+fn remote_build_gate_row_refusal(text: String, lookup: EmittedSubjectRowLookup) -> RemoteBuildRequestRefusal? {
+  match lookup {
+    EmittedSubjectOneRow { row: _ } => none
+    EmittedSubjectNoRow => Present { value: RequestGateLabelNotAGateRow { text: text } }
+    EmittedSubjectDuplicateRows { count } => Present { value: RequestGateLabelAmbiguousRows { text: text, count: count } }
+  }
+}
+
+fn remote_build_request_refusal_text(cause: RemoteBuildRequestRefusal) -> String {
+  match cause {
+    RequestNotThisProtocol { first_word } => concat("not a remote-build-v1 request; first word: ", first_word)
+    RequestWordNotPortable { word } => concat("a request word is outside the portable set [A-Za-z0-9._-/@:=]: ", word)
+    RequestTooShort { word_count } => concat("a request needs at least five words; saw ", to_string(value: word_count))
+    RequestCommitNotAnObjectId { text } => concat("the commit word is not a git object id: ", text)
+    RequestSourceRefInvalid { text } => concat("the source ref id is not one portable word without '/': ", text)
+    RequestOperationUnknown { word } => concat("unknown operation (compile, claims or gate): ", word)
+    RequestEntryOutsideCorpus { entry } => concat("the entry is not a .dag file under dag/ without '.' or '..' segments: ", entry)
+    RequestCompileTakesOneEntry { word_count } => concat("compile takes exactly one entry; operation words: ", to_string(value: word_count))
+    RequestClaimsNameNoFunction => "a claims request names no function"
+    RequestGateTakesOneLabel { word_count } => concat("a gate request takes exactly one label; operation words: ", to_string(value: word_count))
+    RequestGateLabelUnparsable { text } => concat("the gate operand is not a canonical //package:target label: ", text)
+    RequestGateLabelNotAGateRow { text } => concat("the label is not a row of the required gate's emitted subject rows: ", text)
+    RequestGateLabelAmbiguousRows { text, count } => concat("the gate's rows name this label ", to_string(value: count), " times -- a defect in the gate table, not in the request: ", text)
+  }
+}
+
+// THE FETCHED REF MUST BE THE COMMIT ASKED FOR. A ref on origin can be moved by anyone who can push;
+// the request's commit is what the requester snapshotted, so the serving side runs that commit or
+// refuses, never whatever the ref points at by the time it is fetched.
+type RemoteBuildSourceAdmission
+  = RemoteBuildSourceMatches
+  | RemoteBuildSourceMoved { requested: NonEmptyStr, fetched: NonEmptyStr }
+
+fn remote_build_admit_fetched_source(request: RemoteBuildRequest, fetched: GitObjectId) -> RemoteBuildSourceAdmission {
+  if git_object_id_eq(left: request.commit, right: fetched) {
+    RemoteBuildSourceMatches
+  } else {
+    RemoteBuildSourceMoved { requested: git_object_id_wire_hex(oid: request.commit), fetched: git_object_id_wire_hex(oid: fetched) }
+  }
+}
+
+// ── WHO SERVES ───────────────────────────────────────────────────────────────────────────────────────
+//
+// THE ROSTER IS ONE SERVING INSTANCE PER SERVING HOST, OWNED BY THE REMOTE-BUILD ACCOUNT. A request runs
+// as gunbc.fleet.fleet_posix_accounts fleet_posix_remote_build_user, never as the operator (operator,
+// 2026-11-15), so the instance it is served from is that account's: its own checkout, store, toolchain
+// and binary under its home. Which hosts serve is gunbc.compute.remote_build_hosts, the row the host's
+// capacity ledger reads too, so a host on the roster is a host whose ledger admits this account.
+//
+// srv3, srv4, srv14 (butch) and srv15 (bobo) join by joining that row, once their ledger has a home this
+// account can reach (remote_build_hosts says why srv2 and they do not yet), and each will carry its own
+// build-pool reservation carved from its CI runner width.
+type RemoteBuildHostRow {
+  instance: HostDashboardInstance
+}
+
+// THE SERVING INSTANCE. It follows the fleet hermetic compute row (gunbc.roadmap.roadmap_dashboard_instance
+// fleet_compute_hermetic_dashboard_instance_at), the existing instance that serves the provider and no
+// dashboard, and DIVERGES from it only where this one is durable: the store is a persistent workspace,
+// not a frame. Like that row it is not a public built-in, so no host, repo-root or id lookup resolves it;
+// the serving entry finds it on this roster by host. CONFORMANCE, stated: HostDashboardInstance also
+// carries a dashboard's serving fields (listen port, serve function, tmux server, provider state), which
+// this instance never serves -- it is observe-only and nothing listens -- and they are filled as the
+// hermetic row fills them, inert, rather than by a second instance type the provider does not take.
+//
+// THE TOOLCHAIN is the account's own rustup homes, read through the hermetic row's constructor, which
+// derives every Rust shim from the two homes and names no PATH. The serve binary is the account's own
+// build, installed under its instance root.
+fn remote_build_account_home() -> FilePath {
+  fleet_posix_remote_build_home() as FilePath
+}
+
+fn remote_build_serving_instance_id(host: HostIdentity) -> NonEmptyStr {
+  join(["remote-build-", host as String], "") as NonEmptyStr
+}
+
+fn remote_build_serving_deployment(host: HostIdentity) -> DeploymentId {
+  deployment_id(name: remote_build_serving_instance_id(host: host))
+}
+
+fn remote_build_serving_instance(host: HostIdentity) -> HostDashboardInstance {
+  let instance_root = persistent_instance_scope_root(scope: RemoteBuildServing) as FilePath
+  let repo_root = dashboard_instance_child(root: remote_build_account_home(), child: "gunbc")
+  let toolchain = fleet_compute_hermetic_toolchain(homes: IsolatedJobToolchainHomes {
+    cargo_home: dashboard_instance_child(root: remote_build_account_home(), child: ".cargo"),
+    rustup_home: dashboard_instance_child(root: remote_build_account_home(), child: ".rustup"),
+  })
+  let serve_binary = dashboard_instance_child(root: instance_root, child: "bin/gunbc")
+  let id = remote_build_serving_instance_id(host: host)
+  HostDashboardInstance {
+    deployment: remote_build_serving_deployment(host: host),
+    instance_id: id,
+    host_identity: host as String as NonEmptyStr,
+    provision_parent_root: dashboard_instance_child(root: remote_build_account_home(), child: ".local/share"),
+    instance_root: instance_root,
+    local_origin_root: repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    publication_base_branch: "main" as NonEmptyStr,
+    dispatch_state_scope: DispatchStateInstanceOwned {
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
+    },
+    execution_environment: dashboard_execution_environment_for_toolchain(toolchain: toolchain, serve_binary: serve_binary),
+    provider_state: DashboardExistingProviderState {
+      root: dashboard_instance_child(root: instance_root, child: "codex"),
+      executable: none,
+      binding: admitted_single_session_binding(selection: CodexDefaultAccount, evidence: codex_roadmap_account_evidence),
+    },
+    serve_binary: serve_binary,
+    serve_function: "remote_build_serve_cli" as NonEmptyStr,
+    listen_host: "127.0.0.1" as NonEmptyStr,
+    listen_port: 18085,
+    tmux_server: dashboard_named_tmux_server(instance_id: id),
+    actuation: DashboardObserveOnly,
+    actuator_host: host as String as NonEmptyStr,
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    admitted_revision: fleet_admitted_revision_source,
+    toolchain: toolchain,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
+    belt_max_concurrent: belt_max_concurrent_default,
+    directory_owner: PosixOwnerNames { user: fleet_posix_remote_build_user.name, group: fleet_posix_remote_build_user.name },
+    worker: WorkerIsServiceUser,
+    materialization_store_root: Present { value: PersistentInstanceWorkspace { scope: RemoteBuildServing } },
+  }
+}
+
+fn remote_build_host_rows() -> List<RemoteBuildHostRow> {
+  remote_build_serving_hosts() |> map(h => RemoteBuildHostRow { instance: remote_build_serving_instance(host: h) })
+}
+
+type RemoteBuildCandidate {
+  host: HostIdentity
+  instance: HostDashboardInstance
+}
+
+type RemoteBuildHostStanding
+  = RemoteBuildHostAdmitted { candidate: RemoteBuildCandidate }
+  | RemoteBuildHostWithoutStore { host: HostIdentity, instance_id: String }
+
+fn remote_build_host_standing(row: RemoteBuildHostRow) -> RemoteBuildHostStanding {
+  match row.instance.materialization_store_root {
+    Absent => RemoteBuildHostWithoutStore { host: row.instance.host_identity as HostIdentity, instance_id: row.instance.instance_id as String }
+    Present { value: _ } => RemoteBuildHostAdmitted { candidate: RemoteBuildCandidate { host: row.instance.host_identity as HostIdentity, instance: row.instance } }
+  }
+}
+
+fn remote_build_candidates() -> List<RemoteBuildCandidate> {
+  remote_build_host_rows()
+    |> map(row => remote_build_host_standing(row: row))
+    |> flat_map(s => remote_build_admitted_candidates(standing: s))
+}
+
+fn remote_build_admitted_candidates(standing: RemoteBuildHostStanding) -> List<RemoteBuildCandidate> {
+  match standing {
+    RemoteBuildHostAdmitted { candidate } => [candidate]
+    RemoteBuildHostWithoutStore { host: _, instance_id: _ } => []
+  }
+}
+
+// ── WHICH HOST NEXT ──────────────────────────────────────────────────────────────────────────────────
+//
+// What one host answered. A full pool, a host that cannot serve (its checkout, store or toolchain) and
+// an unreachable host send the request on; everything else is the answer. Unreachable and cannot-serve
+// are only ever concluded BEFORE work could have started (the probe, below); once a request has been
+// sent, a transport that cannot say what happened is HostOutcomeUnknown, which is final -- the first
+// host may still be producing, and a second host would be a second producer (side-chat review F2). A compile or claim FAILURE
+// is the work's own result and is never retried elsewhere (the same work fails the same way); the same
+// work already in flight on a host is answered there, because starting it elsewhere would be a second
+// producer of one identity; and a refusal the request itself caused is final.
+type RemoteBuildHostAnswer
+  = HostServed { receipt: String }
+  | HostWorkFailed { receipt: String }
+  | HostWorkInFlight { receipt: String }
+  | HostCapacityFull { detail: String }
+  | HostCannotServe { detail: String }
+  | HostUnreachable { detail: String }
+  | HostRefusedRequest { detail: String }
+  | HostOutcomeUnknown { detail: String }
+
+type RemoteBuildAttempt {
+  host: HostIdentity
+  answer: RemoteBuildHostAnswer
+}
+
+type RemoteBuildStep
+  = RemoteBuildTryHost { candidate: RemoteBuildCandidate }
+  | RemoteBuildAnswered { host: HostIdentity, answer: RemoteBuildHostAnswer }
+  | RemoteBuildNoHostAvailable { attempts: List<RemoteBuildAttempt> }
+
+fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
+  match a {
+    HostServed { receipt: _ } => false
+    HostWorkFailed { receipt: _ } => false
+    HostWorkInFlight { receipt: _ } => false
+    HostCapacityFull { detail: _ } => true
+    HostCannotServe { detail: _ } => true
+    HostUnreachable { detail: _ } => true
+    HostRefusedRequest { detail: _ } => false
+    HostOutcomeUnknown { detail: _ } => false
+  }
+}
+
+// The step is a pure reading of what has been tried, so the client's loop is "ask, then step" and
+// the order has one home. Candidates are tried once each, in roster order.
+fn remote_build_next_step(candidates: List<RemoteBuildCandidate>, attempts: List<RemoteBuildAttempt>) -> RemoteBuildStep {
+  match attempts |> filter(a => !remote_build_answer_moves_on(a: a.answer)) |> first {
+    Present { value: settled } => RemoteBuildAnswered { host: settled.host, answer: settled.answer }
+    Absent =>
+      match candidates |> skip(n: count(attempts)) |> first {
+        Present { value: c } => RemoteBuildTryHost { candidate: c }
+        Absent => RemoteBuildNoHostAvailable { attempts: attempts }
+      }
+  }
+}
+
+// ── THE KEY ──────────────────────────────────────────────────────────────────────────────────────────
+//
+// A DEDICATED KEY, NOT THE FLEET ROSTER. gunbc.fleet.fleet_ssh_access fleet_authorized_keys admits a
+// principal on every installed machine with administrator reach and carries no options, so a session
+// key there would be an administrator key handed to branch code. This key is authorized only on the
+// roster hosts' provider accounts, with a forced command that runs the serving entry and nothing else
+// (extdeps.ssh.keys ForcedCommandOption, as gunbc.host.boot_medium_reader_key does).
+//
+// MINTED BY THE OPERATOR, 2026-11-14. The private half is in Secret Manager under this name, and a copy is
+// at ~/.ssh/gunbc-remote-build on the session hosts (srv1, srv2), mounted read-only into sessions; the
+// operator relayed the public half and its fingerprint, and the session-side file was read here to the
+// same fingerprint. The secret VERSION was not relayed and is not guessed: it stays pending until a read
+// of the secret names it. Secret Manager names a project by number or by id interchangeably
+// (extdeps.cloud.gcp.secret_ref), so this row is matched by secret name, never by its project string.
+data remote_build_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "gunbc-remote-build-ssh-key" as NonEmptyStr,
+  version: "pending",
+  hash_state: HashPending,
+}
+
+data remote_build_key_comment: String = "gunbc-remote-build"
+
+data remote_build_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAICKSfnSqPrsJkFqMLKfJ8UsxmrwpghUJD89PGp/tZWk1",
+  comment: remote_build_key_comment,
+}
+
+// The fingerprint as the operator relayed it and as ssh-keygen -lf printed it for the session copy;
+// a witness derives it from the material, so a mistyped key and a mistyped fingerprint cannot agree.
+data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2QqAPPPpqs8xW21IA2VsgF81aW8"
+
+// ── ADMITTED REMOTE-BUILD CLIENT KEYS ─────────────────────────────────────────────────────────────────
+//
+// The gunbc-build forced-command account admits a CLOSED LIST of client keys. Each renders through the
+// same restrict + forced-command entry (gunbc.compute.remote_build_serve::remote_build_authorized_entry);
+// the account's authorized_keys is that list rendered and NOTHING ELSE (no hand-added keys). This is the
+// admitted-scaffold path (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold) — NOT
+// the fleet roster (fleet_ssh_access.dag): these keys must never grant fleet admin reach.
+//
+// WHO MINTS EACH KEY:
+//   operator  — the operator host (the existing key, minted outside any custody system before this model)
+//   session   — ctrl mints; the private half never leaves ctrl's custody; gentle-crab-832 owns provisioning
+//   hosted-ci — the operator mints; private half stored as a GitHub Actions secret (GUNBC_REMOTE_BUILD_CI_SSH_KEY)
+//
+// Each new member lands in the change that carries its REAL public half (clever-raven-401, 2026-11-19:
+// a placeholder public key is a fabricated value; an admission list carrying one is worse than a shorter
+// list — gunbc.design_argument::fail_closed).
+type RemoteBuildClientKey {
+  label: NonEmptyStr
+  public_key: SshPublicKey
+  fingerprint: NonEmptyStr
+}
+
+// The operator key — the existing scaffold key (see the provenance doc on remote_build_ssh_key above).
+data remote_build_client_key_operator: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "operator",
+  public_key: remote_build_ssh_key,
+  fingerprint: remote_build_ssh_key_fingerprint,
+}
+
+// The session key — minted by ctrl (gentle-crab-832), private half in the dashboard secret store,
+// provisioned per-container by the ctrl session image at $HOME/.config/ctrl/remote-build/id_ed25519.
+data remote_build_client_key_session: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "session",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIPIuf7p1w+jsp+zluvCE/IOtG1rHrZW3iIsuhhqbwCzY",
+    comment: "gunbc-remote-build-session",
+  },
+  fingerprint: "SHA256:/ufkCsksYwFQOdqvHgaKCYA1LrLuLtxyvB1iGbjO1Fo",
+}
+
+// The hosted-CI key — minted by the OPERATOR (2026-11-19); the private half is stored as the GitHub
+// Actions secret GUNBC_REMOTE_BUILD_CI_SSH_KEY, and setting that secret is the operator's step, not this
+// model's. The material and fingerprint below are the operator's relayed REAL values, admitted per the
+// rule that a member lands only in the change carrying its real public half (fail_closed — no placeholder).
+// ssh-keygen -lf over this material prints exactly this fingerprint, and the serve witness
+// (test.claim.compute.remote_build_serve_witness::the_ci_key_has_the_relayed_fingerprint) re-derives it
+// from the material, so a mistyped key and a mistyped fingerprint cannot both stand.
+data remote_build_client_key_ci: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "hosted-ci",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIJensE0/BGahkF3Duz42EBwvWg9h0NUEcOiHjY1cyoUk",
+    comment: "gunbc-remote-build-ci",
+  },
+  fingerprint: "SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM",
+}
+
+// THE CLOSED LIST. Three members: operator, session, and hosted-ci. Each joins in the change that
+// carries its REAL public half — never a placeholder (a placeholder is a fabricated value; an admission
+// list carrying one is worse than a shorter list — gunbc.design_argument::fail_closed). The hosted-ci key
+// landed with its operator-minted public half on 2026-11-19; its private half is the GitHub Actions secret
+// GUNBC_REMOTE_BUILD_CI_SSH_KEY, which the operator sets.
+data remote_build_admitted_client_keys: List<RemoteBuildClientKey> = [
+  remote_build_client_key_operator,
+  remote_build_client_key_session,
+  remote_build_client_key_ci,
+]
+
+// The admitted public keys projected out of the closed list, for client-side verification. The client
+// accepts its identity file iff the derived public half matches any admitted key.
+data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_admitted_client_keys, k => k.public_key)
+
+// ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
+//
+// The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the
+// provider's document, and exits with the ending's code. The client reads the answer from the header,
+// not from the code alone: the serving process is the gunbc binary, whose own refusals (an unreadable
+// source root, an entry that does not load or typecheck) also exit 1 or 2 before this contract runs,
+// so a bare code cannot tell "the work failed" from "this host could not even start" (review 95521).
+// An answer is admitted only when the header is present AND its ending's code is the exit code; every
+// other combination is a host that did not run this contract, and moves the request on. 255 with no
+// header is OpenSSH's own connection failure (ssh(1), EXIT STATUS). Both directions read THIS table.
+type RemoteBuildServeEnding
+  = ServeServed
+  | ServeWorkEndedUnsuccessfully
+  | ServeRequestRefused
+  | ServeHostFull
+  | ServeWorkInFlight
+  | ServeHostCannotServe
+  | ServeReady
+
+fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
+  match e {
+    ServeServed => 0
+    ServeWorkEndedUnsuccessfully => 1
+    ServeRequestRefused => 2
+    ServeHostFull => 3
+    ServeWorkInFlight => 4
+    ServeHostCannotServe => 5
+    ServeReady => 6
+  }
+}
+
+fn remote_build_serve_ending_word(e: RemoteBuildServeEnding) -> NonEmptyStr {
+  match e {
+    ServeServed => "served"
+    ServeWorkEndedUnsuccessfully => "work-ended-unsuccessfully"
+    ServeRequestRefused => "request-refused"
+    ServeHostFull => "host-full"
+    ServeWorkInFlight => "work-in-flight"
+    ServeHostCannotServe => "host-cannot-serve"
+    ServeReady => "ready"
+  }
+}
+
+data remote_build_serve_endings: List<RemoteBuildServeEnding> = [
+  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
+]
+
+fn remote_build_serve_header(e: RemoteBuildServeEnding) -> String {
+  join([remote_build_protocol_word as String, " ending=", remote_build_serve_ending_word(e: e) as String], "")
+}
+
+fn remote_build_serve_ending_of_header(line: String) -> RemoteBuildServeEnding? {
+  remote_build_serve_endings |> filter(e => remote_build_serve_header(e: e) == line) |> first
+}
+
+data openssh_connection_failed_exit_code: Int = 255
+
+fn remote_build_split_answer(stdout: String) -> RemoteBuildAnswerText {
+  let lines = split(s: stdout, delimiter: "\n")
+  RemoteBuildAnswerText {
+    header: match lines |> first { Present { value: l } => l  Absent => "" },
+    body: join(lines |> skip(n: 1), "\n"),
+  }
+}
+
+type RemoteBuildAnswerText {
+  header: String
+  body: String
+}
+
+// ── THE PROBE: REACHABILITY THAT CANNOT START WORK ───────────────────────────────────────────────────
+//
+// Whether a host is reachable and runs this contract is asked FIRST, with a request that names no work:
+// the serving entry answers it after admitting its instance and before reading any operation, so no
+// probe answer can follow a started producer. Only a probe failure moves a request to the next host;
+// after the work request is sent, a lost or inconsistent answer is HostOutcomeUnknown.
+data remote_build_probe_text: NonEmptyStr = "remote-build-v1 probe"
+
+type RemoteBuildProbe
+  = ProbeReady
+  | ProbeUnreachable { detail: String }
+  | ProbeCannotServe { detail: String }
+
+fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
+  let answer = remote_build_split_answer(stdout: stdout)
+  match remote_build_serve_ending_of_header(line: answer.header) {
+    Present { value: ServeReady } =>
+      if exit_code == remote_build_serve_exit_code(e: ServeReady) {
+        ProbeReady
+      } else {
+        ProbeCannotServe { detail: join(["the probe answered ready but exited ", to_string(value: exit_code), ": ", stderr], "") }
+      }
+    Present { value: other } =>
+      ProbeCannotServe { detail: join(["the probe answered ", remote_build_serve_ending_word(e: other) as String, " (exit ", to_string(value: exit_code), "): ", answer.body, stderr], "") }
+    Absent =>
+      if exit_code == openssh_connection_failed_exit_code {
+        ProbeUnreachable { detail: stderr }
+      } else {
+        ProbeCannotServe { detail: join(["the probe exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+      }
+  }
+}
+
+// The attempt a failed probe records; a ready probe records nothing and the request is sent.
+fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
+  match p {
+    ProbeReady => none
+    ProbeUnreachable { detail } => Present { value: HostUnreachable { detail: detail } }
+    ProbeCannotServe { detail } => Present { value: HostCannotServe { detail: detail } }
+  }
+}
+
+// ── THE ANSWER TO A SENT REQUEST ─────────────────────────────────────────────────────────────────────
+//
+// Admitted only when the header is present and its ending's code is the exit code. Anything else --
+// no header at any code (the binary's own refusal, a crash, a dropped connection: review 95521), a
+// header whose code disagrees, 255 after a received header -- cannot establish whether the host started
+// or finished the work, so it is HostOutcomeUnknown and final. The probe already established that this
+// host runs the contract, so a missing answer here is not evidence that the work did not start.
+fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
+  let answer = remote_build_split_answer(stdout: stdout)
+  match remote_build_serve_ending_of_header(line: answer.header) {
+    Absent =>
+      HostOutcomeUnknown { detail: join(["the request was sent and the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
+    Present { value: ending } =>
+      if remote_build_serve_exit_code(e: ending) != exit_code {
+        HostOutcomeUnknown { detail: join(["the serving command answered ", remote_build_serve_ending_word(e: ending) as String, " but the request exited ", to_string(value: exit_code), ": ", answer.body, stderr], "") }
+      } else {
+        remote_build_answer_of_ending(ending: ending, body: answer.body, stderr: stderr)
+      }
+  }
+}
+
+fn remote_build_answer_of_ending(ending: RemoteBuildServeEnding, body: String, stderr: String) -> RemoteBuildHostAnswer {
+  match ending {
+    ServeServed => HostServed { receipt: body }
+    ServeWorkEndedUnsuccessfully => HostWorkFailed { receipt: body }
+    ServeRequestRefused => HostRefusedRequest { detail: concat(body, stderr) }
+    ServeHostFull => HostCapacityFull { detail: concat(body, stderr) }
+    ServeWorkInFlight => HostWorkInFlight { receipt: body }
+    ServeHostCannotServe => HostCannotServe { detail: concat(body, stderr) }
+    ServeReady => HostOutcomeUnknown { detail: "a work request was answered as a probe" }
+  }
+}
+
+// WHICH ENDING A PROVIDER OUTCOME IS. Room and the host's own readiness move the request on; anything
+// the work itself produced -- a failure, a cancellation, a mismatch, a unit killed at the ceiling -- is
+// the answer, because another host with the same ceiling and the same commit would reach it again.
+//
+// THE COMPILER DEPENDENCY IS ESTABLISHED FIRST, BY ITS OWN OUTCOME (side-chat review F1). Compile and
+// claim runs depend on the gunbc build of the same commit, and the provider reports any non-success of
+// that build as DependencyNotSucceeded, which does not keep whether the build FAILED or could not RUN
+// (a full pool, a build in flight). So the serving entry asks for the build (work_default_build, the
+// one the provider's dependent route resolves) before the operation and classifies the build's own
+// typed outcome with this table. The operation's later DependencyNotSucceeded can then only be this
+// host failing to hand over a build it just produced or attached, which is the host, not the work.
+fn remote_build_dependency_operation() -> WorkOperation {
+  work_default_build()
+}
+
+// WHETHER THE REQUEST NEEDS THE SEED BUILD AS A SEPARATE OPERATION. Compile and claims depend on the
+// gunbc binary of the commit and ATTACH to it, which is why the build is asked for first: its own
+// typed outcome is what distinguishes "the build failed" from "this host could not run it".
+//
+// THE GATE SUBJECT IS THE EXCEPTION, AND THE GUARD IS WHY. `gunbc test` measures the binary it is
+// running against the dep-info beside it and refuses one whose inputs are not this checkout's, so the
+// attached binary -- a verified blob out of the materialization store -- is exactly what that guard
+// cannot judge; the operation carries its own seed build in its argv instead (work_provider_local's
+// arm for it). And the build-first shape would hold two reservations on one request: the build's and
+// the gate profile's, which on a host whose build pool is one CI slot divided into seats do not both
+// fit, so the gate would read capacity-full from its own preceding step.
+type RemoteBuildDependencyRule
+  = RemoteBuildBuildsTheSeedFirst
+  | RemoteBuildCarriesItsOwnSeedBuild
+
+fn remote_build_dependency_rule(op: RemoteBuildOperation) -> RemoteBuildDependencyRule {
+  match op {
+    RemoteCompileEntry { entry: _ } => RemoteBuildBuildsTheSeedFirst
+    RemoteRunClaims { entry: _, functions: _ } => RemoteBuildBuildsTheSeedFirst
+    RemoteGateSubject { label: _ } => RemoteBuildCarriesItsOwnSeedBuild
+  }
+}
+
+fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBuildServeEnding {
+  match cause {
+    ProducerInFlight { lease_path: _ } => ServeWorkInFlight
+    HostComputeCapacityFull { wire: _ } => ServeHostFull
+    HostBelowMemoryFloor { requested: _, available: _ } => ServeHostFull
+    ComputeCapacityLedgerUnavailable { detail: _ } => ServeHostCannotServe
+    CheckoutUnavailable { detail: _ } => ServeHostCannotServe
+    StoreUnavailable { detail: _ } => ServeHostCannotServe
+    MaterializationStoreUndeclared { instance_id: _ } => ServeHostCannotServe
+    ToolchainUnobserved { detail: _ } => ServeHostCannotServe
+    ToolchainMismatchRefused { field: _, declared: _, observed: _ } => ServeHostCannotServe
+    SubjectUnresolved { detail: _ } => ServeHostCannotServe
+    UnitLaunchRefused { cause: _ } => ServeHostCannotServe
+    SeatStopObservationUnrenderable { detail: _ } => ServeHostCannotServe
+    DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeHostCannotServe
+    UnitMemoryGrantExceeded { class: _, granted: _, peak_upper: _, grant_was_ceiling: _ } => ServeWorkEndedUnsuccessfully
+    UnitEndingUnclassifiable { exit_code: _, cause: _ } => ServeWorkEndedUnsuccessfully
+  }
+}
+
+fn remote_build_ending_of_outcome(o: WorkOutcome) -> RemoteBuildServeEnding {
+  match o {
+    WorkSucceeded { identity: _, outputs: _, log_path: _ } => ServeServed
+    WorkFailed { identity: _, exit_code: _, log_path: _ } => ServeWorkEndedUnsuccessfully
+    WorkRefusedByInfrastructure { identity: _, cause } => remote_build_ending_of_refusal(cause: cause)
+    WorkCancelled { identity: _, detail: _ } => ServeWorkEndedUnsuccessfully
+    WorkOutputMismatch { identity: _, detail: _ } => ServeWorkEndedUnsuccessfully
+  }
+}

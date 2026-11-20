@@ -224,3 +224,52 @@ fn belt_attempt_obligation_unit_run_bound() -> Second {
 }
 
 data belt_credential_recovery_backstop: Second = second(count: 900)
+
+// THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
+// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). The served-observation fold (the pass that
+// syncs the roadmap event carrier and republishes /standings.json, /sessions.json and the
+// per-attempt surfaces) is otherwise produced ONLY by a belt tick, and a tick starts ONLY on a
+// worker exit or an operator action. On an IDLE host — no worker finishes, no operator acts — no
+// tick runs, so the fold never re-runs, and /standings.json freezes at the last tick's bytes while
+// still answering HTTP 200: ctrl reads silently-stale standings as current and refuses to admit new
+// plan nodes. This is the SAME class of gap the credential-recovery backstop above closes (a law
+// with no event to trigger it needs a wall-clock backstop), and it copies that mechanism exactly:
+// a systemd timer that starts a oneshot running ONLY `belt_observe_once_cli` — the observation fold,
+// no spawn/launch/teardown — every belt_standings_refresh_backstop seconds. It does NOT revive the
+// belt timer (dogfood #4): the retired timer re-walked the whole frontier; this fires one read-only
+// fold, the obligation whose freshness must not depend on other sessions being alive.
+// The value is the operator's ("every 10 minutes or something for now is fine"); AccuracySec gives
+// the scheduler slack, so a few minutes of jitter is expected and needs no exactness.
+data belt_standings_refresh_backstop: Second = second(count: 600)
+
+// THE PAIR-DELIVERY cadence (node://lab-converges-release-pair): how often the pair-delivery timer re-arms the
+// wet delivery (fetch -> observed build-key verify -> fold -> place + restart). Same 600 s as the standings
+// refresh by intent (keep the served pair near origin/main on a ~10 min beat), but a SEPARATE row so the two
+// schedules are not one authority and one can be tuned without moving the other.
+data belt_pair_delivery_backstop: Second = second(count: 600)
+
+// The freshness law's STALE-BY-AGE horizon for /standings.json, in seconds. The existing 409
+// (`ObservationStale`) compares observed_at against the newest EVENT, so a stopped timer whose carrier
+// also cannot advance its log reads as CURRENT and is served 200 — the exact silent-stale hole this
+// closes. A second, orthogonal gate compares the stored observed_at against the wall clock at read
+// time: if the last refresh is older than this horizon, the route answers 409 (stale) itself, so
+// ctrl's parseStandingsResponse refuses admission rather than trusting bytes whose refresher died.
+// Fail CLOSED: an unreadable clock, an unparseable observed_at, OR a future-dated observed_at is
+// refused, never served as current.
+// DERIVED from the real refresh cycle, NOT a copied multiple of the cadence (the earlier "3 x 600 s
+// = 1800 s" was SHORTER than a healthy cycle and so 409'd the route between two SUCCESSFUL folds —
+// a spurious refusal, which is exactly as wrong as a silent-stale). A successful republish can be as
+// far apart as: the timer's own wait `OnUnitInactiveSec` = one belt_standings_refresh_backstop (the
+// next fold starts only after the previous one leaves inactive), PLUS the fold's bounded runtime —
+// the SAME `belt_tick_run_bound` the emitted unit carries as TimeoutStartSec (a cold fold measures
+// 13-16 min here; 2700 s is its ceiling) — PLUS one further belt_standings_refresh_backstop of
+// scheduler slack (AccuracySec jitter plus one tolerated late fire). So the horizon is
+//   2 * belt_standings_refresh_backstop + belt_tick_run_bound.
+// Both terms are DERIVED, never restated: the horizon is pinned to the very constant that bounds a
+// healthy fold (belt_tick_run_bound, the unit's TimeoutStartSec) so the timeout and the horizon can
+// never silently decouple — raise the fold budget and the tolerated staleness rises with it
+// (gunbc.design_argument::single_authority, gunbc.design_argument::minimize_redundancy). Typed as
+// Second, not a bare Int: a duration carried as a raw scalar is the unit-modeling fork the std.measure
+// carrier exists to prevent.
+data belt_standings_refresh_staleness_horizon: Second =
+  second(count: second_count(s: belt_standings_refresh_backstop) * 2 + second_count(s: belt_tick_run_bound))

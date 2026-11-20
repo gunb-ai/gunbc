@@ -1,0 +1,116 @@
+module test.claim.compute.remote_build_user_work_slice_red_control_witness
+
+// THE RED CONTROL FOR THE SERVING PRECONDITION (node adhoc-c0a6f401-440).
+//
+// WHY THIS EXISTS. gunbc.compute.remote_build_serving_converge may not treat the serve
+// binary as live until the host's gunbc-user-work.slice carries a finite cap: the belt
+// refuses a remote build whose slice is present but uncapped (gunbc.compute.unit_bounds
+// UserWorkSliceUncapped -> RefuseUserWorkScope), which is the exact defect that kept srv3
+// and srv4 from serving. So the serve precondition is not "the file is installed" but
+// "the installed slice reads back a finite MemoryMax and MemorySwapMax=0".
+//
+// WHAT THIS PROVES, THROUGH THE SHIPPED ROUTE (DESIGN 6b/6c). These are not hand-written
+// verdicts; each drives the SAME fold the belt consults -- user_work_scope_standing_for_wrap
+// turns a supplied slice readback into a standing, user_work_scope_standing_effect turns that
+// standing into the actuator effect. A pass therefore pins the actuator's decision, not a
+// helper no caller consults. It is pure over a supplied UserWorkSliceInstall readback (the
+// belt reads systemd's MemoryMax/MemorySwapMax and hands that record to the fold), so
+// SubstrateInputsOnly: it reads no host and installs nothing.
+//
+// THE FAIL-CLOSED TRIAD. Absent and present-but-uncapped both REFUSE; only a present slice
+// that reads back a positive MemoryMax SETTLES. "Present" is never enough -- a slice unit
+// installed without MemoryMax is the uncapped shape that produced the defect, and it must
+// refuse exactly as an absent slice does.
+
+import std.types { Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compute.unit_bounds {
+  UserWorkScopeStanding, UserWorkScopeStandingEffect,
+  UserWorkSliceNotInstalled, UserWorkSliceUncappedInstall, UserWorkSliceInstalled,
+  CallerEnvelopeReadFailed, CallerEnvelopeObserved,
+  MemoryCapped, MemoryUnbounded,
+  UserManagerOwed, UserWorkSliceAbsent, UserWorkSliceUncapped,
+  RefuseUserWorkScope, SkipUserWorkScope, WrapIntoUserWorkSlice,
+  user_work_scope_standing_for_wrap, user_work_scope_standing_effect,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The standing the belt hands the fold for a real remote-build attempt: the caller is a user
+// session owed a wrap (UserManagerOwed), so user_work_scope_standing_for_wrap consults the
+// slice readback rather than returning the standing untouched.
+fn owed() -> UserWorkScopeStanding {
+  UserManagerOwed
+}
+
+// The belt's readback of a caller envelope that succeeded, so the fold's refusal can only be
+// about the SLICE, never about an unreadable caller. This isolates the serving-precondition
+// decision to the one thing the converge leg is responsible for: the slice cap.
+fn caller_read_ok() -> CallerMemoryEnvelope {
+  CallerEnvelopeObserved { memory_max: MemoryCapped { bytes: byte_size(1) }, memory_high: MemoryUnbounded }
+}
+
+// A slice present with no finite cap refuses through the effect fold -- the defect's shape.
+fn present_slice_refuses(slice: UserWorkSliceInstall) -> Bool {
+  match user_work_scope_standing_effect(
+    s: user_work_scope_standing_for_wrap(standing: owed(), slice: slice, caller: caller_read_ok()),
+  ) {
+    RefuseUserWorkScope { standing: UserWorkSliceUncapped } => true
+    RefuseUserWorkScope { standing: _ } => false
+    SkipUserWorkScope { standing: _ } => false
+    WrapIntoUserWorkSlice => false
+  }
+}
+
+// A slice that reads back a positive cap settles into the wrap -- the leg's settle condition.
+fn present_capped_slice_settles(slice: UserWorkSliceInstall) -> Bool {
+  match user_work_scope_standing_effect(
+    s: user_work_scope_standing_for_wrap(standing: owed(), slice: slice, caller: caller_read_ok()),
+  ) {
+    WrapIntoUserWorkSlice => true
+    RefuseUserWorkScope { standing: _ } => false
+    SkipUserWorkScope { standing: _ } => false
+  }
+}
+
+// RED CONTROL 1: a slice unit installed but carrying no MemoryMax (the belt's UncappedInstall
+// readback) is REFUSED. This is srv3/srv4 today -- the unit exists, the cgroup is present, and
+// it has no finite bound -- and a remote build must not be served into it.
+test fn an_installed_slice_without_a_cap_is_refused() -> Bool {
+  present_slice_refuses(slice: UserWorkSliceUncappedInstall)
+}
+
+// RED CONTROL 2: a slice that reads back MemoryMax = 0 is the SAME uncapped defect, spelled as
+// a finite zero rather than an absent property. The fold must not read 0 as "bounded by zero"
+// and admit; it reads zero as uncapped and refuses. This is why the converge leg settles only
+// on a POSITIVE MemoryMax equal to the rendered cap.
+test fn a_slice_reading_back_zero_memory_max_is_refused() -> Bool {
+  present_slice_refuses(slice: UserWorkSliceInstalled { memory_max: byte_size(0), memory_high: MemoryUnbounded })
+}
+
+// A slice the belt cannot find at all refuses as UserWorkSliceAbsent -- completing the
+// fail-closed triad: the serve binary is not live until the slice is present AND capped.
+test fn an_absent_slice_is_refused() -> Bool {
+  match user_work_scope_standing_effect(
+    s: user_work_scope_standing_for_wrap(standing: owed(), slice: UserWorkSliceNotInstalled, caller: caller_read_ok()),
+  ) {
+    RefuseUserWorkScope { standing: UserWorkSliceAbsent } => true
+    RefuseUserWorkScope { standing: _ } => false
+    SkipUserWorkScope { standing: _ } => false
+    WrapIntoUserWorkSlice => false
+  }
+}
+
+// THE SETTLE IS THE CONTRAST, NOT THE REFUSAL. The same fold, fed a slice reading back a
+// positive MemoryMax, settles into WrapIntoUserWorkSlice -- proving the refusal above turns on
+// the MISSING cap and not on the slice merely being present. The VALUE here is a bare positive
+// byte count on purpose: this witness pins positive-settles / zero-and-absent-refuse, not the
+// ceiling itself. The ceiling for a carved host is pinned by the carve-derived witness at
+// host_build_pool_slot_count(host) x capacity_seat_for_reservation(host), which is not the
+// srv1-only user_work_slot_memory_max constant -- so nothing in this file encodes a per-host size.
+test fn a_slice_reading_back_a_positive_cap_settles() -> Bool {
+  let cap = byte_size(4294967296)
+  byte_size_count(b: cap) > 0
+    && present_capped_slice_settles(slice: UserWorkSliceInstalled { memory_max: cap, memory_high: MemoryUnbounded })
+}

@@ -65,6 +65,7 @@ import extdeps.git.worktree_enumeration {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.roadmap.roadmap_event_carrier { roadmap_event_snapshot_path_is_private }
 
 // WHY THIS MODULE EXISTS, AS A MEASUREMENT RATHER THAN A PREFERENCE.
 //
@@ -344,16 +345,31 @@ fn convergence_worktree_at(worktrees: List<GitWorktreeIdentity>, path: String) -
 
 // THE PRIMARY IS EXEMPT FROM THE BINDING CHECK AND THE LINKED WORKTREES ARE NOT. The primary is the
 // tree being converged, so its head moves by design; every LINKED worktree is somebody's in-flight
-// dispatch attempt, and a transition that silently reboundedit -- or dropped its registration --
+// dispatch attempt, and a transition that silently rebound it -- or dropped its registration --
 // destroys work that has nothing to do with this release. Checking the primary the same way would
 // make the operation refuse its own effect; not checking the linked ones is the failure this arm
 // exists for.
+//
+// SERVE'S TRANSIENT EVENT SNAPSHOTS ARE EXEMPT, BY A DECLARED RULE. serve (the agent door) opens a
+// private event snapshot worktree and closes it continuously while it serves, from the shape
+// `roadmap_event_snapshot_path_is_private` declares. Such a worktree carries no one's work: it is a
+// detached read the carrier throws away. Before this rule, a snapshot that appeared or disappeared
+// across the two worktree readings was counted as a change to the repository being converged and the
+// transition refused -- so every deploy to a serving host had to stop serve by hand (roadmap node
+// deploy-converge-serve-quiesced). Excluding it by the declared shape, rather than pausing serve,
+// keeps convergence the same idempotent operation it was: run it again on a quiet moment and it
+// reaches the same verdict. A NON-transient linked worktree -- one the shape does not recognize --
+// still guards the transition exactly as before.
+fn convergence_is_transient_worktree(entry: GitWorktreeIdentity) -> Bool {
+  roadmap_event_snapshot_path_is_private(path: entry.path)
+}
+
 fn convergence_first_worktree_fault(
   before: List<GitWorktreeIdentity>,
   after: List<GitWorktreeIdentity>,
   primary_path: String,
 ) -> RepositoryConvergenceOutcome? {
-  let linked = before |> filter(w => w.path != primary_path)
+  let linked = before |> filter(w => w.path != primary_path && !convergence_is_transient_worktree(entry: w))
   let faults = linked |> filter(w =>
     match convergence_worktree_at(worktrees: after, path: w.path) {
       Absent => true
@@ -364,6 +380,7 @@ fn convergence_first_worktree_fault(
   match faults.first() {
     Absent => match after |> filter(w =>
       w.path != primary_path
+        && !convergence_is_transient_worktree(entry: w)
         && match convergence_worktree_at(worktrees: before, path: w.path) {
           Absent => true
           Present { value: _ } => false
@@ -735,7 +752,9 @@ fn repository_convergence_compare(
                           ConvergenceCompleted {
                             candidate: candidate,
                             refs_preserved: count(refs_before),
-                            worktrees_preserved: count(worktrees_before),
+                            worktrees_preserved: count(
+                              filter(worktrees_before, w => !convergence_is_transient_worktree(entry: w)),
+                            ),
                           }
                         }
                       }

@@ -16,14 +16,27 @@ import extdeps.toolchain.types {
 import std.types { FilePath, NonEmptyStr, Port, SemVer, String }
 import std.content_hash { ContentHash }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/spec.md"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.oci.types",
+      decl_name: "goarch_amd64_wire",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data goarch_amd64_wire: String = "amd64"

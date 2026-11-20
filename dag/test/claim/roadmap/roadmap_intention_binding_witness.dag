@@ -1,0 +1,68 @@
+module test.claim.roadmap.roadmap_intention_binding_witness
+
+import std.types { Bool, Int, String }
+import std.decl_ref { decl_ref }
+import gunbc.roadmap.roadmap_intention_binding {
+  roadmap_intention_bindings, bindings_all_have_nodes, binding_nodes_unique, binding_layers_nonnegative,
+  nodes_serving, nodes_serving_from, bindings_at_layer, serves, binding_has_node, bindings_all_on_a_path, binding_layer_order_holds, binding_on_a_path,
+}
+
+// A binding whose node id is not a declared roadmap node is the undefined variable this carrier exists
+// to refuse. The positive control is the live roster; the RED is a supplied binding naming a node that
+// does not exist, which must read as unbound rather than as a row.
+test fn every_binding_names_a_declared_node() -> Bool {
+  bindings_all_have_nodes()
+}
+
+test fn a_binding_to_an_undeclared_node_is_refused() -> Bool {
+  !binding_has_node(b: serves(node: "no-such-node-2026-11-17", module_path: "gunbc.plans.v2_self_host", plan: "v2_self_host_plan", layer: 0))
+}
+
+test fn no_node_is_bound_twice() -> Bool {
+  binding_nodes_unique()
+}
+
+test fn layers_are_nonnegative() -> Bool {
+  binding_layers_nonnegative()
+}
+
+test fn the_namespace_intention_has_a_layer_zero_and_a_layer_three() -> Bool {
+  let i = decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan")
+  count(bindings_at_layer(intention: i, layer: 0)) >= 1 && count(bindings_at_layer(intention: i, layer: 3)) >= 1
+}
+
+test fn nodes_serving_is_in_layer_order() -> Bool {
+  let i = decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan")
+  let rows = nodes_serving(intention: i)
+  fold(rows, init: 0, f: fn(acc, b) { if acc < 0 { acc } else { if b.layer >= acc { b.layer } else { 0 - 1 } } }) >= 0
+}
+
+// An intention with no bound work items reads as empty, not as a refusal: gunbc.plans.closure_consolidation
+// declares the intention but no roadmap_intention_bindings row names it, so nodes_serving must return an
+// empty list, not refuse. (Derived from the carrier: the intention is a real Plan declaration that passes the
+// cited-declaration sweep, and no serves() row targets it. The example was gunbc.plans.debt_payoff until PR
+// gunbc#16604, then gunbc.plans.planning_consolidation until PR gunbc#16650 bound 14 nodes to it.)
+test fn an_intention_with_no_bound_items_serves_nothing() -> Bool {
+  count(nodes_serving(intention: decl_ref(module_path: "gunbc.plans.closure_consolidation", decl_name: "closure_consolidation_plan"))) == 0
+}
+
+// Red control: the real matching path (nodes_serving_from) finds the planted row and nothing else.
+// If nodes_serving_from's predicate broke, this goes red.
+test fn a_planted_binding_makes_a_previously_empty_intention_serve() -> Bool {
+  let target = decl_ref(module_path: "gunbc.plans.closure_consolidation", decl_name: "closure_consolidation_plan")
+  let planted = serves(node: "import-grammar-and-lines-deleted", module_path: "gunbc.plans.closure_consolidation", plan: "closure_consolidation_plan", layer: 0)
+  count(nodes_serving_from(rows: concat(roadmap_intention_bindings, [planted]), intention: target)) == 1
+}
+
+// THE FULL-PATH PROPERTY (operator, 2026-11-17): every bound work item reaches one of its intention's terminals.
+test fn every_binding_reaches_a_terminal_of_its_intention() -> Bool {
+  bindings_all_on_a_path()
+}
+
+test fn a_binding_to_a_node_off_every_path_is_refused() -> Bool {
+  !binding_on_a_path(b: serves(node: "shell-typed-invocation", module_path: "gunbc.plans.v2_self_host", plan: "v2_self_host_plan", layer: 1))
+}
+
+test fn no_parent_is_bound_at_a_higher_layer_than_its_child() -> Bool {
+  binding_layer_order_holds()
+}
