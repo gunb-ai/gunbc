@@ -390,11 +390,21 @@ fn witness_path_spelling_is_refused(candidate: String) -> Bool {
 // test ever written, because the string genuinely IS under `/tmp`. `realpath -m` is asked BEFORE the create, so
 // the path need not exist yet.
 //
-// NO ANSWER IS A NO. `wet_out` yields the empty string when realpath cannot be spawned or exits nonzero — an
-// unreadable component, a host without coreutils — and a guard that read silence as permission would be a hole
-// exactly the size of the error it swallowed. So an empty answer refuses, and the claim
+// NO ANSWER IS A NO. `wet_out` yields the empty string when realpath cannot be spawned or exits nonzero — a host
+// without coreutils, an argument the tool will not accept — and a guard that read silence as permission would be a
+// hole exactly the size of the error it swallowed. So an empty answer refuses, and the claim
 // `the_guard_refuses_a_path_it_cannot_resolve` names that case instead of leaving it to be inferred from a batch
 // of unexplained reds.
+//
+// WHAT `-m` DOES NOT DO, MEASURED HERE SO THAT NO ONE ADDS AN ARM ON A PREMISE THAT IS FALSE. The romantic failure
+// cases do not fail: a path whose component is a regular file, and a path routed through a symlink loop, are both
+// ANSWERED, exit 0, no error (`realpath -m -- /etc/passwd/foo` prints `/etc/passwd/foo`). That is the specification
+// of `-m` — no component need exist, which is what makes it usable BEFORE a create — and it has two consequences
+// for this arm. It means the arm's refusal is about the RESOLVED TEXT and its ancestry, never about whether the
+// path is a sensible place to write; a base under a regular file is admitted here and fails later, at the `mktemp`
+// that cannot create in it, which is a claim going RED for a host reason and not a confinement hole. And it means
+// the silence case is not reachable by arranging a bad component: it is reached when the tool produced nothing at
+// all, which is the only state in which reading no answer as permission is possible.
 fn witness_resolved_root_is_refused(candidate: String) -> Bool {
   let resolved = wet_out(command: realpath_canonicalize_missing_command(path: candidate))
   let resolved_prefix = wet_out(

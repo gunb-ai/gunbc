@@ -122,7 +122,7 @@ import test.claim.roadmap.witness_supplied_instance {
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
-  ls_almost_all_one_per_line_command,
+  ls_almost_all_one_per_line_command, realpath_canonicalize_missing_command,
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, pwd_command,
   ln_symbolic_force_command,
@@ -2351,11 +2351,7 @@ test fn the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_b
   let nothing_made = wet_names_under(base: parent, prefix: "gunbc-sandbox-" as NonEmptyStr) == 0
   wet_claim_verdict_with_root_readback(
     verdict: wet_claim_is_confined(
-      instance: wet_supplied_lab_instance(
-        scratch_parent: root,
-        repo: join([root, "/source"], "") as FilePath,
-        principal: wet_principal(),
-      ),
+      instance: wet_supplied_lab_instance(scratch_parent: root),
       root: root,
     )
       && root != "" && made_parent && refusals_hold && answer == "" && nothing_made,
@@ -2387,11 +2383,7 @@ test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is
   let nothing_escapes = wet_names_under(base: away, prefix: "gunbc-sandbox-" as NonEmptyStr) == 0
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(
-      instance: wet_supplied_lab_instance(
-        scratch_parent: root,
-        repo: join([root, "/source"], "") as FilePath,
-        principal: wet_principal(),
-      ),
+      instance: wet_supplied_lab_instance(scratch_parent: root),
       root: root,
     )
       && root != "" && away != "" && linked && arms_split && answer == "" && nothing_escapes,
@@ -2401,24 +2393,28 @@ test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is
 
 test fn the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold() -> Bool {
   let root = wet_claim_root(tag: "locus-base-traversal" as NonEmptyStr)
-  let inst = wet_supplied_lab_instance(
-    scratch_parent: root,
-    repo: join([root, "/source"], "") as FilePath,
-    principal: wet_principal(),
-  )
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
   // `WITNESS_LOCUS_BASE` names the directory the helper fold installs INTO, so an escaped spelling
   // here is a root-owned install inside the live lab root — precisely what `approval_broker_tree_install`
   // must never be handed. The hole was identical to the sandbox base's, and so is the closure:
   // `witness_batch_locus_base` reads the variable in ONE place and refuses an inadmissible value
-  // there, BEFORE any locus path is derived, falling back to the instance's own root. What the fold
-  // receives is therefore always derived from an admitted base, and the two directions below are
-  // what keep that from being a claim about reading code: the escape is refused as a spelling AND as
-  // a resolution, and the directory the fold is handed sits under the base the resolver returned and
-  // is itself admissible.
+  // there, BEFORE any locus path is derived, falling back to the instance's own root. So the directory
+  // handed to the fold is always derived from the resolver's answer -- that part is a fact about where
+  // the guard sits, and `target_follows_the_base` below is its assertion: it holds BY CONSTRUCTION
+  // (`witness_locus_dir_text` joins the resolver's answer), and it is here because the only way the
+  // fold could be handed an escaped directory is for that derivation to stop going through the
+  // resolver. It is not offered as evidence that the guard works; the two conjuncts that do that job
+  // are the refusal of the escape, and the measurement of where the escape actually lands.
   let by_traversal = join(["/tmp/../", srv1_dashboard_lab_root as String], "")
   let escape_refused = witness_path_spelling_is_refused(candidate: by_traversal)
     && witness_resolved_root_is_refused(candidate: by_traversal)
     && witness_supplied_root_is_refused(candidate: by_traversal)
+  // WHERE THE ESCAPE ACTUALLY LANDS, READ FROM THE TOOL AND NOT ASSERTED. The conjunct with teeth
+  // against a guard that simply always refuses: `realpath -m` is asked, and it answers with the live
+  // install root -- so a fold handed a directory derived from this base would have installed its
+  // root-owned helper tree inside the host's own lab root.
+  let resolved_escape = wet_out(command: realpath_canonicalize_missing_command(path: by_traversal))
+  let lands_in_the_live_root = starts_with(s: resolved_escape, prefix: srv1_dashboard_lab_root as String)
   let admitted_base = witness_batch_locus_base(instance: inst)
   let fold_target = witness_locus_dir_text(instance: inst, locus_key: "regression-key" as NonEmptyStr)
   let target_follows_the_base = !witness_supplied_root_is_refused(candidate: admitted_base)
@@ -2426,34 +2422,39 @@ test fn the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_
     && !witness_supplied_root_is_refused(candidate: fold_target)
   wet_claim_verdict_with_root_readback(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && escape_refused && target_follows_the_base,
+      && root != "" && escape_refused && lands_in_the_live_root && target_follows_the_base,
     root: root as NonEmptyStr,
   )
 }
 
 test fn the_guard_refuses_a_path_it_cannot_resolve() -> Bool {
-  // THE RESOLVED ARM REFUSES ON A NO, NOT ON A YES. `realpath -m` exits nonzero when a component of
-  // the path is not a directory — here, a REGULAR FILE standing where a directory belongs — and an
-  // implementation that read the empty output as "fine, not under anything" would wave through every
-  // path it failed to inspect. The conjunct `admitted` is the pair-binding: the ordinary scratch root
-  // is still admitted, so this claim cannot be satisfied by a guard that refuses everything.
+  // THE RESOLVED ARM REFUSES ON A NO, NOT ON A YES. `wet_out` yields the empty string when the tool cannot be
+  // spawned or exits nonzero, and a guard that reads silence as permission is a hole exactly the size of the error
+  // it swallowed. The observable state is the one where the tool answers NOTHING: `realpath -m` given an empty path
+  // exits 1 and prints no canonical text, so both `witness_resolved_root_is_refused` and the guard above it must
+  // answer refused. Delete the resolved arm and the first conjunct is red, which is what makes this a claim about
+  // that arm and not about the spelling arm doing its job.
+  //
+  // WHAT WAS MEASURED FIRST, so the RED below can only mean one thing. `-m` does NOT fail on the romantic cases:
+  // a path whose component is a regular file, and a path through a symlink loop, are both answered with exit 0 and
+  // no error — that is what "-m, no component is required to exist" means, and it is why the tool is usable before
+  // a create. The `tool_answered` conjunct pins that measurement on a path of exactly that shape, so this claim is
+  // never red because someone assumed `-m` validates components: it is red only if silence is being read as
+  // permission. The pair-binding is `admitted`, the ordinary scratch root still taken.
   let root = wet_claim_root(tag: "guard-no-answer" as NonEmptyStr)
   let blocked = join([root, "/blocked"], "")
   let made = wet_ok(command: Filesystem.Write(path: blocked, content: "not a directory" as NonEmptyStr).success)
   let beneath = join([blocked, "/gunbc-sandbox-probe-abc123"], "")
-  let refused = witness_resolved_root_is_refused(candidate: beneath)
-    && witness_supplied_root_is_refused(candidate: beneath)
+  let tool_answered = wet_out(command: realpath_canonicalize_missing_command(path: beneath)) != ""
+  let refuses_silence = witness_resolved_root_is_refused(candidate: "")
+    && witness_supplied_root_is_refused(candidate: "")
   let admitted = !witness_supplied_root_is_refused(candidate: root)
   wet_claim_verdict_with_root_readback(
     verdict: wet_claim_is_confined(
-      instance: wet_supplied_lab_instance(
-        scratch_parent: root,
-        repo: join([root, "/source"], "") as FilePath,
-        principal: wet_principal(),
-      ),
+      instance: wet_supplied_lab_instance(scratch_parent: root),
       root: root,
     )
-      && root != "" && made && refused && admitted,
+      && root != "" && made && tool_answered && refuses_silence && admitted,
     root: root as NonEmptyStr,
   )
 }
