@@ -31713,7 +31713,7 @@ mod t9_host_recursion_probes {
     }
 }
 
-// Evidence for the runtime entry emitted into the v2 compiler; interpreter dispatch is unchanged.
+// Evidence for the runtime entry emitted into the v2 compiler.
 #[cfg(test)]
 mod whole_list_host_text_realization_tests {
     use std::rc::Rc;
