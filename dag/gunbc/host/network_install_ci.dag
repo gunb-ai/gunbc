@@ -36,15 +36,21 @@
 // standing through derive_bmc_secure for the ADMITTED path; production reads the committed one, and today
 // there is none.
 //
-// THE BMC CREDENTIAL NEVER APPEARS ON ARGV AND NEVER APPEARS IN THE LOG. The entry reads only a PATH from the
-// environment, requires it to be a readable 0600 file (gunbc.auth.private_secret_file), and hands the path to
-// the run, which opens it itself. The receipt names the path and never its bytes.
+// THE BMC CREDENTIAL NEVER APPEARS ON ARGV AND NEVER APPEARS IN THE LOG, AND THERE IS ONE PATH TO IT.
+// Production: the entry fetches the unit's managed accessor credential exactly once through the shared
+// bracket gunbc.auth.managed_accessor_credential -- pair row, pin gate, token-source selector (the job's
+// own workload identity), Secret Manager read, 0600 bracket -- the single implementation the arrival run
+// also calls. There is NO environment override beside the bracket (review 96600): a named path that skips
+// the pin gate is exactly what the pin gate exists to stop, and a production install must never be drivable
+// by a credential whose accessor version was not cited. The entry never opens the file, never logs its
+// bytes, and the receipt names the path at most. The test seam is the pure boundary: the account and the
+// plan take an explicit password_file value, and the real route's first stage runs in the witness corpus.
 module gunbc.host.network_install_ci
 
 import std.logic { Bool }
-import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, PathSegment, String }
 import std.optional { Optional, Present, Absent }
-import std.algebra { length, trim }
+import std.algebra { length }
 import std.list { first_where }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io {
@@ -72,6 +78,11 @@ import gunbc.machine_intake.bmc_write_controller {
 import gunbc.machine_intake.subject { UnitKey }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.machine_intake.arrival_converge { intake_attempt_of_run }
+import gunbc.auth.managed_accessor_credential {
+  with_managed_accessor_credential, managed_accessor_credential_refusal,
+  ManagedAccessorCredentialCompleted, ManagedAccessorCredentialRefused, ManagedAccessorCredentialStage,
+  PairAbsent, PinUncited, TokenUnavailable, CredentialReadRefused, BracketResidue,
+}
 import gunbc.host.host_capability_row { HostCapabilityRowNoCurrentRelease, HostCapabilityRowResolved, HostCapabilityRowUnobserved, host_capability_row }
 import gunbc.host.bmc_release_capability_catalog {
   MegaRacReleaseCapabilityAmbiguous, MegaRacReleaseCapabilityKnown, MegaRacReleaseCapabilityLookup,
@@ -127,7 +138,6 @@ import gunbc.fleet.fleet_physical_inventory { operator_site }
 // The CI ledger for the network install receipt: where the run's own receipt is written, and the environment
 // names the dispatch is read from. The password file is a PATH; its bytes are never read here.
 data network_install_ci_receipt_path: String = "network-install-ci-receipt.txt"
-data network_install_password_file_env_name: NonEmptyStr = "GUNBC_NETWORK_INSTALL_BMC_PASSWORD_FILE"
 data network_install_ci_attempt_prefix: String = "network-install"
 
 // THE RUN'S PLAN: every input the 21-argument entry takes, resolved from a committed row. The record exists so
@@ -309,22 +319,95 @@ fn network_install_ci_conflation_refusal(host: HostIdentity, install_unit: HostI
 fn network_install_ci_dispatch(host: HostIdentity, install_unit: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
   match network_install_ci_identity_route(host: host, install_unit: install_unit) {
     NetworkInstallCiConflated { refusal: refusal } => exit_failure(reason: refusal)
-    NetworkInstallCiRouted { lookup: lookup, executor: executor } => {
-      let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
-      match network_install_ci_resolve(
-        host: lookup, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
-        password_file: network_install_ci_password_file(),
-        edge_context: edge_effects.context, edge_view: edge_effects.view,
-      ) {
-        NetworkInstallCiIncomplete { missing: missing } =>
-          network_install_ci_write(
-            body: network_install_ci_incomplete_receipt(host: lookup, executor: executor, dispatch_id: dispatch_id, missing: missing),
-            host: lookup,
-            succeeded: false
-          )
-        NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
-      }
-    }
+    NetworkInstallCiRouted { lookup: lookup, executor: executor } =>
+      network_install_ci_credential_then_body(
+        host: lookup, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at
+      )
+  }
+}
+
+// THE BMC CREDENTIAL, produced ONCE per run through THE shared bracket
+// gunbc.auth.managed_accessor_credential -- the five-stage rule (pair row, pin gate, token selector,
+// Secret Manager read, 0600 bracket) implemented once and called by both lanes
+// (gunbc.design_argument::root_generalization; review 96599 killed the copy). This is the entry's ONLY
+// credential path -- review 96600 removed the environment override, because an ungated named path is a
+// second path beside the modeled route and would let a production install run on a credential whose
+// accessor version was never cited. No stage of the bracket answers yes when it cannot establish its
+// effect, and the refusal text is the shared generator's -- lane tag and consequence here, facts (stage,
+// unit, citation obligation, cause) there, so no lane can drop a fact. The stage refusals and the real
+// pair gate are witness-pinned (test.claim.host.network_install_ci_witness).
+fn network_install_ci_credential_then_body(host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs) -> ProcessExit {
+  match with_managed_accessor_credential(
+    host: host,
+    file_name: "network-install-bmc-password" as PathSegment,
+    use: fn(bundle) {
+      network_install_ci_dispatch_body(
+        host: host, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+        password_file: Present { value: bundle.credential_file },
+      )
+    },
+  ) {
+    ManagedAccessorCredentialCompleted { value: outcome } => outcome
+    ManagedAccessorCredentialRefused { stage: stage } =>
+      exit_failure(reason: network_install_ci_credential_refusal(unit: host, stage: stage))
+  }
+}
+
+fn network_install_ci_credential_refusal(unit: HostIdentity, stage: ManagedAccessorCredentialStage) -> String {
+  managed_accessor_credential_refusal(
+    lane: "network-install" as NonEmptyStr,
+    host: unit,
+    stage: stage,
+    consequence: "the credential is not written and no install is dispatched" as NonEmptyStr,
+  )
+}
+
+// THE STAGE REFUSALS, minted through the shared generator so the witness asserts the text the run
+// will really print, and a stage that cannot establish its effect is visibly distinguished from
+// every other stage.
+fn network_install_ci_credential_pair_refusal(unit: HostIdentity) -> String {
+  network_install_ci_credential_refusal(unit: unit, stage: PairAbsent)
+}
+
+fn network_install_ci_credential_pin_refusal(unit: HostIdentity) -> String {
+  network_install_ci_credential_refusal(
+    unit: unit,
+    stage: PinUncited { obligation: "set accessor_version on the pair from the cited live version-list read (gunbc.secret_provision)" as NonEmptyStr },
+  )
+}
+
+fn network_install_ci_credential_token_refusal(unit: HostIdentity, cause: NonEmptyStr) -> String {
+  network_install_ci_credential_refusal(unit: unit, stage: TokenUnavailable { cause: cause })
+}
+
+fn network_install_ci_credential_fetch_refusal(unit: HostIdentity) -> String {
+  network_install_ci_credential_refusal(
+    unit: unit,
+    stage: CredentialReadRefused { detail: "the accessor needs a secret access upsert before it can be read" as NonEmptyStr },
+  )
+}
+
+fn network_install_ci_credential_bracket_refusal(unit: HostIdentity) -> String {
+  network_install_ci_credential_refusal(
+    unit: unit,
+    stage: BracketResidue { cause: "the credential file left residue after teardown" as NonEmptyStr },
+  )
+}
+
+fn network_install_ci_dispatch_body(host: HostIdentity, executor: HostIdentity, dispatch_id: NonEmptyStr, decided_at: EpochMs, password_file: Optional<String>) -> ProcessExit {
+  let edge_effects = network_install_ci_edge_effects(dispatch_id: dispatch_id)
+  match network_install_ci_resolve(
+    host: host, executor: executor, dispatch_id: dispatch_id, decided_at: decided_at,
+    password_file: password_file,
+    edge_context: edge_effects.context, edge_view: edge_effects.view,
+  ) {
+    NetworkInstallCiIncomplete { missing: missing } =>
+      network_install_ci_write(
+        body: network_install_ci_incomplete_receipt(host: host, executor: executor, dispatch_id: dispatch_id, missing: missing),
+        host: host,
+        succeeded: false
+      )
+    NetworkInstallCiReady { plan: plan } => network_install_ci_execute(plan: plan)
   }
 }
 
@@ -487,7 +570,7 @@ fn network_install_ci_capability_missing(host: HostIdentity) -> List<NetworkInst
   network_install_ci_dropped(
     input: "firmware release capability row",
     source: "gunbc.host.host_capability_row host_capability_row, over the committed MegaRac operation evidence",
-    remedy: "the controller's current release must be catalogued and its access observation committed; an unobserved access cannot name a current release",
+    remedy: "the controller's current release must be catalogued and its access observation committed; an unobserved access cannot name a current release. What is missing here is the CURRENT-BUILD READING: the committed MegaRac operation evidence carries no build reading for this endpoint, and the observation that establishes one is the read-only 'hpm check' — its artifact committed by path and digest the way gunbc.machine_intake.megarac_operation_evidence mtcollins1_current_build_hpm_check_evidence commits Mt. Collins' (a boot's read-only pre-power phase took that one). The arrival run does NOT take an hpm check; a live read of this controller is its own dispatch, and no release may be typed in without it.",
     standing: network_install_ci_capability_row(host: host)
   )
 }
@@ -540,8 +623,8 @@ fn network_install_ci_trust_missing() -> List<NetworkInstallCiMissing> {
 fn network_install_ci_password_missing(password_file: Optional<String>) -> List<NetworkInstallCiMissing> {
   network_install_ci_dropped(
     input: "BMC password file (a path, never the secret)",
-    source: "the workflow environment, " + network_install_password_file_env_name as String,
-    remedy: "the secret-ref fetch must write the credential to a 0600 file and name it in the environment; the entry only reads the path",
+    source: "the managed accessor credential bracket (gunbc.auth.managed_accessor_credential)",
+    remedy: "the bracket is the ONLY producer of this file; if the plan sees no readable 0600 path the bracket did not yield one and the run refuses -- there is no environment override to set",
     standing: password_file
   )
 }
@@ -1133,24 +1216,6 @@ fn network_install_ci_unit_row(host: HostIdentity) -> Optional<NetworkInstallUni
 // committed site rather than by a string typed here.
 fn network_install_ci_trust_row() -> Optional<ControlledNetworkTrustObservation> {
   first_where(network_install_controlled_network_trust, row => row.site == operator_site)
-}
-
-// THE BMC CREDENTIAL FILE — a PATH, and only a path. The run reads the file itself, through the 0600 standing
-// gunbc.auth.private_secret_file establishes when the WIF fetch writes it; this entry never opens it, never
-// copies it, and never puts it on an argv where a process list could read it. An unset or empty variable is
-// Absent: a refused dispatch, not a defaulted one.
-// ONE name for the one variable: the accounting pass that refuses and the pass that reads must name the same
-// environment variable, or a refusal points the operator at a variable that is not the one the run consults.
-fn network_install_ci_password_file() -> Optional<String> {
-  match shell.Env.Get(name: network_install_password_file_env_name).value {
-    Absent => Absent
-    Present { value: raw } =>
-      if trim(s: raw) == "" {
-        Absent
-      } else {
-        Present { value: trim(s: raw) }
-      }
-  }
 }
 
 // THE EDGE, as the edge module itself authorizes it: the one executor per segment, resolved from the committed
