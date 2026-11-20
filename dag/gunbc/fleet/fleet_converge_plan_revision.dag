@@ -29,6 +29,7 @@ import gunbc.actions_run_binding {
 import gunbc.running_release_identity { release_revision_text_valid }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.machine_board { fleet_converge_runner_arch_label, RunnerArchKnown, RunnerArchUnknown }
+import gunbc.runner.runner_spec_from_offer { gunbc_ci_pool_runner_arch_label }
 import gunbc.live_deploy.apply_receipt { rlm_plan_artifact_hash_env_name }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.fleet.fleet_converge_receipt {
@@ -185,25 +186,36 @@ fn resolve_plan_revision() -> ProcessExit {
 // has no arch output and the job never falls back to a default arm64. Run as
 // `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function resolve_executor_arch`
 fn resolve_executor_arch() -> ProcessExit {
-  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariableAbsent => exit_failure(reason: "fleet_converge_plan_revision: FLEET_CONVERGE_EXPECTED_HOST is unset; the arch step needs the dispatch's executor host, never an inferred one")
-    ActionsVariablePresent { value: host_text } =>
-      if host_text == "" {
-        exit_failure(reason: "fleet_converge_plan_revision: FLEET_CONVERGE_EXPECTED_HOST is empty; the dispatch names no executor host to read an architecture from")
+  let host_text = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent => ""
+  }
+  // ONE RULE, NO LITERAL: the arch is the executor host's when a host is named, else the CI build pool's
+  // -- both read from the model, never a hard-coded arm64. A named host whose board establishes no
+  // architecture yields no arch (handled below as a loud refusal); an unnamed host falls to the pool's.
+  let arch_result = if host_text == "" {
+    gunbc_ci_pool_runner_arch_label()
+  } else {
+    match fleet_converge_runner_arch_label(host: host_text as HostIdentity) {
+      RunnerArchKnown { label } => Present { value: label }
+      RunnerArchUnknown => Absent
+    }
+  }
+  match arch_result {
+    Absent => exit_failure(reason: if host_text == "" {
+      "fleet_converge_plan_revision: no executor host named and the CI build pool has no surveyed primary CPU to read an arch from"
+    } else {
+      join(["fleet_converge_plan_revision: the executor host ", host_text, " has no board-established architecture; add and cite its board SoC edge in gunbc.host.board_platform_facts board_soc_edges (see gunbc.fleet.machine_board fleet_converge_runner_arch_label) -- refusing to default its runner arch"], "")
+    })
+    Present { value: label } => {
+      let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
+      if path == "" {
+        exit_failure(reason: "fleet_converge_plan_revision: GITHUB_OUTPUT is unset; this entry runs only in a fleet-converge job")
       } else {
-        match fleet_converge_runner_arch_label(host: host_text as HostIdentity) {
-          RunnerArchUnknown => exit_failure(reason: join(["fleet_converge_plan_revision: the executor host ", host_text, " has no board-established architecture; refusing to default its runner arch to arm64 (see gunbc.fleet.machine_board fleet_converge_runner_arch_label)"], ""))
-          RunnerArchKnown { label } => {
-            let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
-            if path == "" {
-              exit_failure(reason: "fleet_converge_plan_revision: GITHUB_OUTPUT is unset; this entry runs only in a fleet-converge job")
-            } else {
-              let w = Filesystem.Write(path: path, content: join(["arch=", label, "\n"], ""))
-              if w.success { ExitSuccess } else { exit_failure(reason: join(["fleet_converge_plan_revision: could not write the arch output: ", w.error], "")) }
-            }
-          }
-        }
+        let w = Filesystem.Write(path: path, content: join(["arch=", label, "\n"], ""))
+        if w.success { ExitSuccess } else { exit_failure(reason: join(["fleet_converge_plan_revision: could not write the arch output: ", w.error], "")) }
       }
+    }
   }
 }
 
