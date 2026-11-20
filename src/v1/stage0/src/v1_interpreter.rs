@@ -11818,8 +11818,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_host_text eval_call_bridge__std_host_text_arm {
                 arm "v4_bridge.host_text_chars" { "chars" } =>
                     eval_host_text_chars(&$args),
-                arm "v4_bridge.host_text_text_of_chars" { "text_of_chars" } =>
-                    eval_host_text_text_of_chars(&$args),
             }
             // std.machine_word machine_word_native_operate: a HostRealizedSeam reached by DECLARATION
             // (same admission as std.host_text above). The operator rows are v1_rt's, the same table the
@@ -11874,71 +11872,6 @@ fn eval_host_text_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value>
     let text = expect_str_free_monoid(args.first().map(|(_, v)| v), "chars")?;
     let items: Vec<Value> = text.chars().map(|c| Value::Int(c as i64)).collect();
     Ok(list_value(items))
-}
-
-/// The declared whole-list crossing: no window parameters and no ambient spelling admission.
-fn eval_host_text_text_of_chars(args: &[(Option<String>, Value)]) -> InterpResult<Value> {
-    let scalars = args
-        .first()
-        .and_then(|(_, value)| free_monoid_items(value))
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "text_of_chars expects a list of Unicode scalars".to_string(),
-        })?;
-    host_text_from_scalar_values(scalars.iter(), "text_of_chars")
-}
-
-fn host_text_from_scalar_values<'a>(
-    scalars: impl Iterator<Item = &'a Value>,
-    operation: &str,
-) -> InterpResult<Value> {
-    let mut text = String::new();
-    for value in scalars {
-        match value {
-            Value::Int(cp) => match u32::try_from(*cp).ok().and_then(char::from_u32) {
-                Some(ch) => text.push(ch),
-                None => return Err(InterpError::TypeError {
-                    msg: format!("{operation}: {cp} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it"),
-                }),
-            },
-            _ => return Err(InterpError::TypeError { msg: format!("{operation}: element is not an Int code point") }),
-        }
-    }
-    Ok(str_value(text))
-}
-
-// Seed evidence for the declaration-identity text crossing used by the v2 self-host path.
-#[cfg(test)]
-mod whole_list_host_text_realization_tests {
-    use super::*;
-
-    #[test]
-    fn whole_list_and_windowed_realizations_keep_distinct_inputs() {
-        let points = [0x61_i64, 0xe9, 0x1f600];
-        let values = list_value(points.iter().copied().map(Value::Int).collect());
-        let actual = eval_host_text_text_of_chars(&[(Some("scalars".into()), values)]).unwrap();
-        assert_eq!(
-            expect_str_free_monoid(Some(&actual), "test").unwrap(),
-            "aé😀"
-        );
-        let points = Rc::new(points.into_iter().collect());
-        assert_eq!(crate::v1_rt::text_of_chars(&points), "aé😀");
-        assert_eq!(crate::v1_rt::chars_to_string(&points, 1, 2), "é");
-        assert_eq!(crate::v1_rt::chars_to_string(&points, -7, 99), "aé😀");
-        assert_eq!(crate::v1_rt::chars_to_string(&points, 2, 1), "");
-    }
-
-    #[test]
-    fn whole_list_realizations_refuse_broken_scalar_representations() {
-        for point in [-1_i64, 0xd800, 0x110000, i64::MAX] {
-            let values = list_value(vec![Value::Int(point)]);
-            assert!(eval_host_text_text_of_chars(&[(None, values)]).is_err());
-            let points = Rc::new(std::iter::once(point).collect());
-            assert!(std::panic::catch_unwind(|| crate::v1_rt::text_of_chars(&points)).is_err());
-        }
-        assert!(
-            eval_host_text_text_of_chars(&[(None, list_value(vec![Value::Bool(true)]))]).is_err()
-        );
-    }
 }
 
 /// std.machine_word machine_word_native_operate: one operator row applied to residues; an operand or
@@ -24579,10 +24512,25 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                host_text_from_scalar_values(
-                    cps.skip(start as usize).take((end - start) as usize).iter(),
-                    "chars_to_string",
-                ).map(Some)
+                let mut s = String::new();
+                for v in cps.skip(start as usize).take((end - start) as usize).iter() {
+                    match v {
+                        Value::Int(cp) => match u32::try_from(*cp).ok().and_then(char::from_u32) {
+                            Some(ch) => s.push(ch),
+                            None => {
+                                return Err(InterpError::TypeError {
+                                    msg: format!("chars_to_string: {cp} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it"),
+                                });
+                            }
+                        },
+                        _ => {
+                            return Err(InterpError::TypeError {
+                                msg: "chars_to_string: element is not an Int code point".to_string(),
+                            });
+                        }
+                    }
+                }
+                Ok(Some(str_value(s)))
             },
 
             arm "free_call.get" { "get" } => match $positional.as_slice() {
@@ -31644,5 +31592,29 @@ mod t9_host_recursion_probes {
             !presented_members.contains("FAKE-SECRET-MARKER") && presented_members.contains("2"),
             "an uninhabited-member cause echoed a name the body presented: {presented_members}"
         );
+    }
+}
+
+// Evidence for the runtime entry emitted into the v2 compiler; interpreter dispatch is unchanged.
+#[cfg(test)]
+mod whole_list_host_text_realization_tests {
+    use std::rc::Rc;
+
+    #[test]
+    fn whole_list_and_windowed_realizations_keep_distinct_inputs() {
+        let points = Rc::new([0x61_i64, 0xe9, 0x1f600].into_iter().collect());
+        assert_eq!(crate::v1_rt::text_of_chars(&points), "aé😀");
+        assert_eq!(crate::v1_rt::text_of_chars(&Rc::new(im::Vector::new())), "");
+        assert_eq!(crate::v1_rt::chars_to_string(&points, 1, 2), "é");
+        assert_eq!(crate::v1_rt::chars_to_string(&points, -7, 99), "aé😀");
+        assert_eq!(crate::v1_rt::chars_to_string(&points, 2, 1), "");
+    }
+
+    #[test]
+    fn whole_list_realizations_refuse_broken_scalar_representations() {
+        for point in [-1_i64, 0xd800, 0x110000, i64::MAX] {
+            let points = Rc::new(std::iter::once(point).collect());
+            assert!(std::panic::catch_unwind(|| crate::v1_rt::text_of_chars(&points)).is_err());
+        }
     }
 }

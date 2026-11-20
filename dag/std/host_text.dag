@@ -45,15 +45,22 @@ fn chars(text: HostText) -> List<Char> {
 // HOST-REALIZED BY DECLARATION IDENTITY (operator ruling
 // gunbc.design_ruling::text_of_chars_is_a_whole_list_host_realization, superseding the 2026-10-25
 // NOT A SEAM decision). The primitive_projection row binds this whole-list contract to the linear
-// host writer. The self-call is the declared seam shape, never a fallback implementation: the host
-// handler must intercept this exact declaration or execution refuses by the evaluation budget.
+// host writer through the Rust target's resolved_declaration_call_target. The seed keeps the
+// existing linear body below: its v1_bridge_dispatch admits by a closure-wide spelling registry,
+// not the resolved declaration (gunbc.recurring_failure_mode::host_seam_realization_is_keyed_by_primitive_spelling),
+// so adding a spelling bridge would not establish the promised identity. No interpreter arm is added.
+// This also keeps the base-mirror bootstrap executable before the new projection row is on main,
+// as the adjacent string_length and substring admission bodies do. Trigger for replacing this
+// body with text_of_chars(scalars: scalars): the projection is on main AND the seed evaluates this
+// call by its resolved declaration target, or the seed has been retired. The native target selects
+// the whole-list realization from the projection row, not from this windowed seed body.
 // chars_to_string remains a DIFFERENT, arbitrary-window operation with clamping and Int inputs;
 // this row neither aliases it nor imports its window semantics. Every element here is a Char.
 // A .dag fold over from_code_point and concat would copy its accumulator and is not an admissible
 // realization (gunbc.design_argument::how_to_work). std.coercion::unicode_scalar_fold consumes this
 // declared crossing, whose empty, ASCII, non-ASCII and supplementary-scalar round trips are witnessed.
 fn text_of_chars(scalars: List<Char>) -> HostText {
-  text_of_chars(scalars: scalars)
+  chars_to_string(chars: scalars, start: 0, end: scalars |> count)
 }
 
 // THE NUMBER OF UNICODE SCALAR VALUES IN HOST TEXT (G2 ruling A, condition 3, tidy-ant-251 2026-10-31):
