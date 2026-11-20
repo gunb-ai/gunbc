@@ -8,11 +8,17 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened]
   merge_group:
+  workflow_dispatch:
+    inputs:
+      pattern:
+        description: "evidence re-runs only: remote gate pattern override (e.g. a pattern the remote host fails, for the red control). Empty defaults to the modelled plumbing-proof pattern."
+        required: false
+        type: string
 jobs:
   shadow-gate-config:
     name: "Hosted-runner shadow gate: configuration"
     runs-on: ubuntu-24.04
-    if: github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     outputs:
       configured: ${{ steps.check.outputs.configured }}
     steps:
@@ -21,8 +27,8 @@ jobs:
         run: |
           if [ -z "${{ secrets.TS_OAUTH_CLIENT_ID }}" ] || [ -z "${{ secrets.TS_OAUTH_SECRET }}" ] || [ -z "${{ secrets.GUNBC_REMOTE_BUILD_CI_SSH_KEY }}" ]; then
             echo 'configured=false' >> $GITHUB_OUTPUT
-            if [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
-              echo '::error::not configured: required secret absent on merge_group; the shadow gate refuses to silently pass'
+            if [ "$GITHUB_EVENT_NAME" = "merge_group" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass"
               exit 1
             fi
             echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'
@@ -62,5 +68,7 @@ jobs:
         id: remote-build-plumbing-proof
         run: |
           set -euo pipefail && echo '--- remote gate step ---' && ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv1.tailecbe08.ts.net true
-          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=//dag/test/claim/compute/host_capacity_seal_witness.dag --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
+          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
         shell: bash
+        env:
+          GUNBC_GATE_PATTERN: ${{ inputs.pattern }}

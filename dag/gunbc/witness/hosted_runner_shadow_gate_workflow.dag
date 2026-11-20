@@ -11,7 +11,8 @@ import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, RunnerSpec, HostedRunner, Bash,
-  WorkflowTrigger, PullRequest, MergeGroup, PullRequestActivity, Opened, Synchronize, Reopened,
+  WorkflowTrigger, PullRequest, MergeGroup, WorkflowDispatch, DispatchInput, InputString,
+  PullRequestActivity, Opened, Synchronize, Reopened,
   WorkflowPermissions, PermRead, Ubuntu2404,
 }
 import extdeps.tailscale.github_action { tailscale_github_action_v4_4_0 }
@@ -93,7 +94,30 @@ data shadow_gate_timeout_minutes: Int = 30
 
 // ── THE TRIGGERS ─────────────────────────────────────────────────────────────────────────────────
 //
-// pull_request (same-repo only, since forks receive no secrets) and merge_group.
+// pull_request (same-repo only, since forks receive no secrets), merge_group, and
+// WORKFLOW_DISPATCH. The dispatch arm exists for the evidence loop the operator ruling demands:
+// re-running the shadow gate on demand to capture the remote receipt and wall time, and to
+// demonstrate the RED CONTROL (dispatch with a pattern the remote host fails). It dissolves with
+// the rest of the carrier at cutover. The single optional input defaults, in the step itself, to
+// the modelled plumbing-proof pattern, so an empty dispatch always runs the model's pattern.
+
+// The dispatch input, read SAFELY: GitHub expands ${{ inputs.pattern }} in the step's env: block
+// (the env context assignment is the documented injection mitigation — the value never enters the
+// script text, so metacharacters in it cannot be executed). The script reads it quoted, with the
+// shell defaulting to the modelled pattern when empty.
+data shadow_gate_pattern_env: String = "GUNBC_GATE_PATTERN"
+
+data shadow_gate_pattern_input_expression: String = "${{ inputs.pattern }}"
+
+// THE EVIDENCE RE-RUN INPUT (see trigger comment). Optional; empty means the step runs the model's
+// plumbing-proof pattern (defaulted in the step via $GUNBC_GATE_PATTERN :-).
+data shadow_gate_pattern_dispatch_input: DispatchInput = DispatchInput {
+  name: "pattern",
+  description: Present { value: "evidence re-runs only: remote gate pattern override (e.g. a pattern the remote host fails, for the red control). Empty defaults to the modelled plumbing-proof pattern." },
+  required: false,
+  default: none,
+  type: InputString,
+}
 
 fn shadow_gate_pull_request_activity_types() -> List<PullRequestActivity> {
   [Opened, Synchronize, Reopened]
@@ -107,13 +131,16 @@ fn shadow_gate_triggers() -> List<WorkflowTrigger> {
       paths: []
     },
     MergeGroup,
+    WorkflowDispatch { inputs: [shadow_gate_pattern_dispatch_input] },
   ]
 }
 
 // THE SAME-REPO GUARD. A fork PR has no access to repository secrets, so the tailscale step and the
 // SSH-key step would fail with an unhelpful secret-not-found error. This if_condition skips the job
-// entirely on fork PRs with a clear job name in the Actions UI, rather than failing on a missing secret.
-data shadow_gate_fork_guard: String = "github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)"
+// entirely on fork PRs with a clear job name in the Actions UI, rather than failing on a missing
+// secret. merge_group and workflow_dispatch run in the repository context (secrets available), so
+// they pass the guard.
+data shadow_gate_fork_guard: String = "github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)"
 
 // ── THE SECRETS ──────────────────────────────────────────────────────────────────────────────────
 //
@@ -143,7 +170,7 @@ fn shadow_gate_config_check_script() -> String {
     shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret),
     "\" ] || [ -z \"",
     shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key),
-    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ]; then\n    echo '::error::not configured: required secret absent on merge_group; the shadow gate refuses to silently pass'\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
+    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ] || [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n    echo \"::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass\"\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
   ], "")
 }
 
@@ -169,10 +196,10 @@ data shadow_gate_tailscale_args: String = concat("--accept-dns=false --ephemeral
 // - pull_request with secrets absent: typed '::notice::' + configured=false, downstream steps
 //   skip. This is the documented fork arm (forks get no secrets) and the pre-cutover case;
 //   the job reports "not attempted", neither green-as-passed nor red.
-// - merge_group with secrets absent: '::error::' + exit 1. On merge_group the repository
-//   secrets MUST be present, so their absence is a rotated/deleted-secret incident and the
-//   shadow gate must not degrade into a permanent silent pass. The config job goes red and
-//   the dependent shadow job never runs.
+// - merge_group or workflow_dispatch with secrets absent: '::error::' + exit 1. Both run in the
+//   repository context where the secrets MUST be present, so their absence is a rotated/deleted-secret
+//   incident and the shadow gate must not degrade into a permanent silent pass. The config job goes
+//   red and the dependent shadow job never runs.
 // - secrets present: configured=true; when the remote gate fails its exit code propagates
 //   normally (the red control).
 
@@ -323,7 +350,7 @@ fn shadow_gate_remote_build_step() -> Step {
       concat(
         join([
           "set -euo pipefail",
-          concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="), shadow_gate_plumbing_proof_pattern), " --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json"),
+          concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json"),
           "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
         ], " && "),
         "\n"
@@ -331,7 +358,9 @@ fn shadow_gate_remote_build_step() -> Step {
     ),
     shell: Present { value: Bash },
     working_directory: none,
-    env: none,
+    env: Present { value: [
+      kv(key: shadow_gate_pattern_env, value: yaml_string(s: shadow_gate_pattern_input_expression)),
+    ] },
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
