@@ -4173,7 +4173,12 @@ data systemctl_user_show_omits_the_uid_machine_connector: IntegrationConcern = I
 // join is folded in the change that files this row. Two shapes are excluded honestly rather than by
 // silence: the two sweeps name a roster entry and a capture path uploaded by another run, and neither
 // runner_lost_boot_sweep_run nor runner_jit_dead_sweep_run contains a dial; host_reset_return's
-// reset_observer is a runner LABEL expression for the observer job, not a machine to act on.
+// reset_observer is a runner LABEL expression for the observer job, not a machine to act on; and
+// arrival_converge, which also passes arrival_subject, is excluded on its own evidence -- its facts row
+// declares FleetSshKeyNotConsumed and SubjectRuleNotApplicable with its job's runner labels hard-coded to
+// operator_host_srv1 (fleet_converge_arrival_converge_job), and gunbc.machine_intake.arrival_run contains
+// no dial. The machine that row names is acted on by the separate managed_host_network_install mode, which
+// IS affected here.
 data converge_modes_naming_a_target_without_a_subject_rule: IntegrationConcern = IntegrationConcern {
   identity: "converge_modes_naming_a_target_without_a_subject_rule",
   kind: SuspectedCapabilityGap {
@@ -4207,7 +4212,7 @@ data converge_modes_naming_a_target_without_a_subject_rule: IntegrationConcern =
           CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_edge_target") },
         ],
       },
-      account: "Reading the join arm to make butch reachable, the same two-field question arises for seven other modes: they dial a machine named by a dispatch input while their facts row declares no subject rule, so the gate that refuses a run whose acted-on machine is its own executor never admits them and their lane comes from the executor's label. The join arm showed what that costs when the binding is only half-moved: the step bound github.event.inputs.host to BOTH the runner label and TAILSCALE_JOIN_HOST, so flipping the arm's domain without moving the binding would have joined the executor instead of the requested host. No fold is made here; the six spark modes and the network-install mode are named, unowned, and left as they are.",
+      account: "Reading the join arm to make butch reachable, the same two-field question arises for seven other modes: they dial a machine named by a dispatch input while their facts row declares no subject rule, so the gate that refuses a run whose acted-on machine is its own executor never admits them and their lane comes from the executor's label. The join arm showed what that costs when the binding is only half-moved: the step bound github.event.inputs.host to BOTH the runner label and TAILSCALE_JOIN_HOST, so flipping the arm's domain without moving the binding would have joined the executor instead of the requested host. No fold is made here; the six spark modes and the network-install mode are named, unowned, and left as they are. arrival_converge was examined and excluded on its own row: ssh_key_demand FleetSshKeyNotConsumed, its job's runner labels hard-coded to operator_host_srv1, and no dial anywhere in gunbc.machine_intake.arrival_run -- the machine its arrival_subject names is acted on by managed_host_network_install, which is affected.",
     },
     tail: [],
   },
