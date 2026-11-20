@@ -328,7 +328,7 @@ fn apt_third_party_repo_install_plan(
   repo: ThirdPartyAptRepo,
   packages: List<NonEmptyStr>,
 ) -> List<AptRepoInstallStep> {
-  let no_stdin = none as String?
+  let no_stdin: String? = none
   let armored = "/key.armored"
   [
     AptRepoLeg {
