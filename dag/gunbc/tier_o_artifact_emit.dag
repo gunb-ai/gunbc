@@ -121,7 +121,7 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
       BranchRunGrantBrokerWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     HostedRunnerShadowGateYamlArtifact => match expected_hosted_runner_shadow_gate_yml() {
-      ShadowGateWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
+      ShadowGateWorkflowGenerated { content } => TierOArtifactProduced { content: content }
       ShadowGateWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     DriftWatchWorkflowYamlArtifact => match expected_drift_watch_workflow_yml() {
