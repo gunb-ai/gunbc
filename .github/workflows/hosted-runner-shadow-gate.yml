@@ -72,3 +72,35 @@ jobs:
         shell: bash
         env:
           GUNBC_GATE_PATTERN: ${{ inputs.pattern }}
+      - name: "Remote gate: //gunbc/instruments:self-host"
+        id: gate-emit_build_self_host
+        run: |
+          set -uo pipefail
+          rc=0
+          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_self_host.json" || rc=$?
+          cat "$RUNNER_TEMP/gate-emit_build_self_host.json" || true
+          case "$rc" in
+            0) exit 0;;
+            1) echo '::error::gate //gunbc/instruments:self-host: code verdict - did not hold'; exit 1;;
+            2) echo '::error::gate //gunbc/instruments:self-host: typed local refusal - nothing was sent to any host'; exit 1;;
+            3) echo '::error::gate //gunbc/instruments:self-host: no host admitted the reservation (capacity/infra)'; exit 1;;
+            4) echo '::warning::gate //gunbc/instruments:self-host: held, but an origin ref was left behind (cleanup fact; count these)'; exit 0;;
+            *) echo "::error::gate //gunbc/instruments:self-host: unexpected exit code $rc"; exit 1;;
+          esac
+        shell: bash
+      - name: "Remote gate: //gunbc/instruments:v2-native-cli"
+        id: gate-emit_build_v2_native_cli
+        run: |
+          set -uo pipefail
+          rc=0
+          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || rc=$?
+          cat "$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || true
+          case "$rc" in
+            0) exit 0;;
+            1) echo '::error::gate //gunbc/instruments:v2-native-cli: code verdict - did not hold'; exit 1;;
+            2) echo '::error::gate //gunbc/instruments:v2-native-cli: typed local refusal - nothing was sent to any host'; exit 1;;
+            3) echo '::error::gate //gunbc/instruments:v2-native-cli: no host admitted the reservation (capacity/infra)'; exit 1;;
+            4) echo '::warning::gate //gunbc/instruments:v2-native-cli: held, but an origin ref was left behind (cleanup fact; count these)'; exit 0;;
+            *) echo "::error::gate //gunbc/instruments:v2-native-cli: unexpected exit code $rc"; exit 1;;
+          esac
+        shell: bash

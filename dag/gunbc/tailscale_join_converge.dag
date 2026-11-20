@@ -50,7 +50,8 @@ module gunbc.tailscale_join_converge
 //     the key's tag while the plan claimed another, and every reachability judgment this converge then makes
 //     would be about a tag the node is not in.
 //   A PING THAT ANSWERS AS SOMEBODY ELSE. The read-back compares the node name in the pong against the
-//     expected tailnet name and refuses on a mismatch: an address answering from a stale peer record is not
+//     node label the expected tailnet name is composed from (the pong names the peer short, not by FQDN),
+//     and refuses on a mismatch: an address answering from a stale peer record is not
 //     the host that was just joined.
 //   ANYTHING THE TYPED SURFACES REFUSE. The argv builders, the custody row and placement, the ssh targets,
 //     the sealed write and the portable-word check all carry their own refusal arms, and this module
@@ -193,7 +194,7 @@ import std.list { list_member }
 import std.measure { Second, second, second_count, seconds_per_day }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_non_empty }
-import std.algebra { string_contains, trim }
+import std.algebra { list_head, string_contains, trim }
 
 // The bounded waits, both this fleet's choice, both load-bearing: upstream blocks FOREVER by default on `up`
 // and gives up after five seconds by default on `ping`, which are the two wrong answers for a converge -- one
@@ -283,7 +284,7 @@ fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionC
 
 // The package leg's decoding, factored PURE so the wet wiring and the model share ONE shape and the decisive case
 // is witnessed (the wet's ssh call is not, the decision it feeds is). Mirrors
-// @ref(gunbc.fleet.site_pxe_edge_converge::observe_site_pxe_edge_package) -- the proven sibling: a CONVERGED
+// #gunbc.fleet.site_pxe_edge_converge::observe_site_pxe_edge_package -- the proven sibling: a CONVERGED
 // dpkg-query leg is handed WHOLESALE to
 // dpkg_query_status_verdict_of, which owns the four-way decode (exit 0 Status line -> installed/not-installed;
 // exit 1 with "no information is available" -> Unknown; everything else -> Undecidable). A NON-ZERO exit is a
@@ -491,7 +492,7 @@ fn tailscale_join_plan(
               // replace an identity the OPERATOR chose (a node is a member as the tag of the key that enrolled
               // it, or as the person who joined it -- tailscale.com/kb/1085/auth-keys), and silently changing a
               // host's tailnet identity is not this converge's authority. It refuses, typed and located, and
-              // names the remedy the operator performs (@ref(gunbc.design_argument::fail_closed)).
+              // names the remedy the operator performs (#gunbc.design_argument::fail_closed).
               JoinStateJoinedWithoutRequiredTag { self_tags: self_tags } =>
                 JoinPlanNotFleetMember {
                   host: host,
@@ -685,8 +686,20 @@ fn tailscale_join_observe_name_resolution(
 
 // Whether the node named in a pong is the host this converge just joined. Separate from the comparison so
 // the branded name and the upstream's unbranded string meet in one place with the cast visible.
+//
+// `tailscale ping <fqdn>` names the answering peer by its NODE LABEL -- the MachineName, e.g. "srv4" --
+// not by its MagicDNS FQDN. Comparing the pong's short name against the full FQDN can therefore never
+// match, and it refused a join that had in fact settled. Compare like with like: project the expected
+// tailnet address to its FIRST dot-separated label -- the very label the model composes first, since
+// gunbc.fleet.fleet_tailnet::tailnet_host_labels puts the canonical name ahead of the zone labels -- and
+// compare that to the pong's node name. The label is derived from the model, never trimmed from the
+// observed pong, so a stale peer record answering as a different node still mismatches and the read-back
+// still refuses on a wrong name.
 fn tailscale_ping_pong_is_expected(expected: NonEmptyStr, node_name: String) -> Bool {
-  node_name == expected as String
+  match list_head(xs: split(s: expected as String, delimiter: ".")) {
+    Present { value: node_label } => node_label == node_name
+    Absent => false
+  }
 }
 
 type TailscaleJoinAnswer
@@ -767,7 +780,7 @@ fn tailscale_join_readback(
 // (gunbc.tailscale_fleet_auth_key records the pin this was read against).
 //
 // THE WET ENTRY AT THE FOOT OF THIS MODULE IS ITS EXECUTING CONSUMER (review 95837 asked for exactly
-// this; @ref(gunbc.design_argument::consumption): "Every declaration a change adds ... is consumed by a
+// this; #gunbc.design_argument::consumption: "Every declaration a change adds ... is consumed by a
 // named consumer over an executing route, or it is dangling, however well modeled"). One dispatch runs
 // one host: tailscale_join_converge_ci_wet reads the named host from the environment, gates on the
 // live-clock expiry check BEFORE fetching anything, fetches the pinned version through
@@ -787,7 +800,7 @@ type TailscaleJoinOutcome
       // Whether the converge's own removal of the placed key copy succeeded. A join is a join either way
       // (the read-back already proved membership), but a left-behind copy of a reusable enrollment key is a
       // fact the caller must be able to see and act on -- never one the model hides (
-      // @ref(gunbc.design_argument::epistemic_humility)).
+      // #gunbc.design_argument::epistemic_humility).
       key_removed: Bool,
       removal_cause: String?,
     }

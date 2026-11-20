@@ -30,7 +30,8 @@ import gunbc.compute.remote_build_serving_setup {
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv }
+import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 
@@ -1287,12 +1288,13 @@ test fn refused_slice_max_plans_no_install_leg() -> Bool {
 }
 
 // After the unit file is installed, the leg hands systemd exactly two verbs in order: daemon-reload (so
-// systemd reads the new unit) THEN start (so the slice's cgroup exists). daemon-reload alone never
-// instantiates a never-active slice's cgroup, so without the start the cgroup readback would wait on a
-// directory that never appears. Both reach the serving ACCOUNT's user manager via the --machine=UID@
-// connector (bare --user would reload root's manager), and the start names the reader's own slice, so the
-// settled cgroup is the very unit the wrap binds into. install (upload) and the cgroup readback bracket
-// these two structurally in the wet leg; this fixes their order and content so leg and reader cannot drift.
+// systemd reads the new unit) THEN start (so the slice is active under the account's manager and work can
+// be placed into it). Both reach the serving ACCOUNT's user manager via the --machine=UID@ connector (bare
+// --user would reload root's manager), and the start names the reader's own slice. The readback that
+// follows reads the slice's DECLARED properties (systemctl show, witnessed separately), so an installed,
+// active-but-empty slice settles from what the loaded unit declares rather than waiting on a cgroup file
+// its empty membership never creates. install (upload) and the readback bracket these two verbs
+// structurally in the wet leg; this fixes their order and content so leg and reader cannot drift.
 test fn install_slice_reloads_then_starts_the_reader_unit() -> Bool {
   let uid = 4242
   let verbs = user_work_slice_install_command_argv(uid: uid)
@@ -1521,4 +1523,173 @@ test fn the_identity_key_is_distinct_from_the_binary_key() -> Bool {
   let ident = RecordServeIdentity { install_path: "/srv/gunbc/bin/gunbc", revision: pin_rev(), sha256: pin_sha() }
   converge_action_key(ident) == concat("identity:", "/srv/gunbc/bin/gunbc")
     && converge_action_key(ident) != converge_action_key(b3_binary())
+}
+
+// ── the slice cap is read from the UNIT's declared properties, not its cgroup files ───────────────────
+// An installed, ACTIVE-but-empty slice has no memory.max cgroup file (systemd materialises a slice's cgroup
+// only when a member unit starts), so reading the cgroup file refused a correctly-capped slice forever --
+// the srv3 failure. The leg now reads `systemctl --user --machine=UID@ show <slice>` of the unit's OWN
+// MemoryMax / MemoryHigh / MemorySwapMax, which the manager answers from the loaded unit whether or not the
+// cgroup has populated. These witnesses pin that read: the ceiling decodes to capped, an unbounded/absent
+// control to uncapped (which licenses the install), an unreachable manager to uncapped (never an unknown),
+// and the read-back argv is the user-bus `show` of the three properties.
+
+// The body a `systemctl show` prints for a slice that carries exactly the ceiling: MemoryMax the ceiling,
+// MemoryHigh its derived value, MemorySwapMax the forbidden-swap value -- the same three values the settled
+// observation fixtures hand-build, so 'reads capped' agrees between the property read and the direct field.
+fn capped_show_body(ceiling: ByteSize) -> String {
+  let max_line = concat("MemoryMax=", to_string(byte_size_count(ceiling)))
+  let high_line = match user_work_slice_memory_high_of(memory_max: ceiling) {
+    UserWorkSliceHighDerived { bytes: h } => concat("MemoryHigh=", to_string(byte_size_count(h)))
+    UserWorkSliceHighGapExceedsMax => "MemoryHigh=infinity"
+  }
+  let swap_line = concat("MemorySwapMax=", to_string(byte_size_count(user_work_slice_memory_swap_max)))
+  concat(max_line, concat("\n", concat(high_line, concat("\n", swap_line))))
+}
+
+fn ceiling_high_expected(ceiling: ByteSize) -> ByteSize? {
+  match user_work_slice_memory_high_of(memory_max: ceiling) {
+    UserWorkSliceHighDerived { bytes: h } => Present { value: h }
+    UserWorkSliceHighGapExceedsMax => Absent
+  }
+}
+
+fn slice_value_unbounded(v: CgroupMemoryLimitValue) -> Bool {
+  match v {
+    CgroupMemoryUnlimited => true
+    _ => false
+  }
+}
+
+// The ceiling the loaded unit DECLARES decodes to SliceCapped: this is the reading that lets an installed,
+// active-but-empty slice settle where the cgroup-file read refused it. RED today: serving_slice_cap_of_show
+// does not exist on the old code (the slice was read from cgroup files).
+test fn the_declared_ceiling_read_back_settles_the_slice() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let cap = serving_slice_cap_of_show(text: capped_show_body(ceiling: ceiling))
+      match user_work_slice_cgroup_admission(max: cap.max, high: cap.high, swap: cap.swap, ceiling: ceiling, high_expected: ceiling_high_expected(ceiling: ceiling)) {
+        SliceCapped => true
+        SliceUncapped { reason: _ } => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// RED CONTROL: a control spelling 'infinity' (systemctl's unbounded) is a control we DID read that is not the
+// ceiling -> SliceUncapped, which licenses the install -- it is NOT an unknown. A slice nobody started must
+// install, not stall the whole converge on indeterminacy.
+test fn an_infinity_ceiling_read_back_is_uncapped_not_unread() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let cap = serving_slice_cap_of_show(text: "MemoryMax=infinity\nMemoryHigh=infinity\nMemorySwapMax=infinity")
+      match user_work_slice_cgroup_admission(max: cap.max, high: cap.high, swap: cap.swap, ceiling: ceiling, high_expected: ceiling_high_expected(ceiling: ceiling)) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// RED CONTROL: a PRESENT account whose user manager is unreachable has no cap in force, so the read is
+// established-UNCAPPED (installs), never an unknown that would make the host indeterminate. This is the
+// one-way direction the leg guarantees: an unreachable manager installs the slice; it is never silently capped.
+test fn an_unreachable_manager_reads_uncapped_never_unknown() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let cap = serving_slice_cap_unreachable_manager()
+      match user_work_slice_cgroup_admission(max: cap.max, high: cap.high, swap: cap.swap, ceiling: ceiling, high_expected: ceiling_high_expected(ceiling: ceiling)) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// The systemctl value for an unbounded control ('infinity', 'max', empty, or an absent key) is the slice's
+// OWN unlimited value -- systemctl's spellings map onto the same unbounded the cgroup file spells 'max'.
+test fn the_property_value_maps_every_unbounded_spelling() -> Bool {
+  slice_value_unbounded(serving_slice_property_value(value: Absent))
+    && slice_value_unbounded(serving_slice_property_value(value: Present { value: "infinity" }))
+    && slice_value_unbounded(serving_slice_property_value(value: Present { value: "max" }))
+    && slice_value_unbounded(serving_slice_property_value(value: Present { value: "   " }))
+}
+
+// RED CONTROL (fail_closed, review 96983): a NON-ZERO `systemctl show` is classified by WHAT the command
+// said, not by the exit code alone. The same exit 1 -- a proven user-bus-down spelling -- reads established
+// UNCAPPED (an unreachable manager has no cap in force, so it installs + enables linger); a sudo denial or a
+// malformed invocation is REFUSED, so on a host that is ALREADY capped a failure nobody read cannot mint an
+// install + linger write. Goes RED the moment the non-zero arm is blanket-uncapped again.
+test fn a_non_zero_read_is_classified_by_stderr_not_the_exit_code() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let high_expected = ceiling_high_expected(ceiling: ceiling)
+      let down = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "Failed to connect to bus: Host is down")
+      let down_uncapped = match user_work_slice_cgroup_admission(max: down.max, high: down.high, swap: down.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+      let denied = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "sudo: a password is required")
+      let denied_unknown = match user_work_slice_cgroup_admission(max: denied.max, high: denied.high, swap: denied.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUnknown { control: _, cause: _ } => true
+        SliceCapped => false
+        SliceUncapped { reason: _ } => false
+      }
+      let malformed = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "systemctl: unknown operation 'shwo'")
+      let malformed_unknown = match user_work_slice_cgroup_admission(max: malformed.max, high: malformed.high, swap: malformed.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUnknown { control: _, cause: _ } => true
+        SliceCapped => false
+        SliceUncapped { reason: _ } => false
+      }
+      down_uncapped && denied_unknown && malformed_unknown
+    }
+  }
+}
+
+// The read-back is the user-bus `show` of the three named properties of the reader's own slice, through the
+// account's --machine=UID@ connector. RED today: user_work_slice_show_command_argv does not exist on the old
+// code. It is the LAST step (a read), distinct from the install/reload/start writes, so 'settled' is judged
+// by what the unit declares -- exactly what the reader admits the wrap against.
+test fn the_slice_readback_shows_the_units_declared_properties() -> Bool {
+  let uid = 4242
+  let j = join(user_work_slice_show_command_argv(uid: uid), " ")
+  let connector = systemctl_user_machine_connector(uid: uid)
+  string_contains(s: j, pattern: "systemctl")
+    && string_contains(s: j, pattern: "--user")
+    && string_contains(s: j, pattern: connector)
+    && string_contains(s: j, pattern: "show")
+    && string_contains(s: j, pattern: "--property=MemoryMax,MemoryHigh,MemorySwapMax")
+    && string_contains(s: j, pattern: user_work_slice_unit_name)
+}
+
+// The full ordered shape of the leg: install hands [daemon-reload, start] and the read-back is a separate
+// `show` (a read, never a second start). Together with install_slice_reloads_then_starts_the_reader_unit
+// (which fixes reload-then-start), this witnesses install -> reload -> start -> read-back end to end.
+test fn the_slice_leg_orders_install_reload_start_then_readback() -> Bool {
+  let uid = 4242
+  let install = user_work_slice_install_command_argv(uid: uid)
+  let readback = user_work_slice_show_command_argv(uid: uid)
+  let first_is_reload = match install.first() {
+    Absent => false
+    Present { value: v } => string_contains(s: join(v, " "), pattern: "daemon-reload")
+  }
+  let start_is_last = match reverse(install).first() {
+    Absent => false
+    Present { value: v } => string_contains(s: join(v, " "), pattern: "start")
+  }
+  let readback_join = join(readback, " ")
+  let readback_is_show = string_contains(s: readback_join, pattern: "show") && string_contains(s: readback_join, pattern: "start") == false
+  install.length() == 2 && first_is_reload && start_is_last && readback_is_show
 }

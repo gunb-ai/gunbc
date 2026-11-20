@@ -22,7 +22,7 @@ import v2.std.text { string_eq }
 //    spelled. Over an 8,471-file pool the expansion spells 2,065,084 rows and the direct relation
 //    61,044, and the affected member sets are identical on all nine edited sets measured (lost=0,
 //    gained=0, run 43817027204), while the expanded form refused that same round in its model phase
-//    (run 43808654519). @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence)
+//    (run 43808654519). #gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence
 //    carries that cost shape. Entry traversal through cli_run
 //    extend_sources_to_both_closure_fixpoint instead requests closure-expanded rows through
 //    build_both_closure_edge_index: its demand is WHICH source rows to pull, and the expansion is
