@@ -3001,7 +3001,7 @@ fn settle_unprovisioned_slot_loop_over(subject: RunnerHostFileSubject, context: 
           LoopLive { why: w } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: w }
           LoopUnread { why: w } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: w }
           LoopQuiet { evidence: e } =>
-            match run_slot_steps_over(target: subject.target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
+            match run_slot_steps_over(target: subject.target, context: context, steps: []) {  // RED CONTROL: the stop leg, taken out. The admission still reads, the readback still refuses, and the wet claim that a stop was dispatched must go red.
               Present { value: why } => LoopRefusedForInstall { unit: unit, step: "stop", why: join(["the stop itself failed: ", why], "") }
               Absent =>
                 match read_slot_over(target: subject.target, context: context, unit: unit) {
