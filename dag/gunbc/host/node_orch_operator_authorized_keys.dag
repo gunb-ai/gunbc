@@ -16,10 +16,9 @@ module gunbc.host.node_orch_operator_authorized_keys
 // writes the operator account's authorized_keys today: host_authorized_keys_reconcile plans only the
 // host-administrator account, and runner_host_file_converge writes the bootstrap/administrator account. So the
 // model deliberately does not own these entries; putting host-specific options into the host-agnostic roster
-// would fork the single authority. They are therefore recorded here as out-of-band residue, each OPTION
-// admitted by a typed consumer reference, per DESIGN's Consumption rule (admission held at the grain where the
-// consumer exists, recorded where the consumer is) and Source annotations (the admission is a typed fact the
-// model folds, not commentary).
+// would fork the single authority. They are therefore recorded here as out-of-band residue, each line carrying
+// its own named consumer, per DESIGN's Consumption rule (admission held at the grain where the consumer exists)
+// and Source annotations (the admission is a typed fact the model folds, not commentary).
 //
 // THE SILENT-UNDO HAZARD THIS RECORD CLOSES. node_orch_ssh_key's material is already fleet-owned (the roster
 // grants it to the host-administrator account), so if a reconcile were ever pointed at the operator account it
@@ -38,6 +37,7 @@ import std.types { List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import extdeps.ssh.keys {
   AuthorizedKeyEntry,
+  AuthorizedKeyOption,
   Ed25519,
   NoAgentForwardingOption,
   NoPortForwardingOption,
@@ -52,11 +52,6 @@ import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
   srv2_tailscale_endpoint,
 }
-
-// The operator (briansrls) account these two entries sit on. Recorded as the observed login rather than
-// imported from the posix roster so this residue record's closure stays small; the account is the operator
-// account, not the host-administrator (ubuntu) account that host_authorized_keys_reconcile plans.
-data node_orch_operator_account_login: NonEmptyStr = "briansrls"
 
 // srv1's own node-orch public key -- the key whose authorized_keys line sits on srv2's operator account. It is
 // NOT in gunbc.fleet.fleet_ssh_access: node-orch is granted to the host-administrator account only, and the one
@@ -84,95 +79,77 @@ data node_orch_srv2_entry_source_addresses: List<String> = [
   srv1_tailscale_endpoint.address,
 ]
 
-// The named consumer that admits an option on one of these operator-account lines. Typed (not prose) so the
-// admission is a fold-able fact, not a commentary String (gunbc.design_argument::source_annotations): the unit's
-// argv and the session's ssh alias ARE the evidence that the option is required, so they live in a carrier.
+// The named consumer that NEEDS a node-orch operator-account line -- the thing whose need is the line's whole
+// admission (the "shared secret has one admission" fact at the per-line grain). Typed so the admission is a
+// fold-able fact, not a commentary String (gunbc.design_argument::source_annotations): the unit's argv and the
+// session's ssh alias ARE the evidence that the option set is required, so they live in a carrier, each at one
+// home. A unit needs port forwarding; the sessions do not -- and the line's option set says so once, below.
 type NodeOrchOperatorConsumer
   = Srv1DockerTunnelUnit { argv: NonEmptyStr }             // srv2 user unit srv1-docker-tunnel.service
   | Srv1ToSrv2LanSessions { ssh_host_alias: NonEmptyStr }  // sessions on srv1 reaching srv2 (ssh, docker -H ssh://)
 
-// Which option fact on the line a consumer is accountable for admitting. The line's full option set is the entry
-// below; what a consumer ADMITS is the governance fact recorded here so an audit folds who is responsible for
-// each option -- the "shared secret has one admission" record at the per-line grain.
-type NodeOrchOperatorAdmittedOption
-  = PortForwardingAdmittedAbsent    // the consumer needs port forwarding -> admits the ABSENCE of no-port-forwarding
-  | PortForwardingAdmittedKept      // the consumer needs none -> admits KEEPING no-port-forwarding
-  | TailnetSourceAdmitted           // the consumer's connection arrives over the peer tailnet address -> admits it in from=
+data node_orch_srv1_consumer: NodeOrchOperatorConsumer =
+  Srv1DockerTunnelUnit { argv: "ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1" }
 
-// One admission: a named consumer, on one host's operator-account line, admitting one option fact.
-type NodeOrchOperatorAuthorizedKeyAdmission {
-  host_label: NonEmptyStr
+data node_orch_srv2_consumer: NodeOrchOperatorConsumer =
+  Srv1ToSrv2LanSessions { ssh_host_alias: "srv2-lan" }
+
+// One node-orch operator-account line: the key, the option set it carries (the SINGLE authority for what is on
+// the line), and the named consumer that needs it. They live in the SAME record so the option set is never
+// restated elsewhere -- the line and its admission cannot drift, because there is nothing to drift from.
+type NodeOrchOperatorAuthorizedKeyLine {
+  key: SshPublicKey
+  options: List<AuthorizedKeyOption>
   consumer: NodeOrchOperatorConsumer
-  admits: NodeOrchOperatorAdmittedOption
 }
 
-// The live line on srv1's operator account: srv2's node-orch key (single authority: node_orch_ssh_key), its
-// source-address set from node_orch_srv1_entry_source_addresses. Options, in the order sshd reads them off the
-// live line: the from= restriction (built through the checked authorized_key_from_source_addresses constructor --
-// no row can bypass the quoting guard), then no-agent-forwarding and no-X11-forwarding. no-port-forwarding is
-// DELIBERATELY ABSENT: srv2's user unit srv1-docker-tunnel.service runs
-// `ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1`, a stream-local (-L) forward,
-// which no-port-forwarding would kill; the tunnel backs the dashboard's srv1 docker context. It was broken
-// ~19:13-19:20Z until the option was removed 2026-11-20; the pre-edit line is the authority held in the on-host
-// backup srv1:~/.ssh/authorized_keys.bak-20261120 (not restated here).
-fn node_orch_srv1_authorized_key_entry() -> AuthorizedKeyEntry? {
+// The line on srv1's operator account: srv2's node-orch key (single authority: node_orch_ssh_key), source
+// addresses from node_orch_srv1_entry_source_addresses, consumer the srv2 docker-tunnel unit. Options, in the
+// order sshd reads them off the live line: the from= restriction (built through the checked
+// authorized_key_from_source_addresses constructor -- no line can bypass the quoting guard), then
+// no-agent-forwarding and no-X11-forwarding. no-port-forwarding is DELIBERATELY ABSENT because the consumer (the
+// docker-tunnel unit) needs a stream-local (-L) forward, which no-port-forwarding would kill; it backs the
+// dashboard's srv1 docker context. It was broken ~19:13-19:20Z until the option was removed 2026-11-20; the
+// pre-edit line is the authority held in the on-host backup srv1:~/.ssh/authorized_keys.bak-20261120.
+fn node_orch_srv1_authorized_key_line() -> NodeOrchOperatorAuthorizedKeyLine? {
   match authorized_key_from_source_addresses(patterns: node_orch_srv1_entry_source_addresses) {
     Absent => none
     Present { value: from_opt } =>
       Present {
-        value: AuthorizedKeyEntry {
-          options: [from_opt, NoAgentForwardingOption, NoX11ForwardingOption],
+        value: NodeOrchOperatorAuthorizedKeyLine {
           key: node_orch_ssh_key,
+          options: [from_opt, NoAgentForwardingOption, NoX11ForwardingOption],
+          consumer: node_orch_srv1_consumer,
         },
       }
   }
 }
 
-// The live line on srv2's operator account: srv1's node-orch key (single authority: node_orch_srv1_ssh_key), its
-// source-address set from node_orch_srv2_entry_source_addresses. Options, in the order off the live line: the from=
-// restriction (same checked constructor), then no-port-forwarding, no-agent-forwarding and no-X11-forwarding. Here
-// no-port-forwarding is KEPT: the consumer is sessions on srv1 reaching srv2 as srv2-lan ->
-// srv2.tailecbe08.ts.net (ssh and `docker -H ssh://srv2-lan`), which need no forwarding, so nothing admits its
-// removal. Pre-edit line: the on-host backup srv2:~/.ssh/authorized_keys.bak-20261120.
-fn node_orch_srv2_authorized_key_entry() -> AuthorizedKeyEntry? {
+// The line on srv2's operator account: srv1's node-orch key (single authority: node_orch_srv1_ssh_key), source
+// addresses from node_orch_srv2_entry_source_addresses, consumer the srv1->srv2-lan sessions. Options, in the
+// order off the live line: the from= restriction (same checked constructor), then no-port-forwarding,
+// no-agent-forwarding and no-X11-forwarding. Here no-port-forwarding is KEPT because the consumer needs no
+// forwarding: sessions on srv1 reaching srv2 as srv2-lan -> srv2.tailecbe08.ts.net (ssh and `docker -H
+// ssh://srv2-lan`). Pre-edit line: the on-host backup srv2:~/.ssh/authorized_keys.bak-20261120.
+fn node_orch_srv2_authorized_key_line() -> NodeOrchOperatorAuthorizedKeyLine? {
   match authorized_key_from_source_addresses(patterns: node_orch_srv2_entry_source_addresses) {
     Absent => none
     Present { value: from_opt } =>
       Present {
-        value: AuthorizedKeyEntry {
-          options: [from_opt, NoPortForwardingOption, NoAgentForwardingOption, NoX11ForwardingOption],
+        value: NodeOrchOperatorAuthorizedKeyLine {
           key: node_orch_srv1_ssh_key,
+          options: [from_opt, NoPortForwardingOption, NoAgentForwardingOption, NoX11ForwardingOption],
+          consumer: node_orch_srv2_consumer,
         },
       }
   }
 }
 
-// The typed admissions. srv1's docker-tunnel unit admits the absence of no-port-forwarding and srv2's tailnet
-// address in from=; srv2's srv1->srv2-lan sessions admit keeping no-port-forwarding and srv1's tailnet address.
-// A check (the witness) folds these against each entry's option set, so an admission that drifts from the line it
-// claims is caught -- the carrier is read, not ornamental.
-data node_orch_operator_authorized_key_admissions: List<NodeOrchOperatorAuthorizedKeyAdmission> = [
-  NodeOrchOperatorAuthorizedKeyAdmission {
-    host_label: "srv1",
-    consumer: Srv1DockerTunnelUnit { argv: "ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1" },
-    admits: PortForwardingAdmittedAbsent,
-  },
-  NodeOrchOperatorAuthorizedKeyAdmission {
-    host_label: "srv1",
-    consumer: Srv1DockerTunnelUnit { argv: "ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1" },
-    admits: TailnetSourceAdmitted,
-  },
-  NodeOrchOperatorAuthorizedKeyAdmission {
-    host_label: "srv2",
-    consumer: Srv1ToSrv2LanSessions { ssh_host_alias: "srv2-lan" },
-    admits: PortForwardingAdmittedKept,
-  },
-  NodeOrchOperatorAuthorizedKeyAdmission {
-    host_label: "srv2",
-    consumer: Srv1ToSrv2LanSessions { ssh_host_alias: "srv2-lan" },
-    admits: TailnetSourceAdmitted,
-  },
-]
+// Project a line to the authorized_keys entry the file carries: the line's option list is the single authority,
+// so the entry is derived from it rather than restating it.
+fn node_orch_authorized_key_entry_from_line(line: NodeOrchOperatorAuthorizedKeyLine) -> AuthorizedKeyEntry {
+  AuthorizedKeyEntry { options: line.options, key: line.key }
+}
 
 // The node-orch materials that MUST be kept in the operator account's authorized_keys on srv1/srv2. A future
 // converge pointed at the operator account's authorized_keys MUST union this into its desired set (see the hazard
@@ -181,14 +158,9 @@ fn node_orch_operator_account_keep_materials() -> List<NonEmptyStr> {
   [node_orch_ssh_key.material, node_orch_srv1_ssh_key.material]
 }
 
-// The entry's host label -> its option-admitting admissions, so a reader can fold the line against who admits it.
-fn node_orch_operator_admissions_for(host_label: String) -> List<NodeOrchOperatorAuthorizedKeyAdmission> {
-  filter(node_orch_operator_authorized_key_admissions, a => (a.host_label as String) == host_label)
-}
-
-// Render one of these entries the way its live authorized_keys line reads -- the consumer of the from= option's
-// rendering and of authorized_key_entry_line for these residues (the production file-writer is the same frontier
-// named on authorized_key_entry_line; until it exists the witness is the reader).
-fn node_orch_operator_authorized_key_line(entry: AuthorizedKeyEntry) -> String {
-  authorized_key_entry_line(e: entry)
+// Render a line the way its live authorized_keys line reads -- the consumer of the from= option's rendering and
+// of authorized_key_entry_line for these residues (the production file-writer is the same frontier named on
+// authorized_key_entry_line; until it exists the witness is the reader).
+fn node_orch_operator_authorized_key_line_text(line: NodeOrchOperatorAuthorizedKeyLine) -> String {
+  authorized_key_entry_line(e: node_orch_authorized_key_entry_from_line(line: line))
 }

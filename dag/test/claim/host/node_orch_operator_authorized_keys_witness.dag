@@ -1,36 +1,26 @@
 module test.claim.host.node_orch_operator_authorized_keys_witness
 
 // Green-by-execution witness for gunbc.host.node_orch_operator_authorized_keys. It renders each out-of-band
-// node-orch operator-account authorized_keys entry and asserts the bytes match the line gentle-crab-832 verified
-// live on 2026-11-20 (each host's ~/.ssh/authorized_keys.bak-20261120 holds the pre-edit form); it proves the
-// from= source-address restriction is admitted only through the checked constructor; and it folds the typed
-// consumer admissions against each entry's shipped option set, so an admission that drifts from its line is
-// caught. It also pins the silent-undo hazard: srv2's key is fleet-owned (an operator-account reconcile would
-// Remove it unless the keep-set covers it) while srv1's key is not (a reconcile already refuses it).
+// node-orch operator-account line and asserts the bytes match the line gentle-crab-832 verified live on
+// 2026-11-20 (each host's ~/.ssh/authorized_keys.bak-20261120 holds the pre-edit form); proves the from=
+// source-address restriction is admitted only through the checked constructor; folds each line's typed consumer
+// against its shipped forwarding posture (the tunnel unit -> no-port-forwarding ABSENT; the srv1->srv2-lan
+// sessions -> KEPT); and pins the silent-undo hazard: srv2's key is fleet-owned (an operator-account reconcile
+// would Remove it unless the keep-set covers it) while srv1's key is not (a reconcile already refuses it).
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import extdeps.ssh.keys {
-  AuthorizedKeyEntry,
-  NoAgentForwardingOption,
-  NoPortForwardingOption,
-  NoX11ForwardingOption,
-  authorized_key_entry_line,
-  authorized_key_from_source_addresses,
-}
+import extdeps.ssh.keys { authorized_key_from_source_addresses }
 import gunbc.host.node_orch_operator_authorized_keys {
-  NodeOrchOperatorAdmittedOption,
-  PortForwardingAdmittedAbsent,
-  PortForwardingAdmittedKept,
-  TailnetSourceAdmitted,
+  NodeOrchOperatorConsumer,
+  Srv1DockerTunnelUnit,
+  Srv1ToSrv2LanSessions,
   node_orch_operator_account_keep_materials,
-  node_orch_operator_account_login,
-  node_orch_operator_admissions_for,
-  node_orch_operator_authorized_key_line,
-  node_orch_srv1_authorized_key_entry,
+  node_orch_operator_authorized_key_line_text,
+  node_orch_srv1_authorized_key_line,
   node_orch_srv1_ssh_key,
-  node_orch_srv2_authorized_key_entry,
+  node_orch_srv2_authorized_key_line,
 }
 import gunbc.fleet.fleet_ssh_access { node_orch_ssh_key, fleet_authorized_keys }
 
@@ -54,24 +44,36 @@ fn keep_holds(material: NonEmptyStr) -> Bool {
   fold(node_orch_operator_account_keep_materials(), init: false, f: (acc, x) => acc || (x == material))
 }
 
-fn admits_holds(host_label: String, want: NodeOrchOperatorAdmittedOption) -> Bool {
-  fold(node_orch_operator_admissions_for(host_label: host_label), init: false, f: (acc, a) => acc || (a.admits == want))
-}
-
-// The rendered srv1 entry is byte-for-byte the verified live line, and it is admitted only via the checked
-// from= constructor (it is built by authorized_key_from_source_addresses inside the entry fn).
-test fn srv1_entry_renders_the_verified_live_line() -> Bool {
-  match node_orch_srv1_authorized_key_entry() {
-    Absent => false
-    Present { value: e } => node_orch_operator_authorized_key_line(entry: e) == srv1_expected_line
+// A consumer is the docker-tunnel unit (the one that needs port forwarding).
+fn is_tunnel_unit(consumer: NodeOrchOperatorConsumer) -> Bool {
+  match consumer {
+    Srv1DockerTunnelUnit { argv: _ } => true
+    Srv1ToSrv2LanSessions { ssh_host_alias: _ } => false
   }
 }
 
-// The rendered srv2 entry is byte-for-byte the verified live line.
-test fn srv2_entry_renders_the_verified_live_line() -> Bool {
-  match node_orch_srv2_authorized_key_entry() {
+// A consumer is the srv1->srv2-lan session set (which needs no forwarding).
+fn is_lan_sessions(consumer: NodeOrchOperatorConsumer) -> Bool {
+  match consumer {
+    Srv1DockerTunnelUnit { argv: _ } => false
+    Srv1ToSrv2LanSessions { ssh_host_alias: _ } => true
+  }
+}
+
+// The rendered srv1 line is byte-for-byte the verified live line, and it is admitted only via the checked from=
+// constructor (built by authorized_key_from_source_addresses inside the line fn).
+test fn srv1_line_renders_the_verified_live_line() -> Bool {
+  match node_orch_srv1_authorized_key_line() {
     Absent => false
-    Present { value: e } => node_orch_operator_authorized_key_line(entry: e) == srv2_expected_line
+    Present { value: line } => node_orch_operator_authorized_key_line_text(line: line) == srv1_expected_line
+  }
+}
+
+// The rendered srv2 line is byte-for-byte the verified live line.
+test fn srv2_line_renders_the_verified_live_line() -> Bool {
+  match node_orch_srv2_authorized_key_line() {
+    Absent => false
+    Present { value: line } => node_orch_operator_authorized_key_line_text(line: line) == srv2_expected_line
   }
 }
 
@@ -92,21 +94,21 @@ test fn the_from_constructor_refuses_unquotable_and_empty_sets() -> Bool {
     })
 }
 
-// The typed admissions match the shipped option sets: srv1's docker-tunnel unit admits port-forwarding ABSENT and
-// its line omits no-port-forwarding; srv2's srv1->srv2-lan sessions admit it KEPT and its line carries it; each
-// host admits the peer tailnet address in from=. The carrier is folded against the line, not ornamental.
-test fn the_admissions_match_the_shipped_option_sets() -> Bool {
-  admits_holds(host_label: "srv1", want: PortForwardingAdmittedAbsent)
-    && admits_holds(host_label: "srv2", want: PortForwardingAdmittedKept)
-    && admits_holds(host_label: "srv1", want: TailnetSourceAdmitted)
-    && admits_holds(host_label: "srv2", want: TailnetSourceAdmitted)
-    && (match node_orch_srv1_authorized_key_entry() {
+// Each line's typed consumer and its shipped forwarding posture agree: srv1's consumer is the docker-tunnel unit
+// and its line omits no-port-forwarding; srv2's consumer is the srv1->srv2-lan sessions and its line carries it.
+// The posture lives only in the line's option set, so this reads the single authority -- nothing to drift from.
+test fn each_line_consumer_agrees_with_its_forwarding_posture() -> Bool {
+  match node_orch_srv1_authorized_key_line() {
+    Absent => false
+    Present { value: line } =>
+      is_tunnel_unit(consumer: line.consumer)
+        && (node_orch_operator_authorized_key_line_text(line: line).contains(",no-port-forwarding") == false)
+  }
+    && (match node_orch_srv2_authorized_key_line() {
       Absent => false
-      Present { value: e } => node_orch_operator_authorized_key_line(entry: e).contains("no-port-forwarding") == false
-    })
-    && (match node_orch_srv2_authorized_key_entry() {
-      Absent => false
-      Present { value: e } => node_orch_operator_authorized_key_line(entry: e).contains("no-port-forwarding")
+      Present { value: line } =>
+        is_lan_sessions(consumer: line.consumer)
+          && node_orch_operator_authorized_key_line_text(line: line).contains(",no-port-forwarding")
     })
 }
 
@@ -120,5 +122,4 @@ test fn the_keep_set_covers_both_and_names_the_ownership_hazard() -> Bool {
     && keep_holds(material: node_orch_srv1_ssh_key.material)
     && fleet_owned_holds(material: node_orch_ssh_key.material)
     && (fleet_owned_holds(material: node_orch_srv1_ssh_key.material) == false)
-    && (node_orch_operator_account_login as String) == "briansrls"
 }
