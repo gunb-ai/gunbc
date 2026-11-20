@@ -65,12 +65,10 @@ module gunbc.tailscale_join_converge
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.fleet.fleet_converge_mode_wires { tailscale_join_converge_wire }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.package_managers.apt {
-  apt_get_install_command,
-  package_tailscale,
-  AptGetInstallCommand,
-  AptGetInstallCommandReady,
-  AptGetInstallCommandRefused,
+import extdeps.package_managers.apt { package_tailscale }
+import gunbc.fleet.apt_third_party_repo_converge {
+  apt_third_party_repo_install,
+  read_one_host_word,
 }
 import extdeps.package_managers.dpkg {
   DpkgInstalledState,
@@ -78,8 +76,18 @@ import extdeps.package_managers.dpkg {
   DpkgPackageNotInstalled,
   DpkgPackageUnknown,
   DpkgQueryUndecidable,
+  dpkg_print_architecture_command,
   dpkg_query_status_command,
   dpkg_query_status_verdict_of,
+}
+
+import extdeps.os_release {
+  lsb_release_codename_command,
+}
+import extdeps.tailscale.apt_repo {
+  tailscale_apt_repo_noble,
+  tailscale_apt_repo_suite,
+  tailscale_packages,
 }
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
@@ -581,13 +589,6 @@ fn tailscale_join_tag_consistency() -> Bool {
 // THE APPLY LEGS.
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-// THE INSTALL COMMAND. The package name is the one row apt.dag carries for it and the command is that
-// module's admitted install route, not a hand-spelled apt-get. It runs elevated because apt is a root
-// mutation, and it runs ONLY on the arm the plan chose.
-fn tailscale_join_install_command() -> AptGetInstallCommand {
-  apt_get_install_command(package: package_tailscale)
-}
-
 // THE JOIN COMMAND, built from the plan's own hostname and the custody key file. Its credential argument is
 // the file reference -- the argv can carry a path and nothing else, structurally
 // (extdeps.tailscale.join::tailscale_auth_key_file_argument).
@@ -1030,19 +1031,43 @@ fn tailscale_join_install_leg(
   match package_action {
     JoinPackageAlreadyInstalled => Absent
     JoinPackageInstall =>
-      match tailscale_join_install_command() {
-        AptGetInstallCommandReady { command: command } =>
-          tailscale_join_elevated_refusal(
-            leg: run_elevated_leg(
-              subject: subject,
-              context: context,
-              argv: argv_words(command: command),
-              stdin_payload: "",
-            ),
-            label: "apt-get install",
-          )
-        AptGetInstallCommandRefused { cause: cause } =>
-          Present { value: concat("apt-get install not run: ", cause) }
+      match read_one_host_word(target: subject.target, context: context, command: dpkg_print_architecture_command()) {
+        // No architecture read, no repository line: apt keys its index by the dpkg arch, and rendering a deb
+        // line for a guessed arch could point apt at an index the host cannot use. Refuse rather than
+        // fabricate one (gunbc.design_argument::fail_closed).
+        Absent =>
+          Present {
+            value: "tailscale install refused: the host's dpkg architecture could not be read, so the tailscale apt repository line cannot be rendered",
+          }
+        Present { value: arch } =>
+          match read_one_host_word(target: subject.target, context: context, command: lsb_release_codename_command()) {
+            // No codename read, no install: the row pins its Ubuntu suite (tailscale_apt_repo_suite); rendering
+            // a deb line for a host whose codename nobody observed could point apt at a suite the host cannot
+            // resolve. Refuse rather than assume the fleet is uniform (gunbc.design_argument::fail_closed).
+            Absent =>
+              Present {
+                value: "tailscale install refused: the host's Ubuntu codename could not be read, so it cannot be checked against the pinned tailscale repository suite",
+              }
+            Present { value: codename } =>
+              if (codename as String) != (tailscale_apt_repo_suite as String) {
+                Present {
+                  value: concat(
+                    "tailscale install refused: the host codename ",
+                    codename as String,
+                    " is not the pinned tailscale repository suite ",
+                    tailscale_apt_repo_suite as String,
+                    "; the tailscale channel is published only for the pinned suite",
+                  ),
+                }
+              } else {
+                apt_third_party_repo_install(
+                  subject: subject,
+                  context: context,
+                  repo: tailscale_apt_repo_noble(arch: arch),
+                  packages: tailscale_packages,
+                )
+              }
+          }
       }
   }
 }
