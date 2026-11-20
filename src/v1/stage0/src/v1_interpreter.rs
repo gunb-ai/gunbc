@@ -12096,9 +12096,9 @@ macro_rules! v1_native_intercept_arms {
         $cb! {
             $fname, $args, $env, $ctx;
             arm "native_intercept.fold_list" { "fold_list" } =>
-                return eval_fold_list_native(&$args, $env, $ctx),
+                eval_fold_list_native(&$args, $env, $ctx),
             arm "native_intercept.fold_list_right" { "fold_list_right" } =>
-                return eval_fold_list_right_native(&$args, $env, $ctx),
+                eval_fold_list_right_native(&$args, $env, $ctx),
         }
     };
 }
@@ -12107,7 +12107,18 @@ macro_rules! v1_native_intercept_dispatch {
     ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
         match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_native_intercept(&$f) {
             Some(arm) => match arm {
-                $( eval_call_native_intercept_arm!($id) => $body , )*
+                $( eval_call_native_intercept_arm!($id) => return $body , )*
+            },
+            None => {}
+        }
+    };
+}
+
+macro_rules! v1_bound_native_intercept_dispatch {
+    ($f:ident, $a:ident, $e:ident, $c:ident; $(arm $id:tt { $lit:literal } => $body:expr ,)*) => {
+        match $crate::v1_interpreter_dispatch_generated::lookup_eval_call_native_intercept(&$f) {
+            Some(arm) => match arm {
+                $( eval_call_native_intercept_arm!($id) => return Some($body), )*
             },
             None => {}
         }
@@ -12127,11 +12138,13 @@ fn try_resolved_declaration_realization(
     v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
     // These are realizations of the declared list folds, not names that may shadow another fn.
     if owner == "std.algebra" {
-        match func_name.as_str() {
-            "fold_list" => return Some(eval_fold_list_native(args, env, ctx)),
-            "fold_list_right" => return Some(eval_fold_list_right_native(args, env, ctx)),
-            _ => {}
-        }
+        v1_native_intercept_arms!(
+            v1_bound_native_intercept_dispatch,
+            func_name,
+            args,
+            env,
+            ctx
+        );
     }
     let target = crate::v1_compiler_infer_lookup::resolved_declaration_call_target(Rc::new(
         crate::v1_std_core::DeclaredCallableIdentity {
