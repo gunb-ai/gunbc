@@ -7,7 +7,7 @@ import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReadi
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path_is, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds, Set }
 import std.algebra { FreeSemigroup }
-import std.algebra { trim, list_push, list_reverse }
+import std.algebra { trim }
 import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
 import std.filesystem { path_parent_directory }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -2947,7 +2947,7 @@ fn site_pxe_edge_ancestor_directories(path: String) -> List<String> {
   if parent == path {
     []
   } else {
-    list_push(site_pxe_edge_ancestor_directories(path: parent), parent)
+    [parent] + site_pxe_edge_ancestor_directories(path: parent)
   }
 }
 
@@ -2959,11 +2959,11 @@ fn site_pxe_edge_protected_install_dirs(listed_files: List<String>, stale_files:
   let stale = site_pxe_edge_stale_file_set(stale_files: stale_files)
   let kept = flat_map(listed_files, f => if set_contains(stale, f) { [] } else { site_pxe_edge_ancestor_directories(path: f) })
   let rendered = flat_map(desired, x => site_pxe_edge_ancestor_directories(path: x.path as String))
-  (kept + rendered) |> fold(init: empty_set() as Set<String>, f: (acc, d) => set_insert(acc, d))
+  (kept + rendered) |> fold(init: empty_set(), f: (acc, d) => set_insert(acc, d))
 }
 
 fn site_pxe_edge_stale_file_set(stale_files: List<String>) -> Set<String> {
-  fold(stale_files, init: empty_set() as Set<String>, f: (acc, p) => set_insert(acc, p))
+  fold(stale_files, init: empty_set(), f: (acc, p) => set_insert(acc, p))
 }
 
 // THE EMPTY-DIRECTORY HALF OF THE SAME DECISION, as a pure fold over the two listings so the withdrawal stays
@@ -2975,7 +2975,7 @@ fn site_pxe_edge_empty_owned_install_dirs(listed_dirs: List<String>, listed_file
   let protected = site_pxe_edge_protected_install_dirs(listed_files: listed_files, stale_files: stale_files, desired: desired)
   filter(listed_dirs, d => site_pxe_edge_owned_install_path(path: d) && !set_contains(protected, d))
     |> sort_by(d => string_length(s: d))
-    |> list_reverse()
+    |> reverse()
 }
 
 // The stale set as a pure fold over a listing, so the withdrawal is decidable from supplied values: every owned
