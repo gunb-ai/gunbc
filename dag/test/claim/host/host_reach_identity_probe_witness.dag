@@ -234,6 +234,19 @@ test fn registry_hosts_resolve_to_tailnet_names_and_sold_units_keep_the_bare_han
 // binding at all.
 data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv9 }
 
+// The OLD inline projection the 2026-08-23 duplicate-removal climb retired from the production fold;
+// it survives here as the endpoint-authority cut's tracked evidence declaration (the cut cites it by
+// name in dag/gunbc/endpoint_authority_replacement_cut.dag and endpoint_authority_replacement_cut_witness.dag).
+// Keeping it alive is required: deleting it would leave those witnesses citing a dead symbol. It wraps
+// the surviving projection spark_endpoint_for_binding, and the control below pins the two entry points
+// agree over one binding -- the duplicate-removal regression evidence (guarantee_ladder meta-obligation 4).
+fn spark_endpoint_or_empty(binding: DgxSparkRouterBinding) -> String {
+  match spark_endpoint_for_binding(binding: binding) {
+    Absent => ""
+    Present { value: endpoint } => endpoint
+  }
+}
+
 // AN UNDECIDED SLOT YIELDS NO ENDPOINT — not a fabricated address and not a placeholder. This is
 // the refusal spark_endpoint_for_binding's header claims, asserted through the projection rather
 // than about it, and it is why the fold below must CALL that function instead of re-deriving:
@@ -245,19 +258,26 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
   }
 }
 
-// THE BINDING-FOLD REGRESSION CONTROL. fleet_probe_endpoint_for folds dgx_spark_router_bindings
-// through spark_endpoint_for_binding rather than re-deriving an inline render, so the two entry points
-// cannot drift. On main the fold has zero live occupancy (all eight procured Sparks are sold,
-// dgx_spark_router_bindings is empty), so the fold never overrides the allocation-name init for any
-// host. The live content of THIS change is therefore the init itself: an owned host resolves through the
-// allocation rule to its tailnet name (RED on main, where the fold init was the bare handle), while a
-// sold unit is short-circuited ahead of the fold to its bare handle so no drawn name leaks. If a
-// retained Spark ever lands a SlotAssigned binding again, the fold-override arm reactivates and the
-// undecided-slot control above still pins what an undecided binding yields.
+// THE DUPLICATE-REMOVAL REGRESSION CONTROL (2026-08-23 climb). fleet_probe_endpoint_for once re-derived
+// the binding endpoint inline instead of calling spark_endpoint_for_binding; the two drifted-prone copies
+// were collapsed onto one projection. This control pins that the wrapper the probe fold consumes
+// (spark_endpoint_or_empty) and the projection it wraps (spark_endpoint_for_binding) AGREE over one
+// binding value: the left side is the wrapper, the right side an independent inline reading of the
+// projection. A mutant that forks the wrapper -- a different render, a dropped cast, the undecided
+// refusal mapped to a fabricated address rather than "" -- reds here while still typechecking.
+// dgx_spark_router_bindings is empty on main (all eight procured Sparks sold), so this exercises the two
+// entry points through the undecided fixture rather than through production; that is the reachability
+// occupancy the guard is allowed to have (DESIGN reachability-read-as-occupancy), and it is the evidence
+// the climb kept (guarantee_ladder meta-obligation 4: a climb deletes redundant PRODUCTION machinery,
+// never the evidence). The fold-init rule this change adds -- allocation name for an owned host, bare
+// handle for a sold unit -- is pinned by registry_hosts_resolve_to_tailnet_names_... above.
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  // The fold init (allocation name for owned, bare handle for sold) is what feeds both entry points.
-  fleet_probe_endpoint_for(host: "srv1") == "srv1.tailecbe08.ts.net"
-    && fleet_probe_endpoint_for(host: "srv9") == "srv9"
+  spark_endpoint_or_empty(binding: fixture_undecided_spark_slot)
+    == (match spark_endpoint_for_binding(binding: fixture_undecided_spark_slot) {
+         Absent => ""
+         Present { value: endpoint } => endpoint
+       })
+    && spark_endpoint_or_empty(binding: fixture_undecided_spark_slot) == ""
 }
 
 // IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.
