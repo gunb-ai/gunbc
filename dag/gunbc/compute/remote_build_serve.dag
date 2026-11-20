@@ -386,9 +386,6 @@ fn remote_build_serve_identity_answer(ending: RemoteBuildServeEnding, document: 
   }
 }
 
-  }
-}
-
 // A LOST HOST RECORD IS NOT A CLEAN RUN, the same reading gunbc.compute.test_run gives it: the work's
 // own ending is in the document, but the run is answered as unsuccessful so the loss is heard.
 fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
