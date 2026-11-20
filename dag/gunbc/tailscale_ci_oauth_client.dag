@@ -5,9 +5,9 @@ module gunbc.tailscale_ci_oauth_client
 // The hosted-runner shadow gate joins the tailnet as an ephemeral node tagged tag:ci-dispatch (@ref
 // gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign). The
 // tailscale/github-action authenticates via an OAuth client (not an auth key), so the credential's
-// identity is an OAuth client_id (public) and client_secret (private, held as a GitHub repository
-// secret). This module is the single home of the client's identity: which scope, which tag, whether
-// it is ephemeral, and which GitHub secrets hold the material.
+// identity is an OAuth client_id (public) and client_secret (private, held in GCP Secret Manager and
+// read over workload identity). This module is the single home of the client's identity: which scope,
+// which tag, whether it is ephemeral, and where the material lives.
 //
 // WHY AN OAUTH CLIENT AND NOT AN AUTH KEY. The tailscale/github-action README at v4.4.0 documents two
 // routes: the deprecated `authkey` input and the current `oauth-client-id`/`oauth-secret` pair. The
@@ -15,8 +15,11 @@ module gunbc.tailscale_ci_oauth_client
 // (@ref gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_secret_ref), which joins as tag:ci -- the
 // build hosts' own tag -- and is reusable and non-ephemeral (tailscale_fleet_auth_key_policy), so a runner
 // joining with it would sit in the build hosts' identity permanently while the dispatch grant is written
-// for ephemeral nodes; a new tagged auth key would need Secret Manager custody for a secret consumed only
-// on GitHub-hosted runners, which have no GCP WIF. The OAuth client is scoped (auth_keys:write, one tag),
+// for ephemeral nodes; a new tagged auth key was the thing that would need custody at all, and that
+// custody is now GCP Secret Manager (tailscale_oauth_client_secret_ref) read over workload identity, so
+// the earlier claim "GitHub-hosted runners have no GCP WIF" is corrected -- the repo already federates
+// GitHub→GCP on hosted runners (gunbc.auth.github_gcp_federation). The OAuth client is scoped
+// (auth_keys:write, one tag),
 // auditable (each mint is a separate API call logged in the admin console), and revocable independently of
 // the user. The action installs the tailscale CLI in the runner's container and logs the node out in its
 // post step.
@@ -24,28 +27,87 @@ module gunbc.tailscale_ci_oauth_client
 // THE FLEET AUTH KEY IS NOT THIS CREDENTIAL. The fleet auth key (gunbc.tailscale_fleet_auth_key) enrolls
 // the fleet's own permanent hosts through GCP Secret Manager custody and the fleet converge; its standing
 // (reusable, tag:ci, non-ephemeral) is recorded there. The CI OAuth client joins ONLY ephemeral
-// GitHub-hosted runners; it lives in GitHub Actions secrets and is consumed by the shadow gate workflow.
+// GitHub-hosted runners; its secret lives in GCP Secret Manager (tailscale_oauth_client_secret_ref) and is
+// read by the shadow gate over workload identity as the dedicated hosted-ci-secrets service account
+// (gunbc.hosted_ci_secrets_federation).
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.tailscale.acl { tag_ci_dispatch }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr, Bool }
+import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 
 // ── THE OAUTH CLIENT IDENTITY ──────────────────────────────────────────────────────────────────────
+//
+// PROVENANCE (verified by gentle-crab-832, 2026-11-20; cited, not re-derived). The operator created the
+// client in the Tailscale admin console on 2026-11-20: name gunbc-ci-github, scope auth_keys write, tag
+// tag:ci-dispatch, client id kNQLY8UpZK11CNTRL. It REPLACES an older client named `githubcirunners`, which
+// the operator will revoke once CI works on this one. The scope and tag below match that client.
+//
+// THE CLIENT NAME CONSTANT STILL CARRIES THE EARLIER DRAFT VALUE "gunbc-ci-shadow-gate" and is corrected to
+// the real value "gunbc-ci-github" in PR#2, together with the rewrite of
+// gunbc.witness.hosted_runner_shadow_gate_workflow and the regeneration of its committed YAML -- because the
+// name is EMITTED into that YAML (the mint_args client_name claim), so the value and the committed workflow
+// must move in one change under the generated-artifact drift watch. Until PR#2 lands, the value here is the
+// declared-but-not-yet-regenerated correction; PR#2 is its consumer.
 
 data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-shadow-gate"
+
+// THE CLIENT ID — PUBLIC, so it is a model constant. The operator also mirrored it as the annotation
+// `tailscale-oauth-client-id` on the Secret Manager secret; PR#2's gate resolves it from that annotation
+// over WIF, so a rotation that changes the id cannot silently drift from this row. (test.claim.
+// hosted_ci_secrets_custody_witness pins this row to the relayed value.)
+data ci_oauth_client_id: NonEmptyStr = "kNQLY8UpZK11CNTRL"
 data ci_oauth_client_scope: NonEmptyStr = "auth_keys:write"
 data ci_oauth_client_tags: List<NonEmptyStr> = [tag_ci_dispatch]
 data ci_oauth_client_ephemeral: Bool = true
 data ci_oauth_client_pre_authorized: Bool = true
 
-// ── THE GITHUB SECRETS ─────────────────────────────────────────────────────────────────────────────
+// ── THE OAUTH SECRET: ITS SINGLE HOME IS GCP SECRET MANAGER ─────────────────────────────────────────
 //
-// The OAuth client_id is semi-public (identifies the client, not a secret in the strict sense) but GitHub
-// Actions has no "variable" admission for the tailscale action's oauth-client-id input, so both halves live
-// as secrets. The secret names are the ones the shadow gate workflow references.
+// PROVENANCE (verified by gentle-crab-832, 2026-11-20; cited, not re-derived). The OPERATOR created the
+// client in the Tailscale admin console on 2026-11-20 (client gunbc-ci-github, scope auth_keys write, tag
+// tag:ci-dispatch, client id kNQLY8UpZK11CNTRL — see the identity block) and stored its client secret
+// 2026-11-20 19:13:51Z as projects/582015116396/secrets/tailscale-oauth-client-secret in project
+// gunbai-secrets, with the client id mirrored in an annotation `tailscale-oauth-client-id`. This is the
+// custody ledger's row for that secret (gunbc.secret_provision::fleet_secret_ref is the ref pattern; the
+// fleet key's tailscale_fleet_auth_key_secret_ref is the provenance/rotation style), matched by secret NAME
+// against fleet_secrets_gcp_project. The secret VERSION is not in the relayed facts and is NOT guessed: it
+// stays "pending" until the operator relays the version the read names (review 95989 — a version written
+// before it was read was a guessed number in a security row).
+//
+// WHO READS IT (single consumer): the hosted-runner shadow gate
+// (gunbc.witness.hosted_runner_shadow_gate_workflow), over GitHub→GCP workload identity as the dedicated
+// low-privilege hosted-ci-secrets service account (gunbc.hosted_ci_secrets_federation), which holds a
+// pinned-version secretmanager.secretAccessor grant for THIS secret. The client id is fetched from the
+// secret's annotation over the same WIF read, so the model constant ci_oauth_client_id stays cross-checked
+// against the live value at runtime.
+//
+// ROTATION. If this client secret is lost or leaked: (1) create a NEW OAuth client in the Tailscale admin
+// console with the same scope (auth_keys write) and tag (tag:ci-dispatch); (2) update ci_oauth_client_id
+// (and ci_oauth_client_name if renamed) to the new client's; (3) add the new client secret as a NEW VERSION
+// of projects/582015116396/secrets/tailscale-oauth-client-secret (never overwrite history) and update the
+// `tailscale-oauth-client-id` annotation; (4) re-point the pinned accessor grant to the new version; (5)
+// REVOKE the old client in the admin console. (The operator's pending revocation of the superseded
+// `githubcirunners` client is a separate cleanup, tracked once CI works on this client.)
+data tailscale_oauth_client_secret_ref: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "tailscale-oauth-client-secret" as NonEmptyStr,
+  version: "pending",
+  hash_state: HashPending,
+}
 
+// DEPRECATED — PR#2 RETIRES THEM. These name the GitHub Actions repository secrets the shadow gate USED to
+// read. The gate now reads Secret Manager over WIF (see tailscale_oauth_client_secret_ref and the header);
+// these are kept only so the still-current witness compiles, and PR#2 deletes them with its rewrite of
+// gunbc.witness.hosted_runner_shadow_gate_workflow. Nothing new should consume them.
+//
+// (Historical note, retained so the correction is legible: the OAuth client_id is semi-public — it
+// identifies the client and is not a secret in the strict sense — and the earlier draft held BOTH halves as
+// GitHub secrets because GitHub Actions has no "variable" admission for the tailscale action's
+// oauth-client-id input. With WIF the gate resolves the id from the secret's annotation instead.)
 data ci_oauth_client_id_github_secret: NonEmptyStr = "TS_OAUTH_CLIENT_ID"
 data ci_oauth_client_secret_github_secret: NonEmptyStr = "TS_OAUTH_SECRET"
 
