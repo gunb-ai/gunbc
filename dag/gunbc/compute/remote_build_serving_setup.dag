@@ -53,7 +53,7 @@ import std.measure { ByteSize, byte_size_count }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode, PosixLoginShell, LoginShellObserved, LoginShellUnobserved }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 import extdeps.ssh.keys { authorized_key_entry_line }
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -479,7 +479,14 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
 // from THIS PR 5-owned row: the hosts PR 5 will, in the apply arm, converge and then admit to
 // the live roster one-by-one (each only after its home/store/account are created and read back).
 fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+  // ken (operator_host_e2d4b7) joins the CANDIDATE set only: it is admitted for the OBSERVE/CONVERGE arms so
+  // the converge can create its /opt/gunbc/compute/capacity home. This does NOT put ken on
+  // gunbc.compute.remote_build_hosts::remote_build_serving_hosts nor into client dispatch -- that roster stays
+  // the ONE live gate, and ken's roster join is separately gated on its capacity ledger having a traversable
+  // home (the build-lane concern at gunbc.integration_concern, decider the build lane). Its build seat is
+  // priced against MEASURED bytes -- gunbc.host / test.claim.fleet.ken_build_host_gate_witness proves two seats
+  // fit over the live 56 GiB serving charge -- so the srv14 "no quiescent read" bar does not apply here.
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7]
 }
 
 // Render the account's authorized_keys content for the host: all admitted client keys rendered through

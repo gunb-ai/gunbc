@@ -2,7 +2,7 @@ module test.claim.integration_concern_witness
 
 import std.types { Bool, String, List, NonEmptyStr, CommitSha }
 import std.optional { Present, Absent }
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, string_contains }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.guarantee_stall { climbs_when_awaiting }
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
@@ -16,7 +16,9 @@ import gunbc.integration_concern {
   concern_text,
 }
 import gunbc.integration_concern.roster { integration_concern_roster }
-import gunbc.integration_concern.reading { fork_rows_have_distinct_authorities }
+import gunbc.integration_concern.reading {
+  fork_rows_have_distinct_authorities, reading_text,
+}
 
 // SUPPLIED ROWS (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the relevance and
 // closure rules are judged over rows built here, and the last two claims run the same functions over
@@ -198,4 +200,23 @@ test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and
     && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.apply_legs"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
     && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.print_converge"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
     && !names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+}
+
+// EVERY ROW RENDERS (a sighting authored as a list literal where the field type says
+// FreeSemigroup<SightingEvidence> typechecks into a plain list and dies only when someone asks its head --
+// which is why two rows shipped that way in #16602 and nothing noticed: no fold on this branch renders the
+// register, so nothing ever asked). This claim is that renderer: reading_text walks every row's sightings and
+// every sighting's evidence. It failed at main 7dc10cb275c with "cannot access field 'head' on List"
+// (ledger byte 416920, inside sighting_lines) before the two rows' evidence was authored in the shape the
+// field declares; it can go red again only when a row is authored outside that shape, and the message names
+// the row. The two needles are printed by concern_text itself: the fan row's identity (unique in the corpus)
+// and a clause of the host-key row's question -- its identity also sits in another row's account prose, so
+// the identity would not discriminate. The error class itself is filed in the ledger as
+// gunbc.recurring_failure_mode.a_data_literal_authors_a_field_outside_the_shape_its_type_declares (gunb-ai/gunbc#16708);
+// this claim is the rung-2 interim the row records, not the guarantee -- the guarantee is the typecheck-side
+// inhabitance refusal the row's trigger names.
+test fn every_row_renders_through_the_reading() -> Bool {
+  let text: String = reading_text(title: "every row, rendered", rows: integration_concern_roster)
+  string_contains(s: text, pattern: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer")
+    && string_contains(s: text, pattern: "the lease table read naming which MAC holds 192.168.1.236")
 }

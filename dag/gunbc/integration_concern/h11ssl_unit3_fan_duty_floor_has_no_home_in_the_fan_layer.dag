@@ -35,14 +35,14 @@ data h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer: IntegrationConcer
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: h11ssl_unit3_reach_report_sighting_revision,
-      evidence: [
-        CitesDeclaration {
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
           declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
         },
-        CitesDeclaration {
+        tail: [CitesDeclaration {
           declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported"),
-        },
-      ],
+        }],
+      },
       account: "Transcribed from the operator's report of 2026-11-16, relayed in smart-crane-730's message to this lane: the hand install could not bring the GPUs up because the board holds its fans at a 20% idle floor until something asks for more, the operator set fan zones A and B to 100% from the BMC's own control, and that setting reverts to the floor on every power-off. Nothing in this repository has read or written this board's fan control, and this row asks no one to: it names the requirement and leaves the mode row to the cooling lane, which owns the board-function and fan-mode grain this belongs to. The figures themselves stay transcribed-and-unclosed in gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.",
     },
     tail: [],
