@@ -42,7 +42,13 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_supplementary_groups,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
-import gunbc.compute.host_capacity { host_capacity_home_directories_admitted }
+import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host }
+// The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
+// cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_capped_at → observed_cgroup_bound) that
+// serving_user_work_slice_deviations settles on, plus the slice's canonical unit name.
+import gunbc.compute.unit_bounds { user_work_slice_cgroup_capped_at }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import std.measure { ByteSize }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode, PosixLoginShell, LoginShellObserved, LoginShellUnobserved }
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
@@ -112,6 +118,14 @@ type ServingDeviation
   // installs the file AT the declared mode, so remediating the content also fixes the mode.
   | AuthorizedKeysModeMismatch { path: String, declared: FileMode, observed: FileMode }
   | ServeBinaryModeMismatch { path: String, declared: FileMode, observed: FileMode }
+  // The serving account's user-work slice is not capped at the carve ceiling with swap forbidden, as
+  // THE READER JUDGES IT (gunbc.compute.unit_bounds::observed_cgroup_bound on the slice's cgroup
+  // memory.max/memory.swap.max — the same read the --user wrap admission makes, so 'settled' and
+  // 'the wrap is admitted' are one judgment). A slice whose cgroup memory.max is absent, differs from
+  // the reservation ceiling, or whose memory.swap.max is not 0 is uncapped: the wrap into
+  // gunbc-user-work.slice would refuse, so the apply installs the slice unit and reloads. The unit
+  // name is carried so the receipt names the slice the reader binds to.
+  | UserWorkSliceUncapped { unit_name: NonEmptyStr }
 
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
@@ -135,6 +149,7 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     StoreStagingModeMismatch { path: _, declared: _, observed: _ } => "store.staging.mode"
     AuthorizedKeysModeMismatch { path: _, declared: _, observed: _ } => "authorized_keys.mode"
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => "serve.binary.mode"
+    UserWorkSliceUncapped { unit_name } => concat("user_work.slice.", unit_name)
   }
 }
 
@@ -166,6 +181,7 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     StoreStagingModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     AuthorizedKeysModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     ServeBinaryModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
+    UserWorkSliceUncapped { unit_name } => concat("user_work.slice (", unit_name, " not capped at the ceiling with swap forbidden)")
   }
 }
 
@@ -731,6 +747,14 @@ type ServingObserved {
   // confirmed-present file, and a refused read under a present subject is an unknown, never a pass.
   authorized_keys_mode: ServingSubjectValue
   serve_binary_mode: ServingSubjectValue
+  // The user-work slice's live cgroup cap, as READ FROM THE CGROUP FILES the reader reads
+  // (memory.max / memory.swap.max of the slice's own cgroup), parsed with the one authority
+  // extdeps.linux.cgroup_v2_memory. These feed gunbc.compute.unit_bounds::observed_cgroup_bound in
+  // serving_assess, so the converge settles on the very judgment that admits the --user wrap:
+  // present memory.max equal to the carve ceiling and present swap 0. An absent reading is an
+  // unproven cap (never read as capped) — the slice then reads uncapped and the apply installs it.
+  user_work_slice: ByteSize?
+  user_work_slice_swap: ByteSize?
   // the host_capacity ledger, read per row: one entry per ledger directory the observe read,
   // keyed BY PATH. A desired row with NO entry here is an unknown (nobody read it), NOT an
   // absence -- absence is proven only by a leg established to the empty string (stat 'No such
@@ -971,6 +995,24 @@ fn serving_ledger_declared_mode_octal(t: OwnedDirectoryTarget) -> String {
 // assess_by_deviations_and_unknowns — so UNKNOWNs WIN over deviations: a partly-unread host
 // is GoalIndeterminate (the observe refuses), NOT GoalDiverged (which would license the
 // apply writing items nobody actually read). This is gunbc.design_argument::fail_closed.
+// The user-work slice deviation, decided through the READER's own admission: unit_bounds::
+// user_work_slice_cgroup_capped_at runs the slice's cgroup memory.max / memory.swap.max through
+// observed_cgroup_bound — the same judgment that admits the --user wrap into gunbc-user-work.slice.
+// The ceiling is the reservation the host-capacity authority reads for this host, never a
+// hardcoded seat count. An absent, differing, or swap-uncapped reading means the wrap would refuse:
+// the slice is uncapped and the apply installs it. Mirrors the account arm — one fold entry, early.
+fn serving_user_work_slice_deviations(d: RemoteBuildServingDesired, o: ServingObserved) -> List<ServingDeviation> {
+  if user_work_slice_cgroup_capped_at(
+    memory_max: o.user_work_slice,
+    swap: o.user_work_slice_swap,
+    ceiling: user_work_slice_memory_max_for_host(host: d.host),
+  ) {
+    []
+  } else {
+    [UserWorkSliceUncapped { unit_name: user_work_slice_unit_name }]
+  }
+}
+
 fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: ServingPlanInput) -> ServingAssessment {
   match d.forced_command_line {
     Absent => GoalAssessmentRefused { cause: ServingAssessRefusal { reason: "the host's forced-command line is unrenderable; a host that cannot serve is refused, never written" } }
@@ -997,7 +1039,10 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       )
       let deviations = concat(
         concat(
-          serving_account_deviations(d: d, passwd: o.passwd),
+          concat(
+            serving_account_deviations(d: d, passwd: o.passwd),
+            serving_user_work_slice_deviations(d: d, o: o),
+          ),
           concat(serving_group_deviations(d: d, group: o.group), serving_group_presence_deviations(d: d, group: o.group)),
         ),
         concat(
@@ -1303,6 +1348,11 @@ fn serving_observed_from_reads(
   // A3: the two file-mode legs, gated the same way — read only under a confirmed-present file.
   authorized_keys_mode: ObservationAttempt<String, ServingLegFailure>?,
   serve_binary_mode: ObservationAttempt<String, ServingLegFailure>?,
+  // The user-work slice's live cgroup cap, already parsed to a ByteSize by the observe's slice read
+  // (memory.max / memory.swap.max of the slice's cgroup). Absent means 'not read / unreadable' and is
+  // never treated as capped by serving_assess; the apply then installs the slice.
+  user_work_slice: ByteSize?,
+  user_work_slice_swap: ByteSize?,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {
@@ -1341,6 +1391,8 @@ fn serving_observed_from_reads(
     ),
     authorized_keys_mode: serving_subject_value_leg("authorized_keys.mode", serving_authorized_keys_presence_gate(ak_g), authorized_keys_mode),
     serve_binary_mode: serving_subject_value_leg("serve.binary.mode", serve_binary_g, serve_binary_mode),
+    user_work_slice: user_work_slice,
+    user_work_slice_swap: user_work_slice_swap,
     target_arch: target_arch,
     ledger_rows: ledger_rows,
   }

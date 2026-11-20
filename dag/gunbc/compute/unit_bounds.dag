@@ -3,7 +3,7 @@ module gunbc.compute.unit_bounds
 import std.types { String, List, NonEmptyStr, Bool, Int }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnUserManager }
 import extdeps.linux.cgroup_v2_memory {
-  CgroupMemoryLevel, CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
+  CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
   CgroupHardMemoryLimit, CgroupHardLimitBinds, CgroupNoHardLimit, cgroup_tightest_hard_memory_limit,
 }
 import std.algebra { trim, string_contains }
@@ -248,6 +248,31 @@ fn cgroup_bound_fallthrough_wire(bound: CgroupBound) -> String {
     CgroupBoundedBy { cgroup: _, memory_max: _ } => "chain-bounded"
     CgroupChainUnbounded => "chain-unbounded"
     CgroupChainNotObserved { detail: _ } => "chain-unread"
+  }
+}
+
+// Is the user-work slice's OWN cgroup capped at exactly `ceiling` with swap forbidden — decided by the
+// very judgment that admits the --user wrap, observed_cgroup_bound over the slice's cgroup memory.max
+// and memory.swap.max (extdeps.linux.cgroup_v2_memory is the one authority for those files)? The
+// remote-build serving converge settles on THIS, so 'the slice is capped at the ceiling' and 'the wrap
+// is admitted' are one judgment and cannot disagree. memory_max/swap are the parsed memory.max /
+// memory.swap.max of the slice's cgroup; an absent reading is never read as capped. A non-zero swap
+// makes swap_forbidden_on_chain false, so only swap 0 settles; a zero/unbounded memory.max reads
+// unbounded and is never capped.
+fn user_work_slice_cgroup_capped_at(memory_max: ByteSize?, swap: ByteSize?, ceiling: ByteSize) -> Bool {
+  match memory_max {
+    none => false
+    Present { value: m } => match swap {
+      none => false
+      Present { value: s } => match observed_cgroup_bound(observation: CgroupChainRead {
+        levels: [ CgroupMemoryLevelRead { dir: user_work_slice_unit_name, max: CgroupMemoryLimited { bytes: m }, high: CgroupMemoryUnlimited } ],
+        swap_max: [ CgroupMemoryLimited { bytes: s } ],
+      }) {
+        CgroupBoundedBy { memory_max: bound } => byte_size_count(b: bound) == byte_size_count(b: ceiling)
+        CgroupChainUnbounded => false
+        CgroupChainNotObserved { detail: _ } => false
+      }
+    }
   }
 }
 
