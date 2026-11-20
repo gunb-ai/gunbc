@@ -46,8 +46,11 @@ import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, us
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_capped_at → observed_cgroup_bound) that
 // serving_user_work_slice_deviations settles on, plus the slice's canonical unit name.
-import gunbc.compute.unit_bounds { user_work_slice_cgroup_capped_at }
-import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import gunbc.compute.unit_bounds {
+  user_work_slice_cgroup_capped_at, SliceCapObservation, SliceCapValue, SliceCapUnbounded, SliceCapUnparseable, SliceCapRefused,
+  UserWorkSliceUncappedReason, WhichMax, WhichHigh, WhichSwap, slice_cap_max_bound_eq, slice_cap_high_eq, slice_cap_swap_forbidden,
+}
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import std.measure { ByteSize }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_mode, owned_directory_mode_matches, OwnedDirectoryMode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode, PosixLoginShell, LoginShellObserved, LoginShellUnobserved }
@@ -125,7 +128,7 @@ type ServingDeviation
   // the reservation ceiling, or whose memory.swap.max is not 0 is uncapped: the wrap into
   // gunbc-user-work.slice would refuse, so the apply installs the slice unit and reloads. The unit
   // name is carried so the receipt names the slice the reader binds to.
-  | UserWorkSliceUncapped { unit_name: NonEmptyStr }
+  | UserWorkSliceUncapped { unit_name: NonEmptyStr, reason: UserWorkSliceUncappedReason }
 
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
@@ -149,7 +152,7 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     StoreStagingModeMismatch { path: _, declared: _, observed: _ } => "store.staging.mode"
     AuthorizedKeysModeMismatch { path: _, declared: _, observed: _ } => "authorized_keys.mode"
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => "serve.binary.mode"
-    UserWorkSliceUncapped { unit_name } => concat("user_work.slice.", unit_name)
+    UserWorkSliceUncapped { unit_name, reason: _ } => concat("user_work.slice.", unit_name)
   }
 }
 
@@ -181,7 +184,7 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     StoreStagingModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     AuthorizedKeysModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     ServeBinaryModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
-    UserWorkSliceUncapped { unit_name } => concat("user_work.slice (", unit_name, " not capped at the ceiling with swap forbidden)")
+    UserWorkSliceUncapped { unit_name, reason } => concat("user_work.slice (", unit_name, " not capped at the ceiling with swap forbidden: ", slice_cap_reason_text(reason: reason), ")")
   }
 }
 
@@ -748,13 +751,16 @@ type ServingObserved {
   authorized_keys_mode: ServingSubjectValue
   serve_binary_mode: ServingSubjectValue
   // The user-work slice's live cgroup cap, as READ FROM THE CGROUP FILES the reader reads
-  // (memory.max / memory.swap.max of the slice's own cgroup), parsed with the one authority
-  // extdeps.linux.cgroup_v2_memory. These feed gunbc.compute.unit_bounds::observed_cgroup_bound in
-  // serving_assess, so the converge settles on the very judgment that admits the --user wrap:
-  // present memory.max equal to the carve ceiling and present swap 0. An absent reading is an
-  // unproven cap (never read as capped) — the slice then reads uncapped and the apply installs it.
-  user_work_slice: ByteSize?
-  user_work_slice_swap: ByteSize?
+  // (memory.max / memory.high / memory.swap.max of the slice's own cgroup), each carried as its TYPED
+  // outcome (value / unbounded / unparseable with its body / refused with its cause) rather than a folded
+  // optional. These feed gunbc.compute.unit_bounds::observed_cgroup_bound in serving_assess, so the
+  // converge settles on the very judgment that admits the --user wrap: memory.max bounded to the carve
+  // ceiling, memory.high at the ceiling's derived high, swap forbidden (0). Any non-value outcome is an
+  // unproven cap (never read as capped) -- the slice reads uncapped and the apply installs it, and the
+  // deviation/receipt name which control failed and how.
+  user_work_slice_max: SliceCapObservation
+  user_work_slice_high: SliceCapObservation
+  user_work_slice_swap: SliceCapObservation
   // the host_capacity ledger, read per row: one entry per ledger directory the observe read,
   // keyed BY PATH. A desired row with NO entry here is an unknown (nobody read it), NOT an
   // absence -- absence is proven only by a leg established to the empty string (stat 'No such
@@ -996,20 +1002,58 @@ fn serving_ledger_declared_mode_octal(t: OwnedDirectoryTarget) -> String {
 // is GoalIndeterminate (the observe refuses), NOT GoalDiverged (which would license the
 // apply writing items nobody actually read). This is gunbc.design_argument::fail_closed.
 // The user-work slice deviation, decided through the READER's own admission: unit_bounds::
-// user_work_slice_cgroup_capped_at runs the slice's cgroup memory.max / memory.swap.max through
-// observed_cgroup_bound — the same judgment that admits the --user wrap into gunbc-user-work.slice.
-// The ceiling is the reservation the host-capacity authority reads for this host, never a
-// hardcoded seat count. An absent, differing, or swap-uncapped reading means the wrap would refuse:
-// the slice is uncapped and the apply installs it. Mirrors the account arm — one fold entry, early.
+// user_work_slice_cgroup_capped_at runs the slice's cgroup memory.max / memory.high / memory.swap.max
+// through observed_cgroup_bound — the same judgment that admits the --user wrap into
+// gunbc-user-work.slice. The ceiling is the reservation the host-capacity authority reads for this host,
+// never a hardcoded seat count; the high is that ceiling's derived high (slice_bounds
+// user_work_slice_memory_high_of). A control whose reading is not a matching finite value (unbounded,
+// unparseable, refused, or a differing value) means the wrap would refuse: the slice is uncapped, the
+// apply installs it, and the reason names which control failed and how. Mirrors the account arm — one
+// fold entry, early.
 fn serving_user_work_slice_deviations(d: RemoteBuildServingDesired, o: ServingObserved) -> List<ServingDeviation> {
-  if user_work_slice_cgroup_capped_at(
-    memory_max: o.user_work_slice,
-    swap: o.user_work_slice_swap,
-    ceiling: user_work_slice_memory_max_for_host(host: d.host),
-  ) {
+  let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+  let high_expected = match user_work_slice_memory_high_of(memory_max: ceiling) {
+    UserWorkSliceHighDerived { bytes: h } => Present { value: h }
+    UserWorkSliceHighGapExceedsMax => Absent
+  }
+  if user_work_slice_cgroup_capped_at(max: o.user_work_slice_max, high: o.user_work_slice_high, swap: o.user_work_slice_swap, ceiling: ceiling, high_expected: high_expected) {
     []
   } else {
-    [UserWorkSliceUncapped { unit_name: user_work_slice_unit_name }]
+    [UserWorkSliceUncapped { unit_name: user_work_slice_unit_name, reason: slice_cap_uncapped_reason(max: o.user_work_slice_max, high: o.user_work_slice_high, swap: o.user_work_slice_swap, ceiling: ceiling, high_expected: high_expected) }]
+  }
+}
+
+// Which control an uncapped slice failed on: the first whose observation is not a matching finite value
+// (memory.max, then memory.high, then swap), carrying that control's typed outcome so the deviation and
+// the receipt name the leg and the reason.
+fn slice_cap_uncapped_reason(max: SliceCapObservation, high: SliceCapObservation, swap: SliceCapObservation, ceiling: ByteSize, high_expected: ByteSize?) -> UserWorkSliceUncappedReason {
+  if slice_cap_max_bound_eq(cap: max, ceiling: ceiling) {
+    if slice_cap_high_eq(cap: high, expected: high_expected) {
+      WhichSwap { outcome: swap }
+    } else {
+      WhichHigh { outcome: high }
+    }
+  } else {
+    WhichMax { outcome: max }
+  }
+}
+
+// A control's typed outcome as text: unbounded, unparseable (with the raw body), refused (with the cause),
+// or a value that simply differs from what the ceiling demands.
+fn slice_cap_outcome_text(outcome: SliceCapObservation) -> String {
+  match outcome {
+    SliceCapValue { bytes: _ } => "value differs from the ceiling"
+    SliceCapUnbounded => "unbounded"
+    SliceCapUnparseable { body: b } => concat("unparseable (", b, ")")
+    SliceCapRefused { cause: c } => concat("refused (", c, ")")
+  }
+}
+
+fn slice_cap_reason_text(reason: UserWorkSliceUncappedReason) -> String {
+  match reason {
+    WhichMax { outcome: o } => concat("memory.max ", slice_cap_outcome_text(outcome: o))
+    WhichHigh { outcome: o } => concat("memory.high ", slice_cap_outcome_text(outcome: o))
+    WhichSwap { outcome: o } => concat("memory.swap.max ", slice_cap_outcome_text(outcome: o))
   }
 }
 
@@ -1348,11 +1392,12 @@ fn serving_observed_from_reads(
   // A3: the two file-mode legs, gated the same way — read only under a confirmed-present file.
   authorized_keys_mode: ObservationAttempt<String, ServingLegFailure>?,
   serve_binary_mode: ObservationAttempt<String, ServingLegFailure>?,
-  // The user-work slice's live cgroup cap, already parsed to a ByteSize by the observe's slice read
-  // (memory.max / memory.swap.max of the slice's cgroup). Absent means 'not read / unreadable' and is
-  // never treated as capped by serving_assess; the apply then installs the slice.
-  user_work_slice: ByteSize?,
-  user_work_slice_swap: ByteSize?,
+  // The user-work slice cgroup cap, read from the cgroup files by the observe's slice leg as its typed
+  // outcome (value / unbounded / unparseable with its body / refused with its cause); any non-value
+  // outcome is never treated as capped by serving_assess, and the apply then installs the slice.
+  user_work_slice_max: SliceCapObservation,
+  user_work_slice_high: SliceCapObservation,
+  user_work_slice_swap: SliceCapObservation,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
 ) -> ServingObserved {
@@ -1391,7 +1436,8 @@ fn serving_observed_from_reads(
     ),
     authorized_keys_mode: serving_subject_value_leg("authorized_keys.mode", serving_authorized_keys_presence_gate(ak_g), authorized_keys_mode),
     serve_binary_mode: serving_subject_value_leg("serve.binary.mode", serve_binary_g, serve_binary_mode),
-    user_work_slice: user_work_slice,
+    user_work_slice_max: user_work_slice_max,
+    user_work_slice_high: user_work_slice_high,
     user_work_slice_swap: user_work_slice_swap,
     target_arch: target_arch,
     ledger_rows: ledger_rows,

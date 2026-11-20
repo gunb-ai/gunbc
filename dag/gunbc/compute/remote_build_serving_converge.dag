@@ -33,6 +33,10 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
   ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item,
   serving_passwd_uid, serving_gate_and, serving_account_presence_gate,
+  slice_cap_uncapped_reason, slice_cap_reason_text,
+}
+import gunbc.compute.unit_bounds {
+  SliceCapObservation, SliceCapValue, SliceCapUnbounded, SliceCapUnparseable, SliceCapRefused, user_work_slice_cgroup_capped_at,
 }
 import extdeps.access.posix { FileMode, file_mode_octal }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
@@ -338,32 +342,43 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
 // renders to a ByteSize only for a finite limit (a cgroup 'max' = unlimited reads Absent, i.e. NOT
 // capped); swap reads its ByteSize so serving_assess can require swap 0. An unresolvable serving uid
 // (a fresh host, an unreadable passwd) reads both Absent — never capped — so the apply installs.
-type ServingSliceCap { memory_max: ByteSize?, swap: ByteSize? }
+type ServingSliceCap { max: SliceCapObservation, high: SliceCapObservation, swap: SliceCapObservation }
 
 fn serving_user_work_slice_cgroup_dir(uid: Int) -> String {
   concat("/sys/fs/cgroup/user.slice/user-", to_string(uid), ".slice/user@", to_string(uid), ".service/", user_work_slice_unit_name)
 }
 
+// A cgroup memory control body mapped to its typed outcome: a finite count is a value, 'max' is
+// unbounded, and anything else is unparseable with its raw body. The swap control maps the same way
+// (a 0 count is the forbidden value; 'max' reads unbounded, which never settles).
+fn serving_slice_cap_of_body(body: String) -> SliceCapObservation {
+  match parse_cgroup_memory_limit(body: body) {
+    CgroupMemoryLimited { bytes: b } => SliceCapValue { bytes: b }
+    CgroupMemoryUnlimited => SliceCapUnbounded
+    CgroupMemoryLimitUnparseable { body: b } => SliceCapUnparseable { body: b }
+  }
+}
+
+fn serving_slice_cap_of_read(read: ObservationAttempt<String, ServingLegFailure>) -> SliceCapObservation {
+  match read {
+    ObservationEstablished { observed: body } => serving_slice_cap_of_body(body: body)
+    ObservationRefused { cause: c } => SliceCapRefused { cause: c }
+  }
+}
+
 fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, uid: Int?) -> ServingSliceCap {
+  let unknown = SliceCapRefused { cause: "account uid unknown; slice cgroup not locatable" }
   match uid {
-    Absent => ServingSliceCap { memory_max: Absent, swap: Absent }
+    Absent => ServingSliceCap { max: unknown, high: unknown, swap: unknown }
     Present { value: u } => {
       let dir = serving_user_work_slice_cgroup_dir(uid: u)
       let max_read = serving_leg_read(item: "user_work.slice.memory_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.max")))
+      let high_read = serving_leg_read(item: "user_work.slice.memory_high", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.high")))
       let swap_read = serving_leg_read(item: "user_work.slice.memory_swap_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.swap.max")))
       ServingSliceCap {
-        memory_max: match max_read {
-          ObservationEstablished { observed: t } => match parse_cgroup_memory_limit(body: t) {
-            CgroupMemoryLimited { bytes: b } => Present { value: b }
-            CgroupMemoryUnlimited => Absent
-            CgroupMemoryLimitUnparseable { body: _ } => Absent
-          }
-          ObservationRefused { cause: _ } => Absent
-        },
-        swap: match swap_read {
-          ObservationEstablished { observed: t } => parse_cgroup_nonnegative_bytes(text: t)
-          ObservationRefused { cause: _ } => Absent
-        },
+        max: serving_slice_cap_of_read(read: max_read),
+        high: serving_slice_cap_of_read(read: high_read),
+        swap: serving_slice_cap_of_read(read: swap_read),
       }
     }
   }
@@ -455,7 +470,8 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     checkout_revision: checkout_revision_value,
     authorized_keys_mode: authorized_keys_mode_value,
     serve_binary_mode: serve_binary_mode_value,
-    user_work_slice: slice_cap.memory_max,
+    user_work_slice_max: slice_cap.max,
+    user_work_slice_high: slice_cap.high,
     user_work_slice_swap: slice_cap.swap,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
@@ -1185,7 +1201,7 @@ fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionConte
 // READS THE CAP BACK THROUGH THE SAME CGROUP READ the observe and the reader use: MemoryMax must equal the
 // ceiling and MemorySwapMax 0, or the step fails. converge_execute_with halts at the first failed write,
 // so an unsettled slice stops the pass before the serve binary is ever written.
-fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, unit_path: String, memory_max: ByteSize, memory_swap_max: ByteSize, expected_content: String) -> ConvergeStep {
+fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, expected_content: String) -> ConvergeStep {
   let staging_local = "target/gunbc-user-work-slice.upload"
   let local_write = Filesystem.Write(path: staging_local, content: expected_content)
   if local_write.success == false {
@@ -1214,16 +1230,11 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
                   StepFailed { cause: c } => StepFailed { cause: concat("daemon-reload: ", c) }
                   StepDone => {
                     let cap = serving_leg_slice_cap(target: target, context: context, uid: Present { value: uid })
-                    match cap.memory_max {
-                      Absent => StepFailed { cause: "user-work slice memory.max did not read back as a finite cap after install" }
-                      Present { value: m } => if byte_size_count(b: m) != byte_size_count(b: memory_max) {
-                        StepFailed { cause: "user-work slice memory.max did not read back at the carve ceiling" }
-                      } else { match cap.swap {
-                        Absent => StepFailed { cause: "user-work slice memory.swap.max did not read back after install" }
-                        Present { value: s } => if byte_size_count(b: s) == byte_size_count(b: memory_swap_max) { StepDone } else {
-                          StepFailed { cause: "user-work slice memory.swap.max did not read back forbidden (0)" }
-                        }
-                      } }
+                    let high_expected = Present { value: memory_high }
+                    if user_work_slice_cgroup_capped_at(max: cap.max, high: cap.high, swap: cap.swap, ceiling: memory_max, high_expected: high_expected) {
+                      StepDone
+                    } else {
+                      StepFailed { cause: join(["user-work slice did not settle after install: ", slice_cap_reason_text(reason: slice_cap_uncapped_reason(max: cap.max, high: cap.high, swap: cap.swap, ceiling: memory_max, high_expected: high_expected))], "") }
                     }
                   }
                 }
@@ -1290,7 +1301,7 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // profile under sudo -u.
     EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
     EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
-    InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: _, memory_swap_max: mswap, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_swap_max: mswap, expected_content: content)
+    InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: mhigh, memory_swap_max: _, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_high: mhigh, expected_content: content)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
   })

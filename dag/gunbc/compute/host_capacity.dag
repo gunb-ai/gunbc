@@ -41,7 +41,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   HostCapacityHome, host_capacity_ledger_home, host_capacity_carrier_of,
   compute_build_memory_ceiling_default, host_capacity_home_root,
 }
-import gunbc.runner.runner_slot_desired { host_build_pool_reservation }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation, host_build_pool_is_carved }
+import gunbc.live_deploy.slice_bounds { user_work_slice_memory_max_of }
+import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
 
 // THE HOST'S COMPUTE MEMORY IS A POOL, AND A WORK REQUEST TAKES A SEAT IN IT BEFORE IT RUNS.
 //
@@ -453,28 +455,27 @@ fn capacity_seat_for_reservation(reservation: ByteSize) -> ByteSize {
   }
 }
 
-// THE USER-WORK SLICE CEILING FOR A HOST -- THE ONE SEAT AUTHORITY (node adhoc-c0a6f401-440).
-// The gunbc-user-work.slice MemoryMax is the host's BUILD-POOL APPROPRIATION, and it is read from the
-// SAME rows the carve reads -- never a second, parallel number. For a carved host (srv3, srv4) the
-// carve holds the build pool in exactly host_build_pool_reservation(host): the seat derived from that
-// reservation (capacity_seat_for_reservation) times the pool's seat count (compute_pool_slots) reproduces
-// the carved slot EXACTLY (the anti-double-count invariant gunbc.compute.host_capacity_seal_witness pins),
-// so the slice ceiling IS the reservation. Read the reservation and the ceiling follows -- when the carve
-// row moves (slot count or seat size), this re-renders with NO edit here, and srv3/srv4 are never sized
-// at a hard-coded width. A host with NO reservation (srv1, srv2) keeps the STANDING user-work pool:
-// compute_build_memory_ceiling_default (the compute-seat default, equal by fact to the slice's own
-// user_work_slot_memory_max, 22 GiB) times compute_pool_slots -- srv1's 2 x 22 GiB, the same number the
-// slice authoritatively carries today, so no srv1 fork is introduced. This is count- and carve-agnostic:
-// it is a pure read of the reservation row, not a literal 6 (the interim count is the operator's and may
-// move to 7); no witness or caller hardcodes a width. The high/swap relation is NOT restated here -- the
-// render derives MemoryHigh from this max via gunbc.live_deploy.slice_bounds user_work_slice_memory_high_of
-// and sets MemorySwapMax to user_work_slice_memory_swap_max (0), so this leaf owns only the ceiling.
+// THE USER-WORK SLICE CEILING FOR A HOST -- THE ONE SEAT AUTHORITY.
+// The gunbc-user-work.slice MemoryMax is the host's BUILD-POOL APPROPRIATION, read from the SAME rows the
+// carve reads -- never a second, parallel number. The branch is the carve PREDICATE
+// (gunbc.runner.runner_slot_desired host_build_pool_is_carved), not the reservation amount tested for > 0.
+// A carved host's ceiling IS host_build_pool_reservation(host): the seat derived from that reservation
+// (capacity_seat_for_reservation) times the pool's seat count reproduces the carved slot EXACTLY (the
+// anti-double-count invariant the seal witness pins), so when the carve row moves this re-renders with NO
+// edit here and srv3/srv4 are never sized at a hard-coded width. A host that is NOT carved (srv1, srv2)
+// takes the STANDING user-work pool from the ONE slice authority srv1's live slice already carries --
+// gunbc.live_deploy.slice_bounds user_work_slice_memory_max_of over user_work_pool_slots -- so the two
+// routes never fight over one unit. A carve that resolves to a zero reservation yields a zero ceiling,
+// which the slice can never admit as capped (observed_cgroup_bound needs a positive bound), so a real zero
+// carve refuses rather than silently falling back to srv1's size. This is count- and carve-agnostic: a pure
+// read of the carve and the slice authority, never a literal seat count. The high/swap relation is NOT
+// restated here -- the render derives MemoryHigh via user_work_slice_memory_high_of and sets MemorySwapMax
+// to user_work_slice_memory_swap_max (0), so this leaf owns only the ceiling.
 fn user_work_slice_memory_max_for_host(host: HostIdentity) -> ByteSize {
-  let reservation = host_build_pool_reservation(host: host)
-  if byte_size_count(reservation) > 0 {
-    reservation
+  if host_build_pool_is_carved(host: host) {
+    host_build_pool_reservation(host: host)
   } else {
-    byte_size(byte_size_count(compute_build_memory_ceiling_default) * compute_pool_slots)
+    match user_work_pool_slots() { UserWorkPoolSlotsDerived { slots } => user_work_slice_memory_max_of(slots: slots) }
   }
 }
 
