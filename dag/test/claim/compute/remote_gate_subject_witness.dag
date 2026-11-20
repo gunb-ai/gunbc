@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.measure { kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, byte_size_count }
 import std.algebra { count_where, list_map }
 import std.optional { Present, Absent }
-import extdeps.bazel.label { render_label }
+import extdeps.bazel.label { render_label, label_structural_eq }
 import gunbc.instrument_targets { v2_native_cli_label }
 import gunbc.compute.work_request { TestGateSubject, BuildGunbcBinaries, CargoRelease, GunbcDriver }
 import gunbc.compute.host_capacity {
@@ -17,7 +17,9 @@ import gunbc.compute.work_class_grant {
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max, gunbc_runner_slot_job_cgroup_ownership }
 import gunbc.emitted_subject_build_gate {
-  emitted_subject_build_rows, emitted_subject_build_label_text, native_step_memory_inputs,
+  emitted_subject_build_rows, emitted_subject_build_label_text, emitted_subject_build_row_for_label,
+  emitted_subject_v2_native_cli_step_id, EmittedSubjectBuildRow, EmittedSubjectRowLookup,
+  EmittedSubjectNoRow, EmittedSubjectOneRow, EmittedSubjectDuplicateRows, native_step_memory_inputs,
 }
 import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
 import gunbc.cli_invoke { invocation_words_bare }
@@ -25,6 +27,7 @@ import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteGateSubject, remote_build_decode_request,
   RemoteBuildRequestDecoded, RemoteBuildRequestRefused, RemoteBuildRequestRefusal,
   RequestGateLabelNotAGateRow, RequestGateLabelUnparsable, RequestGateTakesOneLabel,
+  RequestGateLabelAmbiguousRows, remote_build_gate_row_refusal,
   remote_build_work_operation, remote_build_operation_words, remote_build_dependency_rule,
   RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild,
 }
@@ -131,6 +134,43 @@ test fn a_label_that_is_not_a_gate_row_refuses_the_request() -> Bool {
     Present { value: RequestGateLabelNotAGateRow { text } } => text == "//gunbc/instruments:v2-native-frontier"
     _ => false
   }
+}
+
+// A DUPLICATE IN THE GATE TABLE IS THIS REPOSITORY'S DEFECT, NOT THE REQUESTER'S. The lookup has three
+// answers, and the two refusals must not collapse: "your label is not a subject" said of a table that
+// names one subject twice is a FALSE FACT about the caller, in the direction fail_closed forbids. The
+// duplicate cannot be provoked from outside a closed table, so the control is over the mapping itself --
+// each lookup answer, and the cause it is allowed to produce.
+test fn a_duplicated_gate_row_refuses_as_a_defect_of_the_table_not_as_an_absent_row() -> Bool {
+  let label = v2_native_cli_label()
+  let one_row = EmittedSubjectOneRow { row: EmittedSubjectBuildRow { label: label, step_id: emitted_subject_v2_native_cli_step_id } }
+  match remote_build_gate_row_refusal(text: render_label(l: label), lookup: one_row) {
+    // one row => NO refusal at all: the refusal set is exactly the two failure answers.
+    Absent =>
+      match remote_build_gate_row_refusal(text: render_label(l: label), lookup: EmittedSubjectNoRow) {
+        Present { value: RequestGateLabelNotAGateRow { text } } =>
+          match remote_build_gate_row_refusal(text: render_label(l: label), lookup: EmittedSubjectDuplicateRows { count: 2 }) {
+            Present { value: RequestGateLabelAmbiguousRows { text: other, count } } =>
+              text == render_label(l: label) && other == text && count == 2
+            _ => false
+          }
+        _ => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// AND THE TABLE AS DECLARED CANNOT REACH THAT ARM TODAY: every row's label is distinct from every
+// other's, by the grammar's own structural comparison rather than by rendering. Without this, the
+// ambiguity refusal would be a door that could quietly be standing open.
+test fn the_declared_gate_rows_name_distinct_subjects() -> Bool {
+  let rows = emitted_subject_build_rows()
+  count_where(xs: rows, predicate: row =>
+    match emitted_subject_build_row_for_label(l: row.label) {
+      EmittedSubjectOneRow { row: found } => label_structural_eq(a: found.label, b: row.label)
+      EmittedSubjectNoRow => false
+      EmittedSubjectDuplicateRows { count: _ } => false
+    }) == count(rows) && count(rows) > 0
 }
 
 // THE SAME REFUSAL FOR A LABEL THAT POINTS NOWHERE, so the refusal cannot be an artifact of the

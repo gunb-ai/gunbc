@@ -1,6 +1,6 @@
 module gunbc.emitted_subject_build_gate
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, Int }
 import std.algebra { list_append, list_map }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { byte_size_saturating_sub }
@@ -103,14 +103,22 @@ fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
 // would let two spellings of one label mean two things. Absence is not a defect of the label: it is a
 // well-formed label for something the required gate does not have, and the caller refuses with that
 // fact rather than substituting a nearby row.
-fn emitted_subject_build_row_for_label(l: Label) -> EmittedSubjectBuildRow? {
-  match filter(emitted_subject_build_rows(), row => label_structural_eq(a: row.label, b: l)) {
-    Empty {} => none
-    Cons { head: row, tail: Empty {} } => Present { value: row }
-    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
-      // Two rows carrying one label would be two authorities over one subject; the rows are declared
-      // literally, so this is a defect in THIS module, and the refusal of the label is where it surfaces.
-      none
+type EmittedSubjectRowLookup
+  = EmittedSubjectNoRow
+  | EmittedSubjectOneRow { row: EmittedSubjectBuildRow }
+  | EmittedSubjectDuplicateRows { count: Int }
+
+// A DUPLICATE IS A DEFECT OF THIS TABLE, AND IS ANSWERED AS ONE. Returning "no row" for a label the
+// table carries twice would hand the far end a FALSE FACT -- the requester's label is a row, twice --
+// and the defect in this module would be blamed on the input, which is the direction fail_closed
+// forbids: a wrong answer must be loud, typed and LOCATED. The count travels so the refusal is
+// countable at whoever surfaces it.
+fn emitted_subject_build_row_for_label(l: Label) -> EmittedSubjectRowLookup {
+  let matches = filter(emitted_subject_build_rows(), row => label_structural_eq(a: row.label, b: l))
+  match matches {
+    Empty {} => EmittedSubjectNoRow
+    Cons { head: row, tail: Empty {} } => EmittedSubjectOneRow { row: row }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => EmittedSubjectDuplicateRows { count: count(matches) }
   }
 }
 

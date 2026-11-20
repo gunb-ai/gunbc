@@ -9,7 +9,10 @@ import extdeps.ssh.keys { SshPublicKey, Ed25519 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
-import gunbc.emitted_subject_build_gate { emitted_subject_build_row_for_label }
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_row_for_label, EmittedSubjectRowLookup, EmittedSubjectNoRow,
+  EmittedSubjectOneRow, EmittedSubjectDuplicateRows,
+}
 import extdeps.bazel.label { Label, render_label, parse_label, LabelParsed, LabelRefused }
 import gunbc.compute.work_request {
   WorkOperation, CompileEntry, RunClaims, TestGateSubject, work_default_build,
@@ -177,6 +180,7 @@ type RemoteBuildRequestRefusal
   | RequestGateTakesOneLabel { word_count: Int }
   | RequestGateLabelUnparsable { text: String }
   | RequestGateLabelNotAGateRow { text: String }
+  | RequestGateLabelAmbiguousRows { text: String, count: Int }
 
 type RemoteBuildRequestDecode
   = RemoteBuildRequestDecoded { request: RemoteBuildRequest }
@@ -287,11 +291,24 @@ fn remote_build_decode_gate_subject(words: List<String>, operand: String) -> Rem
     match parse_label(text: operand) {
       LabelRefused { cause: _ } => RemoteBuildOperationRefused { cause: RequestGateLabelUnparsable { text: operand } }
       LabelParsed { label: label } =>
-        match emitted_subject_build_row_for_label(l: label) {
-          Absent => RemoteBuildOperationRefused { cause: RequestGateLabelNotAGateRow { text: render_label(l: label) } }
-          Present { value: _ } => RemoteBuildOperationDecoded { operation: RemoteGateSubject { label: label } }
+        match remote_build_gate_row_refusal(text: render_label(l: label), lookup: emitted_subject_build_row_for_label(l: label)) {
+          Present { value: cause } => RemoteBuildOperationRefused { cause: cause }
+          Absent => RemoteBuildOperationDecoded { operation: RemoteGateSubject { label: label } }
         }
     }
+  }
+}
+
+// WHICH REFUSAL A ROW LOOKUP MEANS, ANSWERED WHERE THE LOOKUP'S ARMS CAN BE SEPARATE. The lookup has
+// three answers and the request side must be able to tell a label the gate does not have from a gate
+// that names one subject twice: the first is the requester's fact, the second is THIS repository's
+// defect, and collapsing them blames the wrong party. Split out as a function so the distinction has a
+// witness of its own -- the duplicate cannot be provoked from outside a closed table.
+fn remote_build_gate_row_refusal(text: String, lookup: EmittedSubjectRowLookup) -> RemoteBuildRequestRefusal? {
+  match lookup {
+    EmittedSubjectOneRow { row: _ } => none
+    EmittedSubjectNoRow => Present { value: RequestGateLabelNotAGateRow { text: text } }
+    EmittedSubjectDuplicateRows { count } => Present { value: RequestGateLabelAmbiguousRows { text: text, count: count } }
   }
 }
 
@@ -309,6 +326,7 @@ fn remote_build_request_refusal_text(cause: RemoteBuildRequestRefusal) -> String
     RequestGateTakesOneLabel { word_count } => concat("a gate request takes exactly one label; operation words: ", to_string(value: word_count))
     RequestGateLabelUnparsable { text } => concat("the gate operand is not a canonical //package:target label: ", text)
     RequestGateLabelNotAGateRow { text } => concat("the label is not a row of the required gate's emitted subject rows: ", text)
+    RequestGateLabelAmbiguousRows { text, count } => concat("the gate's rows name this label ", to_string(value: count), " times -- a defect in the gate table, not in the request: ", text)
   }
 }
 
