@@ -292,11 +292,30 @@ fn host_unit_retirement_ok(outcome: TypedArgvExecOutcome) -> Bool {
   }
 }
 
-fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome) -> HostUnitRetirementRead {
+// `exit_is_verdict` is true only for `systemctl is-active`, whose exit code IS the answer: systemd
+// exits 3 while printing `inactive` (and 3 for `not-found`), so a correctly torn-down unit answers
+// NON-ZERO with a state word. There, a non-empty stdout is an answered read; an exec that printed
+// nothing never answered. For `systemctl show --value` reads the exit code stays the success test.
+// (review 96984: treating is-active's exit 3 as a refusal made the only accepting state unreachable.)
+fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome, exit_is_verdict: Bool) -> HostUnitRetirementRead {
   match outcome {
     TypedArgvExecConverged { result: r } => match list_head(split(s: r.stdout, delimiter: "\n")) {
-      Present { value: l } => ReadValue { value: trim(s: l), answered: r.success }
-      Absent => ReadValue { value: "", answered: r.success }
+      Present { value: l } =>
+        if exit_is_verdict {
+          if trim(s: l) == "" {
+            ReadFailed { detail: "is-active exited without printing a state word" }
+          } else {
+            ReadValue { value: trim(s: l), answered: true }
+          }
+        } else {
+          ReadValue { value: trim(s: l), answered: r.success }
+        }
+      Absent =>
+        if exit_is_verdict {
+          ReadFailed { detail: "is-active exited without printing a state word" }
+        } else {
+          ReadValue { value: "", answered: r.success }
+        }
     }
     TypedArgvExecRefused { reason: reason } => ReadFailed { detail: reason }
   }
@@ -380,7 +399,7 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   if !copy_ok {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
   } else {
-    host_unit_retirement_judge_reads(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_first_line(back.at(3)), host_unit_retirement_ok(back.at(2)))
+    host_unit_retirement_judge_reads(row, host_unit_retirement_first_line(back.at(0), false), host_unit_retirement_first_line(back.at(1), true), host_unit_retirement_first_line(back.at(3), false), host_unit_retirement_ok(back.at(2)))
   }
 }
 
