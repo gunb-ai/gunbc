@@ -325,7 +325,7 @@ fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome, exit_is_verdic
 // state is its own refusal arm -- never the empty string, which belongs ONLY to a clean
 // `systemctl show --value` answer. The retained-copy test is already safe (a refused exec reads false,
 // which is RetainedCopyAbsent -- a refusal, not an acceptance).
-fn host_unit_retirement_read_refusal(read: HostUnitRetirementRead, unit: NonEmptyStr, which_read: String) -> Option<HostUnitRetirementReadback> {
+fn host_unit_retirement_read_refusal(read: HostUnitRetirementRead, unit: NonEmptyStr, which_read: String) -> Optional<HostUnitRetirementReadback> {
   match read {
     ReadFailed { detail: d } => Present { value: ReadRefusal { unit: unit, which_read: which_read, detail: d } }
     ReadValue { value: _, answered: a } =>
