@@ -273,15 +273,19 @@ type UserWorkSliceAdmission<Refusal>
   | SliceUncapped { reason: UserWorkSliceUncappedReason<Refusal> }
   | SliceUnknown { control: String, cause: Refusal }
 
-// Is the user-work slice's OWN cgroup capped at exactly `ceiling`, its memory.high at the ceiling's
-// derived high, and its swap forbidden -- decided by the same judgment that admits the --user wrap
-// (observed_cgroup_bound over the slice's cgroup)? The remote-build serving converge settles on THIS, so
-// 'the slice is capped' and 'the wrap is admitted' are one judgment and cannot disagree. A control whose
-// read REFUSED short-circuits to SliceUnknown before any comparison, so an unread slice is never judged
-// uncapped. Otherwise the slice's own memory.max and swap.max go to observed_cgroup_bound as a single-level
-// chain -- the very fold that requires a positive hard limit AND a forbidden swap -- and memory.high (a
-// throttle the fold ignores) is checked against the derived high; a failure names its control via
-// slice_cap_blame, computed in this same pass, so there is no second judgment to drift from.
+// Is the user-work slice capped at exactly `ceiling`, its memory.high at the ceiling's derived high, and
+// its swap forbidden -- decided by the same observed_cgroup_bound fold that admits the --user wrap, over the
+// cap the ONE reader observes: the slice's DECLARED MemoryMax / MemoryHigh / MemorySwapMax, read by the
+// remote-build serving converge with `systemctl --user --machine=<uid>@ show <slice>`. Those declared values
+// are the single source -- a started slice with no member unit has no memory.max cgroup file, so reading the
+// cgroup would refuse a correctly-capped slice forever. Both the converge settle and the --user wrap admit
+// feed THAT one read into THIS fold, so 'the slice is capped' and 'the wrap is admitted' are one judgment
+// over one source and cannot disagree. A control whose read REFUSED short-circuits to SliceUnknown before any
+// comparison, so an unread slice is never judged uncapped. Otherwise the declared max and swap go to
+// observed_cgroup_bound as a single-level chain -- the very fold that requires a positive hard limit AND a
+// forbidden swap -- and the declared memory.high (a throttle the fold ignores) is checked against the derived
+// high; a failure names its control via slice_cap_blame, computed in this same pass, so there is no second
+// judgment to drift from.
 fn user_work_slice_cgroup_admission<Refusal>(
   max: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
   high: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,

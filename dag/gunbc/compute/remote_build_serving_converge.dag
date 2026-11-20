@@ -338,14 +338,16 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
   }
 }
 
-// The user-work slice's live cap, read the way THE READER judges it: the slice's OWN declared
-// MemoryMax / MemoryHigh / MemorySwapMax, read through the serving account's user manager with
-// `systemctl --user --machine=<uid>@ show <slice> --property=MemoryMax,MemoryHigh,MemorySwapMax`. This
-// reads the unit's DECLARED properties, which the manager answers whether or not the slice's cgroup has
-// been populated -- a started slice with no member unit has no memory.max file yet, so reading the cgroup
-// file would refuse a correctly-capped slice forever. The declared properties are what the reader admits
-// the --user wrap against, so 'settled' and 'the wrap is admitted' agree. The argv is built by the shared
-// systemctl builder over the shared systemd_unit_property_wire names, so a property has one spelling.
+// The user-work slice's cap, observed in ONE place and judged by ONE fold. This is the single reader: the
+// slice's OWN declared MemoryMax / MemoryHigh / MemorySwapMax, read through the serving account's user
+// manager with `systemctl --user --machine=<uid>@ show <slice> --property=MemoryMax,MemoryHigh,MemorySwapMax`.
+// It reads the unit's DECLARED properties, which the manager answers whether or not the slice's cgroup has
+// populated -- a started slice with no member unit has no memory.max file, so reading the cgroup file would
+// refuse a correctly-capped slice forever (the srv3 failure). These are the only values the cap is ever
+// taken from: both the plan (serving_assess) and the read-back feed THIS read into user_work_slice_cgroup_admission
+// (unit_bounds::observed_cgroup_bound), and that admission IS the standard the --user wrap is admitted on --
+// one source, one fold, so 'settled' and 'the wrap is admitted' cannot disagree. The argv is built by the
+// shared systemctl builder over the shared systemd_unit_property_wire names, so a property has one spelling.
 type ServingSliceCap {
   max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
   high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
@@ -393,10 +395,13 @@ fn serving_slice_cap_of_show(text: String) -> ServingSliceCap {
   }
 }
 
-// The cap an unreachable user manager reads: every control established-unbounded. A present account whose
-// manager is not up has no slice cap in force, so the slice is uncapped -- which licenses the install and
-// the enable-linger that starts the manager. One-way: an unreachable manager is uncapped (installs), never
-// silently capped.
+// The cap a present account's unreachable user manager reads: every control established-unbounded, i.e.
+// uncapped. A manager that is not up has no slice cap in force, so there is nothing to honour yet --
+// uncapped licenses the install and the enable-linger that starts the manager. One-way and safe: this branch
+// only ever LICENSES a (re)install, it can never report a slice settled, because 'settled' is decided by a
+// separate zero-exit `systemctl show` read-back (serving_slice_cap_of_show), not here. A malformed invocation
+// would land here too, but its only consequence is a harmless idempotent install that then fails its own
+// read-back -- so an unobserved reading can drive work toward the cap but can never fabricate the cap as met.
 fn serving_slice_cap_unreachable_manager() -> ServingSliceCap {
   ServingSliceCap {
     max: ObservationEstablished { observed: CgroupMemoryUnlimited },
@@ -428,21 +433,6 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
         // being unreachable for this present account, which reads uncapped (no cap in force).
         TypedArgvExecConverged { result: r } => if r.exit_code == 0 { serving_slice_cap_of_show(text: r.stdout) } else { serving_slice_cap_unreachable_manager() }
       }
-  }
-}
-
-// Whether the serving account's user manager is lingering, read unelevated: `loginctl show-user <account>
-// --property=Linger` answers for any caller, so no sudo rides it (the enable verb below IS elevated).
-// established-true is lingering, established-false is proven not-lingering (it licenses the enable write),
-// and a refused read is an unknown -- the assess never writes toward a linger state nobody read.
-fn serving_leg_linger(item: String, target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ObservationAttempt<Bool, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: loginctl_show_user_linger_command(subject: account))) {
-    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
-    TypedArgvExecConverged { result: r } => match loginctl_linger_reading(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
-      LoginctlLingerEnabled => ObservationEstablished { observed: true }
-      LoginctlLingerDisabled => ObservationEstablished { observed: false }
-      LoginctlLingerUnread { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
-    }
   }
 }
 
@@ -520,10 +510,12 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: true } => Present { value: serving_leg_stat(item: "serve.binary.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.serve_binary)) }
     _ => Absent
   }
-  // THE USER-WORK SLICE cap, read through the cgroup files the reader reads. The serving uid comes from
-  // the passwd read; an unresolvable uid (fresh host / unreadable passwd) reads the cap Absent, which
-  // serving_assess never treats as capped — so the apply installs. This is the SAME read the wrap
-  // admission makes (unit_bounds::observed_cgroup_bound), so 'settled' and 'the wrap is admitted' agree.
+  // THE USER-WORK SLICE cap, read from the slice's declared properties (serving_leg_slice_cap): the one
+  // place the cap is observed. The serving uid comes from the passwd read; an unresolvable uid (fresh host /
+  // unreadable passwd) reads every control refused, which serving_assess never treats as capped — so the
+  // apply installs. The same values feed user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound),
+  // the fold that is also the --user wrap-admit standard — one read, one fold, so 'settled' and 'the wrap
+  // is admitted' cannot disagree.
   let passwd_opt = match passwd {
     ObservationEstablished { observed: t } => Present { value: t }
     ObservationRefused { cause: _ } => Absent
