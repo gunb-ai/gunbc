@@ -27,6 +27,7 @@ import gunbc.compute.remote_build_serving_setup {
   ServingLegFailure, serving_forced_command_line,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
+  SubjectValueRead, ServingSubjectValue, serving_identity_malformed_marker,
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
@@ -1692,4 +1693,126 @@ test fn the_slice_leg_orders_install_reload_start_then_readback() -> Bool {
   let readback_join = join(readback, " ")
   let readback_is_show = string_contains(s: readback_join, pattern: "show") && string_contains(s: readback_join, pattern: "start") == false
   install.length() == 2 && first_is_reload && start_is_last && readback_is_show
+}
+
+// ── the identity sidecar drifts on a SETTLED binary (PR-1c: record alone) ────────────────────────────
+// The gap PR-1c closes: a host already at the desired binary (no reinstall) never recorded its identity
+// sidecar, so its receipts read as unattested. These controls hold the REAL producer (serving_assess ->
+// converge_plan) to the rule: a MISSING, MALFORMED, or STALE-sha sidecar on a settled binary plans
+// RecordServeIdentity ALONE -- no InstallServeBinary -- and a matching sha (even at an older revision)
+// is a NO-OP, while a REFUSED read is an unknown that writes nothing. A settled host with the sidecar
+// simply not spoken to (skipped) stays a no-op, so the pre-PR-1c tallies are untouched.
+
+// A fully-settled host (binary present at the pin sha, ledger matched, slice capped, lingering) with the
+// identity leg supplied EXPLICITLY. `sidecar` is None to leave it skipped, else a SubjectValueRead whose
+// value is the recorded sha256 ('' for a confirmed-absent file, the malformed marker for a bad object).
+fn fully_matched_identity(d: RemoteBuildServingDesired, line: String, sidecar: ServingSubjectValue?) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(), account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    serve_identity: sidecar,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+fn sidecar_value(m: String) -> ServingSubjectValue { SubjectValueRead { read: est_s(text: m) } }
+fn sidecar_refused() -> ServingSubjectValue { SubjectValueRead { read: ObservationRefused { cause: ServingLegFailure { item: "serve.binary.identity", cause: "ssh read refused" } } } }
+
+fn count_identity(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false })) }
+fn count_binary_install(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true  _ => false })) }
+fn planned_identity_sha(ws: List<ConvergeAction>) -> String {
+  match first_where(ws, keep: a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false }) {
+    Absent => ""
+    Present { value: a } => match a { RecordServeIdentity { install_path: _, revision: _, sha256: s } => s  _ => "" }
+  }
+}
+
+fn plan_identity(d: RemoteBuildServingDesired, line: String, sidecar: ServingSubjectValue?) -> ConvergeDecision {
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_identity(d: d, line: line, sidecar: sidecar), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+}
+
+// GREEN: a settled binary with a CONFIRMED-ABSENT sidecar plans the identity ALONE -- one RecordServeIdentity
+// carrying the binary's sha + the dispatched revision, and NO reinstall.
+test fn a_missing_sidecar_records_the_identity_alone() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_value("") })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && count_identity(ws) == 1 && count_binary_install(ws) == 0 && planned_identity_sha(ws) == pin_sha()
+    }
+  }
+}
+
+// GREEN: a sidecar recording a sha OTHER than the binary's is stale -> re-recorded (alone).
+test fn a_stale_sha_sidecar_re_records_the_identity() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_value(other) })
+      let ws = plan_writes(plan)
+      count_identity(ws) == 1 && count_binary_install(ws) == 0 && planned_identity_sha(ws) == pin_sha()
+    }
+  }
+}
+
+// RED CONTROL: a sidecar whose sha MATCHES the binary is settled even though its recorded revision is not
+// the dispatched one (revision is NOT a drift signal: a .dag-only main yields a byte-identical binary and
+// would rewrite the sidecar for nothing). The identity leg carries only the sha, so a matching sha here IS
+// 'same sha, older revision' -> NO identity write at all (the host stays settled).
+test fn a_matching_sha_sidecar_is_a_no_op_regardless_of_revision() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_value(pin_sha()) })
+      count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// GREEN: a sidecar present but NOT the documented two-member object is malformed -> re-recorded.
+test fn a_malformed_sidecar_re_records_the_identity() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_value(serving_identity_malformed_marker) })
+      count_identity(plan_writes(plan)) == 1 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL: a REFUSED sidecar read is an unknown, NEVER a rewrite -- a bug that conflated 'unreadable'
+// with 'absent' would mint an identity write here and go red.
+test fn a_refused_sidecar_read_writes_nothing() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_refused() })
+      count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL on the gate: with the sidecar simply NOT spoken to (skipped), a settled host stays a no-op --
+// so PR-1c did not start recording an identity it has no reading of, and the pre-PR-1c tallies are intact.
+test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Absent)
+      count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
 }
