@@ -430,7 +430,7 @@ test fn a_claim_after_a_terminal_standing_is_absorbed_and_counted() -> Bool {
 // end an acceptance is an admitted revocation" — has a consequence for LEAVES that the terminality
 // rule above does not spell out: if a release lifted the standing, the claim after it would put its
 // leaf in flight on an accepted item, an answer roadmap_node_standing would never give, and the two
-// folds would be two answers to one question (@ref(gunbc.design_argument::single_authority)). So the release
+// folds would be two answers to one question (#gunbc.design_argument::single_authority). So the release
 // is absorbed whole — it ends no hold, records no closer, and above all lifts nothing. The AUTHORITY
 // is asked on the very same planted lines, which is what makes this a check rather than an echo.
 test fn an_accepted_leaf_released_and_claimed_again_stays_out_of_flight_as_the_node_fold_says() -> Bool {
@@ -690,7 +690,7 @@ fn reversed(lines: List<String>, out: List<String>) -> List<String> {
 }
 
 // WHAT THE NODE FOLD ITSELF ANSWERS ABOUT THE SAME PLANTED LINES. The leaf read and the standing read
-// are one authority's two questions, not two authorities (@ref(gunbc.design_argument::single_authority):
+// are one authority's two questions, not two authorities (#gunbc.design_argument::single_authority:
 // "a second place that independently decides it is a fork"), so the terminality witnesses ask the node
 // fold as well as this read — on the same planted wire lines, decoded through the module's one
 // decoder. A line that would not decode yields no envelopes at all, which lands the node Open and
@@ -705,7 +705,7 @@ fn standing_key_of(lines: List<String>) -> String {
 
 // THE IMPLICATION, ASKED OF EVERY HISTORY IN A TABLE — because checking agreement on one chosen case is
 // validation where a single authority was available, and this read's standing is not its own to have
-// (@ref(gunbc.design_argument::fail_closed)). Wherever the authority calls the standing terminal, this read
+// (#gunbc.design_argument::fail_closed). Wherever the authority calls the standing terminal, this read
 // holds NOTHING: a leaf may be held only where the node stands open for work. The decode is checked
 // rather than trusted, so a planter that drifted out of the wire form could not make the check vacuous
 // by yielding no envelopes and thus an open node.

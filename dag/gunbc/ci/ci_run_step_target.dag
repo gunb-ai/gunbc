@@ -66,14 +66,14 @@ import gunbc.source_layout { layout_module_storage_path }
 // workflow RUN time, when `gunbc run <derived-path> <function>` could not resolve the entry. That gap is now
 // closed at the required job: v2.cli.reference_check check_references treats a call to THIS constructor as a
 // resolution site and resolves its (module_path, decl_name) pair through the SAME target universe and native
-// resolver it already builds for @ref markers, so a misspelled entry refuses there -- located at the constructing
+// resolver it already builds for marked references, so a misspelled entry refuses there -- located at the constructing
 // row -- instead of surviving to CI run time. The site is keyed on the callee's RESOLVED identity (it must
 // resolve, through the caller's imports in the check's own ResolutionContext, to this constructor's declaring
 // home), never on the call's spelling, and a non-literal argument refuses typed rather than being skipped
 // (fail_closed). The gunbc#8377 class "exists but does not define the named function" is therefore refused in the
 // required fast-lane step.
 //
-// THE RUNG THIS IS, AND THE RUNG THAT IS NOT (the rung ladder, @ref(gunbc.design_argument::guarantee_ladder)).
+// THE RUNG THIS IS, AND THE RUNG THAT IS NOT (the rung ladder, #gunbc.design_argument::guarantee_ladder).
 // This is rung 2, mechanically preventable: the gate reliably exposes and blocks the typo, but the entry is still
 // an authored string, so the safety depends on the check RUNNING and staying enrolled -- it is the check
 // executing, not a guarantee in the types. The TERMINAL form is rung 3: a TYPED declaration reference, in which
