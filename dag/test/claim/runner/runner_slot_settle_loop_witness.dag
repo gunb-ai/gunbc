@@ -44,6 +44,7 @@ import extdeps.systemd { ControlGroup, TasksCurrent, systemd_unit_property_wire 
 import test.claim.runner.runner_host_cap_bracket_witness { u, registration_of, systemctl_show_fixture }
 import test.claim.runner.runner_host_withdraw_witness {
   WithdrawWorld, SlotWorld, WithdrawRunReturned, WithdrawRunEnded, withdraw_run, world_with,
+  world_with_stop_not_sticking,
 }
 
 // ── the block the host answers with ────────────────────────────────────────────────────────────
@@ -297,6 +298,37 @@ test fn an_unadmitted_loop_issues_no_actuation_at_all() -> Bool {
             && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl start"))
             && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl mask"))
             && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl unmask"))
+            && any(ww.slots, s => s.n == "06" && s.active == "activating")
+        _ => false
+      }
+    WithdrawRunEnded { cause: _ } => false
+  }
+}
+
+// ── 13. THE STOP THAT DOES NOT STICK IS CAUGHT BY THE READ-BACK ───────────────────────────────
+//
+// The other half of the stop: the world answers a stop with exit 0 and puts the unit straight back on its
+// ExecStart, which is what a restart loop does. `systemctl stop` SUCCEEDED and the stop did not happen, the
+// one place in this domain where those come apart. The leg's answer must be a refusal naming the read-back --
+// not a tree built under a unit the manager still sees starting, and not a second stop issued to find out
+// what happens. The withdrawal fixture honours every stop by default, so this control asks for the world that
+// does not (`world_with_stop_not_sticking`); no other route in this family reaches for it.
+test fn an_admitted_stop_that_does_not_stick_refuses_at_the_readback_and_builds_no_tree() -> Bool {
+  let w = world_with_stop_not_sticking(slots: loop_slots(), mask_sticks: true, trees_absent: ["06"])
+  match withdraw_run(initial: w, busy_override: false, body: fn(_t, context, sj) {
+    settle_unprovisioned_slot_loop_over(subject: settle_subject(sj: sj), context: context, unit: u(n: "06"), presence: loop_presence())
+  }) {
+    WithdrawRunReturned { value: v, world: ww } =>
+      match v {
+        LoopRefusedForInstall { unit: _, step: st, why: _ } =>
+          (st as String) == "stop-readback"
+            // The stop went out, the read-back saw it fail, and the install arm never opened: no staging
+            // directory, no unpack, no start.
+            && any(ww.acts, a => string_contains(s: a, pattern: "systemctl stop"))
+            && any(ww.acts, a => string_contains(s: a, pattern: "systemctl show"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "deploy-slot-runner-stage"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl start"))
+            && !any(ww.acts, a => string_contains(s: a, pattern: "systemctl mask"))
             && any(ww.slots, s => s.n == "06" && s.active == "activating")
         _ => false
       }
