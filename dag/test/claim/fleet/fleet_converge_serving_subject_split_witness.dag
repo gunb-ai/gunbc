@@ -46,7 +46,7 @@ import gunbc.fleet.fleet_converge_workflow {
 }
 import gunbc.fleet.fleet_known_hosts_anchor { anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, SshTargetResolved, SshTargetRefused }
 import product.host_identity { HostIdentity }
-import extdeps.github.actions { Step, RunStep }
+import extdeps.github.actions { Step, RunStep, UsesStep }
 
 // A HOST WITH NO CI CANNOT CONVERGE ITS OWN SERVING, AND NOTHING IN THE MODEL MAY PRETEND OTHERWISE.
 // Butch (srv14) is admitted to remote build with no CI runner of its own:

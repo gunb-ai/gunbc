@@ -4,7 +4,7 @@ import std.algebra { string_contains }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts, BracketQuoted }
+import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_and_then, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts, BracketQuoted }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name, fleet_converge_mode_env_name }
 import gunbc.ci.ci_deploy_target_host { runner_name_proves_host_identity }
 import product.host_identity { HostIdentity }
