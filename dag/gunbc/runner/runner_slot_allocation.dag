@@ -2047,6 +2047,27 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // MemoryMax. It used to require MemoryHigh one GiB BELOW the maximum, which is exactly the band in
 // which the kernel throttles and never kills (gunbc.runner.runner_slot_desired, the 2026-11-04 ruling
 // carries the control receipts). A row declaring a lower line would be a slot that crawls.
+// A HOST RULED OUT OF CI IS ALLOCATED ZERO, AND THE WALL SAYS WHICH ZEROS IT TOLERATES, 2026-11-19. The
+// `slots_per_host > 0` conjunct is not decoration: it is what keeps srv2's old sentinel out -- this authority
+// used to hand every host a row, and srv2's said "committed allocation" AND "zero slots with a zero slice cap"
+// while its width was UNRESOLVED, a fabricated zero standing where a refusal belonged (the same sentinel
+// gunbc.runner.runner_host_deploy had already removed one layer out; see the note over
+// gunbc_committed_host_runner_slot_allocation). Zero is now legal in exactly one shape: the width is a derived
+// zero whose stated cause is a ruling in ruled_zero_ci_widths, AND the row's slice cap is zero with it, so a
+// ruled-zero host cannot carry a positive envelope it did not ask for. Every other zero -- an absent offer, an
+// unread serving ceiling, an unmeasured census -- is still refused before an allocation row is ever built. That
+// is the pair my witness separates: butch_with_an_unresolved_width_still_refuses_the_deploy and
+// an_unruled_host_with_no_offer_stays_an_absence (test.claim.runner.runner_ci_width_ruled_zero_witness).
+// IS THIS ALLOCATION'S SLOT COUNT ONE THE MODEL IS ALLOWED TO HOLD? Positive is ordinary. Zero is ordinary
+// ONLY where a ruling authorized it and the row carries no envelope with it -- see the note on the wall below.
+// Named as a function so a witness can put a hand-built zero through it instead of trusting an aggregate.
+fn runner_slot_allocation_zero_is_authorized(a: HostRunnerSlotAllocation) -> Bool {
+  a.slots_per_host > 0
+    || (host_ci_width_is_ruled_zero(a.host) && byte_size_count(b: a.runner_slice_cap) == 0)
+}
+
+// THE WALL IS THE ALLOCATION-ROW CONSISTENCY VERDICT: per-slot row is throttle-at-max with no swap, and every
+// admitted host's slots fit its own slice cap and are a slot count the model is allowed to hold.
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
   (byte_size_count(b: per_slot.memory_high) == byte_size_count(b: per_slot.memory_max))
@@ -2054,7 +2075,7 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
     && all(
       gunbc_admitted_runner_slot_allocations(),
       a =>
-        a.slots_per_host > 0
+        runner_slot_allocation_zero_is_authorized(a)
           && gunbc_runner_slot_oversubscription_within_slice(
                slots: a.slots_per_host,
                per_slot: a.per_slot.memory_max,
