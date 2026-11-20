@@ -65,6 +65,7 @@ module gunbc.tailscale_join_converge
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.package_managers.apt {
+  PinnedAptKeyFingerprint,
   apt_third_party_repo_install_plan,
   apt_third_party_keyring_colons_are_pinned,
   apt_repo_install_leg_kind_name,
@@ -96,7 +97,6 @@ import extdeps.os_release {
 import extdeps.tailscale.apt_repo {
   tailscale_apt_repo_noble,
   tailscale_apt_repo_suite,
-  tailscale_signing_key,
   tailscale_packages,
 }
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
@@ -765,7 +765,7 @@ fn tailscale_join_apt_repo_after_leg(
 // The GUARD step, as data over the captured listing. With no listing (ShowKeys never ran) it refuses; with a
 // listing it asks apt.dag's pure fold whether the pin is the single genuine key, and refuses if not. The guard
 // lives in apt.dag as a fold the witnesses can exercise without a host -- here it is only invoked.
-fn tailscale_join_apt_repo_guard(state: TailscaleJoinAptRepoState) -> TailscaleJoinAptRepoState {
+fn tailscale_join_apt_repo_guard(pinned: PinnedAptKeyFingerprint, state: TailscaleJoinAptRepoState) -> TailscaleJoinAptRepoState {
   match state.colons {
     Absent =>
       TailscaleJoinAptRepoState {
@@ -774,7 +774,7 @@ fn tailscale_join_apt_repo_guard(state: TailscaleJoinAptRepoState) -> TailscaleJ
         refusal: Present { value: "tailscale apt repository install refused: the signing key was never listed, so its fingerprint cannot be checked" },
       }
     Present { value: colons } =>
-      if apt_third_party_keyring_colons_are_pinned(colons: colons, pinned: tailscale_signing_key) {
+      if apt_third_party_keyring_colons_are_pinned(colons: colons, pinned: pinned) {
         state
       } else {
         TailscaleJoinAptRepoState {
@@ -783,7 +783,7 @@ fn tailscale_join_apt_repo_guard(state: TailscaleJoinAptRepoState) -> TailscaleJ
           refusal: Present {
             value: concat(
               "tailscale apt repository install refused: the fetched signing key is not the single key pinned as ",
-              tailscale_signing_key.value as String,
+              pinned.value as String,
             ),
           },
         }
@@ -796,11 +796,12 @@ fn tailscale_join_apt_repo_guard(state: TailscaleJoinAptRepoState) -> TailscaleJ
 fn tailscale_join_apt_repo_step(
   subject: CustodyHost,
   context: FleetSshExecutionContext,
+  pinned: PinnedAptKeyFingerprint,
   step: AptRepoInstallStep,
   state: TailscaleJoinAptRepoState,
 ) -> TailscaleJoinAptRepoState {
   match step {
-    AptRepoGuard => tailscale_join_apt_repo_guard(state: state)
+    AptRepoGuard => tailscale_join_apt_repo_guard(pinned: pinned, state: state)
     AptRepoLeg { kind: kind, argv: argv, stdin: stdin } =>
       match tailscale_join_apt_repo_argv(tokens: argv, dir: state.dir) {
         Absent =>
@@ -862,8 +863,9 @@ fn tailscale_join_repo_install_route(
   context: FleetSshExecutionContext,
   arch: NonEmptyStr,
 ) -> String? {
+  let repo = tailscale_apt_repo_noble(arch: arch)
   let steps = apt_third_party_repo_install_plan(
-    repo: tailscale_apt_repo_noble(arch: arch),
+    repo: repo,
     packages: tailscale_packages,
   )
   let walked = fold(
@@ -872,7 +874,7 @@ fn tailscale_join_repo_install_route(
     f: fn(state, step) {
       match state.refusal {
         Present { value: _ } => state
-        Absent => tailscale_join_apt_repo_step(subject: subject, context: context, step: step, state: state)
+        Absent => tailscale_join_apt_repo_step(subject: subject, context: context, pinned: repo.keyring_fingerprint, step: step, state: state)
       }
     },
   )
