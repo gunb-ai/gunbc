@@ -574,6 +574,15 @@ data h11ssl_unit3_gpu_count_integrated_revision: CommitSha = "218429cecebd204441
 // ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
 // stand on, and a pending change has none until it lands.
 data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
+// The landing that drew the edge's staging/ subtree into the fold that prunes install residue, and that retires the
+// directories a completed removal leaves empty. It is an ancestor of main (git merge-base --is-ancestor holds), and
+// AT THAT REVISION the declarations cited as the replacement below exist -- site_pxe_edge_served_root,
+// site_pxe_edge_owned_install_roots, site_pxe_edge_empty_owned_install_dirs -- which is what
+// gunbc.design_argument::continuous_generalization asks of integrated_at and what gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains was filed to refuse. The execution results below name the revision
+// they were measured at, which is the pull request's head rather than this landing: the diff between them touches no
+// Rust and no module these claims read.
+data edge_install_residue_fold_integrated_revision: CommitSha = "6f1e4de1eac8ee3db1a307ec616980229fc74fd4"
 data h11ssl_unit3_gpu_identity_receipt: SightingEvidence = CitesArtifact {
   label: "ken (host-e2d4b7) 2026-11-18, artifacts/host-observations/ken-gpu-read-2026-11-18/gpu_identity_query.txt -- nvidia-smi --query-gpu=pci.bus_id,uuid,serial, three functions with their GPU UUIDs and card serials. The same session first tried the sysfs vendor/device read with paths that lack the PCI domain prefix and those failed (the failures are in the file); the retry with domain-prefixed paths SUCCEEDED and every function read vendor 0x10de device 0x1e37, which unit_read2.txt in this same directory carries.",
   sha256: Sha256Digest { hex: "5a751a0bc3c13b373f704be95e898e0cafdf99954ad28af8dd000f7adb1d77ef" as Sha256DigestHex },
