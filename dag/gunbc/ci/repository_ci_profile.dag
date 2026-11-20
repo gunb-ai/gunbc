@@ -244,6 +244,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
         runner: selected_ci_runner_target(),
+        // Explicit operator authorization: @ref(gunbc.design_ruling::heal_convergence_job_budget_increase_2026_11_20).
         timeout: minute(120)
       }
     },
