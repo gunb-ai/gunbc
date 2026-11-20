@@ -2,8 +2,11 @@ module gunbc.fleet.machine_board
 
 import std.types { List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.boards.types { BaseboardCatalogRow }
+import extdeps.board_soc { BoardSocArchitectureStanding, board_soc_architecture }
+import extdeps.github.actions { runner_arch_label }
+import gunbc.host.board_platform_facts { board_soc_edges_for }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
 import gunbc.fleet.fleet_host_identity {
@@ -98,3 +101,40 @@ data machine_board_rows: List<MachineBoardRow> = [
     catalog: supermicro_h11ssl_catalog,
   ),
 ]
+
+// THE ONE RUNNER ARCHITECTURE LABEL FOR A CONVERGE EXECUTOR HOST. This is the single place a
+// fleet-converge runner label learns its CPU architecture; it is derived, never hard-coded.
+//
+// THE CHAIN, WRITTEN ONCE: the machine's board (machine_board_rows, the host -> board authority above)
+// -> the SoC edge that board's authority names (gunbc.host.board_platform_facts board_soc_edges_for) ->
+// the architecture its admitted SoC families establish (extdeps.board_soc board_soc_architecture, which
+// agrees every family on one architecture) -> the GitHub runner architecture label
+// (extdeps.github.actions runner_arch_label). Aarch64 yields "arm64", exactly the literal every serving
+// runner label carried before this derivation existed, so srv1-srv4 resolve byte-identically; X86_64
+// yields "x64", which is what lets an x86 executor such as ken host a converge job.
+//
+// A machine whose board is uncatalogued, provider-owned, names no SoC edge, or whose families agree on
+// no single architecture answers RunnerArchUnknown. The caller (the fleet-converge plan) REFUSES on that
+// answer -- it never defaults to arm64, so a host with no modeled architecture cannot silently borrow an
+// arm64 runner. This is the same "typed unestablished, never a silent default" discipline as
+// board_soc_architecture itself.
+type RunnerArchStanding
+  = RunnerArchKnown { label: String }
+  | RunnerArchUnknown
+
+fn fleet_converge_runner_arch_label(host: HostIdentity) -> RunnerArchStanding {
+  match find(xs: machine_board_rows, r => host_identity_eq(a: r.host, b: host)) {
+    Absent => RunnerArchUnknown
+    Present { value: r } => match r.board {
+      MachineBoardProviderOwned { provider: _ } => RunnerArchUnknown
+      MachineBoardUncatalogued { board: _, obligation: _ } => RunnerArchUnknown
+      MachineBoardCatalogued { catalog, source: _ } => match board_soc_edges_for(authority: catalog.model) {
+        Absent => RunnerArchUnknown
+        Present { value: edge } => match board_soc_architecture(edge: edge) {
+          Unestablished => RunnerArchUnknown
+          Established { architecture } => RunnerArchKnown { label: runner_arch_label(arch: architecture) }
+        }
+      }
+    }
+  }
+}

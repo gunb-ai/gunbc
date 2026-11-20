@@ -60,7 +60,10 @@ import extdeps.boards.types {
 }
 import extdeps.standards.motherboard_mounting_grid { MicroAtxMountingGrid }
 import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere { ampere_lga4926_socket }
+import extdeps.cpu.ampere { ampere_lga4926_socket, ampere_altra_soc_family, ampere_altra_max_soc_family }
+import extdeps.board_soc { BoardSocEdge }
+import std.decl_ref { decl_ref }
+import std.algebra { FreeSemigroup }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.nat { Nat }
@@ -655,6 +658,26 @@ data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAlt
   ddr4_max_data_rate: megatransfers_per_second(count: 3200),
   network_label: "2x 10GbE (Intel X550) + 1x 1GbE (Intel i210) per the vendor page",
   citation: "asrockrack.com product page for ALTRAD8UD-1L2T, read 2026-08-18",
+}
+
+// The architecture this board admits, derived from its admitted SoC families -- not restated per host.
+// asrock_altrad8ud_1l2t_mechanical.processor_support_label reads "LGA 4926, Ampere Altra / Altra Max",
+// the single-socket Ampere Altra board; both admitted families are Aarch64, so board_soc_architecture
+// establishes Aarch64 for it (the same fold that gives mt_collins its arm64). This edge is what lets a
+// fleet-converge runner label for a srvN host derive its architecture from the board model instead of a
+// hard-coded arm64, so srv1-srv4 resolve byte-identically to today and an x86 board resolves to x64.
+data asrock_altrad8ud_board_soc_edge: BoardSocEdge = BoardSocEdge {
+  board: asrock_altrad8ud_board_authority,
+  soc_families: FreeSemigroup {
+    head: ampere_altra_soc_family,
+    tail: [ampere_altra_max_soc_family],
+  },
+  citations: [
+    FactCitation {
+      fact: decl_ref(module_path: "extdeps.boards.asrock_rack", decl_name: "asrock_altrad8ud_1l2t_mechanical"),
+      authority: asrock_altrad8ud_download_authority,
+    },
+  ],
 }
 
 data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."
