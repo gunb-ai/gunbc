@@ -75,7 +75,9 @@ import extdeps.package_managers.apt {
   apt_third_party_repo_source_line,
   apt_third_party_repo_install_script,
   apt_third_party_keyring_fingerprint_ok,
+  apt_third_party_repo_install_script_scaffold,
 }
+import std.disposition { Scaffold, SingleAuthority }
 import extdeps.tailscale.apt_repo { tailscale_apt_repo_noble, tailscale_packages }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
@@ -717,4 +719,33 @@ test fn w_b_two_key_output_containing_the_pin_refuses() -> Bool {
     pinned: pinned,
   )
   !accepts_two_keys
+}
+
+// (d) THE STAGING/SWAP RED CONTROL. The fixed /tmp path was fail-open: another local user could pre-create
+// it or swap its contents between the unprivileged fingerprint check and the root dearmor, so a key that was
+// never checked became trusted. The route now stages in a fresh `mktemp -d` private directory and the check
+// and the dearmor consume the SAME $d/key.armored -- there is no second, guessable path to swap. This asserts
+// exactly that invariant on the rendered script: a mktemp dir with a trap cleanup, the check reads
+// $d/key.armored, the dearmor reads $d/key.armored (the same token), and the old fixed path is gone.
+test fn w_d_key_is_staged_privately_and_dearmored_from_the_checked_bytes() -> Bool {
+  let script = apt_third_party_repo_install_script(
+    repo: tailscale_apt_repo_noble(arch: "amd64"),
+    packages: tailscale_packages,
+  )
+  string_contains(s: script, pattern: "d=$(mktemp -d)")
+    && string_contains(s: script, pattern: "trap 'rm -rf $d' EXIT")
+    && string_contains(s: script, pattern: "-o $d/key.armored")
+    && string_contains(s: script, pattern: "--with-colons $d/key.armored > $d/key.colons")
+    && string_contains(s: script, pattern: "$d/key.armored")
+    && !string_contains(s: script, pattern: "/tmp/apt-third-party-keyring")
+}
+
+// (e) THE MEDIUM-AS-STRING SHELL LEAF carries its required Scaffold marker, naming the modelled route it
+// dissolves into (host_effect_apply). Without the marker a hand-rendered shell string is an untracked escape
+// hatch; DESIGN.md's shell-as-code rule requires the disposition so the leaf retires rather than fossilizes.
+test fn w_e_shell_leaf_carries_scaffold_marker() -> Bool {
+  match apt_third_party_repo_install_script_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true,
+    _ => false,
+  }
 }

@@ -2,6 +2,8 @@ module extdeps.package_managers.apt
 
 import std.types { String, NonEmptyStr, FilePath, Bool, List, Unit }
 import std.operation_argv { operation_argv_bind_text }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
@@ -257,11 +259,27 @@ data apt_third_party_keyrings_directory_mode: FileMode = FileMode {
   sticky: false,
 }
 
-// Where the armored key is fetched and VERIFIED before it is ever dearmored into `keyring_path`. It lives
-// OUTSIDE /etc/apt/keyrings so a key that fails the check never sits in the trusted keyring directory; the
-// route's `umask 077` makes the fetch private. The path is fixed (not a shell variable) so the dearmor into
-// `keyring_path` is a constant-word argv the sudo elevation can quote.
-data apt_third_party_staged_key_path: NonEmptyStr = "/tmp/apt-third-party-keyring.armored"
+// The armored key is fetched and VERIFIED in a FRESH PRIVATE DIRECTORY (`mktemp -d`, 0700 under umask,
+// root-owned under sudo) before it is ever dearmored into `keyring_path`. A fixed name in world-writable
+// /tmp is fail-open: another local user can pre-create the path or swap its contents between the unprivileged
+// check and the root dearmor, so a key that was never verified gets trusted. An unpredictable name inside a
+// directory only this run can write closes that window -- the bytes the shell checks are the same bytes the
+// root dearmor reads -- and a trap removes the directory on exit. The check and the install therefore consume
+// one private file, not a re-read of a guessable path.
+
+// MEDIUM-AS-STRING SHELL LEAF marker: apt_third_party_repo_install_script() renders a POSIX shell script run
+// by `bash -s` under sudo, using shell forms the modelled argv allowlist refuses (pipes, `||`, `$(...)`). The
+// shell-as-code rule requires such a runner to carry a Scaffold disposition naming what it dissolves into, so
+// the string is tracked rather than forgotten; this leaf retires when host_effect_apply binds an AptRepoEnsure
+// plus PackageInstall effect, the same dissolution the docker and nvidia leaves carry.
+data apt_third_party_repo_install_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host.host_effect_realize",
+    decl_name: "host_effect_apply",
+    field: WholeDeclaration,
+  }
+}
 
 // THE ONE SOURCE-LINE RENDERER. `deb [arch=X signed-by=Y] BASE SUITE COMP...` -- the apt line shape every
 // third-party repository documents, rendered from the row so no vendor re-spells it and no caller hand-builds
@@ -335,18 +353,17 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
         ),
         " ",
       ),
-      // fetch the armored key to the private staging path, unprivileged
-      join(["curl -fsSL ", repo.keyring_url as String, " -o ", apt_third_party_staged_key_path as String], ""),
-      // read gpg's colon records from the STAGED file, never from the trusted keyring path
-      join(["gpg --show-keys --with-colons ", apt_third_party_staged_key_path as String, " > ", apt_third_party_staged_key_path as String, ".colons"], ""),
+      // fresh private staging directory (mktemp -d), removed on exit by the trap
+      "d=$(mktemp -d)",
+      "trap 'rm -rf $d' EXIT",
+      // fetch the armored key into the private dir
+      join(["curl -fsSL ", repo.keyring_url as String, " -o $d/key.armored"], ""),
+      // read gpg's colon records from the staged file, never from the trusted keyring path
+      join(["gpg --show-keys --with-colons $d/key.armored > $d/key.colons"], ""),
       // VERIFY: exactly one primary key, primary fpr field-for-field equal to the pin. Refuse before install.
       join(
         [
-          "pubs=$(grep -c '^pub:' ",
-          apt_third_party_staged_key_path as String,
-          ".colons || true); fpr=$(grep -m1 '^fpr:' ",
-          apt_third_party_staged_key_path as String,
-          ".colons | cut -d: -f10 || true); { [ $pubs -eq 1 ] && [ $fpr = ",
+          "pubs=$(grep -c '^pub:' $d/key.colons || true); fpr=$(grep -m1 '^fpr:' $d/key.colons | cut -d: -f10 || true); { [ $pubs -eq 1 ] && [ $fpr = ",
           repo.keyring_fingerprint.value as String,
           " ]; } || { echo 'AptThirdPartyKeyringFingerprintRefusal: the fetched key is not a single primary key carrying pinned fingerprint ",
           repo.keyring_fingerprint.value as String,
@@ -356,24 +373,14 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
         ],
         "",
       ),
-      // only after the check: dearmor the staged file into the trusted keyring path
-      join(
-        map(
-          sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String, apt_third_party_staged_key_path as String]),
-          w => posix_single_quote(spelling: w),
-        ),
-        " ",
-      ),
+      // only after the check, and still as the same root shell, dearmor the SAME verified bytes from the
+      // private dir into the trusted keyring path. The route already runs under sudo (elevated), so this
+      // dearmor needs no inner sudo and re-reads no guessable path: it consumes $d/key.armored, the exact
+      // bytes the check above inspected.
+      join(["gpg --dearmor --yes -o ", posix_single_quote(spelling: repo.keyring_path as String), " $d/key.armored"], ""),
       join(
         map(
           sudo_elevate_argv(command: ["chmod", "a+r", repo.keyring_path as String]),
-          w => posix_single_quote(spelling: w),
-        ),
-        " ",
-      ),
-      join(
-        map(
-          sudo_elevate_argv(command: ["rm", "-f", apt_third_party_staged_key_path as String, concat(apt_third_party_staged_key_path as String, ".colons")]),
           w => posix_single_quote(spelling: w),
         ),
         " ",
