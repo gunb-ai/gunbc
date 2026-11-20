@@ -12,7 +12,7 @@ import gunbc.dispatch_credential_acquisition {
 }
 
 fn cursor_reference() -> String {
-  credential_acquisition_reference(identity: "id1", executor: CursorFromSnapshot) as String
+  credential_acquisition_reference_text(identity: "id1", executor: CursorFromSnapshot) as String
 }
 
 fn record(executor: AttemptExecutor, reference: String) -> CredentialAcquisitionRecord {

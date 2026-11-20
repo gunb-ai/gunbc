@@ -16,7 +16,7 @@ import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.dispatch_credential_acquisition {
   CursorAttemptRuntimeRoot, cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config,
-  credential_taken_cursor_runtime_root,
+  credential_taken_cursor_runtime_root, CredentialTakenRootIssued, CredentialTakenRootRefused,
 }
 import gunbc.dispatch_credential_snapshot { TakenCredentialSnapshot }
 import gunbc.cursor_harness_credential {
@@ -165,8 +165,10 @@ fn wet_unavailable_sandbox_stops_the_ordering_before_the_key_probe(presence: Fil
         && !string_contains(s: log, pattern: "--list-models")
         && string_contains(s: log, pattern: "key= argv=--disable-auto-update sandbox")
         && !string_contains(s: log, pattern: "key=set")
-        && !wet_auth_inside_config(root: credential_taken_cursor_runtime_root(snapshot: snapshot))
-        && !wet_auth_under_home(root: credential_taken_cursor_runtime_root(snapshot: snapshot))
+        && match credential_taken_cursor_runtime_root(snapshot: snapshot) {
+             CredentialTakenRootIssued { root: root } => !wet_auth_inside_config(root: root) && !wet_auth_under_home(root: root)
+             CredentialTakenRootRefused { cause: _ } => false
+           }
     }
   }
   let removed_s = wet_remove_and_observe_absent(scratch: scratch)
@@ -321,4 +323,28 @@ test fn the_keyless_preflight_receives_no_ambient_key() -> Bool {
 
 test fn a_stalled_key_probe_is_bounded_and_cleanup_still_runs() -> Bool {
   wet_stalled_key_probe_is_bounded()
+}
+
+// HOSTILE ATTEMPT KEY ON THE TAKEN ROUTE (review 97066 RED): an attempt key carrying traversal cannot be
+// turned into a root by the taken-snapshot route. Either the take flow never yields a snapshot for it (no
+// route) or the route answers with the typed refusal, and the escaped directory the hostile key names is
+// never created or observed on the live filesystem.
+test fn wet_hostile_attempt_key_taken_route_refuses_and_creates_nothing() -> Bool {
+  let scratch = wet_scratch(label: "wdos")
+  let custody = wet_scratch(label: "wdoscust")
+  let _ = shell.Mkdir.Parents(path: fx_slots_dir(instance_root: scratch) as FilePath)
+  let hostile_key = "../../wdos-escaped"
+  let target = join([scratch, "/../../wdos-escaped"], "")
+  let outcome = match fx_cursor_taken(instance_root: scratch as FilePath, custody_dir: custody, attempt_key: hostile_key) {
+    Absent => true
+    Present { value: snapshot } =>
+      match credential_taken_cursor_runtime_root(snapshot: snapshot) {
+        CredentialTakenRootRefused { cause: _ } => true
+        CredentialTakenRootIssued { root: _ } => false
+      }
+  }
+  let escaped_never_created = !Filesystem.Read(path: target).success && !Filesystem.List(path: target).success
+  let removed_s = wet_remove_and_observe_absent(scratch: scratch)
+  let removed_c = wet_remove_and_observe_absent(scratch: custody)
+  outcome && escaped_never_created && removed_s && removed_c
 }
