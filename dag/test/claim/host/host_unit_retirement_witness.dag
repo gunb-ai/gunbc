@@ -7,6 +7,7 @@ module test.claim.host.host_unit_retirement_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { Cons, Empty, string_contains }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.design_ruling { hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_modes,
   fleet_converge_mode_facts,
@@ -28,7 +29,7 @@ import gunbc.host.host_unit_retirement {
   host_unit_retirement_read_row,
   host_unit_retirement_readback_line,
   host_unit_retirement_all_retired,
-  host_unit_retirement_rows_cite_the_live_ruling,
+  host_unit_retirement_rows_carry_the_live_ruling,
   host_unit_retirement_committed_readbacks,
   host_unit_retirement_retained_dir,
   host_unit_retirement_subject_input_name,
@@ -54,15 +55,17 @@ test fn host_unit_retirement_fragments_retain_outside_the_search_path() -> Bool 
     && length(filter(host_unit_retirement_rows(), r => string_contains(s: r.retained_path, pattern: "/etc/systemd/system"))) == 0
 }
 
-// THE CAUSE IS ONE RULING ROW, and the rows say so by reference name.
+// THE CAUSE IS ONE RULING ROW, CARRIED TYPED ON EVERY ROW (review 96910): the check compares each row's
+// DesignRuling carrier against the live datum, so dropping/misspelling/substituting the ruling on ANY
+// row -- not just the first -- reads red, and prose that merely contains the name proves nothing.
 test fn host_unit_retirement_rows_cite_the_ruling() -> Bool {
-  host_unit_retirement_rows_cite_the_live_ruling()
+  host_unit_retirement_rows_carry_the_live_ruling()
 }
 
 // THE READBACK MEANS WHAT THE WORDS SAY. Stopped-but-loaded is NOT retired; active is NOT retired;
 // a missing retained copy is NOT retired. Only not-found + inactive + readable copy accepts.
 test fn host_unit_retirement_readback_refuses_half_states() -> Bool {
-  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr }
+  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr, ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
   let loaded = host_unit_retirement_read_row(row, "loaded", "inactive", true)
   let active = host_unit_retirement_read_row(row, "not-found", "active", true)
   let unretained = host_unit_retirement_read_row(row, "not-found", "inactive", false)

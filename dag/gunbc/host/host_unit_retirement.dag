@@ -31,7 +31,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.design_ruling { hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+import gunbc.design_ruling { DesignRuling, hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, fleet_converge_split_refusal_line, SplitOk, SplitRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -76,6 +76,11 @@ type HostUnitRetirementRow {
   fragment_path: String,
   retained_path: String,
   no_consumer_reason: NonEmptyStr,
+  // THE CAUSE, TYPED (gunbc.design_argument::source_annotations: "an invariant, receipt, event, ruling,
+  // citation ... belongs in a typed carrier"). Every row carries the DesignRuling that retires its unit;
+  // no_consumer_reason stays as rationale prose only. A row that drops or misspells the ruling is a
+  // COMPILE-LEVEL change to the row, and the witness compares the carrier structurally.
+  ruling: DesignRuling,
 }
 
 fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
@@ -91,6 +96,7 @@ fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
       fragment_path: "/etc/systemd/system/strata-pool@.service",
       retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
       no_consumer_reason: "no consumer: the operator ruling gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign retires butch's serving engines -- butch serves nothing and runs no CI jobs; the engine's MemoryMax charge (serving_host_memory butch_a_strata_engine_memory) is retired against the runner envelope by the post-frontier cut that cites this dispatch's receipt" as NonEmptyStr,
+      ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
     },
     HostUnitRetirementRow {
       host: srv14_host_name,
@@ -102,6 +108,7 @@ fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
       fragment_path: "/etc/systemd/system/strata-pool@.service",
       retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
       no_consumer_reason: "no consumer: same ruling retires the second engine; butch_b_strata_engine_memory's charge is retired by the post-frontier cut citing this dispatch's receipt" as NonEmptyStr,
+      ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
     },
     HostUnitRetirementRow {
       host: srv14_host_name,
@@ -111,6 +118,7 @@ fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
       fragment_path: "/etc/systemd/system/a2-power-cap.service",
       retained_path: "/var/lib/gunbc/retired-units/a2-power-cap.service",
       no_consumer_reason: "no consumer: the four A2s it capped were physically removed from butch to be sold (operator report 2026-11-17, held at gunbc.serving.gpu_power_state_policy's retirement note, which names THIS dispatch as the unit's residue route); the unit reads FAILED and its intent rows are already retired" as NonEmptyStr,
+      ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
     },
   ]
 }
@@ -151,6 +159,7 @@ fn host_unit_retirement_observed_row_readback(o: HostUnitRetirementObservation) 
       fragment_path: "",
       retained_path: o.retained_path,
       no_consumer_reason: "observed" as NonEmptyStr,
+      ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
     },
     o.load_state,
     o.active_state,
@@ -204,14 +213,25 @@ fn host_unit_retirement_all_retired(readbacks: List<HostUnitRetirementReadback>)
   }
 }
 
-// THE RULING IS THE CAUSE. The mode exists because one ruling row says so; the first row names it, and
-// this claim pins that the named ruling is the live datum -- deleting or renaming the ruling turns the
-// mode's justification red rather than silently stranding the units.
-fn host_unit_retirement_rows_cite_the_live_ruling() -> Bool {
-  let ruling_decl = hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.reference.decl_name as String
+// THE RULING IS THE CAUSE, CARRIED TYPED (review 96891). Every row's `ruling` field IS the live
+// DesignRuling datum -- not a string that happens to contain the name. Deleting or renaming the ruling
+// datum turns the mode's justification red at the ROW (a bad reference is a compile error), and the
+// witness compares each row's carrier to the datum itself, so no row can drop or misspell it.
+fn host_unit_retirement_rows_carry_the_live_ruling() -> Bool {
+  let live_module = hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.reference.module_path as String
+  let live_decl = hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.reference.decl_name as String
   match host_unit_retirement_rows() {
     Empty => false
-    Cons { head: r, tail: _ } => string_contains(s: r.no_consumer_reason as String, pattern: ruling_decl)
+    Cons { head: _, tail: _ } => host_unit_retirement_rows_carry_checked(host_unit_retirement_rows(), live_module, live_decl)
+  }
+}
+
+fn host_unit_retirement_rows_carry_checked(xs: List<HostUnitRetirementRow>, live_module: String, live_decl: String) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: r, tail: t } =>
+      (((r.ruling.reference.module_path as String) == live_module) && ((r.ruling.reference.decl_name as String) == live_decl))
+        && host_unit_retirement_rows_carry_checked(t, live_module, live_decl)
   }
 }
 
