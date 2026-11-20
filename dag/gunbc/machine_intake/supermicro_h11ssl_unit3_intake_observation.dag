@@ -529,8 +529,9 @@ data supermicro_h11ssl_unit3_ipmi_pxe_boot_path_standing: H11sslUnit3IpxeBootPat
 // that carries it, and this row has to move with it instead of keeping a stale sentence.
 type H11sslUnit3RotationRouteStanding
   = RotationRouteNotYetRunnable {
-      secret_name_convention: NonEmptyStr,
-      secret_name_blocked_on: DeclarationRef,
+      secret_name: NonEmptyStr,
+      secret_name_allocated_by: DeclarationRef,
+      route_blocked_on: DeclarationRef,
       route_authority: DeclarationRef,
       secret_ref_precedent: DeclarationRef,
       gate_precedent: DeclarationRef,
@@ -553,10 +554,19 @@ data supermicro_h11ssl_unit3_bmc_credential_standing: H11sslUnit3BmcCredentialSt
     attested_by: "operator, relayed by smart-crane-730 in the task brief for this unit (2026-11-15)" as NonEmptyStr,
     attested_at: "2026-11-15T00:00:00Z",
     rotation_route_standing: RotationRouteNotYetRunnable {
-      // The credential name carries the fleet name, so no concrete secret id can be written here until the
-      // allocation authority fills this slot -- naming it here would mint an identity through a side door.
-      secret_name_convention: "bmc-<the fleet name the allocation authority gives this slot>-admin, the form of srv15's bmc-srv15-admin" as NonEmptyStr,
-      secret_name_blocked_on: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "hostname_allocation_admission"),
+      // THE CREDENTIAL NAME IS DERIVED NOW, NOT INVENTED HERE. The route keys the secret id to the fleet slot, and
+      // the allocation authority filled that slot on 2026-11-16 (gunbc.hostname_allocation::fleet_machine_registry
+      // drew "ken" for operator_host_e2d4b7), so the id the route will use is bmc-ken-admin, the shape of srv15's
+      // bmc-srv15-admin. NAMING AN ID IS NOT CUSTODY OF A SECRET: no SecretRef row for this controller exists in
+      // gunbc.secret_provision, and minting one now would assert a reference that resolves to nothing -- srv15's row
+      // is a reference because its operator placed that secret, and the equivalent step is still owed here.
+      secret_name: "bmc-ken-admin" as NonEmptyStr,
+      // The allocation that supplies the name: a rename moves this citation, and with it the id.
+      secret_name_allocated_by: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry"),
+      // What blocks the rotation now is not the name. A BmcRotationRouteStanding is per controller at one firmware
+      // build, and only a committed execution on THAT controller grounds one -- rotation_route_is_grounded is the
+      // predicate that refuses until then, and nothing grounds one for 192.168.1.249 at firmware 1.52.
+      route_blocked_on: decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "rotation_route_is_grounded"),
       route_authority: decl_ref(module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "BmcRotationRouteStanding"),
       secret_ref_precedent: decl_ref(module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref"),
       gate_precedent: decl_ref(module_path: "gunbc.auth.srv15_arrival_federation_provision", decl_name: "srv15_arrival_environment_creation_frontier"),
