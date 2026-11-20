@@ -1201,6 +1201,7 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
     estimates_are_one_representation_derived_upward,
     roadmap_scheduling_units_belong_to_factory,
     schedule_answers_are_computed_cached_and_re_read,
@@ -1369,4 +1370,18 @@ fn expected_design_rulings_md() -> String {
       flat_map(design_rulings(), r => ruling_blocks(r: r)),
     ),
   })
+}
+
+// THE OPERATOR'S 2026-11-19 TRIM OF THE H11SSL-i UNIT 3 SERVING CEILING, WHICH IS WHAT UNBLOCKS THAT
+// UNIT'S CI SEAT. The ruling changes what is DECIDED; the physical ceiling moves only when a read says it
+// has, so the row below keeps the two apart rather than writing a number nobody has measured.
+data ken_strata_memory_trim_buys_two_build_seats_2026_11_19: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ken_strata_memory_trim_buys_two_build_seats_2026_11_19"),
+  decided: "2026-11-19",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Relayed to me by smart-crane-730 from operator chat on 2026-11-19. The proposal was put to the operator by smart-crane-730: lower the ken-strata resident ceiling from 112G to 56G so the unit's declared CI seat stops being blocked by a serving charge larger than the serving need, while serving keeps full speed. The operator's answer, verbatim: \"yeah thats fine w/ me thanks\". The arithmetic the proposal was put on is also the operator's: MemTotal 125.6 GiB on that unit, less a 56 GiB serving reservation, leaves 69.6 GiB, which is two 25 GiB build seats plus roughly 20 GiB of OS headroom -- so the unit carries TWO CI slots at that ceiling.
+
+THE SERVING-SIDE FIGURES ARE THE OPERATOR'S REPORT, NOT READS THIS FLEET HAS TAKEN. The operator performed a ken memory trim, live on the unit from 17:21Z on 2026-11-19: parked-session RAM 32 -> 12 GiB; parked-session slots 24 -> 6; parallel 8 -> 4; non-reclaimable memory roughly 59 -> roughly 25 GB; the full-speed need roughly 53 GB, which the operator splits as about 25 GB of engine plus about 28 GiB of model page cache; below that level prompt prefill degrades and THE DEGRADATION CURVE IS UNMEASURED; max context stays 224k; the prior configuration is kept on the host as cfg-ken.json.bak-before-mem-trim-20261119T171122Z.
+
+WHAT THE MODEL DOES NOT YET KNOW, which is the part a reader must not skip. No read held in this repo has confirmed the new ceiling: gunbc.serving.serving_host_memory::ken_strata_engine_memory still carries memory_max 112 GiB, from the 2026-11-18T21:21Z systemctl read over read-only ssh, and its soft ceiling, swap ceiling, loaded-and-idle base and parked-session cache are still ServingMemoryUnread with the reads that would settle them named. The owed read is systemctl show ken-strata.service for MemoryMax, MemoryHigh and MemorySwapMax on that host, plus the parked-session cache budget and slot count from cfg-ken.json; only a read like that may move the physical row, because fail_closed (gunbc.design_argument::fail_closed) refuses a plausible output nobody observed. Once it lands, the consequence this ruling was made for is mechanical rather than argued: gunbc.serving.serving_reservation derives the serving charge from the read ceiling, so the frontier row h11ssl_unit3_serving_charge_blocks_build_seat_frontier should dissolve, and that row -- not this ruling -- is where the two-seat claim lives until a read exists to put it there.",
 }
