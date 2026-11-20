@@ -21,7 +21,7 @@ import gunbc.roadmap.roadmap_event_log { roadmap_event_wire_text }
 fn self_claimed(node: RoadmapNodeId, author: String, at: String) -> RoadmapEventEnvelope {
   let ref = PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: author as NonEmptyStr }
   let principal = EventPrincipalAuthenticated { ref: ref }
-  roadmap_event_envelope(e: RoadmapEvent { node: node, author: principal, parent: none, kind: Claimed { assignee: principal, return_to: principal }, recorded_at: at })
+  roadmap_event_envelope(e: RoadmapEvent { node: node, author: principal, parent: none, kind: Claimed { assignee: principal, return_to: principal , grain: Pathless }, recorded_at: at })
 }
 
 // The carrier's layout is a function of the instance roots: the worktree hangs under the instance

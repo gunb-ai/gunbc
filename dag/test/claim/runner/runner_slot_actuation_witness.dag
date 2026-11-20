@@ -7,6 +7,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import extdeps.procps.ps { ps_unit_runs_command }
 import extdeps.systemd { UnitLoadError, Failed }
 import gunbc.runner.runner_local_state { MainProcessUngrounded, NoMainProcess, StartUnread, ProcessAbsoluteStart }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_mask_argv, systemctl_unmask_verb, systemctl_enable_verb, systemctl_start_verb }
 import gunbc.fleet.fleet_posix_accounts { ci_runner_sudo_binary_path, SudoSystemctl }
@@ -19,7 +20,7 @@ import gunbc.runner.runner_slot_actuation {
   slot_activation_plan, slot_activation_read_back_holds,
   slot_drain_plan, slot_drain_read_back_holds,
   slot_drain_plan_under, MaskWhileRunning, NeverMaskARunningUnit,
-  slot_actuation_reading_of,
+  slot_actuation_reading_of, slot_is_masked, slot_state_stopped,
   slot_activity_of_listing,
   slot_task_count_of_show,
   slot_activity_with_task_count,
@@ -31,14 +32,14 @@ import gunbc.runner.runner_slot_actuation {
   SlotRetirementWithheld, SlotRetirementRefused, SlotRetirementUndecided,
   DrainUnitNotInstalled, slot_actuation_outcome_wire,
   slot_actuation_settled,
-  runner_job_process_comm,
-}
+  runner_job_process_comm, slot_activation_fresh_read_back_holds }
 import gunbc.runner.runner_retirement_causes {
   WaitingOnReplacement, RegistrationPending, NotRegistered, NoDecisionFor,
   HandStartedOutsideTheDerivedPopulation,
 }
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileDesired,
+  fleet_host_file_scope,
   RunnerHostFileWithheld,
   runner_host_cpu_dropin_gate,
   FleetHostFilesApply,
@@ -60,9 +61,9 @@ fn abs_na() -> ProcessAbsoluteStart { StartUnread { cause: "not under test" as N
 // Readings are built through the same boundary parse the effect uses, so a fixture word the parse
 // does not admit cannot become a reading; a word it refuses fails the fixture loudly.
 fn reading(load: String, file: String, active: String) -> SlotActuationReading {
-  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active) {
+  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active, result_raw: "success", main_pid_raw: "0") {
     SlotReadingTyped { reading: r } => r
-    SlotReadingUnknownWord { property: _, raw: _ } => SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed }
+    SlotReadingUnknownWord { property: _, raw: _ } => SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed, result: ServiceResultSuccess, main_pid: NoMainProcess }
   }
 }
 
@@ -188,12 +189,23 @@ test fn the_job_process_is_attributed_to_its_own_unit() -> Bool {
     && ps_unit_runs_command(listing: concat(listing, "actions-runner@srv3-18.service Runner.Worker\n"), unit: slot_u as String, comm: runner_job_process_comm)
 }
 
+// THE JOIN BY Id, TESTED BOTH WAYS: each unit reads its OWN block (the fixture's two blocks state
+// opposite facts, so a borrowed neighbour field cannot pass), a masked-and-stopped block answers the
+// drain read-back, and a unit with no block at all is unread rather than inferred. The claim once
+// asserted slot_drain_read_back_holds of the ACTIVE block, which states the opposite fact -- it
+// failed from its first execution (no CI path evaluates witnesses) and is repaired to what its name
+// claims. The blocks now carry the Result= and MainPID= words the reading requests, as show output for
+// running and stopped units does.
 test fn a_reading_is_joined_by_id_and_a_missing_block_is_unread() -> Bool {
-  let show = "Id=actions-runner@srv3-17.service\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\n\nId=actions-runner@srv3-18.service\nLoadState=masked\nUnitFileState=masked\nActiveState=inactive"
+  let show = "Id=actions-runner@srv3-17.service\nLoadState=loaded\nUnitFileState=enabled\nActiveState=active\nResult=success\nMainPID=4242\n\nId=actions-runner@srv3-18.service\nLoadState=masked\nUnitFileState=masked\nActiveState=inactive\nResult=success\nMainPID=0"
   (match slot_actuation_reading_of(unit: slot_u, show_stdout: show) {
     Present { value: res } => match res { SlotReadingTyped { reading: r } => slot_drain_read_back_holds(r: r) SlotReadingUnknownWord { property: _, raw: _ } => false }
     Absent => false
   })
+    && (match slot_actuation_reading_of(unit: "actions-runner@srv3-17.service" as NonEmptyStr, show_stdout: show) {
+        Present { value: res } => match res { SlotReadingTyped { reading: r } => !slot_is_masked(r: r) && !slot_state_stopped(active: r.active) SlotReadingUnknownWord { property: _, raw: _ } => false }
+        Absent => false
+      })
     && (match slot_actuation_reading_of(unit: "actions-runner@srv3-19.service" as NonEmptyStr, show_stdout: show) { Present { value: _ } => false Absent => true })
 }
 
@@ -205,7 +217,7 @@ test fn every_actuation_argv_crosses_the_ssh_edge() -> Bool {
 // ── Sequencing: no width-21 quota over a 17-runner host ─────────────────────────────────────────
 
 fn cpu_file() -> FleetHostFileDesired {
-  FleetHostFileDesired { subject: "runner-cpu-dropin" as NonEmptyStr, path: gunbc_runner_per_slot_cpu_dropin_path as FilePath, content: "[Service]\nCPUQuota=500%\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+  FleetHostFileDesired { subject: "runner-cpu-dropin" as NonEmptyStr, path: gunbc_runner_per_slot_cpu_dropin_path as FilePath, scope: fleet_host_file_scope, content: "[Service]\nCPUQuota=500%\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
 }
 
 // RED: one unsettled actuation withholds the CPU drop-in (and a withheld file refuses apply);
@@ -222,7 +234,7 @@ test fn the_cpu_dropin_waits_for_the_slot_population() -> Bool {
 // and an unknown LoadState each refuse; the empty UnitFileState of a not-found unit is carried as
 // absent and the not-found unit is a drained no-op, not an activation.
 fn refuses_word(load: String, file: String, active: String, property: String) -> Bool {
-  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active) {
+  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active, result_raw: "success", main_pid_raw: "0") {
     SlotReadingUnknownWord { property: p, raw: _ } => p == property
     SlotReadingTyped { reading: _ } => false
   }
@@ -232,7 +244,7 @@ test fn an_unknown_systemd_word_refuses_and_is_never_planned() -> Bool {
   refuses_word(load: "loaded", file: "alias", active: "active", property: "UnitFileState")
     && refuses_word(load: "loaded", file: "enabled", active: "maintenance", property: "ActiveState")
     && refuses_word(load: "stub", file: "enabled", active: "active", property: "LoadState")
-    && (match slot_actuation_reading_typed(unit: slot_u, load_raw: "not-found", file_raw: "", active_raw: "inactive") {
+    && (match slot_actuation_reading_typed(unit: slot_u, load_raw: "not-found", file_raw: "", active_raw: "inactive", result_raw: "success", main_pid_raw: "0") {
       SlotReadingTyped { reading: r } =>
         (match slot_activation_plan(r: r) { ActivationRefused { reason: _ } => true ActivationAlreadyActive => false ActivationSteps { steps: _ } => false })
           && (match slot_drain_plan(r: r, worker: SlotIdle) { DrainAlreadyMasked => false DrainUnitNotInstalled => true DrainSteps { steps: _ } => false DrainWaitForJob { mask: _ } => false DrainWaitForStop { mask: _ } => false DrainRefused { reason: _ } => false })
@@ -373,6 +385,22 @@ test fn a_zero_main_pid_is_no_main_process_and_an_unread_one_never_settles() -> 
     && slot_local_observation_settled(o: idle)
     && !slot_local_observation_settled(o: unread)
     && !slot_local_observation_settled(o: junk)
+}
+
+// RED (review 95508): the activation reading no longer carries MainPID as a raw string. A
+// garbled MainPID is MainProcessUnread -- it can never hold the fresh readback -- while a real
+// pid from a healthy read does, ungrounded but present.
+test fn a_garbled_main_pid_never_holds_the_activation_readback() -> Bool {
+  let junk = slot_actuation_reading_typed(unit: slot_u, load_raw: "loaded", file_raw: "enabled", active_raw: "active", result_raw: "success", main_pid_raw: "not-a-number")
+  let good = slot_actuation_reading_typed(unit: slot_u, load_raw: "loaded", file_raw: "enabled", active_raw: "active", result_raw: "success", main_pid_raw: "333")
+  (match junk {
+    SlotReadingTyped { reading: r } => !slot_activation_fresh_read_back_holds(r: r)
+    SlotReadingUnknownWord { property: _, raw: _ } => true
+  })
+    && (match good {
+      SlotReadingTyped { reading: r } => slot_activation_fresh_read_back_holds(r: r)
+      SlotReadingUnknownWord { property: _, raw: _ } => false
+    })
 }
 
 // A pid whose boot id or start time was not read is MainProcessUngrounded, never a MainProcess identity.

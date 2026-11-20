@@ -492,16 +492,21 @@ fn mtcollins1_destructive_controller_effect(root_subject: NonEmptyStr, identity:
   }
 }
 
+// THE BOOT JOB'S FEDERATED IDENTITY, one reading for every effect the mtcollins1-boot job performs (the boot and the MAC-discovery cycle).
+fn mtcollins1_boot_job_workload_identity() -> WorkloadIdentityStanding {
+  match boot_federation_for(host: operator_host_mtcollins1) {
+    BootFederationProvisioned { federation: f } => WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
+    BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
+      WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
+    BootFederationUnprovisioned { host: _, cause: _ } =>
+      WorkloadIdentityUnbindable { cause: "mtcollins1 has no admitted boot federation (gunbc.auth.managed_host_boot_federation boot_federation_for)" as NonEmptyStr }
+  }
+}
+
 fn mtcollins1_boot_effect() -> PrivilegedEffect {
   mtcollins1_destructive_controller_effect(
     root_subject: "the mtcollins1_boot mode (attach, boot device, power, SOL; census medium readback over the pinned fleet key)" as NonEmptyStr,
-    identity: match boot_federation_for(host: operator_host_mtcollins1) {
-      BootFederationProvisioned { federation: f } => WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
-      BootFederationProvisionedUnderDeclaredDrop { federation: f, drop: _, standing_subject: _, current_subject: _ } =>
-        WorkloadIdentityBindable { member: boot_federation_service_account_member(f: f) as NonEmptyStr }
-      BootFederationUnprovisioned { host: _, cause: _ } =>
-        WorkloadIdentityUnbindable { cause: "mtcollins1 has no admitted boot federation (gunbc.auth.managed_host_boot_federation boot_federation_for)" as NonEmptyStr }
-    },
+    identity: mtcollins1_boot_job_workload_identity(),
   )
 }
 
@@ -512,22 +517,41 @@ data mtcollins1_pxe_mac_discovery_relayed_ruling: StandingDestructiveAuthorizati
   interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
 }
 
-data mtcollins1_pxe_mac_discovery_consumer_is_b2: DivergenceReason = DivergenceReason {
-  statement: "the MAC-discovery root exists as code but no dispatched run reaches it: the fleet-converge mode value and its step target are not yet declared, so RealizedFederatedGrant would claim a run that does not exist" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CONSUMER: B2, the fleet-converge workflow mode and gunbc_ci step target for mtcollins1_pxe_mac_discovery_wet, which ride the operator-granted regen PR. TRIGGER: that PR lands the mode and step target, then this row becomes RealizedFederatedGrant under the boot federation" as NonEmptyStr),
-}
-
 fn mtcollins1_pxe_mac_discovery_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: join([mtcollins1_pxe_mac_discovery_relayed_ruling.effect_subject as String, " -- by the mtcollins1_pxe_mac_discovery_wet root"], "") as NonEmptyStr,
     frequency: EveryProvision,
     reversibility: IrreversibleEffect { what_is_lost: "a power cycle destroys the unit's RAM and the session it was running; no reapply restores it" as NonEmptyStr },
     surface: ApiSurface,
-    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the MAC-discovery cycle until B2 lands its mode; the credential read is the pinned BMC credential path" as NonEmptyStr },
+    workload_identity: mtcollins1_boot_job_workload_identity(),
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
     witness_discharge: StandingRulingUnderInterlock { ruling: mtcollins1_pxe_mac_discovery_relayed_ruling },
   }
+}
+
+// THE CONTROLLER COLD RESET (IPMI v2.0 §20.2, extdeps.bmc.ipmi McResetCold), run in the boot job by the
+// mtcollins1_bmc_cold_reset mode. It is BREAK-GLASS: the operator approved ONE reset (msg_05ddb108, route set by
+// smart-crane-730 in msg_47e5a32f) after capture boot 43669572288 found the MegaRAC web login and the SDR read
+// timing out, and that approval is not a standing ruling for later runs of the mode. So the selection asks for
+// a per-effect approval, and the realization (a dispatch of the boot job under its federated identity) diverges
+// from it with the reason below.
+fn mtcollins1_bmc_cold_reset_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "mtcollins1 controller cold reset (IPMI Cold Reset over lanplus; no chassis-power command; host power read at both endpoints and required equal) -- by the mtcollins1_bmc_cold_reset_wet root" as NonEmptyStr,
+    frequency: BreakGlassOnly,
+    reversibility: IrreversibleEffect { what_is_lost: "the controller's running state: every open IPMI, SOL, KVM and web session and any attached virtual medium may be dropped by the reinitialization it requests, and no reapply restores them" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: mtcollins1_boot_job_workload_identity(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
+data mtcollins1_bmc_cold_reset_one_approved_use: DivergenceReason = DivergenceReason {
+  statement: "the operator approved exactly one cold reset of mtcollins1's controller (msg_05ddb108), recorded outside the repository; the mode runs on a boot-job dispatch under the boot federation, and nothing in it redeems a per-use approval, so a second dispatch has no approval behind it and needs a new operator go" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "an approval-capability redemption (gunbc.auth.approval_device_redemption redeem_device_over_store) bound to the mtcollins1_bmc_cold_reset dispatch, so each reset requests and redeems its own ApprovalCapability instead of resting on a relayed one-time go. NOT satisfied by the mtcollins1-boot environment's reviewer gate" as NonEmptyStr),
 }
 
 // HOST RESET-RETURN reads the BMC credential through the repository federation (the convergence
@@ -768,6 +792,23 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
         operations: ["boot-device set" as NonEmptyStr, "power cycle" as NonEmptyStr],
         sealed_by: [
           site(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
+          site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
+        ],
+      },
+    ],
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+    hold: Present { value: decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "UnitHoldProof") },
+    refusal: site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
+    premise: "the controller cold reset takes the unit's one durable exclusive hold before it sends the reset, so a reset can never land in the middle of another run's boot, MAC-discovery cycle or probe; it clears no admit_boot_attempt, because it boots no revision" as NonEmptyStr,
+    hold_owning_roots: [
+      InterlockRoot {
+        root: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet_admitted"),
+        operations: ["controller cold reset" as NonEmptyStr],
+        sealed_by: [
+          site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_send"),
           site(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
         ],
       },
@@ -1719,8 +1760,14 @@ data privileged_effect_registry: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake.mtcollins1_pxe_mac_discovery", decl_name: "mtcollins1_pxe_mac_discovery_wet"),
     effect: mtcollins1_pxe_mac_discovery_effect(),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+    effect: mtcollins1_bmc_cold_reset_effect(),
     realized: RealizedUnauthorized,
-    divergence_reason: Present { value: mtcollins1_pxe_mac_discovery_consumer_is_b2 },
+    divergence_reason: Present { value: mtcollins1_bmc_cold_reset_one_approved_use },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.managed_host_boot_federation_provision", decl_name: "managed_host_boot_federation_provision_with_supplied_token"),

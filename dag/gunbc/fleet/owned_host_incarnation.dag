@@ -50,6 +50,7 @@ import gunbc.machine_intake.prior_life_boundary {
   prior_life_receipt_consumed_identity,
   prior_life_receipt_key,
   prior_life_receipt_realization,
+  prior_life_realization_display,
 }
 import gunbc.hostname_allocation { HostnameAllocation, allocated_canonical_hostname }
 import gunbc.fleet.fleet_naming { FleetMemberLabel, fleet_member_label }
@@ -228,7 +229,7 @@ fn origin_of_boundary(
           value: BoundaryReading {
             boundary: Present { value: prior_life_receipt_archive(r: receipt) },
             consumed: Present { value: prior_life_receipt_consumed_identity(r: receipt) },
-            realization: prior_life_receipt_realization(r: receipt),
+            realization: prior_life_realization_display(r: prior_life_receipt_realization(r: receipt)),
           },
         }
       }

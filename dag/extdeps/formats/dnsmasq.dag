@@ -4,19 +4,32 @@ import std.types { Int, String, List, Bool, NonEmptyStr }
 import std.algebra { trim, string_contains }
 import std.list { first_where }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, ExternalModelScope, ExternalSubjectRef }
 import std.layout {
   Doc,
   LayoutProtocol,
   doc_concat, doc_line_of,
   render
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.formats.dnsmasq",
+      decl_name: "DnsmasqDirective",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data dnsmasq_man_page_authority: ExternalAuthority = ExternalAuthority {
@@ -121,13 +134,28 @@ fn dnsmasq_proxy_boot_standing(config: String) -> DnsmasqProxyBootStanding {
   }
 }
 
-// THE LINE SHAPE `log-dhcp` MAKES dnsmasq WRITE, as this repository reads it (the man page's --log-dhcp entry owns the option, not these lines). A request line
-// is `<KIND>(<interface>) [<address>] <client MAC>`: the kind word is one of the three request kinds below, occurs once in the line, and is followed by the interface and a closing parenthesis, then one or two words, the sender's hardware address being the last. A PXE client's class is a separate `vendor class: PXEClient...` line that carries no MAC, so it is never joined to a sender here.
-data dnsmasq_log_dhcp_line_shape_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "read dnsmasq's log-dhcp output (src/rfc2131.c and src/dhcp-common.c of the installed dnsmasq-base version) for the DHCPDISCOVER/DHCPREQUEST/DHCPINFORM line layout and the vendor class line; the shape was transcribed from a prior run's reading, and its version is not yet declared here"
+// THE LINE SHAPE `log-dhcp` MAKES dnsmasq WRITE, read from the upstream source at tag v2.90: log_packet in src/rfc2131.c prints
+// `[<xid> ]<TYPE>(<interface>) [<address> ]<MAC>[ <string>][<err>]`. The xid prefix appears only under log-dhcp (OPT_LOG_OPTS). In PROXY-DHCP mode
+// (the edge's dhcp-range ...,proxy) the line that carries the sender's MAC is TYPE `PXE`, e.g. `PXE(eno1) <MAC> proxy` or `proxy-ignored` (the
+// answer to a DISCOVER/REQUEST, rfc2131.c dhcp_reply) and `PXE(eno1) <yiaddr> <MAC> <boot file>` (the port-4011 request); DHCPDISCOVER/DHCPOFFER lines
+// are the real server's concern. The vendor class is the separate line `<xid> vendor class: <class>` (rfc2131.c, dhcp_reply) and carries no MAC.
+// The citation grounds v2.90's layout only; whether srv4 runs that layout is the separate standing dnsmasq_log_dhcp_installed_version_standing.
+data dnsmasq_log_dhcp_line_shape_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "git.thekelleys.org.uk/git/dnsmasq.git/tree/src/rfc2131.c?h=v2.90"
+    }
+  }
 }
 
-data dnsmasq_log_dhcp_request_markers: List<String> = ["DHCPDISCOVER(", "DHCPREQUEST(", "DHCPINFORM("]
+// THE INSTALLED VERSION ON srv4 IS NOT RECEIPTED. The layout above is read at v2.90, so it is the layout of whatever srv4 runs only if that version's log_packet prints the same
+// shape. The wire names this obligation on every observe reading until a reading discharges it.
+data dnsmasq_log_dhcp_installed_version_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the dnsmasq package version installed on srv4 (dnsmasq --version) and compare log_packet in src/rfc2131.c at that tag with v2.90; until then the layout is v2.90's, not srv4's" as NonEmptyStr
+}
+
+data dnsmasq_log_dhcp_request_markers: List<String> = ["DHCPDISCOVER(", "DHCPREQUEST(", "DHCPINFORM(", "PXE("]
 
 data dnsmasq_log_pxe_vendor_class_marker: String = "vendor class: PXEClient"
 
@@ -178,8 +206,16 @@ fn dnsmasq_log_request_tail_words(line: String) -> List<String>? {
 
 fn dnsmasq_log_dhcp_line_shape_wire() -> String {
   match dnsmasq_log_dhcp_line_shape_standing {
-    CitedToAuthority { authority: _ } => "cited"
-    TranscribedUncited { read_obligation: o } => concat("TRANSCRIBED-UNCITED (a line with any layout other than a non-empty interface name, then an optional IPv4 address, then the sender MAC, is counted malformed, not read) obligation: ", o as String)
+    CitedToAuthority { authority: _ } => "CITED dnsmasq v2.90 src/rfc2131.c log_packet; layout `KIND(iface) [ipv4 ]MAC[ one word]`, kinds DHCPDISCOVER/DHCPREQUEST/DHCPINFORM/PXE; any other layout is counted malformed and sampled verbatim, not read"
+    TranscribedUncited { read_obligation: o } => concat("TRANSCRIBED-UNCITED obligation: ", o as String)
     ObservedByReceipt { observed: _ } => "observed-by-receipt"
+  }
+}
+
+fn dnsmasq_log_dhcp_installed_version_wire() -> String {
+  match dnsmasq_log_dhcp_installed_version_standing {
+    CitedToAuthority { authority: _ } => "installed_version=cited"
+    TranscribedUncited { read_obligation: o } => concat("installed_version=UNVERIFIED obligation: ", o as String)
+    ObservedByReceipt { observed: _ } => "installed_version=observed-by-receipt"
   }
 }

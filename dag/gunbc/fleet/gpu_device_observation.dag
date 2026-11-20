@@ -7,8 +7,8 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import extdeps.pci.identity { PciAddress }
 import extdeps.linux.amdgpu_hwmon { AmdgpuHwmonPowerAttribute, Power1Cap }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4, operator_host_srv14, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_07, gpu_board_08, gpu_board_09, gpu_board_10 , gpu_board_11, gpu_board_12, gpu_board_13 }
 
 // WHAT THE INSTALLED GPU DEVICES REPORT: the observed half of a card, kept apart from the three facts it is
 // easily confused with (operator review of 2026-11-07, "keep four power facts distinct"):
@@ -34,8 +34,13 @@ import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_
 //
 // STANDING. Each row is a transcription of one reading, dated and named in read_on; no receipt module
 // reads nvidia-smi's identity and power fields on a schedule yet, so these are not sealed receipts. A row
-// is superseded by a newer reading of the same board, and the earlier reading stays in the inventory
-// annotation as history (fleet_physical_inventory gpu_board_01_asset keeps the 2026-10-30 reading).
+// is superseded by a newer reading of the same board. WHERE A RETIRED READING GOES: it moves to
+// retired_gpu_device_observations below, TYPED and unchanged -- never into an annotation. An earlier draft of
+// this note sent authors to "the inventory annotation as history", citing fleet_physical_inventory's
+// gpu_board_01_asset as keeping a 2026-10-30 reading; that instruction was wrong and the precedent it cited
+// does not exist, so neither is repeated here: gunbc.design_argument::source_annotations puts receipts in typed
+// carriers, forbids an annotation restating what a declaration says, and reserves the project's right to delete
+// any comment at any time. A dated reading is a receipt; retirement changes who folds it, not what holds it.
 type GpuDeviceObservation
   = GpuDeviceEnumerated {
       host: HostIdentity
@@ -157,14 +162,117 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
   },
-  // srv14/butch's four NVIDIA A2 cards, read on butch 2026-11-10 over ssh (nvidia-smi -q -d POWER, driver
-  // 595.91.07; 15356 MiB each). THIS IS WHERE THE A2's SETTABLE POWER-LIMIT RANGE LIVES: the 595.91.07
-  // driver reports min 35 / default 60 / max 60 W, and the operator has capped each at exactly 35 W via
-  // butch's a2-power-cap.service (systemctl cat a2-power-cap.service, 2026-11-10: ExecStart runs
-  // `nvidia-smi -pm 1` then `nvidia-smi -pl 35`; enabled+active). This 35 W floor is a DEVICE fact and is
-  // SEPARATE from the 40-60 W product-page TDP envelope in extdeps.gpu.nvidia_a2 (a thermal-design number,
-  // not a settable range); the cap-admission path gunbc.serving.gpu_power_state_policy admit_gpu_cap_against
-  // reads THESE power_limit_* fields, so the 35 W cap below is admitted by the observation, not the catalog.
+  // srv14/butch's four NVIDIA A2 readings (gpu_board_07..10, read 2026-11-10) are NOT in this list and never
+  // will be again: the operator's 2026-11-17 report says all four cards were physically removed from butch to
+  // be sold and that butch is CI only, no serving, corroborated by the operator's session read at
+  // 2026-11-16T22:36Z (no NVIDIA driver loaded, a2-power-cap.service FAILED, strata-pool@a/@b inactive). This
+  // list is read as CURRENT state by every one of its consumers -- current_gpu_device_observations_of,
+  // current_gpu_device_for_host in gunbc.serving.gpu_power_state_policy (which admit_gpu_cap_against uses to
+  // admit a cap), and the converge and boot-state paths in gunbc.fleet.gpu_power_cap_converge and
+  // gunbc.fleet.gpu_power_cap_boot_state -- so a kept row would assert that butch enumerates four A2s today and
+  // would hold a cap-admission path open against cards that are no longer in the box. WHAT WAS NOT DONE, and
+  // why: the readings were not deleted, nor retyped into annotations. A dated observation is a receipt, and
+  // gunbc.design_argument::source_annotations puts receipts in a typed carrier and forbids an annotation from
+  // restating what a declaration says -- "the project reserves the right to delete any comment at any time", so
+  // #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations below, which no current-state consumer
+  // folds. DO NOT "FIX" THE ABSENCE HERE BY ADDING GpuDeviceNotEnumerated ROWS FOR srv14: not-enumerated is the
+  // state of a card that IS seated and fails to show up, and these cards are seated nowhere -- the honest
+  // current state is no row, not a device with a fault.
+  // host-6ce85c (h11-a16)'s Radeon AI PRO R9700, read 2026-11-12T16:31Z by read_r9700_device.sh
+  // (artifacts/host-observations/h11-r9700-2026-11-12/r9700_device_reading.txt, pinned in that directory's
+  // SHA256SUMS): PCI 1002:7551, subsystem 1458:242f (Gigabyte), VBIOS 113-R9700AT-F50, 34208743424 bytes of VRAM,
+  // amdgpu on kernel 7.0.0-43-generic. The hwmon reads power1_cap_min 210 W, power1_cap_max 300 W,
+  // power1_cap_default 300 W and power1_cap 210 W -- the 210 W is the operator's cap, written by hand to
+  // power1_cap earlier the same day, which is why current differs from default. NO NVIDIA UUID EXISTS for this device; the
+  // driver's own stable identifier is sysfs unique_id d503384f1b8b8afe (the kernel's "unique ID for the GPU that
+  // will persist from machine to machine", docs.kernel.org/gpu/amdgpu/driver-misc.html), which is a different
+  // identifier and is not written into gpu_uuid. THE SLOT RUNS IT AT PCIe 3.0: the endpoint and the card's own
+  // switch (81:00.0/82:00.0) advertise 32 GT/s x16, and the root port above them, 0000:80:01.1 (AMD
+  // Starship/Matisse GPP bridge), reads LnkCap and LnkSta 8 GT/s x16.
+  GpuDeviceEnumerated {
+    host: operator_host_6ce85c,
+    board: gpu_board_02,
+    gpu_uuid: Absent,
+    pci_address: "0000:83:00.0" as PciAddress,
+    power_limit_minimum: watt(count: 210),
+    power_limit_maximum: watt(count: 300),
+    power_limit_current: watt(count: 210),
+    power_limit_default: Present { value: watt(count: 300) },
+    power_limit_control: AmdgpuHwmonPowerCap { attribute: Power1Cap },
+    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh)" as NonEmptyStr,
+  },
+  // host-6ce85c's SECOND R9700: installed (operator, 2026-11-12) and absent from the bus. Every 1002:7551 function
+  // the host lists is 0000:83:00.0, which is gpu_board_02 (r9700_device_reading.txt at 16:31Z; lspci re-read the same
+  // day after the operator's statement). Why it does not enumerate is unread -- whether its 16-pin (12V-2x6) feed is
+  // connected, and whether its slot is enabled, were not observed -- so the cause says only what was seen.
+  GpuDeviceNotEnumerated {
+    host: operator_host_6ce85c,
+    board: gpu_board_03,
+    cause: "installed (operator, 2026-11-12) and no second 1002:7551 function is on the bus; its power feed and slot state are unread" as NonEmptyStr,
+    read_on: "2026-11-12 host-6ce85c lspci and amdgpu sysfs" as NonEmptyStr,
+  },
+  // ken (host-e2d4b7), read ON THE CARDS 2026-11-18 in one admitted read-only session: `nvidia-smi -q -d
+  // POWER` for the ranges and the current limit, `nvidia-smi --query-gpu=pci.bus_id,uuid,serial` for the
+  // identities (artifacts/host-observations/ken-gpu-read-2026-11-18/: unit_read3.txt is the power output,
+  // gpu_identity_query.txt the identities, SHA256SUMS pins both). All three functions report the SAME range
+  // -- 100 W floor, 150 W ceiling, 150 W default -- and all three sit at 100 W now, which is what the
+  // hand-written `t10-power-cap` unit on that machine leaves behind at boot (see gunbc.machine_intake.
+  // supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_power_cap_setter_prior_life). The
+  // driver addresses each card by UUID and takes a power-limit write through `nvidia-smi -pl`, which is the
+  // NvidiaSmiPowerLimit control below -- the same route srv1's Max-Q card uses, no new instrument. The
+  // `-q -d POWER` block prints each field twice: the second set reads N/A, which is an instantaneous-draw
+  // field, not a limit; the four limits above are the first set.
+  GpuDeviceEnumerated {
+    host: operator_host_e2d4b7,
+    board: gpu_board_11,
+    gpu_uuid: Present { value: "GPU-c4177907-3dc8-12be-4146-431ea120f818" },
+    pci_address: "0000:01:00.0",
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 150),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 150) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_e2d4b7,
+    board: gpu_board_12,
+    gpu_uuid: Present { value: "GPU-8327ce9a-6011-f8cf-0012-4af9596c3124" },
+    pci_address: "0000:81:00.0",
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 150),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 150) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
+  },
+  GpuDeviceEnumerated {
+    host: operator_host_e2d4b7,
+    board: gpu_board_13,
+    gpu_uuid: Present { value: "GPU-a56f81eb-df65-ec75-e5ee-06c01ce8509e" },
+    pci_address: "0000:c1:00.0",
+    power_limit_minimum: watt(count: 100),
+    power_limit_maximum: watt(count: 150),
+    power_limit_current: watt(count: 100),
+    power_limit_default: Present { value: watt(count: 150) },
+    power_limit_control: NvidiaSmiPowerLimit,
+    read_on: "2026-11-18 ken nvidia-smi -q -d POWER and --query-gpu=pci.bus_id,uuid,serial" as NonEmptyStr,
+  },
+]
+
+// THE RETIRED READINGS, TYPED. A dated observation is a receipt, and receipts live in typed carriers, not in
+// annotations (gunbc.design_argument::source_annotations: "Nothing may depend on a comment for correctness"; an
+// annotation "must not restate what the declaration says"). These four are the last readings taken of butch's
+// NVIDIA A2 cards while they were seated, kept verbatim from the rows that were in
+// current_gpu_device_observations until the operator's 2026-11-17 report removed the cards from the box to sell
+// them. Nothing about them is current: the read is pinned by each row's own read_on, and NO CURRENT-STATE
+// CONSUMER FOLDS THIS LIST -- not current_gpu_device_observations_of, not current_gpu_device_for_host, not the
+// cap-admission path, not the converge or boot-state generators. That separation is the whole reason this list
+// exists rather than the rows staying above: the readings are true of 2026-11-10 and false of today, and the
+// two must not share one population. The consumer that keeps this list honest is the claim
+// witness_the_retired_butch_a2_readings_survive_typed_in_no_current_state_list, which reds if a row is dropped,
+// if a field drifts, or if any of these boards reappears in the current list while unseated.
+data retired_gpu_device_observations: List<GpuDeviceObservation> = [
   GpuDeviceEnumerated {
     host: operator_host_srv14,
     board: gpu_board_07,
@@ -213,40 +321,11 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_control: NvidiaSmiPowerLimit,
     read_on: "2026-11-10 srv14/butch nvidia-smi -q -d POWER (driver 595.91.07)" as NonEmptyStr,
   },
-  // host-6ce85c (h11-a16)'s Radeon AI PRO R9700, read 2026-11-12T16:31Z by read_r9700_device.sh
-  // (artifacts/host-observations/h11-r9700-2026-11-12/r9700_device_reading.txt, pinned in that directory's
-  // SHA256SUMS): PCI 1002:7551, subsystem 1458:242f (Gigabyte), VBIOS 113-R9700AT-F50, 34208743424 bytes of VRAM,
-  // amdgpu on kernel 7.0.0-43-generic. The hwmon reads power1_cap_min 210 W, power1_cap_max 300 W,
-  // power1_cap_default 300 W and power1_cap 210 W -- the 210 W is the operator's cap, written by hand to
-  // power1_cap earlier the same day, which is why current differs from default. NO NVIDIA UUID EXISTS for this device; the
-  // driver's own stable identifier is sysfs unique_id d503384f1b8b8afe (the kernel's "unique ID for the GPU that
-  // will persist from machine to machine", docs.kernel.org/gpu/amdgpu/driver-misc.html), which is a different
-  // identifier and is not written into gpu_uuid. THE SLOT RUNS IT AT PCIe 3.0: the endpoint and the card's own
-  // switch (81:00.0/82:00.0) advertise 32 GT/s x16, and the root port above them, 0000:80:01.1 (AMD
-  // Starship/Matisse GPP bridge), reads LnkCap and LnkSta 8 GT/s x16.
-  GpuDeviceEnumerated {
-    host: operator_host_6ce85c,
-    board: gpu_board_02,
-    gpu_uuid: Absent,
-    pci_address: "0000:83:00.0" as PciAddress,
-    power_limit_minimum: watt(count: 210),
-    power_limit_maximum: watt(count: 300),
-    power_limit_current: watt(count: 210),
-    power_limit_default: Present { value: watt(count: 300) },
-    power_limit_control: AmdgpuHwmonPowerCap { attribute: Power1Cap },
-    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh)" as NonEmptyStr,
-  },
-  // host-6ce85c's SECOND R9700: installed (operator, 2026-11-12) and absent from the bus. Every 1002:7551 function
-  // the host lists is 0000:83:00.0, which is gpu_board_02 (r9700_device_reading.txt at 16:31Z; lspci re-read the same
-  // day after the operator's statement). Why it does not enumerate is unread -- whether its 16-pin (12V-2x6) feed is
-  // connected, and whether its slot is enabled, were not observed -- so the cause says only what was seen.
-  GpuDeviceNotEnumerated {
-    host: operator_host_6ce85c,
-    board: gpu_board_03,
-    cause: "installed (operator, 2026-11-12) and no second 1002:7551 function is on the bus; its power feed and slot state are unread" as NonEmptyStr,
-    read_on: "2026-11-12 host-6ce85c lspci and amdgpu sysfs" as NonEmptyStr,
-  },
 ]
+
+fn retired_gpu_device_observations_of(board: PhysicalAssetIdentity) -> List<GpuDeviceObservation> {
+  filter(retired_gpu_device_observations, o => physical_asset_identity_eq(a: gpu_device_observation_board(o: o), b: board))
+}
 
 fn current_gpu_device_observations_of(board: PhysicalAssetIdentity) -> List<GpuDeviceObservation> {
   filter(current_gpu_device_observations, o => physical_asset_identity_eq(a: gpu_device_observation_board(o: o), b: board))

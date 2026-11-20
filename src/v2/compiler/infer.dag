@@ -7814,7 +7814,8 @@ fn infer_literal_payload_member_type(family: InferLiteralPayload, member: Node) 
       match member.kind {
         TypeNode { connective: Atom { identity: _ } } =>
           if length(xs: member.children) == 0 { optional_present(value: host_text_type_node()) } else { optional_absent() }
-        _ => optional_absent()
+        TypeNode { connective: _ } => optional_absent()
+        ComputationNode { behavior: _ } => optional_absent()
       }
     InferNotALiteralPayload => optional_absent()
   }
@@ -12611,7 +12612,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "infer_declared_position_undecidable_reason" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "infer_declared_type_denotation" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "infer_gather_fold_step" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "infer_literal_payload_member_type" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "infer_sum_nullary_payload_edge" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
 ]
 

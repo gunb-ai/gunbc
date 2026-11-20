@@ -1155,6 +1155,437 @@ fn serve_entry_realizes_the_host_declared_key_row() {
         .unwrap();
 }
 
+/// THE OTHER HALF OF THAT CLASS, measured on srv1 with the binary built from 819918c4 and re-measured
+/// on this seed: the ingress host also consults the served HANDLER by name (`qualified_function_exists`,
+/// src/v1/stage0/src/cli_run/http_ingress_host.rs realize_in), and the handler a deployment starts with
+/// arrives on the command line (`gunbc run --arg handler=...`, rendered by gunbc.live_deploy.emit
+/// live_deploy_serve_unit_ingress_args). No declaration names it, so the demanded run does not realize
+/// it and the unit refuses at startup -- `REFUSED: ingress binding: runtime-keyed reads not realized by
+/// this execution's loaded index: gunbc.roadmap.roadmap_serve.roadmap_serve_handle`, which stopped the
+/// production roadmap deploy (T6 step 5b). The repair is the SAME declared route as the fold row above:
+/// each serve entry declares the handlers it serves as a data row beside its binding, and the registry
+/// (runtime_key_readers, the `loaded_index_runtime_named_handler_*` instances) seeds the row and every
+/// key it lists.
+///
+/// THE SETS ARE READ FROM SOURCE, NEVER TRANSCRIBED (review 93610): the rows are found by scanning the
+/// corpus for `*_served_handlers` data rows, their keys are read from the declaring file, the registry
+/// instances from src/v1/04_infer.dag, and the handlers the roadmap deployment launches from the
+/// instance roster that renders them. An entry that gains a row without a registry instance, or a row
+/// whose keys the demanded run does not realize, turns this RED; so does a roster instance whose
+/// serve_function the serve entry cannot serve -- which is the gap that took production down.
+/// The repository root, found by walking up from the test process's directory: these controls read
+/// corpus and seed SOURCE files -- the same files a run resolves -- so they must not depend on which
+/// directory cargo started the test binary in. A root that holds no corpus panics: a scan that found
+/// nothing because it looked in the wrong place is a green that measures nothing
+/// (gunbc.design_argument::fail_closed).
+fn corpus_root() -> std::path::PathBuf {
+    let mut dir = std::env::current_dir().expect("a test process has a working directory");
+    loop {
+        if dir.join("dag/gunbc/http_ingress.dag").exists()
+            && dir.join("src/v1/04_infer.dag").exists()
+        {
+            return dir;
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent.to_path_buf(),
+            None => panic!(
+                "no ancestor of {} holds the corpus (dag/gunbc/http_ingress.dag, src/v1/04_infer.dag)",
+                std::env::current_dir().map(|d| d.display().to_string()).unwrap_or_default()
+            ),
+        }
+    }
+}
+
+fn served_handler_row_declarations() -> Vec<(String, String, String, Vec<String>)> {
+    // (file relative to the corpus root, module id, row name, the keys the row lists)
+    let root = corpus_root();
+    let mut found: Vec<(String, String, String, Vec<String>)> = Vec::new();
+    let mut stack = vec![root.join("dag")];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                continue;
+            }
+            let file = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            let text = std::fs::read_to_string(&path).expect("a corpus .dag file must be readable");
+            // A declared row is a `data <name>: List<String> = [` line at the START of a line -- an
+            // identifier holds no whitespace -- so prose that merely mentions `data` or the shape
+            // cannot be read as one, and the row's keys are the quoted literals up to where it closes.
+            let mut lines = text.lines();
+            while let Some(line) = lines.next() {
+                let Some(rest) = line.strip_prefix("data ") else {
+                    continue;
+                };
+                let Some(open) = rest.find(": List<String> = [") else {
+                    continue;
+                };
+                let row = rest[..open].to_string();
+                if !row.ends_with("_served_handlers")
+                    || row.chars().any(|c| !c.is_alphanumeric() && c != '_')
+                {
+                    continue;
+                }
+                let mut body = String::from(&rest[open + 16..]);
+                if !body.contains(']') {
+                    for next in lines.by_ref() {
+                        body.push('\n');
+                        body.push_str(next);
+                        if next.contains(']') {
+                            break;
+                        }
+                    }
+                }
+                let body = match body.find(']') {
+                    Some(end) => &body[..end],
+                    None => continue,
+                };
+                let keys = scan_quoted_literals(body);
+                let module = file
+                    .trim_start_matches("dag/")
+                    .trim_end_matches(".dag")
+                    .replace('/', ".");
+                found.push((file.clone(), module, row, keys));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// THE HANDLER MODULE AN ENTRY COMMITS TO: the `handler_module:` literals it passes to
+/// `http_ingress_binding`. The row's names are checked against the functions THAT module declares, so a
+/// name written in a row cannot be invented (review 95559: a written row is only honest if every element
+/// of it is decided by something other than the person writing it).
+fn handler_module_literals(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cursor = 0;
+    while let Some(rel) = text[cursor..].find("handler_module: \"") {
+        let start = cursor + rel + "handler_module: \"".len();
+        cursor = start;
+        let end = text[start..]
+            .find('"')
+            .expect("an opened handler_module literal must close");
+        let module = text[start..start + end].to_string();
+        if !out.contains(&module) {
+            out.push(module);
+        }
+    }
+    out
+}
+
+/// THE FILE A MODULE ID LIVES IN, found by reading each corpus file's own `module` line -- never by
+/// guessing a path from the id, which is how a check ends up reading a file that is not the one the run
+/// resolves.
+fn module_source_path(root: &std::path::Path, module: &str) -> Option<std::path::PathBuf> {
+    let mut stack = vec![root.join("dag")];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("a corpus .dag file must be readable");
+            if text.lines().any(|line| {
+                line.strip_prefix("module ")
+                    .map(|rest| rest.trim() == module)
+                    .unwrap_or(false)
+            }) {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+/// THE STRING A `data <name>: String = "..."` LINE DECLARES, read from source.
+fn declared_string_data(text: &str, name: &str) -> Option<String> {
+    let needle = format!("data {name}: String = \"");
+    let rel = text.find(&needle)?;
+    let start = rel + needle.len();
+    let end = start + text[start..].find('"')?;
+    Some(text[start..end].to_string())
+}
+
+fn scan_quoted_literals(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'"' {
+                j += 1;
+            }
+            out.push(text[i + 1..j].to_string());
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// The functions a serve entry module DEFINES are what a demanded run of that entry is asked for; the
+/// names are read from the file, never transcribed.
+fn defined_function_names(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cursor = 0;
+    while let Some(rel) = text[cursor..].find("\nfn ") {
+        let start = cursor + rel + 4;
+        cursor = start;
+        let end = text[start..]
+            .find(|c: char| !c.is_alphanumeric() && c != '_')
+            .map(|e| start + e)
+            .unwrap_or(text.len());
+        out.push(text[start..end].to_string());
+    }
+    out
+}
+
+/// WHICH ENTRIES CARRY A ROW is the scan's business, not this test's: every `*_served_handlers` row in
+/// the corpus is checked, so an entry that adopts the route is enrolled without touching this file. The
+/// route is not imposed on entries whose handler is not runtime-named at all — `test.fixture
+/// serve_seam_twin_ingress` hard-codes both halves of each of its two bindings in the entry itself and no
+/// route launches it; giving it a row would be a declaration with no consumer, and its entries are not
+/// the handler-by-arg class this repairs (`gunbc.design_argument::root_generalization` asks for the class
+/// at the root, not for a copy in every file that binds a handler).
+///
+/// CONTROL, the 5b blocker in one test: a demanded run of each serve entry realizes its declared
+/// served-handler row AND every handler the row names -- which is what the ingress host's second startup
+/// check (`qualified_function_exists`) asks of the execution before it binds. RED at 819918c4: the
+/// entries declared no row and nothing seeded the argv-named handler, so the roadmap serve unit refused
+/// at startup for `roadmap_serve_handle` and `roadmap_serve_handle_srv1_lab` alike (measured; receipts in
+/// the PR). GREEN once each entry declares its row and the registry seeds it.
+///
+/// It also carries the deployment's own side of the control: the handlers the roadmap units are launched
+/// with are the instance roster's `serve_function` values (gunbc.live_deploy.emit renders them into the
+/// unit's `--arg handler=`), read here from the roster's source -- so an instance whose handler the serve
+/// entry cannot serve is RED, which is exactly the state production was in.
+#[test]
+fn serve_entries_realize_the_handlers_their_rows_declare() {
+    std::thread::Builder::new()
+        .stack_size(512 << 20)
+        .spawn(|| {
+            let rows = served_handler_row_declarations();
+            assert!(
+                rows.len() >= 4,
+                "the scan must find the serve entries' declared handler rows (roadmap, fabric storage, \
+                 approval broker, the serve seam): four entries name their handler from argv today; \
+                 finding {} means the scan itself broke (fail_closed: a green that measures nothing is \
+                 worse than a red)",
+                rows.len()
+            );
+            let root = corpus_root();
+            let registry = std::fs::read_to_string(root.join("src/v1/04_infer.dag"))
+                .expect("the runtime-key registry seed must exist");
+            for (file, module, row, keys) in &rows {
+                assert!(
+                    registry.contains(&format!("reader_module: \"{module}\""))
+                        && registry.contains(&format!("row_name: \"{row}\"")),
+                    "the served-handler row {module} {row} is not seeded by the runtime-key registry \
+                     (src/v1/04_infer.dag runtime_key_readers): a row no instance seeds realizes \
+                     nothing, and the entry that declares it refuses its own launch"
+                );
+                assert!(!keys.is_empty(), "{module} {row} lists no handler to serve");
+                let text = std::fs::read_to_string(root.join(&file))
+                    .expect("the declaring entry file must exist");
+                let entry_fns = defined_function_names(&text);
+                let seeds: Vec<&str> = entry_fns.iter().map(|s| s.as_str()).collect();
+                let (sources, _intern, si, modules, _graph) = graph_from(&file);
+                let _ = sources;
+                let demand = grain_demand(&modules, &seeds, &si);
+                let realization = match &*demand {
+                    DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                    DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+                };
+                let mut missing: Vec<String> = Vec::new();
+                if !realization.realized.contains_key(row.as_str()) {
+                    missing.push(row.clone());
+                }
+                for key in keys {
+                    if !realization.realized.contains_key(key.as_str()) {
+                        missing.push(key.clone());
+                    }
+                }
+                eprintln!(
+                    "LOADED_INDEX_RUNTIME_NAMED_HANDLER entry={file} row={row} missing={:?} total={}",
+                    missing,
+                    keys.len()
+                );
+                assert!(
+                    missing.is_empty(),
+                    "a demanded run of {module} must realize its served-handler row {row} and every \
+                     handler it lists, or the ingress host refuses the unit at startup \
+                     (qualified_function_exists, http_ingress_host.rs realize_in): missing {missing:?}"
+                );
+            }
+
+            // THE DEPLOYMENT SIDE: every handler the roadmap instance roster serves must be realizable
+            // by the roadmap serve entry. Read from the roster's source, not transcribed.
+            let roster = std::fs::read_to_string(
+                root.join("dag/gunbc/roadmap/roadmap_dashboard_instance.dag"),
+            )
+            .expect("the roadmap instance roster must exist");
+            let mut served: Vec<String> = Vec::new();
+            let mut cursor = 0;
+            while let Some(rel) = roster[cursor..].find("serve_function: \"") {
+                let start = cursor + rel + "serve_function: \"".len();
+                cursor = start;
+                let end = roster[start..]
+                    .find('"')
+                    .map(|e| start + e)
+                    .expect("an opened serve_function literal must close");
+                served.push(roster[start..end].to_string());
+            }
+            assert!(!served.is_empty(), "the roster must declare serve_function values");
+            let (sources, _intern, si, modules, _graph) =
+                graph_from("dag/gunbc/roadmap/roadmap_ingress.dag");
+            let _ = sources;
+            let demand = grain_demand(&modules, &["roadmap_ingress"], &si);
+            let realization = match &*demand {
+                DeclarationDemand::OnlyDeclarations { realization, .. } => realization.clone(),
+                DeclarationDemand::AllDeclarations => panic!("scoped demand expected"),
+            };
+            let unserverable: Vec<String> = served
+                .iter()
+                .filter(|h| !realization.realized.contains_key(h.as_str()))
+                .cloned()
+                .collect();
+            eprintln!(
+                "SERVE_ENTRY_SERVES_ROSTER roster={:?} unserverable={:?}",
+                served, unserverable
+            );
+            assert!(
+                unserverable.is_empty(),
+                "every roadmap instance's serve_function -- what the deployment launches this entry \
+                 with -- must be realized by a demanded run of roadmap_ingress; refused handlers: \
+                 {unserverable:?}"
+            );
+
+            // THE ELEMENT SIDE (review 95559): a row is written rather than folded because the seed's row
+            // reader reads literal string elements -- the gap is declared and dated in
+            // dag/gunbc/rung_drop/serve_handler_rows_are_written_literals.dag -- so what has to make it
+            // honest is that NOTHING IN IT IS FREE TO DECIDE. Two directions, both read from source:
+            // every element must be a function the entry's own `handler_module` declares (a name
+            // invented for a row is a red), and for an entry whose handlers come from the instance
+            // roster, every element must be a roster serve_function or a roster serve_function with one
+            // of the two door suffixes gunbc.live_deploy.spec declares (a name no authority decides is a
+            // red). This is where the tailnet door's membership is checked: its existence is read from
+            // per-host deployment names, so judging it inside the entry would judge a deployment other
+            // than the emitted one; its NAME is still derived here from the roster times the spec's
+            // suffix, and a missing one is refused by the host at that unit's first start.
+            let spec = std::fs::read_to_string(root.join("dag/gunbc/live_deploy/spec.dag"))
+                .expect("the live-deploy spec must exist");
+            let door_suffixes: Vec<String> = Vec::new()
+                .into_iter()
+                .chain(declared_string_data(
+                    &spec,
+                    "deployment_tailnet_door_function_suffix",
+                ))
+                .chain(declared_string_data(
+                    &spec,
+                    "deployment_agent_door_function_suffix",
+                ))
+                .collect();
+            assert_eq!(
+                door_suffixes.len(),
+                2,
+                "both door suffixes must be READ from gunbc.live_deploy.spec (a missing one would let \
+                 this check stop knowing what a door handler name is)"
+            );
+            for (file, module, row, keys) in &rows {
+                let text = std::fs::read_to_string(root.join(file))
+                    .expect("the declaring entry file must exist");
+                let handler_modules = handler_module_literals(&text);
+                assert!(
+                    !handler_modules.is_empty(),
+                    "{module} {row}: an entry that declares a served-handler row must say which module \
+                     its handlers live in (the handler_module it passes http_ingress_binding), or the \
+                     row's names have no module to be checked against"
+                );
+                let mut undeclared: Vec<String> = Vec::new();
+                for key in keys {
+                    let declared = handler_modules.iter().any(|m| {
+                        module_source_path(&root, m)
+                            .and_then(|p| std::fs::read_to_string(p).ok())
+                            .map(|t| {
+                                t.lines().any(|line| {
+                                    line.strip_prefix("fn ")
+                                        .map(|rest| {
+                                            rest.split('(').next().unwrap_or("") == key.as_str()
+                                        })
+                                        .unwrap_or(false)
+                                })
+                            })
+                            .unwrap_or(false)
+                    });
+                    if !declared {
+                        undeclared.push(key.clone());
+                    }
+                }
+                let outside_authority: Vec<String> = if text
+                    .contains("public_builtin_dashboard_instances")
+                {
+                    keys.iter()
+                        .filter(|k| {
+                            !served.iter().any(|b| b == *k)
+                                && !door_suffixes.iter().any(|s| {
+                                    k.len() > s.len()
+                                        && k.ends_with(s.as_str())
+                                        && served
+                                            .iter()
+                                            .any(|b| &k[..k.len() - s.len()] == b)
+                                })
+                        })
+                        .cloned()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                eprintln!(
+                    "SERVE_ENTRY_ROW_ELEMENTS file={file} row={row} handler_modules={:?} \
+                     undeclared={:?} outside_authority={:?} total={}",
+                    handler_modules,
+                    undeclared,
+                    outside_authority,
+                    keys.len()
+                );
+                assert!(
+                    undeclared.is_empty() && outside_authority.is_empty(),
+                    "every element of {module} {row} must be a function its own handler_module declares, \
+                     and where an instance roster decides the handlers, either a roster serve_function or \
+                     a roster serve_function with a door suffix gunbc.live_deploy.spec declares \
+                     (gunbc.design_argument::single_authority: a written row may restate an authority, \
+                     it may not add to one); undeclared={undeclared:?} outside_authority={outside_authority:?}"
+                );
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
 /// THE SET-EqualITY CHECK (review 93610): the host's by-name call sites and the .dag row are the
 /// two places the inventory appears; they MUST be equal as sets, read from their source files in
 /// CI. A host fold gained without entering the row turns this RED (the class the startup check
@@ -1217,8 +1648,8 @@ fn the_startup_key_set_check_precedes_the_first_fallible_consult() {
 // declarations name hides those rows from the host scan, and the REST decode then answers
 // `no CoproductWireContract row names this coproduct` for a row that exists -- a SILENT MISS of the kind
 // gunbc.design_argument::fail_closed forbids. The seeding
-// (@ref(v1.compiler.infer::realization_wire_contract_read_row), @ref(v1.compiler.infer::realization_wire_contract_read_names),
-// which since this PR also follows the whole alias chain via @ref(v1.compiler.infer::realization_wire_contract_alias_chain))
+// (#v1.compiler.infer::realization_wire_contract_read_row, #v1.compiler.infer::realization_wire_contract_read_names,
+// which since this PR also follows the whole alias chain via #v1.compiler.infer::realization_wire_contract_alias_chain)
 // is the declared edge from those reads to the rows; these tests pin that the seeding is real in both
 // directions: read rows are realized though nothing demands them, and an ordinary undemanded data declaration
 // stays unrealized (the category seed is not a blanket rule).

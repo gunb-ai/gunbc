@@ -1,6 +1,6 @@
 module v2.workflow.required_regen
 
-import std.types { List }
+import std.types { List, Bool, Map }
 import v2.workflow.regen_convergence_transaction {
   RegenConvergenceTransactionReceipt,
   RegenConvergenceRefusal,
@@ -8,7 +8,7 @@ import v2.workflow.regen_convergence_transaction {
   RegenFixedPointRefused
 }
 
-import std.algebra { list_append, list_snoc_item, Cons, Empty, fold_list, length }
+import std.algebra { empty_map, list_append, list_snoc_item, map_contains_key, map_insert, Cons, Empty, fold_list, length }
 
 // THE NAMING RULE IS NOT INVENTED HERE. gunbc.rust_emitted_edge already owns the projection from a
 // module's dotted name to the basename of the file the emitter writes for it, and the v1 emitters
@@ -699,8 +699,9 @@ type RegenScopeSelection
   = ScopeSelected { selected: List<String> }
   | ScopeSelectionRefused { cause: RequiredRegenRefusal }
 
-fn regen_scope_lists(members: List<String>, member: String) -> Bool {
-  fold_list(xs: members, empty: false, cons: fn(acc, m) { if acc { true } else { m == member } })
+// The one index the selection is tested against, built once per call.
+fn regen_scope_member_index(members: List<String>) -> Map<String, Bool> {
+  fold(members, init: empty_map(), f: fn(acc, member) { map_insert(m: acc, key: member, value: true) })
 }
 
 // AN AFFECTED SCOPE SELECTS BY INTERSECTION WITH THE COMMITTED POPULATION, not by taking the
@@ -724,13 +725,17 @@ fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> Reg
         cause: AffectedSetUnlocatable { paths: paths, reason: reason }
       }
     AffectedScope { members: members } =>
-      ScopeSelected {
-        selected: filter(
-          xs: committed,
-          predicate: fn(name) { regen_scope_lists(members: members, member: name) }
-        )
-      }
+      ScopeSelected { selected: regen_scope_committed(members: members, committed: committed) }
   }
+}
+
+// The members of an affected scope, intersected with the committed rosters. Membership is tested in a
+// keyed set rather than by scanning the list, because the route pays for the answer twice -- once in the
+// model, once in the host lockstep check. How large a drain-shaped member set is, and what the scan cost,
+// are receipts in gunbc.recurring_failure_mode.a_cost_shape_claim_in_an_annotation_is_never_measured.
+fn regen_scope_committed(members: List<String>, committed: List<String>) -> List<String> {
+  let keyed = regen_scope_member_index(members: members)
+  filter(xs: committed, predicate: fn(name) { map_contains_key(m: keyed, key: name) })
 }
 
 // AN EMPTY SELECTION IS NOT A REFUSAL AND NOT A DEFECT. An edit that touches no module in the

@@ -19,7 +19,7 @@ test fn inverted_unqualified_part_is_refused() -> Bool {
  !placement_admitted(p:PlatePlacement {id:"any-part",rx:180,ry:0,rz:0,x_um:micrometer(count: 10000),y_um:micrometer(count: 10000)})
 }
 // Every declared plane mints its pose, and the panels' plane sends part-frame +Y away from the bed, the face the
-// review readme names (@ref(product.printed_chassis.assembly_geometry::print_plane_pose)). A mirrored pose needs
+// review readme names (#product.printed_chassis.assembly_geometry::print_plane_pose). A mirrored pose needs
 // no control here: std.orthogonal_geometry OrthogonalRotation3 has no representation for one.
 test fn every_declared_plane_derives_its_print_pose() -> Bool {
  all([LayOnXY,LayOnXZ,LayOnYZ],plane=>match print_pose(plane:plane) {OrthogonalReady {value:_}=>true OrthogonalRefused {cause:_}=>false})

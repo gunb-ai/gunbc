@@ -1,0 +1,111 @@
+// NAME: proc_net_tcp_port_admission_witness
+// SCENARIO: extdeps.linux.proc_net_tcp reads the local port of a /proc/net/tcp row, and used to mint
+//   a std.types Port straight from the decoded word with no domain check of its own (the reviewer's
+//   phrasing). Two SEPARATE checks guard that field and both belong: the fixed-width %04X column (the
+//   kernel's own SYNTAX -- net/ipv4/tcp_ipv4.c, get_tcp4_sock -- and this module's fact, enforced by
+//   base16's ceiling plus the exactly-four floor the module adds) and the DOMAIN bound -- which decoded
+//   values are admissible Ports (RFC 793 / RFC 9293's 16-bit field, reserved 0 excluded) -- which is
+//   std.types checked_port. tcp_socket_row now runs the decoded value through checked_port so the
+//   bound is owned by the Port authority, not smuggled in via field width. Within four digits the only
+//   value checked_port refuses is 0000, which stays the kernel's marker for a socket with no bound
+//   port: the row answers TcpPortUnbound rather than minting Port 0.
+// RUN: gunbc run --claim-run --entry dag/test/claim/proc_net_tcp_port_admission_witness.dag --function <test fn> --source-root dag --source-root src/v2
+// EXPECT: each test fn answers true on the discriminating input.
+//    THE PAIR: 01BB admits as TcpPortBound { port: 443 }; 0000 is refused by checked_port (never a
+//    bound Port -- TcpPortUnbound). The syntax half: a 6-digit word "0001BB" and a 3-digit word "1BB"
+//    are refused at the format level naming the line. RED: drop the exactly-four floor and "1BB"
+//    silently decodes to 443; widen base16 and "0001BB" is admitted; drop checked_port and 0000 would
+//    be minted as a bound Port.
+module test.claim.proc_net_tcp_port_admission_witness
+
+import std.types { Bool, String }
+import extdeps.linux.proc_net_tcp {
+  tcp_socket_row, proc_net_tcp_table, TcpPortBound, TcpPortUnbound, ProcNetTcpUnparseable,
+}
+
+// THE KERNEL-PRINTED COLUMN LAYOUT, with the local port substituted. The fields this module reads
+// live at indices 1 (local "addr:port"), 3 (st), 7 (uid) and 9 (inode); the rest carry the kernel's
+// own columns so the line is a genuine /proc/net/tcp row.
+fn kernel_row_with_local(local: String) -> String {
+  concat(concat("  0: ", local), " 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 12345678 1 0000000000000000 100 0 0 10 0")
+}
+
+fn row_refused(line: String) -> Bool {
+  match tcp_socket_row(line: line) { Present { value: _ } => false, Absent => true }
+}
+
+fn table_refuses_naming_line(line: String) -> Bool {
+  match proc_net_tcp_table(text: line) { ProcNetTcpUnparseable { line: named } => named == line, _ => false }
+}
+
+fn row_bound_to_443(line: String) -> Bool {
+  match tcp_socket_row(line: line) {
+    Absent => false
+    Present { value: row } => match row.local_port {
+      TcpPortBound { port: p } => p == 443
+      TcpPortUnbound => false
+    }
+  }
+}
+
+fn row_is_unbound(line: String) -> Bool {
+  match tcp_socket_row(line: line) {
+    Absent => false
+    Present { value: row } => match row.local_port {
+      TcpPortUnbound => true
+      TcpPortBound { port: _ } => false
+    }
+  }
+}
+
+// A REAL ROW ADMITS, AND THE BOUND PORT IS THE ADMITTED Port. 127.0.0.1:443 on the little-endian
+// host prints "0100007F:01BB"; the row parses and its local port is TcpPortBound { port: 443 }.
+test fn decoder_admits_a_real_kernel_row_on_443() -> Bool {
+  row_bound_to_443(line: kernel_row_with_local(local: "0100007F:01BB"))
+}
+
+// A PORT WORD WIDER THAN THE KERNEL'S %04X IS REFUSED AT THE SYNTAX LEVEL. "0001BB" is 6 hex digits;
+// the kernel's get_tcp4_sock prints %04X, so a row carrying a 6-digit port column is malformed and
+// the decoder refuses the whole table, naming the line. This is the upstream-format check, NOT the
+// port range -- a widened base16 that admitted it would be a silent widen (gunbc.design_argument::
+// fail_closed).
+test fn decoder_refuses_a_port_word_wider_than_four_digits() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007F:0001BB"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:0001BB"))
+}
+
+// A PORT WORD NARROWER THAN THE KERNEL'S %04X IS REFUSED AT THE SYNTAX LEVEL. "1BB" is 3 hex digits;
+// %04X always prints four, so base16's ceiling alone (which takes no floor) would accept it and the
+// module's own exactly-four check refuses. Without that floor the row would decode to 0x1BB = 443, a
+// silent mis-parse of a malformed column -- the paired failure this control pins.
+test fn decoder_refuses_a_port_word_narrower_than_four_digits() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007F:1BB"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:1BB"))
+}
+
+// A LOWERCASE PORT WORD IS REFUSED AT THE SYNTAX LEVEL. %04X prints UPPERCASE, so "01bb" is the
+// non-canonical spelling: base16's either-case reader would take it as 0x01BB = 443, so this column
+// reads through base16_word_value_upper, which refuses the lowercase a-f via the rows' UPPER column
+// and the row is refused naming the line. RED: swap in either-case base16_word_value and "01bb" reads
+// as 443 -- the reviewer's F1.
+test fn decoder_refuses_a_lowercase_port_word() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007F:01bb"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007F:01bb"))
+}
+
+// A LOWERCASE ADDRESS WORD IS REFUSED AT THE SYNTAX LEVEL -- the same uppercase rule as the port
+// (root_generalization). The kernel prints the __be32 address %08X, so "0100007f" is non-canonical; the
+// row parse fails closed on the whole address column (base16_text_is_uppercase) and refuses naming the
+// line, rather than silently storing the lowercase address. RED: drop the address check and the row
+// parses (the dotted-address accessor is a separate read), so the malformed row would be accepted.
+test fn decoder_refuses_a_lowercase_address_word() -> Bool {
+  row_refused(line: kernel_row_with_local(local: "0100007f:01BB"))
+    && table_refuses_naming_line(line: kernel_row_with_local(local: "0100007f:01BB"))
+}
+
+// 0000 IS THE UNBOUND MARKER, NOT A MINTED Port. checked_port has no constructor for 0 (reserved,
+// RFC 6335 §6); a row whose local port word is 0000 answers TcpPortUnbound -- the decoder never mints
+// Port 0.
+test fn decoder_never_mints_reserved_port_zero() -> Bool {
+  row_is_unbound(line: kernel_row_with_local(local: "0100007F:0000"))
+}

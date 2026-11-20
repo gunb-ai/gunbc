@@ -1,14 +1,27 @@
 module extdeps.audit.cloudevents
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.types { List, NonEmptyStr, Timestamp, brand }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.audit.cloudevents",
+      decl_name: "CloudEventId",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type CloudEventId = NonEmptyStr where brand("CloudEventId")

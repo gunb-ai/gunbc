@@ -142,7 +142,18 @@ data parse_verdict_restore_receipts_basename: String = "gunbc-parse-verdict-rece
 // the whole bound: the workflow's locator, its gated restore chain and its record step are all
 // generated from this list, so they cannot disagree on how far back to look. No restore-keys prefix
 // is used anywhere, because a prefix hit is chosen by creation time, not ancestry.
-data parse_verdict_restore_ancestor_ordinals: List<Int> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+// THIRTY, NOT TWELVE. A merge stampede (15 merges in six minutes, 2026-11-15 17:54Z) left every one of the
+// twelve nearest first-parent ancestors without a unit, and seven pull requests paid the full lane for it.
+// The window must outlast a stampede: thirty covers it with margin over the observed burst. The cost is
+// bounded and measured -- a restore MISS costs ~0.3s per step on the real runners, and a HIT short-circuits
+// the later attempts -- so the worst case (all thirty miss) adds ~11s across both families, inside the
+// minutes the lane already allows. The decision declines stale units regardless of distance, so a deeper
+// window trades a miss for a correctly-typed full_stale_unit decline, never for a stale reuse.
+data parse_verdict_restore_ancestor_ordinals: List<Int> = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+  10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+  20, 21, 22, 23, 24, 25, 26, 27, 28, 29
+]
 
 // The record the restore chain leaves for the verb: the sha of the ancestor whose entry was restored
 // (one line, empty when none was), so the counts line can name the ancestor it used.

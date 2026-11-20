@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_mechanical_move_that_carries_every_field_drops_the_disclosure_beside_it
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_mechanical_move_that_carries_every_field_drops_the_disclosure_beside_it: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_mechanical_move_that_carries_every_field_drops_the_disclosure_beside_it" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a capability for a mechanical move to carry, and refuse to drop, the non-term content attached to what it moves: a mover that requires the destination to contain every prose line attached to the source item and fails the move otherwise, checked by the mover at move time rather than by a reader afterwards -- with a RED that deletes one disclosure line from a moved item and is refused, and a positive control whose move keeps them, enrolled on the required path beside the field-fidelity check it complements.",
+    },
+  },
+
+  receipts: [
+    "**a move that proves every FIELD arrived can still lose the disclosure that came with it, and every gate stays green while it does**. INVALID STATE: a mechanical relocation of an item -- a module split into one file per item, a block copied between modules -- is certified by a fidelity check over the item's structured parts, while the unstructured prose attached to that item (why it exists, what was measured, which review named it, what it is standing on) is simply not part of what the mover considers 'the item' and is not part of what the check compares. HARM: the record is what makes this ledger worth reading, and the record is what disappears -- silently, in bulk, behind a green fidelity claim that is technically true.",
+
+    "OBSERVED, this lane, at scale. Splitting the integration-concern register into one file per concern (`gunbc.integration_concern`, gunb-ai/gunbc#16338) generated row files from each block's `data` term. A field-by-field audit over the register reported AUDIT CLEAN -- every field equal to main's block modulo the sealed-region lift -- and held that verdict across twenty-four merges, five seed pairings, a fourteen-claim witness, the reading fold and CI. The sweep that compared main's per-row leading comment region against the branch's ledger plus row files found **28 of 79 rows had lost it**: `srv14_slot_admission_answered_by_envelope_and_verdict` (28 lines of receipt), `fleet_converge_roster_vs_closed_sum` (the 2026-11-13 P2b account of why the dispatch roster still enumerates the closed sum by hand), `emitter_string_return_carries_no_typed_refusal` (14), `h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model` (13), and 24 more. Restored verbatim in `b2cb84de339`.",
+
+    "WHY NOTHING SEES IT: a comment is not a term. The fold, the witness battery, the typecheck and CI consume what the parser keeps and are indifferent to what it discards, so a move that deletes disclosure cannot fail them. The audit that certified the move was a comparison of fields, because fields are what has a type. A reviewer reading the diff sees data that is correct. The only instrument that finds this is a content comparison written on purpose -- and until this row, no such instrument existed anywhere in the repository.",
+
+    "THE FIRST VERSION OF THAT INSTRUMENT WAS ITSELF A TRAP, which is why the rung is mitigatable rather than guaranteed: a whole-file prose diff over the module reported 190 'dropped' lines, most of them the module header this change legitimately rewrites. The check only became trustworthy once it attributed prose to an item -- every comment line attached to a row must survive somewhere, matched whitespace-normalised so that re-wrapping is not a loss -- and it reported zero only then. A prose check without per-item attribution is noise that will be turned off.",
+
+    "THE STRUCTURED HALF OF THE SAME MOVE was filed in the same lane the same day, as gunbc.recurring_failure_mode.a_moved_or_copied_block_uses_a_name_the_mover_never_imported -- gunb-ai/gunbc#16647, open when this row was written, so that name is a citation to that pull request and not to a row this branch carries. There the mover's notion of what to carry was a maintained list of names, and the loss was a name the compiler would have refused had it been a call. This row is the unstructured half -- the loss the compiler cannot even represent. Same generator (a mover whose model of 'the item' is narrower than the item), different fidelity, and the same lesson: the mover must carry what it did not think to model, or say it did not.",
+
+    "RUNG NOW: found below the ladder; currently mitigatable and mitigated per instance -- a per-row prose sweep plus a verbatim restore, now standing in this lane's battery at every merge (`rows checked: 79 | rows with dropped prose lines: 0`). Not mechanically preventable, because the check exists nowhere outside the lane that was burned by it: no move tool, no required-path witness, and no refusal anywhere in the compiler or the ledger's own folds. CEILING: mechanically preventable -- a mover that refuses a move whose destination does not contain every prose line attached to the source is the same shape as the import assertion that now guards the structured half, and needs no new authority. BLOCKER: climbable but unbuilt. NEXT-RUNG TRIGGER (a capability, per gunbc.design_argument::guarantee_ladder ob.3): the mover-side refusal above with its RED and positive control enrolled on the required path, so the next lane that splits a module learns this from a refusal rather than from an audit it had to think to write.",
+  ],
+
+  evidence: [],
+}

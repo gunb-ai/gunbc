@@ -1,11 +1,12 @@
 module gunbc.runner.runner_slot_actuation
 
+import std.measure { Second, second, second_count, measure_add }
 import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
 import std.measure { Hertz, hertz, hertz_count }
 import std.optional { Absent, Present }
 import std.algebra { trim }
-import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread, runner_unit_main_process_has_main }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable }
 import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
@@ -20,8 +21,11 @@ import gunbc.runner.runner_retirement_causes {
 import extdeps.systemd {
   IdProperty, MainPID, LoadState, UnitFileState, ActiveState, ControlGroup, TasksCurrent, systemd_unit_property_wire, SystemdUnitProperty,
   SystemdUnitLoadState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, parse_systemd_unit_load_state,
-  SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state,
+  SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
+  Result,
 }
+import gunbc.runner.runner_unit_file { runner_unit_restart_delay }
+import extdeps.systemd.service_exec { ServiceResultSuccess, service_result_of_wire, service_result_wire_label, service_result_is_success }
 import extdeps.systemd.systemctl {
   UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
   parse_unit_file_state,
@@ -55,7 +59,7 @@ import extdeps.github.actions_runner { actions_runner_registration_file_name, ac
 // is settled only when an independent re-read shows the target state. Every failure is a typed
 // refusal naming its step; nothing widens.
 
-data slot_actuation_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, UnitFileState, ActiveState]
+data slot_actuation_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, UnitFileState, ActiveState, Result, MainPID]
 
 // The GitHub Actions runner's job process. The listener (Runner.Listener) waits for work; a job runs
 // in Runner.Worker, so a unit owning a Runner.Worker is executing a job and must not be stopped.
@@ -71,13 +75,22 @@ type SlotActuationReading {
   load: SystemdUnitLoadState
   file: extdeps.systemd.systemctl.UnitFileState?
   active: SystemdUnitActiveState
+  // THE OUTCOME OF THE LAST EXEC AND THE MAIN PROCESS BEHIND IT. A unit whose ExecStart target is
+  // missing reads ActiveState=activating between crash cycles -- load, enablement and ActiveState
+  // alone called that healthy. Result carries WHY the last run ended (the extdeps.systemd.systemd
+  // .service_exec vocabulary, an unlisted word carried, never guessed) and main_pid is the
+  // MainPID leg TYPED through the same parser the local-observation lane uses: "0" is
+  // NoMainProcess, a non-integer is MainProcessUnread (it can never pose as a running process),
+  // a bare pid from this property-only read is Ungrounded (review 95508).
+  result: extdeps.systemd.service_exec.ServiceResult
+  main_pid: RunnerUnitMainProcess
 }
 
 type SlotActuationReadingResolution
   = SlotReadingTyped { reading: SlotActuationReading }
   | SlotReadingUnknownWord { property: String, raw: String }
 
-fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: String, active_raw: String) -> SlotActuationReadingResolution {
+fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: String, active_raw: String, result_raw: String, main_pid_raw: String) -> SlotActuationReadingResolution {
   match parse_systemd_unit_load_state(raw: trim(s: load_raw)) {
     Absent => SlotReadingUnknownWord { property: "LoadState", raw: load_raw }
     Present { value: load } =>
@@ -85,11 +98,11 @@ fn slot_actuation_reading_typed(unit: NonEmptyStr, load_raw: String, file_raw: S
         Absent => SlotReadingUnknownWord { property: "ActiveState", raw: active_raw }
         Present { value: active } =>
           if trim(s: file_raw) == "" {
-            SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: none, active: active } }
+            SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: none, active: active, result: service_result_of_wire(word: trim(s: result_raw)), main_pid: slot_main_process_of(raw: trim(s: main_pid_raw), boot: none, stat: none, abs: StartUnread { cause: "the activation readback reads only the MainPID property, so a pid is never an identity here" as NonEmptyStr }) } }
           } else {
             match parse_unit_file_state(raw: trim(s: file_raw)) {
               Absent => SlotReadingUnknownWord { property: "UnitFileState", raw: file_raw }
-              Present { value: f } => SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: Present { value: f }, active: active } }
+              Present { value: f } => SlotReadingTyped { reading: SlotActuationReading { unit: unit, load: load, file: Present { value: f }, active: active, result: service_result_of_wire(word: trim(s: result_raw)), main_pid: slot_main_process_of(raw: trim(s: main_pid_raw), boot: none, stat: none, abs: StartUnread { cause: "the activation readback reads only the MainPID property, so a pid is never an identity here" as NonEmptyStr }) } }
             }
           }
       }
@@ -129,6 +142,12 @@ fn slot_drain_pending_cause_wire(c: SlotDrainPendingCause) -> String {
 type SlotActuationOutcome
   = SlotActuationNoop { unit: NonEmptyStr, state: String }
   | SlotActivated { unit: NonEmptyStr }
+  // THE ACTIVATION IS HELD BY THE WITHDRAWN RECORD. This host is out of admission until runner_host_restore
+  // clears the record, so a converge over it writes its files and its caps onto the stopped units and plans
+  // NO unmask, enable or start. Nothing on the unit was touched, and the arm is NOT settled: while the
+  // record stands the host is not at its live desired population, and a run that claimed otherwise would BE
+  // the withdrawal undone by the next converge (gunbc.recurring_failure_mode, the class this closes).
+  | SlotActivationHeldByWithdrawal { unit: NonEmptyStr, cause: NonEmptyStr }
   | SlotNotInstalled { unit: NonEmptyStr }
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
@@ -162,6 +181,7 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
   match o {
     SlotActuationNoop { unit: _, state: _ } => true
     SlotActivated { unit: _ } => true
+    SlotActivationHeldByWithdrawal { unit: _, cause: _ } => false
     SlotNotInstalled { unit: _ } => true
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
@@ -177,6 +197,7 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
   match o {
     SlotActuationNoop { unit: u, state: st } => join(["actuation ", u as String, " noop ", st], "")
     SlotActivated { unit: u } => join(["actuation ", u as String, " activated-and-read-back"], "")
+    SlotActivationHeldByWithdrawal { unit: u, cause: c } => join(["actuation ", u as String, " ACTIVATION-HELD-BY-WITHDRAWAL ", c as String], "")
     SlotNotInstalled { unit: u } => join(["actuation ", u as String, " not-installed (LoadState=not-found: nothing to drain)"], "")
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
@@ -360,6 +381,34 @@ fn slot_activation_plan_steps(r: SlotActuationReading) -> SlotActivationPlan {
 fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
   (match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false })
     && slot_is_enabled(r: r) && slot_state_active(active: r.active)
+}
+
+// THE SETTLE BOUND FOR A FRESH ACTIVATION, DERIVED FROM THE UNIT'S OWN RESTART DELAY: the delay
+// plus a three-second margin. systemd waits RestartSec before the next attempt after a failed
+// exec; waiting strictly longer means an execution that crashed under our eyes is already in its
+// auto-restart wait -- with its Result and empty MainPID exposed -- when the second read lands.
+data slot_activation_settle_margin: Second = second(3)
+data slot_activation_settle_sleep: Second = measure_add(a: runner_unit_restart_delay, b: slot_activation_settle_margin)
+
+fn slot_activation_settle_argv() -> List<String> {
+  ["/bin/sleep", to_string(second_count(slot_activation_settle_sleep))]
+}
+
+// A FRESHLY ACTIVATED SLOT IS HEALTHY, NOT MERELY STARTED (the run that called a 203/EXEC crash
+// loop "activated-and-read-back" is the red this closes). The old three words cannot tell a
+// crash-looping unit from a live one -- between crash cycles systemd still reports the unit
+// loaded, enabled and activating. The last Result must be a clean one AND a main process must
+// exist. An Unlisted Result word is not clean: it refuses, it does not widen.
+fn slot_activation_fresh_read_back_holds(r: SlotActuationReading) -> Bool {
+  slot_activation_read_back_holds(r: r)
+    && service_result_is_success(result: r.result)
+    && runner_unit_main_process_has_main(m: r.main_pid)
+}
+
+
+
+fn slot_activation_refusal_detail(r: SlotActuationReading) -> String {
+  join(["ActiveState=", systemd_unit_active_state_wire_label(s: r.active), " result=", service_result_wire_label(result: r.result), " MainPID=", slot_main_process_wire(m: r.main_pid)], "; ")
 }
 
 // ── The restart decision (the RESTART LEG's actuation) ──────────────────────────────────────────
@@ -598,7 +647,15 @@ fn slot_actuation_reading_of(unit: NonEmptyStr, show_stdout: String) -> SlotActu
                 Present { value: fs } =>
                   match slot_show_value(lines: lines, property: ActiveState) {
                     Absent => acc
-                    Present { value: a } => Present { value: slot_actuation_reading_typed(unit: unit, load_raw: ls, file_raw: fs, active_raw: a) }
+                    Present { value: a } =>
+                      match slot_show_value(lines: lines, property: Result) {
+                        Absent => acc
+                        Present { value: res } =>
+                          match slot_show_value(lines: lines, property: MainPID) {
+                            Absent => acc
+                            Present { value: pid } => Present { value: slot_actuation_reading_typed(unit: unit, load_raw: ls, file_raw: fs, active_raw: a, result_raw: res, main_pid_raw: pid) }
+                          }
+                      }
                   }
               }
           }
@@ -617,10 +674,14 @@ fn slot_actuation_elevated(command: List<String>) -> List<String> {
 fn slot_actuation_argvs(unit: NonEmptyStr) -> List<List<String>> {
   concat(
     [systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties), ps_unit_comm_listing_argv(), systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])],
-    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated; the drain's mask and stop stay the words this
-    // module spells, because those two are the retirement side this change deliberately does NOT widen
-    // (gunbc.runner.runner_slot_retirement host_maskable_units is whose mask line is granted, and an
-    // ungranted stop or mask is what the operator's interruption authorization has to decide).
+    // THE ACTIVATION LEGS ARE THE GRANTED LINES, elevated, and so are the cap bracket's two: the plain
+    // mask and the stop the drain issues. Those two words were spelled here before the bracket had a stop
+    // leg, and no line authorized them for a KEPT slot: the retire side grants `mask --now` for the units
+    // its own authorization names (runner_slot_retirement host_maskable_units), which is not this verb and
+    // not this population. They are granted now, per MODELLED member, by
+    // gunbc.runner.runner_host_grants runner_slot_cap_bracket_operations, on the strength of the host's
+    // drain row (host_drain_interruption_authorization) -- and that is also what scopes them: a unit
+    // outside the modelled population has no line, so sudo refuses it.
     concat(
       map(runner_slot_activation_step_argvs(steps: runner_slot_activation_steps(), unit: unit), c => slot_actuation_elevated(command: c)),
       map([systemctl_mask_argv(unit: unit), systemctl_stop_argv(unit: unit)], c => slot_actuation_elevated(command: c)),
@@ -780,8 +841,22 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
               match read_slot_over(target: target, context: context, unit: unit) {
                 SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
                 SlotRead { reading: after } =>
-                  if slot_activation_read_back_holds(r: after) { SlotActivated { unit: unit } } else {
-                    SlotActuationRefused { unit: unit, step: "readback", reason: "not loaded, enabled and active after activation" }
+                  if slot_activation_fresh_read_back_holds(r: after) { SlotActivated { unit: unit } } else {
+                    // SETTLED OVER A BOUND, NOT SAMPLED ONCE: an unhealthy first read gets exactly one
+                    // more read after the restart interval has passed. Slow-but-real starts pass on the
+                    // second read; a unit whose ExecStart cannot run (a missing target reads 203) is by
+                    // then in its auto-restart wait and the second read refuses with the unit's own words.
+                    match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_activation_settle_argv()) {
+                      TypedArgvExecRefused { reason: why } => SlotActuationRefused { unit: unit, step: "settle", reason: why }
+                      TypedArgvExecConverged { result: _ } =>
+                        match read_slot_over(target: target, context: context, unit: unit) {
+                          SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
+                          SlotRead { reading: settled } =>
+                            if slot_activation_fresh_read_back_holds(r: settled) { SlotActivated { unit: unit } } else {
+                              SlotActuationRefused { unit: unit, step: "readback", reason: join(["not loaded, enabled, cleanly active with a main process after one settle: ", slot_activation_refusal_detail(r: settled)], "") }
+                            }
+                        }
+                    }
                   }
               }
           }

@@ -4,14 +4,27 @@ import std.types { Int, Bool, List, Unit }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead, EffectivePosixPrincipalReadOutcome,
 }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/whoami.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.access.posix_effective_principal_read_op",
+      decl_name: "access.PosixEffectivePrincipal",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // Typed argv transport for access.PosixEffectivePrincipal.Read — program+args dispatch at the

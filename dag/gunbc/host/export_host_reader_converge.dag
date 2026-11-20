@@ -22,7 +22,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_authorized_entry }
 import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of }
 import gunbc.runner.runner_host_file_converge {
-  FleetHostFileSubject, FleetHostFileDesired, FleetHostFilesApply, LegElevated,
+  FleetHostFileSubject, FleetHostFileDesired, FleetHostFilesApply, LegElevated, fleet_host_file_scope,
   run_fleet_host_leg, observe_fleet_host_administrator_privilege, fleet_host_file_result, fleet_host_file_outcome_settled,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
 }
@@ -86,6 +86,7 @@ fn export_host_reader_drop_in() -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "sshd_config.d drop-in: AuthorizedKeysFile adds the reader's root-owned file",
     path: export_host_reader_drop_in_path as FilePath,
+    scope: fleet_host_file_scope,
     content: join([authorized_keys_file_option() as String, "\n"], ""),
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,
@@ -96,6 +97,7 @@ fn export_host_reader_keys_file(line: String) -> FleetHostFileDesired {
   FleetHostFileDesired {
     subject: "the boot medium reader key's authorized_keys file",
     path: export_host_reader_keys_path as FilePath,
+    scope: fleet_host_file_scope,
     content: concat(line, "\n"),
     mode: RemoteFileModeOwnerReadWriteWorldRead,
     validation: NoValidation,

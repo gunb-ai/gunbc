@@ -72,12 +72,14 @@ import gunbc.typed_remote_file_write {
 }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, RemoteFileModeOwnerGroupRead, VisudoCheck, DestinationUnchangedUntilRename, NoValidation, remote_file_mode_octal, RemoteFileConverged, TypedRemoteFileWrite }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_lifecycle { runner_lifecycle_jit_wrapper_path, runner_lifecycle_jit_wrapper_scope }
+import gunbc.file_access { path_within_file_tree_scope }
 import gunbc.runner.runner_slot_cap_converge { SlotCapUnitStanding, SlotCapsAtDesired }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
 import extdeps.exec.command { argv_words }
 import extdeps.tools.stat { stat_file_type_command, stat_default_report_command }
 import gunbc.host.host_effect { SshShell }
-import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, parent_listing_leg_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport, OnTheHostItself, elevated_leg_argv, sha256_leg_argv, unit_document_leg_argv }
+import gunbc.live_deploy.member_observe { EntryPresence, EntryPresent, EntryAbsent, EntryPresenceIndeterminate, parent_listing_argv, ListingPrivilege, BareListing, ElevatedListing, path_parent, path_basename, observation_arm, observation_arm_elevated_listing, OverTransport, OnTheHostItself, elevated_leg_argv, sha256_leg_argv, unit_document_leg_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.crypto.hash { sha256sum_argv }
 import extdeps.access.posix { file_mode_octal }
@@ -98,8 +100,8 @@ import gunbc.runner.runner_host_file_converge {
   runner_host_files_deliver_fragment,
   RunnerSlotExpectation,
   runner_slot_expectation,
-  SlotReloadNotPending,
-  ReachesLiveCgroup,
+  SlotReloadStatus, SlotReloadNotPending, SlotReloadOwed, SlotReloadUnobserved,
+  SlotReloadReach, ReachesLiveCgroup, ReloadInert,
   SlotAllocationNotEffective,
   RetiredResidueObservation,
   ResidueAbsent,
@@ -150,6 +152,8 @@ import gunbc.runner.runner_host_file_converge {
   PathsUnobservable,
   PathsNotApplicable,
   fleet_host_path_ancestors,
+  fleet_host_file_scope,
+  runner_host_jit_wrapper_file,
   runner_host_root_only_find_argv,
   ctrl_jobserver_retired_residue,
   RunnerHostActuationAdmission, ActuationAdmitted, ActuationSkipped,
@@ -203,7 +207,8 @@ import gunbc.runner.runner_host_file_converge {
   RetireeCgroupEventsRefused,
   runner_slot_show_properties,
   runner_retiree_standings,
-  runner_slot_population_owes_reload,
+  runner_slot_reload_pending_by_read, runner_slot_population_has_pending_reload_read,
+  runner_slot_reload_is_blocked_by_live_work,
   runner_slot_population_effective,
   runner_slot_population_read_completely,
   FleetHostFilePlanned,
@@ -322,7 +327,7 @@ fn role_join_residual(expected: List<String>, files: List<FleetHostFileDesired>,
 }
 
 fn role_file_at(path: String) -> FleetHostFileDesired {
-  FleetHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
+  FleetHostFileDesired { subject: "runner-slot-role-dropin" as NonEmptyStr, path: path as FilePath, scope: fleet_host_file_scope, content: "[Service]\n", mode: RemoteFileModeOwnerReadWriteWorldRead, validation: NoValidation }
 }
 
 fn role_withheld_entry() -> RunnerHostFileWithheld {
@@ -500,9 +505,10 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
   empty && spaced && paren
 }
 
-// Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
-// would refuse at the seal rather than reaching a sudo leg.
-test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
+// Every desired path is inside the scope its OWN row names (the /etc rows name fleet_host_file_scope),
+// so the write seal admits it; a path outside its row's tree would refuse at the seal rather than
+// reaching a sudo leg.
+test fn every_desired_file_is_admitted_by_its_own_write_seal() -> Bool {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -511,6 +517,78 @@ test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
         TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
       })
   }
+}
+
+// THE WRAPPER ROW IS SEALED AGAINST ITS OWN NAMED SCOPE: the runner install tree, declared beside
+// its path in gunbc.runner.runner_lifecycle. Admitted -- and the scope's root is the path datum's own
+// prefix, both reading actions_runner_base_dir, so the row and its scope cannot drift.
+test fn the_wrapper_row_carries_the_runner_tree_scope_and_is_admitted() -> Bool {
+  match fleet_host_file_write_admission(file: runner_host_jit_wrapper_file(script: "#!/bin/sh\n")) {
+    TypedRemoteFileWriteAdmitted { write: w } =>
+      (w.path as String) == runner_lifecycle_jit_wrapper_path
+        && path_within_file_tree_scope(scope: runner_lifecycle_jit_wrapper_scope, path: runner_lifecycle_jit_wrapper_path as NonEmptyStr)
+        && runner_lifecycle_jit_wrapper_scope.root_path as String == "/opt/actions-runner"
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+  }
+}
+
+// THE WRAPPER'S AUTHORIZATION LIVES ENTIRELY IN ITS ROW. The sudoers body rendered for the JIT host
+// grants exactly the argv the activation plan issues (unmask/enable/start) and the slot lifecycle
+// classes; NO rendered line mentions the wrapper path or a tee, because a converge write is not a
+// sudoers-modeled operation -- it runs as the session principal's non-interactive sudo leg, sealed by
+// the scope the row carries. The sudoers delta of per-file scoping is therefore empty, not widened.
+test fn the_wrapper_never_widens_the_rendered_sudoers_roster() -> Bool {
+  match runner_host_sudoers_body(host: "srv14" as HostIdentity, artifact_path: artifact_path(a: RunnerHostSudoersArtifact { host: "srv14" as HostIdentity })) {
+    RunnerHostSudoersBodyProduced { content: c } =>
+      !string_contains(s: c, pattern: runner_lifecycle_jit_wrapper_path)
+        && !string_contains(s: c, pattern: " tee ")
+    RunnerHostSudoersBodyRefused { reason: _ } => false
+  }
+}
+
+// RED: A DECLARED FILE OUTSIDE ITS OWN SCOPE REFUSES AT ADMISSION. The path sits inside ANOTHER
+// declared tree, but the row carries the /etc scope -- the admission follows the ROW, not whichever
+// tree the path happens to fall in. The refusal names the row's own scope, which is the point.
+test fn red_a_declared_file_outside_its_own_scope_refuses_at_admission() -> Bool {
+  match fleet_host_file_write_admission(file: FleetHostFileDesired {
+    subject: "red-file-outside-its-scope" as NonEmptyStr,
+    path: "/opt/actions-runner/red.conf" as FilePath,
+    scope: fleet_host_file_scope,
+    content: "x",
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }) {
+    TypedRemoteFileWriteAdmitted { write: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: c } =>
+      c == "typed_remote_file_write: path /opt/actions-runner/red.conf outside file tree scope rooted at /etc"
+  }
+}
+
+// RED: A FILE UNDER /opt BUT OUTSIDE /opt/actions-runner REFUSES. The wrapper's scope is the
+// runner's OWN install root, not a wildcard for anything under /opt.
+test fn red_a_file_under_opt_outside_the_runner_tree_refuses() -> Bool {
+  match fleet_host_file_write_admission(file: FleetHostFileDesired {
+    subject: "red-under-opt-outside-runner-tree" as NonEmptyStr,
+    path: "/opt/gunbc-other/jit-runner.sh" as FilePath,
+    scope: runner_lifecycle_jit_wrapper_scope,
+    content: "x",
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }) {
+    TypedRemoteFileWriteAdmitted { write: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: c } =>
+      c == "typed_remote_file_write: path /opt/gunbc-other/jit-runner.sh outside file tree scope rooted at /opt/actions-runner"
+  }
+}
+
+// THE ANCESTOR FLOOR FOLLOWS THE ROW'S SCOPE. The wrapper's ancestors start at its own tree's root
+// -- never at /etc, whose ownership says nothing about the runner install -- and the same path
+// judged under the /etc floor reports NO ancestors at all, which is exactly why the floor had to
+// become per-file.
+test fn the_wrapper_ancestors_start_at_its_own_tree_root_not_etc() -> Bool {
+  fleet_host_path_ancestors(scope: runner_lifecycle_jit_wrapper_scope, path: runner_lifecycle_jit_wrapper_path)
+    == ["/opt/actions-runner"]
+    && fleet_host_path_ancestors(scope: fleet_host_file_scope, path: runner_lifecycle_jit_wrapper_path) == []
 }
 
 // ── The subject ──────────────────────────────────────────────────────────────────────────────────
@@ -705,9 +783,9 @@ test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
 
 // Every directory from the write scope down to the file's own, in order, and nothing above /etc.
 test fn the_ancestors_of_a_file_are_every_directory_from_the_scope_down() -> Bool {
-  fleet_host_path_ancestors(path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
+  fleet_host_path_ancestors(scope: fleet_host_file_scope, path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
     == ["/etc", "/etc/needrestart", "/etc/needrestart/conf.d"]
-    && fleet_host_path_ancestors(path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
+    && fleet_host_path_ancestors(scope: fleet_host_file_scope, path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
     == ["/etc", "/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@.service.d"]
 }
 
@@ -965,13 +1043,54 @@ test fn the_host_is_effective_only_when_every_unit_is() -> Bool {
     && !runner_slot_population_effective(population: SlotPopulationUnobservable { reason: "ssh refused" })
 }
 
-// THE RETRY RED. A reload is owed whenever the manager says a unit is stale, whether or not this run
-// wrote anything -- which is exactly the state a run finds after an earlier run landed the file and its
-// reload failed.
+// THE RETRY RED. A reload is owed whenever the manager's OWN READING says a unit is stale (or the unit
+// could not be read -- an unread unit proves nothing), whether or not this run wrote anything -- which is
+// exactly the state a run finds after an earlier run landed the file and its reload failed (butch, run
+// 43561214659). The lifecycle standing is no longer the authority; the reload read is.
+fn slot_rec(u: String, status: SlotReloadStatus, reach: SlotReloadReach) -> RunnerSlotUnitResult {
+  RunnerSlotUnitResult { unit: u as NonEmptyStr, standing: SlotTeardownEffective, reload: status, reach: reach }
+}
+
 test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool {
-  runner_slot_population_owes_reload(population: population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }, SlotReloadPending]))
-    && !runner_slot_population_owes_reload(population: population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }]))
-    && !runner_slot_population_owes_reload(population: SlotPopulationUnobservable { reason: "ssh refused" })
+  runner_slot_reload_pending_by_read(status: SlotReloadOwed)
+    && runner_slot_reload_pending_by_read(status: SlotReloadUnobserved)
+    && !runner_slot_reload_pending_by_read(status: SlotReloadNotPending)
+    && runner_slot_population_has_pending_reload_read(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReloadInert)] })
+    && !runner_slot_population_has_pending_reload_read(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] })
+    && !runner_slot_population_has_pending_reload_read(population: SlotPopulationUnobservable { reason: "ssh refused" })
+}
+
+// THE WITHHOLD NEEDS A RUNNING, UNDRAINED, PENDING SLOT (ruling msg_f159865d, after run 43561214659
+// deadlocked butch: caps withheld until every instance read reload=no while the reload waited for caps).
+// RED CONTROLS: deleting the ActiveState subject (withholding on any pending read -- the old spelling)
+// turns the BUTCH arm red; deleting the live/undrained subject (withholding on nothing) turns the RUNNING
+// arm red; ignoring the drained set turns the DRAINED arm red. A mixed host -- one running clean slot and
+// one stopped slot with a pending change -- reloads: the pending change is on a slot no reload can hit.
+test fn the_withhold_needs_a_running_undrained_slot_with_a_pending_change() -> Bool {
+  // running (not stopped, live cgroup) + pending + undrained: WITHHOLD.
+  runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: false)
+    // the same unit drained by this run's bracket: the reload can hit nothing.
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadOwed, reach: ReachesLiveCgroup)] }, drained: ["actions-runner@srv1-01.service" as NonEmptyStr], results: [], also_changed: false)
+    // BUTCH'S STATE: loaded, INACTIVE (reach inert: stopped with an empty control group), pending: the
+    // reload is owed, not withheld -- it must run so enable+start never actuates on stale sources.
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv14-01.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [], results: [], also_changed: false)
+    // MIXED HOST: a running clean slot plus a stopped pending slot: nothing live carries a change.
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup), slot_rec(u: "actions-runner@srv1-02.service", status: SlotReloadOwed, reach: ReloadInert)] }, drained: [], results: [], also_changed: false)
+    // a running slot whose reload read FAILED proves nothing: fail closed, withhold.
+    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadUnobserved, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: false)
+    // a running slot that reads clean does not withhold.
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: false)
+    // an unobservable population cannot prove there is no live work.
+    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationUnobservable { reason: "ssh refused" }, drained: [], results: [], also_changed: false)
+    // REVIEW 95442 -- THE WRITES OF THIS RUN MAKE EVERY SHARED-TEMPLATE SLOT PENDING: a running slot
+    // that READ clean is blocked-on once the run has changed unit sources (the template and its drop-ins
+    // are shared by every instance; the daemon-reload loads them into all of them). also_changed is the
+    // expressible stand-in for the by-write arm (HostFileConvergedByWrite holds a sole_constructor
+    // RemoteFileConverged no pure fixture can hold -- the arm is discriminated by execution on butch, as
+    // the (c) claim records); a change the phase itself made owes the reload exactly like a write did.
+    && runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: [], results: [], also_changed: true)
+    // ...and the same live slot drained by this run is still exempt.
+    && !runner_slot_reload_is_blocked_by_live_work(population: SlotPopulationObserved { units: [slot_rec(u: "actions-runner@srv1-01.service", status: SlotReloadNotPending, reach: ReachesLiveCgroup)] }, drained: ["actions-runner@srv1-01.service" as NonEmptyStr], results: [], also_changed: true)
 }
 
 // ── Terminal ─────────────────────────────────────────────────────────────────────────────────────
@@ -1036,28 +1155,6 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
   }
 }
 
-// ── ELEVATED PARENT LISTING: the fresh-host defect, converge run 43387068589 ────────────────────
-// The sudoers row's parent /etc/sudoers.d is root:root 0750 on a fresh Ubuntu host (srv14), so the
-// bare transport arm is DENIED the parent listing there: stat says the gunbc-ghrunner row is missing
-// (exit=1), the indeterminate parent cannot establish absence, the file plan refuses fail-closed --
-// and the unit files were withheld, so activation could never find the unit. The elevated arm is the
-// fix: the SAME words through sudo -n, and elevation rides on the listing alone, never on answers.
-// The claims below assert the PRODUCTION route -- parent_listing_leg_argv, the function
-// entry_presence_in_parent itself calls (gunbc.design_argument::witness_one_interface: the claim is
-// on the ROUTE, not only the answer) -- with BOTH privileges pinned: delete the ElevatedListing arm
-// and the sudo words vanish, red by execution; delete the BareListing arm and the unprivileged
-// answer changes, red the same way.
-
-test fn the_parent_listing_leg_argv_routes_each_privilege_by_its_own_type() -> Bool {
-  parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: ElevatedListing)
-    == ["/usr/bin/sudo", "-n", "ls", "-1", "-A", "--", "/etc/sudoers.d"]
-    && parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: BareListing)
-    == ["ls", "-1", "-A", "--", "/etc/sudoers.d"]
-}
-
-test fn the_elevated_listing_leg_still_crosses_the_ssh_edge() -> Bool {
-  crosses_the_edge(argv: parent_listing_leg_argv(parent: "/etc/sudoers.d", privilege: ElevatedListing))
-}
 
 fn privilege_is_bare(p: ListingPrivilege) -> Bool {
   match p {

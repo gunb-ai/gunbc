@@ -1,0 +1,363 @@
+module test.claim.compute.remote_build_serve_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import std.process { ExitSuccess, ExitFailure }
+import std.measure { Kibibyte, kibibyte }
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_null_sha1_object_id }
+import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
+import gunbc.compute.work_request {
+  WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure,
+  ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ToolchainMismatchRefused, DependencyNotSucceeded,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildRequest, RemoteCompileEntry, remote_build_source_ref,
+  RemoteBuildRequestDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
+  RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
+  ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_answer_from_exit, remote_build_serve_header,
+  remote_build_ending_of_outcome, remote_build_answer_moves_on,
+  RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
+  HostUnreachable, HostRefusedRequest, HostOutcomeUnknown, ServeReady,
+  RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
+  RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
+  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
+  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session, remote_build_client_key_ci,
+}
+import gunbc.compute.remote_build_serve {
+  remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide,
+  remote_build_authorized_keys_lines, remote_build_render_entry, RemoteBuildEntryUnrenderable, remote_build_unrenderable_line, remote_build_installable_line,
+  ServeBinaryIdentity, ServeIdentityAbsent, ServeIdentityObserved, ServeIdentityRefused,
+  parse_serve_binary_identity, read_serve_binary_identity, serve_receipt_with_identity, ServeReceiptAugment, ReceiptAugmented, ReceiptRefused,
+}
+import extdeps.languages.json.emit { JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
+import gunbc.compute.work_provider_local { ProvideAttached, ProvideFresh, HostRecordWritten }
+import extdeps.ssh.keys { ssh_key_blob_sha256_fingerprint, authorized_key_entry_line }
+
+// HERMETIC CONTROLS for the serving side's contract: the exit table both ends read, the provider
+// outcome each ending comes from, and the fetch the serving host runs. The wet control -- a key, a
+// host, a real provider run answered through this entry -- is owed by the client change.
+
+data w_commit_hex: String = "0123456789abcdef0123456789abcdef01234567"
+
+// ── the empty word ──────────────────────────────────────────────────────────────────────────────────
+
+// A doubled space splits into an empty word; the portable-token rule refuses the empty word, so the
+// request refuses rather than shifting every later word by one (review 95499 asked; this pins it).
+test fn a_doubled_space_refuses_as_an_empty_word() -> Bool {
+  match remote_build_decode_request(text: concat("remote-build-v1  ", w_commit_hex, " id compile dag/x.dag")) {
+    RemoteBuildRequestRefused { cause: RequestWordNotPortable { word } } => word == ""
+    _ => false
+  }
+}
+
+// ── the exit table, read in both directions ────────────────────────────────────────────────────────
+
+fn w_answer_of(e: RemoteBuildServeEnding) -> RemoteBuildHostAnswer {
+  remote_build_answer_from_exit(exit_code: remote_build_serve_exit_code(e: e), stdout: concat(remote_build_serve_header(e: e), "\ndoc"), stderr: "")
+}
+
+test fn every_ending_reads_back_as_its_own_answer() -> Bool {
+  match w_answer_of(e: ServeServed) { HostServed { receipt } => receipt == "doc"  _ => false }
+    && match w_answer_of(e: ServeWorkEndedUnsuccessfully) { HostWorkFailed { receipt } => receipt == "doc"  _ => false }
+    && match w_answer_of(e: ServeRequestRefused) { HostRefusedRequest { detail: _ } => true  _ => false }
+    && match w_answer_of(e: ServeHostFull) { HostCapacityFull { detail: _ } => true  _ => false }
+    && match w_answer_of(e: ServeWorkInFlight) { HostWorkInFlight { receipt: _ } => true  _ => false }
+    && match w_answer_of(e: ServeHostCannotServe) { HostCannotServe { detail: _ } => true  _ => false }
+    && match w_answer_of(e: ServeReady) { HostOutcomeUnknown { detail: _ } => true  _ => false }
+}
+
+// Only room and the host's own readiness move a request on.
+test fn only_a_full_or_unready_host_moves_the_request_on() -> Bool {
+  remote_build_answer_moves_on(a: w_answer_of(e: ServeHostFull))
+    && remote_build_answer_moves_on(a: w_answer_of(e: ServeHostCannotServe))
+    && !remote_build_answer_moves_on(a: w_answer_of(e: ServeServed))
+    && !remote_build_answer_moves_on(a: w_answer_of(e: ServeWorkEndedUnsuccessfully))
+    && !remote_build_answer_moves_on(a: w_answer_of(e: ServeRequestRefused))
+    && !remote_build_answer_moves_on(a: w_answer_of(e: ServeWorkInFlight))
+}
+
+// Review 95521: the serving process is the gunbc binary, whose own refusals exit 1 or 2 before the
+// contract runs. At the PROBE, no header is a host that cannot serve and the request moves on.
+test fn at_the_probe_the_binarys_own_exit_1_and_2_are_a_host_that_cannot_serve() -> Bool {
+  match remote_build_probe_from_exit(exit_code: 2, stdout: "", stderr: "REFUSED: could not read /opt/gunbc/gunbc/dag") { ProbeCannotServe { detail: _ } => true  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 1, stdout: "", stderr: "error: resolve failed") { ProbeCannotServe { detail: _ } => true  _ => false }
+    && match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: 1, stdout: "", stderr: "")) {
+      Present { value: a } => remote_build_answer_moves_on(a: a)
+      Absent => false
+    }
+}
+
+test fn a_probe_answered_ready_sends_the_request_and_255_is_unreachable() -> Bool {
+  match remote_build_probe_from_exit(exit_code: remote_build_serve_exit_code(e: ServeReady), stdout: concat(remote_build_serve_header(e: ServeReady), "\nready"), stderr: "") { ProbeReady => true  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 255, stdout: "", stderr: "Connection refused") { ProbeUnreachable { detail } => detail == "Connection refused"  _ => false }
+    && match remote_build_probe_from_exit(exit_code: 127, stdout: "", stderr: "gunbc: not found") { ProbeCannotServe { detail: _ } => true  _ => false }
+}
+
+// Side-chat review F2: once the request is sent, a transport that cannot say what happened is
+// HostOutcomeUnknown and FINAL. The sharpest case: a received work-in-flight header with exit 255.
+test fn after_dispatch_a_lost_or_inconsistent_answer_is_unknown_and_does_not_advance() -> Bool {
+  let in_flight_lost = remote_build_answer_from_exit(exit_code: 255, stdout: concat(remote_build_serve_header(e: ServeWorkInFlight), "\ndoc"), stderr: "")
+  let bare_255 = remote_build_answer_from_exit(exit_code: 255, stdout: "", stderr: "Connection reset")
+  let bare_1 = remote_build_answer_from_exit(exit_code: 1, stdout: "", stderr: "")
+  match in_flight_lost { HostOutcomeUnknown { detail: _ } => true  _ => false }
+    && match bare_255 { HostOutcomeUnknown { detail: _ } => true  _ => false }
+    && match bare_1 { HostOutcomeUnknown { detail: _ } => true  _ => false }
+    && !remote_build_answer_moves_on(a: in_flight_lost)
+    && match remote_build_next_step(candidates: w_two_candidates(), attempts: [RemoteBuildAttempt { host: "srv1" as NonEmptyStr, answer: in_flight_lost }]) {
+      RemoteBuildAnswered { host: _, answer: HostOutcomeUnknown { detail: _ } } => true
+      _ => false
+    }
+}
+
+// Two supplied serving instances, so a step that wrongly advanced would reach the second rather than
+// running out of hosts.
+fn w_two_candidates() -> List<RemoteBuildCandidate> {
+  [
+    RemoteBuildCandidate { host: "srv1" as HostIdentity, instance: remote_build_serving_instance(host: "srv1" as HostIdentity) },
+    RemoteBuildCandidate { host: "srv-b" as HostIdentity, instance: remote_build_serving_instance(host: "srv-b" as HostIdentity) },
+  ]
+}
+
+test fn a_header_whose_code_disagrees_is_not_an_answer() -> Bool {
+  match remote_build_answer_from_exit(exit_code: 1, stdout: concat(remote_build_serve_header(e: ServeServed), "\ndoc"), stderr: "") {
+    HostOutcomeUnknown { detail: _ } => true
+    _ => false
+  }
+}
+
+test fn the_exit_codes_are_distinct() -> Bool {
+  let codes = [ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady]
+    |> map(e => remote_build_serve_exit_code(e: e))
+  codes |> all(c => count(codes |> filter(d => d == c)) == 1) && !(codes |> any(c => c == 255))
+}
+
+// ── provider outcome to ending ─────────────────────────────────────────────────────────────────────
+
+test fn a_full_pool_and_a_low_host_are_host_full() -> Bool {
+  remote_build_ending_of_outcome(o: WorkRefusedByInfrastructure { identity: "i", cause: HostComputeCapacityFull { wire: "2/2" } }) == ServeHostFull
+    && remote_build_ending_of_outcome(o: WorkRefusedByInfrastructure { identity: "i", cause: HostBelowMemoryFloor { requested: kibibyte(count: 1), available: kibibyte(count: 0) } }) == ServeHostFull
+}
+
+// The same identity already producing on this host is answered here, never started on a second host.
+test fn work_in_flight_is_answered_where_it_runs() -> Bool {
+  remote_build_ending_of_outcome(o: WorkRefusedByInfrastructure { identity: "i", cause: ProducerInFlight { lease_path: "/l" } }) == ServeWorkInFlight
+}
+
+test fn a_toolchain_mismatch_is_the_host_not_the_work() -> Bool {
+  remote_build_ending_of_outcome(o: WorkRefusedByInfrastructure { identity: "i", cause: ToolchainMismatchRefused { field: "channel", declared: "1.93.0", observed: "1.90.0" } }) == ServeHostCannotServe
+}
+
+// Side-chat review F1: the build is asked for first and classified by ITS OWN outcome, so a full pool
+// on a cold build is host-full (the request moves on), a build in flight is in flight, and only a build
+// that failed is the work's answer. A later DependencyNotSucceeded from the operation follows a build
+// this host just produced or attached, so it is the host, not the work.
+fn w_fresh(o: WorkOutcome) -> RemoteBuildServeEnding {
+  remote_build_ending_of_provide(r: ProvideFresh { outcome: o, document: "{}", host_record: HostRecordWritten })
+}
+
+test fn the_builds_own_outcome_decides_and_a_later_dependency_refusal_is_the_host() -> Bool {
+  w_fresh(o: WorkRefusedByInfrastructure { identity: "build", cause: HostComputeCapacityFull { wire: "2/2" } }) == ServeHostFull
+    && w_fresh(o: WorkRefusedByInfrastructure { identity: "build", cause: ProducerInFlight { lease_path: "/l" } }) == ServeWorkInFlight
+    && w_fresh(o: WorkFailed { identity: "build", exit_code: 101, log_path: "" }) == ServeWorkEndedUnsuccessfully
+    && w_fresh(o: WorkRefusedByInfrastructure { identity: "op", cause: DependencyNotSucceeded { dependency_identity: "build", ending: "succeeded, but unreadable" } }) == ServeHostCannotServe
+    && w_fresh(o: WorkSucceeded { identity: "op", outputs: [], log_path: "" }) == ServeServed
+}
+
+// ── what the serving host runs and prints ──────────────────────────────────────────────────────────
+
+test fn the_fetch_names_the_public_origin_and_the_one_ref() -> Bool {
+  match remote_build_source_ref(id: "probe.1") {
+    Absent => false
+    Present { value: source } => {
+      let commit = match git_object_id_from_untagged_hex(hex: w_commit_hex) { Present { value: c } => c  Absent => git_null_sha1_object_id }
+      remote_build_fetch_argv(request: RemoteBuildRequest { commit: commit, source: source, operation: RemoteCompileEntry { entry: "dag/x.dag" } })
+        == ["fetch", "--no-tags", "--no-write-fetch-head", "https://github.com/gunb-ai/gunbc.git", "+refs/remote-build/probe.1:refs/remote-build/probe.1"]
+    }
+  }
+}
+
+test fn the_answer_carries_the_document_and_the_endings_code() -> Bool {
+  match remote_build_serve_answer(ending: ServeHostFull, text: "{}") {
+    CliWirePrintable { bytes, exit: ExitFailure { code, reason: _ } } => bytes == "remote-build-v1 ending=host-full\n{}\n" && code == 3
+    _ => false
+  }
+    && match remote_build_serve_answer(ending: ServeServed, text: "{}") {
+      CliWirePrintable { bytes: _, exit: ExitSuccess } => true
+      _ => false
+    }
+}
+
+// ── the key ─────────────────────────────────────────────────────────────────────────────────────────
+
+// The relayed fingerprint is derived from the recorded material, so a mistyped key and a mistyped
+// fingerprint cannot both stand.
+test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_ssh_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_ssh_key_fingerprint as String
+  }
+}
+
+test fn the_session_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_session.public_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_client_key_session.fingerprint as String
+  }
+}
+
+// The hosted-CI key's fingerprint is derived from the recorded material, so a mistyped key and a
+// mistyped fingerprint cannot both stand (mirrors the_session_key_has_the_relayed_fingerprint).
+test fn the_ci_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_ci.public_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_client_key_ci.fingerprint as String
+  }
+}
+
+// Every roster host has an entry, every entry is restricted and forced, and the forced command runs
+// the serving function from that host's serving checkout, naming that host. It starts by changing into
+// that checkout, because sshd starts it in the account's home and `gunbc run` discovers its workspace
+// root from where it starts; the directory and every word are single-quoted by
+// gunbc.remote_shell_command (review 95657).
+test fn every_roster_host_has_a_restricted_forced_entry() -> Bool {
+  count(remote_build_candidates()) > 0
+    && remote_build_candidates() |> all(c => all(remote_build_admitted_client_keys, k => w_entry_is_restricted_and_forced(candidate: c, client_key: k)))
+}
+
+fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate, client_key: RemoteBuildClientKey) -> Bool {
+  match remote_build_authorized_entry(candidate: candidate, client_key: client_key) {
+    Absent => false
+    Present { value: e } => {
+      let line = authorized_key_entry_line(e: e)
+      starts_with(s: line, prefix: join(["restrict,command=\"cd -- '", candidate.instance.repo_root as String, "' && exec '", candidate.instance.serve_binary as String, "' 'run' "], ""))
+        && line.contains("'--function' 'remote_build_serve_cli'")
+        && line.contains(join(["'--entry' '", candidate.instance.repo_root as String, "/dag/gunbc/compute/remote_build_serve.dag'"], ""))
+        && line.contains(join(["'--arg' 'host=", candidate.host as String, "'"], ""))
+        && line.contains(client_key.public_key.material as String)
+    }
+  }
+}
+
+// ── an attached run ─────────────────────────────────────────────────────────────────────────────────
+
+// An attached run is read through the provider's own success reading, so a stored success serves and
+// a stored failure is the work's answer (review 95515: no second spelling of the ending here).
+test fn an_attached_success_serves_and_an_attached_failure_is_the_answer() -> Bool {
+  remote_build_ending_of_provide(r: ProvideAttached { identity: "i", ending: "succeeded", document: "{}", host_record: HostRecordWritten }) == ServeServed
+    && remote_build_ending_of_provide(r: ProvideAttached { identity: "i", ending: "failed", document: "{}", host_record: HostRecordWritten }) == ServeWorkEndedUnsuccessfully
+}
+
+// ── the install render ─────────────────────────────────────────────────────────────────────────────
+
+// With every roster host rendering, the install render exits 0 with one line per host per admitted key.
+test fn the_install_render_prints_one_line_per_host_per_admitted_key() -> Bool {
+  match remote_build_authorized_keys_lines() {
+    CliWirePrintable { bytes, exit: ExitSuccess } =>
+      count(split(s: bytes, delimiter: "\n") |> filter(l => l != "")) == count(remote_build_candidates()) * count(remote_build_admitted_client_keys)
+    _ => false
+  }
+}
+
+// An unrenderable host yields a refusal line and no installable line (review 95529: no fallback value).
+test fn an_unrenderable_host_has_a_refusal_and_no_installable_line() -> Bool {
+  match remote_build_candidates() |> first {
+    Absent => false
+    Present { value: c } => {
+      let r = RemoteBuildEntryUnrenderable { candidate: c }
+      count(remote_build_unrenderable_line(r: r)) == 1 && count(remote_build_installable_line(r: r)) == 0
+    }
+  }
+}
+
+// RED CONTROL: the closed list renders ONLY admitted keys. Every entry rendered from the candidate list
+// contains an admitted key's material; a known-foreign material does NOT appear in any line. This
+// witnesses the closed-list property: the account's authorized_keys is the admitted list rendered and
+// nothing else (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold).
+test fn the_closed_list_renders_only_admitted_keys() -> Bool {
+  match first(remote_build_candidates()) {
+    Absent => false
+    Present { value: c } => {
+      let installable = remote_build_render_entry(candidate: c)
+      let lines = remote_build_installable_line(r: installable)
+      let admitted_materials = map(remote_build_admitted_client_keys, k => k.public_key.material as String)
+      let foreign_material = "AAAAC3NzaC1lZDI1NTE5AAAAIForeignKeyMaterialThatIsNotAdmitted"
+      count(lines) == count(remote_build_admitted_client_keys)
+        && (lines |> all(l => any(admitted_materials, m => l.contains(m))))
+        && !(lines |> any(l => l.contains(foreign_material)))
+    }
+  }
+}
+
+// ── the serving binary's identity in the receipt (PR-1a) ────────────────────────────────────────────
+// The two values a pre-placed identity file carries, mirrored by the committed fixture the wet row opens.
+data w_identity_revision: String = "0123456789abcdef0123456789abcdef01234567"
+data w_identity_sha256: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data w_receipt_document: String = "{\"subject\":\"build\",\"ending\":\"served\"}"
+
+// RED CONTROL: no identity file present leaves the receipt byte-for-byte as it came. The member is
+// ABSENT, never a null and never a revision guessed in (gunbc.design_argument::fail_closed).
+test fn an_absent_identity_leaves_the_receipt_without_a_serve_binary_member() -> Bool {
+  match serve_receipt_with_identity(document: w_receipt_document, identity: ServeIdentityAbsent) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAugmented { document: d } => d == w_receipt_document && !(d.contains("\"serve_binary\""))
+  }
+}
+
+// An observed identity folds in a top-level serve_binary member carrying BOTH values verbatim, read back
+// through the parser rather than substring-matched.
+test fn an_observed_identity_folds_revision_and_sha256_into_the_receipt() -> Bool {
+  let identity = ServeIdentityObserved { revision: w_identity_revision, sha256: w_identity_sha256 }
+  match serve_receipt_with_identity(document: w_receipt_document, identity: identity) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAugmented { document: d } => match parse_json_document(s: d) {
+      JsonDocumentUnreadable { gap: _ } => false
+      JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "serve_binary") {
+        JsonMemberFound { value: sb } => match json_object_unique_member(v: sb, key: "revision") {
+          JsonMemberFound { value: JsonString { value: r } } => r == w_identity_revision &&
+            match json_object_unique_member(v: sb, key: "sha256") {
+              JsonMemberFound { value: JsonString { value: s } } => s == w_identity_sha256
+              _ => false
+            }
+          _ => false
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+// RED CONTROL: a present file whose bytes are not the documented two-string object is REFUSED, never read
+// as absent -- a damaged or partial identity file must not be mistaken for a binary installed with none.
+test fn a_malformed_identity_file_refuses_rather_than_reading_as_absent() -> Bool {
+  let partial = match parse_serve_binary_identity(content: "{\"revision\":\"abc\"}") {
+    ServeIdentityRefused { cause: _ } => true
+    _ => false
+  }
+  let not_json = match parse_serve_binary_identity(content: "not identity bytes at all") {
+    ServeIdentityRefused { cause: _ } => true
+    _ => false
+  }
+  partial && not_json
+}
+
+// RED CONTROL: an identity the host could not read (a present-but-unreadable file) refuses the WHOLE
+// receipt, so a damaged sidecar is never answered as a clean receipt that silently omits who served.
+test fn a_refused_identity_refuses_the_whole_receipt() -> Bool {
+  match serve_receipt_with_identity(document: w_receipt_document, identity: ServeIdentityRefused { cause: "unreadable" }) {
+    ReceiptRefused { cause: _ } => true
+    ReceiptAugmented { document: _ } => false
+  }
+}
+
+// WET INHABITANCE (executed with `gunbc run --function`, not --claim-run: source_root_read_file is a real
+// host read that --claim-run refuses rather than mocks). The REAL read route opens the committed identity
+// file and its two members must come back verbatim -- the real producer emits the shape the controls above
+// assume (gunbc.design_argument::witness_one_interface).
+test fn the_real_read_route_reads_a_preplaced_identity_file() -> Bool {
+  match read_serve_binary_identity(serve_binary: "dag/test/claim/compute/serve_identity_inhabitant") {
+    ServeIdentityObserved { revision: revision, sha256: sha256 } => revision == w_identity_revision && sha256 == w_identity_sha256
+    _ => false
+  }
+}

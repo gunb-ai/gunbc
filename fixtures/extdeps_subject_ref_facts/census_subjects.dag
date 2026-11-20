@@ -1,0 +1,32 @@
+module fixtures.extdeps_subject_ref_facts.census_subjects
+
+// PARSE-ONLY FIXTURE for the `extdeps_subject_ref_facts` census claim
+// (dag/test/claim/extdeps_subject_ref_facts_witness.dag). This file is NEVER compiled -- it lives
+// outside every v1/v2 source root -- so it may carry a subject shape that would not typecheck. The
+// census reads it off disk through the fail-closed parse-only walk (`decls_parse_only_fail_closed`)
+// and reads the AUTHORED subject parse tree, so it witnesses the two census arms deterministically:
+//
+//   * `census_literal_scope`  -- subject.declaration { module_path, decl_name } are literal strings,
+//                                so the census must read it as the TYPED `SubjectLiteral` arm.
+//   * `census_indirect_scope` -- subject is a NAMED REFERENCE (a dotted spine, exactly the bazel
+//                                `subject: <X_subject>` shape found in the live corpus), never a
+//                                literal, so the census must REFUSE the row as the typed
+//                                `SubjectNotLiteral` arm with `why: SubjectNamedReference` -- never a
+//                                positional guess.
+//
+// No `import` is needed: the census is parse-only, it reads the authored spelling of the type head
+// (`ExternalModelScope`) and of the subject tree, and it resolves nothing.
+
+data census_literal_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.acme",
+      decl_name: "AcmeSubject",
+      field: WholeDeclaration
+    }
+  }
+}
+
+data census_indirect_scope: ExternalModelScope = ExternalModelScope {
+  subject: extdeps.vendor.acme.acme_subject_alias
+}

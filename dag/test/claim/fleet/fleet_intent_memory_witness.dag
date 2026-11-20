@@ -23,9 +23,32 @@ import gunbc.fleet.fleet_intent {
   srv4_memory_population_observation_note,
   srv4_host,
   compute_host_ram_bytes_total,
+  HostRamRead,
+  HostRamMeasured,
+  HostRamCensusUnread,
+  compute_host_cpu_threads,
+  CpuThreadRead,
+  CpuThreadsMeasured,
+  CpuThreadsCensusUnread,
+  compute_host_primary_cpu,
+  PrimaryCpuMeasured,
+  PrimaryCpuAbsentFromSurvey,
+  PrimaryCpuCensusUnread,
+  host_hardware_census_of,
+  HostHardwareCensus,
+  ProcessorAxis,
+  ProcessorsUnread,
+  ProcessorsSurveyed,
+  MemoryAxis,
+  MemoryUnread,
+  MemorySurveyed,
+  supermicro_h11ssl_unit3_host,
+  ComputeHost,
   fleet_host_memory_nominal_vs_usable_note,
 }
-import gunbc.ci.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note }
+import gunbc.ci.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note, mtcollins1_runner_host }
+import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import product.host_identity { host_identity_eq }
 import extdeps.memory {
   host_memory_population_nominal_bytes,
   memory_population_row_bytes,
@@ -67,9 +90,13 @@ test fn srv3_population_matches_bmc_memory_summary() -> Bool {
 }
 
 test fn srv3_host_memory_derives_from_cited_population() -> Bool {
-  let host_ram = byte_size_count(compute_host_ram_bytes_total(host: srv3_host))
   let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
-  host_ram == nominal && length(xs: srv3_host.memory) == 1
+  // The read answers a STANDING, so the claim matches it: folding the refusal into a number here would let this
+  // pass on a host whose census nobody read.
+  match compute_host_ram_bytes_total(host: srv3_host) {
+    HostRamCensusUnread { host: _ } => false
+    HostRamMeasured { bytes: host_ram } => byte_size_count(b: host_ram) == nominal && length(xs: srv3_host.memory) == 1
+  }
 }
 
 test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
@@ -121,12 +148,23 @@ test fn srv1_population_matches_the_operator_relayed_total() -> Bool {
 }
 
 test fn srv1_srv2_host_memory_derives_from_cited_population() -> Bool {
-  let srv1_ram = byte_size_count(compute_host_ram_bytes_total(host: srv1_host))
   let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
-  let srv2_ram = byte_size_count(compute_host_ram_bytes_total(host: srv2_host))
   let srv2_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv2_memory_population))
-  srv1_ram == srv1_nominal && length(xs: srv1_host.memory) == 1
-    && srv2_ram == srv2_nominal && length(xs: srv2_host.memory) == 1
+  match measured_host_ram(host: srv1_host) {
+    HostRamCensusUnread { host: _ } => false
+    HostRamMeasured { bytes: srv1_ram } =>
+      match measured_host_ram(host: srv2_host) {
+        HostRamCensusUnread { host: _ } => false
+        HostRamMeasured { bytes: srv2_ram } =>
+          byte_size_count(b: srv1_ram) == srv1_nominal && length(xs: srv1_host.memory) == 1
+            && byte_size_count(b: srv2_ram) == srv2_nominal && length(xs: srv2_host.memory) == 1
+      }
+  }
+}
+
+// THE STANDING, NOT A NUMBER, IS WHAT THE CLAIMS BELOW MATCH. Named so each claim states which arm it accepted.
+fn measured_host_ram(host: ComputeHost) -> HostRamRead {
+  compute_host_ram_bytes_total(host: host)
 }
 
 // SEVEN OF THE CURRENT MODULE, NOT SEVEN OF THE OLD ONE. This control previously constructed seven
@@ -156,9 +194,8 @@ test fn srv1_srv2_observation_notes_record_raw_redfish_fields() -> Bool {
 test fn nominal_population_and_os_usable_budget_are_distinct_facts() -> Bool {
   let nominal_128gib = byte_size_count(gibibyte_to_byte_size(g: gibibyte(128)))
   let usable_125gib = byte_size_count(byte_size(134217728000))
-  let ci_host_ram = byte_size_count(compute_host_ram_bytes_total(host: gunbc_ci_host))
   nominal_128gib != usable_125gib
-    && ci_host_ram == usable_125gib
+    && host_ram_equals(host: gunbc_ci_host, expected: usable_125gib)
     && string_contains(s: fleet_host_memory_nominal_vs_usable_note, pattern: "125 GiB")
     && string_contains(s: gunbc_ci_host_memory_deferral_note, pattern: "MemTotal-shaped")
 }
@@ -191,10 +228,88 @@ test fn srv4_population_matches_bmc_memory_summary() -> Bool {
   let bmc = byte_size_count(
     redfish_memory_summary_from_gib(total_gib: srv4_bmc_observed_total_gib).total_memory_bytes
   )
-  nominal == bmc && byte_size_count(compute_host_ram_bytes_total(host: srv4_host)) == nominal
+  nominal == bmc && host_ram_equals(host: srv4_host, expected: nominal)
+}
+
+// A HOST RAM READ THAT ONLY MATCHES A MEASURED CENSUS: the equality fails on the unread arm rather than reading
+// the refusal as zero.
+fn host_ram_equals(host: ComputeHost, expected: Nat) -> Bool {
+  match compute_host_ram_bytes_total(host: host) {
+    HostRamCensusUnread { host: _ } => false
+    HostRamMeasured { bytes: b } => byte_size_count(b: b) == expected
+  }
 }
 
 test fn srv4_observation_note_records_the_read_that_retired_the_deferral() -> Bool {
   string_contains(s: srv4_memory_population_observation_note, pattern: "M393A8G40D40-CRB")
     && string_contains(s: srv4_memory_population_observation_note, pattern: "TotalSystemMemoryGiB=512")
+}
+
+// RED CONTROL -- THE STANDING IS WHAT PROTECTS THE NUMBER (review 96379). supermicro_h11ssl_unit3_host is ken: his
+// ComputeHost row was written from the operator's hand-installed report, and the reads that fill his three axes (the
+// in-band dmidecode / lsblk / sfdisk named on his intake rows) have not been taken. His lists are empty because
+// NOBODY READ THEM. A fold would answer byte_size(0), and no consumer of this read -- a placement, a budget, a
+// capacity plan -- could tell that zero from a board with no memory fitted. This claim goes red the moment the fold
+// comes back.
+test fn unsurveyed_census_refuses_the_host_ram_read() -> Bool {
+  match compute_host_ram_bytes_total(host: supermicro_h11ssl_unit3_host) {
+    HostRamCensusUnread { host: unread_host } => host_identity_eq(a: unread_host, b: operator_host_e2d4b7)
+    HostRamMeasured { bytes: measured } => false
+  }
+}
+
+// ONE RULE PER AXIS, FOUR CONSUMERS (gunbc.design_argument::root_generalization). The thread fold and the primary-CPU
+// read used to be two more sibling leaves testing emptiness themselves; they now answer the processor axis of the same
+// standing, and the refusal the fleet reports for ken says "no census has been read", not "this board has no CPU".
+test fn unsurveyed_census_refuses_threads_and_primary_cpu() -> Bool {
+  let census = host_hardware_census_of(host: supermicro_h11ssl_unit3_host)
+  match census.processors {
+    ProcessorsUnread =>
+      match compute_host_cpu_threads(host: supermicro_h11ssl_unit3_host) {
+        CpuThreadsCensusUnread { host: _ } =>
+          match compute_host_primary_cpu(host: supermicro_h11ssl_unit3_host) {
+            PrimaryCpuCensusUnread { host: _ } => true
+            PrimaryCpuAbsentFromSurvey { host: _ } => false
+            PrimaryCpuMeasured { cpu: _ } => false
+          }
+        CpuThreadsMeasured { threads: _ } => false
+      }
+    ProcessorsSurveyed { rows: _ } => false
+  }
+}
+
+// THE AXIS GRAIN, THE RED HALF. mtcollins1's row lists a CPU and NO DIMM row: its processor axis is read, its memory
+// axis is not. Nobody measured zero DIMMs on that board -- its nominal DRAM is catalogued on the Redfish population
+// its witness reads and was never admitted as a memory axis of the supply facts. So the RAM read refuses here too,
+// and the zero it used to answer is the fabricated measurement review 96379 objected to, one axis over.
+test fn mtcollins1_memory_axis_is_unread_and_its_ram_read_refuses() -> Bool {
+  let census = host_hardware_census_of(host: mtcollins1_runner_host)
+  match census.memory {
+    MemoryUnread =>
+      match census.processors {
+        ProcessorsSurveyed { rows: _ } =>
+          match compute_host_ram_bytes_total(host: mtcollins1_runner_host) {
+            HostRamCensusUnread { host: _ } => true
+            HostRamMeasured { bytes: _ } => false
+          }
+        ProcessorsUnread => false
+      }
+    MemorySurveyed { rows: _ } => false
+  }
+}
+
+// THE AXIS GRAIN, THE GREEN HALF: a read memory axis still measures. srv1's memory axis comes from the cited Redfish
+// population, so its RAM total is a measurement and the refusal must NOT fire -- the fence is not a blanket refusal
+// of every host that happens to be named in this file.
+test fn srv1_memory_axis_is_surveyed_and_answers_a_measured_total() -> Bool {
+  let nominal = byte_size_count(b: host_memory_population_nominal_bytes(pop: srv1_memory_population))
+  let census = host_hardware_census_of(host: srv1_host)
+  match census.memory {
+    MemorySurveyed { rows: rows } =>
+      match compute_host_ram_bytes_total(host: srv1_host) {
+        HostRamMeasured { bytes: measured } => byte_size_count(b: measured) == nominal && length(xs: rows) > 0
+        HostRamCensusUnread { host: _ } => false
+      }
+    MemoryUnread => false
+  }
 }

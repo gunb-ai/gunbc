@@ -1,0 +1,59 @@
+module test.claim.tailscale_fleet_key_observation_witness
+
+// Scope-2 consumer witness, self-contained with EXPLICIT imports (no bare-name proximity resolution --
+// see gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution). It reaches
+// ONLY the fleet-key untagged-join rows so its entry closure is the fleet-key closure, not the whole
+// join/converge graph.
+//
+// The untagged-join episode is carried in TYPED rows -- not in a String blob and not in // prose (per
+// gunbc.design_argument::source_annotations and ::fail_closed: a typecheck and a .contains() grep are not
+// consumers, and a String whose only purpose is commentary is misplaced data):
+//   - the operator's OBSERVATION + CAUSAL RULING live in the typed DesignRuling
+//     gunbc.design_ruling::tailscale_fleet_key_untagged_join_causality_2026_11_18, which
+//     dag/test/claim/documentary_refs_witness.dag already checks against the live declaration pool;
+//   - the two SUSPECTS are a typed closed sum, checked here by structure;
+//   - the OPEN READ is the TranscribedUncited standing on the fleet-key metadata figure, checked here by
+//     match on the sum -- never by grepping the obligation's words.
+
+import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import std.algebra { contains, length }
+import gunbc.tailscale_fleet_auth_key {
+  FleetKeyUntaggedJoinHypothesis,
+  AuthKeyPreAuthorizedTagsEmpty,
+  SecretManagerLatestNotPinned,
+  tailscale_fleet_auth_key_untagged_join_hypotheses,
+  tailscale_fleet_key_metadata_standing,
+}
+
+// The figure's standing is an OPEN transcription obligation, consumed by STRUCTURE (match on the sum): it
+// must be the TranscribedUncited arm -- neither cited to an authority (there is no citation) nor grounded by
+// a receipt (there is no live read; the federation credential is minted only inside an admitted CI job).
+test fn w_a_the_fleet_key_metadata_read_is_an_open_uncited_obligation() -> Bool {
+  match tailscale_fleet_key_metadata_standing {
+    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
+}
+
+// A closed binary hypothesis has exactly two competing explanations here; consume the data row by STRUCTURE
+// (not by grepping words): with a total-match equality, require the list to be exactly one SecretManager-
+// LatestNotPinned and one AuthKeyPreAuthorizedTagsEmpty. A missing or duplicated hypothesis, or a third added
+// by prose, turns this red.
+fn hyp_is_latest_not_pinned(h: FleetKeyUntaggedJoinHypothesis) -> Bool {
+  match h {
+    SecretManagerLatestNotPinned => true
+    AuthKeyPreAuthorizedTagsEmpty => false
+  }
+}
+
+fn hyp_eq(a: FleetKeyUntaggedJoinHypothesis, b: FleetKeyUntaggedJoinHypothesis) -> Bool {
+  hyp_is_latest_not_pinned(a) == hyp_is_latest_not_pinned(b)
+}
+
+test fn w_a_the_untagged_join_has_exactly_two_typed_hypotheses() -> Bool {
+  let hs = tailscale_fleet_auth_key_untagged_join_hypotheses
+  (length(hs) == 2)
+    && contains(xs: hs, item: SecretManagerLatestNotPinned, eq: hyp_eq)
+    && contains(xs: hs, item: AuthKeyPreAuthorizedTagsEmpty, eq: hyp_eq)
+}

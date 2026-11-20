@@ -32,8 +32,15 @@ import gunbc.live_deploy.deployed_tree_observation {
 // moves the deployed HEAD to the admitted revision and thereby flips the launch admission's revision
 // gate (`roadmap_launch_admission` `launch_gate_revision`) from refusing to admitting while the installed binary is still the old
 // one, so the belt's next tick dispatches a mixed realization that was never admitted as a release.
-// That is recorded in `gunbc.plans.deploy_convergence_observed_side (deleted 2026-11-08)`, and until the quiescence
-// ordering is settled this entry OBSERVES and never actuates.
+// The quiescence ORDERING relative to serve and the agent door -- the half of the deleted plan
+// `gunbc.plans.deploy_convergence_observed_side (deleted 2026-11-08)` that this entry had to leave open --
+// is settled at roadmap node deploy-converge-serve-quiesced: repository convergence does NOT stop serve,
+// and the transient event-snapshot worktrees serve opens and closes continuously are excluded from the
+// transition by the declared rule in
+// `gunbc.live_deploy.repository_convergence::convergence_first_worktree_fault`. What that ruling does NOT
+// reach is the binary-copy race above -- rewriting the installed binary under a running belt/door -- which
+// belongs to deploy actuation (out of scope: deploy-intent-owns-artifact-closure); until that lands this
+// entry OBSERVES and never actuates, so a tick that races the copy sees a refused report, never a false one.
 //
 // It exists now rather than after that ruling because the alternative is worse than waiting: a
 // standing with no production consumer is exactly the shape that let the spark durability verdict sit

@@ -8,7 +8,10 @@ import gunbc.spark.dgx_procurement {
   SlotUnassigned,
   router_binding_identity,
   dgx_spark_router_bindings,
+  dgx_spark_disposed_units,
 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from }
+import gunbc.hostname_allocation { fleet_machine_registry }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_183527, operator_host_3dde7f }
@@ -86,17 +89,53 @@ fn fleet_probe_endpoint_for(host: String) -> String {
   }
 }
 
+// THE PROBE ENDPOINT IS THE TAILNET NAME, NOT THE IDENTITY. An owned fleet host that has a
+// hostname_allocation row is reached at its MagicDNS name, composed at the ONE tailnet site
+// gunbc.fleet.fleet_tailnet::tailnet_host_from -- uniformly, for every such host (srv1..4 stay
+// their legacy labels, ken/butch/bobo/dan/... their drawn names), never a per-host carve-out.
+// This fixes the defect where the fold returned the bare identity for any non-guest, non-bound host.
+// A modeled Spark router reservation still wins over the name (it is a more specific address).
+// A DISPOSED (sold) unit -- named no-longer-ours by gunbc.spark.dgx_procurement::dgx_spark_disposed_units
+// -- is kept OUT of the allocation-name rule: it keeps the pre-existing bare-identity passthrough (its
+// slot string, exactly as on main), NOT a drawn tailnet name. It is NOT a typed refusal yet: a String
+// return cannot write "no endpoint" in the type, so the bare handle stays until the replacement lands
+// (see the concern below). Its hostname_allocation row
+// survives as a naming fixture, but the unit is no longer owned, so resolving srv9 -> francis.tailecbe08.ts.net
+// would hand a consumer a live MagicDNS name that may now answer for someone else's device — the sold-asset
+// hazard. The bare id is the same total passthrough this function already gave unmodeled spellings; it is not
+// a sentinel and not a name. Representing this absence as a TYPED no-endpoint (not a string that happens to
+// name nothing) is deferred to the endpoint-authority replacement (gunbc.endpoint_authority_replacement_cut),
+// tracked by gunbc.integration_concern::sold_units_keep_bare_passthrough_pending_typed_absence; see the
+// PR note. A typed Absent would force a ~15-caller return-type change across fleet/host/runner that cannot be
+// validated within this change, so the follow-up is filed rather than half-taken.
 fn fleet_owned_probe_endpoint_for(host: String) -> String {
-  fold(dgx_spark_router_bindings, init: host, f: fn(acc, b) {
-    if (router_binding_identity(binding: b) as String) == host {
-      match spark_endpoint_for_binding(binding: b) {
-        Absent => acc
-        Present { value: endpoint } => endpoint
+  match filter(dgx_spark_disposed_units, u => (u.former_slot as String) == host).first() {
+    Present { value: _ } => host
+    Absent => fold(dgx_spark_router_bindings, init: fleet_allocated_endpoint_or_host(host: host), f: fn(acc, b) {
+      if (router_binding_identity(binding: b) as String) == host {
+        match spark_endpoint_for_binding(binding: b) {
+          Absent => acc
+          Present { value: endpoint } => endpoint
+        }
+      } else {
+        acc
       }
-    } else {
-      acc
-    }
-  })
+    })
+  }
+}
+
+// A host with a hostname_allocation row resolves to its tailnet name (the one composition in
+// fleet_tailnet::tailnet_host_from, keyed on the row's current canonical hostname); an unmodeled
+// spelling keeps the bare host string, exactly as before this change.
+fn fleet_allocated_endpoint_or_host(host: String) -> String {
+  match filter(fleet_machine_registry, a => (a.fleet_slot as String) == host).first() {
+    Absent => host
+    Present { value: a } =>
+      match tailnet_host_from(machine: a.fleet_slot) {
+        Absent => host
+        Present { value: name } => name as String
+      }
+  }
 }
 
 // The fleet reach roster — every identity a reach-layer consumer (probe, collector,

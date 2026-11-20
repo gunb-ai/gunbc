@@ -105,18 +105,33 @@ fn presentation_text(p: BootPresentation) -> String {
 // a stale medium was powered off first, and the presentation state after. `ready` is NOT a stored
 // field (correction 2): it is derivable from the record's own presentation field, so it is a fn.
 
+// WHY THE HOST WAS POWERED OFF BEFORE THE ATTACH. Two purposes reach the one authorized power-off, and the
+// record names which, because they are different claims: replacing a stale medium withdraws one a running
+// host may be reading; cycling an image of this lane re-enumerates the controller's share so a newly
+// published target can be offered (gunbc.machine_intake.megarac_media_attach megarac_reenumerate_share).
+type MediumPowerOffPurpose
+  = PowerOffToReplaceStale { stale_image: String }
+  | PowerOffToCycleShare { cycled: String }
+
+fn medium_power_off_purpose_text(purpose: MediumPowerOffPurpose) -> String {
+  match purpose {
+    PowerOffToReplaceStale { stale_image: i } => join(["to replace stale '", i, "'"], "")
+    PowerOffToCycleShare { cycled: c } => join(["to present and stop '", c, "' so the share re-enumerates"], "")
+  }
+}
+
 type StaleMediumPowerOff
   = StalePowerOffNotNeeded { reason: NonEmptyStr }
-  | StalePowerOffObserved { stale_image: String, before: HostPowerState }
-  | StalePowerOffCommandRefused { stale_image: String, before: HostPowerState }
-  | StalePowerOffNotObserved { stale_image: String, before: HostPowerState, last: HostPowerState }
+  | StalePowerOffObserved { purpose: MediumPowerOffPurpose, before: HostPowerState }
+  | StalePowerOffCommandRefused { purpose: MediumPowerOffPurpose, before: HostPowerState }
+  | StalePowerOffNotObserved { purpose: MediumPowerOffPurpose, before: HostPowerState, last: HostPowerState }
 
 fn stale_power_off_text(record: StaleMediumPowerOff) -> String {
   match record {
     StalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
-    StalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", host_power_text(state: b), ") to replace stale '", i, "', observed off"], "")
-    StalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by the controller"], "")
-    StalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", host_power_text(state: l)], "")
+    StalePowerOffObserved { purpose: p, before: b } => join(["powered off (was ", host_power_text(state: b), ") ", medium_power_off_purpose_text(purpose: p), ", observed off"], "")
+    StalePowerOffCommandRefused { purpose: p, before: _ } => join(["chassis power off ", medium_power_off_purpose_text(purpose: p), " was refused by the controller"], "")
+    StalePowerOffNotObserved { purpose: p, before: _, last: l } => join(["chassis power off ", medium_power_off_purpose_text(purpose: p), " was sent but never observed off; last read ", host_power_text(state: l)], "")
   }
 }
 

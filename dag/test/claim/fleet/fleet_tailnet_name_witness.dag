@@ -16,7 +16,7 @@ module test.claim.fleet.fleet_tailnet_name_witness
 import std.logic { Bool }
 import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_e2d4b7 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from, fleet_tailnet_domain }
 
 // The dotted domain string is JOINED from the zone-label list; pinned here so a rename or a join change
@@ -32,6 +32,18 @@ test fn srv2_tailnet_host_is_the_registry_name_dot_domain() -> Bool
 
 test fn srv3_tailnet_host_is_the_registry_name_dot_domain() -> Bool
   = tailnet_host_from(machine: operator_host_srv3) == Present { value: "srv3.tailecbe08.ts.net" }
+
+// ken (operator_host_e2d4b7, the second H11SSL-i / unit 3) is addressed on the tailnet by its
+// registry NAME, not its handle and not an IP: the operator's pin-to-tailnet-name rule. This is the
+// name-home fact the endpoint/keyscan work pins; the resolver composes it at the one site above.
+test fn ken_tailnet_host_is_the_registry_name_dot_domain() -> Bool
+  = tailnet_host_from(machine: operator_host_e2d4b7) == Present { value: "ken.tailecbe08.ts.net" }
+
+// RED CONTROL for the claim above: the tailnet host is the registry NAME, never the handle spelling.
+// A caller or mutant that handed back ken's identity ("host-e2d4b7"), with or without the domain, fails here.
+test fn ken_tailnet_host_is_not_the_identity_handle() -> Bool
+  = tailnet_host_from(machine: operator_host_e2d4b7) != Present { value: "host-e2d4b7" }
+    && tailnet_host_from(machine: operator_host_e2d4b7) != Present { value: "host-e2d4b7.tailecbe08.ts.net" }
 
 // THE FAIL-CLOSED ARM, in the right place: there is no free domain to be undeclared anymore, so the only
 // way to no address is an unregistered machine, and then there is NO host at all -- never a host in the
