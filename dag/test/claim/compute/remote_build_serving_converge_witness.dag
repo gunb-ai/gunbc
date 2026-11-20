@@ -30,7 +30,7 @@ import gunbc.compute.remote_build_serving_setup {
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_property_value, user_work_slice_show_command_argv }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv }
 import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
@@ -1622,6 +1622,40 @@ test fn the_property_value_maps_every_unbounded_spelling() -> Bool {
     && slice_value_unbounded(serving_slice_property_value(value: Present { value: "infinity" }))
     && slice_value_unbounded(serving_slice_property_value(value: Present { value: "max" }))
     && slice_value_unbounded(serving_slice_property_value(value: Present { value: "   " }))
+}
+
+// RED CONTROL (fail_closed, review 96983): a NON-ZERO `systemctl show` is classified by WHAT the command
+// said, not by the exit code alone. The same exit 1 -- a proven user-bus-down spelling -- reads established
+// UNCAPPED (an unreachable manager has no cap in force, so it installs + enables linger); a sudo denial or a
+// malformed invocation is REFUSED, so on a host that is ALREADY capped a failure nobody read cannot mint an
+// install + linger write. Goes RED the moment the non-zero arm is blanket-uncapped again.
+test fn a_non_zero_read_is_classified_by_stderr_not_the_exit_code() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let high_expected = ceiling_high_expected(ceiling: ceiling)
+      let down = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "Failed to connect to bus: Host is down")
+      let down_uncapped = match user_work_slice_cgroup_admission(max: down.max, high: down.high, swap: down.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+      let denied = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "sudo: a password is required")
+      let denied_unknown = match user_work_slice_cgroup_admission(max: denied.max, high: denied.high, swap: denied.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUnknown { control: _, cause: _ } => true
+        SliceCapped => false
+        SliceUncapped { reason: _ } => false
+      }
+      let malformed = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "systemctl: unknown operation 'shwo'")
+      let malformed_unknown = match user_work_slice_cgroup_admission(max: malformed.max, high: malformed.high, swap: malformed.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUnknown { control: _, cause: _ } => true
+        SliceCapped => false
+        SliceUncapped { reason: _ } => false
+      }
+      down_uncapped && denied_unknown && malformed_unknown
+    }
+  }
 }
 
 // The read-back is the user-bus `show` of the three named properties of the reader's own slice, through the
