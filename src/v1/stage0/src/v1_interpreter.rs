@@ -29558,7 +29558,7 @@ mod wall_deadline_kill_tests {
                 &ctx,
                 "Optional",
                 "Present",
-                vec![("value", variant_value(&ctx, "Second", "MeasureSecond", vec![("count", Value::Int(0)])))],
+                vec![("value", variant_value(&ctx, "Second", "MeasureSecond", vec![("count", Value::Int(0))]))],
             ),
         );
         assert!(
