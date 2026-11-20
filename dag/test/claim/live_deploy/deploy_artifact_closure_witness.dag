@@ -19,56 +19,58 @@ module test.claim.live_deploy.deploy_artifact_closure_witness
 //   base-matched seed (Rust = branch base da9e9f5, no src delta), sha256 900599bd3a81...
 
 import std.types { CommitSha, NonEmptyStr }
-import std.algebra { fold_list, list_map, list_append, non_empty, string_contains }
+import std.algebra { fold_list, list_append, list_map, non_empty, string_contains }
 import std.list { list_member, list_cover, first_where }
-import std.optional { Present, Absent }
 import gunbc.live_deploy.deploy_artifact_closure {
-  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NotYetModeled, InstalledArtifact,
-  ClosureVerdict, Allowed, Refused, Unclosed,
+  ArtifactReadSet, DeployReadRow, ReadRow, Declared, NoReadOfRecord, InstalledArtifact, NotYetModeled,
+  DeclaredRead, ReadKind, OwnedArtifact, FileContent, DirectoryExists, TreeContent, EndpointDependency,
   DeployGateDecision, DeployHaltCause, Proceed, Halt, MissingArtifact, UnclosedRead,
-  deploy_gate_decision, deploy_gate,
-  unit_closure_verdict, deploy_closure_verdict, combine_closure_verdicts,
-  first_missing_artifact, deploy_artifact_inventory, ArtifactInventoryRow, DerivedRow, UnclosedRow, InstalledArtifactRow, NoReadRow, NoReadOfRecord
+  deploy_gate, deploy_closure_halts,
+  deploy_artifact_inventory, deploy_artifact_inventory_row, ArtifactInventoryRow, DerivedRow, NoReadRow, InstalledArtifactRow, UnclosedRow
 }
 import gunbc.live_deploy.spec {
-  DeploymentSpec, DeploymentArtifactStep, DeploymentNames, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
+  DeploymentSpec, DeploymentNames, DeploymentArtifactStep, UpsertOwned, ServeBinary, GunbcSourceTree, AttemptUnitDrainPathUnit,
   SystemdUnit, TailnetDoorServeUnit, AgentDoorServeUnit, ApprovalBrokerFrontDoor,
-  ComposeOwned, OidcConfigArtifact, PublicationHelperPathUnit, BeltEventPathUnit, DeployedTreeRemoteUnit, TailscaleServeMapping,
-  deployment_owned_steps
+  BeltEventPathUnit, PublicationHelperPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, OidcConfigArtifact,
+  deployment_owned_steps, deployment_oidc_config_steps
 }
 import gunbc.live_deploy.deploy_artifact_read_sets {
   deployment_artifact_read_rows, deployment_artifact_read_set
 }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_backend_target, ServeBackendProxyTarget, ServeBackendFilesystemTarget, ServeBackendUnclassifiable }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over,
   live_deploy_tailnet_door_unit_file, live_deploy_agent_door_unit_file,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
   live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_approval_broker_unit_file,
+  device_crypto_deployed_digest_env_file_path,
   tree_remote_convergence_oneshot,
   live_deploy_belt_exit_path_unit_file, live_deploy_publication_path_unit_file,
-  device_crypto_deployed_digest_env_file_path,
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.live_deploy.repository_convergence_placement { convergence_oneshot_unit_text }
-import extdeps.tailscale.serve {
-  TailscaleServeEndpoint, tailscale_serve_backend_target,
-  ServeBackendProxyTarget, ServeBackendFilesystemTarget, ServeBackendUnclassifiable,
-  tailscale_serve_backend_is_port_label, tailscale_serve_backend_of_proxy_target,
-  tailscale_serve_port_proxy_prefix,
-}
-import gunbc.auth.tracker_web_oauth_client {
-  tracker_web_oidc_serve_placement, TrackerWebOidcServeReady,
-}
 import gunbc.live_deploy.unit_standing {
-  service_directive_exec_start, service_directive_working_directory, argv0_of_command, watched_paths_of_unit_file
+  watched_paths_of_unit_file, argv0_of_command
 }
-import extdeps.systemd.unit_file { SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, SystemdServiceDirective, SystemdServiceMode,
+  ExecStart, WorkingDirectory, ServiceType, Restart, SimpleMode, OneshotMode, NotInstallable, Environment,
+}
+import gunbc.live_deploy.apply_legs {
+  converger_kind_of, ConvergerUnitKind, ConvergerKindKnown, ConvergerKindMissingUnitFile, Oneshot, LongRunning,
+  deploy_artifact_closure_gate, deploy_apply_plan_legs, custody_roster_owned_reads,
+  ApplyPlanReady, ApplyPlanRefused,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv14 }
+import gunbc.fleet.host_credential_custody_roster { custody_roster_declares, host_credential_custody_row, TailscaleFleetAuthKey }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_oauth_client_secret_host_path, tracker_web_stage_oauth_client_secret_host_path }
+import gunbc.live_deploy.deploy_artifact_closure { render_deploy_halt_causes }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
-import gunbc.live_deploy.desired { deployment_spec_srv1, DesiredDeployment, selected_deployment_spec, srv1_production_desired_deployment }
-import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding, release_locus_dir }
-import gunbc.live_deploy.serve_binary { serve_binary_path }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment, selected_deployment_spec, DesiredDeployment }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, ReleaseRevisionBinding }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_dir, attempt_system_unit_launcher_helpers_root }
 
@@ -80,15 +82,26 @@ fn row_located(row: DeployReadRow) -> String {
   match row { ReadRow { located: l, reads: _ } => l }
 }
 
-fn is_allowed(v: ClosureVerdict) -> Bool { match v { Allowed => true, _ => false } }
-fn is_refused(v: ClosureVerdict) -> Bool { match v { Refused { located: _, artifact: _ } => true, _ => false } }
-fn is_unclosed(v: ClosureVerdict) -> Bool { match v { Unclosed { located: _ } => true, _ => false } }
+// Witness-side decoders over the ONE halt list the gate folds (deploy_closure_halts). The gate no
+// longer produces a single three-valued verdict; it produces EVERY halt cause at once, so these read
+// the cause list. is_allowed == no cause; is_refused == some MissingArtifact; is_unclosed == some
+// UnclosedRead; refused_names == some MissingArtifact naming (located, artifact). The controls'
+// assertions ("a missing read names the artifact") are preserved verbatim against the cause list.
+fn is_allowed(halts: List<DeployHaltCause>) -> Bool {
+  fold(halts, init: true, f: (b, _c) => false)
+}
+fn is_refused(halts: List<DeployHaltCause>) -> Bool {
+  fold(halts, init: false, f: (b, c) => match c { MissingArtifact { located: _, artifact: _, kind: _ } => true, _ => b })
+}
+fn is_unclosed(halts: List<DeployHaltCause>) -> Bool {
+  fold(halts, init: false, f: (b, c) => match c { UnclosedRead { located: _ } => true, _ => b })
+}
 
-fn refused_names(v: ClosureVerdict, want_loc: String, want_art: String) -> Bool {
-  match v {
-    Refused { located: l, artifact: a } => l == want_loc && a == want_art
-    _ => false
-  }
+fn refused_names(halts: List<DeployHaltCause>, want_loc: String, want_art: String) -> Bool {
+  fold(halts, init: false, f: (b, c) => match c {
+    MissingArtifact { located: l, artifact: a, kind: _ } => b || (l == want_loc && a == want_art)
+    _ => b
+  })
 }
 
 fn count_of<A>(xs: List<A>) -> Int {
@@ -130,21 +143,31 @@ fn kind_is_drain(s: DeploymentArtifactStep) -> Bool {
   match s.kind { UpsertOwned { kind: AttemptUnitDrainPathUnit } => true, _ => false }
 }
 
+// Fixtures for the typed read/owned model (kind, path). FileContent is the installed-file kind; a spool/queue
+// directory (a .path unit's watched dir) is DirectoryExists. Declared/Owned carry the kind the gate matches on.
+fn ownb(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: FileContent } }) }
+fn ownd(paths: List<String>) -> List<OwnedArtifact> { list_map(xs: paths, f: fn(p) { OwnedArtifact { path: p, kind: DirectoryExists } }) }
+fn declb(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: FileContent } }) }
+fn decld(paths: List<String>) -> List<DeclaredRead> { list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: DirectoryExists } }) }
+fn paths_of(reads: List<DeclaredRead>) -> List<String> { list_map(xs: reads, f: fn(r) { r.path }) }
+
 fn read_is_exactly(rs: ArtifactReadSet, want: List<String>) -> Bool {
   match rs {
-    Declared { paths: ps } => list_cover(held: ps, expected: want, eq: eq_str) && list_cover(held: want, expected: ps, eq: eq_str)
-    NotYetModeled { reason: _ } => false
-    InstalledArtifact => false
+    Declared { reads: reads } => list_cover(held: paths_of(reads), expected: want, eq: eq_str) && list_cover(held: want, expected: paths_of(reads), eq: eq_str)
     NoReadOfRecord => false
+    InstalledArtifact => false
+    NotYetModeled { reason: _ } => false
+    EndpointDependency { endpoint: _ } => false
   }
 }
 
 fn reason_is_present(rs: ArtifactReadSet) -> Bool {
   match rs {
-    Declared { paths: _ } => true
-    NotYetModeled { reason: r } => r != ""
-    InstalledArtifact => true
+    Declared { reads: _ } => true
     NoReadOfRecord => true
+    InstalledArtifact => true
+    EndpointDependency { endpoint: _ } => true
+    NotYetModeled { reason: r } => r != ""
   }
 }
 
@@ -159,10 +182,11 @@ fn serve_read_declares_the_tree(s: DeploymentArtifactStep) -> Bool {
   if kind_is_serve(s) {
     let tree = srv1_inst().repo_root as String
     match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-      Declared { paths: ps } => list_member(xs: ps, x: tree, eq: eq_str)
-      NotYetModeled { reason: _ } => false
-      InstalledArtifact => false
+      Declared { reads: reads } => list_member(xs: paths_of(reads), x: tree, eq: eq_str)
       NoReadOfRecord => false
+      EndpointDependency { endpoint: _ } => false
+      InstalledArtifact => false
+      NotYetModeled { reason: _ } => false
     }
   } else { true }
 }
@@ -171,7 +195,7 @@ fn kind_is_source_tree(s: DeploymentArtifactStep) -> Bool {
   match s.kind { UpsertOwned { kind: GunbcSourceTree } => true, _ => false }
 }
 
-fn installed_artifact_classification(s: DeploymentArtifactStep) -> Bool {
+fn source_tree_read_is_installed_artifact(s: DeploymentArtifactStep) -> Bool {
   if kind_is_source_tree(s) {
     match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
       InstalledArtifact => true
@@ -190,39 +214,46 @@ fn drain_read_is_its_snapshot(s: DeploymentArtifactStep) -> Bool {
 // ─────────────────────────────────────────────────────────────────────────────────
 
 test fn allowed_when_every_declared_read_is_installed() -> Bool {
-  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { paths: ["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"] } }
-  is_allowed(deploy_closure_verdict(rows: [row], installed: ["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"]))
+  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { reads: declb(["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"]) } }
+  is_allowed(deploy_closure_halts(rows: [row], installed: ownb(["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"])))
 }
 
 test fn refuses_naming_the_first_missing_artifact() -> Bool {
-  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { paths: ["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"] } }
-  refused_names(deploy_closure_verdict(rows: [row], installed: ["/srv/gunbc/bin/gunbc"]), "/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers")
+  let row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { reads: declb(["/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers"]) } }
+  refused_names(deploy_closure_halts(rows: [row], installed: ownb(["/srv/gunbc/bin/gunbc"])), "/srv/gunbc/bin/gunbc", "/opt/gunbc/helpers")
 }
 
 test fn not_yet_modeled_is_unclosed_never_allowed() -> Bool {
   let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
-  is_unclosed(deploy_closure_verdict(rows: [row], installed: ["/etc/gunbc/oidc.json"]))
+  is_unclosed(deploy_closure_halts(rows: [row], installed: ownb(["/etc/gunbc/oidc.json"])))
 }
 
 test fn refused_wins_over_unclosed_regardless_of_order() -> Bool {
   let unclosed_row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
-  let refused_row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { paths: ["/srv/gunbc/bin/gunbc"] } }
+  let refused_row = ReadRow { located: "/srv/gunbc/bin/gunbc", reads: Declared { reads: declb(["/srv/gunbc/bin/gunbc"]) } }
   let installed_only_oidc = ["/etc/gunbc/oidc.json"]
-  let order_unclosed_first = deploy_closure_verdict(rows: [unclosed_row, refused_row], installed: installed_only_oidc)
-  let order_refused_first = deploy_closure_verdict(rows: [refused_row, unclosed_row], installed: installed_only_oidc)
+  let order_unclosed_first = deploy_closure_halts(rows: [unclosed_row, refused_row], installed: installed_only_oidc)
+  let order_refused_first = deploy_closure_halts(rows: [refused_row, unclosed_row], installed: installed_only_oidc)
   refused_names(order_unclosed_first, "/srv/gunbc/bin/gunbc", "/srv/gunbc/bin/gunbc") && refused_names(order_refused_first, "/srv/gunbc/bin/gunbc", "/srv/gunbc/bin/gunbc")
 }
 
-test fn first_missing_artifact_keeps_installed_fixed() -> Bool {
-  match first_missing_artifact(artifacts: ["/a", "/b", "/c"], installed: ["/a", "/c"]) {
-    Present { value: m } => m == "/b"
-    Absent => false
-  }
+test fn the_gate_names_only_the_missing_read_and_keeps_installed_fixed() -> Bool {
+  let row = ReadRow { located: "/reader", reads: Declared { reads: [
+    DeclaredRead { path: "/a", kind: FileContent },
+    DeclaredRead { path: "/b", kind: FileContent },
+    DeclaredRead { path: "/c", kind: FileContent }
+  ] } }
+  let halts = deploy_closure_halts(rows: [row], installed: ownb(["/a", "/c"]))
+  refused_names(halts, "/reader", "/b") && !refused_names(halts, "/reader", "/a") && !refused_names(halts, "/reader", "/c")
+}
+
+fn is_empty_list(xs: List<String>) -> Bool {
+  match xs { Empty => true, Cons { head: _, tail: _ } => false }
 }
 
 test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
   let rows = [
-    ReadRow { located: "/a", reads: Declared { paths: ["/a"] } },
+    ReadRow { located: "/a", reads: Declared { reads: declb(["/a"]) } },
     ReadRow { located: "/t", reads: NoReadOfRecord },
     ReadRow { located: "/b", reads: NotYetModeled { reason: "no reader declared" } }
   ]
@@ -239,6 +270,220 @@ test fn inventory_maps_every_row_to_derived_noread_or_unclosed() -> Bool {
     && any(inv, fn(r) { match r { NoReadRow { located: loc } => loc == "/t", _ => false } })
 }
 
+// NoReadOfRecord is ALLOWED by the closure and halts nothing: a deploy whose only unit makes a derived
+// no-read PROCEEDS, proving the third arm is not secretly treated as Unclosed.
+test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
+  let row = ReadRow { located: "/var/lib/tailscale/serve", reads: NoReadOfRecord }
+  match deploy_gate(rows: [row], installed: ownb([])) {
+    Proceed => true
+    Halt { causes: _ } => false
+  }
+}
+
+// A no-read is NOT a fallback for an unmodeled kind: from the REAL adapter over the srv1 roster, the tailscale
+// mapping yields a NoReadRow (allowed) while an enabled-but-unmodeled kind (the tree-remote unit, still
+// NotYetModeled until its module exports its ExecStart) yields an UnclosedRow. Both are unconditional roster
+// members, so this checks the REAL adapter on kinds srv1 always enables: a no-read kind cannot silently borrow
+// another's assertion, because the adapter has a distinct, explicit arm per kind.
+test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
+  let steps = srv1_steps()
+  let tailscale_step = first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
+  match tailscale_step {
+    Present { value: ts } =>
+      match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+        NoReadRow { located: _ } =>
+          // The unmodeled contrast. The tree-remote was the original unmodeled example, but the ExecStart
+          // extractor (#16541) makes its unit file DECLARE reads, so it is now DerivedRow -- it is modeled, not
+          // unmodeled. The guarantee (a not-yet-modeled read is never silently a no-read) is exercised directly
+          // on the adapter's unmodeled arm: a NotYetModeled read set must map to UnclosedRow, never NoReadRow.
+          match deploy_artifact_inventory_row(row: ReadRow { located: "/srv/unmodeled", reads: NotYetModeled { reason: "genuinely unmodeled, not a no-read of record" } }) {
+            UnclosedRow { located: _, reason: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// ── the tailscale serve mapping (the gate's one honest no-read) ──
+
+// THE TAILSCALE SERVE MAPPING IS HONESTLY A NO-READ because its declared endpoint's BACKEND is a PROXY.
+// RED if the backend-derived classifier (extdeps.tailscale.serve tailscale_serve_backend_target, over the
+// endpoint named by spec.names.tailscale_serve_endpoint) says a file/directory target or cannot classify: the
+// adapter must agree the mapping reads NOTHING of the deployment. Single authority: no hand-written path
+// list, and ServeCli (the CLI surface that CONFIGURES a mapping) is no longer the decision (side-chat F1 —
+// the #16538 rule, restored).
+test fn the_tailscale_no_read_is_derived_from_the_declared_backend() -> Bool {
+  let proxy_declared = match tailscale_serve_backend_target(endpoint: srv1_spec().names.tailscale_serve_endpoint) {
+    ServeBackendProxyTarget => true
+    _ => false
+  }
+  match mapping_step_of(steps: srv1_steps()) {
+    Present { value: ts } => match deploy_artifact_inventory_row(row: ReadRow { located: ts.path as String, reads: deployment_artifact_read_set(step: ts, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+      NoReadRow { located: _ } => proxy_declared
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// A FILESYSTEM BACKEND IS A DECLARED READ, AND THE GATE ENFORCES IT. RED any way: the classifier not calling
+// a file/directory backend a filesystem target; the adapter not DECLARING exactly that target as the mapping's
+// read (a second no-read, an extra read); or the gate Halting without naming the target when it is NOT
+// installed, or Halting at all when it IS (a declared read the gate does not enforce). Discriminating: the ONLY
+// deltas are the backend word and the installed set. (Side-chat F1: main's file-target negative control,
+// adapted to deploy_gate — it must Halt.)
+fn file_backend_is_declared_read(backend: NonEmptyStr) -> Bool {
+  let variant = srv1_over_backend(backend: backend)
+  match mapping_step_of(steps: variant.steps) {
+    Present { value: ts } =>
+      match deployment_artifact_read_set(step: ts, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
+        Declared { reads } =>
+          let only_target = list_cover(held: paths_of(reads), expected: [backend as String], eq: eq_str) && list_cover(held: [backend as String], expected: paths_of(reads), eq: eq_str)
+          let row = ReadRow { located: ts.path as String, reads: Declared { reads: reads } }
+          let halts_names_target = match deploy_gate(rows: [row], installed: ownb([])) {
+            Halt { causes: cs } => any(cs, fn(c) { match c { MissingArtifact { located: _, artifact: a, kind: _ } => a == (backend as String), _ => false } })
+            _ => false
+          }
+          let proceeds_when_installed = match deploy_gate(rows: [row], installed: ownb([backend as String])) {
+            Proceed => true
+            _ => false
+          }
+          only_target && halts_names_target && proceeds_when_installed
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn the_tailscale_filesystem_backend_is_a_declared_read_of_the_target() -> Bool {
+  file_backend_is_declared_read(backend: "/srv/gunbc/static" as NonEmptyStr)
+}
+
+// A PATH-SHAPED BACKEND WITH '://' STILL INSIDE IT IS A FILESYSTEM TARGET, NOT a proxy and not
+// unclassifiable: the classifier tests the leading '/' BEFORE '://' (the #16538 fix in
+// tailscale_serve_backend_target). Through the real adapter and the gate: exactly this target as a
+// FileContent read, Halt naming it when uninstalled, Proceed when installed.
+test fn the_tailscale_backend_with_scheme_marker_is_still_a_filesystem_target() -> Bool {
+  file_backend_is_declared_read(backend: "/srv/gunbc/a://b" as NonEmptyStr)
+}
+
+// AN UNCLASSIFIABLE BACKEND HALTS, IT IS NEVER A SILENT NO-READ (fail_closed: the no-read cannot survive the
+// classifier unable to place the backend; a bare word like 'static' -- neither an absolute path nor a
+// URL -- must not slip through as an EndpointDependency with no halt cause — side-chat F1 counterexample). RED unless the read set is
+// NotYetModeled with a non-empty reason. (Main's unclassifiable-target control, adapted to deploy_gate.)
+test fn the_tailscale_unclassifiable_backend_is_not_yet_modeled() -> Bool {
+  let variant = srv1_over_backend(backend: "static" as NonEmptyStr)
+  match mapping_step_of(steps: variant.steps) {
+    Present { value: ts } => match deployment_artifact_read_set(step: ts, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
+      NotYetModeled { reason: r } => r != ""
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+// srv1 with its tailscale serve endpoint's backend word OVERRIDDEN, everything else identical. The step is
+// rebuilt through the population authority itself (deployment_owned_steps) so only the backend differs.
+fn srv1_over_backend(backend: NonEmptyStr) -> ServeBackendVariant {
+  let base = srv1_production_desired_deployment()
+  let names = base.names
+  let endpoint = TailscaleServeEndpoint {
+    https_port: names.tailscale_serve_endpoint.https_port,
+    mount: names.tailscale_serve_endpoint.mount,
+    backend: backend,
+  }
+  let variant = DesiredDeployment {
+    instance: base.instance,
+    target: base.target,
+    names: DeploymentNames {
+      unit_name: names.unit_name,
+      tailscale_serve_endpoint: endpoint,
+      tree_sync_unit_name: names.tree_sync_unit_name,
+      tree_sync_env_path: names.tree_sync_env_path,
+      publication_principal: names.publication_principal,
+    },
+    selected_identity: base.selected_identity,
+    admitted_branch: base.admitted_branch,
+    pair_delivery: base.pair_delivery,
+  }
+  let spec = selected_deployment_spec(variant)
+  ServeBackendVariant {
+    spec: spec,
+    steps: deployment_owned_steps(instance: variant.instance, names: variant.names, holding: spec.role_singletons, lab_plan: variant.target.lab_plan),
+  }
+}
+
+type ServeBackendVariant {
+  spec: DeploymentSpec,
+  steps: List<DeploymentArtifactStep>,
+}
+
+fn mapping_step_of(steps: List<DeploymentArtifactStep>) -> DeploymentArtifactStep? {
+  first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
+}
+
+// The tree-remote unit's closure read is the SAME argv[0]/WorkingDirectory the deploy writes to the host. Both
+// trace to repository_convergence_placement.convergence_oneshot_service_unit_file, but this control compares
+// the CLOSURE read against the SERIALIZED HOST TEXT (convergence_oneshot_unit_text): it goes red if the
+// ExecStart/WorkingDirectory readers drift from what the serialization emits. srv1 admits the convergence
+// slice so the unit is Declared; a refused slice (Absent => false) is never silently green.
+test fn the_tree_remote_read_set_matches_the_emitted_host_text() -> Bool {
+  let spec = srv1_spec()
+  let remote = first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
+  match remote {
+    Present { value: s } =>
+      match deployment_artifact_read_set(step: s, spec: spec, instance: srv1_inst(), revision: srv1_rev()) {
+        Declared { reads: reads } =>
+          let host = convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
+          non_empty(reads)
+            && string_contains(s: host, pattern: "ExecStart=/")
+            && string_contains(s: host, pattern: "WorkingDirectory=")
+            && all(paths_of(reads), fn(p) { string_contains(s: host, pattern: p) })
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// The serve unit's read-set gains the OIDC config document it reads at startup, and that path is the SAME string
+// as the INSTALLED OidcConfigArtifact step's path — both come from deployment_oidc_config_steps (tracker_web
+// placement cfg.config_path), so serve's read and the owned artifact can never drift and the gate can see the
+// read is satisfied by what the deploy installs. srv1 has OIDC placed, so the artifact step is present; Absent
+// is a failure (a control that silently checks nothing when OIDC is off is a decoration, guarantee_ladder).
+test fn the_serve_unit_read_set_includes_the_oidc_config_it_reads() -> Bool {
+  let inst = srv1_inst()
+  let steps = srv1_steps()
+  let serve = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: SystemdUnit } => true, _ => false } })
+  let oidc_artifact = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } })
+  match serve {
+    Present { value: su } => match oidc_artifact {
+      Present { value: oc } =>
+        match deployment_artifact_read_set(step: su, spec: srv1_spec(), instance: inst, revision: srv1_rev()) {
+          Declared { reads: reads } => list_member(xs: paths_of(reads), x: oc.path as String, eq: fn(a, b) { a == b })
+          _ => false
+        }
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+// OidcConfigArtifact is a written, installed artifact — NOT a modeled reader and NOT the false NotYetModeled
+// TODO label. Its row maps to InstalledArtifactRow (located, countable), never Declared or Unclosed.
+test fn the_oidc_config_artifact_is_an_installed_artifact_not_a_reader() -> Bool {
+  let oc = first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } })
+  match oc {
+    Present { value: s } =>
+      match deploy_artifact_inventory_row(row: ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }) {
+        InstalledArtifactRow { located: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────────
 // INTEGRATION CONTROLS (driven by the deploy enable authority — srv1 roster)
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -252,7 +497,7 @@ test fn the_deploy_roster_is_one_read_row_per_enabled_step() -> Bool {
 }
 
 test fn a_fresh_host_never_allows_the_whole_roster() -> Bool {
-  let v = deploy_closure_verdict(rows: srv1_rows(), installed: [])
+  let v = deploy_closure_halts(rows: srv1_rows(), installed: ownb([]))
   !is_allowed(v) && (is_refused(v) || is_unclosed(v))
 }
 
@@ -269,11 +514,13 @@ test fn the_serve_binary_step_read_declares_the_source_tree() -> Bool {
 }
 
 test fn the_source_tree_step_is_an_installed_artifact_never_a_self_read() -> Bool {
-  // The source-tree step is a located installed artifact, not a unit reading its own path: a read
-  // of its own step.path would restate the install fact and never go red (rung inflation). The real
-  // reader (serve's --entry, the tree converger) carries the TreeContent read on its own row.
+  // The source-tree step is an ARTIFACT, not a reader: its content is read by the ServeBinary / tree-remote /
+  // roadmap / door rows, which carry the TreeContent read at repo_root themselves. A self-read of its own path
+  // would restate the install fact (rung inflation); NotYetModeled would be a false TODO. The truthful arm is
+  // InstalledArtifact (Allowed, never in the gate population). Non-vacuous via any(): requires a source-tree
+  // step and refuses if it is a Declared self-read.
   let steps = srv1_steps()
-  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { installed_artifact_classification(s) })
+  any(steps, fn(s) { kind_is_source_tree(s) }) && all(steps, fn(s) { source_tree_read_is_installed_artifact(s) })
 }
 
 test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Bool {
@@ -281,27 +528,27 @@ test fn every_enabled_step_is_declared_or_not_yet_modeled_with_a_reason() -> Boo
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
-// DEPLOY-GATE CONTROLS — Unclosed halts lives in deploy_gate_decision, not a comment.
+// DEPLOY-GATE CONTROLS — an Unclosed read halts through deploy_gate (via deploy_closure_halts), not a comment.
 // ─────────────────────────────────────────────────────────────────────────────────
 
 test fn unclosed_reads_halt_the_deploy_gate_never_proceeds() -> Bool {
   let row = ReadRow { located: "/etc/gunbc/oidc.json", reads: NotYetModeled { reason: "reader read-set not declared" } }
-  match deploy_gate(rows: [row], installed: ["/etc/gunbc/oidc.json"]) {
+  match deploy_gate(rows: [row], installed: ownb(["/etc/gunbc/oidc.json"])) {
     Proceed => false
-    Halt { cause: UnclosedRead { located: "/etc/gunbc/oidc.json" } } => true
-    Halt { cause: _ } => false
+    Halt { causes: Cons { head: UnclosedRead { located: "/etc/gunbc/oidc.json" }, tail: _ } } => true
+    Halt { causes: _ } => false
   }
 }
 
 test fn allowed_reads_proceed_and_missing_read_halts() -> Bool {
-  let ok_row = ReadRow { located: "/srv/bin/gunbc", reads: Declared { paths: ["/srv/bin/gunbc"] } }
-  let proceed_case = match deploy_gate(rows: [ok_row], installed: ["/srv/bin/gunbc"]) { Proceed => true, Halt { cause: _ } => false }
-  let missing_case = match deploy_gate(rows: [ok_row], installed: []) { Halt { cause: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc" } } => true, _ => false }
+  let ok_row = ReadRow { located: "/srv/bin/gunbc", reads: Declared { reads: declb(["/srv/bin/gunbc"]) } }
+  let proceed_case = match deploy_gate(rows: [ok_row], installed: ownb(["/srv/bin/gunbc"])) { Proceed => true, Halt { causes: _ } => false }
+  let missing_case = match deploy_gate(rows: [ok_row], installed: ownb([])) { Halt { causes: Cons { head: MissingArtifact { located: "/srv/bin/gunbc", artifact: "/srv/bin/gunbc", kind: _ }, tail: _ } } => true, _ => false }
   proceed_case && missing_case
 }
 
 test fn the_fresh_host_gate_halts_the_roster_never_proceeds() -> Bool {
-  match deploy_gate(rows: srv1_rows(), installed: []) { Proceed => false, Halt { cause: _ } => true }
+  match deploy_gate(rows: srv1_rows(), installed: ownb([])) { Proceed => false, Halt { causes: _ } => true }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────
@@ -323,53 +570,18 @@ test fn the_drain_read_is_its_helper_snapshot_from_its_own_authority() -> Bool {
 
 test fn the_drain_gate_allows_when_snapshot_installed_and_refuses_when_absent() -> Bool {
   let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
-  let row = ReadRow { located: "/etc/systemd/system/gunbc-attempt-unit-drain.path", reads: Declared { paths: [snap] } }
-  let ok = match deploy_gate(rows: [row], installed: [snap]) { Proceed => true, Halt { cause: _ } => false }
-  let missing = match deploy_gate(rows: [row], installed: []) { Halt { cause: MissingArtifact { located: _, artifact: a } } => a == snap, _ => false }
+  let row = ReadRow { located: "/etc/systemd/system/gunbc-attempt-unit-drain.path", reads: Declared { reads: decld([snap]) } }
+  let ok = match deploy_gate(rows: [row], installed: ownd([snap])) { Proceed => true, Halt { causes: _ } => false }
+  let missing = match deploy_gate(rows: [row], installed: ownd([])) { Halt { causes: Cons { head: MissingArtifact { located: _, artifact: a, kind: _ }, tail: _ } } => a == snap, _ => false }
   ok && missing
 }
 
 test fn the_drain_step_read_is_its_snapshot_when_present_in_the_roster() -> Bool {
-  // Requires the drain step to be PRESENT in the srv1 roster via any(), so the control cannot pass
-  // vacuously when the step is absent, and all() asserts every present drain step reads the launcher
-  // snapshot dir. Together the roster really has the drain step and its read is the snapshot.
+  // Requires a drain step in the REAL srv1 roster (any) AND that every drain step reads its launcher
+  // snapshot — so it cannot pass vacuously if the drain step disappears from the roster (the srv1 lab_plan
+  // does select the system-manager launcher, so any() is satisfied; the drain step is a real roster member).
   any(srv1_steps(), fn(s) { kind_is_drain(s) }) && all(srv1_steps(), fn(s) { drain_read_is_its_snapshot(s) })
 }
-
-fn drain_not_admitted_by_parent(s: DeploymentArtifactStep) -> Bool {
-  // The concrete arm reads the revision-bound snapshot <root>/<instance>/<revision>/..., NOT the
-  // shared parent root. (1) its declared path is the concrete launcher dir and the parent is not it;
-  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
-  let reads_concrete_not_parent = match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-    Declared { paths: ps } => list_member(xs: ps, x: snap, eq: eq_str) && !list_member(xs: ps, x: attempt_system_unit_launcher_helpers_root, eq: eq_str) && snap != attempt_system_unit_launcher_helpers_root
-    _ => false
-  }
-  // (2) with ONLY the shared parent installed (the concrete <instance>/<revision> release absent), the
-  // row must be Refused — not Allowed (the release is missing) and not Unclosed (the read IS modeled,
-  // just unsatisfied) — and the gate must Halt naming the missing release path. This is the false
-  // admission the side chat found in #16513: a row that declared the shared parent would Proceed here.
-  let row = ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }
-  let refused = match deploy_closure_verdict(rows: [row], installed: [attempt_system_unit_launcher_helpers_root]) {
-    Refused { located: _, artifact: a } => a == snap
-    _ => false
-  }
-  let halts = match deploy_gate(rows: [row], installed: [attempt_system_unit_launcher_helpers_root]) {
-    Halt { cause: MissingArtifact { located: _, artifact: a } } => a == snap
-    _ => false
-  }
-  reads_concrete_not_parent && refused && halts
-}
-
-test fn the_attempt_drain_release_is_not_admitted_by_the_shared_parent_alone() -> Bool {
-  // The drain ExecStarts its helper at the revision-bound launcher locus <root>/<instance>/<revision>/...,
-  // NOT the shared parent root. With the concrete arm the row is a Declared read of that concrete locus,
-  // so with ONLY the shared parent installed and the requested release absent the row is Refused (not
-  // Unclosed, not Allowed) and the gate Halts naming the missing release path. Non-vacuous via any():
-  // it requires a drain step present in the srv1 roster, and goes red if the arm ever re-declares the
-  // shared parent (the false admission the side chat found in #16513).
-  any(srv1_steps(), fn(s) { if kind_is_drain(s) { drain_not_admitted_by_parent(s) } else { false } })
-}
-
 
 // ─────────────────────────────────────────────────────────────────────────────────
 // EXEC-START-DERIVED READ CONTROLS (item 1). The service units' argv[0] (ExecStart
@@ -395,31 +607,98 @@ fn installed_serve_binary() -> String {
   }
 }
 
-// TEST ORACLES: independently parse a unit file's ExecStart argv[0] and WorkingDirectory straight from the
-// typed service directives, NOT through the classifier. unit_files_agree_on_reads uses these to check the
-// emitted file and the closure-accessor file parse identically (a file-vs-file agreement check); keeping
-// this a separate route from the classifier means a classifier bug is not mirrored on the expectation side.
-fn unit_argv0(f: SystemdUnitFile) -> String {
-  match f {
-    ServiceUnitFile { unit: _, service: ds, install: _ } =>
-      match service_directive_exec_start(directives: ds) {
-        Present { value: cmd } => match argv0_of_command(cmd) { Present { value: b } => b, Absent => "" }
-        Absent => ""
+// THE WHOLE-DIRECTIVE CHECK MUST ACTUALLY SEE DIRECTIVES (side-chat F2 discriminating check). One side of
+// an agreeing pair loses one Environment directive (the OIDC Environment directives are the reason wholly
+// matters); unit_files_agree_wholly must answer FALSE. With the corrected extractor (the declared
+// ServiceUnitFile { unit, service, install } coproduct variant, side default for non-service files) the
+// comparison reads the service list, so a dropped directive is a disagreement. If this ever answers true,
+// the directive comparison is vacuous.
+type EnvDropAcc {
+  dropped: Int,
+  kept: List<SystemdServiceDirective>,
+}
+
+fn drop_first_environment(ds: List<SystemdServiceDirective>) -> List<SystemdServiceDirective> {
+  let acc = fold_list(xs: ds, empty: EnvDropAcc { dropped: 0, kept: [] }, cons: fn(a, d) {
+    match d {
+      Environment { assignment: _ } => match a.dropped {
+        0 => EnvDropAcc { dropped: 1, kept: a.kept }
+        _ => EnvDropAcc { dropped: 1, kept: list_append(left: a.kept, right: [d]) }
       }
-    _ => ""
+      _ => EnvDropAcc { dropped: a.dropped, kept: list_append(left: a.kept, right: [d]) }
+    }
+  })
+  acc.kept
+}
+
+fn door_emitted_with_one_environment_dropped() -> Bool {
+  let spec = srv1_spec()
+  let emitted = live_deploy_tailnet_door_unit_file(spec: spec, revision: srv1_rev(), now_epoch: claim_oidc_now_for(spec: spec))
+  match emitted {
+    LiveDeployTailnetDoorUnitEmitted { file: f } => match f {
+      ServiceUnitFile { unit: u, service: ds, install: i } =>
+        match first_where(xs: ds, keep: fn(d) { match d { Environment { assignment: _ } => true, _ => false } }) {
+          Present { value: _ } =>
+            let minus_one = ServiceUnitFile { unit: u, service: drop_first_environment(ds), install: i }
+            unit_files_agree_wholly(a: f, b: minus_one) == false
+          Absent => false
+        }
+      _ => false
+    }
+    _ => false
   }
+}
+
+test fn unit_files_agree_wholly_discriminates_a_missing_environment_directive() -> Bool {
+  door_emitted_with_one_environment_dropped()
+}
+
+// TWO INDEPENDENT ACCESSORS (moved OUT of gunbc.live_deploy.unit_standing per side-chat F2: production
+// functions with only witness consumers; the move into the test oracle resolved #16535 review 95797). The
+// closure WITNESS cross-checks the read set against the raw emitted unit WITHOUT calling the same derivation
+// the gate uses (an oracle must not reuse its subject). The read SET itself derives from
+// service_directive_required_reads, NOT from these. Each reads the unit's OWN [Service] directives directly.
+fn exec_start_binary_of_unit_file(file: SystemdUnitFile) -> String? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match first_where(xs: ds, keep: fn(d) { match d { ExecStart { command: _ } => true, _ => false } }) {
+        Present { value: ExecStart { command: cmd } } => argv0_of_command(command: cmd as String)
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn working_directory_of_unit_file(file: SystemdUnitFile) -> String? {
+  match file {
+    ServiceUnitFile { unit: _, service: ds, install: _ } =>
+      match first_where(xs: ds, keep: fn(d) { match d { WorkingDirectory { path: _ } => true, _ => false } }) {
+        Present { value: WorkingDirectory { path: p } } => Present { value: p as String }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn unit_argv0(f: SystemdUnitFile) -> String {
+  match exec_start_binary_of_unit_file(f) { Present { value: b } => b, Absent => "" }
 }
 
 fn unit_wd(f: SystemdUnitFile) -> String {
-  match f {
-    ServiceUnitFile { unit: _, service: ds, install: _ } =>
-      match service_directive_working_directory(directives: ds) { Present { value: w } => w, Absent => "" }
-    _ => ""
-  }
+  match working_directory_of_unit_file(f) { Present { value: w } => w, Absent => "" }
 }
 
-// The whole SERVICE directive list, for the whole-view equality in unit_files_agree_on_reads: the exact
-// list the ONE classifier consumes, OIDC Environment included.
+// The broker's REQUIRED EnvironmentFile path, spelled independently of the read-set classifier: it comes
+// straight from the device-crypto digest-env authority over the broker's own repo root -- the SAME authority
+// the emitted unit's EnvironmentFile= directive uses. This is the oracle for the env-read controls.
+fn unit_env() -> String {
+  device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
+}
+
+fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
+  unit_argv0(a) == unit_argv0(b) && unit_wd(a) == unit_wd(b)
+}
+
 fn unit_service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> {
   match f {
     ServiceUnitFile { unit: _, service: ds, install: _ } => ds
@@ -427,34 +706,10 @@ fn unit_service_directives(f: SystemdUnitFile) -> List<SystemdServiceDirective> 
   }
 }
 
-// The broker's expected reads, spelled from the EMITTER'S OWN producing authorities -- the exact functions
-// live_deploy_approval_broker_serve_unit_file uses to WRITE those directives -- NOT parsed from the unit
-// file and NOT via the classifier. This makes the broker controls independent of the classifier's argv[0]
-// split: if the split is wrong, the classifier's derived set diverges from these authority values and the
-// equality goes RED (whereas a file-parse expectation would be wrong on both sides together).
-fn broker_expected_binary() -> String {
-  serve_binary_path(binary: srv1_spec().approval_broker.serve_binary, release_root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
-}
-
-fn broker_expected_wd() -> String {
-  release_locus_dir(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
-}
-
-fn broker_expected_env() -> String {
-  device_crypto_deployed_digest_env_file_path(root: srv1_spec().approval_broker.repo_root as String, revision: srv1_rev())
-}
-
-// The two files agree on their READS: same argv[0], same WorkingDirectory — what the ONE classifier
-// derives from the directives the closure needs. Used by the broker accessor, whose closure view
-// deliberately omits the base-url Environment directive (a directive that reads nothing).
-fn unit_files_agree_on_reads(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
-  unit_argv0(a) == unit_argv0(b) && unit_wd(a) == unit_wd(b)
-}
-
-// The two files agree WHOLLY: same reads AND the same SERVICE DIRECTIVE LIST, OIDC Environment
-// included. The door closure views must equal what is emitted (deploy intent owns every artifact its
-// units read) — comparing the directive list the ONE classifier consumes is what makes "the accessor
-// silently dropped the OIDC env" RED rather than invisible beneath an argv[0]/wd-only check.
+// WHOLE-DIRECTIVE AGREEMENT (#16535, side-chat F2): accessor and emitter must agree on the COMPLETE
+// [Service] directive list -- ExecStart, WorkingDirectory, Environment (the OIDC pair), EnvironmentFile,
+// User/Group and every other directive -- not just the read-bearing subset. This is the door units'
+// contract; the broker's accessor feeds only an Environment directive difference, so it keeps agree_on_reads.
 fn unit_files_agree_wholly(a: SystemdUnitFile, b: SystemdUnitFile) -> Bool {
   unit_files_agree_on_reads(a: a, b: b) && unit_service_directives(a) == unit_service_directives(b)
 }
@@ -469,75 +724,22 @@ test fn the_serve_unit_reads_the_installed_serve_binary() -> Bool {
 
 // THE BROKER runs its OWN serve binary (serve_binary_path over spec.approval_broker's source), which on
 // the srv1 fixture is NOT the served ServeBinary step path — so the honest item-1 property is that the
-// adapter records exactly what the broker emits: its argv[0] and WorkingDirectory, read from its own
-// typed file. The broker is an always-enabled role singleton, so srv1 MUST own an ApprovalBrokerFrontDoor
+// adapter records exactly what the broker emits: its argv[0], its WorkingDirectory, and its REQUIRED
+// EnvironmentFile= -- the device-crypto digest env the unit hard-depends on (the classifier maps
+// EnvironmentFile= to a required FileContent). The digest env is NOT hand-declared; it is a live required
+// read of record, refused when the deploy omits it
+// (the_broker_refuses_when_its_required_env_file_is_absent). The broker is an always-enabled role singleton,
+// so srv1 MUST own an ApprovalBrokerFrontDoor
 // step — a missing step is a fixture defect (false), not a silent pass (guarantee_ladder: no decoration).
-// RED if the adapter drops either or fabricates a different path. Whether the intent OWNS
+// RED if the adapter drops any of the three or fabricates a different path. Whether the intent OWNS
 // that binary is the wired gate's concern (item 5): a broker naming a binary no step installs must then
 // be refused, not silently allowed here.
 test fn the_broker_read_set_is_derived_from_its_own_unit_file() -> Bool {
-  // expected start binary + WorkingDirectory from the EMITTER'S OWN authorities (not parsed from the file)
-  let binary = broker_expected_binary()
-  let wd = broker_expected_wd()
+  let f = live_deploy_approval_broker_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev())
+  let want = [unit_argv0(f), unit_wd(f), unit_env()]
   match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
-    Present { value: s } => match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-      // the broker's declared reads are derived from its own unit file and CONTAIN the start binary and
-      // its WorkingDirectory. It is no longer asserted to be EXACTLY those two: the unit also carries a
-      // required EnvironmentFile (see the_broker_refuses_when_its_required_env_file_is_absent).
-      Declared { paths: paths } =>
-        binary != ""
-        && list_member(xs: paths, x: binary, eq: eq_str)
-        && list_member(xs: paths, x: wd, eq: eq_str)
-      _ => false
-    }
+    Present { value: s } => read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), want)
     Absent => false
-  }
-}
-
-// F1 (side-chat, exec-extractor PR): the broker unit carries a REQUIRED EnvironmentFile -- the
-// device-crypto digest env file, written by its own ApplyLegDigestEnvFile apply leg. Before this change
-// the unit's read set declared only argv[0] + WorkingDirectory, so with the binary and its directory
-// installed and the digest env file ABSENT, the broker row read Allowed and the gate Proceeded -- a
-// false admission. The read set is now derived by ONE exhaustive match over SystemdServiceDirective
-// (gunbc.live_deploy.unit_standing::service_directive_required_reads), which declares the required
-// EnvironmentFile. STRENGTHENED (per the manager): the derived read set must EQUAL the independently
-// spelled set {start binary, WorkingDirectory, digest env file} -- the env path comes from
-// device_crypto_deployed_digest_env_file_path over the spec's broker root, NOT from the derived set -- so
-// a char-split, a dropped path, or a spurious element goes RED, not just a dropped EnvironmentFile. Then,
-// through the real broker adapter: with only the binary and directory installed the row is Refused and the
-// gate Halts naming that env file; with the complete installed set it is Allowed and the gate Proceeds.
-test fn the_broker_refuses_when_its_required_env_file_is_absent() -> Bool {
-  // expected values from the EMITTER'S OWN producing authorities -- independent of the classifier's split
-  let binary = broker_expected_binary()
-  let wd = broker_expected_wd()
-  let env = broker_expected_env()
-  let expected = [binary, wd, env]
-  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
-    Absent => false
-    Present { value: s } => match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-      Declared { paths: paths } =>
-        let row = ReadRow { located: s.path as String, reads: Declared { paths: paths } }
-        let partial = [binary, wd]
-        let same_set = list_cover(held: paths, expected: expected, eq: eq_str) && list_cover(held: expected, expected: paths, eq: eq_str)
-        let refused_names_env = match deploy_closure_verdict(rows: [row], installed: partial) {
-          Refused { located: _, artifact: a } => a == env
-          _ => false
-        }
-        let halts_names_env = match deploy_gate(rows: [row], installed: partial) {
-          Halt { cause: MissingArtifact { located: _, artifact: a } } => a == env
-          _ => false
-        }
-        let allowed = match deploy_closure_verdict(rows: [row], installed: expected) {
-          Allowed => true
-          _ => false
-        }
-        let proceeds = match deploy_gate(rows: [row], installed: expected) {
-          Proceed => true
-          _ => false
-        }
-        same_set && refused_names_env && halts_names_env && allowed && proceeds
-      _ => false
-    }
   }
 }
 
@@ -551,9 +753,12 @@ test fn the_broker_closure_accessor_equals_the_emitted_file_reads() -> Bool {
   unit_files_agree_on_reads(a: accessor, b: emitted)
 }
 
-// (B) THE TAILNET DOOR CLOSURE ACCESSOR == THE EMITTED FILE. The expectation is tied to the ROSTER (the
-// enable authority): a tailnet door the roster enables MUST be admitted by the emitter and compared on
-// argv[0]/WorkingDirectory — a fixture that stops admitting (NotDeployed/Refused) while the roster still
+// (B) THE TAILNET DOOR CLOSURE ACCESSOR == THE EMITTED FILE, ON EVERY DIRECTIVE (side-chat F2: the
+// weakening to argv[0]/WorkingDirectory is reversed — the OIDC Environment directives are part of the
+// contract). The expectation is tied to the ROSTER (the
+// enable authority): a tailnet door the roster enables MUST be admitted by the emitter and compared WHOLLY
+// (unit_files_agree_wholly: ExecStart, WorkingDirectory, the OIDC Environment pair, everything) — a fixture
+// that stops admitting (NotDeployed/Refused) while the roster still
 // enables the door is a fixture defect and goes RED, it is never a silent pass. Only when the roster does
 // NOT enable the door may the emitter be NotDeployed, and then the accessor must be absent too (they share
 // the socket gate). A Present/Emitted disagreement is red.
@@ -571,7 +776,8 @@ test fn the_tailnet_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   }
 }
 
-// (B) THE AGENT DOOR CLOSURE ACCESSOR == THE EMITTED FILE. Same roster-tied contract as the tailnet door.
+// (B) THE AGENT DOOR CLOSURE ACCESSOR == THE EMITTED FILE, ON EVERY DIRECTIVE (side-chat F2). Same
+// roster-tied contract as the tailnet door.
 test fn the_agent_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   let roster_enables = any(xs: srv1_steps(), predicate: fn(s) { kind_is_agent_door(s) })
   let emitted = live_deploy_agent_door_unit_file(spec: srv1_spec(), revision: srv1_rev(), now_epoch: claim_oidc_now_for(spec: srv1_spec()))
@@ -586,122 +792,6 @@ test fn the_agent_door_closure_accessor_agrees_with_the_emitter() -> Bool {
   }
 }
 
-// ── the OIDC reader's secret is a declared read (F1, review 95814) ──
-
-// Every unit that receives the OIDC Environment — the serve unit and each OIDC door the roster owns —
-// reads cfg.secret_file at runtime through gunbc.auth.oidc_deployment_config's secret-file reader (a
-// missing secret makes login answer 503). The paths come from the reader's PLACEMENT AUTHORITY, so a
-// roster that drops a reader, or a read set that drops the secret while the placement still carries it,
-// goes RED. If srv1 ever loses its placement the control goes RED too: the roster below depends on it.
-// The OIDC readers the srv1 roster owns: the serve unit and each door unit. (ServeBinary is the
-// INSTALLED artifact, not a reader — the serve UNIT is the SystemdUnit step whose unit file carries
-// the OIDC Environment.)
-fn oidc_reader_steps() -> List<DeploymentArtifactStep> {
-  filter(xs: srv1_steps(), predicate: fn(s) { kind_is_systemd_unit(s) || kind_is_tailnet_door(s) || kind_is_agent_door(s) })
-}
-
-// A reader whose read set is NotYetModeled is honest ONLY where no unit file exists at all (a door the
-// spec never demanded installs nothing and receives no OIDC Environment); a Declared reader must name
-// both placement paths. Any other arm is red.
-fn oidc_reader_honest(s: DeploymentArtifactStep, want_config: String, want_secret: String) -> Bool {
-  match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-    Declared { paths: ps } => list_member(xs: ps, x: want_config, eq: eq_str) && list_member(xs: ps, x: want_secret, eq: eq_str)
-    NotYetModeled { reason: _ } => match s.kind {
-      ComposeOwned { kind: TailnetDoorServeUnit } =>
-        match live_deploy_tailnet_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev()) {
-          Absent => true
-          Present { value: _ } => false
-        }
-      ComposeOwned { kind: AgentDoorServeUnit } =>
-        match live_deploy_agent_door_unit_file_for_closure(spec: srv1_spec(), revision: srv1_rev()) {
-          Absent => true
-          Present { value: _ } => false
-        }
-      _ => false
-    }
-    _ => false
-  }
-}
-
-test fn the_oidc_readers_declare_their_placements_config_and_secret() -> Bool {
-  match tracker_web_oidc_serve_placement(instance_id: srv1_inst().instance_id) {
-    TrackerWebOidcServeReady { config: cfg } => {
-      let want_config = cfg.config_path as String
-      let want_secret = cfg.secret_file as String
-      let readers = oidc_reader_steps()
-      let serve_declares = any(xs: readers, predicate: fn(s) {
-        kind_is_systemd_unit(s) && list_member(xs: declared_paths_of(s), x: want_secret, eq: eq_str) && list_member(xs: declared_paths_of(s), x: want_config, eq: eq_str)
-      })
-      all(xs: readers, predicate: fn(s) { oidc_reader_honest(s: s, want_config: want_config, want_secret: want_secret) }) && serve_declares
-    }
-    _ => false
-  }
-}
-
-fn declared_paths_of(s: DeploymentArtifactStep) -> List<String> {
-  match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-    Declared { paths: ps } => ps
-    NotYetModeled { reason: _ } => []
-    InstalledArtifact => []
-    NoReadOfRecord => []
-  }
-}
-
-// THROUGH THE REAL ADAPTER (deployment_artifact_read_set -> deploy_closure_verdict / deploy_gate): with
-// every OTHER declared read of the OIDC readers installed — config document included — a host missing
-// only the OIDC client secret must be REFUSED, naming exactly that secret; installing it must ALLOW.
-// Secret custody itself is not moved here (fleet host_credential_custody_converge installs it); this is
-// the deploy gate refusing to enable units whose login would be dead on arrival.
-test fn the_missing_oidc_secret_refuses_naming_it_and_the_complete_set_allows() -> Bool {
-  match tracker_web_oidc_serve_placement(instance_id: srv1_inst().instance_id) {
-    TrackerWebOidcServeReady { config: cfg } => {
-      let secret = cfg.secret_file as String
-      // Rows through the REAL adapter, restricted to the readers that exist as unit files (a door the
-      // spec never demanded is NotYetModeled here and belongs to no gate decision).
-      let rows = list_map(xs: filter(xs: oidc_reader_steps(), predicate: fn(s) { kind_is_declared_reader(s) }), f: fn(s) {
-        ReadRow { located: s.path as String, reads: deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) }
-      })
-      let complete = fold_list(xs: rows, empty: [], cons: fn(acc, row) {
-        match row {
-          ReadRow { located: _, reads: Declared { paths: ps } } => list_append(left: acc, right: ps)
-          ReadRow { located: _, reads: NotYetModeled { reason: _ } } => acc
-          ReadRow { located: _, reads: InstalledArtifact } => acc
-          ReadRow { located: _, reads: NoReadOfRecord } => acc
-        }
-      })
-      let missing_secret = filter(xs: complete, predicate: fn(p) { p != secret })
-      let refuses = non_empty(xs: rows) && list_member(xs: complete, x: secret, eq: eq_str)
-      let refused_names_secret = match deploy_closure_verdict(rows: rows, installed: missing_secret) {
-        Refused { located: _, artifact: a } => a == secret
-        _ => false
-      }
-      let halts_names_secret = match deploy_gate(rows: rows, installed: missing_secret) {
-        Halt { cause: MissingArtifact { located: _, artifact: a } } => a == secret
-        _ => false
-      }
-      let allowed = match deploy_closure_verdict(rows: rows, installed: complete) {
-        Allowed => true
-        _ => false
-      }
-      let proceeds = match deploy_gate(rows: rows, installed: complete) {
-        Proceed => true
-        _ => false
-      }
-      refuses && refused_names_secret && halts_names_secret && allowed && proceeds
-    }
-    _ => false
-  }
-}
-
-fn kind_is_declared_reader(s: DeploymentArtifactStep) -> Bool {
-  match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-    Declared { paths: _ } => true
-    NotYetModeled { reason: _ } => false
-    InstalledArtifact => false
-    NoReadOfRecord => false
-  }
-}
-
 // THE ROSTER AGREEMENT (adapter wiring, not just the extractor): the always-on serve unit the roster
 // enables reports a Declared read-set containing the installed serve binary (its own argv[0]). RED if
 // the adapter stops sourcing the serve unit's ExecStart, or its binary drifts off the installed one.
@@ -710,281 +800,237 @@ test fn the_serve_unit_row_reads_the_installed_serve_binary() -> Bool {
   all(srv1_steps(), fn(s) {
     if kind_is_systemd_unit(s) {
       match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-        Declared { paths: ps } => list_member(xs: ps, x: want, eq: eq_str)
-        NotYetModeled { reason: _ } => false
-        InstalledArtifact => false
+        Declared { reads: reads } => list_member(xs: paths_of(reads), x: want, eq: eq_str)
         NoReadOfRecord => false
+        EndpointDependency { endpoint: _ } => false
+        InstalledArtifact => false
+        NotYetModeled { reason: _ } => false
       }
     } else { true }
   })
 }
 
-// ── NoReadOfRecord: the positive, owner-derived no-read (item 4a) ──
-// A NoReadOfRecord row is the kind's OWN module saying "this unit reads no installed artifact". It is a POSITIVE
-// assertion made by an enumerated adapter arm (never a catch-all), so it must ALLOW the deploy — but it is NOT a
-// default for an unmodeled kind. The inventory keeps it distinct from Unclosed (not a hidden gap) and from a
-// reason-bearing row (the allow must not rest on a String).
+// ─────────────────────────────────────────────────────────────────────────────────
+// .path UNIT READ CONTROLS (item 2). A .path unit has no ExecStart, but it is NOT no-read: a
+// DirectoryNotEmpty= level trigger fires only when the watched dir exists, so the watched dir IS its
+// read of record and a missing one is a real outage. What each control PROVES: the adapter's declared
+// read equals the DirectoryNotEmpty= dirs of the unit's OWN rendered file, i.e. the read-set arm and the
+// renderer are wired to one source (live_deploy_*_path_read_paths -> spool_watched_roles + spool_role_dirs)
+// and cannot drift — the single-authority property the gate relies on. What it does NOT prove: that the
+// chosen watched ROLES are correct; both sides trace to spool_role_dirs, so a wrong spool_watched_roles
+// choice would move them together. That correctness is owned by spool_queue's own controls, not here
+// (rung honesty: state the guarantee the check actually gives).
+// ─────────────────────────────────────────────────────────────────────────────────
 
-test fn a_no_read_of_record_row_allows_the_deploy_gate() -> Bool {
-  let row = ReadRow { located: "/var/lib/gunbc/tailscale/serve-map", reads: NoReadOfRecord }
-  match deploy_gate(rows: [row], installed: []) {
-    Proceed => true
-    Halt { cause: _ } => false
-  }
-}
+fn kind_is_belt(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: BeltEventPathUnit } => true, _ => false } }
+fn kind_is_publication(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: PublicationHelperPathUnit } => true, _ => false } }
 
-// A NoReadOfRecord is NEVER a fallback for an unmodeled kind. deployment_artifact_read_set has no catch-all, so an
-// unmodeled kind must be NotYetModeled, not NoReadOfRecord; and the inventory maps NoReadOfRecord to its own
-// NoReadRow, so it is not smuggled in as Unclosed. (The adapter enumerates every kind explicitly, so a new kind is
-// a compile error, not an implicit no-read.)
-test fn no_read_is_never_a_fallback_for_an_unmodeled_kind() -> Bool {
-  let rows = [
-    ReadRow { located: "/u/unmodeled", reads: NotYetModeled { reason: "reader read-set not declared" } },
-    ReadRow { located: "/u/noread", reads: NoReadOfRecord }
-  ]
-  let inv = deploy_artifact_inventory(rows: rows)
-  let unmodeled_is_not_noread = match first_where(xs: inv, keep: fn(r) { match r { UnclosedRow { located: l, reason: _ } => l == "/u/unmodeled", _ => false } }) {
-    Present { value: _ } => true
+// THE BELT exit .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit
+// file (and is non-empty). srv1 MUST own a BeltEventPathUnit step (a deploy whose units watch the exit
+// spool); if it ever stops owning one this check goes RED rather than silently passing — a check whose
+// step could be absent is a decoration (guarantee_ladder). RED also if the adapter stops sourcing the
+// watched dirs or they drift off what the unit actually watches.
+test fn the_belt_path_unit_reads_its_watched_dirs() -> Bool {
+  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_belt(s) }) {
+    Present { value: s } =>
+      let watched = watched_paths_of_unit_file(live_deploy_belt_exit_path_unit_file(spec: srv1_spec()))
+      non_empty(xs: watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
     Absent => false
   }
-  let noread_is_not_unclosed = match first_where(xs: inv, keep: fn(r) { match r { NoReadRow { located: l } => l == "/u/noread", _ => false } }) {
-    Present { value: _ } => true
+}
+
+// THE PUBLICATION helper .path unit's declared read equals the DirectoryNotEmpty dirs of its own
+// rendered unit file (and is non-empty). srv1 MUST own a PublicationHelperPathUnit step; absence is a
+// defect and goes RED. Same contract as the belt unit.
+test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
+  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_publication(s) }) {
+    Present { value: s } =>
+      let watched = watched_paths_of_unit_file(live_deploy_publication_path_unit_file(spec: srv1_spec()))
+      non_empty(xs: watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
     Absent => false
   }
-  unmodeled_is_not_noread && noread_is_not_unclosed
 }
 
-// A srv1 roster + spec whose declared serve endpoint serves a different BACKEND WORD. Only the
-// endpoint's backend differs — the route key (https_port, mount) is the declared one, so the roster's
-// TailscaleServeMapping member keeps the very path the adapter keys its lookup on. The row is rebuilt
-// through the SAME projection the fixtures use (desired.selected_deployment_spec) — no hand-built spec.
-type ServeBackendVariant {
-  spec: DeploymentSpec
-  steps: List<DeploymentArtifactStep>
-}
+// ─── MIGRATED MAIN CONTROLS (review 95811 item 1) ─────────────────────────────────
+// Migrated from main's #16513 parent-alone control onto the gate route: the old
+// deploy_closure_verdict/Refused assertion is now deploy_gate -> Halt{MissingArtifact} naming it
+// (review 95811: "Refused naming an artifact => Halt{MissingArtifact} naming it").
 
-fn srv1_over_backend(backend: NonEmptyStr) -> ServeBackendVariant {
-  let base = srv1_production_desired_deployment()
-  let declared = base.names.tailscale_serve_endpoint
-  let names = DeploymentNames {
-    unit_name: base.names.unit_name,
-    tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: declared.https_port, mount: declared.mount, backend: backend },
-    tree_sync_unit_name: base.names.tree_sync_unit_name,
-    tree_sync_env_path: base.names.tree_sync_env_path,
-    publication_principal: base.names.publication_principal,
-  }
-  let row = DesiredDeployment {
-    instance: base.instance,
-    target: base.target,
-    names: names,
-    selected_identity: base.selected_identity,
-    admitted_branch: base.admitted_branch,
-  }
-  let spec = selected_deployment_spec(row: row)
-  ServeBackendVariant {
-    spec: spec,
-    steps: deployment_owned_steps(instance: base.instance, names: names, holding: spec.role_singletons, lab_plan: spec.target.lab_plan),
-  }
-}
-
-fn mapping_step_of(steps: List<DeploymentArtifactStep>) -> DeploymentArtifactStep? {
-  first_where(xs: steps, keep: fn(s) { match s.kind { UpsertOwned { kind: TailscaleServeMapping } => true, _ => false } })
-}
-
-// THE SERVE MAPPING'S NO-READ IS DERIVED FROM THE BACKEND ITS ENDPOINT DECLARES. The mapping has no unit
-// module to classify, so its arm must state no-read DIRECTLY rather than fall through to a catch-all — and
-// it derives it from the declared endpoint's BACKEND (extdeps.tailscale.serve tailscale_serve_backend_target),
-// never from the CLI surface that APPLIES the mapping: ServeCli is how the mapping is configured, not what
-// is served (a file or directory backend would be a Declared read whatever CLI ran). srv1's declared
-// endpoint serves a target tailscale DIALS, so the roster's mapping is NoReadOfRecord — but only because
-// the backend says so: a non-proxy backend on this step must go RED. Absent roster step is RED: the mapping
-// member is emitted by deployment_owned_steps, and its absence means the roster drifted — an `Absent =>
-// true` here once hid exactly that (review 95814).
-test fn the_tailscale_no_read_is_derived_from_the_declared_backend() -> Bool {
-  let proxy_declared = match tailscale_serve_backend_target(endpoint: srv1_spec().names.tailscale_serve_endpoint) {
-    ServeBackendProxyTarget => true
+fn drain_not_admitted_by_parent(s: DeploymentArtifactStep) -> Bool {
+  let snap = attempt_system_unit_launcher_dir(instance: srv1_inst(), revision: srv1_rev())
+  let read_set = deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev())
+  let reads_concrete_not_parent = match read_set {
+    Declared { reads: reads } => list_member(xs: paths_of(reads), x: snap, eq: eq_str) && !list_member(xs: paths_of(reads), x: attempt_system_unit_launcher_helpers_root, eq: eq_str) && snap != attempt_system_unit_launcher_helpers_root
     _ => false
   }
-  let mapping = mapping_step_of(steps: srv1_steps())
-  match mapping {
-    Present { value: s } =>
-      match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-        NoReadOfRecord => proxy_declared
-        _ => false
-      }
-    Absent => false
-  }
-}
-
-// One absolute backend word, through the REAL adapter: the mapping row must read Declared with EXACTLY
-// that path, the closure must refuse naming it while the host lacks it, the gate must halt naming it, and
-// the closure must allow once it is installed. A proxy answer (NoReadOfRecord) would let a deploy admit a
-// mapping over a directory the host never installed.
-fn file_backend_is_declared_read(backend: NonEmptyStr) -> Bool {
-  let variant = srv1_over_backend(backend: backend)
-  match mapping_step_of(steps: variant.steps) {
-    Absent => false
-    Present { value: s } =>
-      match deployment_artifact_read_set(step: s, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
-        Declared { paths: ps } =>
-          let only_backend = list_cover(held: ps, expected: [backend as String], eq: eq_str) && list_cover(held: [backend as String], expected: ps, eq: eq_str)
-          let row = ReadRow { located: s.path as String, reads: Declared { paths: ps } }
-          let refused_names_target = match deploy_closure_verdict(rows: [row], installed: []) {
-            Refused { located: _, artifact: a } => a == (backend as String)
-            _ => false
-          }
-          let halts_names_target = match deploy_gate(rows: [row], installed: []) {
-            Halt { cause: MissingArtifact { located: _, artifact: a } } => a == (backend as String)
-            _ => false
-          }
-          let allowed = match deploy_closure_verdict(rows: [row], installed: [backend as String]) {
-            Allowed => true
-            _ => false
-          }
-          only_backend && refused_names_target && halts_names_target && allowed
-        _ => false
-      }
-  }
-}
-
-// THE FILE BACKEND IS A DECLARED READ THAT REFUSES WHEN THE TARGET IS ABSENT — the negative beside the
-// proxy positive above. Same fixture, same route key, backend word an absolute path: tailscaled SERVES
-// (reads) that path at serve time. TWO WORDS, because the shape of the word is what the classifier gets
-// right: the plain absolute path, AND an absolute path that CONTAINS a URL marker ("/srv/gunbc/a://b").
-// tailscale's applyWebServe asks filepath.IsAbs FIRST (cmd/tailscale/cli/serve_v2.go ~1263-1297 at
-// 9ad2a962) and serves such a path, so the second word must be a Declared read too — if the "://" test
-// ran first it answered ServeBackendProxyTarget and the gate admitted the mapping as NoReadOfRecord with
-// the target absent.
-test fn the_tailscale_file_backend_mapping_declares_and_refuses_its_target() -> Bool {
-  let plain = file_backend_is_declared_read(backend: "/srv/gunbc/static" as NonEmptyStr)
-  let marker_in_path = file_backend_is_declared_read(backend: "/srv/gunbc/a://b" as NonEmptyStr)
-  let classifier_agrees = match tailscale_serve_backend_target(endpoint: TailscaleServeEndpoint {
-    https_port: srv1_spec().names.tailscale_serve_endpoint.https_port,
-    mount: srv1_spec().names.tailscale_serve_endpoint.mount,
-    backend: "/srv/gunbc/a://b" as NonEmptyStr,
-  }) {
-    ServeBackendFilesystemTarget { path } => (path as String) == "/srv/gunbc/a://b"
+  let row = ReadRow { located: s.path as String, reads: read_set }
+  let halts = match deploy_gate(rows: [row], installed: ownb([attempt_system_unit_launcher_helpers_root])) {
+    Halt { causes: cs } => any(cs, fn(c) { match c { MissingArtifact { located: _, artifact: a, kind: _ } => a == snap, _ => false } })
     _ => false
   }
-  plain && marker_in_path && classifier_agrees
+  reads_concrete_not_parent && halts
 }
 
-// ONE PORT-LABEL RULE FOR BOTH CALLERS (review 95857, root_generalization). The word is judged a port
-// label by tailscale_serve_backend_is_port_label and is accepted as the port half of a loopback proxy
-// URL by tailscale_serve_backend_of_proxy_target -- which now CALLS that predicate rather than restating
-// it. Same verdict for every word of a spanning sample (a positive port, boundaries, leading-zero and
-// trailing-garbage words, the uncapped 70000, the empty word); if either caller grew a private copy of
-// the rule, some word here would split them. The UPPER bound is a gap named at the predicate, not a
-// disagreement between the two callers -- 70000 answers true on both sides until the admission fold lands.
-test fn the_port_label_rule_is_one_rule_for_both_callers() -> Bool {
-  let words = ["1", "80", "3000", "65535", "70000", "0", "-3", "03000", "3000x", "x", " 3000", ""]
-  all(xs: words, predicate: fn(w) {
-    let via_word = tailscale_serve_backend_is_port_label(backend: w)
-    let via_proxy_target = match tailscale_serve_backend_of_proxy_target(target: concat(tailscale_serve_port_proxy_prefix, w)) {
-      Present { value: _ } => true
-      Absent => false
-    }
-    via_word == via_proxy_target
-  })
+test fn the_attempt_drain_release_is_not_admitted_by_the_shared_parent_alone() -> Bool {
+  any(srv1_steps(), fn(s) { kind_is_drain(s) && drain_not_admitted_by_parent(s) })
 }
 
-// AN UNCLASSIFIABLE BACKEND WORD IS NOT YET MODELED, never a silent NoReadOfRecord: a word that is neither
-// a target tailscale dials nor an absolute path it serves could read anything, and answering no-read for it
-// would fabricate the absence of a read (fail_closed). The reason is carried, not empty.
-test fn the_tailscale_unclassifiable_backend_is_not_yet_modeled() -> Bool {
-  let variant = srv1_over_backend(backend: "static" as NonEmptyStr)
-  match mapping_step_of(steps: variant.steps) {
-    Absent => false
-    Present { value: s } => match deployment_artifact_read_set(step: s, spec: variant.spec, instance: srv1_inst(), revision: srv1_rev()) {
-      NotYetModeled { reason: r } => r != ""
+// ─────────────────────────────────────────────────────────────────────────────────
+// CONVERGER KIND (review 95919): decided FAIL-CLOSED from the unit's OWN [Service]
+// directives. The tree-remote converger confers TreeContent ownership only for a kind the
+// gate DERIVES from the unit -- never a guessed default. A present unit file with NO Type=
+// line is NOT a guess: systemd.service(5) makes it `simple` (LongRunning), or `oneshot` when
+// there is no ExecStart= (and no Type= and no BusName=); this model carries no BusName= so
+// ExecStart= presence decides. Only a MISSING unit file is a genuine unknown, and the gate
+// refuses it (the gate turns ConvergerKindMissingUnitFile into a located halt naming the
+// converger; it NEVER Proceeds on an undecided kind). These four controls fix the decision.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// [Service] Type=oneshot (tree-remote's real kind, #16544) -> Oneshot: a start/restart leg, not an enable.
+test fn the_converger_kind_is_oneshot_for_a_oneshot_unit_file() -> Bool {
+  let uf = ServiceUnitFile { unit: [], service: [Restart { policy: "always" as NonEmptyStr }, ServiceType { mode: OneshotMode }, ExecStart { command: "/bin/true" as NonEmptyStr }], install: NotInstallable }
+  match converger_kind_of(unit_label: "tree-remote", unit: Present { value: uf }) {
+    ConvergerKindKnown { kind: k } => match k { Oneshot => true, _ => false }
+    _ => false
+  }
+}
+
+// Type= MISSING but ExecStart= present -> the CITED systemd.service(5) default `simple` -> LongRunning (an
+// enable leg brings it up). This is a cited upstream default APPLIED, not a fabricated guess.
+test fn the_converger_kind_is_simple_when_type_absent_and_exec_start_present() -> Bool {
+  let uf = ServiceUnitFile { unit: [], service: [ExecStart { command: "/bin/true" as NonEmptyStr }], install: NotInstallable }
+  match converger_kind_of(unit_label: "tree-remote", unit: Present { value: uf }) {
+    ConvergerKindKnown { kind: k } => match k { LongRunning => true, _ => false }
+    _ => false
+  }
+}
+
+// Type= MISSING and NO ExecStart= -> the same cited default `oneshot` -> Oneshot (a start leg, not an enable).
+test fn the_converger_kind_is_oneshot_when_type_and_exec_start_absent() -> Bool {
+  let uf = ServiceUnitFile { unit: [], service: [Restart { policy: "always" as NonEmptyStr }], install: NotInstallable }
+  match converger_kind_of(unit_label: "tree-remote", unit: Present { value: uf }) {
+    ConvergerKindKnown { kind: k } => match k { Oneshot => true, _ => false }
+    _ => false
+  }
+}
+
+// No unit of record at all is NOT defaulted -- it is refused (the gate never Proceeds on an undecided kind).
+// RED if an absent unit file is ever folded to a guessed kind instead of refused.
+test fn the_converger_kind_is_refused_when_the_unit_file_is_absent() -> Bool {
+  match converger_kind_of(unit_label: "tree-remote", unit: Absent) {
+    ConvergerKindMissingUnitFile { unit: u } => u == "tree-remote"
+    _ => false
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// CUSTODY-OWNED SECRET (review 95811 item 5 + E/#16591): a read covered by the fleet's ONE
+// custody roster leaf, not by an install leg. The OIDC secret_file a serve/door unit opens is
+// installed by FLEET CUSTODY (gunbc.fleet.host_credential_custody_roster), never by the deploy,
+// so the gate counts a required FileContent read whose path the host's custody roster DECLARES
+// -- through the leaf's OWN predicate (custody_roster_declares), the same one converge's custody
+// preflight uses, with no gate-local roster copy. The coverage PROVES CUSTODY IS DECLARED on the
+// roster, NOT that the file is present (same rung honesty as a covered TreeContent proving a
+// converger RUNS). Both controls run through the ROUTE: the PROCEEDS control is the real srv1
+// deploy gate (the secret arrives as a declared read of the real serve row and the gate proceeds
+// on the roster's strength); the HALTS control asks the gate's own custody fold with a route row
+// and refuses what no row declares -- a declaration check, never a presence check.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+fn row_declares_path(r: DeployReadRow, path: String) -> Bool {
+  match r {
+    ReadRow { located: _, reads: rs } => match rs {
+      Declared { reads: ds } => any(ds, fn(d) { d.path == path })
       _ => false
     }
   }
 }
 
-// THE deployed-tree-remote unit reads {its sync-script argv[0], its WorkingDirectory tree}, derived from its OWN
-// typed oneshot unit file via the unit_standing classifier — the same unit file the deploy emits. RED if the read
-// set drifts off the unit it is derived from, or if the classifier is abandoned for a hand-kept list.
-test fn the_tree_remote_read_set_matches_the_emitted_host_text() -> Bool {
+// THE REAL srv1 ROUTE CARRIES THE SECRET AND THE GATE PROCEEDS: with the full install plan, the
+// serve row's declared reads include the OIDC client secret (the placement authority puts it
+// there -- asserted, not assumed), NO install leg ever writes it (custody owns the byte), and the
+// gate still proceeds because srv1's custody roster declares the path. Before E this read was
+// absent from the route (Codex P2): a serve whose login is dead on arrival could be admitted.
+// srv1-LIVE's placement authority is the STAGE environment, so the route's secret is the STAGE
+// client secret path -- the control asserts exactly that path, the one the custody roster carries
+// for srv1; the lab/test secret belongs to the srv1-lab instance and is not this route's read.
+test fn the_gate_covers_a_custody_declared_secret_and_proceeds() -> Bool {
   let spec = srv1_spec()
-  let remote = first_where(xs: srv1_steps(), keep: fn(s) { match s.kind { UpsertOwned { kind: DeployedTreeRemoteUnit } => true, _ => false } })
-  match remote {
-    Present { value: s } =>
-      match deployment_artifact_read_set(step: s, spec: spec, instance: srv1_inst(), revision: srv1_rev()) {
-        Declared { paths: reads } =>
-          let host = convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
-          non_empty(reads)
-            && string_contains(s: host, pattern: "ExecStart=/")
-            && string_contains(s: host, pattern: "WorkingDirectory=")
-            && all(reads, fn(r) { string_contains(s: host, pattern: r) })
-        _ => false
-      }
-    Absent => false
+  let plan = deploy_witness_full_install_plan(spec: spec)
+  let result = deploy_apply_plan_legs(spec: spec, plan: plan, source_root: "/src", oidc_now: claim_oidc_now_for(spec: spec))
+  let rows = deployment_artifact_read_rows(steps: srv1_steps(), spec: spec, instance: srv1_inst(), revision: srv1_rev())
+  let secret = tracker_web_stage_oauth_client_secret_host_path as String
+  let route_carries_secret = any(rows, fn(r) { row_declares_path(r: r, path: secret) })
+  match deploy_artifact_closure_gate(spec: spec, plan: plan, result: result) {
+    ApplyPlanReady { legs: _ } => route_carries_secret
+    ApplyPlanRefused { step: _, reason: _ } => false
   }
 }
 
-// The serve unit's read-set gains the OIDC config document it reads at startup, and that path is the SAME string as
-// the INSTALLED OidcConfigArtifact step's path — both come from deployment_oidc_config_steps, so serve's read and
-// the owned artifact can never drift. srv1 has OIDC placed; Absent is a failure (a control that silently checks
-// nothing when OIDC is off is a decoration, guarantee_ladder).
-test fn the_serve_unit_read_set_includes_the_oidc_config_it_reads() -> Bool {
-  let inst = srv1_inst()
-  let steps = srv1_steps()
-  let serve = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: SystemdUnit } => true, _ => false } })
-  let oidc_artifact = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } })
-  match serve {
-    Present { value: su } => match oidc_artifact {
-      Present { value: oc } =>
-        match deployment_artifact_read_set(step: su, spec: srv1_spec(), instance: inst, revision: srv1_rev()) {
-          Declared { paths: ps } => list_member(xs: ps, x: oc.path as String, eq: fn(a, b) { a == b })
-          _ => false
-        }
-      Absent => false
+// WHEN THE ROSTER DOES NOT DECLARE THE PATH, THE GATE'S CUSTODY FOLD CONFERS NOTHING: asked with a
+// route row carrying the rostered secret AND an unrostered one, the fold covers only the rostered
+// path, and the closure halts naming the unrostered secret. Proves custody is a DECLARATION check
+// through the leaf -- not a presence check, and not a blanket covering of FileContent reads (had the
+// fold covered everything, this control would Proceed and fail).
+test fn the_gate_halts_a_secret_read_the_custody_roster_does_not_declare() -> Bool {
+  let rostered = tracker_web_test_oauth_client_secret_host_path as String
+  let unrostered = "/etc/gunbc-oidc/not-rostered-secret"
+  let row = ReadRow { located: "tracker-web-serve", reads: Declared { reads: [
+    DeclaredRead { path: rostered, kind: FileContent },
+    DeclaredRead { path: unrostered, kind: FileContent }
+  ] } }
+  let owned = custody_roster_owned_reads(rows: [row], host: operator_host_srv1)
+  let fold_covers_rostered = any(xs: owned, fn(o) { o.path == rostered })
+  let fold_refuses_unrostered = !any(xs: owned, fn(o) { o.path == unrostered })
+  match deploy_gate(rows: [row], installed: owned) {
+    Halt { causes: cs } => fold_covers_rostered && fold_refuses_unrostered && string_contains(s: render_deploy_halt_causes(causes: cs), pattern: unrostered)
+    Proceed => false
+  }
+}
+
+// THE ANY-RUNNER-HOST ROW DECLARES ITS PATH WHEREVER THE DEPLOY RUNS (side-chat's non-blocking note
+// on #16591): the leaf folds CustodyAnyRunnerHost through custody_target_host to the EXECUTING host,
+// so one row covers the path on every host -- checked on two distinct hosts through the leaf's own
+// predicate, the exact one the gate's custody fold asks.
+test fn a_custody_any_runner_host_row_declares_its_path_on_any_host() -> Bool {
+  let row = host_credential_custody_row(c: TailscaleFleetAuthKey)
+  custody_roster_declares(host: operator_host_srv1, path: row.path as String)
+    && custody_roster_declares(host: operator_host_srv14, path: row.path as String)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// BROKER ENV (item 3): the required EnvironmentFile= is REFUSED and NAMED when the deploy
+// omits it. The broker unit hard-depends on its device-crypto digest env (EnvironmentFile=),
+// derived as a required FileContent read. On the gate route, installing the broker's binary and
+// working directory but NOT the env must halt, naming the env file (Halt{MissingArtifact} whose
+// artifact is the env path); installing the env must let the gate Proceed. Migrated from main's
+// the_broker_refuses_when_its_required_env_file_is_absent to this gate route (review 95811).
+// ─────────────────────────────────────────────────────────────────────────────────
+
+fn owns_of(reads: List<DeclaredRead>) -> List<OwnedArtifact> {
+  list_map(xs: reads, f: fn(r) { OwnedArtifact { path: r.path, kind: r.kind } })
+}
+
+test fn the_broker_refuses_when_its_required_env_file_is_absent() -> Bool {
+  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_broker(s) }) {
+    Absent => false
+    Present { value: s } => {
+      let env = unit_env()
+      let loc = s.path as String
+      let read_set = deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev())
+      let derived_reads = match read_set { Declared { reads: rs } => rs, _ => [] }
+      let row = ReadRow { located: loc, reads: read_set }
+      // The digest env IS a required read of record (otherwise this control would prove nothing).
+      let env_is_a_read = list_member(xs: paths_of(derived_reads), x: env, eq: eq_str)
+      // partial: install every required read EXCEPT the env (correct kinds, env dropped).
+      let partial = owns_of(filter(derived_reads, fn(r) { r.path != env }))
+      // complete: install every required read, the env included.
+      let complete = owns_of(derived_reads)
+      let partial_halts = deploy_closure_halts(rows: [row], installed: partial)
+      env_is_a_read
+        && is_refused(partial_halts)
+        && refused_names(partial_halts, loc, env)
+        && is_allowed(deploy_closure_halts(rows: [row], installed: complete))
     }
-    Absent => false
-  }
-}
-
-// The OIDC config is an installed artifact (the deploy owns it), never a unit with unmodeled reads. Its adapter arm
-// is InstalledArtifact, so it is NOT NotYetModeled (the false "unit whose reads aren't modeled yet" claim for a
-// config document) and NOT Declared (it is not a unit reading an artifact — the serve row declares that read).
-test fn the_oidc_config_artifact_is_an_installed_artifact_not_a_reader() -> Bool {
-  let steps = srv1_steps()
-  let oidc = first_where(xs: steps, keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } })
-  match oidc {
-    Present { value: s } =>
-      match deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()) {
-        InstalledArtifact => true
-        Declared { paths: _ } => false
-        NotYetModeled { reason: _ } => false
-        NoReadOfRecord => false
-      }
-    Absent => false
-  }
-}
-
-fn kind_is_belt(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: BeltEventPathUnit } => true, _ => false } }
-fn kind_is_publication(s: DeploymentArtifactStep) -> Bool { match s.kind { UpsertOwned { kind: PublicationHelperPathUnit } => true, _ => false } }
-
-// THE BELT exit .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit file (and is
-// non-empty). srv1 MUST own a BeltEventPathUnit step; if it ever stops owning one this check goes RED rather than
-// silently passing — a check whose step could be absent is a decoration (guarantee_ladder).
-test fn the_belt_path_unit_reads_its_watched_dirs() -> Bool {
-  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_belt(s) }) {
-    Present { value: s } =>
-      let watched = watched_paths_of_unit_file(live_deploy_belt_exit_path_unit_file(spec: srv1_spec()))
-      non_empty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
-    Absent => false
-  }
-}
-
-// THE PUBLICATION helper .path unit's declared read equals the DirectoryNotEmpty dirs of its own rendered unit file
-// (and is non-empty). srv1 MUST own a PublicationHelperPathUnit step; absence is a defect and goes RED.
-test fn the_publication_path_unit_reads_its_watched_dirs() -> Bool {
-  match first_where(xs: srv1_steps(), keep: fn(s) { kind_is_publication(s) }) {
-    Present { value: s } =>
-      let watched = watched_paths_of_unit_file(live_deploy_publication_path_unit_file(spec: srv1_spec()))
-      non_empty(watched) && read_is_exactly(deployment_artifact_read_set(step: s, spec: srv1_spec(), instance: srv1_inst(), revision: srv1_rev()), watched)
-    Absent => false
   }
 }

@@ -139,7 +139,7 @@ fn keyring_mkdir_argv() -> List<String> {
     mode: declared_directory_mode(m: DirectoryOwnerAllGroupTraverse),
     owner: fleet_posix_root_user.name,
     group: fleet_posix_operator_user.name,
-    path: approval_keyring_config_dir as String,
+    path: approval_keyring_config_dir,
   )
 }
 
@@ -157,7 +157,7 @@ fn claim_store_root_mkdir_argv() -> List<String> {
     mode: declared_directory_mode(m: DirectoryOwnerOnly),
     owner: fleet_posix_ci_runner_user.name,
     group: fleet_posix_ci_runner_user.name,
-    path: authorization_claim_store_root as String,
+    path: authorization_claim_store_root,
   )
 }
 

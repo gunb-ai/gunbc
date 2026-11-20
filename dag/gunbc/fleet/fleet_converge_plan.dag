@@ -25,7 +25,15 @@ import gunbc.fleet.fleet_host_grant_coverage {
   host_grant_awaiting_capability,
   host_grant_plan_lines,
 }
-import gunbc.fleet.fleet_converge_terminal { AwaitingCapability, FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_of_wire, fleet_converge_apply_terminal_wire }
+import gunbc.fleet.fleet_converge_terminal {
+  AwaitingCapability,
+  FleetConvergeApplyTerminal,
+  FleetConvergeOwedWork,
+  FullyApplied,
+  OwedReportContradiction,
+  PartiallyApplied,
+  fleet_converge_full_host_terminal,
+}
 
 import gunbc.fleet.fleet_generation_execution { fleet_generation_directory, fleet_generation_lock, fleet_generation_path, fleet_generation_writer }
 
@@ -188,8 +196,10 @@ import gunbc.live_deploy.member_identity {
 import gunbc.host.host_axis_caps {
   CapMember,
   CapMemberAt,
+  CapSetting,
   caps_reconcile,
   derived_runner_slot_cap_members,
+  derived_runner_slot_cap_settings,
   cap_upsert_script,
 }
 import gunbc.runner.runner_slot_retirement {
@@ -210,6 +220,10 @@ import gunbc.runner.runner_slot_provision {
   runner_slot_member_key,
   runner_slot_provision_plan,
   RunnerSlotProvisionPlan,
+  runner_slot_provision_membership_withheld_count,
+  runner_slot_provision_membership_withheld_units,
+  runner_slot_provision_withheld_line_count,
+  runner_slot_provision_withheld_beyond_plan_rows_count,
   fleet_runner_slot_artifact,
 }
 import product.host_identity { HostIdentity }
@@ -1108,12 +1122,82 @@ fn timer_action_line(action: MemberAction<TimerRetirementMember, TimerRetirement
   }
 }
 
+// THE CAP AXIS RENDERS WHAT IT SEES, NEVER WHAT IT WILL DO. Converge does not write a runner-unit
+// drop-in: that write belongs to gunbc.runner.runner_host_file_converge under live_deploy's authority
+// @ref(gunbc.host.host_axis_caps::host_axis_caps_note), the MemoryMax SINGLE AUTHORITY note; the live_deploy
+// instance apply carried a second copy of it until 2026-10-30 -- see the fleet-converge-receipt-counts-owed-work row, whose
+// boundary records the srv1 run that proved converge never emits these rows). So these rows say
+// PLAN-ONLY and name the authority that does own the write, instead of opening with a mutation verb
+// converge cannot honour.
+//
+// WHY THE ROWS STAY IN THE PLAN RATHER THAN VANISHING. Deleting them would make the plan and the receipt
+// disagree about the same two facts, and it would hide the one thing an operator needs: the 25 GiB
+// envelope srv1 has owed since the 2026-11-04 ruling is real outstanding work, just not converge's to
+// perform. A row that names its authority carries the same information as a row that is missing, and
+// cannot be mistaken for a promise. This is single_authority read on the plan side: one axis may state a
+// difference it is not allowed to close, as long as the line says who closes it.
+//
+// WHY THE VALUES ARE SPOKEN. The old line said "content drift", which named neither the directive nor
+// either value: an operator reading it could not tell a superseded ceiling from a typo, and the srv1
+// receipt made a real 22 GiB-vs-25 GiB gap look like noise. The wanted value comes from the same settings
+// list the desired members are built from, @ref(gunbc.host.host_axis_caps::derived_runner_slot_cap_settings),
+// so a plan line can never name a number the writer would not write; the observed side is the bytes the
+// whole-file compare actually saw (@ref(gunbc.host.host_axis_caps::cap_member_value_eq) compares content),
+// flattened for one line -- a rendering transform, not a parse, which is the reading
+// @ref(gunbc.host.host_axis_caps::desired_cap_member)'s note forbids.
+data fleet_converge_cap_plan_only_authority: String = "[plan-only: live_deploy authority]"
+
+// THE MODEL'S OWN WORD FOR A MANAGED DROP-IN, read from the settings list rather than from the file.
+fn cap_wanted_phrase(path: NonEmptyStr) -> String {
+  match first(filter(derived_runner_slot_cap_settings(), s => (s.dropin_path as String) == (path as String))) {
+    Absent => "the model's managed directive for this path"
+    Present { value: s } => join([s.property as String, "=", s.value as String], "")
+  }
+}
+
+// THE OBSERVED BYTES, QUOTED AND FLATTENED. Newlines would break the one-row-per-line plan.
+fn cap_observed_phrase(content: String) -> String {
+  join(["\"[", replace(replace(content, "\n", " "), "\"", "'"), "]\""], "")
+}
+
 fn cap_action_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
   match action {
-    MemberAdded { at: _, to: m } => concat("ADD cap ", m.dropin_path as String)
+    MemberAdded { at: _, to: m } =>
+      join(
+        [
+          "PLAN-ONLY cap ",
+          m.dropin_path as String,
+          " absent on disk; wants ",
+          cap_wanted_phrase(path: m.dropin_path),
+          " ",
+          fleet_converge_cap_plan_only_authority,
+        ],
+        "",
+      )
     MemberChanged { at: _, from: f, to: t } =>
-      concat(concat("CHANGE cap ", f.dropin_path as String), concat(" -> content drift"))
-    MemberRemoved { at: _, from: m } => concat("REMOVE cap ", m.dropin_path as String)
+      join(
+        [
+          "PLAN-ONLY cap ",
+          f.dropin_path as String,
+          " wants ",
+          cap_wanted_phrase(path: t.dropin_path),
+          ", on-disk ",
+          cap_observed_phrase(content: f.content),
+          " ",
+          fleet_converge_cap_plan_only_authority,
+        ],
+        "",
+      )
+    MemberRemoved { at: _, from: m } =>
+      join(
+        [
+          "PLAN-ONLY cap ",
+          m.dropin_path as String,
+          " present on disk and no longer wanted by the model ",
+          fleet_converge_cap_plan_only_authority,
+        ],
+        "",
+      )
     MemberRemovalRefused { from: m, cause: c } =>
       concat(
         concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
@@ -1121,6 +1205,22 @@ fn cap_action_line(action: MemberAction<CapMember, CapMemberAt>) -> String {
       )
     MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => "REFUSED-DUPLICATE-KEY"
   }
+}
+
+// THE CAP ROWS THE PLAN LISTS AND CONVERGE WILL NEVER EXECUTE -- an add, a change, or a removal the model
+// wants, as the members themselves. A REFUSAL is not owed work: the axis already counted it and its line
+// says so. A list rather than a 'which variant is this' predicate, because the count on the receipt and a
+// control that names the paths must read the SAME projection and cannot be allowed to drift apart.
+fn cap_plan_only_members(plan: MembershipPlan<CapMember, CapMemberAt>) -> List<CapMember> {
+  flat_map(plan.actions, a =>
+  match a {
+    MemberAdded { at: _, to: m } => [m]
+    MemberChanged { at: _, from: f, to: _ } => [f]
+    MemberRemoved { at: _, from: m } => [m]
+    MemberRemovalRefused { from: _, cause: _ } => []
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+  }
+  )
 }
 
 fn membership_plan_lines_timer(plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>) -> List<String> {
@@ -1519,6 +1619,51 @@ fn slot_family_refusal_count(family: FleetConvergeSlotFamily) -> Int {
   }
 }
 
+// THE PLAN, OR NOTHING. A family that was never stood up has no plan to count from -- its own refusal is
+// already counted, and inventing withheld rows for a host with no plan would count the same gate twice.
+fn slot_family_plan(family: FleetConvergeSlotFamily) -> RunnerSlotProvisionPlan? {
+  match family {
+    SlotFamilyPlanned { plan: p } => Present { value: p }
+    _ => Absent
+  }
+}
+
+// WHAT THE SLOT FAMILY OWES THAT A REFUSAL DOES NOT COVER, read off the one plan the apply script is
+// rendered from. That single source is what makes these numbers evidence rather than commentary: the 39
+// in the srv1 run were withheld lines with no plan row behind them, and only a count taken from the
+// script side could see them at all.
+fn slot_family_withheld_row_count(family: FleetConvergeSlotFamily) -> Int {
+  match slot_family_plan(family: family) {
+    Absent => 0
+    Present { value: p } => runner_slot_provision_membership_withheld_count(plan: p)
+  }
+}
+
+// THE WITHHELD LINES THE RENDERED SCRIPT ECHOES -- retirement inhibition and tree removal both.
+fn slot_family_withheld_line_count(family: FleetConvergeSlotFamily) -> Int {
+  match slot_family_plan(family: family) {
+    Absent => 0
+    Present { value: p } => runner_slot_provision_withheld_line_count(plan: p)
+  }
+}
+
+// AND THE PART OF THEM THE PLAN NEVER LISTED. Reported beside the row count, never folded into it, so the
+// receipt still reconciles with plan.txt line for line while the extra lines stay named.
+fn slot_family_withheld_beyond_plan_rows_count(family: FleetConvergeSlotFamily) -> Int {
+  match slot_family_plan(family: family) {
+    Absent => 0
+    Present { value: p } => runner_slot_provision_withheld_beyond_plan_rows_count(plan: p)
+  }
+}
+
+// WHICH UNITS THE PLAN WITHHELD, in plan order -- the names behind the terminal's withheld count.
+fn slot_family_withheld_units(family: FleetConvergeSlotFamily) -> List<String> {
+  match slot_family_plan(family: family) {
+    Absent => []
+    Present { value: p } => runner_slot_provision_membership_withheld_units(plan: p)
+  }
+}
+
 // THE ACTIVATION FAMILY, AND IT IS A SEPARATE FAMILY FROM THE SLOT FAMILY RATHER THAN TWO MORE
 // LINES INSIDE IT. Materializing a slot writes files under a directory the converging principal
 // already owns; activating one lets it accept work, and the first cache-miss compile of that work
@@ -1665,19 +1810,39 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       observed_retirement: retirement_evidence,
       observed_host_grants: grants,
     } => {
-      let slot_refused = fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots, retirement_evidence: retirement_evidence)
+      let slot_family = fleet_converge_slot_family(
+        host: host,
+        observed_slots: observed_slots,
+        retirement_evidence: retirement_evidence,
+      )
+      let slot_refused = slot_family_refusal_count(family: slot_family)
       let cap_refused = fleet_converge_cap_refusal_count(host: host, observed_caps: observed_caps)
       let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
       let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
       let activation_refused = fleet_converge_activation_refusal_count(host: host, readiness: readiness, standings: standings)
       let total = slot_refused + cap_refused + timer_refused + fabric_refused + activation_refused
+      // THE OWED WORK, COUNTED BESIDE THE REFUSALS AND NOT INSIDE THEM. A refusal is the axis saying it
+      // will not act; these four are the plan saying work stands that this pass will not do -- teardowns
+      // withheld for want of retirement evidence, cap rows converge has no authority to write, and the
+      // withheld lines that never made it onto plan.txt at all. The srv1 receipt (plan 44423114994, apply
+      // 44428803079) was minted from the first three lines alone: seven refusals, and the six listed rows
+      // plus thirty-nine withheld lines belonged to no count, so a plan that did nothing at all read
+      // `partially_applied|7|...` with an exit of 0 and the word `applied`. Refusals alone could not see
+      // it, because nothing was refused -- everything was withheld or left to another authority.
+      //
+      // THE LIVE-DEPLOY ARM ALREADY GUARDED AGAINST THIS EXACT FAILURE (see the note above); this arm had
+      // no such guard, and FullHostConverge is the scope srv1 runs under.
+      let owed = FleetConvergeOwedWork {
+        withheld_row_count: slot_family_withheld_row_count(family: slot_family),
+        plan_only_row_count: fleet_converge_cap_plan_only_row_count(host: host, observed_caps: observed_caps),
+        withheld_line_total_count: slot_family_withheld_line_count(family: slot_family),
+        withheld_beyond_plan_rows_count: slot_family_withheld_beyond_plan_rows_count(family: slot_family),
+      }
       match host_grant_awaiting_capability(rows: fleet_converge_host_grant_rows(host: host, grants: grants)) {
         Present { value: capability } => AwaitingCapability { capability: capability }
-        Absent => if total == 0 {
-        FullyApplied
-      } else {
-        PartiallyApplied {
+        Absent => fleet_converge_full_host_terminal(
           refused_axis_count: total,
+          owed: owed,
           detail: join(
             [
               "slot=", to_string(slot_refused),
@@ -1688,8 +1853,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
             ],
             "",
           ),
-        }
-      }
+        )
       }
     }
     LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } => {
@@ -1699,6 +1863,11 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       } else {
         PartiallyApplied {
           refused_axis_count: timer_refused,
+          // NO OWED-WORK MEASUREMENT, BECAUSE THIS SCOPE HAS NO AXIS THAT CAN WITHHOLD OR DEFER. The
+          // timer axis emits no withheld line and there is no cap axis here, so there is nothing to
+          // count; zeros would be a claim that a measurement was taken. The wire says nothing, and a
+          // consumer has to notice that rather than inherit a reassuring number.
+          owed: Absent,
           detail: join(["timer=", to_string(timer_refused)], ""),
         }
       }
@@ -1710,6 +1879,7 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
       } else {
         PartiallyApplied {
           refused_axis_count: fabric_refused,
+          owed: Absent,
           detail: join(["fabric-cell=", to_string(fabric_refused)], ""),
         }
       }
@@ -1848,13 +2018,41 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
 fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> String {
   match terminal {
     FullyApplied => "# apply-terminal: FullyApplied"
-    PartiallyApplied { refused_axis_count: n, detail: d } =>
-      concat(
-        concat("# apply-terminal: PartiallyApplied refusals=", to_string(n)),
-        concat(" ", d),
+    // THE LINE AN OPERATOR READS, AND THE ONE THE RUNNER LOGS, NOW NAMES WHAT IS STILL OWED. The
+    // srv1 apply printed `# apply-terminal: PartiallyApplied refusals=7 slot=5 cap=0 timer=0
+    // fabric-cell=0 activation=0` -- every number on it a refusal -- while four teardowns stood
+    // withheld and two cap rows waited on another authority. A reader could not have asked a better
+    // question of it: there was nothing in it to ask about.
+    PartiallyApplied { refused_axis_count: n, owed: o, detail: d } => match o {
+      Absent =>
+        concat(
+          concat("# apply-terminal: PartiallyApplied refusals=", to_string(n)),
+          concat(" ", d),
+        )
+      Present { value: owed } => join(
+        [
+          "# apply-terminal: PartiallyApplied refusals=",
+          to_string(n),
+          " withheld=",
+          to_string(owed.withheld_row_count),
+          " plan-only=",
+          to_string(owed.plan_only_row_count),
+          " withheld-lines=",
+          to_string(owed.withheld_line_total_count),
+          " withheld-beyond-plan-rows=",
+          to_string(owed.withheld_beyond_plan_rows_count),
+          " ",
+          d,
+        ],
+        "",
       )
+    }
     AwaitingCapability { capability: c } =>
       join(["# apply-terminal: AwaitingCapability ", c], "")
+    // A contradiction in the renderer's own report is the one state no operator can act on and no grant can
+    // lift, so it says so in its own words rather than borrowing the grant's.
+    OwedReportContradiction { detail: d } =>
+      join(["# apply-terminal: OwedReportContradiction ", d], "")
   }
 }
 
@@ -1986,6 +2184,24 @@ fn fleet_converge_cap_refusal_count(host: NonEmptyStr, observed_caps: List<CapMe
     CapAxisZeroWidth { host: _ } => 0
     CapAxisPlanned { plan: p } => membership_refusal_count(plan: p)
   }
+}
+
+// THE PLAN-ONLY COUNT: cap rows the plan lists that converge will never execute. Counted from the same
+// reconciled plan the PLAN-ONLY lines are rendered from, so the receipt's number and plan.txt's rows
+// cannot disagree about how many there are.
+fn fleet_converge_cap_plan_only_members(
+  host: NonEmptyStr,
+  observed_caps: List<CapMember>,
+) -> List<CapMember> {
+  match fleet_converge_cap_axis(host: host, observed_caps: observed_caps) {
+    CapAxisHostRefused { host: _, cause: _ } => []
+    CapAxisZeroWidth { host: _ } => []
+    CapAxisPlanned { plan: p } => cap_plan_only_members(plan: p)
+  }
+}
+
+fn fleet_converge_cap_plan_only_row_count(host: NonEmptyStr, observed_caps: List<CapMember>) -> Int {
+  count(fleet_converge_cap_plan_only_members(host: host, observed_caps: observed_caps))
 }
 
 fn fleet_converge_cap_lines(host: NonEmptyStr, observed_caps: List<CapMember>) -> List<String> {

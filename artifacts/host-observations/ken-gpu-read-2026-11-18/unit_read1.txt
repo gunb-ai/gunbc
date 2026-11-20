@@ -1,0 +1,49 @@
+=== unit-files (filter) ===
+gpu-manager.service                          enabled         enabled
+ken-strata.service                           enabled         enabled
+nvidia-hibernate.service                     enabled         enabled
+nvidia-resume.service                        enabled         enabled
+nvidia-suspend-then-hibernate.service        disabled        enabled
+nvidia-suspend.service                       enabled         enabled
+plymouth-poweroff.service                    static          -
+systemd-poweroff.service                     static          -
+t10-power-cap.service                        enabled         enabled
+upower.service                               disabled        enabled
+poweroff.target                              disabled        disabled
+=== /etc/systemd/system ===
+total 124
+drwxr-xr-x 2 root root 4096 Aug  5  2025 cloud-config.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 cloud-final.service.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 cloud-init.target.wants
+lrwxrwxrwx 1 root root   44 Aug  5  2025 dbus-org.freedesktop.ModemManager1.service -> /usr/lib/systemd/system/ModemManager.service
+lrwxrwxrwx 1 root root   48 Aug  5  2025 dbus-org.freedesktop.resolve1.service -> /usr/lib/systemd/system/systemd-resolved.service
+lrwxrwxrwx 1 root root   40 Nov 15 22:21 dbus-org.freedesktop.thermald.service -> /usr/lib/systemd/system/thermald.service
+lrwxrwxrwx 1 root root   49 Aug  5  2025 dbus-org.freedesktop.timesync1.service -> /usr/lib/systemd/system/systemd-timesyncd.service
+drwxr-xr-x 2 root root 4096 Aug  5  2025 display-manager.service.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 emergency.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 final.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 getty.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 graphical.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 hibernate.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 hybrid-sleep.target.wants
+lrwxrwxrwx 1 root root   42 Aug  5  2025 iscsi.service -> /usr/lib/systemd/system/open-iscsi.service
+-rw-r--r-- 1 root root  760 Nov 17 22:10 ken-strata.service
+drwxr-xr-x 2 root root 4096 Aug  5  2025 mdmonitor.service.wants
+drwxr-xr-x 2 root root 4096 Nov 17 22:10 multi-user.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 network-online.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 oem-config.service.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 open-vm-tools.service.requires
+drwxr-xr-x 2 root root 4096 Aug  5  2025 paths.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 rescue.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 sleep.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:22 sockets.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:22 ssh.service.requires
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 suspend.target.wants
+drwxr-xr-x 2 root root 4096 Nov 15 22:20 suspend-then-hibernate.target.wants
+drwxr-xr-x 2 root root 4096 Aug  5  2025 sysinit.target.wants
+=== nvidia-smi present? ===
+/usr/bin/nvidia-smi
+=== lspci gpus ===
+/sys/bus/pci/devices/01:00.0 vendor=cat: '/sys/bus/pci/devices/01:00.0/vendor': No such file or directory device=cat: '/sys/bus/pci/devices/01:00.0/device': No such file or directory
+/sys/bus/pci/devices/81:00.0 vendor=cat: '/sys/bus/pci/devices/81:00.0/vendor': No such file or directory device=cat: '/sys/bus/pci/devices/81:00.0/device': No such file or directory
+/sys/bus/pci/devices/c1:00.0 vendor=cat: '/sys/bus/pci/devices/c1:00.0/vendor': No such file or directory device=cat: '/sys/bus/pci/devices/c1:00.0/device': No such file or directory

@@ -107,12 +107,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_fork_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_main_head_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_release_bins_run_list_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bounded_get_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_command"),
     decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_list_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_install_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_init_install_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_stdin_then_exec_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_receipt_object_command"),
     decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_sandbox_preflight_command"),
@@ -276,10 +281,11 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_group_command"),
     // getent ahostsv4 <name>: the fourth database of the same read-only lookup, admitted on the same terms
     // as its siblings -- it names a database the utility resolves itself and names no path, no key file, and
-    // no account, and it writes nothing. Its caller is gunbc.tailscale_join_converge's srv1 read-back, which
+    // no account, and it writes nothing. Its caller is the srv1 read-back
+// (@ref(gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution)), which
     // must ask whether the JOINED HOST'S TAILNET NAME resolves through NSS -- the resolver path the router's
     // own upstream lookups take -- because `tailscale ping` resolves names from Tailscale's peer list instead
-    // and so cannot answer that question (extdeps.posix.getent::getent_hosts_command).
+    // and so cannot answer that question (@ref(extdeps.posix.getent::getent_hosts_command)).
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_hosts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
@@ -298,6 +304,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
+    // The group-name sibling of the user-name probe, admitted for the same reason: the ledger read
+    // compares owner.group against the declared group NAME, so it needs %G by name (%g's numeric gid
+    // never string-matches a group name). Same shape, same sealing.
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_group_name_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
@@ -360,6 +370,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_absolute_git_dir_premise_argv"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_shared_repository_group_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_clone_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_revision_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_detached_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_gc_auto_disabled_config_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_maintenance_auto_disabled_config_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_repack_quiet_command"),

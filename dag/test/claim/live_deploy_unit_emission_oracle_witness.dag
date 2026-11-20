@@ -33,10 +33,10 @@ import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPo
 // only thing that would have caught it is the resolve this import makes possible.
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
-import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop, belt_standings_refresh_staleness_horizon }
+import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop, belt_standings_refresh_staleness_horizon, belt_pair_delivery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
-  emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_belt_standings_refresh_unit_file, live_deploy_belt_standings_refresh_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
+  emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_belt_standings_refresh_unit_file, live_deploy_belt_standings_refresh_timer_unit_file, live_deploy_belt_pair_delivery_unit_file, live_deploy_belt_pair_delivery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path, approval_broker_unit_emission, BrokerUnitBound,
 }
 import gunbc.live_deploy.release_locus {
@@ -55,6 +55,7 @@ import gunbc.live_deploy.spec {
   deployment_belt_credential_recovery_unit_name,
   deployment_belt_credential_recovery_timer_unit_name,
   deployment_belt_standings_refresh_unit_name,
+  deployment_pair_delivery_unit_name,
   gunbc_approval_broker_slice_unit_name,
   gunbc_repository_convergence_slice_unit_name,
   gunbc_approval_broker_unit_name,
@@ -766,6 +767,31 @@ test fn the_standings_refresh_oneshot_runs_the_observation_fold_only() -> Bool {
     && any(refresh, l => string_contains(s: l, pattern: "TimeoutStartSec=2700s"))
 }
 
+// THE PAIR-DELIVERY unit + timer (node://lab-converges-release-pair): the timer enrolls the delivery unit on the
+// pair cadence, and the oneshot's own run performs the wet delivery (it names release_pair_deliver_once_cli). The
+// red control is the exclusion: if the builder copied the standings-refresh function by mistake, the not-contains
+// arm goes red — the delivery unit is proven to run the DELIVERY, not the observation fold.
+test fn the_pair_delivery_timer_starts_the_delivery_unit_on_its_cadence() -> Bool {
+  let spec = live_spec()
+  let unit = deployment_pair_delivery_unit_name(names: spec.names) as String
+  let timer = systemd_unit_file_lines(file: live_deploy_belt_pair_delivery_timer_unit_file(spec: spec))
+  any(timer, l => l == join(["Unit=", unit], ""))
+    && any(timer, l => l == join(["OnUnitInactiveSec=", systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) as String], ""))
+    && any(timer, l => l == "WantedBy=timers.target")
+}
+
+test fn the_pair_delivery_oneshot_runs_the_wet_delivery_cli() -> Bool {
+  let spec = live_spec()
+  let unit = systemd_unit_file_lines(file: live_deploy_belt_pair_delivery_unit_file(spec: spec, base_root: "/opt/gunbc/releases" as NonEmptyStr))
+  any(unit, l => string_contains(s: l, pattern: "--entry dag/gunbc/live_deploy/release_pair_deliver_cli.dag"))
+    && any(unit, l => string_contains(s: l, pattern: "--function release_pair_deliver_once_cli"))
+    && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_BASE_ROOT=/opt/gunbc/releases"))
+    && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_SERVE_UNIT=gunbc-"))
+    && any(unit, l => string_contains(s: l, pattern: "GUNBC_PAIR_DELIVER_REPO_ROOT="))
+    && !any(unit, l => string_contains(s: l, pattern: "belt_observe_once_cli"))
+    && !any(unit, l => starts_with(s: l, prefix: "WantedBy="))
+}
+
 // The staleness horizon is DERIVED from the real refresh cycle, not a copied multiple of the cadence
 // (it is 2 * belt_standings_refresh_backstop + belt_tick_run_bound), and it lives in the Second
 // carrier, so widening the fold's bound raises the tolerated staleness with it — a horizon shorter
@@ -967,7 +993,7 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps,
           instance_root: ir, repo_root: rr, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: base.directories, role_singletons: base.role_singletons,
             service: DeploymentServiceConfig {
@@ -976,7 +1002,7 @@ fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
               instance_root: ir, repo_root: rr,
               service_user: wrong_user,
               service_uid: uid, listen: l,
-              serve_cpu_limit: cpu, serve_wall_limit: wall,
+              serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }
@@ -1006,7 +1032,7 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps,
           instance_root: ir, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories, role_singletons: live_spec().role_singletons,
             service: DeploymentServiceConfig {
@@ -1014,7 +1040,7 @@ fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
               provider_state_root: ps,
               instance_root: ir, repo_root: wrong_root,
               service_user: su, service_uid: uid, listen: l,
-              serve_cpu_limit: cpu, serve_wall_limit: wall,
+              serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }
@@ -1049,7 +1075,7 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_entry: se, serve_function: f,
           provider_state_root: ps,
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
-          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd } =>
           DeploymentSpec {
             target: t, steps: s, names: n, instance_id: iid, approval_broker: ab, directories: live_spec().directories, role_singletons: live_spec().role_singletons,
             service: DeploymentServiceConfig {
@@ -1058,7 +1084,7 @@ fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
               instance_root: ir, repo_root: rr,
               service_user: su, service_uid: uid,
               listen: HttpServerListenConfig { host: l.host, port: wrong_port },
-              serve_cpu_limit: cpu, serve_wall_limit: wall,
+              serve_cpu_limit: cpu, serve_wall_limit: wall, pair_delivery: pd,
             }
           }
       }

@@ -1,0 +1,80 @@
+module test.claim.product.p4261_interface_registry_witness
+
+import std.types { List, NonEmptyStr }
+import extdeps.electronic_component.types { designator_of, designator_eq }
+import product.p4261.e1_position_receipts { e1_position_receipts }
+import extdeps.nvidia.ranger_tray { ranger_management_cables }
+import product.p4261.interface_registry { HighSpeedData, ManagementControl, KindUnknown, InterfaceKind }
+import product.p4261.interface_registry {
+  BoardInterface,
+  p4261_e1_interfaces,
+  names_without_rows,
+  rows_not_admitted,
+  is_established,
+  is_in_external_integration,
+  admitted,
+  unread,
+}
+
+// The connectors and switch packages the atlas admitted, as read from its receipts on 2026-11-16: a fixed
+// list, so a registry row dropped or a name mistyped shows as an identity, not as a count.
+data atlas_interface_names: List<NonEmptyStr> = ["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9", "J10", "J11", "J12", "J13", "J14", "J16", "J20", "J22", "J24", "J30", "J31", "J68", "J190", "J540", "J620", "J740", "J741", "S1", "S2"]
+
+fn rows_for(name: NonEmptyStr) -> List<BoardInterface> {
+  filter(p4261_e1_interfaces, i => designator_eq(a: i.designator, b: designator_of(verbatim: name)))
+}
+
+// Every listed name is a position the atlas admitted, every one has a row, and no row names a position the
+// atlas did not admit.
+test fn the_registry_and_the_atlas_name_the_same_interfaces() -> Bool {
+  all(atlas_interface_names, n => admitted(receipts: e1_position_receipts, d: designator_of(verbatim: n)))
+    && count(names_without_rows(rows: p4261_e1_interfaces, names: atlas_interface_names)) == 0
+    && count(rows_not_admitted(rows: p4261_e1_interfaces, receipts: e1_position_receipts)) == 0
+    && all(p4261_e1_interfaces, i => any(atlas_interface_names, n => designator_eq(a: i.designator, b: designator_of(verbatim: n))))
+}
+
+// Each connector has one row and each switch package one row per pole.
+test fn each_connector_has_one_row_and_each_switch_two() -> Bool {
+  all(atlas_interface_names, n => count(rows_for(name: n)) == (if n == "S1" || n == "S2" { 2 } else { 1 }))
+}
+
+// Only what a reading or a run showed is established: the input, the two module receptacles and the JTAG
+// header. Every switch pole stays a candidate.
+test fn only_four_functions_are_established() -> Bool {
+  count(filter(p4261_e1_interfaces, i => is_established(i: i))) == 4
+    && all(["J20", "J3", "J4", "J68"], n => all(rows_for(name: n), i => is_established(i: i)))
+    && all(rows_for(name: "S1"), i => !is_established(i: i))
+    && all(rows_for(name: "J24"), i => !is_established(i: i))
+}
+
+fn kind_is(k: InterfaceKind, want: InterfaceKind) -> Bool {
+  match k {
+    HighSpeedData => match want { HighSpeedData => true, _ => false }
+    ManagementControl => match want { ManagementControl => true, _ => false }
+    KindUnknown => match want { KindUnknown => true, _ => false }
+    _ => false
+  }
+}
+
+// The Ranger tray's four cables give their sockets a function in that integration, not one established on a
+// board held here: one row per cable, J7 and J8 high-speed links, J13 and J14 management links. J5 and J6
+// are known only from a K1's chassis and have no function or kind on an E1.
+test fn the_ranger_cable_map_holds_in_its_integration_only() -> Bool {
+  count(filter(p4261_e1_interfaces, i => is_in_external_integration(i: i))) == 4
+    && all(["J7", "J8", "J13", "J14"], n => all(rows_for(name: n), i => is_in_external_integration(i: i) && !is_established(i: i)))
+    && all(["J5", "J6"], n => all(rows_for(name: n), i => !is_in_external_integration(i: i) && !is_established(i: i)))
+    && count(ranger_management_cables) == 4
+    && all(ranger_management_cables, c => count(filter(p4261_e1_interfaces, i => is_in_external_integration(i: i) && designator_eq(a: i.designator, b: c.baseboard.designator))) == 1)
+    && all(["J7", "J8"], n => all(rows_for(name: n), i => kind_is(k: i.kind, want: HighSpeedData)))
+    && all(["J13", "J14"], n => all(rows_for(name: n), i => kind_is(k: i.kind, want: ManagementControl)))
+    && all(["J5", "J6"], n => all(rows_for(name: n), i => kind_is(k: i.kind, want: KindUnknown)))
+}
+
+// The joins discriminate: a registry missing J24 reports it, and a row for a position the atlas never
+// admitted is reported.
+test fn a_lost_or_invented_interface_is_reported() -> Bool {
+  let without_j24 = filter(p4261_e1_interfaces, i => !designator_eq(a: i.designator, b: designator_of(verbatim: "J24")))
+  let lost = names_without_rows(rows: without_j24, names: atlas_interface_names)
+  let invented = rows_not_admitted(rows: concat(p4261_e1_interfaces, [unread(name: "J999")]), receipts: e1_position_receipts)
+  count(lost) == 1 && any(lost, n => n == "J24") && count(invented) == 1
+}

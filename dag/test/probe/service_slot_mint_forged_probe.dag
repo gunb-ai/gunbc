@@ -23,7 +23,12 @@ import extdeps.github.actions_jit_runner { EncodedJitConfig }
 import product.host_identity { HostIdentity }
 import gunbc.host.host_control_route { HostControlStanding }
 import gunbc.runner.runner_host_unit_slot { HostUnitSlotBound, HostUnitSlot, CurrentServicePopulation, CurrentServicePopulationStanding }
-import gunbc.fleet.host_credential_custody_converge { HostCredentialCustodyRow, CustodyPathMetadata }
+import gunbc.fleet.host_credential_custody_roster {
+  HostCredentialCustodyRow
+}
+import gunbc.fleet.host_credential_custody_converge {
+  CustodyPathMetadata
+}
 import gunbc.runner.runner_service_slot_controller {
   ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated, ServiceSlotPass, ServiceSlotAdmission, ServiceSlotKeyStanding, ServiceSlotIsolation,
   ServiceSlotRebuild, ListenerRun, ServiceSlotPassId, ServiceSlotPassIdReading, service_slot_mint_binding, service_slot_pass_over, service_slot_pass_id_of,

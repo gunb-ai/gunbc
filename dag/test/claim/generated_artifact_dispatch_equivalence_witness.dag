@@ -27,6 +27,8 @@ fn discriminant(a: GeneratedArtifact) -> String =
     HealPublisherWorkflowYamlArtifact => "HealPublisherWorkflowYamlArtifact"
     DriftWatchWorkflowYamlArtifact => "DriftWatchWorkflowYamlArtifact"
     BranchRunGrantBrokerWorkflowYamlArtifact => "BranchRunGrantBrokerWorkflowYamlArtifact"
+    HostedRunnerShadowGateYamlArtifact => "HostedRunnerShadowGateYamlArtifact"
+    ReleaseBinsConsumerCheckScriptArtifact => "ReleaseBinsConsumerCheckScriptArtifact"
     GitignoreArtifact => "GitignoreArtifact"
     GitattributesArtifact => "GitattributesArtifact"
     CargoConfigArtifact => "CargoConfigArtifact"
@@ -64,6 +66,11 @@ fn discriminant(a: GeneratedArtifact) -> String =
     ApproveIosOperationErrorsSwiftArtifact => "ApproveIosOperationErrorsSwiftArtifact"
     ApproveIosEnrolmentMachineTestsSwiftArtifact => "ApproveIosEnrolmentMachineTestsSwiftArtifact"
     ApproveIosOperationErrorsTestsSwiftArtifact => "ApproveIosOperationErrorsTestsSwiftArtifact"
+    RoadmapAuthorityAcceptedScenarioAcceptanceArtifact => "RoadmapAuthorityAcceptedScenarioAcceptanceArtifact"
+    RoadmapAuthoritySupersededScenarioAcceptanceArtifact => "RoadmapAuthoritySupersededScenarioAcceptanceArtifact"
+    RoadmapAuthoritySupersededScenarioRevocationArtifact => "RoadmapAuthoritySupersededScenarioRevocationArtifact"
+    RoadmapAuthoritySupersededScenarioRetiredArtifact => "RoadmapAuthoritySupersededScenarioRetiredArtifact"
+    RoadmapAuthorityAbsentNodeAcceptanceArtifact => "RoadmapAuthorityAbsentNodeAcceptanceArtifact"
   }
 
 fn row_for(a: GeneratedArtifact) -> ProducerRow {

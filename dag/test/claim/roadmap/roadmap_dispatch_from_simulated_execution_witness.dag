@@ -1,0 +1,335 @@
+module test.claim.roadmap.roadmap_dispatch_from_simulated_execution_witness
+
+// The DECLARATION of the dispatch-from-the-simulated-execution units, read against the three carriers
+// it lands in: the roster (gunbc.roadmap.roadmap_authority), the binding
+// (gunbc.roadmap.roadmap_intention_binding) and the decomposition
+// (gunbc.roadmap.roadmap_decomposition). Every unit serves
+// gunbc.plans.planning_consolidation: section 1 is the projection one unit builds and section 6 is the
+// realization home the rest land in. Nothing here executes the work; the rows are the units, and this
+// file is what makes the declaration checkable rather than merely readable.
+//
+// THE RED CONTROL, named the way the units name theirs: A PLANTED BINDING TO A NON-EXISTENT NODE
+// REFUSES -- the node reads as unbound rather than as a row. The same wall one level down: a planted
+// decomposition for a row that does not exist, and a planted waits_on aimed at a stage the parent does
+// not have, refuse by CONSUMING THE CARRIERS' OWN CLAIMS rather than by a re-check written here.
+
+import std.types { Bool, Int, List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.roadmap.roadmap_model { RoadmapEdge }
+import gunbc.roadmap.roadmap_authority { nid, declared_roadmap_nodes, declared_roadmap_edges, RoadmapNode }
+import gunbc.roadmap.roadmap_lineage { lineage_index, lineage_walk_in, LineageRooted }
+import gunbc.roadmap.roadmap_status { line_ticket }
+import gunbc.roadmap.roadmap_intention_binding { nodes_serving, serves, binding_on_a_path }
+import gunbc.roadmap.roadmap_decomposition {
+  decomposition_for, decomposition_has_node, decomposition_dependencies_well_formed,
+  decomposition_waits_on_every_decomposed_parent, dependency_is_well_formed,
+  decomposition, leaf, waits, leaf_days_max, WorkDecomposition, WorkStage, WorkPiece, Leaf, Decision,
+}
+
+fn plan_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan")
+}
+
+// The units, in the order the dependency edges read.
+data units: List<String> = [
+  "roadmap-schedule-leaf-expansion",
+  "roadmap-schedule-list-scheduling",
+  "roadmap-schedule-calendar-binding",
+  "roadmap-claim-names-leaf",
+  "roadmap-leaf-in-flight-set",
+  "roadmap-leaf-realized-duration",
+  "roadmap-schedule-from-now",
+  "roadmap-schedule-bottlenecks-and-offer",
+  "roadmap-spawn-frontier-leaf-grain",
+  "roadmap-dispatch-carries-leaf",
+  "roadmap-typed-handback",
+  "roadmap-work-item-projection",
+  "roadmap-timeline-page",
+  "roadmap-return-to-principal-records-acceptance",
+]
+
+// The four units whose question the operator has RULED (2026-11-18): a claim names its leaf from the first
+// landing, a Split is accepted as any work item is, and a schedule answer may be computed, cached as derived
+// data and recomputed on read -- which also settles the belt taking its spawn input from the offer, as the
+// labelled INTERPRETATION in that ruling. Each ruling is cited where the work is described; nothing sits
+// ahead of these leaves, and no unit in this set carries an open question.
+data ruled_units: List<String> = [
+  "roadmap-schedule-list-scheduling",
+  "roadmap-claim-names-leaf",
+  "roadmap-dispatch-carries-leaf",
+  "roadmap-typed-handback",
+]
+
+fn row_count(id: String) -> Int {
+  count(filter(declared_roadmap_nodes(), n => n.node == nid(s: id)))
+}
+
+fn unit_edges() -> List<RoadmapEdge> {
+  filter(declared_roadmap_edges(), e => any(units, id => e.child == nid(s: id)) && any(units, id => e.parent == nid(s: id)))
+}
+
+fn layer_of(id: String) -> Int {
+  fold(filter(nodes_serving(intention: plan_ref()), b => b.node == nid(s: id)), init: 0 - 1, f: fn(acc, b) { if acc >= 0 { acc } else { b.layer } })
+}
+
+
+// The carrier counts a Decision as one leaf of its own -- the ruling is a day of work. These read the
+// BUILD leaf apart from the ruling, so a unit that carries an open question is still one leaf of work
+// plus the operator's piece, and the day ceiling is read against the work.
+fn is_leaf_piece(p: WorkPiece) -> Bool {
+  match p {
+    Leaf { label, days, evidence } => true
+    _ => false
+  }
+}
+
+fn is_decision_piece(p: WorkPiece) -> Bool {
+  match p {
+    Decision { label, alternatives } => true
+    _ => false
+  }
+}
+
+fn leaf_piece_days(p: WorkPiece) -> Int {
+  match p {
+    Leaf { label, days, evidence } => days
+    _ => 0
+  }
+}
+
+fn decision_alternative_count(p: WorkPiece) -> Int {
+  match p {
+    Decision { label, alternatives } => count(alternatives)
+    _ => 0
+  }
+}
+
+fn stage_leaf_pieces(st: WorkStage) -> Int {
+  count(filter(st.pieces, p => is_leaf_piece(p: p)))
+}
+
+fn stage_decision_pieces(st: WorkStage) -> Int {
+  count(filter(st.pieces, p => is_decision_piece(p: p)))
+}
+
+fn row_leaf_pieces(d: WorkDecomposition) -> Int {
+  fold(d.stages, init: 0, f: fn(acc, s) { acc + stage_leaf_pieces(st: s) })
+}
+
+fn row_decision_pieces(d: WorkDecomposition) -> Int {
+  fold(d.stages, init: 0, f: fn(acc, s) { acc + stage_decision_pieces(st: s) })
+}
+
+fn row_leaf_piece_days(d: WorkDecomposition) -> Int {
+  fold(d.stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + leaf_piece_days(p: p) }) })
+}
+
+fn piece_label(p: WorkPiece) -> String {
+  match p {
+    Leaf { label, days, evidence } => label
+    Decision { label, alternatives } => label
+    Family { label, days, population, owner } => label
+    Join { label } => label
+    Composite { label, stages } => label
+  }
+}
+
+fn row_leaf_labels(node: String) -> List<String> {
+  fold(decomposition_for(node: nid(s: node)), init: [], f: fn(acc, d) {
+    concat(acc, fold(d.stages, init: [], f: fn(a, st) {
+      concat(a, map(filter(st.pieces, p => is_leaf_piece(p: p)), p => piece_label(p: p)))
+    }))
+  })
+}
+
+// ---- THE DECLARATION ----------------------------------------------------------------------------
+
+// EVERY UNIT IS A ROW, EXACTLY ONCE.
+test fn every_unit_is_declared_once() -> Bool {
+  all(units, id => row_count(id: id) == 1)
+}
+
+// AND THE IDENTITY IS MINTED FOR IT: no unit shares an identity with any other row in the roster.
+test fn no_unit_shares_an_identity_with_another_row() -> Bool {
+  all(units, id => all(filter(declared_roadmap_nodes(), n => n.node == nid(s: id)), n =>
+    count(filter(declared_roadmap_nodes(), o => o.identity == n.identity)) == 1))
+}
+
+// EVERY UNIT SERVES PLANNING_CONSOLIDATION, ONCE -- section 1's projection, section 6's realization home.
+test fn every_unit_is_bound_to_the_plan_once() -> Bool {
+  all(units, id => count(filter(nodes_serving(intention: plan_ref()), b => b.node == nid(s: id))) == 1)
+}
+
+// Read the containment chain used by dispatch. An intention binding alone cannot establish it.
+test fn every_unit_reaches_the_root_through_its_factory_parent() -> Bool {
+  let nodes = declared_roadmap_nodes()
+  let index = lineage_index(nodes: nodes)
+  let fuel = count(nodes) + 1
+  all(units, id => match lineage_walk_in(node_id: id, index: index, fuel: fuel) {
+    LineageRooted { ids } => match ids[1] {
+      Present { value: project } => project == "factory"
+      Absent => false
+    }
+    _ => false
+  })
+}
+
+// AND EVERY UNIT IS ON A PATH TO A TERMINAL OF THAT PLAN, so a bound unit cannot dangle off the end of
+// the plan it claims to serve.
+test fn every_unit_reaches_a_terminal_of_the_plan() -> Bool {
+  all(units, id => binding_on_a_path(b: serves(node: id, module_path: "gunbc.plans.planning_consolidation", plan: "planning_consolidation_plan", layer: 0)))
+}
+
+// THE LAYERS ARE THE EDGE DEPTH, the way gunbc.plans.v2_self_host derives its own: a unit sits strictly
+// above every unit it depends on.
+test fn no_unit_sits_at_its_own_dependency_layer() -> Bool {
+  all(unit_edges(), e => layer_of(id: e.parent) >= 0 && layer_of(id: e.child) > layer_of(id: e.parent))
+}
+
+// AND THE TYPED NUMBER IS CHECKED, NOT TRUSTED. Each row's layer is written by hand, the way every other
+// binding row in this file is; what makes it a fact rather than a claim is that the witness recomputes the
+// depth from declared_roadmap_edges and refuses a row that sits anywhere else. Written the way the carrier
+// writes its own graph walk -- a budget, so a planted cycle costs a false verdict rather than the run.
+fn larger(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn edge_depth(id: RoadmapNodeId, budget: Int) -> Int {
+  if budget <= 0 { 0 } else {
+    if any(unit_edges(), e => e.child == id) {
+      1 + fold(filter(unit_edges(), e => e.child == id), init: 0, f: fn(a, e) {
+        larger(a, edge_depth(id: e.parent, budget: budget - 1))
+      })
+    } else { 0 }
+  }
+}
+
+test fn each_unit_sits_at_the_depth_its_edges_give_it() -> Bool {
+  all(units, id => layer_of(id: id) == edge_depth(id: nid(s: id), budget: count(units)))
+}
+
+// EVERY UNIT DECOMPOSES TO ONE LEAF A WORKER TAKES WHOLE -- one PR, and the day count is a simulation
+// input under the leaf rule, never a promise. No ratchet, no count floor.
+test fn each_unit_is_one_leaf_within_the_leaf_rule() -> Bool {
+  all(units, id => all(decomposition_for(node: nid(s: id)), d =>
+    count(d.stages) >= 1
+      && row_leaf_pieces(d: d) == 1
+      && row_leaf_piece_days(d: d) >= 1
+      && row_leaf_piece_days(d: d) <= leaf_days_max))
+}
+
+// EVERY UNIT IS ONE LEAF AND NOTHING ELSE: one stage, one leaf, no question piece. A unit is one PR, and
+// with the operator's 2026-11-18 rulings in place nothing here may keep a question ahead of its work -- a
+// ruling that has been given cannot be re-opened as an open question, and this is the shape a claim is
+// made against.
+test fn every_unit_is_a_single_leaf_stage() -> Bool {
+  all(units, id => all(decomposition_for(node: nid(s: id)), d =>
+    count(d.stages) == 1 && row_leaf_pieces(d: d) == 1 && row_decision_pieces(d: d) == 0))
+}
+
+
+// A RULED QUESTION IS CITED, NOT CARRIED. The operator ruled both of these on 2026-11-18: a claim names
+// its leaf from the first landing, and a Split is accepted as any work item is. So neither row may keep a
+// question piece ahead of its leaf -- a re-opened ruling fails here, and each leaf's own label carries the
+// @ref of the ruling that closed it.
+test fn a_ruled_question_is_cited_and_not_carried() -> Bool {
+  all(ruled_units, id => all(decomposition_for(node: nid(s: id)), d =>
+    row_decision_pieces(d: d) == 0 && row_leaf_pieces(d: d) == 1))
+    && any(row_leaf_labels(node: "roadmap-claim-names-leaf"), l =>
+      contains(s: l, pattern: "@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)"))
+    && any(row_leaf_labels(node: "roadmap-typed-handback"), l =>
+      contains(s: l, pattern: "@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)"))
+}
+
+// THE DEPENDENCY ROWS ARE THE EDGES: every decomposed dependency is waited on, and every waits_on names
+// a stage both sides have.
+test fn every_unit_waits_on_every_decomposed_dependency() -> Bool {
+  all(units, id => all(decomposition_for(node: nid(s: id)), d =>
+    decomposition_waits_on_every_decomposed_parent(d: d) && decomposition_dependencies_well_formed(d: d)))
+}
+
+// THE RETURN_TO ROW WAITS ON THE ATTESTED-ACCEPTANCE ROW, stated as data: it is that row's return_to arm,
+// the edge is carried rather than promised, and both endpoints exist as declared rows -- which is the law
+// an edge to a row this tree cannot see would break. It names the row by NAME, as the endpoint law reads.
+test fn the_return_to_row_waits_on_the_attested_acceptance_row() -> Bool {
+  count(filter(declared_roadmap_edges(), e =>
+      e.child == nid(s: "roadmap-return-to-principal-records-acceptance")
+        && e.parent == nid(s: "roadmap-operator-attested-acceptance"))) == 1
+    && row_count(id: "roadmap-operator-attested-acceptance") == 1
+}
+
+// ---- THE RED CONTROLS -----------------------------------------------------------------------------
+
+// A planted binding to a node that does not exist refuses: the node reads as UNBOUND, and no row of the
+// plan's serving list names it. This is the control the declaration is handed back on.
+test fn a_planted_binding_to_a_node_that_does_not_exist_refuses() -> Bool {
+  !binding_on_a_path(b: serves(node: "roadmap-schedule-a-row-nobody-declared", module_path: "gunbc.plans.planning_consolidation", plan: "planning_consolidation_plan", layer: 0))
+    && count(filter(nodes_serving(intention: plan_ref()), b => b.node == nid(s: "roadmap-schedule-a-row-nobody-declared"))) == 0
+}
+
+// The same wall one level down, by the decomposition carrier's own claim: a row planted for a node that
+// does not exist has no node to name.
+test fn a_planted_decomposition_for_a_row_that_does_not_exist_refuses() -> Bool {
+  !decomposition_has_node(d: decomposition(node: "roadmap-schedule-a-row-nobody-declared", waits_on: [
+  ], stages: [
+    [
+      leaf(label: "planted", days: 1),
+    ],
+  ]))
+}
+
+// And one level further down, the leaf-expansion unit's own control: a planted waits_on aimed at a
+// stage the parent does not have refuses BY CONSUMING THE CARRIER'S EXISTING CLAIM --
+// dependency_is_well_formed is the carrier's check, called here rather than re-written.
+test fn a_planted_waits_on_into_a_stage_that_does_not_exist_refuses() -> Bool {
+  let dependency = "roadmap-schedule-list-scheduling"
+  let planted_row = decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
+    waits(item: dependency, from_stage: 7, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "planted", days: 1),
+    ],
+  ])
+  let the_same_row_at_the_stage_the_parent_has = decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
+    waits(item: dependency, from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "planted", days: 1),
+    ],
+  ])
+  !dependency_is_well_formed(d: planted_row, w: waits(item: dependency, from_stage: 7, into_stage: 0))
+    && dependency_is_well_formed(d: the_same_row_at_the_stage_the_parent_has, w: waits(item: dependency, from_stage: 0, into_stage: 0))
+}
+
+// The projection unit's served row is a CONTRACT: a consumer of the projection is written against its
+// field list, so the field list is declared in the ticket rather than left for the implementation to
+// invent. This reads the unit's own ticket text and refuses when a declared field has dropped out of it
+// -- the shape has to exist in this repository before anything is built against it. No reader is named.
+fn ticket_brief_of(row: RoadmapNode) -> String {
+  let t = line_ticket(item: row.line)
+  match t {
+    Present { value } => value.brief
+    _ => ""
+  }
+}
+
+fn projection_ticket_brief() -> String {
+  let rows = filter(declared_roadmap_nodes(), n => n.node == nid(s: "roadmap-work-item-projection"))
+  fold(rows, init: "", f: fn(acc, n) { if acc == "" { ticket_brief_of(row: n) } else { acc } })
+}
+
+test fn the_projection_row_declares_the_shape_its_readers_are_built_against() -> Bool {
+  let served_fields: List<String> = [
+    "node", "intention", "layer", "item_state",
+    "leaves", "start day", "finish day", "on_critical_path",
+    "in_flight", "assignee", "return_to",
+    "latest_event", "acceptance_evidence",
+    "events", "timestamp", "claimed", "released", "acceptance recorded", "retired", "event log",
+    "read_on", "worker_count", "projection.json", "standings.json"
+  ]
+  let brief = projection_ticket_brief()
+  all(served_fields, fld => contains(s: brief, pattern: fld))
+    && contains(s: brief, pattern: "as an input")
+    && contains(s: brief, pattern: "the decomposition spells it")
+    && contains(s: brief, pattern: "no store")
+}

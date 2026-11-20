@@ -119,7 +119,7 @@ fn broker_state_directory_install_argv(d: ManagedDirectory) -> List<String> {
     mode: managed_directory_permissions(d: d).mode,
     owner: d.owner.name,
     group: d.group_principal.name,
-    path: d.path as String,
+    path: d.path,
   )
 }
 

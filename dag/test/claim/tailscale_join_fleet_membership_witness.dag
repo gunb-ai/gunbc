@@ -1,0 +1,399 @@
+module test.claim.tailscale_join_fleet_membership_witness
+
+// THE WITNESSES FOR "JOINED IS NOT THE SAME AS BEING THE FLEET'S" (2026-11-18).
+//
+// WHAT WAS FIXED. `extdeps.tailscale.join::tailscale_up_join_state_of` decided the join from
+// `BackendState == "Running"` alone, and `gunbc.tailscale_join_converge` mapped that single joined arm to
+// JoinPlanNoop first and unconditionally. A node Running on the tailnet WITHOUT the fleet's tag -- hand-joined
+// under a personal account, or owned by a user -- was therefore reported CONVERGED while it sits outside every
+// grant the fleet's tailnet policy is keyed on. The state is now three-valued at that boundary
+// (extdeps.tailscale.join: WHETHER A HOST IS JOINED -- AND UNDER WHICH IDENTITY carries the ownership model and
+// its upstream citations), and the middle state cannot be a Noop.
+//
+// WHY FIXTURES AND NOT LIVE READS. No live dispatch and no host read is in scope here, so the documents are
+// fixtures under dag/test/fixture. Their SHAPE is upstream's -- `ipnstate.Status` members `BackendState`, `Self`,
+// and `Self.Tags`, the last marked `json:",omitempty"`, which is how upstream spells a node with NO tags
+// (ipn/ipnstate/ipnstate.go). The ken-shaped one carries what the specimen actually reported: Running, MagicDNS
+// suffix tailecbe08.ts.net, DNSName ken.tailecbe08.ts.net., NO tags (operator_host_e2d4b7, read 2026-11-18 by
+// still-fox-404). The identity members of the OTHER documents -- node ID, IPs -- are authored placeholders;
+// nothing here is offered as a read of a live node, and `w_the_hand_joined_fixture_really_carries_no_tag_member`
+// is what keeps the specimen fixture from being quietly re-tagged out of usefulness.
+//
+// WHICH FIXTURES ARE OBSERVATIONS AND WHICH ARE SHAPES. `tailscale_status_hand_joined_no_tags.json` transcribes
+// the ken specimen as read. `tailscale_status_foreign_tag_only.json` is the dusk-1 shape -- a tailnet member that
+// carries a DIFFERENT role's tag, recorded in extdeps.tailscale.acl beside dusk_serving_ip ("It is an untagged
+// member device, so no tag grant reaches it"). The remaining three are authored shapes of states the fleet
+// expects: a node enrolled by the fleet's tagged key, a logged-out node, and a document that cannot answer.
+//
+// THE RED THIS SET EXISTS TO BE. `w_the_specimen_refuses_typed_rather_than_noopping`,
+// `w_noop_has_exactly_one_join_state_that_qualifies`, `w_a_fleet_member_still_noops_without_reading_the_key` and
+// `w_the_refusal_outcome_never_settles_and_says_what_to_do` all go red the moment the fleet-tag check is removed
+// from `tailscale_up_join_state_of`: with the check gone both tagless documents read as plain "joined", the plan
+// arm becomes JoinPlanNoop, and each of those matches fails. That control was run on the branch (the run and its
+// output are recorded in the PR), which is what DESIGN.md asks of a behavior fix: a witness that goes red when
+// the behavior is wrong.
+//
+
+
+import std.logic { Bool }
+import std.algebra { length, string_contains }
+import std.roster_frontier { frontier_rows_well_formed }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { FilePath, String }
+import extdeps.filesystem.filesystem_io
+import extdeps.tailscale.acl { tag_serving }
+import extdeps.package_managers.dpkg { DpkgPackageInstalled }
+import extdeps.tailscale.join {
+  TailscaleJoinState,
+  JoinStateJoinedWithRequiredTag,
+  JoinStateJoinedWithoutRequiredTag,
+  JoinStateNotJoined,
+  JoinStateUnreadable,
+  tailscale_up_join_state_is_joined,
+  tailscale_up_join_state_of,
+  tailscale_self_tags_include,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_enrollment {
+  ci_runner_enrollment_participation,
+  both_participation_enrollment_participation,
+}
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
+import gunbc.tailscale_join_converge {
+  JoinPlanNoop,
+  JoinPlanNotFleetMember,
+  JoinPlanPlaceAndJoin,
+  JoinPlanRefused,
+  JoinRefusedNotFleetMember,
+  TailscaleJoinPlan,
+  tailscale_join_observed_tags_word,
+  tailscale_join_outcome_receipt,
+  tailscale_join_plan,
+  tailscale_join_run_settled,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE FIXTURES, READ FROM DISK. Files rather than pasted strings so the document that decides a converge's
+// arm is one artifact a reviewer can open, diff and reuse -- and so a claim can hold the FIXTURE to its own
+// meaning. A refused read yields the empty document, and every claim below distinguishes "answered" from
+// "could not be read": a witness that passes because its fixture was unreadable is the same silent-success
+// class this whole change is about.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+data fleet_member_fixture_path: FilePath = "dag/test/fixture/tailscale_status_fleet_member.json"
+data hand_joined_fixture_path: FilePath = "dag/test/fixture/tailscale_status_hand_joined_no_tags.json"
+data foreign_tag_fixture_path: FilePath = "dag/test/fixture/tailscale_status_foreign_tag_only.json"
+// The operator's ruling of 2026-11-18 ("C both tags is fine"; operator, in chat to smart-crane-730): the
+// fleet's both_participation hosts (ken, dan/h11-a16) carry tag:ci AND tag:serving, so the converge reaches
+// them over the tailnet AND the serving grants still apply. These two fixtures witness that a node carrying
+// both tags is a fleet member (ci present), while one carrying ONLY serving is not yet (the fleet tag gates
+// membership, not the mere presence of any tag).
+data ci_and_serving_fixture_path: FilePath = "dag/test/fixture/tailscale_status_fleet_member_ci_and_serving.json"
+data serving_only_fixture_path: FilePath = "dag/test/fixture/tailscale_status_serving_tag_only.json"
+data not_joined_fixture_path: FilePath = "dag/test/fixture/tailscale_status_not_joined.json"
+data running_without_self_fixture_path: FilePath = "dag/test/fixture/tailscale_status_running_without_self.json"
+
+fn fixture_text(path: FilePath) -> String {
+  Filesystem.Read(path: path, expect: ExpectSuccess).content
+}
+
+// A document no fixture file is needed for: `Self.Tags` present but NOT a list. Upstream's member is a list of
+// strings, so this is a malformed document, and the case exists to pin the distinction -- a document that cannot
+// be read for tags must not answer "tagless", because "tagless" is the arm that refuses.
+data tags_member_not_a_list_document: String =
+  "{\"Version\":\"fixture\",\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv1\",\"Tags\":\"tag:ci\"}}"
+
+// The state one fixture document yields, at the boundary where it is decided -- the tag asked for is the fleet's
+// own authority, so nothing in these claims hand-waves a tag into existence.
+fn state_of(fixture: FilePath) -> TailscaleJoinState {
+  tailscale_up_join_state_of(status_json: fixture_text(path: fixture), required_tag: tailscale_fleet_node_tag)
+}
+
+// The plan for a document, on an ALLOCATED host. The host has to be srv1's handle because the plan refuses any
+// host with no allocated hostname BEFORE it asks the join question -- an ordering worth knowing: a specimen like
+// ken, in no allocation roster, refuses today for a different reason. The arm added here is for the host that IS
+// enrolled and IS hand-joined, which is the fail-open that was live.
+fn plan_for(document: String, key_usable: Bool) -> TailscaleJoinPlan {
+  tailscale_join_plan(
+    host: operator_host_srv1,
+    join_state: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag),
+    package_state: DpkgPackageInstalled,
+    key_usable: key_usable,
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE THREE STATES, ONE DOCUMENT EACH.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// JOINED AS A FLEET MEMBER: Running AND `Self.Tags` carries tag:ci. The only state a converge may call
+// converged -- and it is REACHED from the document, not assumed from the backend state.
+test fn w_fleet_member_fixture_reads_as_a_fleet_member() -> Bool {
+  let text = fixture_text(path: fleet_member_fixture_path)
+  match state_of(fixture: fleet_member_fixture_path) {
+    JoinStateJoinedWithRequiredTag { self_tags: tags } =>
+      string_contains(s: text, pattern: "\"BackendState\": \"Running\"")
+        && tags.count() == 2
+        && tailscale_up_join_state_is_joined(state: JoinStateJoinedWithRequiredTag { self_tags: tags })
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// JOINED WITH BOTH TAGS IS STILL A FLEET MEMBER -- the operator's ruling of 2026-11-18 ("C both tags is fine";
+// operator, in chat to smart-crane-730). ken and dan (h11-a16) carry tag:ci AND tag:serving, and the converge
+// (#16685's JoinStateJoinedWithRequiredTag, decided by tailscale_self_tags_include on the REQUIRED tag) must
+// read them as fleet members, not as some other identity. Witnessed from the document, not assumed.
+test fn w_a_node_carrying_both_ci_and_serving_is_read_as_a_fleet_member() -> Bool {
+  match state_of(fixture: ci_and_serving_fixture_path) {
+    JoinStateJoinedWithRequiredTag { self_tags: tags } =>
+      tags.count() == 2
+        && tailscale_self_tags_include(tags: tags, tag: tailscale_fleet_node_tag)
+        && tailscale_self_tags_include(tags: tags, tag: ("tag:serving" as NonEmptyStr))
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// SERVING ALONE IS NOT MEMBERSHIP. The fleet tag, not the mere presence of ANY tag, gates the converge. This is
+// the committed RED CONTROL for the arm above: if JoinStateJoinedWithRequiredTag's check were loosened to "any
+// tag present", the serving-only node would land in the WithRequiredTag arm -- which returns false here -- and
+// this witness goes red. Only tag:ci reaches the fleet.
+test fn w_a_node_carrying_only_serving_is_not_yet_a_fleet_member() -> Bool {
+  match state_of(fixture: serving_only_fixture_path) {
+    JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
+      tailscale_self_tags_include(tags: tags, tag: ("tag:serving" as NonEmptyStr))
+        && !tailscale_self_tags_include(tags: tags, tag: tailscale_fleet_node_tag)
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// THE DESIRED TAG SET IS THE FLEET KEY'S ci PLUS A ROLE-DERIVED serving. A both_participation host (#16602's
+// ken, and dan) is desired to carry BOTH tags -- ci so the converge reaches it, serving because its role is
+// inference serving. The set is DERIVED from the participation column of the enrollment row, not a hand-kept
+// per-host table (#16685 deleted such a table twice).
+test fn w_a_both_participation_host_is_desired_to_carry_ci_and_serving() -> Bool {
+  tailscale_desired_tags_for_participation(participation: both_participation_enrollment_participation)
+    == [tailscale_fleet_node_tag, tag_serving]
+}
+
+// SERVING IS ROLE-GATED, NOT STAMPED ON EVERYONE. The committed RED CONTROL for the derivation above: a
+// ci-only role (a ci-runner server or a hetzner guest) is desired to carry ONLY the fleet key's ci tag. Were
+// serving stamped on every fleet host, this list would grow a second element and the equality would fail.
+test fn w_a_ci_only_host_is_desired_to_carry_ci_and_not_serving() -> Bool {
+  tailscale_desired_tags_for_participation(participation: ci_runner_enrollment_participation)
+    == [tailscale_fleet_node_tag]
+}
+
+// JOINED, BUT NOT A FLEET MEMBER -- the ken specimen. Running, resolvable, and `Self.Tags` ABSENT, which is how
+// upstream's `omitempty` spells a node with no tags. Note the last conjunct, which names the fail-open:
+// `tailscale_up_join_state_is_joined` still answers true here, because that question ("does the daemon report a
+// member at all?") is not the question membership is decided on. A Noop keyed on the old two-valued state was
+// answering THAT question, and this is why.
+test fn w_hand_joined_specimen_reads_as_joined_but_not_a_fleet_member() -> Bool {
+  match state_of(fixture: hand_joined_fixture_path) {
+    // No `backend == "Running"` conjunct here: the arm IS that fact. Restating it would test the type
+    // rather than the reading (@ref(gunbc.design_argument::fail_closed): making the wrong state unwritable is
+    // stronger than catching it).
+    JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
+      tags.count() == 0
+        && tailscale_up_join_state_is_joined(state: JoinStateJoinedWithoutRequiredTag { self_tags: tags })
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// THE TAG IS THE FLEET'S TAG, NOT "ANY TAG". A node carrying tag:dashboard is another role's member. Without
+// this witness the check could silently degrade to "`Self.Tags` is non-empty" and stay green.
+test fn w_a_foreign_tag_is_not_the_fleet_tag() -> Bool {
+  match state_of(fixture: foreign_tag_fixture_path) {
+    JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
+      tags.count() == 1 && tags.any(tag => tag == "tag:dashboard")
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// NOT JOINED STAYS NOT JOINED. NeedsLogin and no `Self` at all: the widening must not turn a logged-out node into
+// a membership question, because there is no identity to ask about.
+test fn w_not_joined_fixture_reads_as_not_joined() -> Bool {
+  match state_of(fixture: not_joined_fixture_path) {
+    JoinStateNotJoined { state: backend } =>
+      backend == "NeedsLogin"
+        && !tailscale_up_join_state_is_joined(state: JoinStateNotJoined { state: backend })
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => false
+    JoinStateUnreadable { cause: _ } => false
+  }
+}
+
+// A DOCUMENT THAT CANNOT ANSWER IS NOT THE TAGLESS ANSWER. Running with no `Self`: membership cannot be decided,
+// so this refuses rather than reading as "joined, no tags" -- which would route it into the very arm this change
+// adds, on evidence the document does not give. Fail-closed means the failure arm refuses; it does not widen into
+// whichever arm is nearest (@ref(gunbc.design_argument::fail_closed)).
+test fn w_running_without_self_refuses_rather_than_reading_tagless() -> Bool {
+  match state_of(fixture: running_without_self_fixture_path) {
+    JoinStateUnreadable { cause: cause } => cause != ""
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+  }
+}
+
+// THE SAME DISCIPLINE FOR A MALFORMED TAGS MEMBER: `Tags` present but not a list is a document to refuse on, not
+// one to read as untagged.
+test fn w_a_tags_member_that_is_not_a_list_refuses() -> Bool {
+  match tailscale_up_join_state_of(
+    status_json: tags_member_not_a_list_document,
+    required_tag: tailscale_fleet_node_tag,
+  ) {
+    JoinStateUnreadable { cause: cause } => cause != ""
+    JoinStateJoinedWithRequiredTag { self_tags: _ } => false
+    JoinStateJoinedWithoutRequiredTag { self_tags: _ } => false
+    JoinStateNotJoined { state: _ } => false
+  }
+}
+
+// THE FIXTURE HOLDS ITSELF TO ITS OWN MEANING: the specimen document says it is Running and carries NO `Tags`
+// member. If it is ever re-tagged, the witnesses above stop being about a hand-joined node, and this says so.
+test fn w_the_hand_joined_fixture_really_carries_no_tag_member() -> Bool {
+  let text = fixture_text(path: hand_joined_fixture_path)
+  text != ""
+    && string_contains(s: text, pattern: "\"BackendState\": \"Running\"")
+    && !string_contains(s: text, pattern: "Tags")
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE PLAN: Noop IS ONLY FOR A FLEET MEMBER.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A FLEET MEMBER STILL NOOPS, AND STILL WITHOUT CONSULTING THE KEY. srv1 and srv2 are recorded as carrying
+// tag:ci (gunbc.tailscale_fleet_auth_key, the note on why tag:ci was chosen), so their routine converge keeps the
+// behavior it had. The key is declared UNUSABLE here on purpose: if the Noop stopped being first, this goes red.
+test fn w_a_fleet_member_still_noops_without_reading_the_key() -> Bool {
+  match plan_for(document: fixture_text(path: fleet_member_fixture_path), key_usable: false) {
+    JoinPlanNoop { host: host, tailnet_name: _, reason: reason } =>
+      host == operator_host_srv1 && string_contains(s: reason, pattern: "fleet tag")
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+  }
+}
+
+// THE FIX ITSELF: the specimen's document, on an enrolled host, is a TYPED REFUSAL -- not a Noop, not a re-join,
+// and not the generic `JoinPlanRefused` string bucket, which is where an input the converge could go and get
+// belongs. This is a state of the world the converge has no authority over, and it names the tag and what the
+// node presented instead.
+test fn w_the_specimen_refuses_typed_rather_than_noopping() -> Bool {
+  match plan_for(document: fixture_text(path: hand_joined_fixture_path), key_usable: true) {
+    JoinPlanNotFleetMember { host: host, tailnet_name: _, required_tag: required, observed_tags: observed } =>
+      host == operator_host_srv1 && required == tailscale_fleet_node_tag && observed.count() == 0
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+  }
+}
+
+// NO OTHER JOINED STATE REACHES Noop EITHER: the foreign-tag document refuses as a non-member, the logged-out
+// document still reaches the join arm, and the unreadable document still refuses. One claim because it is ONE
+// property: among the join states, Noop has exactly one qualifier.
+test fn w_noop_has_exactly_one_join_state_that_qualifies() -> Bool {
+  match plan_for(document: fixture_text(path: foreign_tag_fixture_path), key_usable: true) {
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: required, observed_tags: observed } =>
+      required == tailscale_fleet_node_tag
+        && observed.count() == 1
+        && match plan_for(document: fixture_text(path: not_joined_fixture_path), key_usable: true) {
+          JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => true
+          JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+          JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+          JoinPlanRefused { host: _, cause: _ } => false
+        }
+        && match plan_for(document: fixture_text(path: running_without_self_fixture_path), key_usable: true) {
+          JoinPlanRefused { host: _, cause: cause } => cause != ""
+          JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+          JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+          JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+        }
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+  }
+}
+
+// THE OUTCOME CANNOT SETTLE THE JOB, AND THE RECEIPT SAYS WHAT THE OPERATOR MUST DO. The outcome is built from
+// the plan arm itself, so the fields the operator reads are the ones the refusal carried: the tag the policy keys
+// on, that the node presents NOTHING, that the key was never used, and the remedy as an operator act. A
+// `JoinConvergedNoop` line -- what the old code printed for this host -- is what the last two conjuncts refuse to
+// let this receipt ever say.
+test fn w_the_refusal_outcome_never_settles_and_says_what_to_do() -> Bool {
+  match plan_for(document: fixture_text(path: hand_joined_fixture_path), key_usable: true) {
+    JoinPlanNotFleetMember { host: host, tailnet_name: tailnet_name, required_tag: required, observed_tags: observed } => {
+      let outcome = JoinRefusedNotFleetMember {
+        host: host,
+        tailnet_name: tailnet_name,
+        required_tag: required,
+        observed_tags: observed,
+      }
+      let line = tailscale_join_outcome_receipt(outcome: outcome)
+      !tailscale_join_run_settled(outcome: outcome)
+        && string_contains(s: line, pattern: "outcome=refused_not_fleet_member")
+        && string_contains(s: line, pattern: "fleet_tag=tag:ci")
+        && string_contains(s: line, pattern: "presents_tags=none")
+        && string_contains(s: line, pattern: "key=never_used")
+        && string_contains(s: line, pattern: "force-reauth")
+        && string_contains(s: line, pattern: "never re-authenticates")
+        && !string_contains(s: line, pattern: "outcome=noop")
+        && !string_contains(s: line, pattern: "outcome=converged")
+    }
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+  }
+}
+
+// THE WORD FOR WHAT THE NODE PRESENTS. `none` and a list are different facts to whoever acts on the receipt -- a
+// node carrying no tags is the hand-joined case, a node carrying another role's tag is a different problem -- and
+// an empty list printed as nothing is how a log line stops telling them apart.
+test fn w_the_observed_tags_word_distinguishes_none_from_a_list() -> Bool {
+  tailscale_join_observed_tags_word(tags: []) == "none"
+    && tailscale_join_observed_tags_word(tags: ["tag:ci"]) == "tag:ci"
+    && tailscale_join_observed_tags_word(tags: ["tag:ci", "tag:dashboard"]) == "tag:ci,tag:dashboard"
+}
+
+// THE OTHER ARMS ARE UNHURT. A not-joined host with a usable key still plans the place-and-join; with no usable
+// key it still refuses ON THE KEY, not on the tag. The widening added an arm; it did not move the others, and
+// the two refusals stay different facts.
+test fn w_the_join_and_key_refusal_arms_are_unchanged() -> Bool {
+  let document = fixture_text(path: not_joined_fixture_path)
+  match plan_for(document: document, key_usable: true) {
+    JoinPlanPlaceAndJoin { host: host, tailnet_name: _, hostname: _, package_action: _ } =>
+      host == operator_host_srv1
+        && match plan_for(document: document, key_usable: false) {
+          JoinPlanRefused { host: _, cause: cause } => string_contains(s: cause, pattern: "key")
+          JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+          JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+          JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+        }
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+  }
+}
+
+// The honest-consumption classification (design_argument::consumption) for the role-derived desired-tag
+// functions: a well-formed frontier naming the later device-tags route as their consumer -- classified, not
+// dangling. This consumes gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_later_consumer_frontier_rows
+// so the classification is itself reached, exactly as gunbc.arm_ci_seller_census's frontier is consumed.
+test fn w_a_the_desired_tag_derivation_is_classified_as_a_named_later_consumer_not_dangling() -> Bool {
+  let rows = tailscale_fleet_auth_key_later_consumer_frontier_rows
+  frontier_rows_well_formed(rows: rows) && (length(rows) == 2)
+}

@@ -59,7 +59,7 @@ type CatalogProviderKeyEncoding
   | CargoFingerprintEncoding
 
 type CatalogProviderKey
-  = CatalogOpaqueStringKey { key: NonEmptyStr }
+  = CatalogOpaqueStringKey { key: ContentHash }
   | SccacheInternalHash { digest: ContentHash }
   | CatalogCasContentDigest { digest: ContentHash }
   | CargoFingerprint { digest: ContentHash }

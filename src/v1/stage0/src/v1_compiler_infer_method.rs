@@ -1648,6 +1648,20 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: list_of_type_variable("data_decl_type_fact_elem".to_string()),
     }));
+                __m.insert("extdeps_subject_ref_facts".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "pool_roots".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
+        source: Rc::new(ContainerSource::Named {
+        name: "List".to_string(),
+    }),
+        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }),
+    })]),
+        returns: list_of_type_variable("extdeps_subject_ref_fact_elem".to_string()),
+    }));
                 __m.insert("fact_cardinality_decl_facts".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: list_of_type_variable("fact_cardinality_decl_fact_elem".to_string()),
@@ -1750,6 +1764,24 @@ pub fn bare_call_non_declaration_binding(name: String) -> NonDeclarationBinding 
 
 pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
+}
+
+pub fn builtin_positionally_variadic() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            let mut __m = HashMap::new();
+            __m.insert("concat".to_string(), true);
+            Rc::new(__m)
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+}
+
+pub fn builtin_accepts_surplus_positional(name: String) -> bool {
+    match v1_rt::map_get(&builtin_positionally_variadic(), name.clone()) {
+        Some(v) => v.clone(),
+        std::option::Option::None => false,
+    }
 }
 
 pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {

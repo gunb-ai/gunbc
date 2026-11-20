@@ -1764,7 +1764,7 @@ fn fleet_converge_apply_commissioning_bound_wet(run: ActionsRunBinding, plan_run
                   plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt), plan_artifact_hash: verified.bundle as String,
                   observed_host: actual_host as String, prior_generation: plan_receipt.prior_generation, planned_generation: plan_receipt.planned_generation,
                   expected_revision_admitted: expected_revision_admitted,
-                  terminal: match applied { ExitSuccess => FullyApplied ExitFailure { code: _, reason: _ } => PartiallyApplied { refused_axis_count: 1, detail: "commissioning executor completion not established; recover the same bundle" } },
+                  terminal: match applied { ExitSuccess => FullyApplied ExitFailure { code: _, reason: _ } => PartiallyApplied { refused_axis_count: 1, owed: Absent, detail: "commissioning executor completion not established; recover the same bundle" } },
                   locked_apply_exit_code: match applied { ExitSuccess => 0 ExitFailure { code, reason: _ } => code },
                 }
                 match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {

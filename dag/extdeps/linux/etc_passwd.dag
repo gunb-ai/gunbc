@@ -1,0 +1,117 @@
+module extdeps.linux.etc_passwd
+
+import std.types { NonEmptyStr, String, Int, List }
+import std.optional { Present, Absent }
+import std.algebra { trim, skip }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE LOCAL PASSWORD DATABASE, /etc/passwd, as passwd(5) defines it: one line per account,
+// `login:password:UID:GID:GECOS:directory:shell` — seven colon-separated fields, the sixth the
+// home directory and the second the (now always `x`) password placeholder. Only the file is read;
+// an account served by another NSS source (LDAP, sssd) is not in it, so an account this file cannot
+// name is unresolved, never nameless and never uid-less.
+//
+// THIS is the single model of a passwd row for the whole corpus. Reading a home, a uid, or a gid out
+// of an /etc/passwd line by re-splitting it on ":" and indexing by position is a second, divergent
+// copy of this grammar (a field-count guard, a comment rule, a trim) that drifts the moment passwd(5)
+// or the reading is refined; the field NAMES below are the one place those positions are named.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man5/passwd.5.html" as NonEmptyStr
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.etc_passwd",
+      decl_name: "EtcPasswdEntry",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// The seven passwd(5) fields, by their documented names. `passwd` is the password placeholder field
+// (the second), `dir` the login/home directory (the sixth), `shell` the login shell (the seventh).
+// A field the line cannot supply makes the whole line an entry-less row, so a partial parse never
+// hands a caller a home or uid invented from the wrong field.
+type EtcPasswdEntry {
+  name: NonEmptyStr
+  passwd: String
+  uid: Int
+  gid: Int
+  gecos: String
+  dir: String
+  shell: String
+}
+
+// One line is an entry only if it splits into exactly seven fields with a non-empty login and two
+// non-negative integers for uid/gid; anything else names no account and so resolves no home, uid, or
+// gid (it is skipped by etc_passwd_entries, not treated as a zero-valued account).
+fn etc_passwd_entry(line: String) -> EtcPasswdEntry? {
+  let fields = split(s: line, delimiter: ":")
+  if count(fields) != 7 { none } else {
+    match first(fields) {
+      Absent => none
+      Present { value: name } =>
+        if name == "" { none } else {
+          match first(fields |> skip(n: 2)) {
+            Absent => none
+            Present { value: u } => match parse_int(s: trim(s: u)) {
+              Absent => none
+              Present { value: uid } => match first(fields |> skip(n: 3)) {
+                Absent => none
+                Present { value: g } => match parse_int(s: trim(s: g)) {
+                  Absent => none
+                  Present { value: gid } =>
+                    if uid < 0 || gid < 0 { none } else {
+                      Present { value: EtcPasswdEntry {
+                        name: name as NonEmptyStr,
+                        passwd: etc_passwd_field(fields: fields, n: 1),
+                        uid: uid,
+                        gid: gid,
+                        gecos: etc_passwd_field(fields: fields, n: 4),
+                        dir: etc_passwd_field(fields: fields, n: 5),
+                        shell: etc_passwd_field(fields: fields, n: 6),
+                      } }
+                    }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn etc_passwd_field(fields: List<String>, n: Int) -> String {
+  match first(fields |> skip(n: n)) { Absent => "", Present { value: f } => f }
+}
+
+// Comment and blank lines are not entries; any other line that is not an entry is skipped too, since
+// a malformed line names no account and so can resolve no home, uid, or gid.
+fn etc_passwd_entries(text: String) -> List<EtcPasswdEntry> {
+  flat_map(split(s: text, delimiter: "\n"), l => if starts_with(s: trim(s: l), prefix: "#") { [] as List<EtcPasswdEntry> } else {
+    match etc_passwd_entry(line: l) { Absent => [] as List<EtcPasswdEntry>, Present { value: e } => [e] }
+  })
+}
+
+fn etc_passwd_entry_named(entries: List<EtcPasswdEntry>, name: NonEmptyStr) -> EtcPasswdEntry? {
+  first(entries |> filter(e => e.name as String == name as String))
+}
+
+// The login home directory (passwd(5)'s sixth field) of the named account, or none if no entry names
+// it or the file cannot be parsed into that account. The caller distinguishes "no such account" from
+// "the account is present but its home is empty" by inspecting the entry directly.
+fn etc_passwd_home_of(entries: List<EtcPasswdEntry>, name: NonEmptyStr) -> String? {
+  match etc_passwd_entry_named(entries: entries, name: name) {
+    Absent => none
+    Present { value: e } => Present { value: e.dir }
+  }
+}

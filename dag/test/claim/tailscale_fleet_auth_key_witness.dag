@@ -2,7 +2,9 @@ module test.claim.tailscale_fleet_auth_key_witness
 
 // THE WITNESSES FOR THE FLEET TAILNET JOIN (node adhoc-977efa46-965, 2026-11-15). What they hold the model
 // to: the secret is ONE pinned version of one named secret; the key is the operator's decided shape
-// (reusable, pre-approved, exactly one tag, a 90-day window ending 2027-02-13); the key material NEVER
+// (reusable, NO approval attribute -- the tailnet's device approval is off, recorded as the typed receipt
+// tailscale_fleet_device_approval_enabled -- exactly one tag, a 30-day
+// window ending 2026-12-19); the key material NEVER
 // appears in an argument vector; the custody row is root-only on disk; and each member this work ADDED to
 // a shared ledger is present EXACTLY ONCE. The ledgers are deliberately NOT asserted by number (smart-
 // crane-730, 2026-11-16): a count copied from the current tree is a change detector that goes red on any
@@ -20,11 +22,13 @@ import extdeps.tailscale.acl { tag_ci }
 import extdeps.units.iso8601_calendar {
   Iso8601CivilDate,
   iso8601_civil_date,
+  iso8601_civil_from_days,
   iso8601_days_from_civil,
 }
 import extdeps.tailscale.join {
   AuthKeyReusable,
   AuthKeyPreApproved,
+  AuthKeyApprovalRequired,
   AuthKeyPolicyAccepted,
   tailscale_auth_key_expiry_window_is_upstream,
   tailscale_auth_key_expiry_verdict,
@@ -50,6 +54,7 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_expected_project,
   tailscale_fleet_node_tag,
   tailscale_fleet_auth_key_policy,
+  tailscale_fleet_device_approval_enabled,
   tailscale_fleet_auth_key_admitted,
   tailscale_fleet_auth_key_console_observed_expiry,
   tailscale_fleet_auth_key_expiry_days,
@@ -61,8 +66,11 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_file,
 }
 import gunbc.fleet.host_credential_custody_converge {
-  host_custody_credential_roster,
   host_custody_credential_wire,
+}
+
+import gunbc.fleet.host_credential_custody_roster {
+  host_custody_credential_roster,
   host_credential_custody_row,
   TailscaleFleetAuthKey,
   CustodyFileOwnerRead,
@@ -110,7 +118,7 @@ test fn w_secret_is_the_named_pinned_version() -> Bool {
   (tailscale_fleet_auth_key_secret_ref.secret as String)
     == (tailscale_fleet_auth_key_secret_id as String)
     && (tailscale_fleet_auth_key_secret_id as String) == "tailscale-fleet-auth-key"
-    && (tailscale_fleet_auth_key_secret_ref.version as String) == "1"
+    && (tailscale_fleet_auth_key_secret_ref.version as String) == "2"
     && (tailscale_fleet_auth_key_secret_ref.project as String)
       == (tailscale_fleet_auth_key_expected_project as String)
 }
@@ -124,23 +132,27 @@ test fn w_pin_is_not_latest() -> Bool {
 
 // ── THE KEY: the operator's decided shape, exactly ───────────────────────────────────────────────────
 
-test fn w_key_is_reusable_preapproved_single_tag_90_days() -> Bool {
-  match tailscale_fleet_auth_key_policy {
-    policy =>
-      match policy.kind {
-        AuthKeyReusable =>
-          match policy.approval {
-            AuthKeyPreApproved =>
-              policy.key_tags.count() == 1
-                && second_count(policy.expires_after) == 90 * seconds_per_day()
-                && tailscale_auth_key_expiry_window_is_upstream(
-                  expires_after: policy.expires_after,
-                )
-            _ => false
-          }
-        _ => false
-      }
-  }
+// The absent approval is JUSTIFIED BY the typed tailnet fact, and the two are asserted TOGETHER so they
+// cannot drift: if tailscale_fleet_device_approval_enabled ever reads true, this claim refuses until the
+// key's requires_approval is re-observed and the approval field filled in.
+test fn w_key_is_reusable_approval_absent_single_tag_30_days() -> Bool {
+  tailscale_fleet_device_approval_enabled == false
+    && match tailscale_fleet_auth_key_policy {
+      policy =>
+        match policy.kind {
+          AuthKeyReusable =>
+            match policy.approval {
+              Absent =>
+                policy.key_tags.count() == 1
+                  && second_count(policy.expires_after) == 30 * seconds_per_day()
+                  && tailscale_auth_key_expiry_window_is_upstream(
+                    expires_after: policy.expires_after,
+                  )
+              _ => false
+            }
+          _ => false
+        }
+    }
 }
 
 test fn w_key_carries_exactly_the_ci_tag() -> Bool {
@@ -160,6 +172,7 @@ test fn w_key_is_admitted_by_the_upstream_gate() -> Bool {
 test fn w_key_wires_are_the_upstream_words() -> Bool {
   tailscale_auth_key_kind_wire(kind: AuthKeyReusable) == "reusable"
     && tailscale_auth_key_approval_wire(approval: AuthKeyPreApproved) == "pre-approved"
+    && tailscale_auth_key_approval_wire(approval: AuthKeyApprovalRequired) == "approval-required"
 }
 
 // ── THE EXPIRY: ONE DERIVED FACT, PINNED TO THE POLICY AND TO THE CONSOLE OBSERVATION ────────────────
@@ -182,7 +195,7 @@ test fn w_expiry_window_is_derived_and_agrees_with_console() -> Bool {
       Present { value: generated } =>
         generated.year == 2026
           && generated.month == 11
-          && generated.day == 15
+          && generated.day == 19
           && match tailscale_fleet_auth_key_expires_on() {
             Absent => false
             Present { value: expires } =>
@@ -205,21 +218,72 @@ test fn w_expiry_window_is_derived_and_agrees_with_console() -> Bool {
     }
 }
 
-// The day itself still joins (the expiry day is the LAST valid day); the day after refuses. This is the
-// arm the join consults before it puts a key in front of `up`, so a stale pin fails as a refusal naming
-// the date rather than as a hang.
+// THE EXPIRY DECISION IS A FUNCTION OF A SUPPLIED 'today' AND THE SUPPLIED EXPIRY, AND THIS STATES THE
+// BOUNDARY OVER SUPPLIED DATES ALONE. The seam is production's own —
+// gunbc.extdeps.tailscale.join tailscale_auth_key_expiry_verdict(expires_on, today), which
+// gunbc.tailscale_fleet_auth_key tailscale_fleet_auth_key_usable_on consults at the production boundary;
+// there is no test-only copy of the comparison to diverge from. Both dates here are SUPPLIED BY THE
+// WITNESS: the expiry it asks about is deliberately NOT the minted key's expiry, so a verdict that read
+// the pin instead of its argument could not answer this, and the two days around it are the calendar
+// authority's own day-count round trip (one day, then half a year past), so nothing transcribes a
+// neighbour of a date the calendar moves — which is what aged this control when the key was re-minted.
+// The day itself still joins (the expiry day is the LAST valid day); the day after refuses, naming the
+// expiry it expired on. This is the arm the join consults before it puts a key in front of `up`, so a
+// stale pin fails as a refusal naming the date rather than as a hang.
 test fn w_expiry_boundary_is_inclusive_then_refusing() -> Bool {
-  tailscale_fleet_auth_key_usable_on(today: tailscale_fleet_auth_key_expires_on())
-    && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
-      year: 2027,
-      month: 2,
-      day: 14,
-    ))
-    && !tailscale_fleet_auth_key_usable_on(today: iso8601_civil_date(
-      year: 2025,
-      month: 1,
-      day: 1,
-    ))
+  let expiry_day_count = iso8601_days_from_civil(y: 2026, m: 12, d: 31)
+  let expiry = iso8601_civil_from_days(days: expiry_day_count)
+  match tailscale_auth_key_expiry_verdict(expires_on: expiry, today: expiry) {
+    AuthKeyStillValid =>
+      match tailscale_auth_key_expiry_verdict(
+        expires_on: expiry,
+        today: iso8601_civil_from_days(days: expiry_day_count + 1),
+      ) {
+        AuthKeyExpiredOn { on: refused } =>
+          refused == expiry
+            && match tailscale_auth_key_expiry_verdict(
+              expires_on: expiry,
+              today: iso8601_civil_from_days(days: expiry_day_count + 183),
+            ) {
+              AuthKeyExpiredOn { on: also_refused } => also_refused == expiry
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// ONE INHABITANCE CONTROL TIES THAT BOUNDARY TO THE REAL ROUTE: the boundary above is arithmetic on
+// supplied dates, so a control is still owed that the route the join walks reads THE EXPIRY THE MODULE
+// ACTUALLY DERIVES. gunbc.tailscale_fleet_auth_key tailscale_fleet_auth_key_usable_on is what
+// tailscale_up_command consults before it writes a key file, and it must join on the derived expiry day
+// and refuse on its successor — the successor READ FROM THE ROSTER OF DAYS (the calendar authority's
+// day count plus one), not a date transcribed from a console, so a re-mint moves the boundary here too
+// instead of ageing the claim. And with no 'today' supplied at all it must refuse: that is the proof the
+// seam takes its date as INPUT and never reads a wall clock, which is the whole reason a re-mint or a
+// long-running belt can no longer turn this red.
+test fn w_the_real_route_reads_the_real_expiry() -> Bool {
+  let expires = tailscale_fleet_auth_key_expires_on()
+  // The successor day is READ FROM THE ROSTER OF DAYS, not transcribed: the calendar authority's day
+  // count plus one, so a re-mint moves the boundary this control checks instead of ageing the claim.
+  let expires_successor = match expires {
+    Present { value: day } => Present {
+      value: iso8601_civil_from_days(days: iso8601_days_from_civil(y: day.year, m: day.month, d: day.day) + 1),
+    }
+    Absent => Absent
+  }
+  match expires {
+    Absent => false
+    Present { value: day } =>
+      match expires_successor {
+        Absent => false
+        Present { value: successor } =>
+          tailscale_fleet_auth_key_usable_on(today: Present { value: day })
+            && !tailscale_fleet_auth_key_usable_on(today: Present { value: successor })
+            && !tailscale_fleet_auth_key_usable_on(today: Absent)
+      }
+  }
 }
 
 // THE RUNG THE JOIN ACTUALLY STANDS ON (review 95863): Iso8601CivilDate is not sole_constructor -- the
@@ -395,7 +459,7 @@ test fn w_new_accessor_row_is_rostered_exactly_once() -> Bool {
     ) == 1
     && (tailscale_fleet_auth_key_accessor_row.target.secret as String)
       == (tailscale_fleet_auth_key_secret_ref.secret as String)
-    && (tailscale_fleet_auth_key_accessor_row.target.version as String) == "1"
+    && (tailscale_fleet_auth_key_accessor_row.target.version as String) == "2"
 }
 
 // The three argv admissions this work asked for are ALIVE: the sealed argv_command refuses any program
