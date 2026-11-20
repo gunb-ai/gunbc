@@ -652,7 +652,8 @@ type ConvergeAction =
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
   // Put the serving account's user manager into its lingering state, immediately before the slice install:
   // the slice's cgroup only persists under a live user manager (an empty user slice under a non-lingering
-  // account is torn down before anything can read it). Ranked just below the slice, above the account it acts on.
+  // account is torn down before anything can read it). Its rank sits immediately before the slice's and
+  // after the account leg, so the account it enables lingering for already exists.
   | EnsureUserManagerLinger { account: String }
 
 // The decision IS one of these; there is no Bool tag to keep in step with the fields (review 95922 #2 /
