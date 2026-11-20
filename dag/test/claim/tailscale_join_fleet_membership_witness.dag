@@ -71,6 +71,12 @@ import gunbc.output_policy { ExpectSuccess }
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.package_managers.apt {
+  apt_third_party_repo_source_line,
+  apt_third_party_repo_install_script,
+  apt_third_party_keyring_fingerprint_ok,
+}
+import extdeps.tailscale.apt_repo { tailscale_apt_repo_noble, tailscale_packages }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
   JoinPlanNotFleetMember,
@@ -94,6 +100,7 @@ import gunbc.tailscale_join_converge {
   tailscale_join_outcome_receipt,
   tailscale_join_plan,
   tailscale_join_run_settled,
+  tailscale_join_repo_install_script,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -620,4 +627,61 @@ test fn w_the_join_and_key_refusal_arms_are_unchanged() -> Bool {
 test fn w_a_the_desired_tag_derivation_is_classified_as_a_named_later_consumer_not_dangling() -> Bool {
   let rows = tailscale_fleet_auth_key_later_consumer_frontier_rows
   frontier_rows_well_formed(rows: rows) && (length(rows) == 2)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────
+// THE tailscale APT REPOSITORY ROUTE (PR #16779): a wrong key must refuse; the source line must be apt-shaped;
+// the join must run the ONE route, not a copy. A happy-path live srv3/srv4 run can only ever show the key
+// MATCHING, so the security property -- a key whose fingerprint differs from the row's refuses before the
+// keyring is trusted -- lives only in these pure claims.
+// ──────────────────────────────────────────────────────────────────────────────────────────
+
+// A gpg `--show-keys --with-colons` sample carrying one primary-key `fpr` field. This is the text the route
+// greps; the shape (pub/fpr/uid colon lines) mirrors gpg's machine output.
+fn gpg_colons_with_fingerprint(fp: String) -> String {
+  join(
+    [
+      "pub:-:4096:1:0B4423A0D19062A6D4E4F5D2C1B0A9E8F7D6C5B4:1700000000:::::::::::\n",
+      "fpr:::::::::",
+      fp,
+      ":\n",
+      "uid:-::::::::Tailscale <pkg@tailscale.com>:::::::\n",
+    ],
+    "",
+  )
+}
+
+// (a) THE RED CONTROL. The route's check passes for a key carrying the row's pinned fingerprint and FAILS for a
+// key whose fingerprint differs -- so the route's `|| exit 1` refuses, and (under `set -e` the check line
+// precedes the sources tee) the bad key is never written as `signed-by=`, i.e. never trusted. Without this the
+// only thing that could reveal a wrong pin is a compromised-host field incident.
+test fn w_a_wrong_key_fingerprint_refuses_the_repo_route() -> Bool {
+  let row = tailscale_apt_repo_noble(arch: "amd64")
+  let pinned = row.keyring_fingerprint.value
+  let right_key = apt_third_party_keyring_fingerprint_ok(
+    show_keys_colons: gpg_colons_with_fingerprint(fp: pinned as String),
+    pinned: pinned,
+  )
+  let wrong_key = apt_third_party_keyring_fingerprint_ok(
+    show_keys_colons: gpg_colons_with_fingerprint(fp: "1111111111111111111111111111111111111111"),
+    pinned: pinned,
+  )
+  right_key
+    && !wrong_key
+}
+
+// (b) THE SOURCE LINE for the tailscale row is exactly the apt shape every vendor documents: signed-by at the
+// pinned keyring path, the ARCH FROM THE INPUT (proving arch is the host's, not a pinned constant), the noble
+// suite, the main component, the published repo base.
+test fn w_tailscale_repo_source_line_is_apt_shaped() -> Bool {
+  apt_third_party_repo_source_line(repo: tailscale_apt_repo_noble(arch: "arm64"))
+    == "deb [arch=arm64 signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main"
+}
+
+// (c) INHABITANCE: the join install leg runs THE ONE general route for the tailscale row at the host's arch --
+// byte-for-byte apt_third_party_repo_install_script's own output, not a re-rolled copy. If the leg drifts from
+// the route, this goes red.
+test fn w_the_join_runs_the_route_not_a_copy() -> Bool {
+  tailscale_join_repo_install_script(arch: "amd64")
+    == apt_third_party_repo_install_script(repo: tailscale_apt_repo_noble(arch: "amd64"), packages: tailscale_packages)
 }
