@@ -15,6 +15,10 @@ import extdeps.transports.rest { RestAnswered, RestRefused, RestResult }
 import gunbc.repository { gunbc_repository }
 import gunbc.actions_run_binding {
   actions_variable_trimmed,
+  actions_variable_read,
+  ActionsVariablePresent,
+  ActionsVariableAbsent,
+  fleet_converge_expected_host_env_name,
   observe_actions_run_binding,
   ActionsRunBinding,
   ActionsRunBindingObservation,
@@ -23,6 +27,8 @@ import gunbc.actions_run_binding {
   rlm_expected_revision_env_name,
 }
 import gunbc.running_release_identity { release_revision_text_valid }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch_label, RunnerArchKnown, RunnerArchUnknown }
 import gunbc.live_deploy.apply_receipt { rlm_plan_artifact_hash_env_name }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.fleet.fleet_converge_receipt {
@@ -166,6 +172,38 @@ fn resolve_plan_revision() -> ProcessExit {
       }
     }
     refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: refused)], ""))
+  }
+}
+
+// THE EXECUTOR RUNNER ARCHITECTURE, published as the `plan-revision` job's `arch` output. This is the
+// queue-time read that lets the build and shared jobs derive their CPU-architecture runner label from
+// the model instead of the old hard-coded arm64 -- runs-on is decided before any job's steps run, so a
+// model value must be published by the first job (plan-revision) for the needs-consumers to interpolate.
+// It reads the dispatch's executor host (FLEET_CONVERGE_EXPECTED_HOST), derives its arch through the
+// single authority gunbc.fleet.machine_board fleet_converge_runner_arch_label, and writes `arch=<label>`
+// to GITHUB_OUTPUT. A host whose board establishes no architecture makes the step FAIL -- the plan then
+// has no arch output and the job never falls back to a default arm64. Run as
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function resolve_executor_arch`
+fn resolve_executor_arch() -> ProcessExit {
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent => exit_failure(reason: "fleet_converge_plan_revision: FLEET_CONVERGE_EXPECTED_HOST is unset; the arch step needs the dispatch's executor host, never an inferred one")
+    ActionsVariablePresent { value: host_text } =>
+      if host_text == "" {
+        exit_failure(reason: "fleet_converge_plan_revision: FLEET_CONVERGE_EXPECTED_HOST is empty; the dispatch names no executor host to read an architecture from")
+      } else {
+        match fleet_converge_runner_arch_label(host: host_text as HostIdentity) {
+          RunnerArchUnknown => exit_failure(reason: join(["fleet_converge_plan_revision: the executor host ", host_text, " has no board-established architecture; refusing to default its runner arch to arm64 (see gunbc.fleet.machine_board fleet_converge_runner_arch_label)"], ""))
+          RunnerArchKnown { label } => {
+            let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
+            if path == "" {
+              exit_failure(reason: "fleet_converge_plan_revision: GITHUB_OUTPUT is unset; this entry runs only in a fleet-converge job")
+            } else {
+              let w = Filesystem.Write(path: path, content: join(["arch=", label, "\n"], ""))
+              if w.success { ExitSuccess } else { exit_failure(reason: join(["fleet_converge_plan_revision: could not write the arch output: ", w.error], "")) }
+            }
+          }
+        }
+      }
   }
 }
 

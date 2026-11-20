@@ -37,3 +37,16 @@ data gunbc_ci_runner_spec_dissolution_trigger: DissolutionCondition = unbound_di
 fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
+
+// THE CI BUILD POOL'S OWN CPU ARCHITECTURE LABEL, read from the model -- the pool is not arm64 by fiat.
+// The fleet-converge build job compares this to a host-bound run's executor arch (gunbc.fleet.machine_board
+// fleet_converge_runner_arch_label, published by the plan-revision job as `arch`): on the pool when they
+// agree (srv1-srv4 arm64 builds keep the fast pool), on the executor host when they differ (an x86 executor
+// such as ken gets bins built for its own arch). Absent when the pool host has no surveyed primary CPU.
+fn gunbc_ci_pool_runner_arch_label() -> String? {
+  match compute_host_primary_cpu(host: gunbc_ci_fleet_offer.supply.physical) {
+    PrimaryCpuMeasured { cpu } => Present { value: runner_arch_label(arch: cpu_facts_architecture(cpu: cpu)) }
+    PrimaryCpuAbsentFromSurvey { host: _ } => Absent
+    PrimaryCpuCensusUnread { host: _ } => Absent
+  }
+}
