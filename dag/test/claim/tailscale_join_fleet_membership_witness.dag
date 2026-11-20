@@ -73,8 +73,11 @@ import gunbc.tailscale_join_converge {
   JoinRefusedNotFleetMember,
   JoinObsInstalled,
   JoinObsInstall,
-  JoinObsUndecidable,
+  JoinObsRefused,
   TailscaleJoinObservation,
+  StatusParsed,
+  StatusBinaryAbsent,
+  StatusUnreadable,
   tailscale_join_observation_of,
   TailscaleJoinPackageAction,
   JoinPackageInstall,
@@ -137,12 +140,14 @@ fn plan_for(document: String, key_usable: Bool) -> TailscaleJoinPlan {
   )
 }
 
-// THE OBSERVATION SUM + ITS GUARD (the fix for srv4, run 44643376146, and the review-96824 regression).
-// tailscale_join_plan takes a single TailscaleJoinObservation sum: JoinObsInstall / JoinObsUndecidable /
+// THE OBSERVATION SUM + ITS GUARDS (the fix for srv4, run 44643376146, and reviews 96824 + 96828).
+// tailscale_join_plan takes a single TailscaleJoinObservation sum: JoinObsInstall / JoinObsRefused /
 // JoinObsInstalled{join_state}. w_package_decides_before_the_join_state exercises the plan arms;
-// w_non_apt_joined_host_is_not_reinstalled witnesses tailscale_join_observation_of -- the builder that decides
-// whether a host dpkg cannot see is absent (install) or running under an existing identity (installed, so Noop
-// / NotFleetMember). The destructive action -- `tailscale up --force-reauth` -- is authorized ONLY for JoinObsInstall.
+// w_install_requires_binary_absent_or_positive_not_joined witnesses tailscale_join_observation_of -- the builder.
+// The destructive `tailscale up --force-reauth` is authorized ONLY for JoinObsInstall, which the builder emits
+// only when the status is 127 (binary absent) or positively NotJoined. A host dpkg cannot see but which IS joined
+// stays JoinObsInstalled (Noop / NotFleetMember); an UNREADABLE status (not 127) REFUSES -- it does not prove
+// "not joined" (review 96828).
 fn plan_installs(p: TailscaleJoinPlan) -> Bool {
   match p {
     JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action } =>
@@ -166,7 +171,7 @@ fn obs_is_install(o: TailscaleJoinObservation) -> Bool {
   match o {
     JoinObsInstall => true
     JoinObsInstalled { join_state: _ } => false
-    JoinObsUndecidable { reason: _ } => false
+    JoinObsRefused { cause: _ } => false
   }
 }
 
@@ -174,13 +179,13 @@ fn obs_is_installed(o: TailscaleJoinObservation) -> Bool {
   match o {
     JoinObsInstalled { join_state: _ } => true
     JoinObsInstall => false
-    JoinObsUndecidable { reason: _ } => false
+    JoinObsRefused { cause: _ } => false
   }
 }
 
-fn obs_is_undecidable(o: TailscaleJoinObservation) -> Bool {
+fn obs_is_refused(o: TailscaleJoinObservation) -> Bool {
   match o {
-    JoinObsUndecidable { reason: _ } => true
+    JoinObsRefused { cause: cause } => cause != ""
     JoinObsInstalled { join_state: _ } => false
     JoinObsInstall => false
   }
@@ -192,9 +197,9 @@ test fn w_package_decides_before_the_join_state() -> Bool {
     observation: JoinObsInstall,
     key_usable: true,
   )
-  let undecidable = tailscale_join_plan(
+  let refused = tailscale_join_plan(
     host: operator_host_srv1,
-    observation: JoinObsUndecidable { reason: "dpkg itself failed" },
+    observation: JoinObsRefused { cause: "dpkg could not answer whether tailscale is installed" },
     key_usable: true,
   )
   let installed_unreadable = tailscale_join_plan(
@@ -203,39 +208,50 @@ test fn w_package_decides_before_the_join_state() -> Bool {
     key_usable: true,
   )
   plan_installs(install)
-    && plan_refused(undecidable)
+    && plan_refused(refused)
     && plan_refused(installed_unreadable)
 }
 
-// The regression guard (review 96824): a host whose tailscale dpkg cannot see but which IS joined must NEVER be
-// sent to install+force-reauth (which would replace an operator-chosen identity). The builder keeps such a host
-// on the JoinObsInstalled path so the plan reaches its Noop / NotFleetMember arm. Only a not-joined host installs.
-test fn w_non_apt_joined_host_is_not_reinstalled() -> Bool {
+// The guard (reviews 96824 + 96828). Install (and its destructive `tailscale up --force-reauth`) is authorized
+// ONLY on a binary-absent (127) or a positive NotJoined reading. A host dpkg cannot see but which IS joined stays
+// JoinObsInstalled (so the plan keeps Noop / NotFleetMember and never overwrites an operator identity), and an
+// UNREADABLE status that is not 127 refuses -- it is not evidence of "not joined".
+test fn w_install_requires_binary_absent_or_positive_not_joined() -> Bool {
   let unknown_tagged = tailscale_join_observation_of(
     package: DpkgPackageUnknown,
-    status: JoinStateJoinedWithRequiredTag { self_tags: ["tag:ci"] },
+    status: StatusParsed { state: JoinStateJoinedWithRequiredTag { self_tags: ["tag:ci"] } },
   )
   let not_installed_notag = tailscale_join_observation_of(
     package: DpkgPackageNotInstalled { status: "" },
-    status: JoinStateJoinedWithoutRequiredTag { self_tags: [] },
+    status: StatusParsed { state: JoinStateJoinedWithoutRequiredTag { self_tags: [] } },
   )
-  let unknown_fresh_unreadable = tailscale_join_observation_of(
+  let unknown_binary_absent = tailscale_join_observation_of(
     package: DpkgPackageUnknown,
-    status: JoinStateUnreadable { cause: "binary absent, status leg failed" },
+    status: StatusBinaryAbsent,
   )
   let not_installed_not_joined = tailscale_join_observation_of(
     package: DpkgPackageNotInstalled { status: "deinstall ok config-files" },
-    status: JoinStateNotJoined { state: "BackendState: NeedsLogin" },
+    status: StatusParsed { state: JoinStateNotJoined { state: "BackendState: NeedsLogin" } },
+  )
+  let unknown_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: StatusUnreadable { cause: "status leg exit=1 (daemon unreachable)" },
+  )
+  let not_installed_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "" },
+    status: StatusUnreadable { cause: "status leg refused" },
   )
   let broken = tailscale_join_observation_of(
     package: DpkgQueryUndecidable { reason: "dpkg itself failed" },
-    status: JoinStateUnreadable { cause: "ignored" },
+    status: StatusParsed { state: JoinStateNotJoined { state: "ignored" } },
   )
   obs_is_installed(unknown_tagged)
     && obs_is_installed(not_installed_notag)
-    && obs_is_install(unknown_fresh_unreadable)
+    && obs_is_install(unknown_binary_absent)
     && obs_is_install(not_installed_not_joined)
-    && obs_is_undecidable(broken)
+    && obs_is_refused(unknown_unreadable)
+    && obs_is_refused(not_installed_unreadable)
+    && obs_is_refused(broken)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────

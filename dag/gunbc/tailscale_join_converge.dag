@@ -240,17 +240,21 @@ fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
 
 // THE STATUS READ, from the host itself. The argv row is machine_name's, not a fork: same binary, same
 // document, and this module reads a different member of it (extdeps.tailscale.join).
-fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleJoinState {
+fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleStatusReading {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: tailscale_status_json_command())) {
-    TypedArgvExecRefused { reason: reason } => JoinStateUnreadable { cause: reason }
+    TypedArgvExecRefused { reason: reason } => StatusUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
-      if !r.success {
-        // A non-zero `status` is not "not joined". Tailscale exits non-zero when the daemon is not reachable
-        // at all, which is a host in a state this converge has no model for; installing a package and joining
-        // is not the response to not understanding the host.
-        JoinStateUnreadable { cause: concat("status leg exit=", to_string(r.exit_code)) }
+      if r.exit_code == tailscale_command_not_found_exit {
+        // The shell could not find the `tailscale` program (127): the binary is absent. This is the readable
+        // fact that authorizes an install -- NOT a generic unreadable status.
+        StatusBinaryAbsent
+      } else if !r.success {
+        // A non-zero `status` that is NOT 127 is not "not joined": the daemon is unreachable or wedged, a host
+        // in a state this converge has no model for. Refuse; do not install a package and re-join over a host
+        // we cannot read (gunbc.design_argument::fail_closed).
+        StatusUnreadable { cause: concat("status leg exit=", to_string(r.exit_code)) }
       } else {
-        tailscale_up_join_state_of(status_json: trim(s: r.stdout), required_tag: tailscale_fleet_node_tag)
+        StatusParsed { state: tailscale_up_join_state_of(status_json: trim(s: r.stdout), required_tag: tailscale_fleet_node_tag) }
       }
   }
 }
@@ -300,35 +304,71 @@ type TailscaleJoinPackageAction = JoinPackageInstall | JoinPackageAlreadyInstall
 type TailscaleJoinObservation
   = JoinObsInstalled { join_state: TailscaleJoinState }
   | JoinObsInstall
-  | JoinObsUndecidable { reason: String }
+  | JoinObsRefused { cause: String }
+
+// The shell's 127 convention: the command was not found. When `tailscale status` exits 127 the PROGRAM was
+// not found -- the binary is absent. That is a READABLE fact about the host, distinct from an unreadable status
+// (a live-but-unreachable/wedged daemon, a refused leg, undecodable output), which stays a refusal. Only
+// binary-absent, or a status that positively says not-joined, authorizes the destructive install+force-reauth
+// (gunbc.design_argument::fail_closed: do not read "not joined" out of an unreadable status).
+data tailscale_command_not_found_exit: Int = 127
+
+// What the status leg actually returned, before the package is folded in. StatusBinaryAbsent is the 127
+// command-not-found case (binary absent -> install); StatusUnreadable is every OTHER failure (refused, non-zero
+// non-127, undecodable) and NEVER authorizes an install -- it refuses, as it did before this route was reordered.
+type TailscaleStatusReading
+  = StatusParsed { state: TailscaleJoinState }
+  | StatusBinaryAbsent
+  | StatusUnreadable { cause: String }
 
 // Build the observation from the two RAW reads. dpkg having no record of an apt package (NotInstalled/Unknown)
-// does NOT prove the binary is absent: tailscale can be running from a static/snap install, or a purged apt
-// record with a live daemon. So those reads do NOT authorize an install on their own -- the status is consulted,
-// and only a host that is NOT joined (NotJoined / Unreadable) installs. A host that IS joined -- with or without
-// the fleet tag -- becomes JoinObsInstalled so the plan keeps its Noop / NotFleetMember arm and NEVER re-runs
-// `tailscale up --force-reauth` over an operator-chosen identity (gunbc.design_argument::fail_closed: no
-// plausible output -- "dpkg can't see it, so it is absent" -- may authorize a destructive action). Undecidable
-// refuses. This is a pure function of the two reads, so it is witnessed directly.
+// does NOT prove the binary is absent: tailscale can run from a static/snap install, or a purged apt record can
+// leave a live daemon. So the package read NEVER authorizes an install on its own. Install is authorized ONLY by
+// a readable signal that the binary is genuinely absent (status exit 127 -> StatusBinaryAbsent) or that the host
+// is positively NOT joined (StatusParsed NotJoined). A host that IS joined -- with or without the fleet tag --
+// becomes JoinObsInstalled so the plan keeps its Noop / NotFleetMember arm and never re-runs
+// `tailscale up --force-reauth` over an operator-chosen identity. And a status that is merely UNREADABLE (a
+// wedged/unreachable daemon, a refused leg, undecodable output) REFUSES -- it does not establish "not joined"
+// (gunbc.design_argument::fail_closed: do not read "not joined" out of an unreadable status to authorize a
+// destructive action). Pure over the two reads, so it is witnessed directly.
 fn tailscale_join_observation_of(
   package: DpkgInstalledState,
-  status: TailscaleJoinState,
+  status: TailscaleStatusReading,
 ) -> TailscaleJoinObservation {
   match package {
-    DpkgPackageInstalled => JoinObsInstalled { join_state: status }
+    DpkgQueryUndecidable { reason: reason } =>
+      JoinObsRefused { cause: concat("dpkg could not answer whether tailscale is installed: ", reason) }
+    // dpkg says the apt package IS installed: trust that, and let the parsed join state decide. A 127 or an
+    // unreadable status here contradicts dpkg rather than authorizing a reinstall, so it refuses.
+    DpkgPackageInstalled => match status {
+      StatusParsed { state: st } => JoinObsInstalled { join_state: st }
+      StatusBinaryAbsent =>
+        JoinObsRefused { cause: "dpkg reports tailscale installed but `tailscale` was not found (127); refusing to reinstall over a contradictory read" }
+      StatusUnreadable { cause: cause } =>
+        JoinObsRefused { cause: concat("dpkg reports tailscale installed but its status is unreadable: ", cause) }
+    }
+    // dpkg has no usable installed record (positive not-installed, or unknown). The STATUS decides: only a typed
+    // binary-absent or a positive not-joined installs; joined hosts and unreadable statuses do not.
     DpkgPackageNotInstalled { status: _ } => match status {
-      JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
-      JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
-      JoinStateNotJoined { state: _ } => JoinObsInstall
-      JoinStateUnreadable { cause: _ } => JoinObsInstall
+      StatusParsed { state: st } => match st {
+        JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: st }
+        JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: st }
+        JoinStateNotJoined { state: _ } => JoinObsInstall
+        JoinStateUnreadable { cause: cause } => JoinObsRefused { cause: concat("status unreadable on a host dpkg cannot see: ", cause) }
+      }
+      StatusBinaryAbsent => JoinObsInstall
+      StatusUnreadable { cause: cause } => JoinObsRefused { cause: concat("status unreadable: ", cause) }
     }
     DpkgPackageUnknown => match status {
-      JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
-      JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
-      JoinStateNotJoined { state: _ } => JoinObsInstall
-      JoinStateUnreadable { cause: _ } => JoinObsInstall
+      StatusParsed { state: st } => match st {
+        JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: st }
+        JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: st }
+        JoinStateNotJoined { state: _ } => JoinObsInstall
+        JoinStateUnreadable { cause: cause } => JoinObsRefused { cause: concat("status unreadable on a host dpkg cannot see: ", cause) }
+      }
+      StatusBinaryAbsent => JoinObsInstall
+      StatusUnreadable { cause: cause } => JoinObsRefused { cause: concat("status unreadable: ", cause) }
     }
-    DpkgQueryUndecidable { reason: reason } => JoinObsUndecidable { reason: reason }
   }
 }
 
@@ -391,8 +431,7 @@ fn tailscale_join_plan(
             // package is missing and no install is authorized
             // (extdeps.package_managers.dpkg: "Undecidable is never read as absent, because absent
             // authorizes an install and nothing was established").
-            JoinObsUndecidable { reason: reason } =>
-              JoinPlanRefused { host: host, cause: concat("package state undecidable: ", reason) }
+            JoinObsRefused { cause: cause } => JoinPlanRefused { host: host, cause: cause }
             // INSTALLED: the join state came WITH the observation, so it is always here -- there is no Absent
             // arm to reach, because Installed-without-a-state has no constructor.
             JoinObsInstalled { join_state: js } => match js {
