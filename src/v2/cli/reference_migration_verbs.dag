@@ -1,12 +1,21 @@
 module v2.cli.reference_migration_verbs
 
-// THE CLI ROUTE FOR `v2.workflow.reference_migration`: two verbs, one route, no second surface.
+// THE ROUTE SHAPE FOR `v2.workflow.reference_migration`: two verbs, one route, no second surface.
 //
 //   <binary> plan-reference-migration  --source-root <dir> [--source-root <dir>]... --rules <path>
 //   <binary> apply-reference-migration --source-root <dir> [--source-root <dir>]... --rules <path>
 //
-// WHY A VERB, AND WHY NOT A DRIVER SOMEBODY RUNS BY HAND. The plan and the apply are compiled code, so
-// they only really run inside a program that has already BOUND the source roots — and the program that
+// AT THIS HEAD THE VERBS ARE NOT WIRED INTO `v2.cli.compile_cli`: adding them to the door's closure made
+// two modules refuse to compile in policy units the main door never emitted them into (`extdeps.uri_validation`,
+// E0282, the fold-accumulator placeholder class fixed on the F lane; `extdeps.network.mac`, E0369/E0308,
+// the UInt8 machine-width limit its ruling names). The wiring and its lane cases are their own PR, to be
+// restored once F lands. The cutover runs now, through the seed interpreter: a `gunbc run --entry` driver
+// (session-local, untracked) calls the bound entry points over the same enumerated population, in chunks.
+// That driver takes its paths from `reference_migration_bound_paths`, so it carries no hand-kept list
+// either; it exists only while the door route is blocked.
+// The shape below is why the verbs, not a hand-run script, remain the destination: the plan and the apply
+// are compiled code, so they only really run inside a program that has already BOUND the source roots —
+// and the program that
 // binds them is this CLI. The alternative was a driver `.dag` holding the population list, the rule
 // table and a report path: a second surface over the same machinery, covered by no check, whose
 // population is a hand-kept list that goes stale the day a file is added, and which is dead code the

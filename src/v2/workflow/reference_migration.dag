@@ -149,21 +149,30 @@ import std.unicode.types { unicode_scalar_utf8_octet_count }
 // 24,360 B, and nineteen regions over 12 KB (seventeen at this head). The population this surface is
 // built for already crosses the uncertified line, so the limit is not hypothetical.
 //
-// TRIGGER, for the cutover and not for this PR: its NATIVE plan run must complete over
-// src/v2/workflow/floor_cost_debt.dag's 29 KB region and report the time. The interpreter is not the
-// route that will run this — the cutover runs the emitted verbs over the real population — so if the
-// native run is still superlinear on that file, the cutover fixes the cost before it runs, and does not
-// certify a migration over a population it could not plan.
+// TRIGGER, for the cutover and not for this PR: its plan run must complete over
+// src/v2/workflow/floor_cost_debt.dag's 29 KB region and report the time. The route that runs this today
+// is the seed-interpreter driver, chunked — the native door route is unwired per the block below — so the
+// cost is measured on that route: if the run is superlinear on that file, the cutover fixes the cost
+// before it runs, and does not certify a migration over a population it could not plan. A file with no
+// citation token is skipped by the pre-filter, and which case applied is reported.
 //
-// THE NATIVE ROUTE NOW EXISTS: `v2.cli.reference_migration_verbs` emits `plan-reference-migration` and
-// `apply-reference-migration` over an explicit source-root population, and it is the only consumer of
-// this module — the marker-to-marker rules had no executing route before it, so every rename since PR 2
-// was a rename nothing had run. Rules and resolutions are RUN INPUT read from one file the verb is given
-// with `--rules`, parsed by `reference_migration_rules_parse` here: a rule is consumed by exactly one
-// migration, so tree data would be a ledger of spent renames, stale the moment apply runs. The verbs are
-// walked in CI by `v1_compiler.cli_run.native_lane_runner` `walk_reference_migration_controls`, over a
-// three-module fixture and never the population. THE TRIGGER ABOVE STILL STANDS: the cutover measures its
-// own native run, including that 29 KB region, and fixes the cost shape before it certifies anything.
+// THE VERBS EXIST, THE DOOR WIRING DOES NOT (yet): `v2.cli.reference_migration_verbs` spells
+// `plan-reference-migration` and `apply-reference-migration` over an explicit source-root population,
+// and it is the only importer of this module — the marker-to-marker rules had no executing route before
+// it, so every rename since PR 2 was a rename nothing had run. Rules and resolutions are RUN INPUT read
+// from one file the verb is given with `--rules`, parsed by `reference_migration_rules_parse` here: a
+// rule is consumed by exactly one migration, so tree data would be a ledger of spent renames, stale the
+// moment apply runs. THE WIRING INTO `v2.cli.compile_cli` is UNWIRED at this head: adding these verbs to
+// the door's closure pulled two modules into policy units the main door never emitted them into, where
+// they refuse — `extdeps.uri_validation` with E0282 (the `|acc: _` fold-accumulator placeholder class,
+// fixed on the F lane whose tip binds the fold accumulator through the root verdict; the class is filed
+// there, not here) and `extdeps.network.mac` with E0369/E0308 (the known UInt8 machine-width limit,
+// gunbc.design_ruling::machine_width_composition_has_an_intersection_carrier — not a new filing). The
+// cutover therefore runs through the seed interpreter: `gunbc run --entry` over a driver that calls
+// `reference_migration_plan_bound` / `reference_migration_apply_bound` with
+// `migration_ownership_from_registry()`, the entry points PR 2's handoff names, the population supplied
+// in chunks. The verbs module stays (its claims exercise these entry points); the wiring and its lane
+// cases return as their own PR once F lands.
 
 import std.content_hash { sha256_hex_of_text }
 import std.decl_ref { DeclarationRef, declaration_ref_display_key }
