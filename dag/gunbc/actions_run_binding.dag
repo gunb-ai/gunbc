@@ -168,6 +168,23 @@ data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HO
 // refuses as a precondition, before any drain or mask actuation, and readback stays an edge read.
 data fleet_converge_subject_host_env_name: String = "FLEET_CONVERGE_SUBJECT_HOST"
 
+// WHICH MODE THE DISPATCH NAMED, bound as an env name for any step that must decide per-mode. The
+// split gate no longer reads it -- the gate reads the RULE (fleet_converge_subject_rule_env_name below),
+// because the two split refusals are per-mode rules, not one rule for every mode that ever names a subject,
+// and per-mode rules belong on the facts row that declares them
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts, field subject_rule). The name is still what
+// other steps bind it as
+// (gunbc.fleet.fleet_release_bins_key release_bins_mode_env); one spelling, no fork.
+data fleet_converge_mode_env_name: String = "FLEET_CONVERGE_MODE"
+
+// The mode's SUBJECT RULE, rendered by the workflow emitter out of the mode-facts table
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts, field subject_rule) and read back by
+// the gate script and by the serving entries (gunbc.fleet.fleet_converge_executor_subject_split
+// fleet_converge_install_subject_read). It rides the environment because the value is DECIDED in the
+// workflow module and CONSUMED in modules that cannot import it back (fleet_converge_workflow.dag:161
+// already imports the compute module that hosts those entries).
+data fleet_converge_subject_rule_env_name: String = "FLEET_CONVERGE_SUBJECT_RULE"
+
 data fleet_converge_arrival_subject_env_name: String = "FLEET_CONVERGE_ARRIVAL_SUBJECT"
 
 type ExpectedRevisionRead

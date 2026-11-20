@@ -3183,6 +3183,11 @@ data h11ssl_unit3_census_standing_sighting_revision: CommitSha = "6be8eaef58a481
 // Group B sale already recorded that unit as sold. This branch retires the declaration; the sighting names the
 // commit the retirement was authored against, so the before-state stays checkable.
 data h11ssl_unit3_srv9_endpoint_retirement_revision: CommitSha = "7dc10cb275c80455e2c1a9c2b834f5881d7fef60"
+// The main revision the operator's serial-console host-key read was made against (2026-11-20T20:33:25Z): the
+// tree carrying gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments' ED25519 row for
+// operator_host_e2d4b7 (#16802), whose fingerprint the read checked its ssh-keygen -lf output against. As with
+// the rows above, the revision is the tree that was read, not the sha of the commit that writes it down.
+data h11ssl_unit3_console_host_key_confirmation_revision: CommitSha = "3db1b5f096294903c63dfa43496523dcd2562996"
 // The head that carries the build-pool carve rule (gunbc.runner.runner_slot_desired), read when the fork above was
 // closed. As with the other rows here, the revision is the tree that was read, not the sha of the commit that
 // writes this down.
@@ -3641,6 +3646,21 @@ data h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat: Integra
         }],
       },
         account: "The ownership half of what the second sighting left open is answered, by the source: the operator names the machine answering at 192.168.1.236 as THIS unit -- its installed-OS hostname is h11-new, and the same box is ken.tailecbe08.ts.net at 100.96.80.109 on the tailnet, online with tag:ci and tag:serving, read from srv1's tailscale status. The tailnet half is a live row the fleet can read for itself; the LAN half reaches the model by relay, with no artifact of that session in this repo, so it is carried as a report. WHAT THIS ROW STILL REFUSES, unchanged: an ssh answer at .236 is not a read of which key population answers there, and the enrollment row stays HostKeyLoginRefused until the dissolve named above happens -- one fleet-converge dispatch as the fleet-automation principal returning host-authored output, beside the lease/ARP read naming which MAC holds .236 and a host key confirmed from this unit's own console. Naming the machine removes the risk of aiming sudo-bearing effects at srv9; it does not authorize an effect on this one.",
+      },
+      ConcernSighting {
+        revision: h11ssl_unit3_console_host_key_confirmation_revision,
+        evidence: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_seen_host_key_fingerprint"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "ken_host_lan_endpoint"),
+          },
+        ],
+        account: "THIRD SIGHTING -- the console host-key confirmation, the third clause of the dissolution the first sighting names. On 2026-11-20 at 20:33:25Z the operator read this unit's SSH host keys on its serial console reached THROUGH its BMC (192.168.1.249, MAC ac:1f:6b:e6:72:16), NOT over SSH. The console showed the unit's own login prompt, whose hostname is h11-new (not 'ken'). An SSH session on 192.168.1.236 then wrote the output of ssh-keygen -lf on its key files to /dev/ttyS1, and that output appeared on the BMC console: ED25519 SHA256:rS86bHoHXcFgifCUhrKDi6+vmjgL8GVz+MhHkd/Pb0o, ECDSA SHA256:MOLqumDdb5/GChdZYmNwRsgdOa8t+lSGsnFeUDfhYp8, RSA SHA256:Q5LNCjV0IGq9ZOOLZWTlYv+SYGXLhCoCEyC2XOKD97E. Only the ED25519 line has a row in this repository to match against, and it does: it equals both gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments' row for operator_host_e2d4b7 and gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_seen_host_key_fingerprint, whose read_obligation is exactly this console confirmation; the ECDSA and RSA lines are carried as what the operator read, with no standing here to bind them. THE METHOD AND ITS LIMIT, stated plainly and NOT upgraded: the key output was emitted FROM the SSH session at .236 to the serial console, and the BMC is on the same LAN; no person stood at the screen. The build lane (clever-raven-401) rules this MEETS CLAUSE 3, because it binds the SSH endpoint at .236 and its key files to the unit wired to that BMC. WHAT THIS ROW STILL DOES NOT DISSOLVE: the concern stays Open. Clause 1 (one fleet-converge dispatch as the fleet-automation principal returning host-authored output naming the account and its key population) and clause 2 (the lease/ARP read naming which MAC holds 192.168.1.236, beside an in-band address read on the installed OS) are still owed, and the enrollment row stays HostKeyLoginRefused until they are met. The console hostname h11-new is recorded here as the operator read it and is not promoted to any standing.",
       },
     ],
   },

@@ -4,8 +4,8 @@ import std.algebra { string_contains }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts, BracketQuoted }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_subject_host_env_name }
+import v2.extdeps.languages.bash_build { bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_test_bracket, bash_build_or_else, bash_build_and_then, bash_build_with_redir, bash_build_exit, bash_build_if_from_stmts, BracketQuoted }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name, fleet_converge_subject_rule_env_name }
 import gunbc.ci.ci_deploy_target_host { runner_name_proves_host_identity }
 import product.host_identity { HostIdentity }
 
@@ -43,6 +43,15 @@ data fleet_converge_split_missing_executor_marker: String = "REFUSED: fleet-conv
 type SplitPrecheck = SplitOk { executor_runner_name: String, subject_host: String } | SplitRefused { reason: SplitRefusalReason }
 
 type SplitRefusalReason = SelfSubject { executor_runner_name: String, subject_host: String } | SubjectAbsent | ExecutorIdentityAbsent
+
+// The install rule's OWN refusal vocabulary. Kept apart from SplitRefusalReason on purpose: the drain
+// precheck never answers these, and the install decision never answers SelfSubject -- so neither wall
+// can be read as carrying the other's rule.
+// The four names carry the Install prefix because variant names are ONE namespace in this language, not
+// per-sum: shipping them bare failed with "variant 'SubjectAbsent' appears in both 'SplitRefusalReason' and
+// 'InstallRefusalReason'" (measured, run of this witness at head 02340ea925f1). Sharing the names would also
+// have made the two walls unreadable -- a reader could not tell which rule answered.
+type InstallRefusalReason = InstallModeDeclaresNoSubject | InstallDrainRuleDecidedInPrecheck | InstallExecutorIdentityAbsent | InstallSubjectAbsent
 
 // THE PREDICATE, as one function both walls call. The executor side uses the SAME proving relation
 // the deploy gate uses (a slot named actions-runner@srv3-13 proves it lives on srv3), so "executor
@@ -94,6 +103,139 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
   }
 }
 
+// THE RULE, PER MODE, AND ITS CARRIER IS THE FACTS TABLE: FleetConvergeModeFacts.subject_rule, one row per
+// mode, in gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts; the serving pair's row states
+// SubjectMayBeTheExecutorsOwnMachine. No operator ruling is claimed for that row, because there is none --
+// review 96977 asked for one and the manager's answer (2026-11-20) was that a design_ruling row records the
+// operator's words and there are none on this. So the rule rests on the row, the reason below, and claims.
+// The reason: the two split refusals were written for the DRAIN trio, where acting on the machine the job
+// stands on drains the bracket that holds the job itself. A mode that only INSTALLS files has no such
+// deadlock -- remote_build_serving_observe / converge write an account, a ledger home, a checkout, a toolchain
+// and a serve binary, and drain nothing. And the receipts are recorded fleet history, not argument:
+// remote_build_serving_converge dispatched with host = the machine served, run 44656574939 (srv3), run
+// 44660458690 (srv4), run 44658646391 (srv1). Refusing that pair by the drain rule would strand any host with
+// no second lane. Pinned by test.claim.fleet.fleet_converge_serving_subject_split_witness's
+// the_install_rule_admits_the_pair_the_drain_rule_refuses and the_roster_splits_into_the_two_rule_halves.
+// So ONE gate and ONE precheck carry a rule, and the mode picks it:
+//   SubjectRequiredAndDistinct            -- the drain trio: a named subject, never the executor.
+//   SubjectMayBeTheExecutorsOwnMachine    -- the serving pair: a named subject, or the machine the
+//                                            job stands on, which is what an unnamed subject has
+//                                            always meant for these modes.
+// There is NO default. Every mode in the facts table declares one of the three, and a mode that
+// declares none -- or a rule spelling this module does not know -- is refused at BOTH ends: the entry
+// read below answers ModeDeclaresNoSubject, and the workflow gate's own first statement refuses the
+// dispatch before any step runs. It does not fall back to the drain rule either: the two rules answer
+// different questions about the executor input (see fleet_converge_install_subject_decision), so
+// lending one to an undeclared mode would be a second authority deciding it (review 96966).
+type SplitSubjectRule
+  = SubjectRuleNotApplicable
+  | SubjectRequiredAndDistinct
+  | SubjectMayBeTheExecutorsOwnMachine
+
+// How a rule is SPOKEN in the environment. The facts table (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_mode_facts, field subject_rule) is the only place a mode's rule is DECIDED; the
+// workflow emitter renders that decision into FLEET_CONVERGE_SUBJECT_RULE, and this module reads the
+// spelling back. The value travels through the environment rather than an import because the workflow
+// module already imports the compute module that hosts the serving entries (fleet_converge_workflow.dag:161),
+// so an import in the other direction would be a cycle -- the same reason the executor and subject
+// identities arrive as env names.
+data split_rule_wire_not_applicable: String = "not_applicable"
+data split_rule_wire_required_and_distinct: String = "required_and_distinct"
+data split_rule_wire_may_be_executors_own: String = "may_be_executors_own"
+
+fn fleet_converge_split_rule_wire(rule: SplitSubjectRule) -> String {
+  match rule {
+    SubjectRuleNotApplicable => split_rule_wire_not_applicable
+    SubjectRequiredAndDistinct => split_rule_wire_required_and_distinct
+    SubjectMayBeTheExecutorsOwnMachine => split_rule_wire_may_be_executors_own
+  }
+}
+
+// Reading the rule back. An unknown or empty spelling is NOT_APPLICABLE, which the entries and the gate
+// both REFUSE: an unrecognized spelling means the emitter and the facts table disagree, and a dispatch
+// that cannot say which rule governs it does not get to mutate a host (gunbc.design_argument::fail_closed).
+fn fleet_converge_split_rule_of_wire(wire: String) -> SplitSubjectRule {
+  if wire == split_rule_wire_required_and_distinct {
+    SubjectRequiredAndDistinct
+  } else if wire == split_rule_wire_may_be_executors_own {
+    SubjectMayBeTheExecutorsOwnMachine
+  } else {
+    SubjectRuleNotApplicable
+  }
+}
+
+type InstallSubjectOutcome =
+    InstallSubjectOnNamedSubject { executor_runner_name: String, subject_host: String }
+  | InstallSubjectOnExecutorsOwnMachine { executor_runner_name: String, host: String }
+  | InstallSubjectRefused { reason: InstallRefusalReason }
+
+// THE RUNTIME CONSUMER OF THE RULE. The entry does not choose a rule; it reads the one the facts table
+// declared for the dispatched mode, rendered by the emitter into FLEET_CONVERGE_SUBJECT_RULE, and this
+// dispatch is what makes that declaration act: under the drain rule a nameless subject and a
+// self-subject both refuse, under the install rule either name satisfies the subject, and a mode that
+// declares no rule at all never reaches a subject-taking entry.
+fn fleet_converge_install_subject_read() -> InstallSubjectOutcome {
+  fleet_converge_install_subject_decision(
+    rule: fleet_converge_split_rule_of_wire(wire: env_text_or_empty(name: fleet_converge_subject_rule_env_name)),
+    executor_runner_name: env_text_or_empty(name: fleet_converge_executor_runner_name_env_name),
+    named_subject: env_text_or_empty(name: fleet_converge_subject_host_env_name),
+    own_host: env_text_or_empty(name: fleet_converge_expected_host_env_name)
+  )
+}
+
+fn env_text_or_empty(name: String) -> String {
+  match actions_variable_read(name: name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent => ""
+  }
+}
+
+// THE DECISION FOR THE INSTALL RULE, pure, so the rule is a fact a witness can drive: an executor name,
+// a subject the dispatch named ("" when it named none), and the executor's own machine from the
+// expected-host input. THE DRAIN RULE IS NOT DECIDED HERE. Under the drain rule the executor input is a
+// SLOT name, and "is this the machine the job stands on" is answered by the proving relation
+// runner_name_proves_host_identity inside fleet_converge_split_precheck above -- a plain string equality
+// here would have admitted exactly the actions-runner@srv3-13-on-srv3 self-drain of refused run
+// 40085967610 -- which is why fleet_converge_split_precheck's own comment insists on "the SAME proving
+// relation the deploy gate uses". So a dispatch under the drain rule that reaches this
+// install reader is refused with the route named, rather than re-judged here by weaker logic
+// (gunbc.design_argument::single_authority, review 96966 finding 1).
+fn fleet_converge_install_subject_decision(rule: SplitSubjectRule, executor_runner_name: String, named_subject: String, own_host: String) -> InstallSubjectOutcome {
+  let executor = executor_runner_name
+  let named = named_subject
+  let own = own_host
+  if rule == SubjectRuleNotApplicable {
+    InstallSubjectRefused { reason: InstallModeDeclaresNoSubject }
+  } else if rule == SubjectRequiredAndDistinct {
+    InstallSubjectRefused { reason: InstallDrainRuleDecidedInPrecheck }
+  } else if executor == "" {
+    InstallSubjectRefused { reason: InstallExecutorIdentityAbsent }
+  } else if named != "" {
+    InstallSubjectOnNamedSubject { executor_runner_name: executor, subject_host: named }
+  } else if own != "" {
+    InstallSubjectOnExecutorsOwnMachine { executor_runner_name: executor, host: own }
+  } else {
+    InstallSubjectRefused { reason: InstallSubjectAbsent }
+  }
+}
+
+// THE REFUSAL LINE for the install rule. Same markers as the drain rule -- one vocabulary for "this
+// dispatch did not name the machine it means" -- but the sentence is the one true for a mode that may
+// serve the machine it stands on: it names BOTH env names, because under this rule either of them
+// satisfies the subject and neither was given.
+fn fleet_converge_install_refusal_line(reason: InstallRefusalReason) -> String {
+  match reason {
+    InstallSubjectAbsent =>
+      join([fleet_converge_split_missing_subject_marker, ": neither ", fleet_converge_subject_host_env_name, " nor ", fleet_converge_expected_host_env_name, " names a machine; a serving mode converges the host the dispatch names, and never one it has to guess."], "")
+    InstallExecutorIdentityAbsent =>
+      join([fleet_converge_split_missing_executor_marker, ": RUNNER_NAME is unset; a host mutation performed by a process no registered lane owns has no executor to attribute it to."], "")
+    InstallDrainRuleDecidedInPrecheck =>
+      join([fleet_converge_split_refusal_marker, ": this mode's rule is the drain rule, which only fleet_converge_split_precheck decides -- its executor is a slot name and fleet_converge_split_precheck proves what host that slot lives on. The install rule must not answer that question a second time."], "")
+    InstallModeDeclaresNoSubject =>
+      join([fleet_converge_split_missing_subject_marker, ": ", fleet_converge_subject_rule_env_name, " does not name a rule the facts table declares for this mode; a subject-taking entry was reached by a dispatch whose mode declares no subject at all."], "")
+  }
+}
+
 // THE WORKFLOW PRECONDITION STEP's script, TYPED. It is built from bash_build statement nodes and
 // rendered by v2.workflow.bash_emit -- never assembled as a string. (A join([...]) of hand-written
 // shell here shipped three syntax errors past the controls: a missing space before `]`, a stray `]`,
@@ -108,35 +250,105 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
 // every act dispatch executes it and the decision is never made by an expression that can skip it
 // (review 86194). The control asserts its ORDERING before every actuation step, its refusal text, the
 // absence of any entry invoke in it, and the evaluated `if:` across the input cases.
-fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_name: String) -> List<Node> {
+// THE RULE, read from the environment the emitter fills from the facts table. One bracket test, in place
+// of the chain of mode-name comparisons this used to build by hand: the mode names never appear here, so
+// there is no second list that can disagree with gunbc.fleet.fleet_converge_workflow::fleet_converge_mode_facts.
+fn fleet_converge_gate_rule_is_drain_test(rule_env_name: String) -> Node {
+  bash_build_test_bracket(words: [
+    bash_build_word_var(name: rule_env_name),
+    bash_build_word_lit(text: "="),
+    bash_build_word_lit(text: split_rule_wire_required_and_distinct)
+  ], spelling: BracketQuoted)
+}
+
+// A rule spelling the facts table never emits is a drift between the emitter and that table, and a
+// dispatch that cannot say which rule governs it does not get to actuate anything. Both arms in one test:
+// unset, or set to something outside the three spellings.
+fn fleet_converge_gate_rule_unknown_test(rule_env_name: String) -> Node {
+  bash_build_or_else(
+    left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: rule_env_name)], spelling: BracketQuoted),
+    right: bash_build_and_then(
+      left: bash_build_test_bracket(words: [bash_build_word_var(name: rule_env_name), bash_build_word_lit(text: "!="), bash_build_word_lit(text: split_rule_wire_not_applicable)], spelling: BracketQuoted),
+      right: bash_build_and_then(
+        left: bash_build_test_bracket(words: [bash_build_word_var(name: rule_env_name), bash_build_word_lit(text: "!="), bash_build_word_lit(text: split_rule_wire_required_and_distinct)], spelling: BracketQuoted),
+        right: bash_build_test_bracket(words: [bash_build_word_var(name: rule_env_name), bash_build_word_lit(text: "!="), bash_build_word_lit(text: split_rule_wire_may_be_executors_own)], spelling: BracketQuoted)
+      )
+    )
+  )
+}
+
+fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_name: String, rule_env_name: String) -> List<Node> {
   [
-    // Either name empty: an unnamed process cannot prove it is not the subject, and an unnamed
-    // subject is actuation on an inferred host. Fail closed, both arms in ONE test. Tested FIRST, as
-    // fleet_converge_split_precheck does, so two empty names report absence, not self-subject.
+    // (0) A DRAIN-mode dispatch with either name empty: an unnamed process cannot prove it is not the
+    // subject, and an unnamed subject is actuation on an inferred host. Fail closed, both arms in ONE
+    // test. Tested FIRST, as fleet_converge_split_precheck does, so two empty names report absence,
+    // not self-subject. The mode test in front is the rule, read from the mode the dispatch named --
+    // for a serving mode an unnamed subject is legal (it means the machine the job stands on), and the
+    // executor half is checked in (0b) for every mode.
     bash_build_if_from_stmts(
-      cond: bash_build_or_else(
-        left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)], spelling: BracketQuoted),
-        right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)], spelling: BracketQuoted)
+      cond: bash_build_and_then(
+        left: fleet_converge_gate_rule_is_drain_test(rule_env_name: rule_env_name),
+        right: bash_build_or_else(
+          left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: subject_env_name)], spelling: BracketQuoted),
+          right: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)], spelling: BracketQuoted)
+        )
       ),
       then_stmts: [
         bash_build_with_redir(
           inner: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "echo"),
-            bash_build_word_lit(text: join([fleet_converge_split_missing_subject_marker, ": both executor and subject must be named"], "")),
+            bash_build_word_lit(text: join([fleet_converge_split_missing_subject_marker, ": a mode that drains its subject must name both"], "")),
           ]),
           redir: ^bash_production_fold_redir_stdout_to_stderr,
         ),
         bash_build_exit(code: "1"),
       ]
     ),
-    // Equal names = the executor is a slot on its own subject: the drain would wait for this very
-    // job's executor forever (refused run 40085967610, actions-runner@srv3-13).
+    // (0a) The rule itself: unset, or a spelling the facts table never emits. This is the arm that makes
+    // the emitted map and the facts table one fact rather than two -- if the emitter stops rendering a
+    // mode the table declares, the dispatch refuses instead of defaulting to whichever rule is cheaper.
     bash_build_if_from_stmts(
-      cond: bash_build_test_bracket(words: [
-        bash_build_word_var(name: executor_env_name),
-        bash_build_word_lit(text: "="),
-        bash_build_word_var(name: subject_env_name),
-      ], spelling: BracketQuoted),
+      cond: fleet_converge_gate_rule_unknown_test(rule_env_name: rule_env_name),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            bash_build_word_lit(text: join([fleet_converge_split_missing_subject_marker, ": ", rule_env_name, " carries no rule the facts table declares"], "")),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ]
+    ),
+    // (0b) NO mode runs without an executor: the job must know which lane it is standing on, both to
+    // decide the drain rule and to attribute the act. Checked on its own so the serving pair -- whose
+    // subject may be unnamed -- still refuses a run with no identity at all.
+    bash_build_if_from_stmts(
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-z"), bash_build_word_var(name: executor_env_name)], spelling: BracketQuoted),
+      then_stmts: [
+        bash_build_with_redir(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "echo"),
+            bash_build_word_lit(text: join([fleet_converge_split_missing_executor_marker, ": the dispatch named no executor lane"], "")),
+          ]),
+          redir: ^bash_production_fold_redir_stdout_to_stderr,
+        ),
+        bash_build_exit(code: "1"),
+      ]
+    ),
+    // (1) Equal names, for a mode under the DRAIN rule: the executor is a slot on its own subject, so
+    // the drain would wait for this very job's executor forever (refused run 40085967610,
+    // actions-runner@srv3-13). For a mode under the INSTALL rule the same pair is ADMITTED -- a file
+    // install drains nothing -- which is what the mode test in front of this condition says.
+    bash_build_if_from_stmts(
+      cond: bash_build_and_then(
+        left: fleet_converge_gate_rule_is_drain_test(rule_env_name: rule_env_name),
+        right: bash_build_test_bracket(words: [
+          bash_build_word_var(name: executor_env_name),
+          bash_build_word_lit(text: "="),
+          bash_build_word_var(name: subject_env_name),
+        ], spelling: BracketQuoted)
+      ),
       then_stmts: [
         bash_build_with_redir(
           inner: bash_build_command_with_words(words: [
@@ -151,20 +363,20 @@ fn fleet_converge_split_gate_statements(executor_env_name: String, subject_env_n
     // The holding line: reached only when both names are present and distinct.
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "echo"),
-      bash_build_word_lit(text: "split precondition holds: executor differs from subject"),
+      bash_build_word_lit(text: "split precondition holds for the dispatched mode's rule"),
     ]),
   ]
 }
 
-fn fleet_converge_split_gate_script(executor_env_name: String, subject_env_name: String) -> Outcome<String> {
-  bash_emit_stmts(statements: fleet_converge_split_gate_statements(executor_env_name: executor_env_name, subject_env_name: subject_env_name), set_e: true)
+fn fleet_converge_split_gate_script(executor_env_name: String, subject_env_name: String, rule_env_name: String) -> Outcome<String> {
+  bash_emit_stmts(statements: fleet_converge_split_gate_statements(executor_env_name: executor_env_name, subject_env_name: subject_env_name, rule_env_name: rule_env_name), set_e: true)
 }
 
 // THE WORKFLOW PRECONDITION STEP's script text. bash_emit refusing means NO workflow is emitted --
 // the generation gate (fleet_converge_split_gate_script_admitted) fails closed rather than shipping
 // a step with a broken script.
-fn fleet_converge_split_gate_step_run(executor_env_name: String, subject_env_name: String) -> String {
-  match fleet_converge_split_gate_script(executor_env_name: executor_env_name, subject_env_name: subject_env_name) {
+fn fleet_converge_split_gate_step_run(executor_env_name: String, subject_env_name: String, rule_env_name: String) -> String {
+  match fleet_converge_split_gate_script(executor_env_name: executor_env_name, subject_env_name: subject_env_name, rule_env_name: rule_env_name) {
     Accepted { value: script, diagnostics: _ } => script
     Rejected { diagnostics: _ } => ""
   }
@@ -173,7 +385,7 @@ fn fleet_converge_split_gate_step_run(executor_env_name: String, subject_env_nam
 // GENERATION GATE: the gate step's script must be a program bash_emit accepts. A refusal here stops
 // fleet-converge.yml from being emitted at all, instead of shipping the review-found syntax error.
 fn fleet_converge_split_gate_script_admitted() -> Bool {
-  match fleet_converge_split_gate_script(executor_env_name: "FLEET_CONVERGE_EXPECTED_HOST", subject_env_name: "FLEET_CONVERGE_SUBJECT_HOST") {
+  match fleet_converge_split_gate_script(executor_env_name: "FLEET_CONVERGE_EXPECTED_HOST", subject_env_name: "FLEET_CONVERGE_SUBJECT_HOST", rule_env_name: "FLEET_CONVERGE_SUBJECT_RULE") {
     Accepted { value: script, diagnostics: _ } =>
       string_contains(s: script, pattern: fleet_converge_split_refusal_marker)
         && string_contains(s: script, pattern: fleet_converge_split_missing_subject_marker)
