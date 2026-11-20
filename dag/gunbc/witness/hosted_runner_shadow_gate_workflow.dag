@@ -319,16 +319,25 @@ data shadow_gate_remote_user: String = "gunbc-build"
 // converged by the serving converger; srv1 left the roster that day (its pinned checkout predates
 // the gate-subject verb, and its build pool holds a seat whose holder recorded no exit) and returns
 // on a serving converge at or after 2387c5493bb9 -- gunbc.compute.remote_build_hosts
-// remote_build_serving_hosts carries the rule at the row. The literal below is reached only if the
-// roster is ever empty.
+// remote_build_serving_hosts carries the rule at the row. When the roster names no host the step REFUSES:
+// shadow_gate_first_serving_host answers Absent and shadow_gate_no_host_run is what runs -- the step never
+// names a host from memory.
 
-// The first serving host (the client's own roster ordering; the gate CLI picks by capacity).
-fn shadow_gate_first_serving_host() -> String {
+// The first serving host (the client's own roster ordering; the gate CLI picks by capacity), or Absent when
+// the roster names none. The caller refuses on Absent. A remembered literal is a fabricated default
+// (gunbc.design_argument::fail_closed: "no plausible output is fabricated"), and the host this lane just
+// removed -- for judging requests with a grammar it no longer has -- is exactly the one memory supplies.
+fn shadow_gate_first_serving_host() -> String? {
   match list_head(xs: remote_build_serving_hosts()) {
-    Present { value: h } => h as String
-    Absent => "srv1"
+    Present { value: h } => Present { value: h as String }
+    Absent => Absent
   }
 }
+
+// WHAT THE PLUMBING-PROOF STEP DOES WHEN THE ROSTER NAMES NO HOST: it says so and exits 3 -- the exit code
+// gunbc.compute.remote_build_client uses when no host admitted the work, so an undispatched proof is red and
+// countable, never green by construction.
+data shadow_gate_no_host_run: String = "set -euo pipefail && echo '::error::remote_build_serving_hosts names no serving host: the plumbing proof cannot be dispatched, and this step refuses to name one from memory' && exit 3"
 
 // The tailnet name for a host identity (the standard pattern from gunbc.fleet.fleet_tailnet).
 fn shadow_gate_host_tailnet_name(host: String) -> String {
@@ -346,12 +355,30 @@ fn shadow_gate_remote_build_step() -> Step {
   RunStep {
     name: Present { value: "Plumbing proof: remote_test_cli over the plumbing-proof pattern" },
     id: Present { value: "remote-build-plumbing-proof" },
-    run: concat(
+    run: shadow_gate_plumbing_proof_run(),
+    shell: Present { value: Bash },
+    working_directory: none,
+    env: Present { value: [
+      kv(key: shadow_gate_pattern_env, value: yaml_string(s: shadow_gate_pattern_input_expression)),
+    ] },
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+// THE PLUMBING PROOF'S COMMAND, one place: when the roster names a host, an ssh liveness probe of that
+// host and then the client invocation against it; when the roster names none, the typed refusal, which is
+// the only honest thing a job can print before it has dispatched anything at all.
+fn shadow_gate_plumbing_proof_run() -> String {
+  match shadow_gate_first_serving_host() {
+    Absent => shadow_gate_no_host_run
+    Present { value: host } =>
+      concat(
       concat(
         join([
           "set -euo pipefail",
           "echo '--- remote gate step ---'",
-          concat("ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ", concat(shadow_gate_remote_user, concat("@", concat(shadow_gate_host_tailnet_name(host: shadow_gate_first_serving_host()), " true")))),
+          concat("ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ", concat(shadow_gate_remote_user, concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true")))),
         ], " && "),
         "\n"
       ),
@@ -363,17 +390,10 @@ fn shadow_gate_remote_build_step() -> Step {
         ], " && "),
         "\n"
       )
-    ),
-    shell: Present { value: Bash },
-    working_directory: none,
-    env: Present { value: [
-      kv(key: shadow_gate_pattern_env, value: yaml_string(s: shadow_gate_pattern_input_expression)),
-    ] },
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
+    )
   }
 }
+
 
 // THE PER-ROW GATE STEP (agreed shape with gunbc.compute.remote_build_client's remote_gate_cli,
 // sibling lane adhoc-7d2186ce-2c3): one step per emitted_subject_build_rows row, invoked with the
