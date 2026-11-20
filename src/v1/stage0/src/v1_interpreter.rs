@@ -29572,7 +29572,7 @@ mod wall_deadline_kill_tests {
         let mut bare_cmd = Command::new("sleep");
         bare_cmd.arg("5").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         configure_shell_process_group_for_wall_kill(&mut bare_cmd, &ctx, bare_deadline);
-        let bare_child = bare_cmd.spawn().expect("spawn bare");
+        let mut bare_child = bare_cmd.spawn().expect("spawn bare");
         let bare_pid = bare_child.id();
         assert_eq!(
             pgid_of(bare_pid),
@@ -29589,7 +29589,7 @@ mod wall_deadline_kill_tests {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         configure_shell_process_group_for_wall_kill(&mut declared_cmd, &ctx, declared_deadline);
-        let declared_child = declared_cmd.spawn().expect("spawn declared");
+        let mut declared_child = declared_cmd.spawn().expect("spawn declared");
         let declared_pid = declared_child.id();
         assert_ne!(
             pgid_of(declared_pid),
