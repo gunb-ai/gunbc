@@ -1,0 +1,155 @@
+module gunbc.host.node_orch_operator_authorized_keys
+
+// The two node-orch authorized_keys ENTRIES that sit on the OPERATOR (briansrls) account of srv1 and srv2,
+// with the source-address and forwarding OPTIONS each carries, recorded as the model's only home for them.
+// They were edited BY HAND on 2026-11-20 by session gentle-crab-832 with the operator's approval; each host
+// keeps a pre-edit backup at ~/.ssh/authorized_keys.bak-20261120. The reason they are OUT-OF-BAND residue
+// rather than fleet_ssh_access grants is stated in full below and is not a gap to close quietly.
+//
+// WHY THE FLEET ROSTER DOES NOT OWN THESE LINES. gunbc.fleet.fleet_ssh_access::fleet_authorized_keys is the
+// single authority for the fleet host-administrator account's authorized_keys, and DESIGN's Single authority
+// ruling ("A shared secret has one admission too") forbids naming a single machine's row in it -- the roster is
+// host-AGNOSTIC and so carries no host axis, while these options are per-host (srv1's line drops
+// no-port-forwarding for srv2's stream-local tunnel; srv2's line keeps it). node-orch is also granted to
+// FleetAccountHostAdministrator ONLY and never to FleetAccountOperator (fleet_ssh_access, the
+// fleet_principal_node_orch grant), yet these two lines sit on the OPERATOR account. And no modeled converge
+// writes the operator account's authorized_keys today: host_authorized_keys_reconcile plans only the
+// host-administrator account, and runner_host_file_converge writes the bootstrap/administrator account. So the
+// model deliberately does not own these entries; putting host-specific options into the host-agnostic roster
+// would fork the single authority. They are therefore recorded here as out-of-band residue, each OPTION
+// admitted by its named consumer, per DESIGN's Consumption rule (admission held at the grain where the
+// consumer exists, recorded where the consumer is).
+//
+// THE SILENT-UNDO HAZARD THIS RECORD CLOSES. node_orch_ssh_key's material is already fleet-owned (the roster
+// grants it to the host-administrator account), so if a reconcile were ever pointed at the operator account it
+// would find that key "owned but not desired there" (authorized_keys_for_account(FleetAccountOperator) excludes
+// node-orch) and REMOVE it -- undoing the hand-edit. node_orch_operator_account_keep_materials() below is the
+// keep-set such a converge MUST union into its desired set. srv1's own node-orch key is not fleet-owned, so a
+// reconcile already refuses to tear it down (OwnershipUnknown); it is in the keep-set too so one set covers both.
+//
+// dissolve-on: when a modeled converge writes the operator (briansrls) account's authorized_keys, OR when
+// gunbc.fleet.fleet_ssh_access grants node-orch to FleetAccountOperator. Either way these two lines stop being
+// out-of-band residue and become a modeled per-host admission carried where the consumer exists, and this
+// module dissolves onto that admission. Until then the lines are human-hand-maintained and the units/sessions
+// named as consumers are the real authority for their options.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.ssh.keys {
+  AuthorizedKeyEntry,
+  AuthorizedKeyOption,
+  Ed25519,
+  FromSourceAddresses,
+  NoAgentForwardingOption,
+  NoPortForwardingOption,
+  NoX11ForwardingOption,
+  SshPublicKey,
+  authorized_key_entry_line,
+  authorized_key_from_source_addresses,
+}
+import gunbc.fleet.fleet_ssh_access { node_orch_ssh_key }
+import gunbc.fleet.fleet_intent_network {
+  operator_lan_segment,
+  srv1_tailscale_endpoint,
+  srv2_tailscale_endpoint,
+}
+
+// The operator (briansrls) account these two entries sit on. Recorded as the observed login rather than
+// imported from the posix roster so this residue record's closure stays small; the account is the operator
+// account, not the host-administrator (ubuntu) account that host_authorized_keys_reconcile plans.
+data node_orch_operator_account_login: NonEmptyStr = "briansrls"
+
+// srv1's own node-orch public key -- the key whose authorized_keys line sits on srv2's operator account. It is
+// NOT in gunbc.fleet.fleet_ssh_access: node-orch is granted to the host-administrator account only, and the one
+// node-orch key the roster knows (node_orch_ssh_key) is srv2's, whose line sits on srv1. This row is that key's
+// declared home. SINGLE AUTHORITY: srv1:~/.node-orch/id_ed25519.pub, read live 2026-11-20 by gentle-crab-832 and
+// matched byte-for-byte against the node-orch@srv1 line in srv2:~briansrls/.ssh/authorized_keys (SHA256:
+// jccXidl3iPXffPI04wflfdM4ipMnwVXXgWsV0lVqu/k); this is the only place its material is spelled.
+data node_orch_srv1_ssh_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIMIzI+97T4CY1FsAqAcZce4quloDCNAxLXFCoq16G17i",
+  comment: "node-orch@srv1",
+}
+
+// The source addresses each from= admits, spelled ONCE from the network roster's single authorities: the shared
+// operator LAN (operator_lan_segment.cidr) and the tailnet address of the host the connection comes FROM (the
+// other host's tailnet endpoint). srv1's node-orch line is used by srv2 connecting over the tailnet, so it
+// admits srv2's tailnet address; srv2's node-orch line is used by srv1, so it admits srv1's tailnet address.
+data node_orch_srv1_entry_source_addresses: List<String> = [
+  operator_lan_segment.cidr,
+  srv2_tailscale_endpoint.address,
+]
+
+data node_orch_srv2_entry_source_addresses: List<String> = [
+  operator_lan_segment.cidr,
+  srv1_tailscale_endpoint.address,
+]
+
+// The live line on srv1's operator account: srv2's node-orch key (single authority: node_orch_ssh_key). Its
+// options -- in the order sshd reads them off the live line -- are the source-address restriction, then
+// no-agent-forwarding and no-X11-forwarding. no-port-forwarding is DELIBERATELY ABSENT: srv2's user unit
+// srv1-docker-tunnel.service runs `ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1`,
+// a stream-local (-L) forward, which no-port-forwarding would kill; the tunnel backs the dashboard's srv1 docker
+// context, so it is the consumer that admits the option's absence. It was broken ~19:13-19:20Z until the option
+// was removed 2026-11-20.
+data node_orch_srv1_authorized_key_entry: AuthorizedKeyEntry = AuthorizedKeyEntry {
+  options: [
+    FromSourceAddresses { patterns: map(node_orch_srv1_entry_source_addresses, p => p as NonEmptyStr) },
+    NoAgentForwardingOption,
+    NoX11ForwardingOption,
+  ],
+  key: node_orch_ssh_key,
+}
+
+// The live line on srv2's operator account: srv1's node-orch key (single authority: node_orch_srv1_ssh_key). Its
+// options -- in the order off the live line -- are the source-address restriction, then no-port-forwarding,
+// no-agent-forwarding and no-X11-forwarding. Here no-port-forwarding is KEPT: the consumer is sessions on srv1
+// reaching srv2 as srv2-lan -> srv2.tailecbe08.ts.net (ssh and `docker -H ssh://srv2-lan`), which need no
+// forwarding, so nothing admits its removal.
+data node_orch_srv2_authorized_key_entry: AuthorizedKeyEntry = AuthorizedKeyEntry {
+  options: [
+    FromSourceAddresses { patterns: map(node_orch_srv2_entry_source_addresses, p => p as NonEmptyStr) },
+    NoPortForwardingOption,
+    NoAgentForwardingOption,
+    NoX11ForwardingOption,
+  ],
+  key: node_orch_srv1_ssh_key,
+}
+
+// One recorded out-of-band authorized_keys entry: which host's operator-account file holds it, the key + options,
+// and the NAMED consumer that admits each option. This is the Consumption admission -- the option set has no
+// meaning without the thing that needs it, so the consumer is recorded with the entry, not in a side list.
+type NodeOrchOperatorAuthorizedKeyRecord {
+  host_label: NonEmptyStr
+  entry: AuthorizedKeyEntry
+  consumer: NonEmptyStr
+  provenance: NonEmptyStr
+}
+
+data node_orch_operator_authorized_key_records: List<NodeOrchOperatorAuthorizedKeyRecord> = [
+  NodeOrchOperatorAuthorizedKeyRecord {
+    host_label: "srv1",
+    entry: node_orch_srv1_authorized_key_entry,
+    consumer: "srv2 user unit srv1-docker-tunnel.service: `ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1` (stream-local -L forward; backs the dashboard's srv1 docker context). Admits srv2's tailnet address in from= and the ABSENCE of no-port-forwarding.",
+    provenance: "Hand-edited 2026-11-20 by session gentle-crab-832 with the operator's approval; pre-edit backup srv1:~/.ssh/authorized_keys.bak-20261120. was from=\"192.168.1.0/24\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding.",
+  },
+  NodeOrchOperatorAuthorizedKeyRecord {
+    host_label: "srv2",
+    entry: node_orch_srv2_authorized_key_entry,
+    consumer: "Sessions on srv1 reaching srv2 as srv2-lan -> srv2.tailecbe08.ts.net (ssh and `docker -H ssh://srv2-lan`). Admits srv1's tailnet address in from=; needs no forwarding, so no-port-forwarding is kept.",
+    provenance: "Hand-edited 2026-11-20 by session gentle-crab-832 with the operator's approval; pre-edit backup srv2:~/.ssh/authorized_keys.bak-20261120. was from=\"192.168.1.0/24\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding.",
+  },
+]
+
+// The node-orch materials that MUST be kept in the operator account's authorized_keys on srv1/srv2. A future
+// converge pointed at the operator account's authorized_keys MUST union this into its desired set (see the hazard
+// in the header). Both materials, so one keep-set covers the fleet-owned srv2 key and the out-of-band srv1 key.
+fn node_orch_operator_account_keep_materials() -> List<NonEmptyStr> {
+  [node_orch_ssh_key.material, node_orch_srv1_ssh_key.material]
+}
+
+// Render one of these entries the way its live authorized_keys line reads -- the consumer of the from= option's
+// rendering and of authorized_key_entry_line for these residues (the production file-writer is the same frontier
+// named on authorized_key_entry_line; until it exists the witness is the reader).
+fn node_orch_operator_authorized_key_line(record: NodeOrchOperatorAuthorizedKeyRecord) -> String {
+  authorized_key_entry_line(e: record.entry)
+}
