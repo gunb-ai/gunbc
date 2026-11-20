@@ -4,6 +4,7 @@ import std.types { Bool, String, List }
 import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
 import std.list { first_where }
+import extdeps.github.expressions { serialize_expression }
 import gunbc.actions_run_binding { fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_mode_env_name, fleet_converge_subject_rule_env_name }
 import extdeps.languages.yaml.types { YamlKeyValue, YamlValue, YamlString }
 import v2.workflow.bash_emit { Accepted, Rejected }
@@ -21,13 +22,14 @@ import gunbc.fleet.fleet_converge_executor_subject_split {
   fleet_converge_split_missing_subject_marker,
   fleet_converge_split_missing_executor_marker,
   fleet_converge_split_refusal_marker,
-  ModeDeclaresNoSubject,
-  DrainRuleDecidedInPrecheck,
+  InstallModeDeclaresNoSubject,
+  InstallDrainRuleDecidedInPrecheck,
+  InstallSubjectAbsent,
+  InstallExecutorIdentityAbsent,
+  fleet_converge_install_refusal_line,
   SplitSubjectRule,
   SubjectRequiredAndDistinct,
   SubjectMayBeTheExecutorsOwnMachine,
-  SubjectAbsent,
-  ExecutorIdentityAbsent,
   InstallSubjectOnNamedSubject,
   InstallSubjectOnExecutorsOwnMachine,
   InstallSubjectRefused,
@@ -192,7 +194,7 @@ test fn srv1_executing_for_a_butch_subject_is_admitted() -> Bool {
 // (the self-drain deadlock, refused run 40085967610, actions-runner@srv3-13 draining srv3). Both spellings
 // refuse -- a bare host name and a full slot name -- because the precheck answers it with the proving
 // relation runner_name_proves_host_identity, not with string equality. And a mode that declares NO rule is
-// refused, not defaulted: the entry read answers ModeDeclaresNoSubject for it. The last arm is review 96966
+// refused, not defaulted: the entry read answers InstallModeDeclaresNoSubject for it. The last arm is review 96966
 // finding 1: this module's install decision must NOT re-answer the drain rule with weaker logic, so a
 // drain-rule dispatch that reaches it is refused with the route named.
 test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
@@ -209,7 +211,7 @@ test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
       _ => false
     }
     && match fleet_converge_install_subject_decision(rule: fleet_converge_mode_facts(mode: mode_named(name: "qualification_attempt")).subject_rule, executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
-      InstallSubjectRefused { reason: why } => match why { ModeDeclaresNoSubject => true  _ => false }
+      InstallSubjectRefused { reason: why } => match why { InstallModeDeclaresNoSubject => true  _ => false }
       _ => false
     }
     // Not a fork: the install reader REFUSES a drain-rule dispatch instead of deciding it, so the only place
@@ -217,7 +219,7 @@ test fn the_drain_rule_still_refuses_a_host_acting_on_itself() -> Bool {
     // relation. A plain name comparison here would have admitted the srv3-13-on-srv3 pairing above.
     && match fleet_converge_install_subject_decision(rule: SubjectRequiredAndDistinct, executor_runner_name: "actions-runner@srv3-13", named_subject: "srv3", own_host: "srv3") {
       InstallSubjectRefused { reason: why } =>
-        match why { DrainRuleDecidedInPrecheck => string_contains(s: fleet_converge_install_refusal_line(reason: why), pattern: "fleet_converge_split_precheck")  _ => false }
+        match why { InstallDrainRuleDecidedInPrecheck => string_contains(s: fleet_converge_install_refusal_line(reason: why), pattern: "fleet_converge_split_precheck")  _ => false }
       _ => false
     }
 }
@@ -247,19 +249,19 @@ test fn the_install_rule_admits_the_pair_the_drain_rule_refuses() -> Bool {
 }
 
 // (9) WHAT STAYS REFUSED FOR A SERVING MODE: a dispatch that names no machine at all, and a process that
-// names no lane. Red control: the subject-empty case answers SubjectAbsent -- the entry must NOT fill the
+// names no lane. Red control: the subject-empty case answers InstallSubjectAbsent -- the entry must NOT fill the
 // subject in from the executor's slot identity, because "the machine you are standing on" is precisely what
 // an operator does not mean when they dispatch a remote host -- and the nameless-lane case answers
-// ExecutorIdentityAbsent, because a host mutation performed by a process no registered lane owns has no
+// InstallExecutorIdentityAbsent, because a host mutation performed by a process no registered lane owns has no
 // executor to attribute it to. The one admissible same-machine case is the historical one: the executor's own
 // expected HOST names the machine.
 test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
   match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "srv1-03-1764067000-4213", named_subject: "", own_host: "") {
-    InstallSubjectRefused { reason: why } => match why { SubjectAbsent => true  _ => false }
+    InstallSubjectRefused { reason: why } => match why { InstallSubjectAbsent => true  _ => false }
     _ => false
   }
     && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "", named_subject: "srv14", own_host: "srv1") {
-      InstallSubjectRefused { reason: why } => match why { ExecutorIdentityAbsent => true  _ => false }
+      InstallSubjectRefused { reason: why } => match why { InstallExecutorIdentityAbsent => true  _ => false }
       _ => false
     }
     && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "srv3-01-1764067000-1", named_subject: "", own_host: "srv3") {
@@ -267,7 +269,7 @@ test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
       _ => false
     }
     && match fleet_converge_install_subject_decision(rule: SubjectMayBeTheExecutorsOwnMachine, executor_runner_name: "", named_subject: "", own_host: "") {
-      InstallSubjectRefused { reason: why } => match why { ExecutorIdentityAbsent => true  _ => false }
+      InstallSubjectRefused { reason: why } => match why { InstallExecutorIdentityAbsent => true  _ => false }
       _ => false
     }
 }
@@ -333,7 +335,7 @@ test fn the_emitted_rule_pairs_each_gated_mode_with_its_own_rule() -> Bool {
     && fleet_converge_split_rule_wire(rule: SubjectRequiredAndDistinct) == split_rule_wire_required_and_distinct
     && fleet_converge_split_rule_of_wire(wire: split_rule_wire_may_be_executors_own) == SubjectMayBeTheExecutorsOwnMachine
     && match fleet_converge_install_subject_decision(rule: fleet_converge_split_rule_of_wire(wire: "required_and_distinct_"), executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
-      InstallSubjectRefused { reason: why } => match why { ModeDeclaresNoSubject => true  _ => false }
+      InstallSubjectRefused { reason: why } => match why { InstallModeDeclaresNoSubject => true  _ => false }
       _ => false
     }
 }
@@ -347,7 +349,7 @@ fn install_rule_admits_its_own_mode(mode: String) -> Bool {
 
 // The other half of the same split. There is no fall-through: a mode whose facts row declares
 // SubjectRuleNotApplicable is on NEITHER half, and both ends refuse it -- the entry read answers
-// ModeDeclaresNoSubject (claim 7) and the gate's own first statement refuses the dispatch (claim 3). So a
+// InstallModeDeclaresNoSubject (claim 7) and the gate's own first statement refuses the dispatch (claim 3). So a
 // sixth subject-naming mode (a host-unit teardown, say) must state which half it is on. Asserting the halves
 // rather than a roster count is what lets it arrive without editing this witness: it lands on one side, or
 // this claim goes red pointing at the row that declared no rule.

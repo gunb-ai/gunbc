@@ -47,7 +47,11 @@ type SplitRefusalReason = SelfSubject { executor_runner_name: String, subject_ho
 // The install rule's OWN refusal vocabulary. Kept apart from SplitRefusalReason on purpose: the drain
 // precheck never answers these, and the install decision never answers SelfSubject -- so neither wall
 // can be read as carrying the other's rule.
-type InstallRefusalReason = ModeDeclaresNoSubject | DrainRuleDecidedInPrecheck | ExecutorIdentityAbsent | SubjectAbsent
+// The four names carry the Install prefix because variant names are ONE namespace in this language, not
+// per-sum: shipping them bare failed with "variant 'SubjectAbsent' appears in both 'SplitRefusalReason' and
+// 'InstallRefusalReason'" (measured, run of this witness at head 02340ea925f1). Sharing the names would also
+// have made the two walls unreadable -- a reader could not tell which rule answered.
+type InstallRefusalReason = InstallModeDeclaresNoSubject | InstallDrainRuleDecidedInPrecheck | InstallExecutorIdentityAbsent | InstallSubjectAbsent
 
 // THE PREDICATE, as one function both walls call. The executor side uses the SAME proving relation
 // the deploy gate uses (a slot named actions-runner@srv3-13 proves it lives on srv3), so "executor
@@ -101,10 +105,11 @@ fn fleet_converge_split_refusal_line(reason: SplitRefusalReason) -> String {
 
 // THE RULE, PER MODE (operator ruling 2026-11-20). The two split refusals were written for the DRAIN
 // trio, where acting on the machine the job stands on drains the bracket that holds the job itself.
-// A mode that only INSTALLS files on a host has no such deadlock: remote_build_serving_observe /
-// converge write an account, a checkout, a toolchain and a serve binary, and srv1 converging its OWN
-// serving is the shape run 44656574939 already used (executor srv3, served host srv3). Refusing that
-// pair by the drain rule would make it impossible to converge a host that has no other lane.
+// A mode that only INSTALLS files on a host has no such deadlock: remote_build_serving_observe / converge
+// write an account, a ledger home, a checkout, a toolchain and a serve binary -- they drain no bracket. And
+// a host converged by a lane ON THAT SAME HOST is a shape the fleet has already run: srv3 and srv4 were set
+// up from their own lanes (runs 44656574939 and 44660458690). Refusing that pair by the drain rule would make
+// it impossible to converge a host that has no second lane -- including srv1 itself.
 // So ONE gate and ONE precheck carry a rule, and the mode picks it:
 //   SubjectRequiredAndDistinct            -- the drain trio: a named subject, never the executor.
 //   SubjectMayBeTheExecutorsOwnMachine    -- the serving pair: a named subject, or the machine the
@@ -194,17 +199,17 @@ fn fleet_converge_install_subject_decision(rule: SplitSubjectRule, executor_runn
   let named = named_subject
   let own = own_host
   if rule == SubjectRuleNotApplicable {
-    InstallSubjectRefused { reason: ModeDeclaresNoSubject }
+    InstallSubjectRefused { reason: InstallModeDeclaresNoSubject }
   } else if rule == SubjectRequiredAndDistinct {
-    InstallSubjectRefused { reason: DrainRuleDecidedInPrecheck }
+    InstallSubjectRefused { reason: InstallDrainRuleDecidedInPrecheck }
   } else if executor == "" {
-    InstallSubjectRefused { reason: ExecutorIdentityAbsent }
+    InstallSubjectRefused { reason: InstallExecutorIdentityAbsent }
   } else if named != "" {
     InstallSubjectOnNamedSubject { executor_runner_name: executor, subject_host: named }
   } else if own != "" {
     InstallSubjectOnExecutorsOwnMachine { executor_runner_name: executor, host: own }
   } else {
-    InstallSubjectRefused { reason: SubjectAbsent }
+    InstallSubjectRefused { reason: InstallSubjectAbsent }
   }
 }
 
@@ -214,13 +219,13 @@ fn fleet_converge_install_subject_decision(rule: SplitSubjectRule, executor_runn
 // satisfies the subject and neither was given.
 fn fleet_converge_install_refusal_line(reason: InstallRefusalReason) -> String {
   match reason {
-    SubjectAbsent =>
+    InstallSubjectAbsent =>
       join([fleet_converge_split_missing_subject_marker, ": neither ", fleet_converge_subject_host_env_name, " nor ", fleet_converge_expected_host_env_name, " names a machine; a serving mode converges the host the dispatch names, and never one it has to guess."], "")
-    ExecutorIdentityAbsent =>
+    InstallExecutorIdentityAbsent =>
       join([fleet_converge_split_missing_executor_marker, ": RUNNER_NAME is unset; a host mutation performed by a process no registered lane owns has no executor to attribute it to."], "")
-    DrainRuleDecidedInPrecheck =>
+    InstallDrainRuleDecidedInPrecheck =>
       join([fleet_converge_split_refusal_marker, ": this mode's rule is the drain rule, which only fleet_converge_split_precheck decides -- its executor is a slot name and fleet_converge_split_precheck proves what host that slot lives on. The install rule must not answer that question a second time."], "")
-    ModeDeclaresNoSubject =>
+    InstallModeDeclaresNoSubject =>
       join([fleet_converge_split_missing_subject_marker, ": ", fleet_converge_subject_rule_env_name, " does not name a rule the facts table declares for this mode; a subject-taking entry was reached by a dispatch whose mode declares no subject at all."], "")
   }
 }
