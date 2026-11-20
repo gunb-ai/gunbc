@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   ProbeLeg,
   SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTargetRefusal, TargetEndpointUnparseable,
   fleet_ssh_target_at_standard_port, ssh_target_wire, portable_remote_words,
-  shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
+  FleetBareWordLeg, shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
 }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
@@ -35,7 +35,7 @@ fn w_key_argv(target: SshTarget) -> String {
     Present { value: ctx } =>
       match portable_remote_words(raws: ["hostname"]) {
         Absent => ""
-        Present { value: words } => w_words_of(argv: shape_fleet_ssh_exec(kind: ProbeLeg, context: ctx, target: target, words: words))
+        Present { value: words } => w_words_of(argv: shape_fleet_ssh_exec(context: ctx, leg: FleetBareWordLeg { target: target, words: words, kind: ProbeLeg }))
       }
   }
 }
@@ -46,7 +46,7 @@ fn w_password_argv(target: SshTarget) -> String {
     Present { value: ctx } =>
       match portable_remote_words(raws: ["hostname"]) {
         Absent => ""
-        Present { value: words } => w_words_of(argv: shape_fleet_ssh_password_exec_trusting(kind: ProbeLeg, trust: ctx.trust, target: target, words: words))
+        Present { value: words } => w_words_of(argv: shape_fleet_ssh_password_exec_trusting(trust: ctx.trust, leg: FleetBareWordLeg { target: target, words: words, kind: ProbeLeg }))
       }
   }
 }
@@ -146,8 +146,8 @@ fn w_renders_over(hosts: List<WRecordedHost>) -> String {
               SshTargetResolved { target: t } =>
                 join([
                   "host=", r.host, " wire=", ssh_target_wire(target: t) as String, "\n",
-                  "key=", join(shape_fleet_ssh_exec(kind: ProbeLeg, context: ctx, target: t, words: words), "\n  | "), "\n",
-                  "pw=", join(shape_fleet_ssh_password_exec_trusting(kind: ProbeLeg, trust: ctx.trust, target: t, words: words), "\n  | "), "\n",
+                  "key=", join(shape_fleet_ssh_exec(context: ctx, leg: FleetBareWordLeg { target: t, words: words, kind: ProbeLeg }), "\n  | "), "\n",
+                  "pw=", join(shape_fleet_ssh_password_exec_trusting(trust: ctx.trust, leg: FleetBareWordLeg { target: t, words: words, kind: ProbeLeg }), "\n  | "), "\n",
                 ], "")
             }), "")
       }

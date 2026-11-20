@@ -24,7 +24,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetLegKind,
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
-  portable_remote_words, shape_fleet_ssh_exec,
+  portable_remote_words, FleetRemoteLeg, FleetBareWordLeg, fleet_ssh_armed_key_leg,
   OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {
@@ -220,7 +220,19 @@ fn remote_build_client_leg(kind: FleetLegKind, context: FleetSshExecutionContext
     SshTargetResolved { target } =>
       match portable_remote_words(raws: words) {
         Absent => RemoteBuildLegNotSent { detail: concat("a request word is not a portable remote word: ", join(words, " ")) }
-        Present { value: w } => RemoteBuildLegRan { target: ssh_target_wire(target: target) as String, result: ssh_session_exec_portable_words(client_args: shape_fleet_ssh_exec(kind: kind, context: context, target: target, words: w)) }
+        // THE LEG ARMS ITS OWN CEILING: this caller declares the kind and takes the deadline from
+        // the armed leg; it neither computes the ceiling nor may omit it (review 96976).
+        Present { value: w } => {
+          let armed = fleet_ssh_armed_key_leg(
+            context: context, leg: FleetBareWordLeg { target: target, words: w, kind: kind },
+          )
+          RemoteBuildLegRan {
+            target: ssh_target_wire(target: target) as String,
+            result: ssh_session_exec_portable_words(
+              client_args: armed.client_args, wall_deadline: armed.wall_deadline,
+            ),
+          }
+        }
       }
   }
 }

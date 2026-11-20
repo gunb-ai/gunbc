@@ -240,7 +240,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
                 hint: "apt install sshpass",
               },
             },
-           {
+          ) {
             FleetPrincipalLegRan { session: _, result: _ } => false
             FleetPrincipalLegOverran { session: _, deadline: _ } => false
             FleetPrincipalLegRefused { cause: c } =>

@@ -945,6 +945,48 @@ fn fleet_remote_leg_kind(leg: FleetRemoteLeg) -> FleetLegKind {
   }
 }
 
+// THE ARMED FLEET LEG: the client arguments to send, plus the wall ceiling the leg's DECLARED KIND
+// commands. This is the ONE place a fleet leg's ceiling is derived, and the only way a fleet path
+// reaches an ssh sink: a caller neither computes the ceiling nor may omit it (extdeps.ssh.session
+// ssh_session_exec_portable_words takes wall_deadline with no default, so a leg that states none is a
+// compile error, not an unbounded ssh).
+record FleetSshArmedLeg {
+  client_args: List<String>,
+  wall_deadline: Optional<Second>,
+}
+
+// THE CEILING IS READ FROM THE LEG, which carries its kind. A kind that is declared but never read is
+// an inert lens; this is what reads it.
+fn fleet_remote_leg_wall_deadline(leg: FleetRemoteLeg) -> Optional<Second> {
+  Present { value: fleet_leg_wall_deadline(kind: fleet_remote_leg_kind(leg: leg)) }
+}
+
+fn fleet_ssh_armed_key_leg(context: FleetSshExecutionContext, leg: FleetRemoteLeg) -> FleetSshArmedLeg {
+  FleetSshArmedLeg {
+    client_args: shape_fleet_ssh_exec(context: context, leg: leg),
+    wall_deadline: fleet_remote_leg_wall_deadline(leg: leg),
+  }
+}
+
+fn fleet_ssh_armed_key_leg_on_fresh_connection(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+) -> FleetSshArmedLeg {
+  FleetSshArmedLeg {
+    client_args: shape_fleet_ssh_exec_over(
+      context: context, leg: leg, connection: FleetSshFreshConnection,
+    ),
+    wall_deadline: fleet_remote_leg_wall_deadline(leg: leg),
+  }
+}
+
+fn fleet_ssh_armed_password_leg(trust: FleetOpenSshTrustPolicy, leg: FleetRemoteLeg) -> FleetSshArmedLeg {
+  FleetSshArmedLeg {
+    client_args: shape_fleet_ssh_password_leg_trusting(trust: trust, leg: leg),
+    wall_deadline: fleet_remote_leg_wall_deadline(leg: leg),
+  }
+}
+
 fn fleet_remote_leg_strings(leg: FleetRemoteLeg) -> List<String> {
   match leg {
     FleetBareWordLeg { target: _, words: w, kind: _ } => portable_remote_words_strings(words: w)
@@ -1291,13 +1333,13 @@ fn fleet_ssh_multiplex_options(context: FleetSshExecutionContext, target: SshTar
 
 // The password session needs only the trust anchor, so a caller holding no fleet key (the first
 // contact, or an apply run from an operator position) shapes it from the policy alone.
+// THE SHAPER TAKES THE LEG, whose declared kind arms the ceiling at fleet_remote_leg_wall_deadline.
+// It used to take a bare `kind` it wrote into a leg and then ignored: an inert lens, review 96976.
 fn shape_fleet_ssh_password_exec_trusting(
   trust: FleetOpenSshTrustPolicy,
-  target: SshTarget,
-  words: PortableRemoteWords,
-  kind: FleetLegKind,
+  leg: FleetRemoteLeg,
 ) -> List<String> {
-  shape_fleet_ssh_password_leg_trusting(trust: trust, leg: FleetBareWordLeg { target: target, words: words, kind: kind })
+  shape_fleet_ssh_password_leg_trusting(trust: trust, leg: leg)
 }
 
 fn shape_fleet_ssh_password_leg_trusting(
@@ -1321,11 +1363,9 @@ fn shape_fleet_ssh_password_leg_trusting(
 
 fn shape_fleet_ssh_password_exec(
   context: FleetSshExecutionContext,
-  target: SshTarget,
-  words: PortableRemoteWords,
-  kind: FleetLegKind,
+  leg: FleetRemoteLeg,
 ) -> List<String> {
-  shape_fleet_ssh_password_exec_trusting(trust: context.trust, target: target, words: words, kind: kind)
+  shape_fleet_ssh_password_exec_trusting(trust: context.trust, leg: leg)
 }
 
 // WHETHER A KEY LEG RIDES THE RUN'S MULTIPLEXED MASTER CONNECTION OR OPENS ITS OWN. A leg whose question is
@@ -1343,23 +1383,19 @@ fn fleet_ssh_connection_options(context: FleetSshExecutionContext, target: SshTa
   }
 }
 
-fn shape_fleet_ssh_exec(
-  context: FleetSshExecutionContext,
-  target: SshTarget,
-  words: PortableRemoteWords,
-  kind: FleetLegKind,
-) -> List<String> {
-  shape_fleet_ssh_exec_over(context: context, target: target, words: words, connection: FleetSshMultiplexedConnection, kind: kind)
+// THE KEY SHAPERS TAKE THE LEG, whose declared kind arms the ceiling at
+// fleet_remote_leg_wall_deadline. They used to carry a `kind` parameter they wrote into a leg and
+// never read: an inert lens, review 96976.
+fn shape_fleet_ssh_exec(context: FleetSshExecutionContext, leg: FleetRemoteLeg) -> List<String> {
+  shape_fleet_ssh_exec_over(context: context, leg: leg, connection: FleetSshMultiplexedConnection)
 }
 
 fn shape_fleet_ssh_exec_over(
   context: FleetSshExecutionContext,
-  target: SshTarget,
-  words: PortableRemoteWords,
+  leg: FleetRemoteLeg,
   connection: FleetSshConnection,
-  kind: FleetLegKind,
 ) -> List<String> {
-  shape_fleet_ssh_leg(context: context, leg: FleetBareWordLeg { target: target, words: words, kind: kind }, connection: connection)
+  shape_fleet_ssh_leg(context: context, leg: leg, connection: connection)
 }
 
 fn shape_fleet_ssh_leg(

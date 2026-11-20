@@ -140,9 +140,15 @@ fn typed_argv_shell_safe_refusal_argv(argv: List<String>) -> String? {
 fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
+    // NO FLEET CEILING, SAID BY NAME: this is the non-fleet host transport -- it takes a bare endpoint
+    // and no FleetLegKind, so there is no kind to read a ceiling from. It is NOT a fleet path: a fleet
+    // leg goes through typed_argv_exec_over_fleet_ssh, where the ceiling is armed from the leg
+    // (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_armed_key_leg). The sink has no default, so
+    // "unbounded" here is a decision this call site states (review 96976).
     Absent => TypedArgvExecConverged {
       result: ssh_session_exec_portable_words(
         client_args: shape_ssh_shell_exec(host: host, argv: argv),
+        wall_deadline: Absent,
       ),
     }
   }
@@ -163,10 +169,12 @@ fn typed_argv_exec_over_ssh_with_stdin(
 ) -> TypedArgvExecOutcome {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
+    // NO FLEET CEILING, SAID BY NAME -- see typed_argv_exec_over_ssh.
     Absent => TypedArgvExecConverged {
       result: ssh_session_exec_portable_words_with_stdin(
         client_args: shape_ssh_shell_exec(host: host, argv: argv),
         stdin_payload: stdin_payload,
+        wall_deadline: Absent,
       ),
     }
   }
@@ -176,8 +184,10 @@ fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgv
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => {
+      // NO FLEET CEILING, SAID BY NAME -- see typed_argv_exec_over_ssh.
       let result = ssh.Session.ExecPortableWords(
         client_args: shape_ssh_shell_exec(host: host, argv: argv),
+        wall_deadline: Absent,
         expect: OutcomeIsData,
       )
       TypedArgvExecConverged {

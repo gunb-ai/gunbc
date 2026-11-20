@@ -28,7 +28,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
   PortableRemoteWords,
   portable_remote_words,
-  shape_fleet_ssh_exec,
+  FleetBareWordLeg, fleet_ssh_armed_key_leg,
   fleet_ssh_credential_identity,
   fleet_ssh_credential_locus_label,
 }
@@ -136,12 +136,18 @@ fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String,
     Present { value: words } =>
       match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: principal as NonEmptyStr) {
         SshTargetRefused { endpoint: e, refusal: why } => ProbeLegRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
-        SshTargetResolved { target: target } =>
+        SshTargetResolved { target: target } => {
+          // THE LEG ARMS ITS OWN CEILING. This file's legs are measurement probes (hostname, sudo -n -l),
+          // so the kind is DECLARED here, where the argv is fixed, and the ceiling is read from the leg.
+          let armed = fleet_ssh_armed_key_leg(
+            context: context, leg: FleetBareWordLeg { target: target, words: words, kind: ProbeLeg },
+          )
           ProbeLegRan {
             result: ssh_session_exec_portable_words(
-              client_args: shape_fleet_ssh_exec(kind: ProbeLeg, context: context, target: target, words: words),
+              client_args: armed.client_args, wall_deadline: armed.wall_deadline,
             ),
           }
+        }
       }
   }
 }
