@@ -11,7 +11,7 @@ import gunbc.ci.ci_budget_raise {
   BudgetRaiseGrant, serve_entry_verdict_step_raised_to_45_minutes_grant,
   StepBudgetApprovals, BudgetIntroduction, BudgetCoverage, CoveredByIntroduction, CoveredByGrant,
   BudgetAdmission, BudgetAdmitted, BudgetRaiseGrantForAnotherBudget, BudgetRaiseUnapproved,
-  budget_admission, budget_admitted, budget_admitted_minutes,
+  budget_admission, budget_admitted_minutes,
 }
 import gunbc.machine_intake.mtcollins1_bmc_cold_reset {
   mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_step_timeout_minutes,
@@ -65,18 +65,24 @@ test fn a_raise_with_no_grant_behind_it_refuses() -> Bool {
     && runs_at(minutes: 30, a: a, n: 30)
 }
 
+// THE REFUSAL, READ BY ITS ARM: a grant for another budget refuses as BudgetRaiseGrantForAnotherBudget naming that
+// grant's ruling, at the minutes asked -- not merely "not admitted", which an Unapproved arm would also satisfy.
+fn refused_naming_the_grant(x: BudgetAdmission, minutes: Nat, want: DesignRuling) -> Bool {
+  match x {
+    BudgetRaiseGrantForAnotherBudget { minutes: asked, grant: g } => minutes_equal(x: asked, n: minutes) && names(r: g.ruling, want: want)
+    _ => false
+  }
+}
+
 // AN UNRELATED RULING IS NOT COVERAGE (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668, F1): a real grant -- the
 // serve-entry step's raise to 45 -- cited by a different budget is refused naming that grant, at a value above the
 // introduction and at one inside it alike, and the budget runs at its introduction.
 test fn a_grant_for_another_budget_does_not_admit() -> Bool {
   let a = approvals(budget: fixture_budget_ref(), introduced: 35, raises: [serve_entry_verdict_step_raised_to_45_minutes_grant])
-  match budget_admission(minutes: m(n: 40), approvals: a) {
-    BudgetRaiseGrantForAnotherBudget { minutes: x, grant: g } => minutes_equal(x: x, n: 40) && names(r: g.ruling, want: serve_entry_verdict_step_raised_to_45_minutes)
-    _ => false
-  }
+  refused_naming_the_grant(x: budget_admission(minutes: m(n: 40), approvals: a), minutes: 40, want: serve_entry_verdict_step_raised_to_45_minutes)
     && runs_at(minutes: 40, a: a, n: 35)
-    && !budget_admitted(admission: budget_admission(minutes: m(n: 30), approvals: a))
-    && !budget_admitted(admission: budget_admission(minutes: m(n: 67), approvals: a))
+    && refused_naming_the_grant(x: budget_admission(minutes: m(n: 30), approvals: a), minutes: 30, want: serve_entry_verdict_step_raised_to_45_minutes)
+    && refused_naming_the_grant(x: budget_admission(minutes: m(n: 67), approvals: a), minutes: 67, want: serve_entry_verdict_step_raised_to_45_minutes)
 }
 
 // THE RIGHT BUDGET'S GRANT COVERS ONLY THE MINUTES SIGNED OFF: under the serve-entry step's own approvals, its grant

@@ -482,6 +482,79 @@ data remote_build_ssh_key: SshPublicKey = SshPublicKey {
 // a witness derives it from the material, so a mistyped key and a mistyped fingerprint cannot agree.
 data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2QqAPPPpqs8xW21IA2VsgF81aW8"
 
+// ── ADMITTED REMOTE-BUILD CLIENT KEYS ─────────────────────────────────────────────────────────────────
+//
+// The gunbc-build forced-command account admits a CLOSED LIST of client keys. Each renders through the
+// same restrict + forced-command entry (gunbc.compute.remote_build_serve::remote_build_authorized_entry);
+// the account's authorized_keys is that list rendered and NOTHING ELSE (no hand-added keys). This is the
+// admitted-scaffold path (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold) — NOT
+// the fleet roster (fleet_ssh_access.dag): these keys must never grant fleet admin reach.
+//
+// WHO MINTS EACH KEY:
+//   operator  — the operator host (the existing key, minted outside any custody system before this model)
+//   session   — ctrl mints; the private half never leaves ctrl's custody; gentle-crab-832 owns provisioning
+//   hosted-ci — the operator mints; private half stored as a GitHub Actions secret (GUNBC_REMOTE_BUILD_CI_SSH_KEY)
+//
+// Each new member lands in the change that carries its REAL public half (clever-raven-401, 2026-11-19:
+// a placeholder public key is a fabricated value; an admission list carrying one is worse than a shorter
+// list — gunbc.design_argument::fail_closed).
+type RemoteBuildClientKey {
+  label: NonEmptyStr
+  public_key: SshPublicKey
+  fingerprint: NonEmptyStr
+}
+
+// The operator key — the existing scaffold key (see the provenance doc on remote_build_ssh_key above).
+data remote_build_client_key_operator: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "operator",
+  public_key: remote_build_ssh_key,
+  fingerprint: remote_build_ssh_key_fingerprint,
+}
+
+// The session key — minted by ctrl (gentle-crab-832), private half in the dashboard secret store,
+// provisioned per-container by the ctrl session image at $HOME/.config/ctrl/remote-build/id_ed25519.
+data remote_build_client_key_session: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "session",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIPIuf7p1w+jsp+zluvCE/IOtG1rHrZW3iIsuhhqbwCzY",
+    comment: "gunbc-remote-build-session",
+  },
+  fingerprint: "SHA256:/ufkCsksYwFQOdqvHgaKCYA1LrLuLtxyvB1iGbjO1Fo",
+}
+
+// The hosted-CI key — minted by the OPERATOR (2026-11-19); the private half is stored as the GitHub
+// Actions secret GUNBC_REMOTE_BUILD_CI_SSH_KEY, and setting that secret is the operator's step, not this
+// model's. The material and fingerprint below are the operator's relayed REAL values, admitted per the
+// rule that a member lands only in the change carrying its real public half (fail_closed — no placeholder).
+// ssh-keygen -lf over this material prints exactly this fingerprint, and the serve witness
+// (test.claim.compute.remote_build_serve_witness::the_ci_key_has_the_relayed_fingerprint) re-derives it
+// from the material, so a mistyped key and a mistyped fingerprint cannot both stand.
+data remote_build_client_key_ci: RemoteBuildClientKey = RemoteBuildClientKey {
+  label: "hosted-ci",
+  public_key: SshPublicKey {
+    algorithm: Ed25519,
+    material: "AAAAC3NzaC1lZDI1NTE5AAAAIJensE0/BGahkF3Duz42EBwvWg9h0NUEcOiHjY1cyoUk",
+    comment: "gunbc-remote-build-ci",
+  },
+  fingerprint: "SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM",
+}
+
+// THE CLOSED LIST. Three members: operator, session, and hosted-ci. Each joins in the change that
+// carries its REAL public half — never a placeholder (a placeholder is a fabricated value; an admission
+// list carrying one is worse than a shorter list — gunbc.design_argument::fail_closed). The hosted-ci key
+// landed with its operator-minted public half on 2026-11-19; its private half is the GitHub Actions secret
+// GUNBC_REMOTE_BUILD_CI_SSH_KEY, which the operator sets.
+data remote_build_admitted_client_keys: List<RemoteBuildClientKey> = [
+  remote_build_client_key_operator,
+  remote_build_client_key_session,
+  remote_build_client_key_ci,
+]
+
+// The admitted public keys projected out of the closed list, for client-side verification. The client
+// accepts its identity file iff the derived public half matches any admitted key.
+data remote_build_admitted_public_keys: List<SshPublicKey> = map(remote_build_admitted_client_keys, k => k.public_key)
+
 // ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
 //
 // The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the

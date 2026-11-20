@@ -1,0 +1,62 @@
+module extdeps.tailscale.github_action
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+}
+
+// tailscale/github-action releases this repository has read.
+//
+// THE ONE ACTION FOR A HOSTED RUNNER TO JOIN THE TAILNET. The action installs tailscaled in the
+// runner's container, runs `tailscale up` with the supplied credentials, and logs the node out in
+// its post step so the node is never left registered. v4 is the major that supports the OAuth
+// client route (the authkey route is deprecated in the manifest); an ephemeral OAuth-minted node
+// self-expires from the tailnet with no operator or Terraform cleanup.
+//
+// The OAuth client must have the writable `auth_keys` scope (README at v4.4.0: "OAuth clients used
+// for this purpose must have the writable auth_keys scope"). At least one tag is required on the
+// OAuth client; this repository uses tag:ci-dispatch per the operator ruling @ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/tailscale/github-action"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tailscale.github_action",
+      decl_name: "tailscale_github_action_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data tailscale_github_action_v4_4_0: ActionRelease = ActionRelease {
+  owner: "tailscale", repo: "github-action", tag: "v4.4.0", commit: "064b10558093f38325e838ddea35486bdc6b1d5c", subdirectory: none
+}
+
+data tailscale_github_action_v4_3_0: ActionRelease = ActionRelease {
+  owner: "tailscale", repo: "github-action", tag: "v4.3.0", commit: "99a8333667fff04fdd6cffb46dfd409f8329a7bf", subdirectory: none
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit
+// (extdeps.github.action_release action_manifest_of), 2026-11-19.
+data tailscale_github_action_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: tailscale_github_action_v4_3_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+  ActionManifestReading {
+    action_release: tailscale_github_action_v4_4_0,
+    declared: JavaScriptAction { node_major: 24 },
+  },
+]

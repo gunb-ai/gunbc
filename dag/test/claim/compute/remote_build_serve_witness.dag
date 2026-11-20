@@ -22,11 +22,16 @@ import gunbc.compute.remote_build {
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
+  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session, remote_build_client_key_ci,
 }
 import gunbc.compute.remote_build_serve {
   remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide,
-  remote_build_authorized_keys_lines, RemoteBuildEntryUnrenderable, remote_build_unrenderable_line, remote_build_installable_line,
+  remote_build_authorized_keys_lines, remote_build_render_entry, RemoteBuildEntryUnrenderable, remote_build_unrenderable_line, remote_build_installable_line,
+  ServeBinaryIdentity, ServeIdentityAbsent, ServeIdentityObserved, ServeIdentityRefused,
+  parse_serve_binary_identity, read_serve_binary_identity, serve_receipt_with_identity, ServeReceiptAugment, ReceiptAugmented, ReceiptRefused,
 }
+import extdeps.languages.json.emit { JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 import gunbc.compute.work_provider_local { ProvideAttached, ProvideFresh, HostRecordWritten }
 import extdeps.ssh.keys { ssh_key_blob_sha256_fingerprint, authorized_key_entry_line }
 
@@ -195,6 +200,22 @@ test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
   }
 }
 
+test fn the_session_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_session.public_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_client_key_session.fingerprint as String
+  }
+}
+
+// The hosted-CI key's fingerprint is derived from the recorded material, so a mistyped key and a
+// mistyped fingerprint cannot both stand (mirrors the_session_key_has_the_relayed_fingerprint).
+test fn the_ci_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_ci.public_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_client_key_ci.fingerprint as String
+  }
+}
+
 // Every roster host has an entry, every entry is restricted and forced, and the forced command runs
 // the serving function from that host's serving checkout, naming that host. It starts by changing into
 // that checkout, because sshd starts it in the account's home and `gunbc run` discovers its workspace
@@ -202,11 +223,11 @@ test fn the_recorded_key_has_the_relayed_fingerprint() -> Bool {
 // gunbc.remote_shell_command (review 95657).
 test fn every_roster_host_has_a_restricted_forced_entry() -> Bool {
   count(remote_build_candidates()) > 0
-    && remote_build_candidates() |> all(c => w_entry_is_restricted_and_forced(candidate: c))
+    && remote_build_candidates() |> all(c => all(remote_build_admitted_client_keys, k => w_entry_is_restricted_and_forced(candidate: c, client_key: k)))
 }
 
-fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
-  match remote_build_authorized_entry(candidate: candidate) {
+fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate, client_key: RemoteBuildClientKey) -> Bool {
+  match remote_build_authorized_entry(candidate: candidate, client_key: client_key) {
     Absent => false
     Present { value: e } => {
       let line = authorized_key_entry_line(e: e)
@@ -214,7 +235,7 @@ fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate) -> Bool {
         && line.contains("'--function' 'remote_build_serve_cli'")
         && line.contains(join(["'--entry' '", candidate.instance.repo_root as String, "/dag/gunbc/compute/remote_build_serve.dag'"], ""))
         && line.contains(join(["'--arg' 'host=", candidate.host as String, "'"], ""))
-        && line.contains(remote_build_ssh_key.material as String)
+        && line.contains(client_key.public_key.material as String)
     }
   }
 }
@@ -230,11 +251,11 @@ test fn an_attached_success_serves_and_an_attached_failure_is_the_answer() -> Bo
 
 // ── the install render ─────────────────────────────────────────────────────────────────────────────
 
-// With every roster host rendering, the install render exits 0 with exactly one line per host.
-test fn the_install_render_prints_one_line_per_roster_host() -> Bool {
+// With every roster host rendering, the install render exits 0 with one line per host per admitted key.
+test fn the_install_render_prints_one_line_per_host_per_admitted_key() -> Bool {
   match remote_build_authorized_keys_lines() {
     CliWirePrintable { bytes, exit: ExitSuccess } =>
-      count(split(s: bytes, delimiter: "\n") |> filter(l => l != "")) == count(remote_build_candidates())
+      count(split(s: bytes, delimiter: "\n") |> filter(l => l != "")) == count(remote_build_candidates()) * count(remote_build_admitted_client_keys)
     _ => false
   }
 }
@@ -247,5 +268,96 @@ test fn an_unrenderable_host_has_a_refusal_and_no_installable_line() -> Bool {
       let r = RemoteBuildEntryUnrenderable { candidate: c }
       count(remote_build_unrenderable_line(r: r)) == 1 && count(remote_build_installable_line(r: r)) == 0
     }
+  }
+}
+
+// RED CONTROL: the closed list renders ONLY admitted keys. Every entry rendered from the candidate list
+// contains an admitted key's material; a known-foreign material does NOT appear in any line. This
+// witnesses the closed-list property: the account's authorized_keys is the admitted list rendered and
+// nothing else (gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold).
+test fn the_closed_list_renders_only_admitted_keys() -> Bool {
+  match first(remote_build_candidates()) {
+    Absent => false
+    Present { value: c } => {
+      let installable = remote_build_render_entry(candidate: c)
+      let lines = remote_build_installable_line(r: installable)
+      let admitted_materials = map(remote_build_admitted_client_keys, k => k.public_key.material as String)
+      let foreign_material = "AAAAC3NzaC1lZDI1NTE5AAAAIForeignKeyMaterialThatIsNotAdmitted"
+      count(lines) == count(remote_build_admitted_client_keys)
+        && (lines |> all(l => any(admitted_materials, m => l.contains(m))))
+        && !(lines |> any(l => l.contains(foreign_material)))
+    }
+  }
+}
+
+// ── the serving binary's identity in the receipt (PR-1a) ────────────────────────────────────────────
+// The two values a pre-placed identity file carries, mirrored by the committed fixture the wet row opens.
+data w_identity_revision: String = "0123456789abcdef0123456789abcdef01234567"
+data w_identity_sha256: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data w_receipt_document: String = "{\"subject\":\"build\",\"ending\":\"served\"}"
+
+// RED CONTROL: no identity file present leaves the receipt byte-for-byte as it came. The member is
+// ABSENT, never a null and never a revision guessed in (gunbc.design_argument::fail_closed).
+test fn an_absent_identity_leaves_the_receipt_without_a_serve_binary_member() -> Bool {
+  match serve_receipt_with_identity(document: w_receipt_document, identity: ServeIdentityAbsent) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAugmented { document: d } => d == w_receipt_document && !(d.contains("\"serve_binary\""))
+  }
+}
+
+// An observed identity folds in a top-level serve_binary member carrying BOTH values verbatim, read back
+// through the parser rather than substring-matched.
+test fn an_observed_identity_folds_revision_and_sha256_into_the_receipt() -> Bool {
+  let identity = ServeIdentityObserved { revision: w_identity_revision, sha256: w_identity_sha256 }
+  match serve_receipt_with_identity(document: w_receipt_document, identity: identity) {
+    ReceiptRefused { cause: _ } => false
+    ReceiptAugmented { document: d } => match parse_json_document(s: d) {
+      JsonDocumentUnreadable { gap: _ } => false
+      JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "serve_binary") {
+        JsonMemberFound { value: sb } => match json_object_unique_member(v: sb, key: "revision") {
+          JsonMemberFound { value: JsonString { value: r } } => r == w_identity_revision &&
+            match json_object_unique_member(v: sb, key: "sha256") {
+              JsonMemberFound { value: JsonString { value: s } } => s == w_identity_sha256
+              _ => false
+            }
+          _ => false
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+// RED CONTROL: a present file whose bytes are not the documented two-string object is REFUSED, never read
+// as absent -- a damaged or partial identity file must not be mistaken for a binary installed with none.
+test fn a_malformed_identity_file_refuses_rather_than_reading_as_absent() -> Bool {
+  let partial = match parse_serve_binary_identity(content: "{\"revision\":\"abc\"}") {
+    ServeIdentityRefused { cause: _ } => true
+    _ => false
+  }
+  let not_json = match parse_serve_binary_identity(content: "not identity bytes at all") {
+    ServeIdentityRefused { cause: _ } => true
+    _ => false
+  }
+  partial && not_json
+}
+
+// RED CONTROL: an identity the host could not read (a present-but-unreadable file) refuses the WHOLE
+// receipt, so a damaged sidecar is never answered as a clean receipt that silently omits who served.
+test fn a_refused_identity_refuses_the_whole_receipt() -> Bool {
+  match serve_receipt_with_identity(document: w_receipt_document, identity: ServeIdentityRefused { cause: "unreadable" }) {
+    ReceiptRefused { cause: _ } => true
+    ReceiptAugmented { document: _ } => false
+  }
+}
+
+// WET INHABITANCE (executed with `gunbc run --function`, not --claim-run: source_root_read_file is a real
+// host read that --claim-run refuses rather than mocks). The REAL read route opens the committed identity
+// file and its two members must come back verbatim -- the real producer emits the shape the controls above
+// assume (gunbc.design_argument::witness_one_interface).
+test fn the_real_read_route_reads_a_preplaced_identity_file() -> Bool {
+  match read_serve_binary_identity(serve_binary: "dag/test/claim/compute/serve_identity_inhabitant") {
+    ServeIdentityObserved { revision: revision, sha256: sha256 } => revision == w_identity_revision && sha256 == w_identity_sha256
+    _ => false
   }
 }

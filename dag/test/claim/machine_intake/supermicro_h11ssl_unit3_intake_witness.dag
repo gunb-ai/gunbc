@@ -61,6 +61,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_bios_version,
   supermicro_h11ssl_unit3_cmos_battery_outstanding,
   supermicro_h11ssl_unit3_baseboard_row_standing,
+  supermicro_h11ssl_unit3_edge_residue_2026_11_19,
   supermicro_h11ssl_unit3_edge_sighting,
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
@@ -345,15 +346,18 @@ test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool 
 // THE DISK-CAPTURE GAP POINTS AT THE INSTALL SUBJECT'S OWN ADMISSION, so the gap is about the model that
 // demands the capture and not about some unrelated standing.
 // A LATER SIGHTING IS APPENDED TO ITS ROW, never minted as a second row -- the register says so at
-// ConcernSighting itself. The edge gap grew a SECOND sighting, at a different main revision, for a second
-// and worse half of the same obstacle: the first says the model cannot show a converge what to delete; the
-// second says a session branch cannot even LOOK at the edge it is proposing to clean (the read-only
-// observation mode was refused by the workflow's own workload-identity gate, run 43786925157). This claim
-// refuses the shape where that new half shows up as a fourth open row, which would double-count one
-// obstacle and hide that it is the same gap deepened.
+// ConcernSighting itself. The edge gap has grown by SIGHTINGS, never by rows: a second sighting at a
+// different main revision for a second and worse half of the same obstacle (the first says the model cannot
+// show a converge what to delete; the second says a session branch cannot even LOOK at the edge it is
+// proposing to clean -- the read-only observation mode was refused by the workflow's own workload-identity
+// gate, run 43786925157); then the self-correction of that one, then the hold, and now a fifth for what the
+// 2026-11-19 and 2026-11-20 read-only listings found -- residue the prune fold lists and then drops, because
+// the owned-path predicate never reaches the edge's staging/ subtree, and directories a completed removal left
+// empty, which a file-only listing cannot see at all. This claim refuses the shape where any of those halves
+// shows up as another open row: one obstacle, one row, deepened in place.
 test fn witness_the_edge_gap_grew_sightings_rather_than_rows() -> Bool {
   matches_open(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition)
-    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 3)
+    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 4)
 }
 
 test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
@@ -515,15 +519,35 @@ test fn witness_the_edge_hold_is_attributed_without_ruling_authority() -> Bool {
   }
 }
 
-// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Four sightings stand on this
-// concern (the original, the branch-ref refusal, the self-correction of the second, and the hold), and at least
-// one of them states that the hold sits out of gunbc.design_ruling. That is the record's shape for an
-// instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
+// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Five sightings stand on this
+// concern (the original, the branch-ref refusal, the self-correction of the second, the hold, and the edge-
+// residue read of 2026-11-19/20, which is a SIGHTING on the same row rather than a second row about the same
+// residue), and at least one of them states that the hold sits out of gunbc.design_ruling. That is the
+// record's shape for an instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
 test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
   let concern = h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model
-  length(concern.sightings.tail) == 3
+  length(concern.sightings.tail) == 4
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "NOT entered in gunbc.design_ruling")
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "smart-crane-730")
+}
+
+// THE EDGE-RESIDUE ROW IS THE RECEIPT FOR THREE HAND-STAGED ARTIFACTS IN THREE STATES, and it is read here
+// rather than left as prose on a host. Two of the three are gone BY THE CONVERGE, and the row cites the run's own
+// wire lines for it (stale-install-files=removed over five paths, and the dnsmasq config rendered with
+// outcome=written-and-read-back); the third survived both read-only listings because the owned-path predicate
+// never reaches the edge's staging/ subtree, and the row says so without claiming who put it there. The row also
+// owes the re-read that would turn it into a closure, and names whose authorization that re-read waits on -- so it
+// cannot be read as a removal that has happened.
+test fn witness_the_edge_residue_row_splits_three_artifacts_by_state() -> Bool {
+  let row = supermicro_h11ssl_unit3_edge_residue_2026_11_19
+  any(row.paths_named, p => string_contains(s: text(p), pattern: "staging/withdrawn-h11new"))
+    && any(row.paths_named, p => string_contains(s: text(p), pattern: "http/seed/"))
+    && string_contains(s: text(row.account), pattern: "stale-install-files=removed")
+    && string_contains(s: text(row.account), pattern: "THE INSTALL ENTRY SURVIVES")
+    && string_contains(s: text(row.account), pattern: "never contains the strings h11new or withdrawn")
+    && string_contains(s: text(row.receipt_label), pattern: "fleet-converge run 44249605412")
+    && string_contains(s: text(row.read_obligation), pattern: "no file under staging/")
+    && string_contains(s: text(row.read_obligation), pattern: "the operator's to authorize")
 }
 
 // ── THE OPERATOR'S REPORT DOES NOT OPEN THE GATE ───────────────────────────────────────────────
