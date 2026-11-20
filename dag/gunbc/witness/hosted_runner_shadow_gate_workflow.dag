@@ -170,7 +170,7 @@ fn shadow_gate_config_check_script() -> String {
     shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret),
     "\" ] || [ -z \"",
     shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key),
-    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ] || [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n    echo '::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass'\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
+    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ] || [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n    echo \"::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass\"\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
   ], "")
 }
 
