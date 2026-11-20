@@ -903,6 +903,57 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
   },
   disposition: Open,
 }
+// A reach endpoint is a String projection (gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for),
+// so "this unit is sold, it has no endpoint" cannot be written in the type today. A SOLD Group B unit
+// (in gunbc.spark.dgx_procurement::dgx_spark_disposed_units) is therefore kept OUT of the tailnet-name
+// allocation rule and keeps the function's pre-existing bare-identity passthrough (srv9 -> "srv9"), so
+// the sold unit is never handed the drawn MagicDNS name its retained-as-fixture allocation row would
+// otherwise yield (francis/emerson/... -- a live name a new owner's device could answer). The bare id is
+// the same total passthrough the function already gave unmodeled spellings, NOT an in-band sentinel.
+// Fail-closed wants this absence represented in the type (an Optional endpoint or a typed SoldUnit arm),
+// which is exactly what the endpoint-authority replacement cut models (an endpoint "whose ABSENCE IS
+// REPRESENTABLE"). Making that change is a return-type rewrite that fans out to ~15 callers across
+// fleet/host/runner (every fleet_ssh_target_at_standard_port / ProbeTargetReady / target-string build),
+// so it is filed against the replacement rather than half-taken inside the old total projection.
+data sold_units_keep_bare_passthrough_pending_typed_absence: IntegrationConcern = IntegrationConcern {
+  identity: "sold_units_keep_bare_passthrough_pending_typed_absence",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    requirement: "A host the model knows is sold must yield a typed no-endpoint, not a String that happens to name nothing and not its drawn MagicDNS tailnet name. fleet_probe_endpoint_for returns String, so a sold srv9..srv12 keeps its bare-slot passthrough (srv9 -> \"srv9\"): not the drawn name (francis.emerson.mil.bastien.tailecbe08.ts.net would hand a consumer a MagicDNS name that may now answer for another tenant's device), and not an empty sentinel. The bare id is still a string a caller could concatenate or dial; only a typed absence makes that a type error.",
+    standing: RequirementUnestablished {
+      decided_by: "the tailnet-name resolution change (ken pinned to ken.tailecbe08.ts.net) touches this function and forces the sold-arm decision. Representing sold absence in the type was measured to fan out to ~15 call sites that cannot be reached-and-typechecked within that change's budget; the endpoint-authority replacement cut is the designed home for a representable-absence endpoint. Filed under clever-raven-401's fallback ruling (msg_c08c60f0): when the Optional fan-out is unworkable, keep the passthrough and file this row rather than half-take a sentinel.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_owned_probe_endpoint_for"),
+    ],
+  },
+  question: "Where should a sold unit's reach endpoint become a typed no-endpoint rather than a String that happens to name nothing?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "398136026b345e087968a9db4ba42ec551c5ca4c" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_owned_probe_endpoint_for") },
+        tail: [],
+      },
+      account: "While pinning ken to its tailnet name, fleet_owned_probe_endpoint_for gains a uniform allocation-name rule; sold srv9..srv12 (dgx_spark_disposed_units, sold 2026-10-10) still carry hostname_allocation rows (francis/emerson/mil/bastien), so without a guard the rule resolves a sold unit to a live MagicDNS name. The landed short-circuit returns the bare slot string instead -- the function's existing total passthrough, not a sentinel -- because a typed Absent would change the String return and fan out to ~15 callers. The replacement cut already registers this function as the total String projection being replaced for exactly this reason.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.endpoint_authority_replacement_cut", decl_name: "endpoint_authority_cut_identity") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "test.claim.host.host_reach_identity_probe_witness", decl_name: "registry_hosts_resolve_to_tailnet_names_and_sold_units_keep_the_bare_handle"),
+        control: Absent,
+        statement: "a sold Group B unit (srv9/srv10) never resolves to a drawn tailnet name (francis/emerson/...) and keeps the bare handle, while every owned host with an allocation row resolves to its MagicDNS name -- the guard that must survive until the replacement lands a typed no-endpoint",
+      },
+    ],
+    next: climbs_when(capability: "the endpoint-authority replacement (X -> Y) lands an endpoint type whose absence is representable, so fleet_probe_endpoint_for can return a typed no-endpoint for a sold unit and the bare-passthrough guard retires"),
+  },
+}
 data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
   identity: "run_unreached_function_bodies_typechecked",
   kind: SuspectedCapabilityGap {
@@ -4023,7 +4074,7 @@ data typed_argv_exec_argv_shape_ambiguity: IntegrationConcern = IntegrationConce
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [typed_argv_exec_argv_shape_ambiguity, site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
+data integration_concerns: List<IntegrationConcern> = [typed_argv_exec_argv_shape_ambiguity, site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, sold_units_keep_bare_passthrough_pending_typed_absence, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
   inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
   string_duration_transport_surface,
