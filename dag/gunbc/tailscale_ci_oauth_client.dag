@@ -40,7 +40,7 @@ data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-github"
 
 // THE PREDECESSOR, RECORDED AS REVOKED: the identity of this client and the revocation of its
 // predecessor (githubcirunners, 2026-11-20) are operator decisions carried at
-// gunbc.design_ruling@tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20, not here.
+// @ref(gunbc.design_ruling::tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20), not here.
 // No model row states an OAuth client's lifecycle today; if a client read-back route is modeled,
 // the lifecycle becomes a closed type that route consumes.
 data ci_oauth_client_scope: NonEmptyStr = "auth_keys:write"

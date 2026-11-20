@@ -781,8 +781,8 @@ test fn w_a_pong_from_a_different_node_still_refuses_the_read_back() -> Bool {
 
 // THE JOIN CANNOT ENABLE THE HOST-SIDE TAILSCALE-SSH HALF. The host-side decision (RunSSH=false on
 // srv1/srv2 as of 2026-11-20; srv3/srv4 plain OpenSSH) is recorded at
-// gunbc.design_ruling@tailscale_ssh_off_on_fleet_build_hosts_2026_11_20. What this claim discriminates
-// is the join half: tailscale_up_join_argv@extdeps.tailscale.join carries no --ssh flag in ANY
+// @ref(gunbc.design_ruling::tailscale_ssh_off_on_fleet_build_hosts_2026_11_20). What this claim discriminates
+// is the join half: @ref(extdeps.tailscale.join::tailscale_up_join_argv) carries no --ssh flag in ANY
 // spelling (bare, --ssh=true), so no join can bring a host up answering ssh on tailscale-ssh instead
 // of sshd-with-forced-command -- if a --ssh word ever enters the argv, THIS claim goes red.
 test fn w_the_fleet_join_argv_never_enables_tailscale_ssh() -> Bool {
