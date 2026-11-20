@@ -24,6 +24,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
+  serving_serve_identity_deviation,
   ServingLegFailure, serving_forced_command_line,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
@@ -1836,4 +1837,45 @@ test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
       count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
     }
   }
+}
+
+// ── DIAGNOSTIC (temporary, localizes the identity-drift red): comparator + plan-arm ──────────────────
+// Per the recurring failure mode a_claim_module_red_on_main_with_its_cause_unread, a red claim must
+// expose WHICH arm it fell to. These isolate the three suspects (comparator mints? assessment diverges?
+// plan plans the write?) so one run tells us where the identity write is lost. To be removed once red.
+fn converge_plan_arm(plan: ConvergeDecision) -> String {
+  match plan {
+    ConvergePlan { writes: _ } => "plan"
+    ConvergeSettled => "settled"
+    ConvergeUnhandled { items: _ } => "unhandled"
+    ConvergeRefused { reason: _ } => "refused"
+  }
+}
+
+// PURE comparator: does the judge mint a drift deviation directly on each sum arm?
+test fn diag_comparator_mints_on_absent() -> Bool {
+  length(serving_serve_identity_deviation(binary_sha: Present { value: "aaa" }, leg: Present { value: ObservationEstablished { observed: SidecarAbsent } }, path: "/p")) == 1
+}
+test fn diag_comparator_mints_on_malformed() -> Bool {
+  length(serving_serve_identity_deviation(binary_sha: Present { value: "aaa" }, leg: Present { value: ObservationEstablished { observed: SidecarMalformed } }, path: "/p")) == 1
+}
+test fn diag_comparator_mints_on_sha_mismatch() -> Bool {
+  length(serving_serve_identity_deviation(binary_sha: Present { value: "aaa" }, leg: Present { value: ObservationEstablished { observed: SidecarRecorded { sha256: "bbb" } } }, path: "/p")) == 1
+}
+test fn diag_comparator_silent_on_matching() -> Bool {
+  length(serving_serve_identity_deviation(binary_sha: Present { value: "aaa" }, leg: Present { value: ObservationEstablished { observed: SidecarRecorded { sha256: "aaa" } } }, path: "/p")) == 0
+}
+
+// Which converge arm does the missing-sidecar fixture fall to? Exactly one of these is green; that is the cause.
+test fn diag_missing_plan_arm_is_plan() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_plan_arm(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "plan" }
+}
+test fn diag_missing_plan_arm_is_settled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_plan_arm(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "settled" }
+}
+test fn diag_missing_plan_arm_is_unhandled() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_plan_arm(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "unhandled" }
+}
+test fn diag_missing_plan_arm_is_refused() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_plan_arm(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "refused" }
 }
