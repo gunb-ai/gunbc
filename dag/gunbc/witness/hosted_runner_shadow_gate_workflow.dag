@@ -143,6 +143,58 @@ data shadow_gate_tailscale_args: String = "--accept-dns=false --ephemeral"
 // exit code propagates normally.
 
 data shadow_gate_config_check_id: String = "config-check"
+data shadow_gate_config_job_id: String = "shadow-gate-config"
+
+fn shadow_gate_config_job() -> Job {
+  Job {
+    id: shadow_gate_config_job_id,
+    name: Present { value: "Hosted-runner shadow gate: configuration" },
+    runner: HostedRunner { label: Ubuntu2404 },
+    environment: none,
+    env: none,
+    outputs: Present { value: [kv(key: "configured", value: yaml_string(s: "${{ steps.check.outputs.configured }}"))] },
+    if_condition: Present { value: shadow_gate_fork_guard },
+    needs: [],
+    steps: [
+      RunStep {
+        name: Present { value: "Check secrets" },
+        id: Present { value: "check" },
+        run: concat(
+          concat(
+            concat(
+              concat(
+                concat(
+                  concat("if [ -z \"${{ secrets.", "TS_OAUTH_CLIENT_ID" ),
+                  " }}\" ] || [ -z \"${{ secrets."
+                ),
+                "TS_OAUTH_SECRET"
+              ),
+              " }}\" ] || [ -z \"${{ secrets."
+            ),
+            "GUNBC_REMOTE_BUILD_CI_SSH_KEY"
+          ),
+          " }}\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::not configured: required secret absent; shadow gate skipped'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n"
+        ),
+        shell: Present { value: Bash },
+        working_directory: none,
+        env: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: none,
+      },
+    ],
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+data shadow_gate_main_job_needs: List<String> = [shadow_gate_config_job_id]
+
+// The main job's if_condition: runs only when the config job says configured=true.
+// When configured=false, GitHub marks this job as SKIPPED (gray), not green and not red.
+data shadow_gate_main_job_if: String = "needs.shadow-gate-config.outputs.configured == 'true'"
 
 fn shadow_gate_step_guard() -> String {
   concat("steps.", concat(shadow_gate_config_check_id, ".outputs.configured == 'true'"))
@@ -186,7 +238,7 @@ fn shadow_gate_tailscale_join_step() -> Step {
       kv(key: "args", value: yaml_string(s: shadow_gate_tailscale_args)),
     ] },
     env: none,
-    if_condition: Present { value: shadow_gate_step_guard() },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -216,7 +268,7 @@ fn shadow_gate_ssh_setup_step() -> Step {
     shell: Present { value: Bash },
     working_directory: none,
     env: none,
-    if_condition: Present { value: shadow_gate_step_guard() },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -260,7 +312,7 @@ data shadow_gate_gunbc_binary: String = "target/release/gunbc"
 
 fn shadow_gate_remote_build_step_for_row(row: EmittedSubjectBuildRow) -> Step {
   RunStep {
-    name: Present { value: join(["Remote build: ", render_label(l: row.label), " ", shadow_gate_plumbing_proof_pattern], "") },
+    name: Present { value: join(["Plumbing proof (remote_test_cli): ", row.step_id], "") },
     id: Present { value: join(["remote-build-", row.step_id], "") },
     run: concat(
       concat(
@@ -282,7 +334,7 @@ fn shadow_gate_remote_build_step_for_row(row: EmittedSubjectBuildRow) -> Step {
     shell: Present { value: Bash },
     working_directory: none,
     env: none,
-    if_condition: Present { value: shadow_gate_step_guard() },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -308,7 +360,7 @@ fn shadow_gate_checkout_step() -> Step {
     uses: checkout_action,
     with: Present { value: [kv(key: "persist-credentials", value: yaml_bool(b: false))] },
     env: none,
-    if_condition: Present { value: shadow_gate_step_guard() },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -322,7 +374,7 @@ fn shadow_gate_build_step() -> Step {
     shell: Present { value: Bash },
     working_directory: none,
     env: none,
-    if_condition: Present { value: shadow_gate_step_guard() },
+    if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -337,7 +389,7 @@ fn shadow_gate_job() -> Job {
     runner: HostedRunner { label: Ubuntu2404 },
     environment: none,
     env: none,
-    if_condition: Present { value: shadow_gate_fork_guard },
+    if_condition: Present { value: shadow_gate_main_job_if },
     needs: [],
     outputs: none,
     permissions: none,
@@ -353,7 +405,6 @@ fn shadow_gate_all_steps() -> List<Step> {
   list_append(
     left: [
       shadow_gate_checkout_step(),
-      shadow_gate_config_check_step(),
       shadow_gate_build_step(),
       shadow_gate_tailscale_join_step(),
       shadow_gate_ssh_setup_step(),
@@ -372,7 +423,7 @@ fn shadow_gate_workflow() -> Workflow {
     concurrency: none,
     env: none,
     permissions: none,
-    jobs: [shadow_gate_job()],
+    jobs: [shadow_gate_config_job(), shadow_gate_job()],
   }
 }
 
