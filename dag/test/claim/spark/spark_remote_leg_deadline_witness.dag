@@ -48,7 +48,18 @@ test fn w_live_deadline_bounds_a_dark_session() -> Bool {
 }
 
 test fn red_control_zeroed_keepalive_is_not_a_bound() -> Bool {
-  !deadline_bounds_a_dark_session(d: FleetSshLegDeadline { connect: second(count: 10), alive_interval: second(count: 0), alive_count_max: 4 })
+  // The red control zeroes the KEEPALIVE only. The four wall ceilings stay at their real values, so
+  // what fails is the keepalive bound, not the record's shape -- a literal missing a ceiling field is a
+  // type error, not a control.
+  !deadline_bounds_a_dark_session(d: FleetSshLegDeadline {
+    connect: second(count: 10),
+    alive_interval: second(count: 0),
+    alive_count_max: 4,
+    wall_probe: second(count: 15),
+    wall_actuation: second(count: 60),
+    wall_repository_convergence: second(count: 300),
+    wall_provisioning: second(count: 900),
+  })
 }
 
 // THE CLASSIFIER, over supplied session results (gunbc.design_argument::single_authority: the claim is about the reading, not the
