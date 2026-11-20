@@ -54,6 +54,11 @@ import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_c
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
+// PR-1c: the identity sidecar leg reads the file through the ONE serve-side identity reader (single
+// format authority, so the converge writer and the serve reader cannot drift), and carries its judgment
+// value in a SubjectValueRead built with the shared malformed marker.
+import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIdentityObserved }
+import gunbc.compute.remote_build_serving_setup { SubjectValueRead, serving_identity_malformed_marker }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
 import extdeps.tools.uname { uname_machine_command }
@@ -179,6 +184,39 @@ fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFai
 }
 
 fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: argv_words(command: cat_command(path: path))) }
+
+// PR-1c: read the serve binary's IDENTITY SIDECAR (<path>, i.e. <serve_binary>.identity) the same way
+// the authorized_keys leg reads a file — elevated (the serve directory is group-restricted, so the
+// principal cannot cat it unaided; this is the same elevation the binary sha256 leg uses), with a
+// `test -f` first so the outcomes are typed, never conflated:
+//   - test -f exit 1  -> the file is CONFIRMED ABSENT: established the EMPTY string (IdentityMissing -> re-record).
+//   - test -f exit 0  -> cat, then run it through the ONE serve identity reader: a valid two-member
+//                        object establishes its sha256; anything that is not that object establishes
+//                        the shared malformed marker (a re-record, never a silent pass).
+//   - a present file whose cat fails, or an ssh refusal, -> ObservationRefused (an unknown): we never
+//                        rewrite a sidecar on a host whose file we could not read.
+// A refused sudo grant short-circuits the whole leg (review 95915: sudo's refusal shares test -f's exit 1).
+fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
+  match elevation {
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
+      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
+      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
+        true => ObservationEstablished { observed: "" }
+        false => match t.exit_code == 0 {
+          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
+          true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
+            ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
+              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: s }
+              _ => ObservationEstablished { observed: serving_identity_malformed_marker }
+            }
+            ObservationRefused { cause: c } => ObservationRefused { cause: c }
+          }
+        }
+      }
+    }
+  }
+}
 
 // The first whitespace-delimited field of a command's stdout, after trimming. `sha256sum` prints
 // "<hex>  <path>", `git rev-parse HEAD` a lone hash, `uname -m` a lone arch — this reads the value
@@ -539,6 +577,15 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: true } => Present { value: serving_leg_stat(item: "serve.binary.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.serve_binary)) }
     _ => Absent
   }
+  // PR-1c: the identity sidecar is read only under a CONFIRMED-PRESENT binary (an absent binary means
+  // InstallServeBinary + its paired RecordServeIdentity own the write). Under the present binary the leg
+  // yields a SubjectValueRead whose value is the sidecar's sha256 (or the absent '' / malformed marker);
+  // a refused read stays an unknown. If the binary is absent/unread we pass Absent, which the constructor
+  // defaults to SubjectValueSkipped — the sidecar then says nothing, as it must.
+  let serve_identity_value = match serve_binary {
+    ObservationEstablished { observed: true } => Present { value: SubjectValueRead { read: serving_leg_serve_identity(elevation: elevation, item: "serve.binary.identity", target: target, context: context, path: concat((d.serve_binary as String), ".identity")) } }
+    _ => Absent
+  }
   // THE USER-WORK SLICE cap, read from the slice's unit controls as the serving user manager reports them
   // (serving_leg_slice_cap): the one place the cap is observed for the converge. The serving uid comes from
   // the passwd read; an unresolvable uid (fresh host / unreadable passwd) reads every control refused, which
@@ -581,6 +628,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     checkout_revision: checkout_revision_value,
     authorized_keys_mode: authorized_keys_mode_value,
     serve_binary_mode: serve_binary_mode_value,
+    serve_identity: serve_identity_value,
     user_work_slice_max: slice_cap.max,
     user_work_slice_high: slice_cap.high,
     user_work_slice_swap: slice_cap.swap,
@@ -1137,6 +1185,10 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     UserManagerNotLingering { account_name: _ } => converge_ensure_user_manager_linger_plan(acc, d)
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
+    // PR-1c: a drifted identity sidecar on a host whose binary is already settled (the deviation is
+    // only minted when the binary is present and its sha read) records the identity on its OWN — it
+    // reuses the RecordServeIdentity write + its read-back route from PR-1b, without a reinstall.
+    ServeIdentityDrift { path: _, reason: _ } => converge_record_identity_standalone(acc, d, pin)
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
@@ -1482,6 +1534,15 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
 // as every other owner-written file (converge_install_content: stage, upload, sudo-install, read-back
 // equality), so a sidecar that did not land byte-for-byte is a failed write, and the executor's
 // stop-at-first-failure means it is never written for a binary that did not install.
+// PR-1c: plan the identity recording ALONE, for a host whose serve binary is already at the desired
+// sha but whose sidecar is missing / malformed / stale. It prepends the same RecordServeIdentity the
+// (re)install pairs with (revision = the dispatched revision, sha256 = the binary sha both agree on),
+// through the SAME write + read-back route. No InstallServeBinary — the binary needs no reinstall. If a
+// reinstall IS also planned, both add the SAME key ("identity:"+path) and converge's dedup collapses them.
+fn converge_record_identity_standalone(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled }
+}
+
 // The canonical bytes of the serving binary's identity sidecar: one JSON object carrying string members
 // `revision` and `sha256`. This is the WRITER's one authority on the grammar; the reader in
 // gunbc.compute.remote_build_serve (PR-1a) parses exactly this shape. Kept as a pure function so a
