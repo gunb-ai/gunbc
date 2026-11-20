@@ -66,6 +66,13 @@ module gunbc.tailscale_join_converge
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.package_managers.apt { package_tailscale }
+import gunbc.fleet.fleet_converge_executor_subject_split {
+  fleet_converge_install_subject_read,
+  fleet_converge_install_refusal_line,
+  InstallSubjectOnNamedSubject,
+  InstallSubjectOnExecutorsOwnMachine,
+  InstallSubjectRefused,
+}
 import gunbc.fleet.apt_third_party_repo_converge {
   apt_third_party_repo_install,
   read_one_host_word,
@@ -1137,8 +1144,6 @@ fn tailscale_join_place_key(
 // not in the receipt, never in an argv (the key crosses the wire only as a file= reference).
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-data tailscale_join_host_env_name: String = "TAILSCALE_JOIN_HOST"
-
 data tailscale_join_attempt_raw: String = "tailscale-join-converge-ci"
 
 data tailscale_join_receipt_path: String = "target/tailscale-join-converge-receipt.txt"
@@ -1376,14 +1381,30 @@ fn write_tailscale_join_receipt_then_exit(body: String, ok: Bool) -> ProcessExit
 fn tailscale_join_converge_ci_wet() -> ProcessExit {
   let stamp = concat("probed_at=", probed_at_word(reading: clock_now_probed_at()) as String)
   let today = tailscale_join_today_from_clock(reading: clock_now_probed_at())
-  match actions_variable_read(name: tailscale_join_host_env_name) {
-    ActionsVariableAbsent { variable: v, detail: d } =>
+  // ONE DISPATCH, ONE MACHINE: the machine this run JOINS is the mode's subject, read through the same
+  // rule-aware reader the serving entries use, not an env var that doubles as the runner label. Before this
+  // the workflow bound github.event.inputs.host to BOTH the job's runner label and TAILSCALE_JOIN_HOST, so a
+  // dispatch could only join the machine whose runner it landed on -- true for srv3 (run 44782572818) and srv4,
+  // which have runner lanes, and impossible for a host with no lane of its own. The reader keeps the
+  // self-join legal (the install rule admits the executor's own machine) and refuses a run that named no
+  // machine or named no lane; what it never does is guess a target from the executor's label.
+  match fleet_converge_install_subject_read() {
+    InstallSubjectRefused { reason: why } =>
       write_tailscale_join_receipt_then_exit(
-        body: join([stamp, " ", v, " ", d, "; the dispatch must name the join host\n"], ""),
+        body: join([stamp, " ", fleet_converge_install_refusal_line(reason: why), "\n"], ""),
         ok: false,
       )
-    ActionsVariablePresent { value: raw } =>
-      match tailscale_join_host_selection(supplied: raw) {
+    InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: supplied } =>
+      tailscale_join_converge_host_chosen(supplied: supplied, stamp: stamp, today: today)
+    InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: supplied } =>
+      tailscale_join_converge_host_chosen(supplied: supplied, stamp: stamp, today: today)
+  }
+}
+
+// THE ROSTER GATE AND THE JOIN ITSELF, for whichever machine the reader settled on. Unchanged behaviour:
+// an unenrolled name is refused before any write, and only a rostered host ever reaches the credential fetch.
+fn tailscale_join_converge_host_chosen(supplied: String, stamp: String, today: String) -> ProcessExit {
+      match tailscale_join_host_selection(supplied: supplied) {
         JoinHostUnrostered { supplied: s } =>
           write_tailscale_join_receipt_then_exit(
             body: join(
@@ -1491,5 +1512,4 @@ fn tailscale_join_converge_ci_wet() -> ProcessExit {
             )
           }
       }
-  }
 }

@@ -574,7 +574,12 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     // TAILSCALE FLEET JOIN: the tailscale up join converge (gunbc.tailscale_join_converge). Same shared
     // host-pinned job, same fleet-key reach as the administrator edge its legs travel; the key's exposure is
     // bounded by the converge's own removal leg and the key's 90-day expiry, not by the job boundary.
-    TailscaleJoinConverge => FleetConvergeModeFacts { wire: "tailscale_join_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    // The join ACTS ON the machine being joined (it installs tailscale there, brings the interface up and
+    // reads the tailnet name back), so the machine is a subject, not the executor. may_be_executors_own, not
+    // required_and_distinct: srv3 (run 44782572818) and srv4 joined as a self-act on their own runner lanes
+    // and remain legal; a host with NO runner lane of its own -- butch/srv14 today -- can only be joined by a
+    // run that executes elsewhere, which is the dispatch this arm now admits (executor srv1, subject srv14).
+    TailscaleJoinConverge => FleetConvergeModeFacts { wire: "tailscale_join_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectMayBeTheExecutorsOwnMachine, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     R2MintPreflight => FleetConvergeModeFacts { wire: "r2_mint_preflight", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     R2BucketEnsure => FleetConvergeModeFacts { wire: "r2_bucket_ensure", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     R2BucketAdminMint => FleetConvergeModeFacts { wire: "r2_bucket_admin_mint", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -2977,7 +2982,13 @@ fn fleet_converge_tailscale_join_step() -> Step {
     env: Present {
       value: [
         kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: "TAILSCALE_JOIN_HOST", value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        // The machine to join travels as the SUBJECT, and the mode's own rule travels with it: one input can
+        // no longer name both the lane the run is granted and the machine it installs software on. The old
+        // TAILSCALE_JOIN_HOST key is gone rather than re-pointed -- the entry reads the joined host through
+        // fleet_converge_install_subject_read (tailscale_join_converge.dag), and a second spelling of the same
+        // machine that nothing reads is exactly the fork the rule exists to prevent.
+        kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")),
+        fleet_converge_subject_rule_env_pair(mode: TailscaleJoinConverge),
         kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
     },
