@@ -113,7 +113,12 @@ data not_joined_fixture_path: FilePath = "dag/test/fixture/tailscale_status_not_
 data running_without_self_fixture_path: FilePath = "dag/test/fixture/tailscale_status_running_without_self.json"
 
 fn fixture_text(path: FilePath) -> String {
-  Filesystem.Read(path: path, expect: ExpectSuccess).content
+  // Qualified on the module handle, not bare `Filesystem`: this witness imports `gunbc.tailscale_join_converge`,
+  // which now imports `extdeps.exec.command`, and that pulls `std.resources` into scope too -- so a bare
+  // `Filesystem` is ambiguous between `extdeps.filesystem.filesystem_io` and `std.resources`. The read is
+  // filesystem_io's (it is the one that carries `expect: ExpectSuccess`), exactly as the sibling
+  // gunbc.fleet.fleet_host_key_enrollment qualifies it.
+  filesystem_io.Filesystem.Read(path: path, expect: ExpectSuccess).content
 }
 
 // A document no fixture file is needed for: `Self.Tags` present but NOT a list. Upstream's member is a list of
