@@ -20,8 +20,8 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
   FleetPrincipalLegOverran,
-import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
 }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
 import gunbc.auth.private_secret_file {
   with_private_secret_file,
   PrivateSecretFileCompleted,

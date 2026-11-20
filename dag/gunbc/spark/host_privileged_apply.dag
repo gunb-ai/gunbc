@@ -12,8 +12,8 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
   FleetPrincipalLegOverran,
-import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
 }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_path_wire, spark_reach_endpoint }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy,
