@@ -231,13 +231,20 @@ test fn the_unrostered_unit_holds_back_no_slot_and_owes_its_join_to_the_roster()
     && host_build_pool_reservation(host: operator_host_e2d4b7) == byte_size(0)
 }
 
-// THE ONLY ROSTERED HOST TODAY CARRIES ITS OWN LEDGER, SO DERIVING THE RESERVATION MOVED NO MEASURED PLAN.
-// This is the fact that reversed the earlier reasoning: srv1 is on the roster, resolves dashboard instances, and
-// is therefore not carved -- its serving reservation reaches the envelope through host_memory_reserved instead.
-// Asserted, because a premise carried in prose is how the next reader re-decides it wrongly.
-test fn the_rostered_host_with_its_own_ledger_holds_nothing() -> Bool {
-  remote_build_host_is_serving(host: operator_host_srv1)
-    && host_carries_own_ledger(host: operator_host_srv1)
+// A HOST THAT CARRIES ITS OWN LEDGER IS NEVER CARVED, SO DERIVING THE RESERVATION MOVED NO MEASURED PLAN.
+// This is the fact that reversed the earlier reasoning: a host that resolves dashboard instances holds its own
+// reservation, so the roster puts no slot on the CI side for it -- its serving reservation reaches the envelope
+// through host_memory_reserved instead. Asserted, because a premise carried in prose is how the next reader
+// re-decides it wrongly. It is stated as an IMPLICATION OVER EVERY ENROLLED HOST rather than as one named
+// serving host, because the roster changes and this invariant does not: srv1 left the serving roster on
+// 2026-11-20 (gunbc.compute.remote_build_hosts remote_build_serving_hosts) and the fact survived the move,
+// which is exactly what a claim pinned to a roster entry would have missed. The population is asserted
+// non-empty -- at least one enrolled host carries its own ledger -- so the implication cannot be satisfied by
+// an empty set, and srv1's own zero is asserted directly, ledger-carrying serving roster or not.
+test fn the_ledger_carrying_host_holds_no_carved_slot() -> Bool {
+  all(fleet_enrollments, e =>
+    !host_carries_own_ledger(host: e.host) || remote_build_pool_slot_reservation(host: e.host) == 0)
+    && any(fleet_enrollments, e => host_carries_own_ledger(host: e.host))
     && remote_build_pool_slot_reservation(host: operator_host_srv1) == 0
 }
 

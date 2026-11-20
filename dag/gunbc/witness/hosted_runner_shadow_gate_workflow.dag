@@ -315,7 +315,12 @@ data shadow_gate_remote_user: String = "gunbc-build"
 // first serving host from remote_build_serving_hosts(); if it is unreachable, the client refuses
 // that host and the step fails (shadow behavior). The model does NOT filter by reachability:
 // reachability is a runtime fact (a host's tailnet membership changes when it is joined), not a
-// model invariant. Today only srv1 resolves; srv3/srv4/butch are queued for joining.
+// model invariant. As of 2026-11-20 the roster is srv3 and srv4, both joined on the tailnet and
+// converged by the serving converger; srv1 left the roster that day (its pinned checkout predates
+// the gate-subject verb, and its build pool holds a seat whose holder recorded no exit) and returns
+// on a serving converge at or after 2387c5493bb9 -- gunbc.compute.remote_build_hosts
+// remote_build_serving_hosts carries the rule at the row. The literal below is reached only if the
+// roster is ever empty.
 
 // The first serving host (the client's own roster ordering; the gate CLI picks by capacity).
 fn shadow_gate_first_serving_host() -> String {

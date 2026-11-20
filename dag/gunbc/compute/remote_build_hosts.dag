@@ -55,9 +55,26 @@ import product.host_identity { HostIdentity }
 //   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
 // Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool
 // figure -- never before.
+//
+// LEAVING, 2026-11-20, AND WHY A ROW IS NOT A PERMANENT FACT. A row here promises that the host SERVES WHAT
+// THE ROW PROMISES, and the promise is only good as the read-back that admitted it (the integration concern
+// below: admission follows an on-disk home, proven by re-observation). srv1's last such read-back is its
+// 08:57Z serving converge, and the promise has moved since: its pinned checkout predates 2387c5493bb9, so it
+// judges a `gate <label>` request with the ENTRY route's grammar and returns that route's refusal (the class
+// is recorded at @ref(gunbc.recurring_failure_mode.a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand)),
+// and its build pool holds a seat whose holder was killed before recording an exit, so it admits no work at
+// all. Listing it makes the client's first candidate a host that cannot serve the request -- and a typed
+// request-refusal is terminal in remote_build_next_step, so the request never reaches a host that could.
+// Removal states what is true and costs no capacity: srv1 carries its own ledger, so its build pool was never
+// carved (host_build_pool_is_carved stays false with the row or without it) and its slice ceiling is the
+// standing user-work pool either way. What DOES move with the row is its ledger-sharing carrier
+// (compute_ledger_sharing_carrier: SharedWithRemoteBuild -> ServiceOnly), which is what srv1 is while it
+// serves nothing.
+// RETURN, NAMED SO IT IS NOT RE-ADMITTED ON A GUESS: a serving converge on srv1 at or after 2387c5493bb9 --
+// the same run that executes the seat-recovery leg -- and the row comes back in the change that converge's
+// read-back proves. Nothing here re-adds it on hope.
 fn remote_build_serving_hosts() -> List<HostIdentity> {
   [
-    "srv1" as HostIdentity,
     "srv3" as HostIdentity,
     "srv4" as HostIdentity,
   ]
