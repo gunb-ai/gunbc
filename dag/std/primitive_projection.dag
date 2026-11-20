@@ -44,7 +44,7 @@ fn primitive_identity_runtime_name(identity: PrimitiveIdentity) -> String {
 // ModeledProjection permits its own declared body when no host realization exists.
 // DivergentProjection and an absent row preserve the selected source declaration. A lexical
 // function value keeps its selected declaration even when its local binder has another name.
-// v1.compiler.infer.lookup::resolved_declaration_call_target already realizes these three cases;
+// v1.compiler.infer_lookup::resolved_declaration_call_target already realizes these three cases;
 // the seed evaluator consumes that result rather than maintaining a second semantic roster.
 
 // HostRealizedSeam and ModeledProjection agree at the resolver -- both mean the declaration and the

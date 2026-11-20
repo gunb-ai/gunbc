@@ -6902,6 +6902,9 @@ pub struct PreparedScopeIndexes {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    // Target selection belongs to scope preparation, once per declaration, not to each call.
+    // Alias slots share the node and therefore share this decision; no per-call roster rebuild.
+    fn_call_targets: HashMap<usize, Rc<crate::v1_std_core::CallTargetIdentity>>,
     // Alias lookup uses the first authored declaration in graph order, independently of
     // function precedence. Derived from the same module fragments and shared with the scope;
     // a fresh evaluation frame must not re-read the corpus to resolve its first cast.
@@ -7559,6 +7562,21 @@ impl InterpContext {
             .into_iter()
             .filter_map(|(name, count)| (count > 1).then_some(name))
             .collect();
+        let mut fn_call_targets = HashMap::new();
+        for node in fn_nodes.values() {
+            if let Some(owner) = file_module_paths.get(node.span.file.as_str()) {
+                fn_call_targets
+                    .entry(Rc::as_ptr(node) as usize)
+                    .or_insert_with(|| {
+                        crate::v1_compiler_infer_lookup::resolved_declaration_call_target(Rc::new(
+                            crate::v1_std_core::DeclaredCallableIdentity {
+                                owner_module_path: owner.clone(),
+                                decl_name: node.name.clone(),
+                            },
+                        ))
+                    });
+            }
+        }
         // The graph registry is keyed on declaration identity (owner module path plus declared
         // name). The interpreter resolves BARE names -- that is what a bare call or data reference
         // in source is -- so it takes a leaf-keyed projection rather than the identity map. The
@@ -7578,6 +7596,7 @@ impl InterpContext {
             item_registry: bare_item_registry,
             source_indices,
             fn_nodes,
+            fn_call_targets,
             type_items,
             ambiguous_bare_function_names,
             variant_arm_owners,
@@ -12146,12 +12165,10 @@ fn try_resolved_declaration_realization(
             ctx
         );
     }
-    let target = crate::v1_compiler_infer_lookup::resolved_declaration_call_target(Rc::new(
-        crate::v1_std_core::DeclaredCallableIdentity {
-            owner_module_path: owner.clone(),
-            decl_name: func_name.clone(),
-        },
-    ));
+    let target = ctx
+        .indexes
+        .fn_call_targets
+        .get(&(Rc::as_ptr(node) as usize))?;
     match target.as_ref() {
         crate::v1_std_core::CallTargetIdentity::RuntimePrimitiveCall {
             primitive_name,
