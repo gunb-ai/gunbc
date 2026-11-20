@@ -752,6 +752,46 @@ fn arrival_retain_response(root: FilePath, bytes: String) -> PrivateEvidenceByte
 // anything until the channel's own bytes say 802.3 LAN.
 data arrival_candidate_channel_numbers: List<IpmiChannelNumber> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 
+// THE DOOR'S OWN IPMI LEGS IN ONE PLACE, for the reason gunbc.machine_intake.prior_life_capture_live
+// declares its own (gunbc.design_argument::single_authority), and named by the run that needed it:
+// 44249358201 put this door's CI step on a hand-picked figure, paid ~107 s of load plus 80 s of frontend
+// plus 4 s of normalize, and was killed with reconcile still open -- zero contact with the controller.
+// A consumer that wants the door's wall folds these rows instead of typing a number:
+//   * ONE ChannelInfo probe per candidate channel. The walk stops at the first channel whose bytes say
+//     802.3 LAN, so the walk's UPPER bound is the whole candidate list (arrival_candidate_channel_numbers).
+//   * ONE LanPrint: the read of the controller's SERVED bad-password threshold, which the roster refuses
+//     to assume (the refusal text at the threshold read names it "ipmi.LanPrint").
+//   * ONE call per counted census op: the map at arrival_counted_census_ops.map issues exactly that list,
+//     and it is the same list the lockout gate counts -- so a leg added to the census is counted against
+//     the lockout AND against the wall, from one row.
+// Each call is bounded by the pair the door itself passes as argv (arrival_read_policy): ipmitool's
+// --deadline plus --kill-after, the wall past which the transport kills the tool, so the retry bound
+// INSIDE the tool cannot extend the wall.
+// The door issues exactly one IPMI call outside the channel walk and the census: the managed account's
+// own lan print, bound to `lan` inside arrival_wet_read_account_state, whose refusal
+// ARRIVAL WET LAN PRINT INCOMPLETE is the only thing that can stop the run after it. This row is that
+// call's single home in the budget: a hand-maintained roster is the weakness the review named, so the rule
+// here is that an IPMI call counts IF AND ONLY IF it has a row in one of the three lists the fold reads --
+// arrival_candidate_channel_numbers (the walk's upper bound), this list, or arrival_counted_census_ops (the
+// map the census issues its calls FROM, so census calls cannot drift). A fourth kind of call added to the
+// door without a row here makes the fold too small, and the fold IS the shipped figure now: the operator's
+// ruling gunbc.design_ruling srv15_arrival_converge_step_raised_to_21_minutes authorizes the step's 21
+// minutes and the job's 51 (the ban ci_job_budgets_closed_to_growth required that row), so this roster is a
+// budget, not documentation. The pairing claim
+// test.claim.fleet.fleet_converge_arrival_step_budget_witness the_shipped_raise_carries_its_ledger_row
+// refuses a shipped figure whose ruling row has been removed or re-pointed.
+data arrival_threshold_read_legs: List<NonEmptyStr> = ["ipmi.LanPrint"]
+
+fn arrival_ipmi_leg_bound() -> Second {
+  second(count: (second_count(s: arrival_read_policy.deadline) as Int) + (second_count(s: arrival_read_policy.kill_after) as Int))
+}
+
+fn arrival_wet_ipmi_legs_bound() -> Second {
+  let per_call = second_count(s: arrival_ipmi_leg_bound()) as Int
+  let calls = (length(xs: arrival_candidate_channel_numbers) as Int) + (length(xs: arrival_threshold_read_legs) as Int) + (length(xs: arrival_counted_census_ops) as Int)
+  second(count: per_call * calls)
+}
+
 // A roster probe result carried with the channel number it answered: the op result is copied into
 // plain fields because an operation's output record is not a nameable type.
 fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
