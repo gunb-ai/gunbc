@@ -16,7 +16,7 @@ import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_inv
 import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
 import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_desired_instance_deploy_invoke, gunbc_ci_desired_instance_receipt_identity_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
 import gunbc.live_deploy.apply { live_deploy_ci_instance_subject_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder }
-import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
+import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_executor_arch_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
@@ -1329,7 +1329,7 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
   }
 }
 
-data fleet_converge_host_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))"
+data fleet_converge_host_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\"]', needs.plan-revision.outputs.arch, github.event.inputs.host))"
 
 data fleet_converge_host_runner_expression: String = join(["${{ ", fleet_converge_host_runner_expression_body, " }}"], "")
 
@@ -1595,6 +1595,29 @@ fn fleet_converge_plan_revision_resolve_step() -> Step {
   }
 }
 
+// THE EXECUTOR ARCHITECTURE READ. Runs in EVERY dispatch (no condition): when the dispatch names an
+// executor host it reads that host's board-established architecture; when it names none it reads the CI
+// build pool's own surveyed architecture. Either way it publishes `arch` for the shared job's selector and
+// the build job's pool-vs-host decision. A named host whose board establishes no architecture makes the
+// step FAIL loudly at plan time (add and cite its board SoC edge) rather than default it to arm64.
+fn fleet_converge_executor_arch_step() -> Step {
+  RunStep {
+    name: Present { value: "Resolve the executor architecture from the model (host board, else CI pool)" },
+    id: Present { value: "executor_arch" },
+    run: gunbc_ci_fleet_converge_executor_arch_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 // THE READBACK: the checkout this job is about to execute is the tree the plan receipt names. Placed
 // after the plan artifact is on disk and before anything actuates.
 fn fleet_converge_checkout_verify_step(if_condition: String?) -> Step {
@@ -1619,6 +1642,7 @@ fn fleet_converge_plan_revision_steps() -> List<Step> {
       fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if),
       fleet_converge_plan_revision_download_step(),
       fleet_converge_plan_revision_resolve_step(),
+      fleet_converge_executor_arch_step(),
     ]
   )
 }
@@ -1634,7 +1658,7 @@ fn fleet_converge_plan_revision_job() -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_plan_revision_job_id),
     env: none,
     outputs: Present {
-      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}"))]
+      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}")), kv(key: fleet_converge_executor_arch_output_name, value: yaml_string(s: "${{ steps.executor_arch.outputs.arch }}"))]
     },
     if_condition: Present { value: fleet_converge_dispatch_event_if },
     timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
@@ -5998,6 +6022,13 @@ data fleet_converge_plan_revision_job_id: NonEmptyStr = "plan-revision" as NonEm
 
 data fleet_converge_plan_revision_output_name: String = "revision"
 
+// THE EXECUTOR ARCHITECTURE, published by plan-revision's executor_arch step (a model read of the chosen
+// host's board SoC edge, or the CI build pool's own surveyed arch when no host is named), so a host-bound
+// run's runner architecture is DERIVED from the model, never the literal "arm64" the selector used to carry
+// (gunbc.integration_concern fleet_converge_arm64_label_blocks_x86_executor_host). plan-revision runs in
+// every dispatch, so needs.plan-revision.outputs.arch is present when the shared job places itself.
+data fleet_converge_executor_arch_output_name: String = "arch"
+
 data fleet_converge_plan_revision_output: Expression = ContextAccess {
   context: Needs,
   path: [fleet_converge_plan_revision_job_id as String, "outputs", fleet_converge_plan_revision_output_name],
@@ -6876,7 +6907,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [fleet_converge_plan_revision_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_branch_run_grant_await_job_id, needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_fleet_keypair_mint_job_id, needs: [] },
-  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String, fleet_converge_plan_revision_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostnameConverge), needs: [fleet_converge_release_bins_job_id as String] },
