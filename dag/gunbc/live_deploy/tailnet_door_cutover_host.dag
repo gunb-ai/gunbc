@@ -45,7 +45,7 @@ fn serve_route_observation_of_status(status_json: String, spec: DeploymentSpec) 
 
 fn serve_route_observation_of_outcome(outcome: TypedArgvExecOutcome, spec: DeploymentSpec) -> ServeRouteObservation {
   match outcome {
-    TypedArgvExecOverran { deadline: d } => ServeRouteUnreadable { detail: typed_argv_exec_overran_reason(leg_hint: "tailnet door cutover", deadline: d) }
+  TypedArgvExecOverran { deadline: d } => ServeRouteUnreadable { detail: typed_argv_exec_overran_reason(leg_hint: "tailnet door cutover", deadline: d) }
     TypedArgvExecRefused { reason: why } => ServeRouteUnreadable { detail: why }
     TypedArgvExecConverged { result: r } =>
       if r.success { serve_route_observation_of_status(status_json: r.stdout, spec: spec) }

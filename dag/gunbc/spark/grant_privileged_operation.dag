@@ -634,11 +634,11 @@ fn run_privileged_step(
               ) {
                 FleetPrincipalLegRefused { cause: why } =>
                   CredentialNotMaterialized { lease: effective_lease, cause: why as String }
-                FleetPrincipalLegOverran { session: _, deadline: d } =>
-                  CredentialNotMaterialized {
-                    lease: effective_lease,
-                    cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
-                  }
+                  FleetPrincipalLegOverran { session: _, deadline: d } =>
+                    CredentialNotMaterialized {
+                      lease: effective_lease,
+                      cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
+                    }
                 FleetPrincipalLegRan { session: _, result: result } =>
                   if result.success {
                     PrivilegedCommandSucceeded { command: command }
@@ -1258,7 +1258,7 @@ fn spark_grant_probe_outcome(
         argv: ["sudo", "-n", "-l"],
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
-        TypedArgvExecOverran { deadline: d } => GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark privileged grant", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark privileged grant", deadline: d) }
         TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
         TypedArgvExecConverged { result: r } =>
           if r.success {

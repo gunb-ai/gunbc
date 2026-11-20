@@ -502,7 +502,7 @@ type SlotCapExecAnswer
 
 fn slot_cap_exec_answer_of(outcome: TypedArgvExecOutcome) -> SlotCapExecAnswer {
   match outcome {
-    TypedArgvExecOverran { deadline: d } => SlotCapExecRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner slot cap", deadline: d) }
+  TypedArgvExecOverran { deadline: d } => SlotCapExecRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner slot cap", deadline: d) }
     TypedArgvExecRefused { reason: r } => SlotCapExecRefused { reason: r }
     TypedArgvExecConverged { result: r } => SlotCapExecRan { success: r.success, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
   }

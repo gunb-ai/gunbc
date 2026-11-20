@@ -70,7 +70,7 @@ fn systemd_run_transient_outcome_from_exec(outcome: TypedArgvExecOutcome) -> Sys
   match outcome {
     TypedArgvExecConverged { result: r } =>
       systemd_run_transient_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)
-    TypedArgvExecOverran { deadline: d } => SystemdRunTransientRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => SystemdRunTransientRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
     TypedArgvExecRefused { reason: why } => SystemdRunTransientRefused { reason: why }
   }
 }
@@ -154,8 +154,8 @@ fn systemd_run_transient_wait_outcome_from_exec(
         stdout: result.stdout,
         stderr: result.stderr,
       )
-    TypedArgvExecOverran { deadline: d } =>
-      SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
+      TypedArgvExecOverran { deadline: d } =>
+        SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
     TypedArgvExecRefused { reason: why } =>
       SystemdRunTransientWaitTransportRefused { reason: why }
   }

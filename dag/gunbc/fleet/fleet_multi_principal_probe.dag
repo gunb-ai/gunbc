@@ -188,8 +188,8 @@ fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> S
       } else {
         join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout), "\n"], "")
       }
-    TypedArgvExecOverran { deadline: d } =>
-      join(["reach host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
+      TypedArgvExecOverran { deadline: d } =>
+        join(["reach host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -204,8 +204,8 @@ fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> St
       } else {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: r.stderr), "\n"], "")
       }
-    TypedArgvExecOverran { deadline: d } =>
-      join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
+      TypedArgvExecOverran { deadline: d } =>
+        join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }

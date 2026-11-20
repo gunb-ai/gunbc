@@ -168,7 +168,7 @@ fn boot_medium_served_refusal_before_attach(subject: NonEmptyStr, readback: Boot
 
 fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {
   match outcome {
-    TypedArgvExecOverran { deadline: d } => RemoteAnswer { exit_code: 255, stdout: "", stderr: typed_argv_exec_overran_reason(leg_hint: "boot medium served readback", deadline: d) }
+  TypedArgvExecOverran { deadline: d } => RemoteAnswer { exit_code: 255, stdout: "", stderr: typed_argv_exec_overran_reason(leg_hint: "boot medium served readback", deadline: d) }
     TypedArgvExecRefused { reason: r } => RemoteAnswer { exit_code: 255, stdout: "", stderr: r }
     TypedArgvExecConverged { result: r } => RemoteAnswer { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
   }

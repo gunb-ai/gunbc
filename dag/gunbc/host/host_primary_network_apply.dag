@@ -218,7 +218,7 @@ type PrimaryLegRead
 fn primary_leg(subject: FleetHostFileSubject, context: FleetSshExecutionContext, command: List<String>) -> PrimaryLegRead
 {
   match run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: command }) {
-    TypedArgvExecOverran { deadline: d } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", typed_argv_exec_overran_reason(leg_hint: "host primary network", deadline: d)], "") as NonEmptyStr }
+  TypedArgvExecOverran { deadline: d } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", typed_argv_exec_overran_reason(leg_hint: "host primary network", deadline: d)], "") as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", why], "") as NonEmptyStr }
     TypedArgvExecConverged { result: r } => PrimaryLegAnswered { exit_code: r.exit_code, stdout: r.stdout }
   }

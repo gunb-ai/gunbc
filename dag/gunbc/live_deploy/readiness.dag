@@ -268,7 +268,7 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
         body: r.stdout,
         error: "http client GET over ssh failed"
       )
-    TypedArgvExecOverran { deadline: d } => HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
     TypedArgvExecRefused { reason: why } => HealthzProbeRefused { probe_error: why }
   }
 }
@@ -284,7 +284,7 @@ fn healthz_effective_read_from_status_outcome(outcome: TypedArgvExecOutcome) -> 
         stdout: r.stdout,
         error: "http client GET over ssh failed"
       )
-    TypedArgvExecOverran { deadline: d } => HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
     TypedArgvExecRefused { reason: why } => HealthzProbeRefused { probe_error: why }
   }
 }
@@ -328,8 +328,8 @@ fn live_deploy_healthz_get_ssh_within(url: NonEmptyStr, host: NonEmptyStr, deadl
             stdout: r.stdout,
             error: "http client GET over ssh failed"
           )
-        TypedArgvExecOverran { deadline: d } =>
-          HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
+          TypedArgvExecOverran { deadline: d } =>
+            HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
         TypedArgvExecRefused { reason: why } =>
           HealthzProbeRefused { probe_error: why }
       }

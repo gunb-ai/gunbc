@@ -250,7 +250,6 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
       ) {
         TypedArgvExecConverged { result: r } => r.success
         TypedArgvExecRefused { reason: _ } => false
-    TypedArgvExecOverran { deadline: _ } => false
         TypedArgvExecOverran { deadline: _ } => false
       }
     }

@@ -280,8 +280,8 @@ fn slot_census_from_typed_argv_outcome(
   edge_noun: String,
 ) -> SlotCensus {
   match outcome {
-    TypedArgvExecOverran { deadline: d } =>
-      CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", typed_argv_exec_overran_reason(leg_hint: "runner slot population census", deadline: d)], "") }
+  TypedArgvExecOverran { deadline: d } =>
+    CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", typed_argv_exec_overran_reason(leg_hint: "runner slot population census", deadline: d)], "") }
     TypedArgvExecRefused { reason: why } =>
       CensusRefused { cause: join(["runner slot population unreadable over ", edge_noun, ": ", why], "") }
     TypedArgvExecConverged { result: listed } =>

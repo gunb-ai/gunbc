@@ -1014,7 +1014,7 @@ fn fleet_argv_run(context: FleetSshExecutionContext, host: HostIdentity, argv: L
     SshTargetRefused { endpoint: e, refusal: why } => ArgvLegDidNotRun { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
     SshTargetResolved { target: target } =>
       match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: argv) {
-        TypedArgvExecOverran { deadline: d } => ArgvLegDidNotRun { cause: typed_argv_exec_overran_reason(leg_hint: "spark host commitment", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => ArgvLegDidNotRun { cause: typed_argv_exec_overran_reason(leg_hint: "spark host commitment", deadline: d) }
         TypedArgvExecRefused { reason: why } => ArgvLegDidNotRun { cause: why }
         TypedArgvExecConverged { result: r } => ArgvRan { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
       }

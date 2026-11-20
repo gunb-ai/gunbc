@@ -621,10 +621,10 @@ fn typed_remote_file_write_over_fleet_ssh(
             // THE LEG WAS KILLED AT ITS CEILING. The write's content is NOT established as absent
             // and not established as present -- the remedy is a re-read of the path, not a retry, so
             // this is a refusal carrying the ceiling, never a success and never "not written".
-            FleetPrincipalLegOverran { session: _, deadline: d } =>
-              TypedRemoteFileWriteOutcomeRefused {
-                reason: typed_argv_exec_overran_reason(leg_hint: "typed remote file write", deadline: d) as String
-              }
+              FleetPrincipalLegOverran { session: _, deadline: d } =>
+                TypedRemoteFileWriteOutcomeRefused {
+                  reason: typed_argv_exec_overran_reason(leg_hint: "typed remote file write", deadline: d) as String
+                }
             FleetPrincipalLegRan { session: _, result: result } =>
               typed_remote_file_write_outcome_after_ssh_exec(write: write, result: result)
           }

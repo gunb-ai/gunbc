@@ -338,7 +338,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
       } else {
         ProbeTransportUnavailable { cause: join(["id-un-failed stderr=", idr.stderr], "") }
       }
-    TypedArgvExecOverran { deadline: d } => ProbeTransportUnavailable { cause: typed_argv_exec_overran_reason(leg_hint: "host reach identity probe", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => ProbeTransportUnavailable { cause: typed_argv_exec_overran_reason(leg_hint: "host reach identity probe", deadline: d) }
     TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }
 }
@@ -357,7 +357,7 @@ fn probe_ready_target_once(host: String, endpoint: String, remote_principal: Str
           expected_fingerprint: enrolled_fingerprint_for(host: host),
         )
       }
-    TypedArgvExecOverran { deadline: d } => ProbeTransportUnavailable { cause: typed_argv_exec_overran_reason(leg_hint: "host reach identity probe", deadline: d) }
+      TypedArgvExecOverran { deadline: d } => ProbeTransportUnavailable { cause: typed_argv_exec_overran_reason(leg_hint: "host reach identity probe", deadline: d) }
     TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }
 }

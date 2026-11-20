@@ -76,7 +76,7 @@ fn remote_execution_permits_continuation(execution: RemoteOperationExecution) ->
   match execution {
     RemoteArgvExecution { outcome: o } =>
       match o {
-        TypedArgvExecOverran { deadline: d } => false
+      TypedArgvExecOverran { deadline: d } => false
         TypedArgvExecRefused { reason: _ } => false
         TypedArgvExecConverged { result: r } => r.success
       }
@@ -124,7 +124,7 @@ fn remote_step_failure_cause(standing: RemoteStepStanding) -> String? {
       match x {
         RemoteArgvExecution { outcome: o } =>
           match o {
-            TypedArgvExecOverran { deadline: d } => Present { value: typed_argv_exec_overran_reason(leg_hint: "remote operation", deadline: d) }
+          TypedArgvExecOverran { deadline: d } => Present { value: typed_argv_exec_overran_reason(leg_hint: "remote operation", deadline: d) }
             TypedArgvExecRefused { reason: why } => Present { value: why }
             TypedArgvExecConverged { result: r } =>
               Present {
