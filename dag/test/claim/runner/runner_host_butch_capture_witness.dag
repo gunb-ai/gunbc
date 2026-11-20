@@ -27,8 +27,6 @@ import std.algebra { string_contains, length }
 import std.list { sole_where, SoleMatch, SoleMatchOne, SoleMatchNone, SoleMatchRepeated }
 import std.measure { hardware_thread_count }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_slot_allocation { committed_slot_identities, CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved }
-import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_slot_actuation { SlotActuationReading, SlotActuationReadingResolution, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, SlotRead, SlotReadRefused, slot_actuation_reading_of }
 import extdeps.systemd { SystemdUnitActiveState, Inactive }
 import gunbc.runner.runner_host_cap_bracket { BracketHolder, HolderIdentified, HolderNotOnSubject }
@@ -152,37 +150,62 @@ fn butch_capture_path_shas() -> List<String> {
   ]
 }
 
-fn butch_capture_desired_units() -> List<NonEmptyStr> {
-  match committed_slot_identities(host: butch_capture_host()) {
-    CommittedPopulationDerived { members: members } => map(members, s => runner_slot_unit_name(slot: s))
-    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+// THE UNIT LIST THE CAPTURE NAMES, READ OUT OF THE CAPTURE. This used to be re-derived from
+// gunbc.runner.runner_slot_allocation::committed_slot_identities -- TODAY's committed population --
+// and that binding is the defect the ruled-zero slice exposed. A receipt of what was OBSERVED on
+// 2026-11-14 in run 43561214659 cannot change when the model's DESIRE changes underneath it: the
+// operator ruling adopted by
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign takes
+// butch's CI away (a decided width of zero), and this witness went red on exactly that -- four claims
+// over a list that had become empty, plus a non-vacuity guard. The list is now the unit the captured
+// bytes name, and it is non-empty ONLY while those bytes still carry the matching `Id=` line, so a
+// capture that stops naming its slot fails these claims loudly instead of quietly agreeing that butch
+// has no slots today. The empty-population fact for butch is pinned where it belongs -- in
+// test.claim.runner.runner_ci_width_ruled_zero_witness, by the lane that created it.
+fn butch_capture_slot_unit_name() -> NonEmptyStr { "actions-runner@srv14-01.service" }
+
+// The `Id=` line the captured `systemctl show` carries for that unit. Tied to the unit name by claim
+// one, so the marker and the unit cannot drift apart and leave the claims reading nothing.
+fn butch_capture_id_marker() -> String { "Id=actions-runner@srv14-01.service" }
+
+fn captured_units_of_the_capture() -> List<NonEmptyStr> {
+  if string_contains(s: butch_capture_slot_show(), pattern: butch_capture_id_marker()) {
+    [butch_capture_slot_unit_name()]
+  } else {
+    []
   }
 }
 
 fn butch_capture_slot_unit() -> String {
-  match sole_where(butch_capture_desired_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
+  match sole_where(captured_units_of_the_capture(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
     SoleMatchOne { value: u } => u as String
     _ => ""
   }
 }
 
 // ───────────────────────────────── THE CLAIMS ─────────────────────────────────
-// THE CAPTURE IS THE HOST THE RUN REFUSED ON, AND IT COVERS THE DERIVED DESIRED SLOT EXACTLY ONCE.
-// (butch's width is DERIVED -- committed_slot_identities is the fold, so this fixture cannot pin a
-// hand-numbered slot.)
-test fn the_capture_is_butch_from_the_refused_run_and_covers_every_desired_slot() -> Bool {
-  match sole_where(butch_capture_desired_units(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
+// THE CAPTURE IS THE HOST THE RUN REFUSED ON, AND ITS OWN BYTES NAME THE SLOT EVERY OTHER CLAIM IN
+// THIS WITNESS DRIVES -- exactly once. The count here is a property of the RECEIPT, not of the model:
+// the captured `systemctl show` must carry the Id= line for the unit the fixture drives, and must carry
+// the slot's own identity (RUNNER_NAME_PREFIX=srv14-01) and the two state words the scenario turns on
+// (a pending daemon-reload, an inactive unit). If those bytes ever stop naming their slot, the list
+// goes empty and every claim below fails rather than silently agreeing with whatever the model wants
+// for butch this quarter.
+test fn the_capture_is_butch_from_the_refused_run_and_names_its_slot_in_its_own_bytes() -> Bool {
+  match sole_where(captured_units_of_the_capture(), u => string_contains(s: u as String, pattern: "actions-runner@")) {
     SoleMatchOne { value: unit } =>
-      length(butch_capture_desired_units()) == 1
+      length(captured_units_of_the_capture()) == 1
         && (unit as String) == "actions-runner@srv14-01.service"
-        && string_contains(s: butch_capture_slot_show(), pattern: "Id=actions-runner@srv14-01.service")
+        && string_contains(s: butch_capture_id_marker(), pattern: unit as String)
+        && string_contains(s: butch_capture_slot_show(), pattern: butch_capture_id_marker())
+        && string_contains(s: butch_capture_slot_show(), pattern: "RUNNER_NAME_PREFIX=srv14-01")
         && string_contains(s: butch_capture_slot_show(), pattern: "NeedDaemonReload=yes")
         && string_contains(s: butch_capture_slot_show(), pattern: "ActiveState=inactive")
     _ => false
   }
 }
 
-fn capture_units() -> List<NonEmptyStr> { butch_capture_desired_units() }
+fn capture_units() -> List<NonEmptyStr> { captured_units_of_the_capture() }
 
 fn capture_population(show: String) -> RunnerSlotPopulation {
   SlotPopulationObserved { units: classify_runner_slot_population(units: capture_units(), retirements: [], show_stdout: show, expect: runner_slot_expectation(per_slot: hardware_thread_count(count: 72), fragment_delivered: true, residue_absent: false)) }
@@ -350,12 +373,21 @@ fn slot_rec(u: String, status: SlotReloadStatus, reach: SlotReloadReach) -> Runn
   RunnerSlotUnitResult { unit: u as NonEmptyStr, standing: SlotTeardownEffective, reload: status, reach: reach }
 }
 
-// NO STRATA ANYWHERE IN WHAT THE PLAN ITSELF NAMES FOR SRV14 (parent item 2): the managed cap files,
-// the superseded drop-in paths, the control-shadow paths, and every unit the phase brackets or
-// actuates -- all DERIVED from the model's srv14 subject, not from a list this test hand-wrote. A
-// future write set that names a strata unit turns THIS claim red.
-test fn the_plan_for_srv14_names_no_strata_unit_or_path_anywhere() -> Bool {
-  match runner_host_file_subject(host: butch_capture_host()) {
+// NO STRATA ANYWHERE IN WHAT A RUNNER-FILE PLAN NAMES (parent item 2): the managed cap files, the
+// superseded drop-in paths, the control-shadow paths, and every unit the phase brackets or actuates --
+// all DERIVED from the model's subject, not from a list this test hand-wrote. A future write set that
+// names a strata unit turns THIS claim red. The NON-VACUOUS half reads the subject that still has CI
+// slots to plan, srv3. srv14 is the other half, and its honest shape is a REFUSAL, not an empty plan:
+// after the ruled-zero slice (gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths; the operator
+// ruling adopted by
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign) butch's
+// deploy resolves to the zero-width arm, and runner_host_file_subject refuses it -- "derives to zero
+// slots, so it has no unit the teardown could be verified on and no runner file to converge". That is
+// the fail-closed side of the ruling: no runner-file converge may touch butch, and it says so rather
+// than handing back a plan that quietly names nothing. The strata predicate still runs over the refusal
+// text, so a refusal that leaked a strata name would red here too.
+test fn the_runner_file_plan_names_no_strata_unit_or_path_anywhere() -> Bool {
+  match runner_host_file_subject(host: "srv3") {
     RunnerHostFileSubjectAdmitted { subject: s } =>
       let units = concat(map(s.desired_units, u => u as String), map(s.retired_units, u => u as String))
       let paths = concat(
@@ -369,4 +401,9 @@ test fn the_plan_for_srv14_names_no_strata_unit_or_path_anywhere() -> Bool {
         && all(cap_bracket_units(units: s.desired_units, holder: HolderNotOnSubject { why: "the job runs on srv1" }, trees: []), u => !string_contains(s: u as String, pattern: "strata"))
     RunnerHostFileSubjectRefused { cause: _ } => false
   }
+    && match runner_host_file_subject(host: butch_capture_host()) {
+      RunnerHostFileSubjectAdmitted { subject: s } => length(s.desired_units) == 0
+      RunnerHostFileSubjectRefused { cause: c } =>
+        string_contains(s: c, pattern: "zero slots") && !string_contains(s: c, pattern: "strata")
+    }
 }

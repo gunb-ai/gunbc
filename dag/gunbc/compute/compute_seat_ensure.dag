@@ -21,14 +21,18 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeCapacityStanding, ComputeCapacityStandingRead, ComputeCapacityStandingUnread, compute_capacity_standing_on,
+  compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
 }
 import gunbc.compute.work_provider_local {
   ComputeRecovery, RecoveryReleased, RecoveryNothingHeld, RecoverySettledButHeld, RecoveryDeclined, RecoveryRefused,
-  UnitLifecycleSource, unit_lifecycle_from_source, compute_recover_attempt_in, compute_recovery_wire,
+  UnitLifecycleSource, ObserveUnitLifecycle, unit_lifecycle_from_source, compute_recover_attempt_in, compute_recovery_wire,
+  ProvideResult, ProvideFresh, HostRecordWritten,
   UnitStop, UnitStopped, UnitStopFailed, unit_stop_by_source, unit_source_after_stop,
   LeaseDrop, LeaseDropped, LeaseNotDropped,
 }
+import gunbc.compute.work_request { WorkRefusedByInfrastructure, HostComputeCapacityFull }
 import gunbc.compute.compute_producer_lease {
+  compute_producer_leases, ComputeProducerLeasesReady, ComputeProducerLeasesUnready,
   ComputeProducerLeases, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable,
   ComputeProducerLeaseReleased, ComputeProducerLeaseKept, compute_producer_lease_standing, compute_producer_lease_release_observed,
 }
@@ -489,6 +493,62 @@ fn seat_exit_entries_undecodable(listings: List<SpoolListing>) -> List<SeatUndec
       })
     SpoolListingUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
   })
+}
+
+// THE ONE PASS THAT LOOKS FOR A WEDGED SEAT AND DISCHARGES IT, declared at the layer that owns seats.
+//
+// It used to be reachable only behind the belt (roadmap_belt_actuate::belt_compute_seat_discharge_pass),
+// which left every OTHER entry that meets a full pool -- above all the remote-build serve, which answers
+// capacity-full and stops -- without a route to the door this corpus already built. Moving the resolver
+// here and letting the belt call it keeps one authority; the belt's own tick is unchanged in behavior.
+//
+// WHAT IT CAN REACH, AND WHAT IT CANNOT, STATED WHERE A READER WILL HIT IT: the selection is by ATTEMPT
+// OWNERSHIP -- seats whose owning dispatch attempt left an exit record, and seats whose dispatch
+// directory is live (compute_seat_discharge_all). A seat charged by a DIRECT-INVOCATION holder -- a
+// remote build, an operator run -- has no exit record and no dispatch directory, so it is in neither set
+// and this pass will not free it. That is a real gap with its own failure-mode row, and it is NOT to be
+// closed by scanning the compute root here, which the resolver refuses to do on purpose: a seat whose
+// owner cannot be established is a seat no one has proven ended.
+fn compute_seat_discharge_pass_in(instance: HostDashboardInstance) -> SeatDischargePass {
+  match compute_capacity_subject(instance: instance) {
+    ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
+    ComputeSubjectResolved { subject: subj, appropriation: appropriation } =>
+      match compute_producer_leases(instance: instance) {
+        ComputeProducerLeasesUnready { detail: d } => SeatDischargeRefused { reason: join(["the producer leases are not admissible: ", d], "") }
+        ComputeProducerLeasesReady { leases: leases } =>
+          compute_seat_discharge_all(
+            instance: instance,
+            leases: leases,
+            subject: subj,
+            appropriation: appropriation,
+            source: ObserveUnitLifecycle)
+      }
+  }
+}
+
+// DID THE PASS RETURN A SEAT -- decided once, because "it ran" is not the question. A pass that refused,
+// or ran and found nothing ended, changed nothing, and re-attempting the work after such a pass is a
+// silent wait wearing a retry's clothes. Only an outcome that CARRIED A RELEASED SEAT with its readback
+// (SeatEnsureReleased names the committed figure before and after) licenses a second attempt.
+fn seat_discharge_pass_released_a_seat(pass: SeatDischargePass) -> Bool {
+  match pass {
+    SeatDischargeRan { outcomes } =>
+      any(outcomes, o => match o {
+        SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => true
+        _ => false
+      })
+    _ => false
+  }
+}
+
+// THE REFUSAL THIS RULE EXISTS FOR: a full pool, typed. Every other ending -- a cancelled attempt, an
+// attached product, a refused request, an unreadable host record -- is not a capacity fact, and running
+// a recovery pass for one would be acting on a fact the host never stated.
+fn compute_provide_pool_full(result: ProvideResult) -> Bool {
+  match result {
+    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: HostComputeCapacityFull { wire: _ } }, document: _, host_record: _ } => true
+    _ => false
+  }
 }
 
 // ONE PASS OVER THE ATTEMPTS WHOSE WORKER EXIT WAS RECORDED. A stage that cannot be read refuses the
