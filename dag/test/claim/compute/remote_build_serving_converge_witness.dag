@@ -1879,3 +1879,18 @@ test fn diag_missing_plan_arm_is_unhandled() -> Bool {
 test fn diag_missing_plan_arm_is_refused() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_plan_arm(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "refused" }
 }
+
+// Which of converge_plan's three ConvergeRefused arms fired? The reason string pins it: an indeterminate
+// assessment (an unknown leg) vs a refused assessment vs an empty draft (drift that yielded no write).
+fn converge_refuse_reason(plan: ConvergeDecision) -> String {
+  match plan { ConvergeRefused { reason: r } => r  _ => "" }
+}
+test fn diag_missing_refuse_is_indeterminate() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_refuse_reason(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "assessment is indeterminate; an observation leg was unobservable" }
+}
+test fn diag_missing_refuse_is_assessment_refused() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_refuse_reason(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "assessment was refused" }
+}
+test fn diag_missing_refuse_is_empty_draft() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) { Absent => false  Present { value: d } => converge_refuse_reason(plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })) == "the assessment reported drift that yielded neither a write nor an unhandled item" }
+}
