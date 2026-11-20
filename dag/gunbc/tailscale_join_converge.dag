@@ -674,11 +674,9 @@ fn tailscale_join_apt_repo_argv(
   let needs_dir = fold(
     tokens,
     init: false,
-    f: fn(acc, t) {
-      match t {
-        AptRepoArgvStagingDir { suffix: _ } => true
-        AptRepoArgvLiteral { value: _ } => acc
-      }
+    f: (acc, t) => match t {
+      AptRepoArgvStagingDir { suffix: _ } => true
+      AptRepoArgvLiteral { value: _ } => acc
     },
   )
   match dir {
@@ -871,11 +869,9 @@ fn tailscale_join_repo_install_route(
   let walked = fold(
     steps,
     init: TailscaleJoinAptRepoState { dir: none, colons: none, refusal: none },
-    f: fn(state, step) {
-      match state.refusal {
-        Present { value: _ } => state
-        Absent => tailscale_join_apt_repo_step(subject: subject, context: context, pinned: repo.keyring_fingerprint, step: step, state: state)
-      }
+    f: (state, step) => match state.refusal {
+      Present { value: _ } => state
+      Absent => tailscale_join_apt_repo_step(subject: subject, context: context, pinned: repo.keyring_fingerprint, step: step, state: state)
     },
   )
   match walked.refusal {

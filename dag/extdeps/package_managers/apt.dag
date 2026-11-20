@@ -450,21 +450,17 @@ fn apt_third_party_keyring_colons_are_pinned(
 ) -> Bool {
   let records = split(s: colons, delimiter: "\n")
   let pub_count = filter(
-    f: records,
-    pred: fn(line) {
-      match apt_colon_field(record: line, index: 0) {
-        Present { value: f0 } => f0 == "pub"
-        Absent => false
-      }
+    records,
+    line => match apt_colon_field(record: line, index: 0) {
+      Present { value: f0 } => f0 == "pub"
+      Absent => false
     },
   ).count()
   let fpr_records = filter(
-    f: records,
-    pred: fn(line) {
-      match apt_colon_field(record: line, index: 0) {
-        Present { value: f0 } => f0 == "fpr"
-        Absent => false
-      }
+    records,
+    line => match apt_colon_field(record: line, index: 0) {
+      Present { value: f0 } => f0 == "fpr"
+      Absent => false
     },
   )
   let first_fpr_field = match list_head(xs: fpr_records) {
