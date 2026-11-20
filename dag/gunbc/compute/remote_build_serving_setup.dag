@@ -42,6 +42,10 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_supplementary_groups,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
+// The candidate row moved to the module that owns host membership for the serving route, so the live
+// dispatch gate and the provisioned-candidate row are read side by side and host_capacity can answer the
+// ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
+import gunbc.compute.remote_build_hosts { remote_build_serving_candidate_hosts }
 import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host }
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_admission → observed_cgroup_bound) that
@@ -471,16 +475,8 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
   }
 }
 
-// The CANDIDATE host set PR 5 owns. It is deliberately NOT gunbc.compute.remote_build_hosts
-// ::remote_build_serving_hosts — that is the LIVE dispatch gate (-> remote_build_host_rows ->
-// the fabric roster), which admits a host only after its serving setup converges: admitting a host before its
-// /opt/gunbc/compute/capacity home, store and account exist is fail-open (review 95791). The
-// OBSERVE arm must still read a host that is not yet rostered, so it takes its candidate set
-// from THIS PR 5-owned row: the hosts PR 5 will, in the apply arm, converge and then admit to
-// the live roster one-by-one (each only after its home/store/account are created and read back).
-fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
-}
+// (remote_build_serving_candidate_hosts, the candidate row this arm reads, moved on 2026-11-20 to
+// gunbc.compute.remote_build_hosts, where the live dispatch gate sits beside it.)
 
 // Render the account's authorized_keys content for the host: all admitted client keys rendered through
 // the restrict + forced-command entry, joined as a multi-line string. Returns none when the host is not
