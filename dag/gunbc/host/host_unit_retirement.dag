@@ -372,7 +372,7 @@ fn host_unit_retirement_ci_wet() -> ProcessExit {
 // still stand removes the ambiguity entirely; the disable inside act_row's delete batch stays as the
 // per-row idempotent backstop. The pass's count is not a judgement: the readback is the only judge.
 fn host_unit_retirement_predisable_pass(target: SshTarget, context: FleetSshExecutionContext, rows: List<HostUnitRetirementRow>) -> Int {
-  fold(rows, init: 0 as Int, f: fn(acc, r) { let _out = host_unit_retirement_exec_all(target, context, [ systemctl_disable_now_argv(unit: r.unit), systemctl_stop_argv(unit: r.unit) ]); acc + 1 })
+  map(rows, r => host_unit_retirement_exec_all(target, context, [ systemctl_disable_now_argv(unit: r.unit), systemctl_stop_argv(unit: r.unit) ])).length()
 }
 
 // THE WHOLE SUBJECT RUN: pre-disable pass first, then one acted row at a time, then the judgement.
