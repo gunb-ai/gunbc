@@ -144,16 +144,19 @@ fn remote_build_client_job_root_decision(path: String, is_dir: Bool, owner: Stri
 }
 
 // THE EFFECT: create-or-adopt the client's job root on the fleet core, read back whether it is a directory,
-// its owner and the running principal, then hand those to the pure decision above. `root` is a parameter so a
-// witness can name a path that is not a directory and watch it refuse at this step; production passes
-// remote_build_client_job_root_child.
+// its owner and the running principal, then hand those to the pure decision above. Both sides of the owner
+// comparison are read in ONE representation -- a user NAME: the owner from shell.Stat.OwnerOf (`stat -c %U`)
+// and the principal from shell.Id.UserName (`id -un`). Comparing `%U` against `id -u` (a numeric uid) would
+// refuse every directory the user owns, because the two producers emit different shapes
+// (gunbc.design_argument::witness_one_interface). `root` is a parameter so a witness can name a path that is
+// not a directory and watch it refuse at this step; production passes remote_build_client_job_root_child.
 fn materialize_remote_build_client_job_root(root: String) -> RemoteBuildClientJobRoot {
   match create_or_adopt_owner_only_directory(path: root) {
     OwnerOnlyDirectoryUnreadable { path: p } =>
       JobRootRefused { cause: join(["remote-build: the job root ", p, " could not be created or read back"], "") }
     OwnerOnlyDirectoryObserved { path: p, owner: o } => {
       let is_dir = shell.Test.IsDirectory(path: p as FilePath).is_directory
-      let me = shell.Id.UserId()
+      let me = shell.Id.UserName()
       remote_build_client_job_root_decision(
         path: p,
         is_dir: is_dir,

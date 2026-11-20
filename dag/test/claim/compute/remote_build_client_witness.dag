@@ -18,6 +18,7 @@ import gunbc.compute.remote_build_client {
   RemoteSelectionSent, RemoteSelectionDeclined, RemoteSelectionFailed,
   remote_selection_operation, remote_selection_declined, remote_selection_failed, remote_not_sent_json,
   RemoteBuildClientJobRoot, JobRootReady, JobRootRefused, remote_build_client_job_root_decision,
+  materialize_remote_build_client_job_root,
 }
 
 // HERMETIC CONTROLS for the requesting side of gunbc.compute.remote_build. The wet control -- the
@@ -145,4 +146,16 @@ test fn red_a_foreign_job_root_owner_refuses() -> Bool {
 // run through unverified (gunbc.design_argument::fail_closed).
 test fn red_a_job_root_of_unreadable_principal_refuses() -> Bool {
   !w_job_root_ready(r: remote_build_client_job_root_decision(path: "target", is_dir: true, owner: "gunbc-build", principal: Absent))
+}
+
+// INHABITANCE (gunbc.design_argument::witness_one_interface, fail_closed: a real consumer green by
+// execution). The two sides the decision compares come from two REAL producers -- shell.Stat.OwnerOf
+// (`stat -c %U`, a user NAME) and shell.Id.UserName (`id -un`, that user's NAME). The hermetic controls above
+// supply matching strings, so they cannot catch the producers drifting into DIFFERENT shapes -- the defect
+// this claim exists to catch is `%U` compared against `id -u` (a numeric uid), which refuses every directory
+// the user owns because the two producers emit different representations. Running the real route over the
+// directory the client runs in -- a real directory owned by the running principal -- shows the producers
+// emit the one comparable representation the decision relies on.
+test fn the_real_readback_admits_a_directory_the_principal_owns() -> Bool {
+  w_job_root_ready(r: materialize_remote_build_client_job_root(root: "."))
 }
