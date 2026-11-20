@@ -1837,3 +1837,39 @@ test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
     }
   }
 }
+
+// ---- converge_order regression guard (rank-bucket drop; clever-raven-401) ----
+// converge_order once concatenated a FIXED list of rank buckets (r0..r9), so every ConvergeAction kind
+// past the largest bucket was silently filtered out of the ordered plan -- the rank-10 identity write,
+// and any rank added later (e.g. a seat-recovery leg landing after rank 10). The fix orders by rank with
+// a STABLE sort so a kind at ANY rank survives. This is the net that catches that class of regression:
+// build ONE representative of EVERY ConvergeAction kind, order them, and JOIN the output back to the
+// input by structural equality -- plan in = writes out. A kind filtered out by a missing bucket fails
+// the join, which a bare count would not distinguish.
+fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
+  [
+    EnsureGroup { name: "gunbc-serve", gid: 900 },
+    EnsureAccount { name: "gunbc-serve", uid: 900, gid: 900, primary_group: "gunbc-serve", home: "/home/gunbc-serve", shell: "/bin/sh", supplementary: [] },
+    EnsureGroupMembership { group_name: "gunbc-serve", group_gid: 900, member: "gunbc-serve" },
+    EnsureDirectory { path: "/srv/gunbc/store", owner_user: "gunbc-serve", owner_group: "gunbc-serve", mode: d.serve_binary_mode },
+    EnsureAuthorizedKeys { path: "/home/gunbc-serve/.ssh/authorized_keys", owner_user: "gunbc-serve", content: "ssh-ed25519 AAAAKEY gunbc-serve" },
+    EnsureLedgerDirectory { path: "/srv/gunbc/ledger", owner_user: "gunbc-serve", owner_group: "gunbc-serve", mode: d.authorized_keys_mode },
+    EnsureCheckout { dir: "/srv/gunbc/checkout", clone_url: "https://example.invalid/gunbc.git", revision: "deadbeef", as_user: "gunbc-serve" },
+    EnsureToolchain { channel: "1.95.0", as_user: "gunbc-serve" },
+    EnsureRustup { installer_url: "https://static.rust-lang.org/rustup-init", expected_sha256: "aaa", as_user: "gunbc-serve", rustup_home: "/home/gunbc-serve/.rustup", cargo_home: "/home/gunbc-serve/.cargo" },
+    EnsureUserManagerLinger { account: "gunbc-serve" },
+    InstallUserWorkSlice { unit_name: user_work_slice_unit_name, unit_path: "/run/systemd/user/gunbc-user-work.slice", memory_max: byte_size(1), memory_high: byte_size(1), memory_swap_max: byte_size(1), expected_content: "[Unit]" },
+    InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" },
+    RecordServeIdentity { install_path: "/opt/gunbc/bin/gunbc", revision: "deadbeef", sha256: "aaa" },
+  ]
+}
+test fn converge_order_preserves_every_action_kind() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let all = every_converge_action(d)
+      let ordered = converge_order(all)
+      length(ordered) == length(all) && length(filter(all, e => list_member(xs: ordered, x: e, eq: (a, b) => converge_action_key(a) == converge_action_key(b)))) == length(all)
+    }
+  }
+}

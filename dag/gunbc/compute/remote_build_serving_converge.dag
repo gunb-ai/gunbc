@@ -41,7 +41,7 @@ import gunbc.compute.unit_bounds {
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
-import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
+import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup, list_sort_by_key, int_total_order }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import std.list { first_where, list_member, distinct_by_key }
 import std.algebra { Cons, Empty }
@@ -1067,18 +1067,11 @@ fn converge_dedupe(ws: List<ConvergeAction>) -> List<ConvergeAction> {
 }
 
 fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
-  let r0 = filter(ws, a => converge_kind_rank(a) == 0)
-  let r1 = filter(ws, a => converge_kind_rank(a) == 1)
-  let r2 = filter(ws, a => converge_kind_rank(a) == 2)
-  let r3 = filter(ws, a => converge_kind_rank(a) == 3)
-  let r4 = filter(ws, a => converge_kind_rank(a) == 4)
-  let r5 = filter(ws, a => converge_kind_rank(a) == 5)
-  let r6 = filter(ws, a => converge_kind_rank(a) == 6)
-  let r7 = filter(ws, a => converge_kind_rank(a) == 7)
-  let r8 = filter(ws, a => converge_kind_rank(a) == 8)
-  let r9 = filter(ws, a => converge_kind_rank(a) == 9)
-  let r10 = filter(ws, a => converge_kind_rank(a) == 10)
-  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, concat(r7, concat(r8, concat(r9, r10))))))))))
+  // Ordered by converge_kind_rank with a STABLE sort, so a kind at ANY rank survives ordering. The
+  // previous implementation concatenated a FIXED list of rank buckets (r0..r9), which silently dropped
+  // every write whose rank had no bucket -- the identity write at rank 10, and any rank added later.
+  // Stability preserves the fold's input order within a rank.
+  list_sort_by_key(xs: ws, key: a => converge_kind_rank(a), order: int_total_order())
 }
 
 // B4 (side-chat review of 2026-11-16): an EXTRA member — observed but not declared anywhere in the
