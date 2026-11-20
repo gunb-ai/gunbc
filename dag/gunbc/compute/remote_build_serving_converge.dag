@@ -65,7 +65,8 @@ import gunbc.live_deploy.emit { user_work_slice_unit_file_for_host_ceiling, User
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_swap_max, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv }
+import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv, systemctl_user_show_for_uid_argv, systemctl_show_property_value }
+import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, systemd_unit_property_wire }
 // The user-manager leg reads Linger and enables it through the one shared loginctl model (unelevated read,
 // elevated enable) -- the same argv the runner lane uses, never a second spelling.
 import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_enable_linger_argv, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
@@ -337,67 +338,96 @@ fn serving_plan_pin_read() -> ServingPlanInput? {
   }
 }
 
-// The user-work slice's live cgroup cap, read the way THE READER reads it: memory.max and
-// memory.swap.max of the slice's OWN cgroup under the serving account's user manager
-// (/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/<slice>) — the very cgroup the
-// --user wrap is placed into and whose memory.max the reader checks to admit the wrap. memory.max
-// renders to a ByteSize only for a finite limit (a cgroup 'max' = unlimited reads Absent, i.e. NOT
-// capped); swap reads its ByteSize so serving_assess can require swap 0. An unresolvable serving uid
-// (a fresh host, an unreadable passwd) reads both Absent — never capped — so the apply installs.
+// The user-work slice's live cap, read the way THE READER judges it: the slice's OWN declared
+// MemoryMax / MemoryHigh / MemorySwapMax, read through the serving account's user manager with
+// `systemctl --user --machine=<uid>@ show <slice> --property=MemoryMax,MemoryHigh,MemorySwapMax`. This
+// reads the unit's DECLARED properties, which the manager answers whether or not the slice's cgroup has
+// been populated -- a started slice with no member unit has no memory.max file yet, so reading the cgroup
+// file would refuse a correctly-capped slice forever. The declared properties are what the reader admits
+// the --user wrap against, so 'settled' and 'the wrap is admitted' agree. The argv is built by the shared
+// systemctl builder over the shared systemd_unit_property_wire names, so a property has one spelling.
 type ServingSliceCap {
   max: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
   high: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
   swap: ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure>,
 }
 
-fn serving_user_work_slice_cgroup_dir(uid: Int) -> String {
-  concat("/sys/fs/cgroup/user.slice/user-", to_string(uid), ".slice/user@", to_string(uid), ".service/", user_work_slice_unit_name)
-}
+// The three memory controls the slice leg reads back, in one list so the argv and the parsed keys agree.
+data serving_slice_cap_properties: List<SystemdUnitProperty> = [MemoryMax, MemoryHigh, MemorySwapMax]
 
-// A cgroup memory control body mapped to the cgroup's OWN typed value under the read's ObservationAttempt.
-// A body of "" is the ENOENT sentinel the read sets when the control file is PROVEN ABSENT (the slice was
-// never started) -- an absent cap is unbounded, which licenses the install; only a genuine read-failure
-// (ssh/sudo refused) stays a Refused that becomes an unknown. A present body is parsed by the cgroup parser.
-fn serving_slice_cap_of_read(read: ObservationAttempt<String, ServingLegFailure>) -> ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> {
-  match read {
-    ObservationEstablished { observed: body } => if body == "" { ObservationEstablished { observed: CgroupMemoryUnlimited } } else { ObservationEstablished { observed: parse_cgroup_memory_limit(body: body) } }
-    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+// The value `systemctl show` prints for one memory control mapped to the slice's OWN typed value under the
+// read's ObservationAttempt. 'infinity' and 'max' (systemctl's spellings for no limit), an empty value, and
+// an ABSENT key all mean NO cap -- an absent control is unbounded, which licenses the install. A byte count
+// is a finite cap and is parsed by the shared cgroup parser. An unreadable value is never silently treated
+// as capped; it parses through the cgroup parser to an unbounded/unparseable value the admission refuses.
+fn serving_slice_property_value(value: String?) -> CgroupMemoryLimitValue {
+  match value {
+    Absent => CgroupMemoryUnlimited
+    Present { value: v } => {
+      let t = trim(s: v)
+      if t == "infinity" || t == "max" || t == "" { CgroupMemoryUnlimited } else { parse_cgroup_memory_limit(body: t) }
+    }
   }
 }
 
-// Read a slice cgroup control, distinguishing the three outcomes the admission needs (mirrors
-// serving_leg_stat): ssh/sudo refused -> Refused (unknown); cat exit 0 -> Established body; cat non-zero
-// WITH 'No such file' -> Established("") as the proven-absent sentinel (the slice is not started, so it has
-// no cap -- uncapped, which licenses the install); any other cat failure -> Refused (unknown). A control
-// nobody could read is never presented as uncapped.
-fn serving_leg_cgroup_read(item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
-    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
-    TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
-      true => ObservationEstablished { observed: r.stdout }
-      false => match string_contains(s: r.stderr, pattern: "No such file") {
-        true => ObservationEstablished { observed: "" }
-        false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("cat exit ", to_string(r.exit_code)) } }
-      }
-    }
+// Read the slice's declared properties through the serving account's user manager, keeping the three
+// outcomes the admission needs distinct. The whole read is ONE exec. A transport refusal (ssh/sudo could
+// not run systemctl at all) is an UNKNOWN on every control: a slice nobody could read is never presented as
+// capped or uncapped, it just is not assessed (ServingUnknown -> the host is indeterminate). A `systemctl
+// show` that ran answers the declared properties; a non-zero exit is the serving user manager being
+// unreachable, and a PRESENT account whose manager is not up carries no cap at all, so it reads uncapped --
+// which licenses the install and the enable-linger that starts the manager, after which the readback answers
+// honestly. The direction is one-way: an unreachable manager is uncapped (installs), never falsely capped.
+// Map the TEXT a `systemctl show --property=MemoryMax,MemoryHigh,MemorySwapMax <slice>` prints to the
+// slice's typed cap. One exec answers all three controls, so the whole cap is decoded from one body. This
+// is the pure decision the slice leg (and its witness) share: a slice whose cgroup control files do not
+// exist yet but whose LOADED UNIT declares MemoryMax=ceiling / MemorySwapMax=0 reads CAPPED here -- the
+// reading that lets an installed, active-but-empty slice settle instead of refusing forever. A manager
+// unreachable or a control spelling 'infinity'/'max'/absent is uncapped; a transport failure is refused
+// before this function is ever reached (see serving_leg_slice_cap), so an unread slice is never decoded.
+fn serving_slice_cap_of_show(text: String) -> ServingSliceCap {
+  ServingSliceCap {
+    max: ObservationEstablished { observed: serving_slice_property_value(value: systemctl_show_property_value(text: text, key: systemd_unit_property_wire(property: MemoryMax) as String)) },
+    high: ObservationEstablished { observed: serving_slice_property_value(value: systemctl_show_property_value(text: text, key: systemd_unit_property_wire(property: MemoryHigh) as String)) },
+    swap: ObservationEstablished { observed: serving_slice_property_value(value: systemctl_show_property_value(text: text, key: systemd_unit_property_wire(property: MemorySwapMax) as String)) },
+  }
+}
+
+// The cap an unreachable user manager reads: every control established-unbounded. A present account whose
+// manager is not up has no slice cap in force, so the slice is uncapped -- which licenses the install and
+// the enable-linger that starts the manager. One-way: an unreachable manager is uncapped (installs), never
+// silently capped.
+fn serving_slice_cap_unreachable_manager() -> ServingSliceCap {
+  ServingSliceCap {
+    max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
   }
 }
 
 fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, uid: Int?) -> ServingSliceCap {
-  let unknown = ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "account uid unknown; slice cgroup not locatable" } }
+  let refused = ServingSliceCap {
+    max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "account uid unknown; slice not locatable" } },
+    high: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "account uid unknown; slice not locatable" } },
+    swap: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: "account uid unknown; slice not locatable" } },
+  }
   match uid {
-    Absent => ServingSliceCap { max: unknown, high: unknown, swap: unknown }
-    Present { value: u } => {
-      let dir = serving_user_work_slice_cgroup_dir(uid: u)
-      let max_read = serving_leg_cgroup_read(item: "user_work.slice.memory_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.max")))
-      let high_read = serving_leg_cgroup_read(item: "user_work.slice.memory_high", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.high")))
-      let swap_read = serving_leg_cgroup_read(item: "user_work.slice.memory_swap_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.swap.max")))
-      ServingSliceCap {
-        max: serving_slice_cap_of_read(read: max_read),
-        high: serving_slice_cap_of_read(read: high_read),
-        swap: serving_slice_cap_of_read(read: swap_read),
+    Absent => refused
+    Present { value: u } =>
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_show_command_argv(uid: u))) {
+        // The transport itself refused -- ssh/sudo could not run systemctl at all -- so nobody read the
+        // slice. It is UNKNOWN on every control, never presented as capped or uncapped; serving_assess
+        // turns this into a ServingUnknown and the host is indeterminate rather than planned toward.
+        TypedArgvExecRefused { reason: reason } =>
+          ServingSliceCap {
+            max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: concat("ssh refused: ", reason) } },
+            high: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: concat("ssh refused: ", reason) } },
+            swap: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice", cause: concat("ssh refused: ", reason) } },
+          }
+        // `systemctl show` ran. A zero exit decodes the declared properties; a non-zero exit is the manager
+        // being unreachable for this present account, which reads uncapped (no cap in force).
+        TypedArgvExecConverged { result: r } => if r.exit_code == 0 { serving_slice_cap_of_show(text: r.stdout) } else { serving_slice_cap_unreachable_manager() }
       }
-    }
   }
 }
 
@@ -1276,18 +1306,25 @@ fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionConte
 // to the pin's sha is a failed step (the re-observe agrees). It takes the install's own fields, so no
 // other action kind can reach it.
 // The systemctl verbs the install-slice leg issues to the serving account's user manager AFTER the unit
-// file is installed, in order. daemon-reload makes systemd read the new unit file; START then materialises
-// the slice's cgroup, which daemon-reload alone never creates for a slice that has never been active --
-// without it the cgroup readback would wait on a directory that never appears. Both carry the
-// --machine=UID@ connector so they reach the ACCOUNT's user manager (bare --user would reload root's), and
-// the start names the reader's own slice, so the settled cgroup is the unit the wrap binds into. This list
-// is the single ordered source both the wet leg and its witness read, so the two cannot drift.
+// file is installed, in order. daemon-reload makes systemd read the new unit file; START then brings the
+// slice active under the (now-lingering) manager so work can be placed into it and the slice's own cgroup
+// exists for the wrap to bind into. The readback that follows does NOT need that cgroup: it reads the
+// slice's declared properties with `systemctl show`, which the manager answers from the loaded unit
+// whether or not the cgroup has populated -- so a slice that is installed and active but has no member unit
+// yet reads its ceiling honestly instead of refusing forever. Both verbs carry the --machine=UID@ connector
+// so they reach the ACCOUNT's user manager (bare --user would reload root's), and the start names the
+// reader's own slice. This list is the single ordered source both the wet leg and its witness read, so the
+// two cannot drift.
 fn user_work_slice_reload_command_argv(uid: Int) -> List<String> {
   systemctl_user_daemon_reload_argv(uid: uid)
 }
 
 fn user_work_slice_start_command_argv(uid: Int) -> List<String> {
   systemctl_user_start_for_uid_argv(unit: user_work_slice_unit_name, uid: uid)
+}
+
+fn user_work_slice_show_command_argv(uid: Int) -> List<String> {
+  systemctl_user_show_for_uid_argv(unit: user_work_slice_unit_name, properties: serving_slice_cap_properties, uid: uid)
 }
 
 fn user_work_slice_install_command_argv(uid: Int) -> List<List<String>> {
@@ -1298,10 +1335,13 @@ fn user_work_slice_install_command_argv(uid: Int) -> List<List<String>> {
 // String, so it stages a local file, uploads to a private 0700 dir, and sudo-installs it 0644 root:root at
 // srv1's slice path). Then, in order, it reloads the SERVING account's user manager with `systemctl --user
 // --machine=UID@ daemon-reload` (srv1's own reload argv — bare `--user` would reload root's manager) and
-// STARTS the slice with `systemctl --user --machine=UID@ start <slice>`, so the slice's cgroup exists
-// before anything reads it (daemon-reload alone never creates a never-active slice's cgroup). It then READS
-// THE CAP BACK THROUGH THE SAME CGROUP READ the observe and the reader use: MemoryMax must equal the ceiling
-// and MemorySwapMax 0, or the step fails. converge_execute_with halts at the first failed write, so an
+// STARTS the slice with `systemctl --user --machine=UID@ start <slice>`, so the slice is active under the
+// account's manager before anything reads it. It then READS THE CAP BACK THROUGH THE SAME PROPERTY READ the
+// observe and the reader use: `systemctl --user --machine=UID@ show <slice>` of the unit's declared
+// MemoryMax / MemoryHigh / MemorySwapMax, so MemoryMax must equal the ceiling and MemorySwapMax 0, or the
+// step fails. Reading the declared properties (not the cgroup files) is what lets an installed, active slice
+// with no member unit yet settle -- its cgroup control files need not exist for the unit to carry its cap.
+// converge_execute_with halts at the first failed write, so an
 // unsettled slice stops the pass before the serve binary is ever written.
 // Bring the serving account's user manager into its lingering state, so the slice cgroup the NEXT leg
 // installs has a live manager to live under -- an empty user slice under a non-lingering account is torn
@@ -1584,9 +1624,9 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
       } else {
         ExitSuccess
       }
-      ConvergeRefused { reason: r } => exit_failure(reason: join(["remote_build_serving_converge: the re-observe refused after apply: ", r, "\n", body], ""))
-      ConvergeUnhandled { items: u } => exit_failure(reason: join(["remote_build_serving_converge: ", to_string(length(u)), " deviations remain unhandled after apply\n", body], ""))
-      ConvergePlan { writes: ws } => exit_failure(reason: join(["remote_build_serving_converge: the host still needs ", to_string(length(non_empty_to_list(ws))), " writes after apply\n", body], ""))
+      ConvergeRefused { reason: r } => exit_failure(reason: join(["remote_build_serving_converge: the re-observe refused after apply: ", r, "\n", body_with_skips], ""))
+      ConvergeUnhandled { items: u } => exit_failure(reason: join(["remote_build_serving_converge: ", to_string(length(u)), " deviations remain unhandled after apply\n", body_with_skips], ""))
+      ConvergePlan { writes: ws } => exit_failure(reason: join(["remote_build_serving_converge: the host still needs ", to_string(length(non_empty_to_list(ws))), " writes after apply\n", body_with_skips], ""))
     }
   }
 }
