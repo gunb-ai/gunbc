@@ -42,6 +42,12 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { FilePath, String }
 import extdeps.filesystem.filesystem_io
 import extdeps.tailscale.acl { tag_serving }
+import extdeps.package_managers.dpkg {
+  DpkgPackageInstalled,
+  DpkgPackageNotInstalled,
+  DpkgPackageUnknown,
+  DpkgQueryUndecidable,
+}
 import extdeps.tailscale.join {
   TailscaleJoinState,
   JoinStateJoinedWithRequiredTag,
@@ -66,9 +72,10 @@ import gunbc.tailscale_join_converge {
   JoinPlanRefused,
   JoinRefusedNotFleetMember,
   JoinObsInstalled,
-  JoinObsNotInstalled,
-  JoinObsUnknown,
+  JoinObsInstall,
   JoinObsUndecidable,
+  TailscaleJoinObservation,
+  tailscale_join_observation_of,
   TailscaleJoinPackageAction,
   JoinPackageInstall,
   JoinPackageAlreadyInstalled,
@@ -130,13 +137,12 @@ fn plan_for(document: String, key_usable: Bool) -> TailscaleJoinPlan {
   )
 }
 
-// DPkg DECIDES BEFORE THE JOIN STATE (the fix for srv4, run 44643376146). The plan takes a single
-// TailscaleJoinObservation sum, so the illegal pairings a caller could previously construct (Installed with no
-// join state; NotInstalled carrying an ignored status) have NO constructors -- gunbc.design_argument::fail_closed
-// and guarantee_ladder's top rung. This claim exercises the four legal arms: NotInstalled and Unknown (srv4's
-// dpkg-Unknown read: exit 1 + "no information is available") both install; Undecidable refuses (absent is never
-// inferred from a failed dpkg); Installed-with-an-unreadable-status refuses (the binary is present, so a failed
-// status is a real daemon/custody fault, not an absent package).
+// THE OBSERVATION SUM + ITS GUARD (the fix for srv4, run 44643376146, and the review-96824 regression).
+// tailscale_join_plan takes a single TailscaleJoinObservation sum: JoinObsInstall / JoinObsUndecidable /
+// JoinObsInstalled{join_state}. w_package_decides_before_the_join_state exercises the plan arms;
+// w_non_apt_joined_host_is_not_reinstalled witnesses tailscale_join_observation_of -- the builder that decides
+// whether a host dpkg cannot see is absent (install) or running under an existing identity (installed, so Noop
+// / NotFleetMember). The destructive action -- `tailscale up --force-reauth` -- is authorized ONLY for JoinObsInstall.
 fn plan_installs(p: TailscaleJoinPlan) -> Bool {
   match p {
     JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action } =>
@@ -156,15 +162,34 @@ fn plan_refused(p: TailscaleJoinPlan) -> Bool {
   }
 }
 
+fn obs_is_install(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsInstall => true
+    JoinObsInstalled { join_state: _ } => false
+    JoinObsUndecidable { reason: _ } => false
+  }
+}
+
+fn obs_is_installed(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsInstalled { join_state: _ } => true
+    JoinObsInstall => false
+    JoinObsUndecidable { reason: _ } => false
+  }
+}
+
+fn obs_is_undecidable(o: TailscaleJoinObservation) -> Bool {
+  match o {
+    JoinObsUndecidable { reason: _ } => true
+    JoinObsInstalled { join_state: _ } => false
+    JoinObsInstall => false
+  }
+}
+
 test fn w_package_decides_before_the_join_state() -> Bool {
-  let absent = tailscale_join_plan(
+  let install = tailscale_join_plan(
     host: operator_host_srv1,
-    observation: JoinObsNotInstalled,
-    key_usable: true,
-  )
-  let never_seen = tailscale_join_plan(
-    host: operator_host_srv1,
-    observation: JoinObsUnknown,
+    observation: JoinObsInstall,
     key_usable: true,
   )
   let undecidable = tailscale_join_plan(
@@ -177,10 +202,40 @@ test fn w_package_decides_before_the_join_state() -> Bool {
     observation: JoinObsInstalled { join_state: JoinStateUnreadable { cause: "status leg exited non-zero with the binary present" } },
     key_usable: true,
   )
-  plan_installs(absent)
-    && plan_installs(never_seen)
+  plan_installs(install)
     && plan_refused(undecidable)
     && plan_refused(installed_unreadable)
+}
+
+// The regression guard (review 96824): a host whose tailscale dpkg cannot see but which IS joined must NEVER be
+// sent to install+force-reauth (which would replace an operator-chosen identity). The builder keeps such a host
+// on the JoinObsInstalled path so the plan reaches its Noop / NotFleetMember arm. Only a not-joined host installs.
+test fn w_non_apt_joined_host_is_not_reinstalled() -> Bool {
+  let unknown_tagged = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: JoinStateJoinedWithRequiredTag { self_tags: ["tag:ci"] },
+  )
+  let not_installed_notag = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "" },
+    status: JoinStateJoinedWithoutRequiredTag { self_tags: [] },
+  )
+  let unknown_fresh_unreadable = tailscale_join_observation_of(
+    package: DpkgPackageUnknown,
+    status: JoinStateUnreadable { cause: "binary absent, status leg failed" },
+  )
+  let not_installed_not_joined = tailscale_join_observation_of(
+    package: DpkgPackageNotInstalled { status: "deinstall ok config-files" },
+    status: JoinStateNotJoined { state: "BackendState: NeedsLogin" },
+  )
+  let broken = tailscale_join_observation_of(
+    package: DpkgQueryUndecidable { reason: "dpkg itself failed" },
+    status: JoinStateUnreadable { cause: "ignored" },
+  )
+  obs_is_installed(unknown_tagged)
+    && obs_is_installed(not_installed_notag)
+    && obs_is_install(unknown_fresh_unreadable)
+    && obs_is_install(not_installed_not_joined)
+    && obs_is_undecidable(broken)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────

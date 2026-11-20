@@ -299,9 +299,38 @@ type TailscaleJoinPackageAction = JoinPackageInstall | JoinPackageAlreadyInstall
 // the status only on the installed leg, so a status can never be attached to a not-installed host.
 type TailscaleJoinObservation
   = JoinObsInstalled { join_state: TailscaleJoinState }
-  | JoinObsNotInstalled
-  | JoinObsUnknown
+  | JoinObsInstall
   | JoinObsUndecidable { reason: String }
+
+// Build the observation from the two RAW reads. dpkg having no record of an apt package (NotInstalled/Unknown)
+// does NOT prove the binary is absent: tailscale can be running from a static/snap install, or a purged apt
+// record with a live daemon. So those reads do NOT authorize an install on their own -- the status is consulted,
+// and only a host that is NOT joined (NotJoined / Unreadable) installs. A host that IS joined -- with or without
+// the fleet tag -- becomes JoinObsInstalled so the plan keeps its Noop / NotFleetMember arm and NEVER re-runs
+// `tailscale up --force-reauth` over an operator-chosen identity (gunbc.design_argument::fail_closed: no
+// plausible output -- "dpkg can't see it, so it is absent" -- may authorize a destructive action). Undecidable
+// refuses. This is a pure function of the two reads, so it is witnessed directly.
+fn tailscale_join_observation_of(
+  package: DpkgInstalledState,
+  status: TailscaleJoinState,
+) -> TailscaleJoinObservation {
+  match package {
+    DpkgPackageInstalled => JoinObsInstalled { join_state: status }
+    DpkgPackageNotInstalled { status: _ } => match status {
+      JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
+      JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
+      JoinStateNotJoined { state: _ } => JoinObsInstall
+      JoinStateUnreadable { cause: _ } => JoinObsInstall
+    }
+    DpkgPackageUnknown => match status {
+      JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
+      JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: status }
+      JoinStateNotJoined { state: _ } => JoinObsInstall
+      JoinStateUnreadable { cause: _ } => JoinObsInstall
+    }
+    DpkgQueryUndecidable { reason: reason } => JoinObsUndecidable { reason: reason }
+  }
+}
 
 type TailscaleJoinPlan
   = JoinPlanNoop { host: HostIdentity, tailnet_name: NonEmptyStr, reason: String }
@@ -344,23 +373,12 @@ fn tailscale_join_plan(
           JoinPlanRefused { host: host, cause: "the tailnet name is absent while the hostname is present" }
         Present { value: tailnet_name } =>
           match observation {
-            // DPkg DECIDES FIRST, and the SHAPE of the observation is what makes the illegal pairing
-            // unwritable rather than merely refused: an install observation cannot carry a join state (so
-            // there is no status to be silently ignored), and an installed observation cannot lack one. The
-            // wet builds this from tailscale_join_observe_package and reads the status only on the installed
-            // leg. srv4 (run 44643376146) is the receipt. dpkg having NO RECORD of an apt package means it is
-            // not installed: dpkg.dag records DpkgPackageUnknown as an ANSWER ("unknown to dpkg"), and the
-            // sibling site_pxe_edge_converge installs on the same shape.
-            JoinObsNotInstalled =>
-              tailscale_join_plan_requiring_key(
-                host: host,
-                tailnet_name: tailnet_name,
-                hostname: hostname,
-                status_string: Absent,
-                key_usable: key_usable,
-                package_action: JoinPackageInstall,
-              )
-            JoinObsUnknown =>
+            // INSTALL: the builder already established this host is NOT joined (status NotJoined or Unreadable)
+            // AND dpkg has no usable installed record -- so installing cannot clobber an operator-chosen identity.
+            // The join state is not consulted here because there is none to consult; the destructive-action guard
+            // (a joined host with a non-apt tailscale must NOT be reinstalled) lives in tailscale_join_observation_of,
+            // which is witnessed directly. srv4 (run 44643376146): dpkg-Unknown + unreadable status -> install.
+            JoinObsInstall =>
               tailscale_join_plan_requiring_key(
                 host: host,
                 tailnet_name: tailnet_name,
@@ -733,18 +751,12 @@ fn tailscale_join_host(
         // through: a host with no runner spec is not a host a converge may write a credential onto.
         CustodyHostSubjectRefused { cause: cause } => JoinRefused { host: host, cause: cause }
         CustodyHostSubjectAdmitted { subject: subject } => {
-          // DPkg FIRST, and the observation sum is built so the illegal pairing is unwritable: the status is
-          // read ONLY on the installed leg and travels INSIDE JoinObsInstalled, so a not-installed host has no
-          // status to carry and an installed host always has one. gunbc.design_argument::fail_closed /
-          // guarantee_ladder: the bad combination has no constructor, not merely a runtime refusal.
+          // Read BOTH the package and the status, then let the witnessed pure builder decide. The status is
+          // read unconditionally (the argv fix makes it correct) so a host whose package dpkg cannot see but
+          // which is nevertheless joined is never mistaken for absent and force-reauth'd over.
           let package_state = tailscale_join_observe_package(target: subject.target, context: context)
-          let observation = match package_state {
-            DpkgPackageInstalled =>
-              JoinObsInstalled { join_state: tailscale_join_observe_status(target: subject.target, context: context) }
-            DpkgPackageNotInstalled { status: _ } => JoinObsNotInstalled
-            DpkgPackageUnknown => JoinObsUnknown
-            DpkgQueryUndecidable { reason: reason } => JoinObsUndecidable { reason: reason }
-          }
+          let status = tailscale_join_observe_status(target: subject.target, context: context)
+          let observation = tailscale_join_observation_of(package: package_state, status: status)
           let plan = tailscale_join_plan(
             host: host,
             observation: observation,
