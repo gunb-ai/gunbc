@@ -307,35 +307,13 @@ fn apt_third_party_repo_source_line(repo: ThirdPartyAptRepo) -> String {
 
 // THE KEYRING CHECK, AS A VALUE -- the security property, as a decision a witness can exercise.
 //
-// A fetched apt signing key is trusted only if it is EXACTLY ONE primary key (one `pub` record) whose primary
-// `fpr` record equals the pinned fingerprint FIELD-FOR-FIELD. The naive check -- `grep -q <pin>` over gpg's
-// --with-colons output -- is FAIL-OPEN: a fetched file holding the genuine key PLUS a second attacker key
-// still contains the pin as a substring, passes, and then `signed-by=` trusts both keys. So this establishes
-// the record structure (exactly one `pub`) and compares the primary fingerprint as a field (gpg's --with-colons
-// puts it in colon field 10, index 9 after the leading `fpr`), never as a substring. Mirror of that exact check
-// lives in the install route below (same single-primary rule, same field compare); the inhabitance claim ties
-// the route to this module so the two cannot drift. A file that is not a single genuine key -- zero `pub`, two
-// `pub`, or a differing primary fingerprint -- FAILS here and the route refuses.
-fn apt_third_party_keyring_fingerprint_ok(show_keys_colons: String, pinned: NonEmptyStr) -> Bool {
-  let lines = split(s: show_keys_colons, delimiter: "\n")
-  let pub_count = filter(lines, l => starts_with(s: l, prefix: "pub:")).count()
-  let primary_fpr = match filter(lines, l => starts_with(s: l, prefix: "fpr:")).first() {
-    Present { value: fpr_line } =>
-      match split(s: fpr_line, delimiter: ":").skip(n: 9).first() {
-        Present { value: v } => trim(s: v)
-        Absent => ""
-      }
-    Absent => ""
-  }
-  pub_count == 1
-    && primary_fpr == (pinned as String)
-}
-
 // THE ONE INSTALL ROUTE: keyring directory, fetch the armored key to a PRIVATE staging file, VERIFY it there
 // against the pinned fingerprint and REFUSE, and only THEN dearmor it into the trusted keyring location, write
 // the source line, apt-get update, install the packages. The order is the security property: the fetched key is
 // checked at a path OUTSIDE /etc/apt/keyrings, so a key that is not the single genuine pinned key never sits in
-// the trusted directory at all. The check mirrors apt_third_party_keyring_fingerprint_ok exactly -- exactly one
+// the trusted directory at all. The check is the single guard string apt_third_party_keyring_check_shell --
+// embedded verbatim here and executed wet by the witness against fixture colon files, so the guard that protects
+// signed-by= is the artifact that is tested -- exactly one
 // `pub` record, the primary `fpr` (colon field 10) equal to the pin field-for-field -- not a substring `grep -q`
 // that an extra attacker key defeats. `umask 077` makes the fetch private. It is the docker/nvidia provisioning
 // sequence with that fail-open corrected. Each simple privileged command is elevated through
