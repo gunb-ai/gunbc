@@ -34,7 +34,16 @@ import std.types { NonEmptyStr, Bool }
 
 // ── THE OAUTH CLIENT IDENTITY ──────────────────────────────────────────────────────────────────────
 
-data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-shadow-gate"
+// The operator named the client gunbc-ci-github when creating it (2026-11-20); the model follows the
+// real object, not the other way round.
+data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-github"
+
+// THE PREDECESSOR, RECORDED AS REVOKED. An OAuth client for GitHub runners existed on the tailnet before
+// this one and was REPLACED, not grown beside: recording the predecessor and its revoked state keeps the
+// replacement from being an unrecorded hand edit. A live read-back that it is really gone rides the
+// existing tailnet reconcile route; no second home exists for it.
+data ci_oauth_client_revoked_previous_name: NonEmptyStr = "githubcirunners"
+data ci_oauth_client_revoked_previous_state: NonEmptyStr = "revoked"
 data ci_oauth_client_scope: NonEmptyStr = "auth_keys:write"
 data ci_oauth_client_tags: List<NonEmptyStr> = [tag_ci_dispatch]
 data ci_oauth_client_ephemeral: Bool = true

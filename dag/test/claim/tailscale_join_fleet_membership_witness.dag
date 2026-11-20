@@ -63,6 +63,8 @@ import extdeps.tailscale.join {
   tailscale_self_tags_include,
   tailscale_ping_verdict,
   PingAnswered,
+  TailscaleUpJoinCommandBuilt,
+  TailscaleUpJoinCommandRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from }
@@ -71,6 +73,10 @@ import gunbc.fleet.fleet_enrollment {
   both_participation_enrollment_participation,
 }
 import gunbc.output_policy { ExpectSuccess }
+import extdeps.exec.command { argv_words }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import std.list { list_member }
+
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -105,6 +111,7 @@ import gunbc.tailscale_join_converge {
   tailscale_join_plan,
   tailscale_join_run_settled,
   tailscale_ping_pong_is_expected,
+  tailscale_join_up_command,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -769,5 +776,31 @@ test fn w_a_pong_from_a_different_node_still_refuses_the_read_back() -> Bool {
         _ => false
       }
     _ => false
+  }
+}
+
+// THE HOST-SIDE TAILSCALE-SSH HALF IS OFF, AND THE JOIN CANNOT TURN IT ON. The operator recorded
+// per-host on 2026-11-20: Tailscale SSH is OFF on srv1, and srv3/srv4 terminate SSH connections with
+// plain OpenSSH (the gunbc-build forced-command account and its closed client-key list,
+// gunbc.compute.remote_build::remote_build_authorized_entry). That recorded state matches what the
+// fleet join guarantees BY CONSTRUCTION -- tailscale_up_join_argv (extdeps.tailscale.join) carries no
+// --ssh flag, so the host-side half of Tailscale SSH is never enabled at join. This claim is the
+// discriminating input behind that sentence: if a --ssh flag ever enters the join argv, hosts would
+// come up answering ssh on tailscale-ssh instead of sshd-with-forced-command, and the ci-dispatch ->
+// tag:ci tcp:22 grant (extdeps.tailscale.acl) would reach a different server than the forced-command
+// key controls -- THIS claim goes red.
+test fn w_the_fleet_join_argv_never_enables_tailscale_ssh() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv1) {
+    Present { value: name } =>
+      match tailscale_join_up_command(hostname: name) {
+        TailscaleUpJoinCommandBuilt { command: command } =>
+          !list_member(
+            xs: argv_words(command: command),
+            x: "--ssh",
+            eq: (a, b) => a == b
+          )
+        TailscaleUpJoinCommandRefused { cause: _ } => false
+      }
+    Absent => false
   }
 }

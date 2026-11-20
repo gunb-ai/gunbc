@@ -220,9 +220,15 @@ fn tag_dashboard_to_serving_grant() -> TailscaleGrant {
 // (tcp:22) on the fleet build hosts (tag:ci, the tailscale_fleet_node_tag carried by srv1/srv3/srv4)
 // and nothing else. The security boundary is the forced-command SSH key (gunbc.compute.remote_build
 // authorized_keys), not the network: the key restricts to the gunbc-build account's forced command.
-// srv1/srv3/srv4 do NOT run Tailscale SSH (tailscale_up_join_argv carries no --ssh flag, join.dag),
-// so the regular sshd with its authorized_keys forced_command governs the connection. No Tailscale SSH
-// rule for src tag:ci-dispatch is emitted; the network grant is sufficient and the key is the control.
+// No fleet build host runs Tailscale SSH (tailscale_up_join_argv carries no --ssh flag, join.dag),
+// so the regular sshd with its authorized_keys forced_command governs the connection. The operator
+// RECORDED this per-host on 2026-11-20: Tailscale SSH is OFF on srv1 and OFF on srv2 (RunSSH=false,
+// operator-approved ~19:30Z; Tailscale SSH had been masking LAN-only from= restrictions there), and
+// srv3/srv4 run plain OpenSSH -- recorded here, in the one home that already states it, so the
+// hand-configuration is not left as an unrecorded hand edit. No Tailscale SSH rule for src
+// tag:ci-dispatch is emitted; the network grant is sufficient and the key is the control. The join
+// cannot flip the host-side half: the discriminating claim is w_the_fleet_join_argv_never_enables_tailscale_ssh
+// (dag/test/claim/tailscale_join_fleet_membership_witness.dag).
 fn tag_ci_dispatch_to_build_hosts_ssh_grant() -> TailscaleGrant {
   TailscaleGrant {
     src: [sel_tag_ci_dispatch()],
@@ -244,6 +250,13 @@ fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
   ]
 }
 
+// RESIDUE, RECORDED 2026-11-20 (finding relayed by gentle-crab-832, review of #16803): the tailnet ssh
+// section has NO CONSUMER today. No fleet host runs Tailscale SSH (grant comment above; srv1 and srv2
+// recorded RunSSH=false by the operator, srv3/srv4 plain OpenSSH), so no tailscale-ssh server ever
+// consults these rules. They are emitted because the emitted document must equal the live tailnet policy
+// -- the reconcile fixture (dag/test/fixture/tailscale_acl_reference.json) carries them -- and dropping
+// them from the emit before the tailnet drops them would invert the drift, not remove it. When the
+// tailnet deletes the section, the reconcile read-back makes that visible; THAT is when this emit goes.
 fn operator_tailscale_acl_ssh() -> List<TailscaleSshRule> {
   [
     TailscaleSshRule {
