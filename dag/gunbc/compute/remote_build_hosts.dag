@@ -45,18 +45,18 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 // FOLLOW-UP, NOT INVENTED HERE. butch (srv14) and bobo (srv15) have the operator's interest but not yet a
 // place on this list, and the new Supermicro is being modeled in another lane (still-fox-404):
 //   - bobo (srv15): the next step is its OS, not its key.
-//     @ref(gunbc.fleet.fleet_intent_network::host_lan_address) answers nothing for srv15 and it has no row in
-//     @ref(gunbc.fleet.fleet_enrollment::fleet_enrollments), so it is outside
-//     @ref(gunbc.fleet.fleet_enrollment::runner_executor_hosts) -- no address to dial, no host a run could be
+//     #gunbc.fleet.fleet_intent_network::host_lan_address answers nothing for srv15 and it has no row in
+//     #gunbc.fleet.fleet_enrollment::fleet_enrollments, so it is outside
+//     #gunbc.fleet.fleet_enrollment::runner_executor_hosts -- no address to dial, no host a run could be
 //     pinned to. A scanned row joins
-//     @ref(gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments) once an installed bobo has an
+//     #gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments once an installed bobo has an
 //     address and a live runner, and not before.
 //   - butch (srv14): its pool figure asks for no authoring, because
-//     @ref(gunbc.runner.runner_slot_desired::host_build_pool_reservation) derives it for a host on this list;
+//     #gunbc.runner.runner_slot_desired::host_build_pool_reservation derives it for a host on this list;
 //     what keeps the host off is the serving charge held by
-//     @ref(gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier). It joins after
+//     #gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier. It joins after
 //     that frontier dissolves: candidate row
-//     (@ref(gunbc.compute.remote_build_serving_setup::remote_build_serving_candidate_hosts)), observe, converge,
+//     (#gunbc.compute.remote_build_serving_setup::remote_build_serving_candidate_hosts), observe, converge,
 //     this row -- the order srv3 and srv4 took.
 //   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
 // Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool

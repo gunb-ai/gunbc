@@ -1,0 +1,42 @@
+module test.claim.live_deploy.oidc_config_member_placement_witness
+
+// oidc_config_member_placement_witness — the composed OIDC CONFIG DOCUMENT member is placed on the deploy
+// side, under a deploy-owned world-traversable root, never inside the operator-only /etc/gunbc-oidc.
+//
+// WHAT IT PROVES (Pure): deployment_oidc_config_steps derives exactly the ComposeOwned OidcConfigArtifact
+// member whose path is projected from gunbc.host.host_layout srv1_gunbc_oidc_config_root, and that path is
+// not under the custody directory. This is the spec-level discriminator for the fix: the host-arm observation
+// (gunbc.live_deploy.member_observe observe_oidc_config_file) reads the member as the runner principal, which
+// can only reach a world-traversable parent — the 0700 briansrls operator directory is out of reach, which is
+// exactly the production refusal this PR repairs.
+//
+// WHY IT NEEDS NO EXTERNAL SYSTEMS (Hermetic): it evaluates one pure derivation from declared instance and
+// layout rows; no filesystem, network, subprocess, secret, or clock is read.
+//
+//   CONTROL (true = PASS, false = reject): the member path is under the deploy-owned config root and not under
+//   /etc/gunbc-oidc. If the path is spelled back into the operator directory (the pre-fix state) this fails —
+//   the red is faithful to the production failure, not a tautology over the constant.
+//
+//   EVIDENCE (receipt, also in the pull request): run with one
+//   `claim_batch --source-root dag --source-root src --claim-run --entry <this file> --function <this name>`
+//   on the PR head, printing the [witness] eval_steps line.
+
+import std.algebra { string_contains }
+import std.list { first_where }
+import gunbc.live_deploy.spec { deployment_oidc_config_steps, OidcConfigArtifact }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.host.host_layout { srv1_gunbc_oidc_config_root }
+
+test fn the_srv1_oidc_config_member_is_placed_under_the_deploy_owned_config_root() -> Bool {
+  let oc = first_where(
+    xs: deployment_oidc_config_steps(instance: srv1_live_dashboard_instance()),
+    keep: fn(s) { match s.kind { ComposeOwned { kind: OidcConfigArtifact } => true, _ => false } },
+  )
+  match oc {
+    Present { value: s } =>
+      let p = s.path as String
+      string_contains(s: p, pattern: srv1_gunbc_oidc_config_root as String)
+        && !string_contains(s: p, pattern: "/etc/gunbc-oidc")
+    Absent => false
+  }
+}

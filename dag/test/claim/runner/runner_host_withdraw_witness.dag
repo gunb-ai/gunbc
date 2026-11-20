@@ -34,6 +34,7 @@ import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, RunnerSlotTreeTarget }
 import gunbc.runner.runner_slot_job_role { CiJobSlot }
+import extdeps.systemd { ControlGroup, TasksCurrent, systemd_unit_property_wire }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
@@ -91,6 +92,11 @@ type WithdrawWorld {
   // THE SLOT TREES THIS HOST NEVER BUILT: instance names whose install dir is missing from
   // /opt/actions-runner. Empty for an ordinary world -- a slot the host provisioned has a tree.
   trees_absent: List<String>
+  // DOES A STOP STICK? True is an ordinary host: `systemctl stop` leaves the unit inactive. False is a unit
+  // whose restart route brings the ExecStart straight back, so the ONLY thing that can catch it is reading
+  // the unit back after the stop. Nothing in the withdrawal route asks for this; the settle leg's read-back
+  // control does (runner_slot_settle_loop_witness).
+  stop_sticks: Bool
 }
 
 data withdraw_dirs: List<String> = ["/", "/var", "/var/lib", "/var/lib/gunbc", "/var/lib/gunbc/fleet-converge", "/runner-tmp"]
@@ -110,7 +116,7 @@ fn admitted_slots() -> List<SlotWorld> {
 }
 
 fn world(slots: List<SlotWorld>, mask_sticks: Bool) -> WithdrawWorld {
-  WithdrawWorld { slots: slots, fs: fresh_fs(), elapsed: 0, mask_sticks: mask_sticks, acts: [], trees_absent: [] }
+  WithdrawWorld { slots: slots, fs: fresh_fs(), elapsed: 0, mask_sticks: mask_sticks, acts: [], trees_absent: [], stop_sticks: true }
 }
 
 // THE SAME WORLD WITH TREES THIS HOST NEVER BUILT. trees_absent names instance names whose install
@@ -118,7 +124,14 @@ fn world(slots: List<SlotWorld>, mask_sticks: Bool) -> WithdrawWorld {
 // runner tree under it does not.
 fn world_with(slots: List<SlotWorld>, mask_sticks: Bool, trees_absent: List<String>) -> WithdrawWorld {
   let w = world(slots: slots, mask_sticks: mask_sticks)
-  WithdrawWorld { slots: w.slots, fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts, trees_absent: trees_absent }
+  WithdrawWorld { slots: w.slots, fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts, trees_absent: trees_absent, stop_sticks: w.stop_sticks }
+}
+
+// THE STOP THAT DOES NOT STICK: same world, but a stopped unit comes straight back. Only the settle leg's
+// read-back control asks for this; every withdrawal claim keeps the ordinary host.
+fn world_with_stop_not_sticking(slots: List<SlotWorld>, mask_sticks: Bool, trees_absent: List<String>) -> WithdrawWorld {
+  let w = world_with(slots: slots, mask_sticks: mask_sticks, trees_absent: trees_absent)
+  WithdrawWorld { slots: w.slots, fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts, trees_absent: w.trees_absent, stop_sticks: false }
 }
 
 // THE ENVIRONMENT the bracket's own routes read: the step budget the bracket measures itself against,
@@ -155,7 +168,7 @@ fn slot_of(w: WithdrawWorld, unit: String) -> SlotWorld? {
 }
 
 fn slot_put(w: WithdrawWorld, unit: String, s: SlotWorld) -> WithdrawWorld {
-  WithdrawWorld { slots: map(w.slots, x => if slot_match(s: x, unit: unit) { s } else { x }), fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts, trees_absent: w.trees_absent }
+  WithdrawWorld { slots: map(w.slots, x => if slot_match(s: x, unit: unit) { s } else { x }), fs: w.fs, elapsed: w.elapsed, mask_sticks: w.mask_sticks, acts: w.acts, trees_absent: w.trees_absent, stop_sticks: w.stop_sticks }
 }
 
 // THE SAME SIX WORDS THE REAL SERVICE MANAGER ANSWERS, from the bracket witness's faithful fixture.
@@ -166,10 +179,25 @@ fn slot_put(w: WithdrawWorld, unit: String, s: SlotWorld) -> WithdrawWorld {
 // while looking like a route regression. MainPID and Result are not decoration -- MainPID is what says an
 // active unit has a listener, Result is what distinguishes a cleanly stopped slot from a failed one, and
 // the drain's stop leg decides on exactly those words.
+// THE BLOCK AS THE HOST ANSWERS A SHOW OVER A SLOT: the six words the slot reader requires, plus the two
+// the cgroup count lives in (ControlGroup, TasksCurrent) -- because the stop admission in
+// gunbc.runner.runner_host_file_converge reads them from the SAME observation, and a world that answered
+// only six words would make every admission refuse for a reason the host never gave. The count is not
+// scripted per claim: it follows the row's own worker/listener grain, the same grain the ps listing and
+// the org roster are built from.
+fn show_block(s: SlotWorld) -> String {
+  let six = systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active)
+  let tasks = if s.worker || s.listener { "1" } else { "0" }
+  concat(
+    concat(six, concat(concat(systemd_unit_property_wire(property: ControlGroup) as String, "=system.slice/"), concat(concat(u(n: s.n) as String, ".service\n"), ""))),
+    concat(concat(systemd_unit_property_wire(property: TasksCurrent) as String, "="), concat(tasks, "\n")),
+  )
+}
+
 fn show_answer(s: SlotWorld) -> ShellExchangeObservation {
   ShellProcessExited {
     exit_code: 0,
-    stdout: systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active),
+    stdout: show_block(s: s),
     stderr: "",
   }
 }
@@ -227,7 +255,7 @@ fn ssh_answer(state: WithdrawWorld, cmd: String) -> SshAnswer {
   // EVERY dispatch is accounted before it is answered -- including the ones that find no slot. The
   // split controls assert this ledger empty; recording only the answered commands would let a refusal
   // that dispatched reads hide behind a slot-less world.
-  let state = WithdrawWorld { slots: state.slots, fs: state.fs, elapsed: state.elapsed, mask_sticks: state.mask_sticks, acts: append(state.acts, items: [cmd]), trees_absent: state.trees_absent }
+  let state = WithdrawWorld { slots: state.slots, fs: state.fs, elapsed: state.elapsed, mask_sticks: state.mask_sticks, acts: append(state.acts, items: [cmd]), trees_absent: state.trees_absent, stop_sticks: state.stop_sticks }
   if string_contains(s: cmd, pattern: "ps -e") {
     SshAnswer { world: state, answer: world_listing(w: state) }
   } else {
@@ -254,7 +282,13 @@ fn ssh_answer(state: WithdrawWorld, cmd: String) -> SshAnswer {
         else if string_contains(s: cmd, pattern: " unmask ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: "loaded", file: "enabled", active: s.active, worker: s.worker, listener: s.listener, registered: s.registered }), answer: ok_exit() } }
         else if string_contains(s: cmd, pattern: " enable ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: "enabled", active: s.active, worker: s.worker, listener: s.listener, registered: s.registered }), answer: ok_exit() } }
         else if string_contains(s: cmd, pattern: " start ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: s.file, active: "active", worker: false, listener: true, registered: true }), answer: ok_exit() } }
-        else if string_contains(s: cmd, pattern: " stop ") { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: s.file, active: "inactive", worker: false, listener: false, registered: s.registered }), answer: ok_exit() } }
+        else if string_contains(s: cmd, pattern: " stop ") {
+          // A stop the unit does not honour is not an error on the wire: systemctl exits 0, the restart route
+          // puts the ExecStart back, and only the read-back knows. That is the whole reason the settle leg
+          // reads the unit back before it lets the install arm near it.
+          if state.stop_sticks { SshAnswer { world: slot_put(w: state, unit: cmd, s: SlotWorld { n: s.n, load: s.load, file: s.file, active: "inactive", worker: false, listener: false, registered: s.registered }), answer: ok_exit() } }
+          else { SshAnswer { world: state, answer: ok_exit() } }
+        }
         else { SshAnswer { world: state, answer: unmatched(cmd: cmd) } }
     }
   }
@@ -333,7 +367,7 @@ fn withdraw_realization(initial: WithdrawWorld, busy_override: Bool) -> Operatio
         }
       },
       virtual_delay_binding(at: sleep_operation_ref, seconds_input: "seconds"),
-    ], [environment_binding(get: fn(_) { withdraw_environment() })]), concat(filesystem_bindings(get: fn(state) { state.fs }, put: fn(state, fs) { WithdrawWorld { slots: state.slots, fs: fs, elapsed: state.elapsed, mask_sticks: state.mask_sticks, acts: state.acts, trees_absent: state.trees_absent } }, cwd: fn(_) { "/" }), wall_clock_bindings(get: fn(state) {
+    ], [environment_binding(get: fn(_) { withdraw_environment() })]), concat(filesystem_bindings(get: fn(state) { state.fs }, put: fn(state, fs) { WithdrawWorld { slots: state.slots, fs: fs, elapsed: state.elapsed, mask_sticks: state.mask_sticks, acts: state.acts, trees_absent: state.trees_absent, stop_sticks: state.stop_sticks } }, cwd: fn(_) { "/" }), wall_clock_bindings(get: fn(state) {
       ModeledWallClock { unix_at_origin: 1790000000, step: second_displacement(count: 0), jumps: [] }
     }))),
     advance: fn(state, _now) { state },
@@ -671,7 +705,7 @@ test fn a_split_ok_withdraw_actuates_so_the_empty_ledgers_mean_something() -> Bo
 // back refused, bracket acquisition refused with ownership-unproven before a leg was dispatched, and
 // eight controls went red three layers below the fixture that was wrong. If the reader's contract moves
 // again, THIS control fails, and it names the fixture.
-fn show_stdout_of(s: SlotWorld) -> String { systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active) }
+fn show_stdout_of(s: SlotWorld) -> String { show_block(s: s) }
 
 test fn the_withdrawal_worlds_show_block_parses_through_the_slot_reader() -> Bool {
   all([

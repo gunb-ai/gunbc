@@ -2,7 +2,7 @@ module extdeps.tailscale.join
 
 // UPSTREAM FACTS AND TYPED argv FOR THE ONE THING A HOST MUST DO TO BE ON THE TAILNET AT ALL: JOIN IT.
 //
-// @ref(gunbc.tailscale_join_converge::tailscale_join_host) is the fleet-side converge that reads these
+// #gunbc.tailscale_join_converge::tailscale_join_host is the fleet-side converge that reads these
 // rows; this module is the
 // upstream surface only -- what `tailscale up` takes, what a join's success is made of, and what an auth
 // key is allowed to be. Nothing here names a host, a tag the fleet happens to use, a Secret Manager
@@ -211,7 +211,7 @@ fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> Strin
 // CHECKS. tailscale_auth_key_expiry_verdict range-checks every date handed to it through the calendar
 // module's OWN parts predicate (month 1..12, day 1..that month's length, leap rule included) and answers
 // AuthKeyExpiryUnverifiable -- never AuthKeyStillValid -- for a date no checked constructor would have
-// produced (@ref(gunbc.design_argument::fail_closed): the wrong date fails the join instead of ordering
+// produced (#gunbc.design_argument::fail_closed: the wrong date fails the join instead of ordering
 // forever as a plausible number).
 
 // The expiry window upstream offers: "The maximum key expiration is 90 days"; the console offers 1..90
@@ -444,7 +444,7 @@ fn tailscale_up_join_argv(spec: TailscaleUpJoinSpec) -> TailscaleUpJoinArgv {
 
 // THE COMMAND, OR THE CAUSE IT WAS REFUSED. NO PARTIAL COMMAND IS EMITTED: a refused spec never becomes a
 // `tailscale up` with a missing flag, which upstream would answer by joining with the DEFAULT hostname and
-// no tags -- the exact two facts the converge exists to get right (@ref(gunbc.design_argument::fail_closed)).
+// no tags -- the exact two facts the converge exists to get right (#gunbc.design_argument::fail_closed).
 type TailscaleUpJoinCommand
   = TailscaleUpJoinCommandBuilt { command: ArgvCommand }
   | TailscaleUpJoinCommandRefused { cause: String }
@@ -520,12 +520,12 @@ fn tailscale_tag_list_wire(tags: List<NonEmptyStr>) -> String {
 // SO `BackendState == "Running"` ALONE IS NOT MEMBERSHIP IN A TAG-KEYED TAILNET. A node enrolled BY HAND
 // under a person's account is Running, resolvable under the tailnet's MagicDNS suffix, and answering -- while
 // presenting NO tags, so it sits outside every grant that policy is keyed on. Reporting such a host as
-// converged is a silent success over the wrong state (@ref(gunbc.design_argument::fail_closed)); which
+// converged is a silent success over the wrong state (#gunbc.design_argument::fail_closed); which
 // machines were observed in that state is a fleet fact, recorded where the fleet's hosts are recorded, not
 // here.
 //
 // The state is THREE-VALUED HERE, at the boundary where the document is first read
-// (@ref(gunbc.design_argument::earliest_unjustified_boundary)): a reading that stopped at "Running, plus
+// (#gunbc.design_argument::earliest_unjustified_boundary): a reading that stopped at "Running, plus
 // whatever tags it happens to carry" would leave every consumer to re-derive membership on its own, and
 // the consumer that forgets is exactly the bug this block is.
 //   JoinStateJoinedWithRequiredTag     Running AND carrying the tag the caller names. THE ONLY state a

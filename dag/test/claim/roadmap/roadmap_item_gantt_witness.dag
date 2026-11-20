@@ -608,7 +608,7 @@ test fn an_item_whose_pieces_price_nothing_is_blocked_naming_its_own_pieces() ->
 // PiecesFindingsCount (that is the leaf grain REFUSING to answer; here nobody priced it at all, so the row is unsized and
 // the leaf scheduler is never even run over it -- owns_work is false for an Unsized source). This is the item-grain view
 // agreeing with the derivation's view: the same typed cause reaches the page (unsized is listed, never priced --
-// @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)).
+// #gunbc.design_ruling::estimates_are_one_representation_derived_upward).
 test fn an_unprobed_findings_item_is_listed_as_unsized_naming_its_family_and_probe() -> Bool {
   let nodes = [fixture_node(slug: "fixture-item-findings", parent: AdmittedRoot)]
   let plan = decomposition(node: "fixture-item-findings", waits_on: [] as List<StageDependency>, stages: [

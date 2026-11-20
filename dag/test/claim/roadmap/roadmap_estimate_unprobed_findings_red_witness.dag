@@ -1,6 +1,6 @@
 // RED-FIRST REGRESSION WITNESS for the fail-closed defect: an item whose pieces include an unprobed FindingsOf family
 // must be UNSIZED -- listed, never priced as one member
-// (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward): unsized is listed, never priced).
+// (#gunbc.design_ruling::estimates_are_one_representation_derived_upward: unsized is listed, never priced).
 //
 // names-bind-to-the-unique-declaration's decomposition carries a FindingsOf family (its member count is unknown until
 // the probe runs) and it has no authored row, so it reaches the pieces branch. On main, population_members answered
