@@ -66,6 +66,7 @@ test fn the_emitted_workflow_gates_forks_and_types_the_not_configured_notice() -
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "pull_request")
     && contains(haystack: rendered, needle: "merge_group")
+    && contains(haystack: rendered, needle: "workflow_dispatch")
     && contains(haystack: rendered, needle: "::notice::not configured")
 }
 
@@ -77,6 +78,19 @@ test fn the_emitted_workflow_fails_closed_on_merge_group_when_secrets_are_absent
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "$GITHUB_EVENT_NAME")
     && contains(haystack: rendered, needle: "merge_group\" ]")
+    && contains(haystack: rendered, needle: "workflow_dispatch\" ]")
     && contains(haystack: rendered, needle: "::error::not configured")
     && contains(haystack: rendered, needle: "exit 1")
+}
+
+// THE EVIDENCE RE-RUN ARM. The operator ruling's evidence (receipt per run, wall time, red control)
+// is captured by dispatching this workflow on demand. The emitted bytes must carry the dispatch
+// trigger, its optional pattern input, and the step defaulting to the MODELLED plumbing-proof pattern
+// (single authority: the default is the model's row, not a second literal).
+test fn the_emitted_workflow_carries_the_dispatch_evidence_input_defaulting_to_the_model_pattern() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "workflow_dispatch:")
+    && contains(haystack: rendered, needle: "pattern:")
+    && contains(haystack: rendered, needle: "inputs.pattern ||")
+    && contains(haystack: rendered, needle: "//dag/test/claim/compute/host_capacity_seal_witness.dag")
 }
