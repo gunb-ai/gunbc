@@ -208,39 +208,47 @@ fn hostname_allocation_admission(
 // 2026-11-05: host-94c81d named the same board as srv14, which already holds "butch", so the board had two
 // hostnames (gunbc.fleet.fleet_host_identity, the ONE BOARD, ONE SLOT note). The draw is in git before
 // that change.
-data fleet_machine_registry: List<HostnameAllocation> = [
-  HostnameAllocation {
+data fleet_machine_srv1: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv1,
     name: LegacyHostname { label: "srv1" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "ricky" as DnsLabel },
       draw: HumanNameDraw { entropy: 458621672034 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv2: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv2,
     name: LegacyHostname { label: "srv2" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "cubby" as DnsLabel },
       draw: HumanNameDraw { entropy: 905841313466 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv3: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv3,
     name: LegacyHostname { label: "srv3" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "bruno" as DnsLabel },
       draw: HumanNameDraw { entropy: 710002629885 },
     } },
-  },
-  HostnameAllocation {
+  }
+
+data fleet_machine_srv4: HostnameAllocation = HostnameAllocation {
     fleet_slot: operator_host_srv4,
     name: LegacyHostname { label: "srv4" as DnsLabel },
     next_name: Present { value: DrawnHumanName {
       name: FirstOnly { first: "fox" as DnsLabel },
       draw: HumanNameDraw { entropy: 615953933451 },
     } },
-  },
+  }
+
+data fleet_machine_registry: List<HostnameAllocation> = [
+  fleet_machine_srv1,
+  fleet_machine_srv2,
+  fleet_machine_srv3,
+  fleet_machine_srv4,
   HostnameAllocation {
     fleet_slot: operator_host_mtcollins1,
     name: LegacyHostname { label: "mtcollins1" as DnsLabel },
@@ -350,50 +358,10 @@ data fleet_machine_registry: List<HostnameAllocation> = [
 // hostname_allocation_admission like every other read of the registry, so a registry with a colliding
 // handle, current name or pending name admits no machine -- not even one outside the collision -- and an
 // effect entry that asks for its host is told why (gunbc.design_argument::fail_closed).
-type OperatorHostLookup
-  = OperatorHostFound { host: HostIdentity }
-  | OperatorHostNotRegistered { label: String }
-  | OperatorHostRegistryRefused { key: String }
-
-fn operator_host_lookup_in(allocations: List<HostnameAllocation>, label: String) -> OperatorHostLookup {
-  match hostname_allocation_admission(allocations: allocations) {
-    AllocationPrimaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
-    AllocationSecondaryKeyRepeated { key: k } => OperatorHostRegistryRefused { key: k }
-    AllocationAdmitted { roster: _ } =>
-      match filter(allocations, m => (m.fleet_slot as String) == label).first() {
-        Present { value: m } => OperatorHostFound { host: m.fleet_slot }
-        Absent => OperatorHostNotRegistered { label: label }
-      }
-  }
-}
-
-fn operator_host_lookup(label: String) -> OperatorHostLookup {
-  operator_host_lookup_in(allocations: fleet_machine_registry, label: label)
-}
-
-// WHAT AN EFFECT ENTRY SAYS WHEN IT ADMITS NO HOST, once, so each entry prefixes its own name and none
-// writes its own sentence about a refused registry.
-fn operator_host_lookup_refusal(lookup: OperatorHostLookup) -> String? {
-  match lookup {
-    OperatorHostFound { host: _ } => Absent
-    OperatorHostNotRegistered { label: l } => Present { value: concat("no operator host is named ", l) }
-    OperatorHostRegistryRefused { key: k } =>
-      Present { value: join(["the fleet machine registry is refused (", k, " is claimed twice), so no machine is admitted"], "") }
-  }
-}
-
 data operator_hosts: List<HostIdentity> = match hostname_allocation_admission(allocations: fleet_machine_registry) {
   AllocationAdmitted { roster: _ } => map(fleet_machine_registry, m => m.fleet_slot)
   AllocationPrimaryKeyRepeated { key: _ } => []
   AllocationSecondaryKeyRepeated { key: _ } => []
-}
-
-fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
-  match operator_host_lookup(label: label as String) {
-    OperatorHostFound { host: h } => Present { value: h }
-    OperatorHostNotRegistered { label: _ } => Absent
-    OperatorHostRegistryRefused { key: _ } => Absent
-  }
 }
 
 // A PENDING NAME IS RESERVED BUT NOT ANSWERED TO. An accepted next_name must not be drawn again for
@@ -548,6 +516,35 @@ fn resolve_host_selector_in_admitted(allocations: List<HostnameAllocation>, sele
 
 fn resolve_host_selector(selector: String) -> HostSelectorResolution {
   resolve_host_selector_in(allocations: fleet_machine_registry, selector: selector)
+}
+
+// WHAT AN EFFECT ENTRY SAYS WHEN THE SELECTOR ADMITS NO HOST, once, so each entry prefixes its own
+// name and none writes its own sentence about an unknown spelling, an ambiguous one or a refused
+// registry. THE SELECTOR IS THE ONE ANSWER TO "WHICH MACHINE DOES THIS STRING NAME": an effect entry
+// that used to consult a separate handle-only roster read now matches the SAME typed cause here, so an
+// unknown spelling refuses as HostSelectorUnknown at the entry that asked, never as an unregistered
+// label -- the two leaves this root-generalization deletes.
+fn host_selector_refusal_text(resolution: HostSelectorResolution) -> String? {
+  match resolution {
+    HostSelectorResolved { host: _ } => Absent
+    HostSelectorUnknown { selector: s } => Present { value: concat("no machine is named ", s) }
+    HostSelectorAmbiguous { selector: s, candidates: _ } =>
+      Present { value: join([s, " names more than one machine"], "") }
+    HostSelectorRegistryRefused { key: k } =>
+      Present { value: join(["the fleet machine registry is refused (", k, " is claimed twice), so no machine is admitted"], "") }
+  }
+}
+
+// A HOSTNAME MAY DIFFER FROM ITS IDENTITY: a machine answers its allocated hostname, its handle
+// spelling or a short form of a drawn name, and a caller that held the old handle-only roster read
+// refused every spelling but the handle. Resolved through the selector, all of them name the machine.
+fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {
+  match resolve_host_selector(selector: label as String) {
+    HostSelectorResolved { host: h } => Present { value: h }
+    HostSelectorAmbiguous { selector: _, candidates: _ } => Absent
+    HostSelectorUnknown { selector: _ } => Absent
+    HostSelectorRegistryRefused { key: _ } => Absent
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

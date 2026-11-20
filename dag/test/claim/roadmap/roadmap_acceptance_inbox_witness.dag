@@ -4,6 +4,7 @@ import std.types { NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_authority { nid }
+import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   load_roadmap_acceptance_event_history_from_carrier_text,
   RoadmapAcceptanceEventHistoryLoad,
@@ -29,6 +30,8 @@ import gunbc.roadmap.roadmap_acceptance_inbox {
 }
 import test.claim.roadmap.roadmap_receipt_continuity_acceptance_fixture {
   receipt_continuity_acceptance_carrier_fixture_text,
+  receipt_continuity_acceptance_carrier_retired_ids,
+  receipt_continuity_acceptance_carrier_retired_node_ids,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -60,6 +63,19 @@ fn revocation_of(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceEvent {
   }
 }
 
+// For the histories THIS FILE BUILDS BY HAND: this log retires nothing, a fact the claim itself
+// established, so it travels as a Loaded empty set rather than a refusal. Claims over the shared carrier
+// take the carrier's own retired set (receipt_continuity_acceptance_carrier_retired_ids) instead: its last
+// line is a remains-superseded revocation, and an empty set there is a contradicted fixture that the
+// frontier law refuses.
+fn no_retired_nodes() -> RoadmapRetiredNodeIds {
+  RetiredNodeIdsLoaded { ids: [] }
+}
+
+fn fixture_history() -> RoadmapAcceptanceEventHistoryLoad {
+  RoadmapAcceptanceEventHistoryLoaded { events: fixture_events() }
+}
+
 fn drifted_copy(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceReceipt {
   RoadmapAcceptanceReceipt {
     node: receipt.node,
@@ -73,7 +89,10 @@ fn drifted_copy(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceReceipt {
 
 // RED CONTROL: a refused load is a typed refusal, never an empty inbox.
 test fn witness_inbox_load_refused_is_refused_not_empty() -> Bool {
-  match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoadRefused { detail: "tail unreadable" }) {
+  match roadmap_acceptance_inbox(
+    history: RoadmapAcceptanceEventHistoryLoadRefused { detail: "tail unreadable" },
+    retired: no_retired_nodes(),
+  ) {
     AcceptanceInboxProjectionRefused { detail: _ } => true
     AcceptanceInboxProjected { rows: _ } => false
   }
@@ -85,7 +104,10 @@ test fn witness_inbox_unreplayable_history_is_refused_not_empty() -> Bool {
   match transport_receipt() {
     Absent => false
     Present { value: r } =>
-      match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded { events: [revocation_of(receipt: r)] }) {
+      match roadmap_acceptance_inbox(
+        history: RoadmapAcceptanceEventHistoryLoaded { events: [revocation_of(receipt: r)] },
+        retired: no_retired_nodes(),
+      ) {
         AcceptanceInboxProjectionRefused { detail: _ } => true
         AcceptanceInboxProjected { rows: _ } => false
       }
@@ -94,7 +116,10 @@ test fn witness_inbox_unreplayable_history_is_refused_not_empty() -> Bool {
 
 // POSITIVE CONTROL: with the replayed live receipt, that node is absent from rows and others remain.
 test fn witness_inbox_live_receipt_removes_node_from_rows() -> Bool {
-  match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded { events: fixture_events() }) {
+  match roadmap_acceptance_inbox(
+    history: fixture_history(),
+    retired: receipt_continuity_acceptance_carrier_retired_ids(),
+  ) {
     AcceptanceInboxProjectionRefused { detail: _ } => false
     AcceptanceInboxProjected { rows: rows } =>
       count(rows) > 0 && !(rows |> any(row => row.node.node == nid(s: "namespace-occurrence-transport")))
@@ -106,9 +131,12 @@ test fn witness_inbox_revoked_receipt_reappears_with_prior() -> Bool {
   match transport_receipt() {
     Absent => false
     Present { value: r } =>
-      match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded {
-        events: concat(fixture_events(), [revocation_of(receipt: r)]),
-      }) {
+      match roadmap_acceptance_inbox(
+        history: RoadmapAcceptanceEventHistoryLoaded {
+          events: concat(fixture_events(), [revocation_of(receipt: r)]),
+        },
+        retired: receipt_continuity_acceptance_carrier_retired_ids(),
+      ) {
         AcceptanceInboxProjectionRefused { detail: _ } => false
         AcceptanceInboxProjected { rows: rows } =>
           rows |> any(row =>
@@ -123,16 +151,56 @@ test fn witness_inbox_revoked_receipt_reappears_with_prior() -> Bool {
 }
 
 // RED CONTROL: criteria edited on an accepted node (live receipt digest no longer matches) refuses
-// the whole inbox, via frontier_sets_projection, and the node does not surface as a row.
+// the whole inbox, via frontier_sets_projection, and the node does not surface as a row. The retired set is
+// the carrier's own, so the ONE refusal left standing is the drifted digest: a claim that passed because the
+// frontier law refused an unmet retirement would be testing a different defect.
 test fn witness_inbox_stale_live_receipt_refuses() -> Bool {
   match transport_receipt() {
     Absent => false
     Present { value: r } =>
-      match roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoaded {
-        events: concat(fixture_events(), [revocation_of(receipt: r), AcceptanceRecorded { receipt: drifted_copy(receipt: r) }]),
-      }) {
+      match roadmap_acceptance_inbox(
+        history: RoadmapAcceptanceEventHistoryLoaded {
+          events: concat(fixture_events(), [revocation_of(receipt: r), AcceptanceRecorded { receipt: drifted_copy(receipt: r) }]),
+        },
+        retired: receipt_continuity_acceptance_carrier_retired_ids(),
+      ) {
         AcceptanceInboxProjectionRefused { detail: _ } => true
         AcceptanceInboxProjected { rows: _ } => false
+      }
+  }
+}
+
+// A NODE THE LOG RETIRES LEAVES THE INBOX, THE WAY AN ACCEPTED NODE DOES
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08). Two projections of the SAME
+// events, differing only in the log's retired set: the row stands in one arm and is gone in the other, and
+// exactly one row is lost. The node is taken from a frontier row the projection itself produced rather than
+// hand-named, because every node the carrier names by hand is accepted or already retired -- naming one of
+// those would ask the projection to remove a row it never had, which proves nothing. An empty inbox fails
+// the claim outright, so it cannot be satisfied by a projection that simply shows nothing.
+test fn witness_a_node_the_log_retires_leaves_the_inbox() -> Bool {
+  match roadmap_acceptance_inbox(
+    history: fixture_history(),
+    retired: receipt_continuity_acceptance_carrier_retired_ids(),
+  ) {
+    AcceptanceInboxProjectionRefused { detail: _ } => false
+    AcceptanceInboxProjected { rows: rows } =>
+      match first(rows) {
+        Absent => false
+        Present { value: row } =>
+          match roadmap_acceptance_inbox(
+            history: fixture_history(),
+            retired: RetiredNodeIdsLoaded {
+              ids: concat(
+                receipt_continuity_acceptance_carrier_retired_node_ids(),
+                [row.node.node],
+              )
+            },
+          ) {
+            AcceptanceInboxProjectionRefused { detail: _ } => false
+            AcceptanceInboxProjected { rows: after } =>
+              count(after) == count(rows) - 1
+                && !any(after, r => r.node.node == row.node.node)
+          }
       }
   }
 }

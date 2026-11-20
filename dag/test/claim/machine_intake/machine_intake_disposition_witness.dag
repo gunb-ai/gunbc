@@ -115,7 +115,7 @@ import gunbc.machine_intake.disposition {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data unit: UnitKey = "BRD-000123" as UnitKey
+data unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "BRD-000123" }
 
 data assembly_before: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-1U-ALT",

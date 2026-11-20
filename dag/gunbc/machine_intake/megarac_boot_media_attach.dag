@@ -10,6 +10,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.host.managed_host_unit_hold { UnitHoldProof }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import gunbc.boot_artifact_delivery { BootFromRemovableMedia, BootFromNetworkPxe, BootFromUefiHttp }
 import product.host_identity { host_identity_eq }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host_at_current_build, megarac_host_refusal_text, megarac_operation_evidence }
 import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account, bmc_control_route_ipmi_cipher_suite }
@@ -28,6 +29,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacReplacementPolicy,
   MegaRacConverge,
   MegaRacObserve,
+  MegaRacAttachRoute,
   MegaRacReleaseOwn,
   MegaRacOwnReleasePolicy,
   MegaRacAttachResult, SecretFileRemoved, megarac_secret_file_left, megarac_secret_file_text,
@@ -125,7 +127,7 @@ fn megarac_attach_boot_image(
   attempt: String,
 ) -> MegaRacMediaAttach
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   let image_name = subject.medium.image_name
@@ -135,7 +137,9 @@ fn megarac_attach_boot_image(
       match bmc_control_route_account(route: host.route) {
         Absent => MegaRacMediaAttachNotAttempted { reason: "media attach: the bound route names no managed account; refusing before any request" }
         Present { value: account } =>
-      if !host_identity_eq(a: host.host.host, b: boot_subject_host(subject: subject)) {
+      if match subject.control { BootFromRemovableMedia => false BootFromNetworkPxe => true BootFromUefiHttp => true } {
+        MegaRacMediaAttachNotAttempted { reason: "media attach: the boot subject arms a network boot, which attaches no virtual medium; controller untouched" }
+      } else if !host_identity_eq(a: host.host.host, b: boot_subject_host(subject: subject)) {
         MegaRacMediaAttachNotAttempted { reason: "media attach: the unit hold and the boot subject name different hosts; controller untouched" }      } else if password_file == "" {
         MegaRacMediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
       } else if attempt == "" {
@@ -283,7 +287,7 @@ fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyS
     _ => none
   }
   return match look.outcome {
-    MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c } =>
+    MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c, admitted_route: _ } =>
       if c.answered == false {
         PowerOffNotNeeded { reason: "the configurations read did not answer; an unknown medium is never powered off for" }
       } else {
@@ -345,7 +349,7 @@ fn megarac_stale_power_off(
     cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt as String, "-before-power-off"], "") as NonEmptyStr),
     image_name: image_name,
     firmware: host.firmware,
-    task: MegaRacObserve { share: share },
+    task: MegaRacObserve { share: share, admitted_route: none },
   )
   return match megarac_stale_power_off_need(look: look, image_name: image_name, firmware: host.firmware, replaceable_seeded_stems: replaceable_seeded_stems) {
     PowerOffNotNeeded { reason: r } => StalePowerOffRan { off: MegaRacStalePowerOffNotNeeded { reason: r } }
@@ -462,6 +466,20 @@ fn megarac_boot_media_gate(record: MegaRacMediaAttach) -> MegaRacBootMediaGate {
   }
 }
 
+// THE ROUTE THIS ATTEMPT'S ATTACH ADMITTED ITS PRESENTATION BY, read from the attach record itself, so
+// every look the attempt takes afterwards (before the handoff, after it, at the end) is judged under the
+// admission that opened it. Absent when the attach produced no ready presentation.
+fn megarac_admitted_route(record: MegaRacMediaAttach) -> MegaRacAttachRoute? {
+  match record {
+    MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+      match res.outcome {
+        MegaRacPresentationReady { route: r, evidence: _ } => Present { value: r }
+        _ => none
+      }
+    _ => none
+  }
+}
+
 // ONE READ-ONLY LOOK AT THE PRESENTATION, under the same hold, for the handoff to consult just before
 // it writes and to record just after. The jar is suffixed per look so two looks in one attempt
 // never share a bearer file.
@@ -472,10 +490,11 @@ fn megarac_observe_boot_presentation(
   password_file: String,
   attempt: String,
   look: NonEmptyStr,
+  admitted_route: MegaRacAttachRoute?,
 ) -> MegaRacAttachResult
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {
@@ -494,7 +513,7 @@ fn megarac_observe_boot_presentation(
           cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt, "-", look as String], "") as NonEmptyStr),
           image_name: image_name,
           firmware: host.firmware,
-          task: MegaRacObserve { share: share },
+          task: MegaRacObserve { share: share, admitted_route: admitted_route },
         )
       }
       }
@@ -516,7 +535,7 @@ fn megarac_release_boot_session(
   attempt: String,
 ) -> MegaRacAttachResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_effects_real"),
   ]
 {
   match megarac_boot_media_host(proof: proof) {

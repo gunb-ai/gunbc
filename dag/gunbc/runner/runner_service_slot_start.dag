@@ -58,7 +58,7 @@ import gunbc.runner.runner_service_slot_controller {
 // budget the sweep holds). The slot shape (gunbc.runner.runner_slot_desired) is NOT on this unit: the job runs in the
 // listener's own transient unit, which carries the shape (runner_host_unit_slot host_unit_listener_properties), so the
 // shape bounds the job's cgroup and not the controller's -- a stated divergence from the plan's "shape on the service
-// units" wording (DESIGN section 3b), because the listener unit IS the job's unit.
+// units" wording (@ref(gunbc.design_argument::conformance)), because the listener unit IS the job's unit.
 //
 // THE ACCEPTED REVISION IS AN ADMITTED FLEET REVISION, never the run's raw GITHUB_SHA. Before any unit starts, the run's
 // revision is admitted through the qualification attempt's own admission (gunbc.runner.runner_qualification_revision_admission

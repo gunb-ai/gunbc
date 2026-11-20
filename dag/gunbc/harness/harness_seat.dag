@@ -1598,7 +1598,7 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
     // THE POLICY NAMES A UNIT NO ROW CARRIES: a typed refusal, the same cause harness_bind_operator gives
     // for the same absence. It is NOT a fleet placement: "the request has to go somewhere" is the shape
     // this module's own header rules out, and a silent fleet fallback here would disagree with the bind
-    // path (DESIGN 5: refuse, never widen).
+    // path (@ref(gunbc.design_argument::fail_closed): refuse, never widen).
     none => HarnessSeatRefused { detail: operator_route_refusal_detail(unit: harness_operator_unit_policy) }
     Present { value: LeasedFromHostedQuota } => HarnessSeatRefused { detail: "the required unit is reached through a hosted quota lease, not a fleet seat; bind it with harness_bind_hosted" }
     Present { value: PlacedOnFleetSeat } => harness_bind_fleet_seat(short_hostname: short_hostname, class: class, requirement: requirement, shape: shape, inputs: inputs, actor: actor, attempt: attempt, policy: policy, session: session, admission: admission, turn: turn)
@@ -1619,7 +1619,7 @@ fn harness_bind_operator(class: ServingCoTenancyClass, shape: HarnessWireShape) 
     OpenAiChatCompletionsShape =>
       // THE ROUTE THE POLICY NAMES, resolved through the keyed lookup -- not the single constant. A unit
       // with no route row refuses at bind time with its typed cause; there is no fallback to the fabric
-      // router (DESIGN 5: the absence IS the answer).
+      // router (@ref(gunbc.design_argument::fail_closed): the absence IS the answer).
       match operator_route_for_unit(unit: harness_operator_unit_policy) {
         none => HarnessSeatRefused { detail: operator_route_refusal_detail(unit: harness_operator_unit_policy) }
         Present { value: route } => harness_bind_operator_route(class: class, route: route)

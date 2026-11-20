@@ -27,6 +27,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_word_concat_from_nodes,
   bash_build_assign, bash_build_pipe, bash_build_command_from_lits, bash_build_command_with_words,
   bash_build_if_else_from_stmts, bash_build_test_bracket,
@@ -135,7 +136,7 @@ fn microvm_shakedown_known_task_statements() -> List<Node> {
         bash_build_word_var(name: "observed"),
         bash_build_word_lit(text: "="),
         bash_build_word_lit(text: microvm_shakedown_known_task_digest()),
-      ]),
+      ], spelling: BracketQuoted),
       then_stmts: [
         bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), microvm_shakedown_result_line()]),
         bash_build_with_redir_to_file(

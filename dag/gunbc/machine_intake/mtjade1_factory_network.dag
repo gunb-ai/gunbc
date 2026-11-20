@@ -188,6 +188,28 @@ data srv13_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic {
   basis: "router reservation bmc-altrad8ud-1l2t-5, MAC 9c:6b:00:e7:c9:83, address 192.168.1.247 (srv13 first-contact FINDINGS.txt, 2026-10-07); prefix /24 and gateway 192.168.1.1 are the segment's, from the mtjade1 lease on this LAN and the segment gateway, not from srv13 itself",
 }
 
+// SRV15'S CONTROLLER, READ FROM THE UNIT ITSELF. The address and link address are not a router's
+// reservation restated: `ipmitool lan print 1` ran on srv15 over /dev/ipmi0 and the capture records
+// "IP Address Source: DHCP / IP Address 192.168.1.248 / MAC Address 9c:6b:00:e7:c9:e7"
+// (artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt, digest-listed in SHA256SUMS there), and
+// the same directory's 00_README.txt records the router reservation bmc-altrad8ud-1l2t-7 that put .248 on it.
+// The PREFIX and GATEWAY are the segment's, not this controller's own report -- the capture carries no
+// subnet-mask or gateway line -- so they are stated from the segment the way srv13's row states them.
+data srv15_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic {
+  address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 248),
+  prefix: 24,
+  gateway: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1),
+  link: Eui48Address {
+    octet1: 156,
+    octet2: 107,
+    octet3: 0,
+    octet4: 231,
+    octet5: 201,
+    octet6: 231,
+  },
+  basis: "ipmitool lan print 1 read in-band over /dev/ipmi0 on srv15 (artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt: IP 192.168.1.248 from DHCP, MAC 9c:6b:00:e7:c9:e7); the router reservation bmc-altrad8ud-1l2t-7 of the same capture's README. Prefix /24 and gateway 192.168.1.1 are the segment's, from the mtjade1 lease on this LAN and the segment gateway, not from srv15 itself",
+}
+
 data mtjade1_current_bmc_network_standing: FactoryBmcNetworkStanding = factory_bmc_network_standing(
   expectation: mt_jade_gsg_bmc_network_expectation,
   observed: mtjade1_bmc_reconfigured_network,

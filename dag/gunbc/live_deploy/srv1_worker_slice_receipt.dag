@@ -5,7 +5,7 @@ import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
-// ── READBACK RECEIPT: srv1's TWO WORKER SLICES, read 2026-11-07 (DESIGN 4d, 3c) ───────────────
+// ── READBACK RECEIPT: srv1's TWO WORKER SLICES, read 2026-11-07 (@ref(gunbc.design_argument::epistemic_humility), @ref(gunbc.design_argument::consumption)) ───────────────
 // THE STANDING IS THE POINT. Every figure below is a DATED TRANSCRIPTION of a named instrument, not a
 // sealed fact: TranscribedUncited carries the read obligation that would ground it. They are bets
 // about srv1's workload, typed as bets; a reader must not consume them as a law about the workload.

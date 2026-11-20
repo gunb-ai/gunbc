@@ -65,29 +65,53 @@ type OwnedOsDelivery
   | ApplianceImage
   | RamImageBoot
 
-type OwnedProvisioning { control: OwnedControlRoute, delivery: OwnedOsDelivery }
+// HOW THE TWO FACTS ARE PAIRED. They stay independent by ruling (merry-fox-82, 2026-10-22) and every
+// consumer still keys on exactly the one it asks about -- but the PAIR is not free to write. An OS
+// installed over virtual media is delivered THROUGH a BMC, so {NoOutOfBand, InstalledViaVirtualMedia}
+// names no route that can run its install, and that combination now has NO CONSTRUCTOR anywhere: the
+// type is sealed to this file, and the pairs the fleet can have are spelled once, below, each named for
+// the route whose capability the medium needs. A route's constructors ARE its media capability, so no
+// call site can pair a delivery with a route that lacks the medium to run it. Rung
+// (gunbc.design_argument::guarantee_ladder): STRUCTURALLY IMPOSSIBLE, restored 2026-11-11 at the first
+// non-BMC delivery medium (PXE), which is also what retired gunbc.rung_drop::
+// owned_provisioning_impossible_pair_admitted_at_enrolment -- the call-site refusal that stood in for this
+// is gone with it, because a check over a pair that cannot be written is a stall, not a guarantee.
+// Splitting the medium out of delivery alone was not sufficient and is not what happened: the language
+// gives a coproduct's constructor namespace to one module per arm name, and RamImageBoot is admissible to
+// BOTH routes, so a per-route delivery type would name one fact twice and re-fuse the axis the
+// decomposition above separated. RESIDUAL LIMIT, stated not hidden: the seal's exemption is FILE-scoped,
+// so a pair literal remains writable inside this file; the constructor table below is the one audit point.
+type OwnedProvisioning sole_constructor { control: OwnedControlRoute, delivery: OwnedOsDelivery }
 
-// THE ONE ADMISSION OVER THE {control, delivery} PAIR. The two facts are independent by ruling (merry-fox-82,
-// 2026-10-22), so the product can still spell a machine that cannot exist: an OS installed over virtual media is
-// delivered THROUGH a BMC, so {NoOutOfBand, InstalledViaVirtualMedia} has no route to run its install. Every
-// consumer of the pair reads this result instead of crossing the two matches itself. Rung (gunbc.design_argument::guarantee_ladder):
-// mechanically preventable, ceiling structurally impossible; trigger, as a capability: the delivery medium
-// becomes a capability of the control route, so a delivery cannot name a medium its route lacks, owed at the
-// first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not
-// sufficient.
-type OwnedProvisioningAdmission
-  = OwnedProvisioningAdmitted
-  | OwnedProvisioningRefused { provisioning: OwnedProvisioning }
+// WHAT THE BMC ROUTE CAN DO TO A MACHINE: it can reach the machine out of band, so it can mount an image
+// over its virtual media, and it can boot it into a RAM image the machine holds.
+fn provisioning_over_bmc_via_virtual_media() -> OwnedProvisioning {
+  OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }
+}
 
-fn admit_owned_provisioning(provisioning: OwnedProvisioning) -> OwnedProvisioningAdmission {
-  match provisioning.control {
-    Bmc => OwnedProvisioningAdmitted
-    NoOutOfBand => match provisioning.delivery {
-      InstalledViaVirtualMedia => OwnedProvisioningRefused { provisioning: provisioning }
-      ApplianceImage => OwnedProvisioningAdmitted
-      RamImageBoot => OwnedProvisioningAdmitted
-    }
-  }
+fn provisioning_over_bmc_via_ram_image() -> OwnedProvisioning {
+  OwnedProvisioning { control: Bmc, delivery: RamImageBoot }
+}
+
+// WHAT A HOST WITH NO OUT-OF-BAND CONTROL CAN DO ABOUT ITS OWN OS: only what it can do to itself at its
+// own boot -- install from its appliance image, or boot the RAM image it already holds. There is no
+// second name here for a medium that needs a hand on the machine, and that absence is the guarantee.
+fn provisioning_self_installed_from_appliance_image() -> OwnedProvisioning {
+  OwnedProvisioning { control: NoOutOfBand, delivery: ApplianceImage }
+}
+
+fn provisioning_self_booted_ram_image() -> OwnedProvisioning {
+  OwnedProvisioning { control: NoOutOfBand, delivery: RamImageBoot }
+}
+
+// THE TWO READERS OF THE PAIR, for consumers that key on one of its facts. They exist so a consumer names
+// the fact it asks about instead of reaching through a sealed type's fields.
+fn owned_provisioning_control(provisioning: OwnedProvisioning) -> OwnedControlRoute {
+  provisioning.control
+}
+
+fn owned_provisioning_delivery(provisioning: OwnedProvisioning) -> OwnedOsDelivery {
+  provisioning.delivery
 }
 
 type HostBacking

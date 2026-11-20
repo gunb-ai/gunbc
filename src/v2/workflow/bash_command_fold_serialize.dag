@@ -3,8 +3,8 @@ import std.optional { Absent, Optional, Present }
 import v2.std.grammar { node_atom_identity_optional }
 import std.types { List, Map }
 import v2.compiler.target_serialize { target_serialize_source_from_model, target_serialize_source_from_selected_row }
-import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_assign_emitted, bash_stmt_assign_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_stmt_if_emitted, bash_stmt_if_target_model, bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_pipe_emitted, bash_stmt_pipe_target_model, bash_stmt_subshell_emitted, bash_stmt_subshell_target_model, bash_redir_stderr_to_file_source_text, bash_redir_from_file_source_text, bash_redir_to_file_source_text, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_word_cmdsubst_emitted, bash_word_cmdsubst_target_model , bash_stmt_brace_group_emitted, bash_stmt_brace_group_target_model, bash_stmt_function_def_emitted, bash_stmt_function_def_target_model, bash_stmt_case_emitted, bash_stmt_case_target_model, bash_stmt_case_clause_block_emitted, bash_stmt_case_clause_block_target_model, bash_stmt_case_clause_inline_emitted, bash_stmt_case_clause_inline_target_model, bash_stmt_comment_emitted, bash_stmt_comment_target_model, bash_stmt_for_emitted, bash_stmt_for_target_model, bash_stmt_array_assign_emitted, bash_stmt_array_assign_target_model, bash_word_bare_emitted, bash_word_bare_target_model, bash_word_array_expansion_emitted, bash_word_array_expansion_target_model, bash_word_param_error_emitted, bash_word_param_error_target_model, bash_word_positional_all_emitted, bash_word_positional_all_target_model, bash_word_var_bare_emitted, bash_word_var_bare_target_model, bash_word_double_quoted_emitted, bash_word_double_quoted_target_model, bash_word_quoted_text_emitted, bash_word_quoted_text_target_model }
-import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell, bash_build_is_bare_word, bash_build_is_name, bash_build_is_digits, bash_build_is_positional_all, bash_build_is_quoted_text }
+import v2.extdeps.languages.bash { bash_stmt_andor_emitted, bash_stmt_andor_target_model, bash_stmt_assign_emitted, bash_stmt_assign_target_model, bash_stmt_exit_emitted, bash_stmt_exit_target_model, bash_stmt_if_emitted, bash_stmt_if_target_model, bash_stmt_negation_emitted, bash_stmt_negation_target_model, bash_stmt_pipe_emitted, bash_stmt_pipe_target_model, bash_stmt_subshell_emitted, bash_stmt_subshell_target_model, bash_redir_stderr_to_file_source_text, bash_redir_from_file_source_text, bash_redir_to_file_source_text, bash_redir_append_to_file_source_text, bash_stmt_with_redir_emitted, bash_stmt_with_redir_target_model, bash_word_cmdsubst_emitted, bash_word_cmdsubst_target_model , bash_stmt_brace_group_emitted, bash_stmt_brace_group_target_model, bash_stmt_seq_emitted, bash_stmt_seq_target_model, bash_stmt_function_def_emitted, bash_stmt_function_def_target_model, bash_stmt_case_emitted, bash_stmt_case_target_model, bash_stmt_case_clause_block_emitted, bash_stmt_case_clause_block_target_model, bash_stmt_case_clause_inline_emitted, bash_stmt_case_clause_inline_target_model, bash_kw_case_block_stmt_sep_text, bash_stmt_comment_emitted, bash_stmt_comment_target_model, bash_stmt_for_emitted, bash_stmt_for_target_model, bash_stmt_array_assign_emitted, bash_stmt_array_assign_target_model, bash_word_bare_emitted, bash_word_bare_target_model, bash_word_array_expansion_emitted, bash_word_array_expansion_target_model, bash_word_param_error_emitted, bash_word_param_error_target_model, bash_word_positional_all_emitted, bash_word_positional_all_target_model, bash_word_positional_emitted, bash_word_positional_target_model, bash_word_var_bare_emitted, bash_word_var_bare_target_model, bash_word_double_quoted_emitted, bash_word_double_quoted_target_model, bash_word_quoted_text_emitted, bash_word_quoted_text_target_model }
+import v2.extdeps.languages.bash_build { bash_build_stmt_list_single, bash_build_subshell, bash_build_is_bare_word, bash_build_is_name, bash_build_is_digits, bash_build_is_positional_all, bash_build_is_positional, bash_build_is_quoted_text, bash_build_is_test_operator , bash_build_is_exit_status }
 import v2.extdeps.languages.bash_orch_if { bash_stmt_if_else_emitted, bash_stmt_if_else_target_model }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_refused, bash_fold_relation_row_witness, bash_fold_target_model_for_row, bash_fold_translation_rules_budget_for_row, bash_fold_unsupported_variant_diagnostic }
 import std.algebra { list_head, list_tail, list_at_optional }
@@ -163,10 +163,18 @@ fn bash_fold_serialize_selected_row(emitted: Node, target: TargetModel, row: Nod
   }
 }
 
-fn bash_fold_serialize_stmts_semi_from(
+// The separator is a PARAMETER because it belongs to the row that owns the
+// construct's line structure, not to this function: a brace group, a subshell and a
+// one-line case arm join their statements with "; ", while a BLOCK case arm puts one
+// statement per line at its own indent (^bash_kw_case_block_stmt_sep_text). Both
+// spellings are the same list in the Bash manual's sense ("List of Commands":
+// pipelines separated by ; … or <newline>"), so neither is a string patch — each is
+// the separator the adopting row declares.
+fn bash_fold_serialize_stmts_from(
   acc: String,
   first: Bool,
-  rest: List<Node>
+  rest: List<Node>,
+  sep: String
 ) -> Outcome<String> {
   match list_head(xs: rest) {
     Absent => Accepted { value: acc, diagnostics: None }
@@ -174,10 +182,10 @@ fn bash_fold_serialize_stmts_semi_from(
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
         f: fn(part) {
-          let next = if first { part } else { concat(acc, concat("; ", part)) }
+          let next = if first { part } else { concat(acc, concat(sep, part)) }
           match list_tail(xs: rest) {
             Present { value: t } =>
-              bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
+              bash_fold_serialize_stmts_from(acc: next, first: false, rest: t, sep: sep)
             Absent => Accepted { value: next, diagnostics: None }
           }
         }
@@ -185,8 +193,12 @@ fn bash_fold_serialize_stmts_semi_from(
   }
 }
 
+fn bash_fold_serialize_stmts_with(stmts: List<Node>, sep: String) -> Outcome<String> {
+  bash_fold_serialize_stmts_from(acc: "", first: true, rest: stmts, sep: sep)
+}
+
 fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
-  bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
+  bash_fold_serialize_stmts_with(stmts: stmts, sep: "; ")
 }
 
 // Statement-list encoding is a nonempty cons spine: one statement child, or
@@ -262,6 +274,17 @@ fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
   )
 }
 
+// The block-case-arm spelling: the same list, separated by the case row's own
+// line separator. See ^bash_kw_case_block_stmt_sep_text.
+fn bash_fold_serialize_stmt_list_with(list_node: Node, sep: String) -> Outcome<String> {
+  bind_outcome(
+    o: bash_fold_flatten_stmt_list(list_node: list_node),
+    f: fn(stmts) {
+      bash_fold_serialize_stmts_with(stmts: stmts, sep: sep)
+    }
+  )
+}
+
 fn bash_fold_serialize_with_redir_file(stmt: Node, stmt_spelling: String, redir_of: fn(String) -> String) -> Outcome<String> {
   match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 3) {
     Present { value: path_node } =>
@@ -324,6 +347,12 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_to_file_source_text(path: p) })
                   } else if redir_binding == ^bash_production_fold_redir_stderr_to_file {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_stderr_to_file_source_text(path: p) })
+                  } else if redir_binding == ^bash_production_fold_redir_append_to_file {
+                    bash_fold_serialize_with_redir_file(
+                      stmt: stmt,
+                      stmt_spelling: stmt_spelling,
+                      redir_of: fn(p) { bash_redir_append_to_file_source_text(path: p) }
+                    )
                   } else if redir_binding == ^bash_production_fold_redir_from_file {
                     bash_fold_serialize_with_redir_file(stmt: stmt, stmt_spelling: stmt_spelling, redir_of: fn(p) { bash_redir_from_file_source_text(path: p) })
                   } else {
@@ -349,12 +378,6 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
               emitted: word,
               production_binding: ^bash_production_fold_lit_word,
               rule_name: ^bash_production_fold_lit_word
-            )
-          } else if kind == ^bash_fold_word_kind_var {
-            bash_fold_serialize_leaf_node(
-              emitted: word,
-              production_binding: ^bash_production_fold_var_word,
-              rule_name: ^bash_production_fold_var_word
             )
           } else if kind == ^bash_fold_word_kind_concat {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
@@ -404,6 +427,30 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
                       )
                     } else {
                       bash_fold_serialize_refused(variant: ^bash_fold_serialize_bare_unsafe)
+                    }
+                  Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+                }
+              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
+          } else if kind == ^bash_fold_word_kind_test_operator {
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: text_node } =>
+                match node_atom_identity_optional(node: text_node) {
+                  Present { value: text } =>
+                    if bash_build_is_test_operator(op: text) {
+                      // The operator is a word of the grammar, not a string that
+                      // happens to look like one: the row supplies the spelling and
+                      // the SAME closed set the constructor checked decides whether
+                      // this node has a row at all. An operator the manual does not
+                      // name is refused here even if it reached a node by other
+                      // means -- the check is on the way out, not only on the way in.
+                      bash_fold_serialize_leaf_node(
+                        emitted: word,
+                        production_binding: ^bash_production_fold_test_operator_word,
+                        rule_name: ^bash_production_fold_test_operator_word
+                      )
+                    } else {
+                      bash_fold_serialize_refused(variant: ^bash_fold_serialize_test_operator_unlisted)
                     }
                   Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
                 }
@@ -464,6 +511,24 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
                 }
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
             }
+          } else if kind == ^bash_fold_word_kind_positional {
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: text_node } =>
+                match node_atom_identity_optional(node: text_node) {
+                  Present { value: text } =>
+                    if bash_build_is_positional(index: text) {
+                      bash_fold_serialize_leaf_node(
+                        emitted: word,
+                        production_binding: ^bash_production_fold_positional_word,
+                        rule_name: ^bash_production_fold_positional_word
+                      )
+                    } else {
+                      bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_unsafe)
+                    }
+                  Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
+                }
+              Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
           } else if kind == ^bash_fold_word_kind_positional_all {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: text_node } =>
@@ -484,6 +549,35 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
                   Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_node_shape_refused)
                 }
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
+          } else if kind == ^bash_fold_word_kind_exit_status {
+            // `$?`, the exit-status special parameter (Bash manual, "Special
+            // Parameters"). The row supplies the `$` and the node carries the `?`; the
+            // way OUT re-checks it, so a node fabricated with another value -- the shape
+            // a hand-built or stale node would have -- is refused instead of putting `$`
+            // plus arbitrary text into a generated script.
+            match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
+              Present { value: text_node } =>
+                match node_atom_identity_optional(node: text_node) {
+                  Present { value: text } =>
+                    if bash_build_is_exit_status(which: text) {
+                      bash_fold_serialize_leaf_node(
+                        emitted: word,
+                        production_binding: ^bash_production_fold_exit_status_word,
+                        rule_name: ^bash_production_fold_exit_status_word
+                      )
+                    } else {
+                      bash_fold_serialize_refused(
+                        variant: ^bash_fold_serialize_exit_status_unsafe
+                      )
+                    }
+                  Absent => bash_fold_serialize_refused(
+                    variant: ^bash_fold_serialize_node_shape_refused
+                  )
+                }
+              Absent => bash_fold_serialize_refused(
+                variant: ^bash_fold_serialize_positional_child_absent
+              )
             }
           } else if kind == ^bash_fold_word_kind_var_bare {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
@@ -530,16 +624,54 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
           } else if kind == ^bash_fold_word_kind_double_quoted {
             match list_at_optional(xs: positional_child_target_nodes(node: word), index: 1) {
               Present { value: parts } =>
-                bind_outcome(
-                  o: bash_fold_serialize_word_parts_concatenated(parts: parts),
-                  f: fn(parts_spelling) {
-                    bash_fold_serialize_emit_from_node(
-                      emitted: bash_word_double_quoted_emitted,
-                      target: bash_word_double_quoted_target_model(parts: parts_spelling)
-                    )
-                  }
-                )
+                // The parts are serialized FIRST, and only as a refusal check: a part
+                // whose word kind has no arm (an unsupported kind, an unsafe quoted text,
+                // a cmdsubst body that is not a command) rejects here with its own
+                // diagnostic instead of being silently dropped by the grammar route.
+                // Its SPELLING is deliberately not used, because the bytes of this word
+                // come from one place -- the grammar row for
+                // ^bash_production_fold_double_quoted_word, which supplies the two quotes
+                // around the parts (gunbc.design_argument::single_authority). Splicing the
+                // concatenated parts in here would render `"$X"` from two authorities: the
+                // parts from this function, the quotes from the row.
+                match bash_fold_serialize_word_parts_concatenated(parts: parts) {
+                  Accepted { value: _, diagnostics: pd } =>
+                    match pd {
+                      None =>
+                        bash_fold_serialize_leaf_node(
+                          emitted: word,
+                          production_binding: ^bash_production_fold_double_quoted_word,
+                          rule_name: ^bash_production_fold_double_quoted_word
+                        )
+                      Some { diagnostics: r } => Rejected { diagnostics: r }
+                    }
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                }
               Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+            }
+          } else if kind == ^bash_build_refused_var_name {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: bash_fold_unsupported_variant_diagnostic(
+                  variant: ^bash_build_refused_var_name
+                )
+              )
+            }
+          } else if kind == ^bash_build_refused_double_quoted {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: bash_fold_unsupported_variant_diagnostic(
+                  variant: ^bash_build_refused_double_quoted
+                )
+              )
+            }
+          } else if kind == ^bash_build_refused_builder_declined {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: bash_fold_unsupported_variant_diagnostic(
+                  variant: ^bash_build_refused_builder_declined
+                )
+              )
             }
           } else if kind == ^bash_build_refused_empty_word_list {
             Rejected {
@@ -625,12 +757,35 @@ fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
   )
 }
 
+// A COMMAND'S WORDS ARE CHECKED BEFORE THE ROW SPEAKS. The bytes of a command come from
+// one authority -- the grammar row for ^bash_production_fold_command -- and this function
+// deliberately does NOT splice word spellings in, for the same reason the double-quoted
+// arm does not: two authorities on the same bytes. But deriving the spelling purely from
+// the row meant a word the builders had marked refused (a variable name bash would not
+// accept, a declined builder's marker, an unsupported kind) was rendered anyway, with its
+// raw text interpolated by the row's binding -- fail-open, exactly what review 93289
+// (gunbc.design_argument::fail_closed) says a checked builder must never allow. So each
+// word is run through `bash_fold_serialize_word_node` first, and its result is used ONLY
+// as a refusal check: any rejection propagates with the word's own diagnostic, and an
+// acceptance is thrown away before the row supplies the spelling.
 fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
-  bash_fold_serialize_leaf_node(
-    emitted: stmt,
-    production_binding: ^bash_production_fold_command,
-    rule_name: ^bash_relation_rule_fold_command
-  )
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
+    Present { value: words } =>
+      match bash_fold_serialize_word_parts_concatenated(parts: words) {
+        Accepted { value: _, diagnostics: wd } =>
+          match wd {
+            None =>
+              bash_fold_serialize_leaf_node(
+                emitted: stmt,
+                production_binding: ^bash_production_fold_command,
+                rule_name: ^bash_relation_rule_fold_command
+              )
+            Some { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
 }
 
 fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
@@ -681,23 +836,50 @@ fn bash_fold_serialize_grouped_stmt(stmt: Node) -> Outcome<String> {
   )
 }
 
-fn bash_fold_serialize_andor_operand(stmt: Node, group_binding: Symbol) -> Outcome<String> {
+// ONE RULE, ONE LEAF: an operand is grouped when grouping is what the artifacts hold and the
+// nesting would otherwise read differently. `group_and_or` is the operand's POSITION, which is
+// the only thing that can make grouping matter -- the Bash Reference Manual's "Lists of
+// Commands" puts `&&` and `||` at ONE precedence level, left-associative, so a left operand
+// that is itself an and/or re-reads as itself and its parentheses are inert (`( A && B ) || C`
+// and `A && B || C` run the same three pipelines in the same order); a RIGHT operand that is
+// the other operator does not re-read as itself, so it stays grouped exactly as it always
+// was. A negated operand keeps its group in either position: `(! cmd)` is the subshell form
+// the committed CI scripts carry -- .github/workflows/heal.yml, heal-publish.yml,
+// drift-watch.yml, witnesses.yml and instrument-dispatch.yml all read
+// `(! '[' -f "$GUNBC_FLOOR_RECEIPT" ']')` -- and a test has no side effect for the subshell
+// to lose, so those bytes stay where they are while a host file that spells the same guard
+// without the group is still expressible by leaving the group off the left and/or operand.
+fn bash_fold_serialize_andor_operand(
+  stmt: Node,
+  group_binding: Symbol,
+  group_and_or: Bool
+) -> Outcome<String> {
   let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
-  if binding == group_binding {
+  if binding == ^bash_build_stmt_negation {
     bash_fold_serialize_grouped_stmt(stmt: stmt)
-  } else if binding == ^bash_build_stmt_negation {
+  } else if group_and_or && (binding == group_binding) {
     bash_fold_serialize_grouped_stmt(stmt: stmt)
   } else {
     bash_fold_serialize_node(stmt: stmt)
   }
 }
 
+// BOTH OPERANDS ARE GROUPED AS THE ARTIFACTS HAVE ALWAYS GROUPED THEM. The Bash Reference
+// Manual's "Lists of Commands" puts `&&` and `||` at ONE precedence level, left-associative,
+// so a left operand that is itself an and/or re-reads as itself and needs no parentheses --
+// but the committed CI scripts carry them anyway: `'[' -f "$R" ']'` inside a negated group
+// reads `(! '[' -f "$R" ']')` in .github/workflows/{heal,heal-publish,drift-watch,
+// witnesses,instrument-dispatch}.yml, because grouping an operand puts it in a subshell and
+// nothing in those tests has a side effect to lose. A render that must be byte-exact against
+// an installed host file, where the guard carries no parentheses, does NOT get to respell
+// every artifact that shares this row: it takes a row of its own. Until a caller needs one,
+// the grouped spelling is the only spelling.
 fn bash_fold_serialize_andor_pair(left: Node, right: Node, op: String, group_binding: Symbol) -> Outcome<String> {
   bind_outcome(
-    o: bash_fold_serialize_andor_operand(stmt: left, group_binding: group_binding),
+    o: bash_fold_serialize_andor_operand(stmt: left, group_binding: group_binding, group_and_or: false),
     f: fn(left_spelling) {
       bind_outcome(
-        o: bash_fold_serialize_andor_operand(stmt: right, group_binding: group_binding),
+        o: bash_fold_serialize_andor_operand(stmt: right, group_binding: group_binding, group_and_or: true),
         f: fn(right_spelling) {
           bash_fold_serialize_emit_from_node(
             emitted: bash_stmt_andor_emitted,
@@ -924,6 +1106,8 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
     bash_fold_serialize_negation_node(stmt: stmt)
   } else if binding == ^bash_production_fold_function_def {
     bash_fold_serialize_function_def_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_seq {
+    bash_fold_serialize_seq_node(stmt: stmt)
   } else if binding == ^bash_production_fold_brace_group {
     bash_fold_serialize_brace_group_node(stmt: stmt)
   } else if binding == ^bash_production_fold_comment {
@@ -1021,6 +1205,22 @@ fn bash_fold_serialize_function_def_node(stmt: Node) -> Outcome<String> {
   }
 }
 
+fn bash_fold_serialize_seq_node(stmt: Node) -> Outcome<String> {
+  match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
+    Present { value: body } =>
+      bind_outcome(
+        o: bash_fold_serialize_stmt_list_semi(list_node: body),
+        f: fn(body_spelling) {
+          bash_fold_serialize_emit_from_node(
+            emitted: bash_stmt_seq_emitted,
+            target: bash_stmt_seq_target_model(body: body_spelling)
+          )
+        }
+      )
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
+}
+
 fn bash_fold_serialize_brace_group_node(stmt: Node) -> Outcome<String> {
   match list_at_optional(xs: positional_child_target_nodes(node: stmt), index: 1) {
     Present { value: body } =>
@@ -1063,11 +1263,17 @@ fn bash_fold_serialize_case_clause_node(clause: Node) -> Outcome<String> {
               match node_atom_identity_optional(node: pattern_node) {
                 Present { value: pattern } =>
                   match list_at_optional(xs: positional_child_target_nodes(node: clause), index: 2) {
+                    // The two arms separate their statements differently and each
+                    // separator comes from the row that owns that arm's line structure
+                    // (^bash_kw_case_block_stmt_sep_text); neither is spelled here.
                     Present { value: body } =>
-                      bind_outcome(
-                        o: bash_fold_serialize_stmt_list_semi(list_node: body),
-                        f: fn(body_spelling) {
-                          if tag == ^bash_production_fold_case_clause_block {
+                      if tag == ^bash_production_fold_case_clause_block {
+                        bind_outcome(
+                          o: bash_fold_serialize_stmt_list_with(
+                            list_node: body,
+                            sep: bash_kw_case_block_stmt_sep_text
+                          ),
+                          f: fn(body_spelling) {
                             bash_fold_serialize_emit_from_node(
                               emitted: bash_stmt_case_clause_block_emitted,
                               target: bash_stmt_case_clause_block_target_model(
@@ -1075,7 +1281,12 @@ fn bash_fold_serialize_case_clause_node(clause: Node) -> Outcome<String> {
                                 body: body_spelling
                               )
                             )
-                          } else if tag == ^bash_production_fold_case_clause_inline {
+                          }
+                        )
+                      } else if tag == ^bash_production_fold_case_clause_inline {
+                        bind_outcome(
+                          o: bash_fold_serialize_stmt_list_semi(list_node: body),
+                          f: fn(body_spelling) {
                             bash_fold_serialize_emit_from_node(
                               emitted: bash_stmt_case_clause_inline_emitted,
                               target: bash_stmt_case_clause_inline_target_model(
@@ -1083,13 +1294,13 @@ fn bash_fold_serialize_case_clause_node(clause: Node) -> Outcome<String> {
                                 body: body_spelling
                               )
                             )
-                          } else {
-                            bash_fold_serialize_refused(
-                              variant: ^bash_fold_serialize_case_clause_tag_unknown
-                            )
                           }
-                        }
-                      )
+                        )
+                      } else {
+                        bash_fold_serialize_refused(
+                          variant: ^bash_fold_serialize_case_clause_tag_unknown
+                        )
+                      }
                     Absent => bash_fold_serialize_refused(
                       variant: ^bash_fold_serialize_positional_child_absent
                     )

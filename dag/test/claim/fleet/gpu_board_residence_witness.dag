@@ -22,22 +22,16 @@ fn hosted_in(cs: List<PhysicalContainment>, host: HostIdentity, component: Strin
   })
 }
 
-fn contained_anywhere(cs: List<PhysicalContainment>, component: String) -> Bool {
-  cs.any(c => match c {
-    HostContainsComponent { host: _, component: k } => (k as String) == component
-    _ => false
-  })
-}
-
 fn admitted(a: GpuBoardAdmission) -> Bool {
   match a { GpuBoardAdmitted { row: _ } => true  GpuBoardRefused { facts: _, refusal: _ } => false }
 }
 
 // srv1 HOLDS BOTH PRO 6000s (the Workstation card and, since 2026-11-07, the Max-Q); srv4 HOLDS THE TWO
 // RTX 2000 Ada cards (read 2026-11-07); srv14/butch HOLDS THE FOUR A2 CARDS (read on butch 2026-11-10);
-// THE TWO R9700s ARE OWNED AND IN NO HOST until the operator picks theirs (D3). No card is contained
-// twice: a card in two hosts is a residence contradiction.
-test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_the_r9700s_are_uninstalled() -> Bool {
+// BOTH R9700s ARE IN host-6ce85c (h11-a16) SINCE 2026-11-12 (operator; only gpu_board_02 enumerates, which
+// gunbc.fleet.gpu_device_observation keeps apart from residence). No card is contained twice: a card in two hosts
+// is a residence contradiction.
+test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_h11_both_r9700s() -> Bool {
   hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_01 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv1, component: gpu_board_04 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv4, component: gpu_board_05 as String)
@@ -46,8 +40,8 @@ test fn witness_srv1_holds_the_pro_6000s_srv4_the_ada_pair_and_the_r9700s_are_un
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_08 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_09 as String)
     && hosted_in(cs: installed_gpu_board_containments, host: operator_host_srv14, component: gpu_board_10 as String)
-    && !contained_anywhere(cs: installed_gpu_board_containments, component: gpu_board_02 as String)
-    && !contained_anywhere(cs: installed_gpu_board_containments, component: gpu_board_03 as String)
+    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: gpu_board_02 as String)
+    && hosted_in(cs: installed_gpu_board_containments, host: operator_host_6ce85c, component: gpu_board_03 as String)
     && gpu_board_assets.all(a => installed_gpu_board_containments.filter(c => match c {
       HostContainsComponent { host: _, component: k } => (k as String) == (a.identity as String)
       _ => false

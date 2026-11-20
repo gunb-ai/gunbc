@@ -40,6 +40,8 @@ import v2.std.orchestration {
   Run
 }
 import std.optional { Absent }
+import gunbc.bmc.bmc_onboarding { bmc_admin_secret_id_of }
+import gunbc.hostname_allocation { fleet_machine_srv3 }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data bmc_token_smoke_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ bmc token-smoke run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell\n"
@@ -86,7 +88,6 @@ data bmc_secrets_project_id: GcpProjectId = fleet_secrets_project_id
 
 data bmc_secrets_project_number: String = fleet_secrets_project_number
 
-data bmc_srv3_secret_name: String = "bmc-srv3-admin"
 
 data bmc_assimilator_sa_email: ServiceAccountEmail = "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
 
@@ -140,7 +141,7 @@ fn bmc_secret_binding(role: String) -> SecretAccessBinding {
   SecretAccessBinding {
     member: bmc_assimilator_sa_member(),
     role: role,
-    secret: bmc_srv3_secret_name,
+    secret: bmc_admin_secret_id_of(machine: fleet_machine_srv3) as String,
     project: bmc_secrets_project_id
   }
 }

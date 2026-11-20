@@ -1,0 +1,21 @@
+module gunbc.namecheap.observe_step
+
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
+
+data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/namecheap/observe.dag",
+  function: "namecheap_observe_ci_wet",
+}
+
+fn gunbc_ci_namecheap_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_namecheap_observe_target.entry,
+    function: gunbc_ci_namecheap_observe_target.function,
+    claim_run: false,
+    receipt_rel: namecheap_observation_receipt_path
+  )
+}

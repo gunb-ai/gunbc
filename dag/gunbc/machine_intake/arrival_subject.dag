@@ -5,10 +5,11 @@ import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity }
 import gunbc.auth.standing_operator_grant {
-  mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingOperatorGrant, StandingGrantEffect,
+  mtjade1_live_standing_grant,
+  srv15_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingOperatorGrant, StandingGrantEffect,
   StandingArrivalArchive, StandingArrivalFirmwareQualification,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_mtjade1 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_srv15 }
 import gunbc.host.managed_host { managed_hosts }
 
 // ── ARRIVAL-CONVERGE SUBJECT POPULATION ───────────────────────────────────────────────────────
@@ -31,6 +32,15 @@ data arrival_converge_population: List<ArrivalConvergePopulationRow> = [
     host: operator_host_mtjade1,
     producer: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "converge_mtjade1_arrival_prefix"),
     grant: mtjade1_live_standing_grant,
+  },
+  // srv15/bobo joins the population through the row-driven producer: its capture rows say what its arrival
+  // reads (gunbc.machine_intake.arrival_unit_captures), and its grant row is the operator's 2026-11-10 ruling
+  // scoped to this host alone. Being in the population says nothing about how far its fold gets -- srv15's
+  // first unmet evidence is the FRU print of its BMC, and the fold stops there with that read named.
+  ArrivalConvergePopulationRow {
+    host: operator_host_srv15,
+    producer: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "converge_arrival_unit_prefix"),
+    grant: srv15_live_standing_grant,
   },
 ]
 

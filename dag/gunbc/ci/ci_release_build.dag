@@ -6,6 +6,8 @@ import v2.extdeps.languages.bash_build { bash_build_command_with_words, bash_bui
 import extdeps.rust.cargo { cargo_default_release_dir }
 import gunbc.ci.ci_release_bins { EmittedReleaseBin, ci_emitted_release_bins, ci_floor_required_artifact_names }
 import gunbc.repo.repo_self_emitted_build { repo_self_emitted_crate_build_command }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
 
 // The release build: the cargo bins line, each emitted release bin's build line, the pack line
 // the fleet release-bins key names, and the verify statement over the built roster. Moved out of
@@ -87,4 +89,15 @@ fn ci_floor_build_verify_stmt() -> Node {
     [ci_release_artifact_word(name: "claim_executor"), bash_build_word_lit(text: "--verify-build-artifacts")],
     map(ci_floor_required_artifact_names(), name => ci_release_artifact_word(name: name))
   ))
+}
+
+// A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
+// gate turns red. It is never a partial script (gunbc.design_argument::fail_closed: refuse, never widen).
+data ci_floor_build_verify_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ gunbc.ci.ci_release_build ci_floor_build_verify_script: the bash serializer refused the verify statement; this marker is not valid workflow shell\n"
+
+fn ci_floor_build_verify_script() -> String {
+  match bash_emit_stmts(statements: [ci_floor_build_verify_stmt()], set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ci_floor_build_verify_refused_poison
+  }
 }

@@ -1461,6 +1461,14 @@ fn run_one_function(
                 None => {
                     let (status, message) =
                         exit_status_for(cli_run::classify_exit(&value, ctx), function);
+                    // A ProcessExit claim that succeeds (ExitClass::Success → status 0,
+                    // message None) must produce a visible PASS line under --claim-run,
+                    // symmetric with the Bool(true) path which carries Some("PASS …").
+                    let message = if claim_run && status == 0 && message.is_none() {
+                        Some(format!("PASS {function}"))
+                    } else {
+                        message
+                    };
                     Verdict { status, message }
                 }
             }

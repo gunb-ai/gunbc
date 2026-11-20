@@ -42,7 +42,7 @@ data stale_present_tense_coverage_claim_in_the_authority_consulted_first: Recurr
 
     "The class cannot climb by making the annotation checkable; it climbs by making the CLAIM a declaration.",
 
-    "NEXT TRIGGER: a de-enrolment carries a typed compensating-consumer row -- the removed obligation, the entry and function said to still cover it -- so the claim joins `gunbc.witness.witness_deferral_freeze` and `gunbc.ci.ci_layer_roots` `witness_exclusion_frontier` the way `gunbc.v2_compile_obligation_census` now derives every obligation's per-PR standing, and a compensating consumer that executes nowhere refuses at the point the de-enrolment lands rather than being discovered by a census months later.)"
+    "NEXT TRIGGER: a de-enrolment carries a typed compensating-consumer row -- the removed obligation, the entry and function said to still cover it -- so the claim joins `gunbc.witness.witness_deferral_freeze` and `gunbc.ci.ci_layer_roots` `witness_exclusion_frontier` the way `gunbc.v2_compile_obligation_census` derived every obligation's per-PR standing before it was retired on 2026-11-10 with the census machinery (gunbc.design_ruling bad_process_is_worse_than_no_process), and a compensating consumer that executes nowhere refuses at the point the de-enrolment lands rather than being discovered by a census months later.)"
   ],
 
   evidence: [
@@ -50,9 +50,5 @@ data stale_present_tense_coverage_claim_in_the_authority_consulted_first: Recurr
     decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "excl_bin_wet_reason"),
     decl_ref(module_path: "gunbc.ci.ci_layer_roots", decl_name: "witness_exclusion_frontier"),
     decl_ref(module_path: "gunbc.witness.witness_deferral_freeze", decl_name: "frozen_path_deferrals"),
-    decl_ref(
-      module_path: "gunbc.v2_compile_obligation_census",
-      decl_name: "interpreted_standing"
-    ),
   ],
 }

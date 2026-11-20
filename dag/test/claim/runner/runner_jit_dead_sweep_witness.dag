@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Present }
+import std.algebra { string_contains }
 import product.host_identity { HostIdentity }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerRegistrationStatus, GitHubRunnerOnline, GitHubRunnerOffline }
 import gunbc.fleet.fleet_runner_connectivity {
@@ -17,6 +18,7 @@ import gunbc.runner.runner_jit_dead_sweep {
   jit_dead_registration_sweep, jit_row_is_dead, jit_row_is_retired_selection,
   jit_sweep_selected_names, jit_sweep_host_count, jit_retired_prefix_of,
   jit_dead_sweep_parse_dispatch_input, JitDispatchInputParse, Parsed, Malformed,
+  jit_dead_sweep_report_lines,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -192,6 +194,29 @@ test fn counts_by_host() -> Bool {
       jit_sweep_host_count(counts: counts, host: swept_host) == 2
     JitDeadSweepRefused { refusal: _ } => false
   }
+}
+
+// THE DRY-RUN RECEIPT RENDERS ITS COUNTS. The report is the dry run's only output, so its text is the claim: it must
+// carry the swept host, the selected and preserved counts, each would-delete row by name, and the per-host count --
+// never the template text. The red this discriminates was observed in dry run 43073477302, whose receipt printed
+// `host={h} selected={to_string(length(selected))}` literally: the lines were authored with `\{expr}`, which is the
+// string grammar's literal-brace escape (test.claim.string_brace_escape_witness), not an interpolation.
+test fn the_dry_run_report_renders_its_counts_not_its_template() -> Bool {
+  let report = join(jit_dead_sweep_report_lines(host: swept_host, sweep: run_complete()), "")
+  string_contains(s: report, pattern: "jit-dead-sweep host=fox selected=2 preserved=")
+    && string_contains(s: report, pattern: "  would-delete id=")
+    && string_contains(s: report, pattern: " name=fox-02-1700000000-1234\n")
+    && string_contains(s: report, pattern: " name=oldhost-02-1600000000-333\n")
+    && string_contains(s: report, pattern: "  count-by-host host=fox selected=2\n")
+    && !string_contains(s: report, pattern: "{")
+}
+
+// A refusal renders its reason with its numbers, not its template.
+test fn the_refused_report_renders_its_reason() -> Bool {
+  let refused: JitDeadSweep = JitDeadSweepRefused { refusal: SweepRosterIncomplete { observed_count: 107, authority_total: 522 } }
+  let report = join(jit_dead_sweep_report_lines(host: swept_host, sweep: refused), "")
+  string_contains(s: report, pattern: "jit-dead-sweep host=fox REFUSED: partial roster read: observed 107 of 522")
+    && !string_contains(s: report, pattern: "{")
 }
 
 // A PARTIAL ROSTER REFUSES -- the completeness discipline. An incomplete read is never a clean sweep and never zero

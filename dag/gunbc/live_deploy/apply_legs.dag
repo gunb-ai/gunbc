@@ -97,7 +97,7 @@ import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_p
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
   LiveDeployServeUnitGrammarRefused,
-  approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
+  approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on, approval_broker_unit_emission, BrokerUnitBound, BrokerUnitRefused, BrokerUnitNoUnit,
   attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
   attempt_unit_spool_answer_mode, publication_spool_request_mode,
   AttemptUnitDrainServiceReady, AttemptUnitDrainServiceRefused, live_deploy_attempt_unit_drain_service_unit_file,
@@ -895,30 +895,40 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
 // sidecar's enable and restart, and only then the broker's slice and unit. The broker unit loads that
 // env file and orders itself after the sidecar unit, so a broker swap ahead of them leaves systemd
 // unable to start it (run 39545280023). The broker's own enable and restart are lifecycle legs.
-fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DeployApplyLeg> {
-  if deployment_owns_the_host_approval_broker(spec: spec) {
-    let owner = spec.approval_broker.service_user
-    concat(concat([
-      ApplyLegBrokerTree { revision: revision },
-      ApplyLegDigestEnvFile {
-        step: "device-crypto-digest-env",
-        binary: device_crypto_sidecar_binary_path(spec: spec, revision: revision),
-        env_name: approval_device_crypto_deployed_digest_env_name as String,
-        dest: device_crypto_deployed_digest_env_file_path(root: spec.approval_broker.repo_root as String, revision: revision),
-        owner: owner,
-      },
-      apply_staged_leg(step: "device-crypto-sidecar-unit", dest: gunbc_device_crypto_sidecar_unit_path() as String, payload: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision))),
-      apply_root_leg(step: "device-crypto-sidecar-reload", argv: systemctl_daemon_reload_argv()),
-    ], apply_enable_restart_legs(step: "device-crypto-sidecar", unit: gunbc_device_crypto_sidecar_unit_name)), [
-      apply_staged_leg(step: "approval-broker-slice-unit", dest: gunbc_approval_broker_slice_unit_path() as String, payload: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
-      apply_staged_leg(
-        step: "approval-broker-unit",
-        dest: gunbc_approval_broker_unit_path() as String,
-        payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
-    ])
-  } else {
-    []
+// THE BROKER UNIT'S WRITE LEGS. These run ONLY under deploy_apply_unit_plan's gate, which has already
+// refused the WHOLE plan (before any leg, enable/restart included) via approval_broker_unit_emission when
+// the owned broker's address does not resolve -- so the Option threaded here is Present exactly when the spec
+// owns a broker whose address resolved (carrying the URL the emitter renders) and Absent when it owns none.
+// The single resolvability authority lives in the plan, NOT duplicated here; the emitter can never receive an
+// unresolvable address because only a Bound url reaches the Present arm (review 94210). A spec that owns no
+// broker writes nothing (deploy_apply_lifecycle_legs likewise skips the broker enable/restart for it).
+fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr?) -> List<DeployApplyLeg> {
+  match broker_base_url {
+    Absent => []
+    Present { value: url } => deploy_apply_broker_unit_write_legs_owned(spec: spec, revision: revision, broker_base_url: url)
   }
+}
+
+fn deploy_apply_broker_unit_write_legs_owned(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> List<DeployApplyLeg> {
+  let owner = spec.approval_broker.service_user
+  concat(concat([
+    ApplyLegBrokerTree { revision: revision },
+    ApplyLegDigestEnvFile {
+      step: "device-crypto-digest-env",
+      binary: device_crypto_sidecar_binary_path(spec: spec, revision: revision),
+      env_name: approval_device_crypto_deployed_digest_env_name as String,
+      dest: device_crypto_deployed_digest_env_file_path(root: spec.approval_broker.repo_root as String, revision: revision),
+      owner: owner,
+    },
+    apply_staged_leg(step: "device-crypto-sidecar-unit", dest: gunbc_device_crypto_sidecar_unit_path() as String, payload: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision))),
+    apply_root_leg(step: "device-crypto-sidecar-reload", argv: systemctl_daemon_reload_argv()),
+  ], apply_enable_restart_legs(step: "device-crypto-sidecar", unit: gunbc_device_crypto_sidecar_unit_name)), [
+    apply_staged_leg(step: "approval-broker-slice-unit", dest: gunbc_approval_broker_slice_unit_path() as String, payload: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
+    apply_staged_leg(
+      step: "approval-broker-unit",
+      dest: gunbc_approval_broker_unit_path() as String,
+      payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url))),
+  ])
 }
 
 fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<DeployApplyLeg> {
@@ -1093,7 +1103,21 @@ fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPla
   }
 }
 
+// FAIL CLOSED ON THE BROKER ADDRESS BEFORE ANY LEG RUNS: an owned broker whose base URL does not resolve
+// to a canonical tailnet host refuses the WHOLE apply plan -- write, enable and restart legs alike -- with the
+// address cause, so a stale broker is never restarted under a run that reports success. The lifecycle legs
+// gate on owns_the_host_approval_broker alone, so this single top-level refusal is what stops the enable and
+// restart too (gunbc.live_deploy.emit approval_broker_unit_emission returns BrokerUnitRefused; gunbc.design_argument::fail_closed:
+// a failure arm refuses, never widens, and every degradation is typed, located and countable).
 fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?) -> DeployApplyPlan {
+  match approval_broker_unit_emission(spec: spec) {
+    BrokerUnitRefused { detail: detail } => ApplyPlanRefused { step: "approval-broker-unit", reason: join(["live-deploy apply refused: the owned approval broker's address cannot be resolved (", detail, "); no broker unit write, enable or restart is applied (gunbc.design_argument::fail_closed: refuse, never widen)"], "") }
+    BrokerUnitBound { url: url } => deploy_apply_unit_plan_body(spec: spec, plan: plan, oidc_now: oidc_now, broker_base_url: Present { value: url })
+    BrokerUnitNoUnit => deploy_apply_unit_plan_body(spec: spec, plan: plan, oidc_now: oidc_now, broker_base_url: Absent)
+  }
+}
+
+fn deploy_apply_unit_plan_body(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_now: Second?, broker_base_url: NonEmptyStr?) -> DeployApplyPlan {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
     LiveDeployServeUnitOidcReadbackRefused { cause: c } =>
@@ -1106,7 +1130,7 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
           deploy_apply_chain(
             first: deploy_apply_worker_sandbox_plan(spec: spec, revision: revision),
             rest: ApplyPlanReady { legs: list_append(
-              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision),
+              left: deploy_apply_broker_unit_write_legs(spec: spec, revision: revision, broker_base_url: broker_base_url),
               right: [apply_staged_leg(step: "serve-unit", dest: deployment_systemd_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
             ) },
           )

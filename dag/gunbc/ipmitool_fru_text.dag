@@ -17,6 +17,7 @@ type FruFieldGapKind
 
 type FruCaptureGap
   = FruCaptureUnreadable { error: String }
+  | FruCaptureNotCommitted { unit: NonEmptyStr, read_that_would_ground_it: NonEmptyStr }
   | FruCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
   | FruFieldGapped { gap: FruFieldGapKind }
   | FruSubjectLinkUnobserved

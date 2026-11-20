@@ -246,15 +246,6 @@ fn bash_translation_rules_node() -> Node {
   )
 }
 
-fn bash_bound_words_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_bound_words,
-    lhs: ^bash_production_bound_words,
-    tokens: bash_bound_words_concrete_tokens(),
-    emitted: bash_bound_words_emitted_command
-  )
-}
-
 fn bash_embedded_quote_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_embedded_quote_lit,
@@ -263,19 +254,6 @@ fn bash_embedded_quote_translation_rules_node() -> Node {
     emitted: bash_embedded_quote_emitted_command
   )
 }
-
-fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
-    BoundToken { token_class: ^bash_token_lit_spaced, binding: ^bash_binding_lit_ROOT }
-  ]
-}
-
-data bash_bound_words_emitted_command: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_bound_words_concrete_tokens()
-)
-
-data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
 fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -657,8 +635,7 @@ fn bash_pipe_and_or_flat_wrong_target_model() -> TargetModel {
 }
 
 fn bash_binding_spellings() -> Map<Symbol, String> {
-  let m0 = map_insert(empty_map(), ^bash_binding_var_ROOT, "ROOT")
-  let m1 = map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
+  let m1 = map_insert(empty_map(), ^bash_binding_lit_ROOT, "ROOT")
   let m2 = map_insert(m1, ^bash_binding_lit_a_quote_b, "a'b")
   let m3 = map_insert(m2, ^bash_binding_var_WORKDIR, "WORKDIR")
   let m4 = map_insert(m3, ^bash_binding_var_OUT, "OUT")
@@ -697,8 +674,7 @@ fn bash_single_quote_spaced(spelling: String) -> String {
 
 fn bash_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m0 = map_insert(empty_map(), ^bash_token_lit, bash_posix_single_quote_transform(prefix: ""))
-  let m1 = map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))
-  map_insert(m1, ^bash_token_var_ref, EmitSpellingWrap { prefix: "\"$", suffix: "\"" })
+  map_insert(m0, ^bash_token_lit_spaced, bash_posix_single_quote_transform(prefix: " "))
 }
 data bash_token_class_emit_transforms_carried: Map<Symbol, TokenClassEmitTransform> = bash_token_class_emit_transforms()
 
@@ -721,11 +697,6 @@ fn bash_add_target_model_bundle() -> Node {
     rules: bash_translation_rules_node())
 }
 
-fn bash_bound_words_target_model_bundle() -> Node {
-  bash_target_model_bundle(
-    rules: bash_bound_words_translation_rules_node())
-}
-
 fn bash_embedded_quote_target_model_bundle() -> Node {
   bash_target_model_bundle(
     rules: bash_embedded_quote_translation_rules_node())
@@ -742,17 +713,6 @@ fn bash_target_model() -> TargetModel {
     binding_spellings: empty_map(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: bash_source_text,
-    runtime_row: target_emit_host_runtime_row_unconfigured
-  )
-}
-
-fn bash_bound_words_target_model() -> TargetModel {
-  target_model_make_with_emit_transforms(
-    bundle: bash_bound_words_target_model_bundle(),
-    lex: bash_lex(),
-    binding_spellings: bash_binding_spellings(),
-    token_class_emit_transforms: bash_token_class_emit_transforms_carried,
-    authority_source_text: bash_bound_words_source_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   )
 }
@@ -2727,6 +2687,14 @@ fn bash_redir_from_file_source_text(path: String) -> String {
   concat("< ", path)
 }
 
+// Bash manual, node "Redirections": `>>word` redirects standard output with the output
+// appended rather than the file truncated. It is not `>` with a byte added by the
+// caller: the two are separate operators in the grammar and the difference is whether
+// an existing file survives, which is exactly what srv1's event and serve logs depend on.
+fn bash_redir_append_to_file_source_text(path: String) -> String {
+  concat(">> ", path)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Compound commands, comments, words that must not be quoted, and arrays.
 //
@@ -2751,6 +2719,19 @@ data bash_kw_case_pattern_sep_text: String = ")"
 data bash_kw_case_clause_sep_text: String = ";;"
 data bash_kw_case_clause_indent_text: String = "\n  "
 data bash_kw_case_block_lead_text: String = "\n    "
+
+// How the statements INSIDE a block arm are separated. Bash manual, node "List of
+// Commands": "A list is a sequence of one or more pipelines separated by one of the
+// operators ;, &&, ||, |&, or ;;&, and optionally terminated by one of ;, &, or
+// <newline>" — a newline is a list separator exactly as ';' is, so one command per
+// line is the grammar's own spelling, not decoration. This row already owns the
+// arm's line structure (the "\n  " pattern indent and the "\n    " leads above and
+// below the body), so it owns the separator inside the body too: a block arm is the
+// line-oriented spelling, and `bash_kw_case_inline_lead_text` / "; " is the
+// one-liner spelling. Rendering a block arm's statements with "; " would put a
+// five-statement arm on one 800-column line, which is what the installed launcher
+// does NOT look like.
+data bash_kw_case_block_stmt_sep_text: String = "\n    "
 data bash_kw_case_inline_lead_text: String = " "
 data bash_kw_case_arm_newline_text: String = "\n"
 data bash_kw_esac_text: String = "esac"
@@ -3110,6 +3091,61 @@ fn bash_stmt_comment_target_model(text: String) -> TargetModel {
   )
 }
 
+// ── sequential list ────────────────────────────────────────────────────────
+// Bash manual, node "Lists": a list is an `and_or` optionally followed by `;` and
+// another list. The lane already spells that join INSIDE a wrapper -- a brace group,
+// a function body, a case clause -- but it could not spell a list that is not wrapped,
+// so a script line carrying two statements (srv1's container command opens with
+// `D=/root/serve; ev(){ ...; }`) had no representation at all except as text pasted
+// outside the lane. The body reuses the ^bash_production_fold_stmt_list nonterminal
+// the wrapper constructs already use, so `;` stays one token class in one place.
+fn bash_stmt_seq_tokens() -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_seq_body }]
+}
+
+data bash_stmt_seq_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_seq_tokens()
+
+data bash_stmt_seq_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_seq_tokens_carried
+)
+
+// The wrapper's own bytes are the wrapper's rows; this one has none, so the list's
+// spelling is the whole of it.
+fn bash_stmt_seq_source_text(body: String) -> String {
+  body
+}
+
+fn bash_stmt_seq_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([]))
+}
+
+data bash_stmt_seq_lex_carried: LexRules = bash_stmt_seq_lex()
+
+fn bash_stmt_seq_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_seq,
+    lhs: ^bash_production_stmt_seq,
+    tokens: bash_stmt_seq_tokens_carried,
+    emitted: bash_stmt_seq_emitted
+  )
+}
+
+fn bash_stmt_seq_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_seq_body, body)
+}
+
+fn bash_stmt_seq_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_seq_translation_rules_node(),
+    source_literal: ^bash_stmt_seq_source_literal,
+    production_name: ^bash_production_stmt_seq,
+    tokens: bash_stmt_seq_tokens_carried,
+    source_text: bash_stmt_seq_source_text(body: body),
+    lex: bash_stmt_seq_lex_carried,
+    binding_spellings: bash_stmt_seq_binding_spellings(body: body)
+  )
+}
+
 // ── for loop ───────────────────────────────────────────────────────────────
 // Bash manual, node "Looping Constructs":
 //   for name [ [in [words …] ; ] do commands; done
@@ -3415,6 +3451,59 @@ fn bash_word_param_error_target_model(index: String, word: String) -> TargetMode
     source_text: bash_word_param_error_source_text(index: index, word: word),
     lex: bash_word_param_error_lex_carried,
     binding_spellings: bash_word_param_error_binding_spellings(index: index, word: word)
+  )
+}
+
+// Bash manual, node "Shell Parameters": $0 .. $9, the numbered positional
+// parameters (`$0` being the script itself). Spelled `$` and the digits, with the
+// digits carried as a bound token so the serializer takes them off the node.
+fn bash_word_positional_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_dollar },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_positional_index }
+  ]
+}
+
+data bash_word_positional_tokens_carried: List<ConcreteSyntaxToken> = bash_word_positional_tokens()
+
+data bash_word_positional_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_positional_tokens_carried
+)
+
+fn bash_word_positional_source_text(index: String) -> String {
+  concat("$", index)
+}
+
+fn bash_word_positional_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$", class: ^bash_token_dollar)
+  ]))
+}
+
+data bash_word_positional_lex_carried: LexRules = bash_word_positional_lex()
+
+fn bash_word_positional_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_positional,
+    lhs: ^bash_production_word_positional,
+    tokens: bash_word_positional_tokens_carried,
+    emitted: bash_word_positional_emitted
+  )
+}
+
+fn bash_word_positional_binding_spellings(index: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_positional_index, index)
+}
+
+fn bash_word_positional_target_model(index: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_positional_translation_rules_node(),
+    source_literal: ^bash_word_positional_source_literal,
+    production_name: ^bash_production_word_positional,
+    tokens: bash_word_positional_tokens_carried,
+    source_text: bash_word_positional_source_text(index: index),
+    lex: bash_word_positional_lex_carried,
+    binding_spellings: bash_word_positional_binding_spellings(index: index)
   )
 }
 

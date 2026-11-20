@@ -3,6 +3,7 @@ module v2.workflow.required_ci_measurement_shell
 import std.types { String, List }
 import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_command_with_words,
   bash_build_exit,
   bash_build_if_from_stmts,
@@ -20,7 +21,7 @@ data required_ci_measurement_build_outcome_var: String = "REQUIRED_CI_INSTRUMENT
 data required_ci_measurement_build_success: String = "success"
 
 fn required_ci_test(words: List<Node>) -> Node {
-  bash_build_test_bracket(words: words)
+  bash_build_test_bracket(words: words, spelling: BracketQuoted)
 }
 
 fn required_ci_command(words: List<String>) -> Node {

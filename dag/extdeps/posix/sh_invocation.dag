@@ -13,6 +13,8 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
+  bash_build_word_double_quoted, bash_build_word_kinded, bash_build_word_positional,
+  bash_build_word_positional_all,
   bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
   bash_build_and_then, bash_build_with_redir_from_file, bash_build_with_redir_to_file,
   bash_build_word_concat_from_nodes,
@@ -87,6 +89,34 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // instrument returns zero and this builder is deleted with its last call. It is NOT an escape hatch for a new argv: a caller reaching for it to run a single
 // program with flags is spelling that program's argv inside a string, which review must refuse
 // exactly as it refuses the record literal.
+// `$0` and `$@` are positional parameters, not variables, and the lane now says so
+// in three rows: a variable is a Name, `$0`..`$9` are digits, `$*`/`$@` are the two
+// special names. These scripts quote the expansion so a path with a space in it stays
+// one word, which is a double-quoted word over the expansion -- the same shape every
+// other quoted expansion in this module takes. A part the builder will not take
+// becomes a refused word kind, which the serializer rejects: no quoted word appears
+// anyway with nothing behind it.
+fn posix_sh_quoted(parts: List<Node>) -> Node {
+  match bash_build_word_double_quoted(parts: parts) {
+    Present { value: n } => n
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_double_quoted, value: "")
+  }
+}
+
+fn posix_sh_positional(index: String) -> Node {
+  match bash_build_word_positional(index: index) {
+    Present { value: n } => posix_sh_quoted(parts: [n])
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: index)
+  }
+}
+
+fn posix_sh_positional_all(which: String) -> Node {
+  match bash_build_word_positional_all(which: which) {
+    Present { value: n } => posix_sh_quoted(parts: [n])
+    Absent => bash_build_word_kinded(kind: ^bash_build_refused_var_name, value: which)
+  }
+}
+
 fn posix_sh_program_command(script: String) -> ArgvCommand {
   argv_command(program: posix_sh_program(), arguments: ["-c", script])
 }
@@ -166,7 +196,7 @@ fn posix_sh_export_replace_statements(body: String) -> List<Node> {
           body: bash_build_command_with_words(words: [
             bash_build_word_lit(text: "mktemp"),
             bash_build_word_lit(text: "--"),
-            bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "0"), bash_build_word_lit(text: ".XXXXXX")]),
+            bash_build_word_concat_from_nodes(parts: [posix_sh_positional(index: "0"), bash_build_word_lit(text: ".XXXXXX")]),
           ]),
         ),
       ),
@@ -192,7 +222,7 @@ fn posix_sh_export_replace_statements(body: String) -> List<Node> {
         bash_build_word_lit(text: "-f"),
         bash_build_word_lit(text: "--"),
         bash_build_word_var(name: "t"),
-        bash_build_word_var(name: "0"),
+        posix_sh_positional(index: "0"),
       ]),
       right: bash_build_and_then(
         left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "t")]),
@@ -208,7 +238,7 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
     PosixShRemoveFileAfterRead =>
       [
         bash_build_or_else(
-          left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")]),
+          left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), posix_sh_positional(index: "0")]),
           right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
         ),
       ]
@@ -232,7 +262,7 @@ fn posix_sh_export_then_exec_program(name: PosixShellName, read_words: List<Node
       ),
     ], middle), [
       bash_build_command_from_lits(lits: ["export", spelling]),
-      bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), bash_build_word_var(name: "@")]),
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), posix_sh_positional_all(which: "@")]),
     ]),
     set_e: false,
   )
@@ -241,7 +271,7 @@ fn posix_sh_export_then_exec_program(name: PosixShellName, read_words: List<Node
 fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
   posix_sh_export_then_exec_program(
     name: name,
-    read_words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
+    read_words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), posix_sh_positional(index: "0")],
     middle: posix_sh_export_remove_statements(disposition: disposition),
   )
 }
@@ -311,7 +341,7 @@ fn posix_sh_receipt_object_program() -> Outcome<String> {
   bash_emit_stmts(statements: [
     bash_build_with_redir_from_file(
       inner: bash_build_command_from_lits(lits: ["exec"]),
-      path: bash_build_word_var(name: "0"),
+      path: posix_sh_positional(index: "0"),
     ),
     posix_sh_receipt_object_body_stmt(),
   ], set_e: false)

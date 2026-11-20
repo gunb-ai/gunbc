@@ -54,11 +54,11 @@ import gunbc.fleet.fleet_known_hosts_anchor {
 }
 import gunbc.hostname_allocation {
   HostnameAllocation,
+  HostSelectorUnknown,
   LegacyHostname,
-  OperatorHostNotRegistered,
   canonical_hostname_for_fleet_slot,
   next_name_for_fleet_slot,
-  operator_host_lookup_in,
+  resolve_host_selector_in,
 }
 import gunbc.hostname_read { HostnameShortCapture, hostname_short_value_from_stdout }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
@@ -843,8 +843,10 @@ fn refused_before_any_leg(exit: ProcessExit, cause: String) -> Bool {
 
 test fn the_entry_refuses_a_host_the_admitted_registry_does_not_carry() -> Bool {
   refused_before_any_leg(
-    exit: tailscale_machine_name_entry_over(mode: ObserveOnly, lookup: OperatorHostNotRegistered { label: "fixture-unregistered" }),
-    cause: "no operator host is named fixture-unregistered"
+    exit: tailscale_machine_name_entry_over(mode: ObserveOnly, resolution: HostSelectorUnknown { selector: "fixture-unregistered" }),
+    // THE SELECTOR'S TYPED CAUSE, not the old unregistered-label sentence: an unknown spelling refuses as
+    // "no machine is named <selector>".
+    cause: "no machine is named fixture-unregistered"
   )
 }
 
@@ -852,7 +854,7 @@ test fn the_entry_refuses_a_registry_that_fails_its_own_admission_even_for_an_un
   refused_before_any_leg(
     exit: tailscale_machine_name_entry_over(
       mode: ApplyInsideWindow,
-      lookup: operator_host_lookup_in(allocations: colliding_registry, label: "c")
+      resolution: resolve_host_selector_in(allocations: colliding_registry, selector: "c")
     ),
     cause: "registry is refused"
   )

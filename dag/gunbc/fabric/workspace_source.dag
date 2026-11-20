@@ -27,7 +27,7 @@ import gunbc.fabric.fabric_blob_r2 { FabricBlobPutResult, put_fabric_blob }
 import gunbc.cloudflare.r2_staged_transfer { WriteCredentialShredded, WriteCredentialResidueRemains }
 import gunbc.fabric.fabric_blob_placement { fabric_workspace_object_bound }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
+import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused, fleet_machine_srv1, allocated_canonical_hostname }
 import gunbc.host.host_effect { LocalShell }
 
 // THE OPERATOR'S REAL WORKSPACE, CARRIED FROM THE HOST THAT HOLDS IT TO THE HOST THAT MEASURES IT.
@@ -129,7 +129,9 @@ fn workspace_agent_state_slot_observe() -> WorkspaceAgentStateSlot {
   workspace_agent_state_slot_admission(requested: requested, observed: workspace_observed_agent_state_slots(dirs: map(dirs.dirs, d => d as String)))
 }
 
-data workspace_source_pack_host: NonEmptyStr = "srv1"
+// The pack host is srv1, named from its REGISTRY ROW (P4 fleet_machine_authority 2.3, D12) -- not a hand
+// literal -- so the expected dispatch hostname moves with a rename of srv1's registry name.
+data workspace_source_pack_host: NonEmptyStr = allocated_canonical_hostname(allocation: fleet_machine_srv1) as NonEmptyStr
 
 // ── THE CREDENTIAL EXCLUSION: ONE ROW, LISTED VERBATIM IN EVERY RECEIPT ────────────────────────
 //

@@ -74,7 +74,7 @@ data broker_key: MacKey = MacKey {
   material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
 }
 
-data unit: UnitKey = "BRD-PXE-FABRIC-0D" as UnitKey
+data unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "BRD-PXE-FABRIC-0D" }
 data attempt: IntakeAttemptId = "intake-pxe-fabric-0d" as IntakeAttemptId
 
 fn chainloader() -> ContentHash { content_hash_of_value(value: "ipxe-aarch64-fixture") }

@@ -24,7 +24,7 @@ import extdeps.posix.signal {
   linux_standard_signal_of_number, linux_standard_signal_wire_name,
 }
 import gunbc.systemd_unit_names {
-  dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
+  dispatch_attempt_unit_name, dispatch_attempt_unit_name_resumed, dispatch_review_unit_name, dispatch_audit_unit_name,
   belt_attempt_obligation_unit_name,
   compute_unit_name, compute_unit_name_admission,
 }
@@ -217,7 +217,7 @@ fn attempt_exit_unit_of(node_id: String, attempt_key: String, role_token: String
 fn attempt_exit_unit_for_role(node_id: String, attempt_key: String, role: AttemptUnitRole, role_token: String) -> AttemptExitUnitDerivation {
   match role {
     AttemptWorkerRole => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token, role: role)
-    AttemptWorkerResumedRole { ordinal: _ } => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key), role_token: role_token, role: role)
+    AttemptWorkerResumedRole { ordinal: _ } => attempt_exit_unit_admission(derivation: dispatch_attempt_unit_name_resumed(node_id: node_id, attempt_key: attempt_key, resume_segment: role_token), role_token: role_token, role: role)
     AttemptObligationRole => AttemptExitUnitDerived { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }
     AttemptReviewerRole { criterion_key, head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key), role: role }
     AttemptAuditorRole { head_sha: _ } => AttemptExitUnitDerived { unit: dispatch_audit_unit_name(node_id: node_id, attempt_key: attempt_key), role: role }

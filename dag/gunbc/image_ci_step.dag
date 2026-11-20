@@ -1,0 +1,24 @@
+// Guest-image CI run steps: the two run steps that build a guest image from a workspace or a
+// revision job, both of which wrap the same fakeroot + root-stamp guest-image build. They share one
+// module because the build is their only shared domain knowledge (gunbc.workspace_image_delivery,
+// gunbc.revision_job_image_delivery): both targets point at a *_image_build_wet entry and both go
+// through gunbc_ci_guest_image_build_invoke. Moved out of gunbc.ci.ci_spec
+// (gunbc.plans.closure_consolidation P2) verbatim; the roster
+// gunbc.ci.ci_spec.gunbc_run_step_targets still lists their targets.
+module gunbc.image_ci_step
+
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_command, gunbc_invoke_root_stamp_script }
+
+fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command(source_roots: witness_layer_roots, entry: target.entry, function: target.function, claim_run: false), "\n"], "")
+}
+
+data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/workspace_image_delivery.dag", function: "workspace_image_build_wet" }
+
+data gunbc_ci_revision_job_image_build_target: GunbcRunStepTarget = GunbcRunStepTarget { entry: "dag/gunbc/revision_job_image_delivery.dag", function: "revision_job_image_build_wet" }
+
+fn gunbc_ci_workspace_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_workspace_image_build_target) }
+
+fn gunbc_ci_revision_job_image_build_invoke() -> String { gunbc_ci_guest_image_build_invoke(target: gunbc_ci_revision_job_image_build_target) }

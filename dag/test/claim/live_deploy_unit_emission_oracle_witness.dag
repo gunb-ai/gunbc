@@ -37,7 +37,7 @@ import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
   emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
-  emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path,
+  emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path, approval_broker_unit_emission, BrokerUnitBound,
 }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
@@ -356,7 +356,17 @@ test fn the_slice_unit_matches_the_deployed_bytes() -> Bool {
 // checkout. The previous bytes pinned here named the roadmap's root and the roadmap's frozen
 // binary, which is the pair of defects the ruling resolved.
 test fn the_approval_broker_unit_would_install_these_bytes() -> Bool {
-  let emitted = render(doc: emit_approval_broker_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
+  // The doc emitter takes the registry-resolved broker base URL; for registered srv1 that is
+  // https://srv1.tailecbe08.ts.net, so the golden bytes below stay byte-identical. A spec whose broker
+  // the registry cannot resolve has no broker unit to render, so this witness correctly has nothing to check.
+  match approval_broker_unit_emission(spec: live_spec()) {
+    BrokerUnitBound { url: broker_base_url } => the_approval_broker_unit_bytes_check(broker_base_url: broker_base_url)
+    _ => false
+  }
+}
+
+fn the_approval_broker_unit_bytes_check(broker_base_url: NonEmptyStr) -> Bool {
+  let emitted = render(doc: emit_approval_broker_unit_doc(spec: live_spec(), revision: live_revision(), broker_base_url: broker_base_url), proto: live_deploy_protocol)
   let budgets = join([
     match ingress_limit_ms(limit: live_spec().approval_broker.serve_cpu_limit) { Present { value: c } => concat(" --arg cpu_limit_ms=", to_string(value: c))  Absent => "" },
     match ingress_limit_ms(limit: live_spec().approval_broker.serve_wall_limit) { Present { value: w } => concat(" --arg wall_limit_ms=", to_string(value: w))  Absent => "" },
@@ -403,7 +413,14 @@ test fn the_broker_inherits_the_roadmap_evaluation_caps() -> Bool {
 // and the availability dependency would be back: one process's resident set would count against the
 // other's allowance, which is the mechanism, not a side effect.
 test fn the_broker_and_the_roadmap_join_different_slices() -> Bool {
-  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
+  match approval_broker_unit_emission(spec: live_spec()) {
+    BrokerUnitBound { url: broker_base_url } => the_broker_and_the_roadmap_join_different_slices_check(broker_base_url: broker_base_url)
+    _ => false
+  }
+}
+
+fn the_broker_and_the_roadmap_join_different_slices_check(broker_base_url: NonEmptyStr) -> Bool {
+  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision(), broker_base_url: broker_base_url)
   let roadmap = serve_file()
   service_has(file: broker, target: ServiceSlice { name: gunbc_approval_broker_slice_unit_name })
     && !service_has(file: roadmap, target: ServiceSlice { name: gunbc_approval_broker_slice_unit_name })
@@ -1140,7 +1157,14 @@ test fn the_tree_remote_oneshot_in_a_serving_slice_refuses() -> Bool {
 // out; this says the slice has exactly one member among the units this deployment emits, so a unit
 // added later cannot join it by default and inherit the approval loop's allowance.
 test fn only_the_broker_unit_joins_the_broker_slice() -> Bool {
-  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
+  match approval_broker_unit_emission(spec: live_spec()) {
+    BrokerUnitBound { url: broker_base_url } => only_the_broker_unit_joins_the_broker_slice_check(broker_base_url: broker_base_url)
+    _ => false
+  }
+}
+
+fn only_the_broker_unit_joins_the_broker_slice_check(broker_base_url: NonEmptyStr) -> Bool {
+  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision(), broker_base_url: broker_base_url)
   let roadmap = serve_file()
   let belt = live_deploy_belt_service_unit_file(spec: live_spec())
   let broker_slice = ServiceSlice { name: gunbc_approval_broker_slice_unit_name }

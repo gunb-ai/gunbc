@@ -22,6 +22,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_event_chain, roadmap_event_admitted_after,
   EventPrincipal, AttemptResultOutcome, RoadmapResultBinding, roadmap_result_returned_event,
   RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+  RoadmapEventKind, ResultReturned, Retired,
 }
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
@@ -41,8 +42,9 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_shared_directory, dashboard_instance_child }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_events_worktree_child, roadmap_event_carrier_directory }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
+import gunbc.roadmap.roadmap_execution_contract {
+  GitWorkspaceCapability, AttemptStateDirectoryCapability, dispatch_capability_program,
+}
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
@@ -348,10 +350,22 @@ fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> Strin
   join(["operations/", event.node as String, "/", operation, ".json"], "")
 }
 
-// recorded_at belongs to the committed result, not the retry payload. Parent remains bound to
-// the original precondition; a key cannot be repurposed for a new command after a later event.
+// THE KEY BINDS THE COMMAND, NEVER THE PRECONDITION. A command is its node, its principal, and its
+// payload — and the payload IS the kind: every field of the fact rides inside the kind's own variant, so
+// kind equality is payload equality and a used key can never authorize a different fact.
+//
+// The parent is deliberately NOT part of the command's identity. A retry whose read of the world moved
+// on — the migration resuming after an interruption, where the head is now the event the first attempt
+// committed — is the SAME command and must answer with the first attempt's committed outcome. Binding the
+// key to the parent made that retry a fresh command and refused it `operation-conflict`, so a half-finished
+// migration could not be finished by replaying it. Witnessed by `issue_command_acceptance_wet`, in
+// test.manual.issue_command_wet, which commits an acceptance, lets an unrelated act move the head, and
+// requires the FIRST event's own id back from the replay; the pairing of that replay with
+// a_retried_acceptance_is_the_same_operation_and_the_same_command_because_the_guess_is_not_a_fact, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness, is what pins it. What a used key
+// still cannot do is carry another payload: that comparison is the one below, and it refuses.
 fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
-  a.node == b.node && a.author == b.author && a.parent == b.parent && a.kind == b.kind
+  a.node == b.node && a.author == b.author && a.kind == b.kind
 }
 
 // The operation receipt is observed, not read-and-kind-matched: the old flow branched on the
@@ -371,7 +385,17 @@ fn roadmap_event_append_after_no_operation_receipt(
     EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
     EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
       else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
-        EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+        // THE REFUSAL NAMES WHAT WAS REFUSED. One sentence for every kind the log will not admit would
+        // tell an operator migrating a retirement that a RESULT was refused (gunbc.design_argument::
+        // fail_closed: a failure arm refuses, and what it says is part of refusing).
+        match event.kind {
+          ResultReturned { attempt: _, claim: _, outcome: _ } =>
+            EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+          Retired { reason: _ } =>
+            EventAppendRefused { id: env.id, step: "not-admitted", reason: "the node is already terminal on this log, so a second retirement names no change; what the plan shows is the first retirement's reason" }
+          _ =>
+            EventAppendRefused { id: env.id, step: "not-admitted", reason: "this event kind is not admitted after what the node's history already holds" }
+        }
       } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
         EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
       } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: expected_commit) }
@@ -553,22 +577,65 @@ fn roadmap_standings_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapS
     CarrierReady =>
       match roadmap_event_carrier_sync(layout: layout) {
         CarrierEnsureRefused { step, reason } => StandingsUnobserved { reason: join(["sync/", step, ": ", reason], "") }
-        CarrierReady => {
-          let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
-          let listing = Filesystem.List(path: root)
-          if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
-            StandingsObserved { rows: [] }
-          } else {
-            let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
-            let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
-            match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
-              Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
-              Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
-              Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
-            }
-          }
-        }
+        CarrierReady => roadmap_standings_read_synced(layout: layout)
       }
+  }
+}
+
+// The fold over every node directory of a worktree the caller already synced: one fold, read by
+// the standings above and by the standings at the log head below, so the two cannot disagree.
+fn roadmap_standings_read_synced(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
+  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+  let listing = Filesystem.List(path: root)
+  if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
+    StandingsObserved { rows: [] }
+  } else {
+    let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+    let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
+    match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
+      Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
+      Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+      Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+    }
+  }
+}
+
+// EVERY NODE'S STANDING, AND THE LOG COMMIT IT WAS FOLDED AT. A reader that caches the standings
+// (the ctrl session dashboard, through /standings.json) needs to know WHICH log the answer is
+// about, so the head is read inside the same synced snapshot the fold reads -- after the fetch and
+// the hard reset to the remote branch, before the fold -- and never from a second read that could
+// have moved. A head that cannot be read refuses, located; it is never reported as an empty log.
+type RoadmapStandingsAtHead
+  = StandingsAtHead { head: NonEmptyStr, rows: List<NodeStandingRow> }
+  | StandingsAtHeadUnobserved { step: String, reason: String }
+
+fn roadmap_standings_at_head_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapStandingsAtHead {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => StandingsAtHeadUnobserved { step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => StandingsAtHeadUnobserved { step: join(["sync/", step], ""), reason: reason }
+        CarrierReady =>
+          match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rev-parse", "HEAD"]) {
+            CarrierExecFailed { exit_code, stderr } => StandingsAtHeadUnobserved { step: "head", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+            CarrierExecOk { stdout } =>
+              if trim(stdout) == "" { StandingsAtHeadUnobserved { step: "head", reason: "rev-parse HEAD answered nothing" } }
+              else {
+                match roadmap_standings_read_synced(layout: layout) {
+                  StandingsUnobserved { reason } => StandingsAtHeadUnobserved { step: "fold", reason: reason }
+                  StandingsObserved { rows } => StandingsAtHead { head: trim(stdout) as NonEmptyStr, rows: rows }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn roadmap_standings_at_head_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapStandingsAtHead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: StandingsAtHeadUnobserved { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      CarrierClosed { result: roadmap_standings_at_head_read_private(layout: private), close: roadmap_event_snapshot_close(layout: private) }
   }
 }
 

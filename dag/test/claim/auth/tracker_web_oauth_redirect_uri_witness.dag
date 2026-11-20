@@ -1,0 +1,27 @@
+module test.claim.auth.tracker_web_oauth_redirect_uri_witness
+
+// W2's name half for the tracker OAuth redirect URIs (gunbc.plans.fleet_machine_authority 2.3, 4.4).
+// Each desired redirect URI must carry its machine's canonical registry NAME in the host position,
+// minted from gunbc.hostname_allocation through the real producer (allocated_canonical_hostname on the
+// srv1/srv2 registry row), never from the handle cast (D12) or a hard-coded host. Renaming a machine in
+// the registry moves the host component and these claims then refuse; restoring the old
+// srvN_host.identity-as-String handle cast (or a pasted host) would leave the host pinned while the
+// registry name moves, which is the fail-closed case. With today's names the URI carries srv1/srv2,
+// which is the byte-identical check.
+
+import std.logic { Bool }
+import std.algebra { string_contains }
+import gunbc.auth.tracker_web_oauth_client {
+  tracker_web_test_srv2_redirect_uri,
+  tracker_web_stage_srv1_live_redirect_uri,
+  tracker_web_test_lab_redirect_uri
+}
+
+test fn test_srv2_redirect_uri_carries_the_srv2_registry_host() -> Bool
+  = string_contains(s: tracker_web_test_srv2_redirect_uri as String, pattern: "//srv2.")
+
+test fn stage_srv1_redirect_uri_carries_the_srv1_registry_host() -> Bool
+  = string_contains(s: tracker_web_stage_srv1_live_redirect_uri as String, pattern: "//srv1.")
+
+test fn test_lab_redirect_uri_carries_the_srv1_registry_host() -> Bool
+  = string_contains(s: tracker_web_test_lab_redirect_uri as String, pattern: "//srv1.")

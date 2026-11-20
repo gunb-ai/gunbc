@@ -165,6 +165,33 @@ fn rest_credential_refusal_cause(refusal: AccessRefusal) -> NonEmptyStr {
   concat("not sent, the credential was refused before dispatch: ", access_refusal_reason(refusal: refusal)) as NonEmptyStr
 }
 
+// THE CREDENTIAL-PATH RENDERING OF A REFUSAL, ONCE, NEXT TO THE COPRODUCT IT READS.
+//
+// On a credential path the response body and the transport cause are WITHHELD: they arrive from an
+// exchange whose request carried the credential, and a body or transport error can echo token
+// material into a receipt or an operator-facing cause string. Consumers that render a refusal to a
+// human (gunbc.heal_publication's mint_cause, gunbc.fleet.printer_mint_at_use's mint arms) share
+// exactly this rule and nothing else about the refusal.
+//
+// This is NOT the rendering used on non-credential paths: gunbc.auth.heal_publisher_provision's
+// provisioning renderer deliberately SHOWS the body and the transport cause, because a provisioning
+// exchange carries no user credential whose material a body could echo, and the operator needs the
+// remote's stated reason to fix the grant. Two renderings, two disclosure policies, two rules - only
+// the credential-path one is shared. A future third credential-path consumer imports this; a new
+// disclosure policy needs its own justification, not a fork of this one.
+fn rest_refusal_text(o: RestRefusal) -> String {
+  match o {
+    RestStatusRefused { status, body: _ } => concat("status ", to_string(status as Int))
+    RestTransportRefused { cause: _ } => "transport refused (cause withheld on a credential path)"
+    RestCredentialRefused { refusal: credential_refusal } => {
+      let cause = rest_credential_refusal_cause(refusal: credential_refusal)
+      cause as String
+    }
+    RestBodyUndecodable { status, cause } =>
+      join(["status ", to_string(status as Int), " undecodable (", cause as String, ")"], "")
+  }
+}
+
 fn classify_rest_refusal(standing: RestExchangeStanding) -> RestExchangeRefusal {
   match standing {
     RestReadExchange { refusal } =>

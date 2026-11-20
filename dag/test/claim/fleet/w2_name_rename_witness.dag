@@ -1,0 +1,59 @@
+module test.claim.fleet.w2_name_rename_witness
+
+// W2's NAME HALF (gunbc.plans.fleet_machine_authority §2.4 W2, P4 acceptance). One fixture machine --
+// the SAME handle throughout, so the identity is fixed -- is admitted under name "alpha" and again under
+// name "bravo". Every 2.3 projection that names the machine is asked THROUGH ITS REAL PRODUCER, and each
+// must move with the name; the affixes that are not the name (the "bmc-"/"-admin" secret-id schema, the
+// tailnet zone labels) stay byte-identical across the rename, and no "alpha" form survives in bravo's
+// projections. Because each producer is asked about a machine the fleet does not actually have today, a
+// site that still spelled a fixed literal ("srv2", a hand-typed tailnet address, a hand-typed secret id)
+// could not answer "bravo" and this witness goes RED at that site -- the discriminating check that the
+// projection reads the name and not the handle (gunbc.design_argument::witness_one_interface).
+import std.types { Bool, NonEmptyStr }
+import std.optional { Absent }
+import extdeps.dns.domain_name { DnsLabel }
+import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { HostnameAllocation, LegacyHostname, allocated_canonical_hostname }
+import gunbc.host.host_name_resolution { fleet_lan_name }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_name }
+import gunbc.bmc.bmc_onboarding { bmc_admin_secret_id_of }
+
+// The SAME handle under two names: the identity does not move (D12), only the human name does.
+data w2_handle: HostIdentity = "w2-rename-fixture" as HostIdentity
+
+data row_alpha: HostnameAllocation = HostnameAllocation {
+    fleet_slot: w2_handle,
+    name: LegacyHostname { label: "alpha" as DnsLabel },
+    next_name: Absent,
+}
+
+data row_bravo: HostnameAllocation = HostnameAllocation {
+    fleet_slot: w2_handle,
+    name: LegacyHostname { label: "bravo" as DnsLabel },
+    next_name: Absent,
+}
+
+// The name authority: the canonical hostname IS the registry name, and it follows the rename.
+test fn allocated_canonical_hostname_follows_the_name() -> Bool
+  = allocated_canonical_hostname(allocation: row_alpha) == ("alpha" as DnsLabel)
+    && allocated_canonical_hostname(allocation: row_bravo) == ("bravo" as DnsLabel)
+
+// The LAN name (2.3, gunbc.host.host_name_resolution.fleet_lan_name): a fixed literal would not follow.
+test fn fleet_lan_name_follows_the_name() -> Bool
+  = fleet_lan_name(machine: row_alpha) == ("alpha" as DnsLabel)
+    && fleet_lan_name(machine: row_bravo) == ("bravo" as DnsLabel)
+
+// The BMC admin secret id (2.3, gunbc.bmc.bmc_onboarding.bmc_admin_secret_id_of): the "bmc-"/"-admin"
+// schema is fixed, the middle is the name and must follow it.
+test fn bmc_admin_secret_id_of_follows_the_name() -> Bool
+  = bmc_admin_secret_id_of(machine: row_alpha) == ("bmc-alpha-admin" as NonEmptyStr)
+    && bmc_admin_secret_id_of(machine: row_bravo) == ("bmc-bravo-admin" as NonEmptyStr)
+
+// The tailnet name (2.3, gunbc.fleet.fleet_tailnet.fleet_tailnet_name): the machine label follows the
+// name, the fleet-wide zone labels are byte-identical across the rename (they key on nothing per machine).
+// No "alpha" form survives in bravo's address.
+test fn fleet_tailnet_name_moves_with_the_name_zone_is_identical() -> Bool
+  = fleet_tailnet_name(machine: row_bravo)
+      == (["bravo" as DnsLabel, "tailecbe08" as DnsLabel, "ts" as DnsLabel, "net" as DnsLabel])
+    && fleet_tailnet_name(machine: row_alpha)
+      == (["alpha" as DnsLabel, "tailecbe08" as DnsLabel, "ts" as DnsLabel, "net" as DnsLabel])

@@ -735,7 +735,7 @@ fn collect_reference_occurrences(
         // the head -- occurrence ids come from a sequential allocator, so a new stamp shifts
         // every later id -- is ANSWERED: `v2.std.node` `content_hash` folds node kind, edge
         // labels and child hashes, NOT the occurrence id, so a shifted id cannot move a hash;
-        // and `v2.workflow.legacy_binding_delta` states outright that an `OccurrenceId` is not
+        // and `v2.workflow.legacy_binding_delta` (deleted 2026-11-10) stated outright that an `OccurrenceId` is not
         // a stable cross-compile name BECAUSE the counter is consumed in DFS order and encodes
         // walk position -- naming inserted tokens as exactly the edit that shifts ids. The
         // corpus declares that dependency illegitimate, not merely absent.

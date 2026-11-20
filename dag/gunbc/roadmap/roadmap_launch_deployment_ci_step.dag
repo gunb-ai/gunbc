@@ -1,0 +1,24 @@
+module gunbc.roadmap.roadmap_launch_deployment_ci_step
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.roadmap.roadmap_launch_deployment_receipt {
+  gunbc_rlm_launch_deployment_receipt_staging_path
+}
+
+data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
+  function: "rlm_launch_deployment_receipt_wet",
+}
+
+fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
+    function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_rlm_launch_deployment_receipt_staging_path()
+  )
+}

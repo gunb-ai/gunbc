@@ -1,0 +1,74 @@
+// Fabric workspace CI run steps: the four run steps that pack a workspace's source, measure and
+// restore a checkpoint, and observe transcript rate for a fleet dispatch. They live beside
+// gunbc.fabric because their only domain knowledge is the fabric workspace (the source bundle, the
+// checkpoint instrument, the transcript rate) and the receipt paths they stamp are the fabric
+// workspace domain's own. Moved out of gunbc.ci.ci_spec (gunbc.plans.closure_consolidation P2)
+// verbatim; the roster gunbc.ci.ci_spec.gunbc_run_step_targets still lists their targets.
+module gunbc.fabric.workspace_ci_step
+
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.fabric.workspace_source { workspace_source_receipt_path }
+import gunbc.fabric.workspace_transcript_rate { workspace_transcript_rate_receipt_path }
+import gunbc.fabric.workspace_checkpoint_instrument { workspace_measure_receipt_path, workspace_restore_receipt_path }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+
+data gunbc_ci_workspace_source_pack_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_source.dag",
+  function: "workspace_source_pack_wet",
+}
+
+data gunbc_ci_workspace_checkpoint_measure_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
+  function: "workspace_checkpoint_measure_wet",
+}
+
+data gunbc_ci_workspace_checkpoint_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_checkpoint_instrument.dag",
+  function: "workspace_checkpoint_restore_wet",
+}
+
+data gunbc_ci_workspace_transcript_rate_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fabric/workspace_transcript_rate.dag",
+  function: "workspace_transcript_rate_observe_wet",
+}
+
+fn gunbc_ci_workspace_source_pack_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_source_pack_target.entry,
+    function: gunbc_ci_workspace_source_pack_target.function,
+    claim_run: false,
+    receipt_rel: workspace_source_receipt_path
+  )
+}
+
+fn gunbc_ci_workspace_checkpoint_measure_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_checkpoint_measure_target.entry,
+    function: gunbc_ci_workspace_checkpoint_measure_target.function,
+    claim_run: false,
+    receipt_rel: workspace_measure_receipt_path
+  )
+}
+
+fn gunbc_ci_workspace_checkpoint_restore_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_checkpoint_restore_target.entry,
+    function: gunbc_ci_workspace_checkpoint_restore_target.function,
+    claim_run: false,
+    receipt_rel: workspace_restore_receipt_path
+  )
+}
+
+fn gunbc_ci_workspace_transcript_rate_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_workspace_transcript_rate_observe_target.entry,
+    function: gunbc_ci_workspace_transcript_rate_observe_target.function,
+    claim_run: false,
+    receipt_rel: workspace_transcript_rate_receipt_path
+  )
+}

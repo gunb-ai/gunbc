@@ -47,7 +47,7 @@ type PduCatalogRow {
 // (psu_adequacy compares the derived DC load against it) and the 80 PLUS level (the wall figure divides
 // by its efficiency). Connector counts, rail splits, dimensions and warranty are real published facts
 // with no consumer yet, so they are left in the vendor module's annotation rather than carried as
-// fields nothing reads (DESIGN 3c); the first consumer to need one -- a per-card connector admission --
+// fields nothing reads (@ref(gunbc.design_argument::consumption)); the first consumer to need one -- a per-card connector admission --
 // adds it here with that consumer.
 type PowerSupplyCatalogRow {
   model: NonEmptyStr

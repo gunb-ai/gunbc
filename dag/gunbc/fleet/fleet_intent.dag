@@ -432,8 +432,10 @@ data srv14_host: ComputeHost = ComputeHost {
 // (MAC 9c:6b:00:e7:c9:fa); host NIC enP2p4s0 9c:6b:00:e7:ca:9c at 192.168.1.205/24 (DHCP -- a router DHCP
 // reservation is an OPERATOR-GATED step, named in the PR). Installed 2026-10-30 from ubuntu-24.04.3-live-
 // server-arm64 over the BMC's USB virtual-media gadget (installer block device "Linux File-Stor_Gadget",
-// ds=nocloud;s=/cdrom/nocloud/) -- so its fleet backing is OwnedProvisioning { control: Bmc, delivery:
-// InstalledViaVirtualMedia }, NOT PXE; no new delivery variant is needed.
+// ds=nocloud;s=/cdrom/nocloud/) -- so its fleet backing is the pairing written by
+// provisioning_over_bmc_via_virtual_media() (control Bmc, delivery InstalledViaVirtualMedia), NOT PXE; no new
+// delivery variant is needed. The pairing has no literal form: OwnedProvisioning is sole_constructor at
+// gunbc.fleet.fleet_host_backing, and the route-named constructors are the only way to write one.
 data srv14_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.250", protocol: Redfish },

@@ -111,6 +111,10 @@ import gunbc.live_deploy.release_locus {
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
   live_deploy_approval_broker_unit_file_on,
+  approval_broker_unit_emission,
+  BrokerUnitBound,
+  BrokerUnitRefused,
+  BrokerUnitNoUnit,
   helper_sudoers_grant_mode,
   path_ancestors_inclusive,
 }
@@ -194,7 +198,8 @@ import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import gunbc.host.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
+import gunbc.host.host_converge { HostConverge }
+import gunbc.fleet.fleet_enrollment { FreshStandup, ExistingHostQuiescentReload, apply_mode_for_host }
 import extdeps.gunbc
 import extdeps.package_managers.apt {
   package_curl,
@@ -4376,18 +4381,29 @@ fn realize_converge_in_process(host_converge: HostConverge, intent: HostEffectIn
 fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTransport, intent: HostEffectIntent) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match transport {
     EmitArtifactThenThinRun { bootstrap: b, invocation: _ } =>
-      match gunbc_apply_mode_for_host(host: host_converge.identity) {
-        FreshStandup =>
-          if bootstrap_fragment_carries_hand_script(f: b) {
-            NotConverged {
-              reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
-              applied: intent,
-            }
-          } else {
-            realize_converge_in_process(host_converge: host_converge, intent: intent)
+      match apply_mode_for_host(host: host_converge.identity) {
+        Absent =>
+          NotConverged {
+            reason: concat(
+              concat("host_effect_apply: the host ", host_converge.identity as String),
+              " carries no converge apply mode -- it is not an enrolled fleet host (gunbc.fleet.fleet_enrollment fleet_enrollments), so there is no reload mode to run its converge under.",
+            ),
+            applied: intent,
           }
-        ExistingHostQuiescentReload =>
-          realize_converge_in_process(host_converge: host_converge, intent: intent)
+        Present { value: apply_mode } =>
+          match apply_mode {
+            FreshStandup =>
+              if bootstrap_fragment_carries_hand_script(f: b) {
+                NotConverged {
+                  reason: "host_effect_apply: a hand-spelled BootstrapFragment.script is not an admitted artifact — the fresh-standup bootstrap route is the Terminal emit(intent,Bash) lane (bootstrap_fragment_script_carrier_scaffold), and thin_invocation_argv_carrier_scaffold is Terminal since the thin run dispatches through the gunbc converge invocation-shape authority; this leg realizes only with an emitted (empty-script) bootstrap fragment.",
+                  applied: intent,
+                }
+              } else {
+                realize_converge_in_process(host_converge: host_converge, intent: intent)
+              }
+            ExistingHostQuiescentReload =>
+              realize_converge_in_process(host_converge: host_converge, intent: intent)
+          }
       }
     LocalShell =>
       realize_converge_in_process(host_converge: host_converge, intent: intent)
@@ -7477,7 +7493,7 @@ fn dark_unit_install_leg(step: DarkInstallStep, dest: String, text: String) -> D
   }
 }
 
-fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DarkLeg> {
+fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> List<DarkLeg> {
   let unit = gunbc_approval_broker_unit_name
   [
     dark_unit_install_leg(
@@ -7485,7 +7501,7 @@ fn dark_unit_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Lis
       text: serialize_systemd_unit_file(file: approval_broker_slice_unit_file())),
     dark_unit_install_leg(
       step: DarkStepBrokerUnit, dest: gunbc_approval_broker_unit_path() as String,
-      text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port))),
+      text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url))),
     DarkLegArgv { step: DarkStepDaemonReload, command: extdeps.systemd.systemctl.systemctl_daemon_reload_command() },
     DarkLegArgv { step: DarkStepEnable, command: sudo_elevate_command(command: systemctl_enable_argv(unit: unit)) },
     DarkLegArgv { step: DarkStepRestart, command: sudo_elevate_command(command: systemctl_restart_argv(unit: unit)) },
@@ -7735,9 +7751,19 @@ fn dark_stage_sidecar_readback(i: DarkInstallInputs, tree_digest: String, deploy
 }
 
 fn dark_stage_broker_unit(i: DarkInstallInputs, tree_digest: String) -> DarkInstallVerdict {
-  match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision), transport: i.transport) {
-    DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
-    DarkOk => dark_stage_slice_control(i: i, digest: tree_digest)
+  // THE SAME SINGLE GATE AS THE APPLY ROUTE (gunbc.live_deploy.emit approval_broker_unit_emission, review
+  // 94210): the dark cutover installs+enables+restarts the broker unit, so an owned broker whose address
+  // cannot be resolved must REFUSE the stage with the address cause, NOT install a unit whose Environment=
+  // line vanishes (the emitter takes only a Bound url). A host that owns no broker has no broker unit to
+  // install at all. Neither is a silent skip: each is a typed DarkInstallRefused that stops the dark line.
+  match approval_broker_unit_emission(spec: i.spec) {
+    BrokerUnitBound { url: url } =>
+      match dark_run_legs(legs: dark_unit_legs(spec: i.spec, revision: i.revision, broker_base_url: url), transport: i.transport) {
+        DarkFailed { step: s, reason: r } => DarkInstallRefused { step: s, reason: r }
+        DarkOk => dark_stage_slice_control(i: i, digest: tree_digest)
+      }
+    BrokerUnitRefused { detail: d } => DarkInstallRefused { step: DarkStepBrokerUnit, reason: join(["the owned broker's address cannot be resolved (", d, "); the broker unit is not installed, enabled or restarted -- a stale unit is never left running under a run that reports success (gunbc.design_argument::fail_closed: refuse, never widen)"], "") }
+    BrokerUnitNoUnit => DarkInstallRefused { step: DarkStepBrokerUnit, reason: "the dark cutover host owns no approval broker (no prod-role holder), so there is no broker unit to install (gunbc.design_argument::fail_closed: refuse, never widen)" }
   }
 }
 

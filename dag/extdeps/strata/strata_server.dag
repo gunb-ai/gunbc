@@ -25,7 +25,7 @@ data strata_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
 data strata_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
 
 // Neither statement names where a reply carries reasoning nor how inline thinking closes; these are the
-// OpenAI-compatible spellings, a bet typed as a bet, grounded by the qualification's live reply reading (DESIGN 4d).
+// OpenAI-compatible spellings, a bet typed as a bet, grounded by the qualification's live reply reading (@ref(gunbc.design_argument::epistemic_humility)).
 data strata_message_reasoning_field: RowField<NonEmptyStr> = FromCitedFigure {
   value: "reasoning_content" as NonEmptyStr,
   standing: TranscribedUncited { read_obligation: "read the member a srv4 engine reply carries reasoning in, from a live reply" as NonEmptyStr },

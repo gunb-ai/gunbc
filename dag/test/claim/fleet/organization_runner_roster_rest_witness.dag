@@ -1,5 +1,6 @@
 module test.claim.fleet.organization_runner_roster_rest_witness
 
+import gunbc.auth.github_app_credential_step { gunbc_ci_org_admin_app_token_prelude }
 import std.logic { Bool }
 import std.integer { PositiveInt }
 import std.types { String, NonEmptyStr, Int, List }
@@ -29,13 +30,9 @@ import gunbc.fleet.organization_runner_roster_read {
   roster_page_read_from_wire,
   rest_page_refusal_cause
 }
-import gunbc.ci.ci_spec {
-  gunbc_ci_service_runner_lost_boot_sweep_invoke,
-  gunbc_ci_org_admin_app_token_prelude,
-  gunbc_run_step_script_with_prelude,
-  witness_layer_roots,
-  gunbc_ci_service_runner_lost_boot_sweep_target
-}
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_with_prelude }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.runner.service_runner_ci_step { gunbc_ci_service_runner_lost_boot_sweep_invoke, gunbc_ci_service_runner_lost_boot_sweep_target }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

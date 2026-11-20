@@ -1,0 +1,35 @@
+module gunbc.machine_intake.arrival_step
+
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+
+data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/arrival_admission.dag",
+  function: "arrival_admit_executor",
+}
+
+data gunbc_ci_arrival_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/arrival_run.dag",
+  function: "arrival_converge_wet",
+}
+
+fn gunbc_ci_arrival_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_arrival_admit_target.entry,
+    function: gunbc_ci_arrival_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_arrival_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_arrival_converge_target.entry,
+    function: gunbc_ci_arrival_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}

@@ -64,6 +64,7 @@ pub use crate::v1_compiler_infer_types::{is_leaf_type, resolved_type, normalize_
 pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, ServiceFieldTemplates, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
 pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
+pub use crate::v1_compiler_rest_cause_text::{rest_body_read_refused_cause_text, rest_body_uninhabited_declared_phrase, rest_body_uninhabited_located_withheld, rest_declared_cause_text};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
 pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params, v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
@@ -7375,12 +7376,17 @@ pub fn emit_rust_reference_derived_census(typed: Rc<ResolvedGraph>) -> Reference
 }
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
-    emit_rust_selected(typed, Rc::new(RustModuleRenderSelection::RenderEveryModule))
+    emit_rust_selected(
+        typed,
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+        crate::gunbc_stage0_stage0_crate_partition_generated::generated_partition_crate_rows(),
+    )
 }
 
 pub fn emit_rust_selected(
     typed: Rc<ResolvedGraph>,
     selection: Rc<RustModuleRenderSelection>,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<EmitResult> {
     {
         let ctx = build_emit_rust_context(typed.clone());
@@ -7774,7 +7780,8 @@ pub fn emit_rust_selected(
                 __result
             }),
         );
-        let lib_file = emit_lib_rs_from_paths(all_mod_paths.clone(), has_pipeline.clone());
+        let lib_file =
+            emit_lib_rs_from_paths(all_mod_paths.clone(), has_pipeline.clone(), partition_rows);
         let emitted_paths = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -8362,10 +8369,13 @@ pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<Stri
     )
 }
 
-pub fn lib_rs_module_is_partition_owned(mod_name: String) -> bool {
+pub fn lib_rs_module_is_partition_owned(
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
+    mod_name: String,
+) -> bool {
     {
         let mut __found = false;
-        for row in generated_partition_crate_rows().iter().cloned() {
+        for row in partition_rows.iter().cloned() {
             if (crate::gunbc_stage0_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == mod_name.clone()) { __found = true; break; } } __found }) { __found = true; break; }
         }
         __found
@@ -8399,6 +8409,7 @@ pub fn stage0_host_shell_partition_reexport_block(item_attr: String) -> String {
 pub fn emit_lib_rs_from_paths(
     all_module_paths: Rc<Vec<String>>,
     has_compiler_tests: bool,
+    partition_rows: Rc<Vec<Rc<GeneratedPartitionCrateRow>>>,
 ) -> Rc<TextFile> {
     {
         let file_derived_names = Rc::new(
@@ -8412,7 +8423,7 @@ pub fn emit_lib_rs_from_paths(
             Rc::new({
                 let mut __result = Vec::new();
                 for n in file_derived_names.iter().cloned() {
-                    if !lib_rs_module_is_partition_owned(n.clone()) {
+                    if !lib_rs_module_is_partition_owned(partition_rows.clone(), n.clone()) {
                         __result.push(n);
                     }
                 }
@@ -43337,7 +43348,7 @@ pub fn emit_rust_rest_result_lowering(
         } else {
             emit_plain_response_body(op_node.clone(), transport, source_indices.clone())
         };
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> std::result::Result<".to_string()), output_type.clone()), ", std::boxed::Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(_error) => return Ok(".to_string()), rust_rest_refused(v1_rt::concat(v1_rt::concat("RestBodyUndecodable { status: status as i64, cause: \"".to_string(), crate::v1_compiler_rest_cause_text::rest_body_read_refused_cause_text()), "\".to_string() }".to_string()))), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> std::result::Result<".to_string()), output_type.clone()), ", std::boxed::Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(_error) => Ok(".to_string()), rust_rest_refused(v1_rt::concat(v1_rt::concat("RestBodyUndecodable { status: status as i64, cause: \"".to_string(), crate::v1_compiler_rest_cause_text::rest_declared_cause_text(crate::v1_compiler_rest_cause_text::rest_body_uninhabited_declared_phrase(), crate::v1_compiler_rest_cause_text::rest_body_uninhabited_located_withheld(), output_type.clone())), "\".to_string() }".to_string()))), "),\n".to_string()), "}".to_string())
     }
 }
 

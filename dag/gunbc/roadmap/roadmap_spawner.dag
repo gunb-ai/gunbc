@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_model {
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
   section_group, roadmap_nodes_by_id, roadmap_nodes_with_id, roadmap_parent_index, roadmap_parent_ids_in,
+  roadmap_node_ids_contain,
 }
 import std.types { Map }
 import std.algebra { empty_map, map_insert, map_lookup }
@@ -17,7 +18,7 @@ import gunbc.roadmap.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   intricacy_label, volume_label,
 }
-import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, node_title }
+import gunbc.roadmap.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, node_title }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap.roadmap_authority {
   roadmap_authority, authored_merged_prs,
@@ -165,40 +166,93 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
 
 // Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket
 // checkbox moves the page status to review, but never completes the node, removes its dispatch
-// action, or unblocks a dependent node. Only a live receipt in the acceptance event history
-// completes work, and that history removes an accepted node and its edges from the document before
-// the frontier is computed (gunbc.roadmap.roadmap_authority frontier_sets_projection), so a node
-// definition here carries no acceptance to read and the frontier has no done bucket.
-// Supersession is a separate terminal disposition: it closes dependency edges because the named
-// successor owns the work. The same dependency-closure predicate drives ready, upcoming and
-// unmet-parent projections.
+// action, or unblocks a dependent node. Only a live receipt in the roadmap event log completes work,
+// and the log's standing removes an accepted node AND a retired node, with their edges, from the
+// document before the frontier is computed (gunbc.roadmap.roadmap_authority frontier_sets_projection
+// -> active_roadmap_nodes_for_accepted / active_roadmap_edges_for_accepted). So the closure of a
+// dependency is not a fact a row carries and never was a bucket here: a parent that is over has left
+// the plan, and with its edge gone it stops being a parent the child must wait on. What remains in
+// the plan is exactly what the child waits on. (The row-level SupersededLine this predicate used to
+// read is deleted; the log's Retired event is the only home the fact has now — operator ruling
+// gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08, step 1(b).)
 
-fn frontier_node_is_superseded(n: RoadmapNode) -> Bool {
-  !(item_superseded_by(item: n.line) == "")
+// THE EDGES THE PLAN STILL SHOWS. A parent the plan has let go of — accepted, or held off by the
+// event log's retirement — is not a parent a child waits on: the projection removes the node AND ITS
+// EDGES (gunbc.roadmap.roadmap_authority frontier_sets_projection), so the edge gates nothing. The
+// spawner is a consumer asked over a SUPPLIED document, and a consumer that asks its question over a
+// supplied graph must subtract that set there rather than trust its caller to have handed it an
+// already-subtracted document — the rule gunbc.roadmap.roadmap_model node_ids_held_off_active_frontier
+// states for the set it owns, and the same filter gunbc.roadmap.roadmap_authority
+// closing_contract_candidates applies to its parent index for the minting rule. Both production
+// callers that HELD a projection (roadmap_dispatch_file_content_for_projection below, and
+// gunbc.roadmap.roadmap_belt_actuate) were discarding accepted and withheld, so on any caller that
+// passed the declared document a retired node would have been handed out as work while its child went
+// on waiting for a parent that no longer exists. One rule applied here and there, never re-decided;
+// filtering an already-filtered list changes nothing, so an entry point and a predicate may both call.
+fn plan_edges(
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapEdge> {
+  edges |> filter(e => !roadmap_node_ids_contain(ids: accepted, node: e.parent)
+    && !roadmap_node_ids_contain(ids: withheld, node: e.parent))
 }
 
-fn node_closes_dependency(n: RoadmapNode) -> Bool {
-  frontier_node_is_superseded(n: n)
+fn node_dep_done(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  id: RoadmapNodeId,
+) -> Bool {
+  count(roadmap_parent_ids(
+    edges: plan_edges(edges: edges, accepted: accepted, withheld: withheld),
+    node: id,
+  )) == 0
 }
 
-fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> Bool {
-  all(roadmap_parent_ids(edges: edges, node: id), pid =>
-    any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+// A node CLOSES a dependency edge — the work it was blocking is handed off rather than waited on —
+// when the roadmap event log has taken it off the plan as retired: its successor owns the work.
+// The ids come from the ONE reader the plan projection itself uses,
+// gunbc.roadmap.roadmap_authority::roadmap_retired_node_ids_load, so the closure rule and the plan
+// cannot ever disagree about which nodes are gone; a caller that reads them from anywhere else, or
+// that reads an absent list as "nothing is retired" when that reader refuses, is the second home the
+// ruling deletes (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08). The caller
+// matches the reader's loaded/refused shape; this predicate stays total over the ids it was given.
+fn node_closes_dependency(retired: List<RoadmapNodeId>, n: RoadmapNode) -> Bool {
+  roadmap_node_ids_contain(ids: retired, node: n.node)
 }
 
-fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
-  match n.dispatch {
-    NotDispatchable => false
-    Dispatchable { repo: _, acceptance: _ } =>
-      !frontier_node_is_superseded(n: n)
-        && node_dep_done(nodes: nodes, edges: edges, id: n.node)
-  }
+fn node_is_spawnable(
+  n: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Bool {
+  !roadmap_node_ids_contain(ids: accepted, node: n.node)
+    && !roadmap_node_ids_contain(ids: withheld, node: n.node)
+    && match n.dispatch {
+      NotDispatchable => false
+      Dispatchable { repo: _, acceptance: _ } =>
+        node_dep_done(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld, id: n.node)
+    }
 }
 
-fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
+fn next_spawnable(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> List<RoadmapNode> {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
-  nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges))
+  // One definition of Ready in this module: node_is_spawnable alone. `merged` stays because the
+  // callers that hold a merge roster pass one (base's signature too); the dependency closure itself
+  // is answered by node_dep_done over the planned edges, with the log's sets subtracted.
+  nodes |> filter(n => node_is_spawnable(
+    n: n, nodes: nodes, edges: edges, accepted: accepted, withheld: withheld,
+  ))
 }
 
 // Renamed from node_is_sized with the fact it actually reads. It never consulted a size: it asked
@@ -211,25 +265,42 @@ fn node_is_dispatchable(n: RoadmapNode) -> Bool {
   }
 }
 
-fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> Bool {
-  node_is_dispatchable(n: n)
-    && !frontier_node_is_superseded(n: n)
-    && !node_dep_done(nodes: nodes, edges: edges, id: n.node)
+fn node_is_upcoming(
+  n: RoadmapNode,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> Bool {
+  !roadmap_node_ids_contain(ids: accepted, node: n.node)
+    && !roadmap_node_ids_contain(ids: withheld, node: n.node)
+    && match n.dispatch {
+      NotDispatchable => false
+      Dispatchable { repo: _, acceptance: _ } =>
+        !node_dep_done(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld, id: n.node)
+    }
 }
 
 type SpawnFrontier {
   ready: List<RoadmapNode>
   upcoming: List<RoadmapNode>
-  superseded: List<RoadmapNode>
 }
 
-fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
+fn spawn_frontier(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> SpawnFrontier {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   SpawnFrontier {
-    ready: next_spawnable(doc: doc, merged: merged),
-    upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges)),
-    superseded: nodes |> filter(n => !(item_superseded_by(item: n.line) == "")),
+    // Ready is ONE predicate in this module, asked one way -- the same call `next_spawnable` answers
+    // for the belt, so the two can never drift into disagreeing about what Ready means.
+    ready: next_spawnable(doc: doc, merged: merged, accepted: accepted, withheld: withheld),
+    upcoming: nodes |> filter(n => node_is_upcoming(
+      n: n, nodes: nodes, edges: edges, accepted: accepted, withheld: withheld,
+    )),
   }
 }
 
@@ -245,7 +316,7 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
           json_kv(key: "kind", value: json_string(s: "prs_merged")),
           json_kv(key: "prs", value: json_array(elements: prs |> map(n => json_int(n: n)))),
         ])
-      AuthoredLine { done: _, content: _ } =>
+      AuthoredLine { content: _ } =>
         json_object(members: [
           json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
           json_kv(key: "prs", value: json_array(elements: [])),
@@ -255,12 +326,7 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
           json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
           json_kv(key: "prs", value: json_array(elements: [])),
         ])
-      SupersededLine { by: _, content: _ } =>
-        json_object(members: [
-          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
-          json_kv(key: "prs", value: json_array(elements: [])),
-        ])
-      TicketLine { done: _, ticket: _ } =>
+      TicketLine { ticket: _ } =>
         json_object(members: [
           json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
           json_kv(key: "prs", value: json_array(elements: [])),
@@ -331,8 +397,20 @@ fn node_json(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<R
   serialize_json(v: node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges))
 }
 
-fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
-  node_unmet_parent_ids_in(graph: readiness_graph(nodes: nodes, edges: edges), id: id)
+// An unmet parent must be a parent the plan still shows. Naming one the log has retired would leave a
+// child waiting on a node that no longer exists — the mistake the minting rule made before
+// closing_contract_candidates filtered its parent index.
+fn node_unmet_parent_ids(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+  id: RoadmapNodeId,
+) -> List<RoadmapNodeId> {
+  node_unmet_parent_ids_in(
+    graph: readiness_graph(nodes: nodes, edges: edges, accepted: accepted, withheld: withheld),
+    id: id,
+  )
 }
 
 // THE READINESS GRAPH, indexed once per graph. Readiness asks every node of one graph the same
@@ -345,26 +423,37 @@ type ReadinessGraph {
   lineage: Map<String, RoadmapNode>
   fuel: Int
   parents: Map<String, List<RoadmapNodeId>>
-  closes: Map<String, Bool>
 }
 
-fn readiness_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
-  let empty: Map<String, Bool> = empty_map()
+// ONE SUBTRACTION FOR EVERY CONSUMER. The graph indexes the plan the log ATTESTS: the parents index
+// is built over `plan_edges`, so a parent the log accepted -- or deliberately retired, before the
+// document catches up -- is absent from the graph itself, not merely excused later. The page's
+// scheduling (`roadmap_presentation work_scheduling`), the dispatcher's admission gate
+// (`roadmap_launch_admission launch_node_readiness`) and the spawner's Ready all read this graph, so
+// they cannot disagree about a child whose parent the log closed -- which is what a claim found when
+// the spawner subtracted the sets and this index did not.
+//
+// The two sets are REQUIRED, not defaulted: a caller that has read the log states what it read, and a
+// caller that has not says `[]` out loud -- an empty list here means "the log holds nothing off", the
+// same absence the plan carries, never "nobody looked".
+fn readiness_graph(
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> ReadinessGraph {
   ReadinessGraph {
     lineage: lineage_index(nodes: nodes),
     fuel: count(nodes) + 1,
-    parents: roadmap_parent_index(edges: edges),
-    closes: fold(nodes |> filter(n => node_closes_dependency(n: n)), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true)),
+    parents: roadmap_parent_index(edges: plan_edges(edges: edges, accepted: accepted, withheld: withheld)),
   }
 }
 
-fn readiness_graph_closes(graph: ReadinessGraph, id: RoadmapNodeId) -> Bool {
-  match map_lookup(m: graph.closes, key: id as String) { Present { value: _ } => true  Absent => false }
-}
-
+// A parent still in the plan is a parent the child waits on; a parent that is over is not in the
+// plan at all, because the projection removed it and its edge with it. No "closes" set is consulted:
+// it existed to let a row declare itself superseded, and that carrier is deleted.
 fn node_unmet_parent_ids_in(graph: ReadinessGraph, id: RoadmapNodeId) -> List<RoadmapNodeId> {
   roadmap_parent_ids_in(parents: graph.parents, node: id)
-    |> filter(pid => !readiness_graph_closes(graph: graph, id: pid))
 }
 
 // The one readiness of a node over an indexed graph: the page's scheduling and the dispatcher's
@@ -378,17 +467,16 @@ fn node_readiness_in_graph(node: RoadmapNode, graph: ReadinessGraph, merged: Lis
   )
 }
 
-fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
-  serialize_json(v: json_array(elements: nodes |> map(n => match n.dispatch {
-    NotDispatchable => json_object(members: [])
-    Dispatchable { repo, acceptance } =>
-      node_json_value(n: n, repo: repo, acceptance: acceptance, edges: edges)
-  })))
-}
 
-fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
-  let nodes = next_spawnable(doc: doc, merged: merged)
-  let edges = doc_all_edges(doc: doc)
+fn roadmap_spawn_request_json(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  anchor_commit: String,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> String {
+  let nodes = next_spawnable(doc: doc, merged: merged, accepted: accepted, withheld: withheld)
+  let edges = plan_edges(edges: doc_all_edges(doc: doc), accepted: accepted, withheld: withheld)
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v2")),
     json_kv(key: "anchor_commit", value: json_string(s: anchor_commit)),
@@ -400,24 +488,7 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
   ]))
 }
 
-fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
-  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node)
-  serialize_json(v: json_object(members: [
-    json_kv(key: "node_id", value: json_string(s: n.node)),
-    json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-    json_kv(key: "unmet_parents", value: json_array(elements: unmet |> map(id => json_string(s: id)))),
-  ]))
-}
 
-fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
-  serialize_json(v: json_array(elements: frontier_upcoming |> map(n =>
-    json_object(members: [
-      json_kv(key: "node_id", value: json_string(s: n.node)),
-      json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-      json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
-    ])
-  )))
-}
 
 fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
   json_str_list(items: frontier_done |> map(n => n.node))
@@ -425,14 +496,15 @@ fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
 
 data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
 
-// roadmap-dispatch/v3 drops v2's "done" array. It was filled only from the authored node acceptance field,
-// which production never set, and a node accepted in the acceptance history is not in the document
-// at all; an always-empty array kept under the v2 name would claim a fact this emitter cannot state,
-// so the contract change takes a new name (gunbc.design_argument::single_authority).
-fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonValue {
+fn roadmap_dispatch_json_value(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> JsonValue {
   let nodes = doc_all_nodes(doc: doc)
-  let edges = doc_all_edges(doc: doc)
-  let frontier = spawn_frontier(doc: doc, merged: merged)
+  let edges = plan_edges(edges: doc_all_edges(doc: doc), accepted: accepted, withheld: withheld)
+  let frontier = spawn_frontier(doc: doc, merged: merged, accepted: accepted, withheld: withheld)
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v3")),
     json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.dispatch {
@@ -444,20 +516,23 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: n.node)),
         json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
-        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node) |> map(id => json_string(s: id)))),
-      ])
-    ))),
-    json_kv(key: "superseded", value: json_array(elements: frontier.superseded |> map(n =>
-      json_object(members: [
-        json_kv(key: "node_id", value: json_string(s: n.node)),
-        json_kv(key: "superseded_by", value: json_string(s: item_superseded_by(item: n.line))),
+        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(
+          nodes: nodes, edges: edges, accepted: accepted, withheld: withheld, id: n.node,
+        ) |> map(id => json_string(s: id)))),
       ])
     ))),
   ])
 }
 
-fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
-  serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
+fn roadmap_dispatch_json(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> String {
+  serialize_json(v: roadmap_dispatch_json_value(
+    doc: doc, merged: merged, accepted: accepted, withheld: withheld,
+  ))
 }
 
 fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection) -> String {
@@ -468,11 +543,15 @@ fn roadmap_dispatch_file_content_for_projection(proj: RoadmapAuthorityProjection
         json_kv(key: "refused", value: json_bool(b: true)),
         json_kv(key: "detail", value: json_string(s: detail)),
       ]))
-    RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
+    // The projection's two sets are PASSED DOWN now rather than discarded: the emitter's answer to
+    // "is this node's work still on the plan" must be the answer the plan gives.
+    RoadmapAuthorityProjected { doc: doc, accepted: accepted, withheld: withheld } =>
       serialize_json(v: json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
         json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),
-        json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: doc, merged: authored_merged_prs())),
+        json_kv(key: "dispatch", value: roadmap_dispatch_json_value(
+          doc: doc, merged: authored_merged_prs(), accepted: accepted, withheld: withheld,
+        )),
       ]))
   }
 }

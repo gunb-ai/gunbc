@@ -31,9 +31,10 @@ module test.claim.runner.runner_slot_cap_observe_route_witness
 // by the PRODUCTION shaper (shape_fleet_ssh_exec inside typed_argv_exec_over_fleet_ssh). The featured
 // slot is read from the real subject's own desired units, so it is genuinely a slot the phase
 // reports. Every arm the fold can reach is controlled from file text: AtDesired, Owed (the fleet's
-// pre-22G shape 8G/4G against the desired 26843545600/0 -- the number the executor pins under
-// GUNBC_BIND_MEMORY_CGROUP_BYTES), Drifted (the unit carries pre-fix values while the live cgroup
-// carries the fleet's -- a hand-edit or a reload that never landed), Unreadable twice over (the
+// pre-22G shape 8G/4G against the per-unit desired the producer computes -- the fleet number the
+// executor pins under GUNBC_BIND_MEMORY_CGROUP_BYTES for an ORDINARY slot, and #15950's computed
+// remainder for the transitional one), Drifted (the unit carries pre-fix values while the live cgroup
+// carries that unit's own desired -- a hand-edit or a reload that never landed), Unreadable twice over (the
 // cgroup file missing, and a value that is not a comparison), Stopped (empty ControlGroup, and NO
 // cgroup leg fired for that slot), and an unplanned command answered as a spawn refusal, never
 // silently passed.
@@ -48,7 +49,7 @@ module test.claim.runner.runner_slot_cap_observe_route_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
-import std.measure { Second, second }
+import std.measure { ByteSize, Second, byte_size, byte_size_count, second }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -86,7 +87,13 @@ import gunbc.runner.runner_slot_cap_converge {
   SlotCapsReadingsDisagree, SlotCapsUnread, SlotCapUnitStanding,
   slot_cap_show_properties, slot_cap_cgroup_files,
 }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
+import gunbc.runner.runner_slot_allocation {
+  committed_slot_identities, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
+  gunbc_runner_slot_desired_for,
+}
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv }
 import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
@@ -97,13 +104,56 @@ import test.claim.typed_remote_file_write_fleet_ssh_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ONE FACT DECIDES EVERYTHING BELOW (gunbc.design_argument::selection_precedes_convergence): the desired slot row, read from its home -- never a
-// second copy. memory_max is the 22 GiB the executor binds under GUNBC_BIND_MEMORY_CGROUP_BYTES; the
-// at-desired control names 26843545600 in text, so a silent re-pin disagrees with this witness.
-fn desired_memory_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) }
-fn desired_swap_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)) }
-fn desired_high_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) }
-fn desired_tasks_text() -> String { to_string(gunbc_runner_slot_desired().tasks_max) }
+// ONE FACT DECIDES EVERYTHING BELOW (gunbc.design_argument::selection_precedes_convergence): each
+// unit's desired row, read from its home -- never a second copy. Since #15950 the subject classifies a
+// unit through `slot_cap_desired_at_unit`, which answers a committed transitional CI slot from
+// `gunbc_runner_slot_desired_for(slot)`: its memory.max is the COMPUTED ENVELOPE REMAINDER, not the fleet
+// row the executor binds under GUNBC_BIND_MEMORY_CGROUP_BYTES (26843545600, the value the base defect
+// left the fleet at). srv1 has exactly one such slot -- srv1-01, this witness's FEATURED unit -- so
+// scripting every unit at the fleet constant made that unit disagree with its own desired forever, and
+// no per-unit standing was reachable: not AtDesired, not Stopped, and the drifted world rendered owed's
+// words. Per-slot is the product intent (#15950: the transitional slot's identity IS its member
+// identity). So each unit's reading is scripted from ITS OWN desired: ONE SUPPLIED VALUE PER UNIT.
+fn witness_fleet_desired() -> RunnerSlotDesired { gunbc_runner_slot_desired() }
+
+// The slot a declared unit IS, read from the host's COMMITTED population -- where #15950's transitional
+// slot lives (host_fleet_slot_indices admits the kept transitional index). Matched through the unit
+// grammar that minted `desired_units`, never a hand-rolled parse of the unit name.
+fn cap_slot_of_unit(unit: NonEmptyStr) -> RunnerSlotIdentity? {
+  let members = match committed_slot_identities(host: cap_host()) {
+    CommittedPopulationDerived { members: ms } => ms
+    CommittedPopulationWidthUnresolved { host: _, cause: _ } => []
+  }
+  first(filter(members, m => (runner_slot_unit_name(slot: m) as String) == (unit as String)))
+}
+
+// THE ONE SUPPLIED VALUE PER UNIT AT THE BOUNDARY: the desired row this unit must read to be at desired.
+// An unmatched unit falls to the fleet row -- which is what `gunbc_runner_slot_desired_for` answers for
+// any ordinary slot anyway -- but a drift that left the featured unit unmatched would re-stale this
+// witness silently, so `the_featured_unit_is_supplied_at_its_own_per_slot_desired` claims it instead.
+fn cap_desired_of_unit(unit: NonEmptyStr) -> RunnerSlotDesired {
+  match cap_slot_of_unit(unit: unit) {
+    Present { value: s } => gunbc_runner_slot_desired_for(slot: s)
+    Absent => witness_fleet_desired()
+  }
+}
+
+fn desired_memory_text_of(unit: NonEmptyStr) -> String {
+  let d = cap_desired_of_unit(unit: unit)
+  to_string(byte_size_count(b: d.memory_max))
+}
+fn desired_swap_text_of(unit: NonEmptyStr) -> String {
+  let d = cap_desired_of_unit(unit: unit)
+  to_string(byte_size_count(b: d.memory_swap_max))
+}
+fn desired_high_text_of(unit: NonEmptyStr) -> String {
+  let d = cap_desired_of_unit(unit: unit)
+  to_string(byte_size_count(b: d.memory_high))
+}
+fn desired_tasks_text_of(unit: NonEmptyStr) -> String {
+  let d = cap_desired_of_unit(unit: unit)
+  to_string(d.tasks_max)
+}
 
 // The fleet's PRE-22G shape: what srv1's slots carried before the fleet moved (8G/4G), as real
 // captures print it -- bytes, not "8G". These are the Owed world's cgroup rows and the Drifted
@@ -146,8 +196,8 @@ fn host_at_desired_legs() -> List<ScriptedCommand> {
   match cap_subject() {
     Absent => []
     Present { value: s } => flat_map(s.desired_units, u => [
-      show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-      grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+      show_leg(unit: u, memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u), high: desired_high_text_of(unit: u), tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
+      grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u)),
     ])
   }
 }
@@ -274,8 +324,8 @@ fn cap_cgroup(unit: NonEmptyStr) -> String {
 // The world where the featured slot agrees with the fleet (unit and cgroup both at the desired row).
 fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
   [
-    show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group),
-    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+    show_leg(unit: unit, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit), high: desired_high_text_of(unit: unit), tasks: desired_tasks_text_of(unit: unit), control_group: control_group),
+    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit)),
   ]
 }
 
@@ -283,7 +333,7 @@ fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCom
 // with itself -- nothing hand-edited; the apply is what is owed.
 fn owed_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
   [
-    show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group),
+    show_leg(unit: unit, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit), high: desired_high_text_of(unit: unit), tasks: desired_tasks_text_of(unit: unit), control_group: control_group),
     grep_leg(unit: unit, control_group: control_group, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text),
   ]
 }
@@ -292,8 +342,8 @@ fn owed_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> 
 // (a hand-edit or a reload that never landed). The old two-valued phase could not say this at all.
 fn drifted_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
   [
-    show_leg(unit: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text(), control_group: control_group),
-    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+    show_leg(unit: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text_of(unit: unit), control_group: control_group),
+    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit)),
   ]
 }
 
@@ -435,6 +485,45 @@ fn every_leg_is_a_read(legs: List<String>) -> Bool {
 
 // ---------- the controls ----------
 
+// THE SUPPLIED PER-UNIT DESIRED IS WHAT THE PRODUCER EMITS, AND IT IS NOT THE FLEET ROW HERE. The
+// inhabitance claim for the one supplied value per unit: it reads the real producer
+// (`gunbc_runner_slot_desired_for` over the host's committed members) rather than a copy, so a supplied
+// shape the producer does not emit reddens here and nowhere else. It carries the discriminating half too:
+// the featured unit IS #15950's transitional CI slot, whose memory.max the producer computes as the
+// envelope remainder -- below the fleet row because it IS a remainder. Were this witness to fall back to
+// the fleet constant for every unit, the at-desired world would be the wrong shape and this reddens; were
+// the remainder pinned back to the fleet constant, the at-desired controls would go green for the wrong
+// reason and this reddens instead.
+test fn the_featured_unit_is_supplied_at_its_own_per_slot_desired() -> Bool {
+  match cap_featured_unit() {
+    Absent => false
+    Present { value: unit } => {
+      let fleet = witness_fleet_desired()
+      // Every declared unit resolves to a real committed slot -- nothing falls silently to the fleet row.
+      match cap_subject() {
+        Absent => false
+        Present { value: s } => all(s.desired_units, u => match cap_slot_of_unit(unit: u) {
+          Absent => false
+          Present { value: _ } => true
+        })
+      }
+        && match cap_slot_of_unit(unit: unit) {
+             // The featured unit's scripted readings are the producer's own answer for ITS slot, on every
+             // file the reader compares, ...
+             Absent => false
+             Present { value: sl } =>
+               desired_memory_text_of(unit: unit) == to_string(byte_size_count(b: gunbc_runner_slot_desired_for(slot: sl).memory_max))
+                 && desired_swap_text_of(unit: unit) == to_string(byte_size_count(b: gunbc_runner_slot_desired_for(slot: sl).memory_swap_max))
+                 && desired_high_text_of(unit: unit) == to_string(byte_size_count(b: gunbc_runner_slot_desired_for(slot: sl).memory_high))
+                 && desired_tasks_text_of(unit: unit) == to_string(gunbc_runner_slot_desired_for(slot: sl).tasks_max)
+                 // ... AND that answer differs from the fleet row here, so the at-desired controls below
+                 // can only be reached by the per-slot path.
+                 && desired_memory_text_of(unit: unit) != to_string(byte_size_count(b: fleet.memory_max))
+           }
+    }
+  }
+}
+
 // AT-DESIRED, THROUGH THE REAL ROUTE. What base cannot answer: the featured slot's reading is
 // AtDesired (not the bare two-valued not-owed), and the dispatcher's ledger shows both its read legs
 // -- the show, and the cgroup grep whose rows earned the reading.
@@ -470,13 +559,16 @@ test fn observe_mode_receipt_names_the_slot_and_the_desired_cap() -> Bool {
       let text = runner_host_cap_phase_text(phase: phase_of(r: observe(legs: owed_legs(unit: unit, control_group: cg))))
       string_contains(s: text, pattern: unit as String)
         && string_contains(s: text, pattern: "OBSERVED-OWED")
-        && string_contains(s: text, pattern: desired_memory_text())
+        // The receipt names the cap the UNIT carries -- which since #15950 is that unit's OWN desired,
+        // not the fleet row: for srv1-01 the two differ, and naming the fleet row here is the stale
+        // assertion this witness carried.
+        && string_contains(s: text, pattern: desired_memory_text_of(unit: unit))
     }
   }
 }
 
-// OWED FROM REAL SHOW + CGROUP TEXT. The cgroup carries the pre-fix 8G/4G while the unit carries the
-// fleet's caps -- the apply is what is owed. Base answered this host "settled" without looking.
+// OWED FROM REAL SHOW + CGROUP TEXT. The cgroup carries the pre-fix 8G/4G while the unit carries ITS
+// OWN desired caps -- the apply is what is owed. Base answered this host "settled" without looking.
 test fn observe_mode_yields_owed_from_real_show_and_cgroup_text() -> Bool {
   match cap_featured_unit() {
     Absent => false
@@ -494,9 +586,10 @@ test fn observe_mode_yields_owed_from_real_show_and_cgroup_text() -> Bool {
   }
 }
 
-// DRIFTED, FROM FILE TEXT. The live cgroup carries the fleet's caps while the unit still carries the
-// pre-fix values: the readings disagree, and that is its OWN answer -- distinct words from Owed,
-// which the old two-valued phase could not say at all.
+// DRIFTED, FROM FILE TEXT. The live cgroup carries this unit's desired caps while the unit still
+// carries the pre-fix values -- a reading genuinely off the per-slot desired, so the drift is not an
+// artifact of the fleet constant: the readings disagree, and that is its OWN answer -- distinct words
+// from Owed, which the old two-valued phase could not say at all.
 test fn observe_mode_yields_drifted_when_the_unit_and_the_cgroup_disagree() -> Bool {
   match cap_featured_unit() {
     Absent => false
@@ -523,7 +616,7 @@ test fn observe_mode_yields_unreadable_when_the_cgroup_files_are_missing() -> Bo
     Present { value: unit } => {
       let cg = cap_cgroup(unit: unit)
       let run = observe(legs: [
-        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
+        show_leg(unit: unit, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit), high: desired_high_text_of(unit: unit), tasks: desired_tasks_text_of(unit: unit), control_group: cg),
         ScriptedCommand { remote_command: grep_command(control_group: cg), answer: shell_failed(exit_code: 2, stderr: "grep: /sys/fs/cgroup/system.slice/actions-runner@srv1-1.service: No such file or directory\n") },
       ])
       match standing_of(r: run, unit: unit) {
@@ -550,8 +643,8 @@ test fn observe_mode_yields_unreadable_when_the_cgroup_value_is_malformed() -> B
     Present { value: unit } => {
       let cg = cap_cgroup(unit: unit)
       let run = observe(legs: [
-        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
-        grep_leg(unit: unit, control_group: cg, memory_max: "not-a-byte-count", swap_max: desired_swap_text()),
+        show_leg(unit: unit, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit), high: desired_high_text_of(unit: unit), tasks: desired_tasks_text_of(unit: unit), control_group: cg),
+        grep_leg(unit: unit, control_group: cg, memory_max: "not-a-byte-count", swap_max: desired_swap_text_of(unit: unit)),
       ])
       match standing_of(r: run, unit: unit) {
         Present { value: s } => match s {
@@ -600,7 +693,7 @@ test fn a_drifted_expected_argv_reds_the_missing_file_control() -> Bool {
       let cg = cap_cgroup(unit: unit)
       let drifted_grep_key = concat(grep_command(control_group: cg), " --drifted")
       let run = observe(legs: [
-        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
+        show_leg(unit: unit, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit), high: desired_high_text_of(unit: unit), tasks: desired_tasks_text_of(unit: unit), control_group: cg),
         ScriptedCommand { remote_command: drifted_grep_key, answer: shell_failed(exit_code: 2, stderr: "grep: /sys/fs/cgroup: No such file or directory\n") },
       ])
       match standing_of(r: run, unit: unit) {
@@ -630,7 +723,7 @@ test fn observe_mode_fires_no_cgroup_leg_for_a_stopped_slot() -> Bool {
     Present { value: unit } => {
       let cg = cap_cgroup(unit: unit)
       let run = observe(legs: [
-        show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: ""),
+        show_leg(unit: unit, memory_max: desired_memory_text_of(unit: unit), swap_max: desired_swap_text_of(unit: unit), high: desired_high_text_of(unit: unit), tasks: desired_tasks_text_of(unit: unit), control_group: ""),
       ])
       match standing_of(r: run, unit: unit) {
         Present { value: s } =>
@@ -798,13 +891,13 @@ fn host_legs_varying_featured(featured: NonEmptyStr, featured_grep_answer: Shell
     Present { value: s } => flat_map(s.desired_units, u =>
       if (u as String) == (featured as String) {
         [
-          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          show_leg(unit: u, memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u), high: desired_high_text_of(unit: u), tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
           ScriptedCommand { remote_command: grep_command(control_group: cap_cgroup(unit: u)), answer: featured_grep_answer },
         ]
       } else {
         [
-          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          show_leg(unit: u, memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u), high: desired_high_text_of(unit: u), tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u)),
         ]
       })
   }
@@ -816,13 +909,13 @@ fn host_legs_featuring(featured: NonEmptyStr, memory_max: String, swap_max: Stri
     Present { value: s } => flat_map(s.desired_units, u =>
       if (u as String) == (featured as String) {
         [
-          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
+          show_leg(unit: u, memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u), high: desired_high_text_of(unit: u), tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
           grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: memory_max, swap_max: swap_max),
         ]
       } else {
         [
-          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          show_leg(unit: u, memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u), high: desired_high_text_of(unit: u), tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u)),
         ]
       })
   }
@@ -836,13 +929,13 @@ fn host_drifted_legs(featured: NonEmptyStr) -> List<ScriptedCommand> {
     Present { value: s } => flat_map(s.desired_units, u =>
       if (u as String) == (featured as String) {
         [
-          show_leg(unit: u, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          show_leg(unit: u, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u)),
         ]
       } else {
         [
-          show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          show_leg(unit: u, memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u), high: desired_high_text_of(unit: u), tasks: desired_tasks_text_of(unit: u), control_group: cap_cgroup(unit: u)),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text_of(unit: u), swap_max: desired_swap_text_of(unit: u)),
         ]
       })
   }
@@ -889,7 +982,7 @@ test fn a_malformed_memory_max_refuses_the_observe_run_with_its_own_cause() -> B
   match cap_featured_unit() {
     Absent => false
     Present { value: unit } => {
-      let phase = observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: "not-a-byte-count", swap_max: desired_swap_text()))
+      let phase = observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: "not-a-byte-count", swap_max: desired_swap_text_of(unit: unit)))
       let text = observe_run_text(phase: phase)
       observe_run_succeeded(phase: phase) == false
         && string_contains(s: text, pattern: "terminal=REFUSED")

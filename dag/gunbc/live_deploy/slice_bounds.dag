@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Memory, One, MeasureFit, Fits, Below,
-  measure_sub, measure_fits, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+  measure_sub, measure_fits, measure_fit_count_floor, MeasureDifference, MeasureSubtrahendExceedsMinuend,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -414,6 +414,59 @@ fn user_work_slice_admit_against(
       // reached through the difference-zero path, not a Fits.)
       Below { requested: requested, available: byte_size(0) }
     MeasureDifference { value: available } => measure_fits(requested: requested, available: available)
+  }
+}
+
+// THE SLICE-ROOM VERDICT a pre-launch admission gate consumes. It is the caller-side envelope around
+// user_work_slice_admit_against's MeasureFit: the impure read (systemctl show of the slice's resident charge
+// and enforced ceiling) produces Fits when the unit's bound fits the room the charge leaves under the ceiling,
+// Full when it does not (carrying the request and the room, straight from the fold's Below), and Unreadable
+// when the charge or the ceiling cannot be read at all -- the property capture refused, the ceiling parsed as
+// unbounded/absent, or a non-numeric wire value. It lives HERE, beside the fold it wraps, so the one slice-room
+// authority has one verdict type; the belt's obligation, reviewer and auditor launch legs all match on it
+// (roadmap_belt_actuate). An Unreadable is NEVER coerced to Fits -- a slice that cannot be read is refused,
+// never assumed to have room (fail-closed, DESIGN 3b).
+type BeltSliceFitCheck
+  = BeltSliceFits { available: ByteSize }
+  | BeltSliceFull { requested: ByteSize, available: ByteSize }
+  | BeltSliceUnreadable { reason: String }
+
+// A COHORT OF LIKE UNITS -- a review round's criteria, one attempt's auditor -- reaches its launcher ALL AT
+// ONCE, and per-unit admission cannot see the cohort: every unit's check reads the kernel's charge, and a
+// just-launched unit charges LATE (the reviewer spends minutes ramping toward its cap), so 34 reviewer
+// units each single-fit-checking a 192 GiB ceiling were ALL admitted and the slice memcg-OOM-killed them
+// (srv1 2026-11-12 18:50-19:15Z: 37 slice-level kills of `gunbc` at ~10 GB each, zero verdicts). The cohort
+// therefore asks ONCE. BeltSliceFits carries the room the fold leaves after ONE unit's declared figure
+// (the shared std.measure MeasureFit already computed it; the wrapper only had to keep it), so this PURE
+// gate counts how many MORE declared figures fit that room -- demand before materialization over the one
+// room model, no second reader, no re-read per unit. The count is capped by the number of candidates;
+// NOTHING launches when the room is full or unobservable (fail closed), and what does not launch is
+// WAITING (the belt retries it on a later sweep), never failed.
+type BeltCohortAdmission
+  = BeltCohortRoom { launch: Nat, waiting: Nat }
+  | BeltCohortFull { reason: String }
+  | BeltCohortUnreadable { reason: String }
+
+fn belt_user_work_cohort_admission(fit: BeltSliceFitCheck, declared: ByteSize, candidates: Nat) -> BeltCohortAdmission {
+  match fit {
+    BeltSliceFits { available: room_after_first } =>
+      // A zero declared figure admits no honest arithmetic (division is vacuous and the unit would be
+      // MemoryMax-killed at birth): nothing is counted into the room, so nothing launches. Fail closed.
+      if byte_size_count(b: declared) == 0 {
+        BeltCohortUnreadable { reason: "the unit's declared memory budget is zero bytes, so no admission arithmetic is honest" }
+      } else {
+        // The first unit FIT (the verdict says so); each further unit must fit the room that fit leaves.
+        let can = nat_add(a: 1, b: measure_fit_count_floor(capacity: room_after_first, each: declared))
+        match nat_sub(a: candidates, b: can) {
+          NatSubtrahendExceedsMinuend => BeltCohortRoom { launch: candidates, waiting: 0 }
+          NatDifference { value: w } => BeltCohortRoom { launch: can, waiting: w }
+        }
+      }
+    // One unit does not fit, so no cohort of them does: the whole cohort waits, none is launched.
+    BeltSliceFull { requested: r, available: a } =>
+      BeltCohortFull { reason: join(["admission refused at the user-work slice: one unit asks ", to_string(byte_size_count(b: r)), " bytes and only ", to_string(byte_size_count(b: a)), " remain under the slice ceiling; the cohort waits for the standing services to drain rather than being launched to be memcg-OOM-killed"], "") }
+    // Unobservable room refuses the whole cohort -- never launch blind.
+    BeltSliceUnreadable { reason } => BeltCohortUnreadable { reason: reason }
   }
 }
 

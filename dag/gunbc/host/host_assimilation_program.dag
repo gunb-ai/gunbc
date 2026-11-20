@@ -43,7 +43,10 @@ import gunbc.host.host_standup {
   host_standup_p3_gunbc_pinned_tree_landed,
   assimilation_input_is_required,
 }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot, ProviderGuest }
+import gunbc.fleet.fleet_host_backing {
+  HostBacking, OwnedMachine, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot,
+  ProviderGuest, owned_provisioning_control, owned_provisioning_delivery,
+}
 import gunbc.fleet.fleet_enrollment {
   FleetParticipation,
   CiRunnerParticipation,
@@ -91,15 +94,17 @@ import std.algebra { fold_list }
 // over both enums, so a new phase or a new provisioning path does not compile until it is placed.
 fn prefix_phase_applies(p: HostStandupPrefixPhase, backing: HostBacking) -> Bool {
   match backing {
-    OwnedMachine { provisioning: OwnedProvisioning { control: c, delivery: d }, unit: _ } => match p {
-      BmcCredentialConverge => match c {
+    // The pair is read through its own accessors, one fact at a time -- which is the point of the pair
+    // having two (gunbc.fleet.fleet_host_backing), and the seal is what stops a consumer pairing them.
+    OwnedMachine { provisioning: provisioning, unit: _ } => match p {
+      BmcCredentialConverge => match owned_provisioning_control(provisioning: provisioning) {
         Bmc => true
         NoOutOfBand => false
       }
-      OsInstallMechanismResolved => delivery_owes_install(d: d)
-      OsInstallActuated => delivery_owes_install(d: d)
+      OsInstallMechanismResolved => delivery_owes_install(d: owned_provisioning_delivery(provisioning: provisioning))
+      OsInstallActuated => delivery_owes_install(d: owned_provisioning_delivery(provisioning: provisioning))
       ProviderGuestAdopted => false
-      HostConvergePolicyDerived => delivery_owes_install(d: d)
+      HostConvergePolicyDerived => delivery_owes_install(d: owned_provisioning_delivery(provisioning: provisioning))
     }
     ProviderGuest { route: _, entitlement: _, resource: _ } => match p {
       BmcCredentialConverge => false

@@ -129,7 +129,7 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_credential_recovery_timer_unit_file,
 }
 import gunbc.live_deploy.emit {
-  live_deploy_approval_broker_unit_file, deployment_serve_route_command, install_d_shared_mode, path_parent_dir, live_deploy_systemd_unit_for, live_deploy_remote_mutation_service_op_realization_dissolution_trigger, live_deploy_intent_dependency_graph_emit_dissolution_trigger, live_deploy_publication_path_unit_file,
+  live_deploy_approval_broker_unit_file, approval_broker_unit_emission, BrokerUnitBound, deployment_serve_route_command, install_d_shared_mode, path_parent_dir, live_deploy_systemd_unit_for, live_deploy_remote_mutation_service_op_realization_dissolution_trigger, live_deploy_intent_dependency_graph_emit_dissolution_trigger, live_deploy_publication_path_unit_file,
   live_deploy_belt_service_unit_file, live_deploy_publication_service_unit_file,
   install_d_owned_render_for, render_install_line, shell_inert_absolute_path,
   InstallLine, InstallLineRefused, RefusalEmpty, RefusalNotAbsolute, RefusalUnsafeBytes,
@@ -933,9 +933,17 @@ type UnitFileOrderScan
 // VALUE rather than either rendered script, for the same cost reason as above -- the port is a
 // directive on a unit, and rendering two deploy programs to find it was paying for the emitter.
 test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
+  match approval_broker_unit_emission(spec: deployment_spec_srv1()) {
+    BrokerUnitBound { url: broker_base_url } => both_install_paths_bind_the_brokers_one_port_check(broker_base_url: broker_base_url)
+    _ => false
+  }
+}
+
+fn both_install_paths_bind_the_brokers_one_port_check(broker_base_url: NonEmptyStr) -> Bool {
   let unit = live_deploy_approval_broker_unit_file(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    broker_base_url: broker_base_url,
   )
   service_has_execstart_containing(
     file: unit,
@@ -969,9 +977,17 @@ fn service_has_execstart_containing(file: SystemdUnitFile, fragment: String) -> 
 // conjunct pins the roadmap root specifically, because the failure mode is not an ABSENT working
 // directory but a plausible WRONG one.
 test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
+  match approval_broker_unit_emission(spec: deployment_spec_srv1()) {
+    BrokerUnitBound { url: broker_base_url } => the_broker_unit_binds_loopback_and_runs_from_its_own_tree_check(broker_base_url: broker_base_url)
+    _ => false
+  }
+}
+
+fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree_check(broker_base_url: NonEmptyStr) -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
+    broker_base_url: broker_base_url,
   ))
   let release_dir = release_locus_dir(
     root: srv1_gunbc_approval_broker_root as String,

@@ -1,0 +1,526 @@
+module gunbc.machine_intake.inband_host_identity
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim, length }
+import std.list { first_where }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.machine_intake.srv15_host_nic_observation { srv15_host_nic_mac }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_srv15 }
+import gunbc.fleet.fleet_intent_network { srv14_bmc_endpoint }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
+import gunbc.ipmitool_fru_text {
+  FruFieldAbsent,
+  FruFieldEmpty,
+  FruFieldGap,
+  FruFieldRead,
+  FruFieldRepeated,
+  FruFieldValue,
+}
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
+
+// THE IN-BAND BOARD IDENTITY READ: dmidecode run ON THE UNIT ITSELF, under a rescue OS, read back from a
+// committed capture. It is the third arm beside the two BMC-side readers in
+// gunbc.machine_intake.mtjade1_access_observation -- the FRU read over a bound controller link, the host
+// SMBIOS type-2 read through an SOL session -- and it differs from them in the one way that decides its
+// shape: neither of those arms had to work out WHICH UNIT it read. The FRU arm reads through a controller the
+// fleet binds to one unit; the SMBIOS arm through a session the operator attests to that controller. An
+// in-band read has no such session in front of it: it is taken from inside the machine, and nothing outside
+// the capture says whose machine it was. So attribution moves INSIDE the capture, and the capture row states
+// what the reader has to find there: the host NIC the fleet binds to the unit must be the interface the
+// rescue session ran on -- present exactly once, with a carrier, holding an address, carrying that MAC. A
+// capture off another unit carries another NIC and refuses. The MAC is not invented here: it is the fleet's
+// own observed binding (gunbc.machine_intake.srv15_host_nic_observation, seen on the wire by srv1), and the
+// board product is checked against the fleet's board row (asrock_altrad8ud_1l2t_catalog), not against a
+// string this module wrote.
+//
+// WHAT ONE IN-BAND READING ESTABLISHES, AND WHAT IT DOES NOT. The two BMC arms give an arrival fold a board
+// serial read by TWO mechanisms, and gunbc.machine_intake.arrival_converge classify_board_serial_agreement
+// passes only when they agree. One dmidecode reading is one reading of one field by the machine about
+// itself: it settles WHICH machine the bytes came off and WHAT that machine's board calls itself, and it
+// establishes nothing about whether the serial it reports is correct. So this module mints an in-band board
+// observation and no unit key; the two-source agreement stays unminted until a second, BMC-side reading of
+// the same serial is committed, and arrival_converge refuses with the capture that would ground it named
+// (altrad8ud_bmc_fru_identity_read_obligation).
+
+// One committed in-band host identity capture, keyed by the unit it was taken on. The row carries the
+// capture's path and digest and the attribution the parser has to find inside it, so no reader function names
+// a unit or a capture (gunbc.design_argument::root_generalization).
+type InbandHostIdentityCaptureRow {
+  unit: HostIdentity
+  capture_path: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  board_section: NonEmptyStr
+  board_product_row_label: NonEmptyStr
+  attribution: InbandAttribution
+  attribution_basis: NonEmptyStr
+}
+
+// HOW AN IN-BAND READ IS ATTRIBUTED, two arms, because the two committed ALTRAD8UD captures say whose
+// machine they came off in different ways and neither is the operator vouching for a session:
+//
+// SESSION NIC: the capture itself reports the host NIC it was read through -- the interface the rescue OS
+// booted on, with its MAC, its carrier and its lease -- and the fleet binds that MAC to a unit
+// (gunbc.machine_intake.srv15_host_nic_observation, seen on the wire by srv1). Nothing else in the corpus can
+// attribute a host-side read this directly, and it is the arm a rescue-OS capture with a network block uses.
+//
+// IN-BAND CHANNEL: an ALTRAD8UD can also be reached through its own BMC bus -- ipmitool over /dev/ipmi0, the
+// SSIF channel, no credentials and no LAN -- and the channel answers for the controller it is wired to. A
+// capture directory whose companion file reports `ipmitool lan print` for that controller attributes the
+// whole run through it: the fleet names that controller's address for this unit
+// (gunbc.fleet.fleet_intent_network srv14_bmc_endpoint), so the host the channel sits on is the unit. This arm
+// reads the companion file, digest-checks it, and requires the address to match; it is not a looser version of
+// the NIC arm, it is a different mechanism with a different witness, and both refuse on a mismatch.
+type InbandAttribution
+  = SessionNicIsTheFleetBoundHostNic { session_nic_section: NonEmptyStr, session_interface: NonEmptyStr, fleet_bound_host_nic_mac: NonEmptyStr }
+  | InbandChannelAnswersForTheFleetBoundController { channel_capture_path: NonEmptyStr, channel_capture_sha256: NonEmptyStr, lan_print_section: NonEmptyStr, fleet_bound_bmc_address: NonEmptyStr }
+
+data inband_host_identity_capture_rows: List<InbandHostIdentityCaptureRow> = [
+  // srv15/bobo, the rescue-OS recovery of 2026-10-29: dmidecode, the NIC block and the in-band ipmitool reads
+  // in one file, read over SSH on the unit's own host NIC.
+  InbandHostIdentityCaptureRow {
+    unit: operator_host_srv15,
+    capture_path: "artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt",
+    capture_sha256: "bbf15b68f26d3cdf752320d5582efa8a7e9415183d9852d48b4672a993520a16",
+    board_section: "dmidecode baseboard",
+    board_product_row_label: asrock_altrad8ud_1l2t_catalog.model_label,
+    attribution: SessionNicIsTheFleetBoundHostNic {
+      session_nic_section: "nics",
+      session_interface: "enP2p4s0",
+      fleet_bound_host_nic_mac: srv15_host_nic_mac,
+    },
+    attribution_basis: "00_README.txt of the same capture directory: the read ran over SSH into the rescue OS on this unit's own host NIC, whose DHCP lease srv1 saw on the wire",
+  },
+  // srv14/butch, the in-band SSIF credential recovery of 2026-10-16: dmidecode and the FRU board area in one
+  // file, the IPMI channel (and its lan print) in the companion file of the same run. The rescue host arrived
+  // on physical USB media, so no NIC block was captured; the channel is what ties the run to this unit.
+  InbandHostIdentityCaptureRow {
+    unit: operator_host_srv14,
+    capture_path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt",
+    capture_sha256: "1d24eff4979ecafd8540c0758bd5e0996c045a3765ccc14f40037f5286a2f99b",
+    board_section: "dmidecode baseboard",
+    board_product_row_label: asrock_altrad8ud_1l2t_catalog.model_label,
+    attribution: InbandChannelAnswersForTheFleetBoundController {
+      channel_capture_path: "artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/02_inband_channel.txt",
+      channel_capture_sha256: "8c1750d13a6c9832b459a61b8aadab246f4e74f138d85861e2758200c07202a4",
+      lan_print_section: "lan print 1",
+      fleet_bound_bmc_address: srv14_bmc_endpoint.address,
+    },
+    attribution_basis: "00_README.txt of the same capture directory: the reads ran in-band through /dev/ipmi0 (SSIF, no credential on the command line) against this unit's BMC at 192.168.1.250, the controller the fleet names as srv14's",
+  },
+]
+
+fn inband_host_identity_capture_row(unit: HostIdentity) -> InbandHostIdentityCaptureRow? {
+  first_where(inband_host_identity_capture_rows, e => host_identity_eq(a: e.unit, b: unit))
+}
+
+// WHY THE IN-BAND CAPTURE DOES NOT GROUND AN IDENTITY READING, in the order the reader fails. Pure, over a
+// supplied capture text and row, so every arm is exercisable.
+type InbandIdentityGap
+  = InbandCaptureUnreadable { error: String }
+  | InbandCaptureUnitHasNoRow { unit: HostIdentity }
+  | InbandCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
+  | InbandBoardSectionCount { marker: NonEmptyStr, count: Int }
+  | InbandFieldGapped { field: NonEmptyStr, cause: NonEmptyStr }
+  | InbandBoardProductNotFleetRow { captured_product: NonEmptyStr, board_row_label: NonEmptyStr }
+  | InbandSessionNicLineCount { interface_name: NonEmptyStr, count: Int }
+  | InbandSessionNicCarrierAbsent { interface_name: NonEmptyStr }
+  | InbandSessionNicNotFleetBound { observed_mac: NonEmptyStr, fleet_bound_mac: NonEmptyStr }
+  | InbandSessionNicUnaddressed { interface_name: NonEmptyStr }
+  | InbandChannelCaptureUnreadable { capture_path: NonEmptyStr, error: String }
+  | InbandChannelCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
+  | InbandChannelLanPrintAddressCount { section: NonEmptyStr, count: Int }
+  | InbandChannelControllerNotFleetBound { observed_address: NonEmptyStr, fleet_bound_address: NonEmptyStr }
+
+fn inband_identity_gap_text(gap: InbandIdentityGap) -> NonEmptyStr {
+  match gap {
+    InbandCaptureUnreadable { error: e } => join(["the in-band host identity capture could not be read: ", e], "") as NonEmptyStr
+    InbandCaptureUnitHasNoRow { unit: u } => join(["no in-band host identity capture row is committed for ", u as String], "") as NonEmptyStr
+    InbandCaptureDigestMismatch { expected: x, observed: o } => join(["the in-band host identity capture hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
+    InbandBoardSectionCount { marker: m, count: n } => join(["the in-band host identity capture carries ", to_string(n), " sections named ", m as String, ", not exactly one"], "") as NonEmptyStr
+    InbandFieldGapped { field: f, cause: c } => join(["the in-band capture's baseboard section ", c, " for ", f as String], "") as NonEmptyStr
+    InbandBoardProductNotFleetRow { captured_product: p, board_row_label: l } => join(["the in-band capture's baseboard product ", p as String, " is not the product the fleet's board row names for this unit, ", l as String], "") as NonEmptyStr
+    InbandSessionNicLineCount { interface_name: i, count: n } => join(["the in-band host identity capture names a MAC on ", i as String, " ", to_string(n), " times, so the session interface is not settled"], "") as NonEmptyStr
+    InbandSessionNicCarrierAbsent { interface_name: i } => join(["the session interface ", i as String, " of the in-band host identity capture reports no carrier"], "") as NonEmptyStr
+    InbandSessionNicNotFleetBound { observed_mac: o, fleet_bound_mac: b } => join(["the in-band host identity capture was taken on a NIC whose MAC is ", o as String, ", and the fleet binds ", b as String, " to this unit"], "") as NonEmptyStr
+    InbandSessionNicUnaddressed { interface_name: i } => join(["the in-band host identity capture shows no address on the session interface ", i as String, ", so no rescue session ran on it"], "") as NonEmptyStr
+    InbandChannelCaptureUnreadable { capture_path: c, error: e } => join(["the in-band channel capture that attributes this read (", c as String, ") could not be read: ", e], "") as NonEmptyStr
+    InbandChannelCaptureDigestMismatch { expected: x, observed: o } => join(["the in-band channel capture that attributes this read hashes to ", o, ", not the recorded ", x as String], "") as NonEmptyStr
+    InbandChannelLanPrintAddressCount { section: s2, count: n } => join(["the in-band channel capture reports ", to_string(n), " IP address lines in its ", s2 as String, " section, so the controller it answers for is not settled"], "") as NonEmptyStr
+    InbandChannelControllerNotFleetBound { observed_address: o, fleet_bound_address: b } => join(["the in-band channel of this capture answers for the controller at ", o, ", and the fleet binds ", b as String, " to this unit"], "") as NonEmptyStr
+  }
+}
+
+// THE IN-BAND SOURCE, one arm: a capture committed at a path and proven by the digest its row records. There
+// is no witness-supplied arm here, deliberately. The two BMC readers each carry one because a unit whose
+// capture was not committed yet still had to carry an identity through an arrival fold under test; that route
+// is closed for this arm -- it is the arm that was to ground the identity this lane was missing -- so nothing
+// reaches an in-band observation except bytes that hash to what the row recorded.
+type InbandIdentitySource sole_constructor {
+  capture_path: NonEmptyStr
+  capture_sha256: NonEmptyStr
+  attribution_basis: NonEmptyStr
+}
+
+// What one in-band reading establishes: this unit's board product and baseboard serial, from this capture, on
+// the NIC the fleet binds to this unit. NOT a unit key -- see the module note above.
+type InbandBoardIdentity sole_constructor {
+  unit: HostIdentity
+  source: InbandIdentitySource
+  product_name: NonEmptyStr
+  serial: NonEmptyStr
+  // What tied the capture to this unit: the MAC of the bound host NIC, or the address of the bound controller
+  // the in-band channel answers for.
+  attributed_by: NonEmptyStr
+}
+
+type InbandBoardRead
+  = InbandBoardObserved { observation: InbandBoardIdentity }
+  | InbandBoardRefused { gap: InbandIdentityGap }
+
+// The rows of one "### <marker>" section: every line after that marker up to the next one. Sections are the
+// capture's own structure -- 00_README.txt records the command behind each -- so a field read cannot reach
+// across into another command's output. That matters here concretely: dmidecode's system section carries its
+// own Product Name and an EMPTY Serial Number, and reading the wrong section would mint a serial from the
+// wrong SMBIOS table.
+type InbandSectionScan { inside: Bool, rows: List<String> }
+
+fn inband_section_rows(content: String, marker: NonEmptyStr) -> List<String> {
+  let head = join(["### ", marker as String], "")
+  let lines = map(split(s: content, delimiter: "\n"), l => trim(l))
+  fold(lines, init: InbandSectionScan { inside: false, rows: [] }, f: fn(acc, line) {
+    if acc.inside {
+      if starts_with(s: line, prefix: "### ") {
+        InbandSectionScan { inside: false, rows: acc.rows }
+      } else {
+        InbandSectionScan { inside: true, rows: concat(acc.rows, [line]) }
+      }
+    } else if line == head {
+      InbandSectionScan { inside: true, rows: acc.rows }
+    } else {
+      acc
+    }
+  }).rows
+}
+
+// A dmidecode line is "Key: value", the key everything before the first colon. The capture indents these
+// lines with tabs and pads some values with trailing spaces, both of which carry no meaning, so key and
+// value are trimmed. A line with no colon has a key and no value.
+fn inband_line_key(line: String) -> String {
+  match split(s: line, delimiter: ":").first() {
+    Present { value: k } => trim(k)
+    Absent => ""
+  }
+}
+
+fn inband_line_value(line: String) -> String {
+  trim(join(split(s: line, delimiter: ":").skip(n: 1), ":"))
+}
+
+// One field of one section, read from exactly one line: absent, repeated or empty are the only failures, the
+// same grain gunbc.ipmitool_fru_text holds for a FRU capture line.
+fn inband_section_field(rows: List<String>, field: NonEmptyStr) -> FruFieldRead {
+  let hits = rows |> filter(l => inband_line_key(line: l) == (field as String))
+  match length(hits) {
+    0 => FruFieldGap { gap: FruFieldAbsent { field: field } }
+    n =>
+      if n > 1 {
+        FruFieldGap { gap: FruFieldRepeated { field: field } }
+      } else {
+        let value = match hits.first() {
+          Present { value: l } => inband_line_value(line: l)
+          Absent => ""
+        }
+        if value == "" {
+          FruFieldGap { gap: FruFieldEmpty { field: field } }
+        } else {
+          FruFieldValue { value: value as NonEmptyStr }
+        }
+      }
+  }
+}
+
+// The capture's report of its session interface. Two blocks are read because the capture records two commands
+// over the same interfaces -- `ip -o link` (mac=, carrier=) and `ip -o -4 addr show` (the lease) -- and the
+// attribution needs both: a NIC with a carrier and no address could not have carried the SSH session the
+// capture was read through. A value token is everything after the first "=", so no prefix stripping is
+// needed on a token that itself contains colons.
+type InbandSessionNic
+  = InbandSessionNicSettled { mac: NonEmptyStr, has_carrier: Bool, addressed: Bool }
+  | InbandSessionNicUnsettled { count: Int }
+
+// An option token is "key=value", and its value can itself carry colons -- a MAC, a PCI address -- so the key
+// is everything before the first "=" and the value everything after it. This is a different line grammar from
+// the dmidecode sections above, and the two are kept apart rather than folded into one reader that would
+// silently accept "Board Serial" from an ip line.
+fn inband_option_key(token: String) -> String {
+  match split(s: token, delimiter: "=").first() {
+    Present { value: k } => trim(k)
+    Absent => ""
+  }
+}
+
+fn inband_option_value(token: String) -> String {
+  trim(join(split(s: token, delimiter: "=").skip(n: 1), "="))
+}
+
+fn inband_token_value(line: String, key: NonEmptyStr) -> String? {
+  let hits = split(s: line, delimiter: " ") |> filter(t => inband_option_key(token: t) == (key as String))
+  match hits.first() {
+    Present { value: t } => Present { value: inband_option_value(token: t) }
+    Absent => none
+  }
+}
+
+fn inband_named_rows(rows: List<String>, interface_name: NonEmptyStr) -> List<String> {
+  let name = interface_name as String
+  rows |> filter(l => match split(s: l, delimiter: " ").first() {
+    Present { value: t } => t == name
+    Absent => false
+  })
+}
+
+fn inband_line_with_option(line: String, key: NonEmptyStr) -> Bool {
+  split(s: line, delimiter: " ") |> filter(t => inband_option_key(token: t) == (key as String)) |> length > 0
+}
+
+// One session interface, settled only when EXACTLY one line carries its MAC: two lines could name the same
+// interface with different hardware, and the attribution has to say which one the session ran on. The carrier
+// and the lease are read from that same line and from the address block, in that order: a NIC with no carrier
+// is not the NIC a session ran on, and a NIC with a carrier and no address could not have carried the SSH
+// session the capture was read through.
+fn inband_session_nic(rows: List<String>, interface_name: NonEmptyStr) -> InbandSessionNic {
+  let named = inband_named_rows(rows: rows, interface_name: interface_name)
+  let mac_lines = named |> filter(l => inband_line_with_option(line: l, key: "mac"))
+  let address_lines = named |> filter(l => split(s: l, delimiter: " ") |> filter(t => t == "UP") |> length > 0)
+  match length(mac_lines) {
+    1 =>
+      match mac_lines.first() {
+        Present { value: l } =>
+          match inband_token_value(line: l, key: "mac") {
+            Present { value: mac } =>
+              match inband_token_value(line: l, key: "carrier") {
+                Present { value: c } => InbandSessionNicSettled { mac: mac as NonEmptyStr, has_carrier: c == "1", addressed: length(address_lines) > 0 }
+                Absent => InbandSessionNicSettled { mac: mac as NonEmptyStr, has_carrier: false, addressed: length(address_lines) > 0 }
+              }
+            Absent => InbandSessionNicUnsettled { count: 0 }
+          }
+        Absent => InbandSessionNicUnsettled { count: 0 }
+      }
+    n => InbandSessionNicUnsettled { count: n }
+  }
+}
+
+// THE CHANNEL ARM'S PARSE: the address the in-band channel answers for. One `IP Address` line in the lan
+// print section, and it has to be the address the fleet names for this unit's controller -- a channel wired to
+// another unit's BMC answers for that unit, and attributing its host's board read here would key one board by
+// another's identity.
+// One controller address, settled only when EXACTLY one IP Address line is present AND carries a value. The
+// count is the measured length of the scan, never a placeholder: a section with two address lines refuses with
+// two, and a single line printed empty is its own case, because an empty "IP Address" is not "no such line".
+type InbandLanPrintAddresses
+  = InbandLanPrintSettled { address: NonEmptyStr }
+  | InbandLanPrintBlank { section: NonEmptyStr }
+  | InbandLanPrintUnsettled { section: NonEmptyStr, count: Int }
+
+fn inband_lan_print_addresses(content: String, section: NonEmptyStr) -> InbandLanPrintAddresses {
+  let lines = inband_section_rows(content: content, marker: section)
+    |> filter(l => inband_line_key(line: l) == "IP Address")
+  match length(lines) {
+    1 => match lines.first() {
+      Absent => InbandLanPrintUnsettled { section: section, count: 0 }
+      Present { value: line } => {
+        let value = inband_line_value(line: line)
+        if value == "" {
+          InbandLanPrintBlank { section: section }
+        } else {
+          InbandLanPrintSettled { address: value as NonEmptyStr }
+        }
+      }
+    }
+    n => InbandLanPrintUnsettled { section: section, count: n }
+  }
+}
+
+// THE ONE DIGEST GATE for these captures: the row's digest is the authority for which bytes are this
+// capture, so the bytes are hashed and compared before anything inside them is read, and a mismatch names
+// both halves instead of quietly decoding someone else's unit. std.content_hash's hash is the same authority
+// gunbc.ipmitool_fru_text::fru_capture_digest_check asks; that one returns the whole union of ways a FRU
+// capture can fail, and a comparison of these bytes to that digest can only produce this one, so the
+// comparison is asked directly here.
+type InbandDigestDiffers sole_constructor { expected: NonEmptyStr, observed: String }
+
+fn inband_digest_differs(content: String, expected: NonEmptyStr) -> InbandDigestDiffers? {
+  let observed = sha256_hex_of_text(text: content)
+  if observed == (expected as String) {
+    none
+  } else {
+    Present { value: InbandDigestDiffers { expected: expected, observed: observed } }
+  }
+}
+
+// THE PURE HALF, bytes to verdict: digest, attribution, decode, in that order. The digest gate is first
+// because the digest is what makes the bytes THIS capture; attribution comes before the serial is handed on,
+// because a serial from an unattributed capture is a serial attached to nothing. The callers that read from a
+// path check the digest before they decode anything either way -- the same authority, row.capture_sha256, read
+// twice rather than a second authority written -- so a witness can drive every arm off real capture bytes with
+// one row field changed and no file touched.
+fn decode_inband_board_capture(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> InbandBoardRead {
+  match inband_digest_differs(content: content, expected: row.capture_sha256) {
+    Present { value: d } => InbandBoardRefused { gap: InbandCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
+    Absent => match inband_board_fields(content: content, row: row) {
+    InbandBoardFieldsRefused { gap: g } => InbandBoardRefused { gap: g }
+    InbandBoardFieldsObserved { product_name: product, serial: serial } =>
+      match inband_attribution(content: content, row: row, channel_content: channel_content) {
+        InbandAttributionSettled { attributed_by: attributed_by } =>
+          InbandBoardObserved {
+            observation: InbandBoardIdentity {
+              unit: row.unit,
+              source: InbandIdentitySource {
+                capture_path: row.capture_path,
+                capture_sha256: row.capture_sha256,
+                attribution_basis: row.attribution_basis,
+              },
+              product_name: product,
+              serial: serial,
+              attributed_by: attributed_by,
+            },
+          }
+        InbandAttributionRefused { gap: g } => InbandBoardRefused { gap: g }
+      }
+  }
+  }
+}
+
+// The board table itself: section, the two fields, and the product against the fleet's board row.
+type InbandBoardFields
+  = InbandBoardFieldsObserved { product_name: NonEmptyStr, serial: NonEmptyStr }
+  | InbandBoardFieldsRefused { gap: InbandIdentityGap }
+
+fn inband_board_fields(content: String, row: InbandHostIdentityCaptureRow) -> InbandBoardFields {
+  let boards = inband_section_rows(content: content, marker: row.board_section)
+  if length(boards) == 0 {
+    InbandBoardFieldsRefused { gap: InbandBoardSectionCount { marker: row.board_section, count: 0 } }
+  } else {
+    match inband_section_field(rows: boards, field: "Serial Number") {
+      FruFieldGap { gap: FruFieldAbsent { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries no such line" } }
+      FruFieldGap { gap: FruFieldRepeated { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries more than one line" } }
+      FruFieldGap { gap: FruFieldEmpty { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries it empty" } }
+      FruFieldValue { value: serial } =>
+        match inband_section_field(rows: boards, field: "Product Name") {
+          FruFieldGap { gap: FruFieldAbsent { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries no such line" } }
+          FruFieldGap { gap: FruFieldRepeated { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries more than one line" } }
+          FruFieldGap { gap: FruFieldEmpty { field: f } } => InbandBoardFieldsRefused { gap: InbandFieldGapped { field: f, cause: "carries it empty" } }
+          FruFieldValue { value: product } =>
+            if !ends_with(s: row.board_product_row_label as String, suffix: product as String) {
+              InbandBoardFieldsRefused { gap: InbandBoardProductNotFleetRow { captured_product: product, board_row_label: row.board_product_row_label } }
+            } else {
+              InbandBoardFieldsObserved { product_name: product, serial: serial }
+            }
+        }
+    }
+  }
+}
+
+// What attributed the read, when it is attributed: the MAC of the bound host NIC, or the address of the bound
+// controller the channel answers for. Both are the fact the fleet and the capture agreed on.
+//
+// ONE DECISION, ONE PLACE. The attribution and the reason it failed are the same lookup, so they are one
+// settled/refused sum rather than two functions that each re-run the scan: with two, the caller has to cover a
+// "settled and refused at once" or "neither" state, and the only honest way to name that state is to admit it
+// cannot happen -- which is worse than not writing it (gunbc.design_argument::fail_closed, "stronger than
+// catching a wrong state is making it unwritable"; gunbc.design_argument::single_authority).
+type InbandAttributionRead
+  = InbandAttributionSettled { attributed_by: NonEmptyStr }
+  | InbandAttributionRefused { gap: InbandIdentityGap }
+
+fn inband_attribution(content: String, row: InbandHostIdentityCaptureRow, channel_content: String?) -> InbandAttributionRead {
+  match row.attribution {
+    SessionNicIsTheFleetBoundHostNic { session_nic_section: nic_section, session_interface: iface, fleet_bound_host_nic_mac: bound } =>
+      match inband_session_nic(rows: inband_section_rows(content: content, marker: nic_section), interface_name: iface) {
+        InbandSessionNicUnsettled { count: n } => InbandAttributionRefused { gap: InbandSessionNicLineCount { interface_name: iface, count: n } }
+        InbandSessionNicSettled { mac: mac, has_carrier: up, addressed: addressed } =>
+          if !up {
+            InbandAttributionRefused { gap: InbandSessionNicCarrierAbsent { interface_name: iface } }
+          } else if (mac as String) != (bound as String) {
+            InbandAttributionRefused { gap: InbandSessionNicNotFleetBound { observed_mac: mac, fleet_bound_mac: bound } }
+          } else if !addressed {
+            InbandAttributionRefused { gap: InbandSessionNicUnaddressed { interface_name: iface } }
+          } else {
+            InbandAttributionSettled { attributed_by: bound }
+          }
+      }
+    InbandChannelAnswersForTheFleetBoundController { channel_capture_path: channel_path, lan_print_section: section, fleet_bound_bmc_address: bound } =>
+      match channel_content {
+        Absent => InbandAttributionRefused { gap: InbandChannelCaptureUnreadable { capture_path: channel_path, error: "the companion channel capture was not supplied" } }
+        Present { value: text } =>
+          match inband_lan_print_addresses(content: text, section: section) {
+            InbandLanPrintUnsettled { section: s2, count: n } => InbandAttributionRefused { gap: InbandChannelLanPrintAddressCount { section: s2, count: n } }
+            InbandLanPrintBlank { section: s2 } => InbandAttributionRefused { gap: InbandFieldGapped { field: "IP Address" as NonEmptyStr, cause: join(["carries it empty in the ", s2 as String, " section"], "") as NonEmptyStr } }
+            InbandLanPrintSettled { address: address } =>
+              if (address as String) != (bound as String) {
+                InbandAttributionRefused { gap: InbandChannelControllerNotFleetBound { observed_address: address, fleet_bound_address: bound } }
+              } else {
+                InbandAttributionSettled { attributed_by: bound }
+              }
+          }
+      }
+  }
+}
+
+// THE TEXT OF A UNIT'S DIGEST-PROVEN IN-BAND CAPTURE, with its attribution settled: what another in-band read
+// of the SAME run -- an ipmitool fru print from the same rescue session, in the same file -- has to lean on to
+// say which unit it came off. The FRU arm takes its in-band attribution from here rather than inventing its
+// own, so one capture directory attributes one run once (gunbc.design_argument::single_authority).
+type InbandAttributedCapture
+  = InbandCaptureAttributed { content: String, row: InbandHostIdentityCaptureRow, channel_content: String? }
+  | InbandCaptureRefused { gap: InbandIdentityGap }
+
+fn read_attributed_inband_capture(unit: HostIdentity) -> InbandAttributedCapture uses fs: std.resources.Filesystem {
+  match inband_host_identity_capture_row(unit: unit) {
+    none => InbandCaptureRefused { gap: InbandCaptureUnitHasNoRow { unit: unit } }
+    Present { value: row } => {
+      let read = Filesystem.Read(path: row.capture_path as String)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: e } => InbandCaptureRefused { gap: InbandCaptureUnreadable { error: e } }
+        FilesystemReadSucceeded { content: text } =>
+          match inband_digest_differs(content: text, expected: row.capture_sha256) {
+            Present { value: d } => InbandCaptureRefused { gap: InbandCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
+            Absent => read_inband_channel_if_rowled(text: text, row: row)
+          }
+      }
+    }
+  }
+}
+
+// The companion capture the channel arm needs, read and digest-checked the same way as the host capture. This
+// decides only WHICH BYTES the attribution will be settled from -- a NIC-arm row reads one file and no companion,
+// so the second read is taken only when the row's arm asks for it. It does not settle the attribution itself:
+// that happens once, in `inband_attribution`, when the mint asks for it. Settling it here too would put a second
+// place that decides the same fact (gunbc.design_argument::single_authority).
+fn read_inband_channel_if_rowled(text: String, row: InbandHostIdentityCaptureRow) -> InbandAttributedCapture uses fs: std.resources.Filesystem {
+  match row.attribution {
+    SessionNicIsTheFleetBoundHostNic { session_nic_section: _, session_interface: _, fleet_bound_host_nic_mac: _ } =>
+      InbandCaptureAttributed { content: text, row: row, channel_content: none }
+    InbandChannelAnswersForTheFleetBoundController { channel_capture_path: channel_path, channel_capture_sha256: channel_sha, lan_print_section: _, fleet_bound_bmc_address: _ } => {
+      let read = Filesystem.Read(path: channel_path as String)
+      match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+        FilesystemReadRefused { error: e } => InbandCaptureRefused { gap: InbandChannelCaptureUnreadable { capture_path: channel_path, error: e } }
+        FilesystemReadSucceeded { content: channel_text } =>
+          match inband_digest_differs(content: channel_text, expected: channel_sha) {
+            Present { value: d } => InbandCaptureRefused { gap: InbandChannelCaptureDigestMismatch { expected: d.expected, observed: d.observed } }
+            Absent => InbandCaptureAttributed { content: text, row: row, channel_content: Present { value: channel_text } }
+          }
+      }
+    }
+  }
+}
+
+// READ A UNIT'S IN-BAND BOARD IDENTITY FROM ITS ROW, fail closed: the capture is read from the path its row
+// records and must hash to the digest its row records before anything is decoded from it.
+fn read_inband_board_identity(unit: HostIdentity) -> InbandBoardRead uses fs: std.resources.Filesystem {
+  match read_attributed_inband_capture(unit: unit) {
+    InbandCaptureRefused { gap: g } => InbandBoardRefused { gap: g }
+    InbandCaptureAttributed { content: text, row: row, channel_content: channel } => decode_inband_board_capture(content: text, row: row, channel_content: channel)
+  }
+}

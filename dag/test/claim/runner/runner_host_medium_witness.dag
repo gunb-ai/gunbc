@@ -1,6 +1,8 @@
 module test.claim.runner.runner_host_medium_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.bootloader.grub { grub_cmdline_render }
+import extdeps.firmware.kernel_cmdline { kernel_cmdline_arg_wire }
 import std.measure { kibibyte_count, hardware_thread_count_value }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
@@ -161,7 +163,7 @@ test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_h
         && string_contains(s: program, pattern: "/releases/1111111111111111111111111111111111111111")
         && string_contains(s: program, pattern: "Runner.Listener")
         && !string_contains(s: program, pattern: "poweroff")
-        && string_contains(s: input.grub_kernel_cmdline as String, pattern: mtcollins1_census_console_arg as String)
+        && string_contains(s: grub_cmdline_render(args: input.grub_kernel_cmdline), pattern: kernel_cmdline_arg_wire(arg: mtcollins1_census_console_arg))
     }
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false

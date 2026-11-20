@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_serve {
   RoadmapDailyPageHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
   BeltDispatchHandler, DispatchAssetHandler,
-  SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
+  SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, StandingsJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
   serve_issue_assignment_context_over, serve_issue_view_preferences_over,
@@ -123,6 +123,7 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: "/sessions.json", want: SessionsJsonHandler)
     && selects(method: GET, path: "/attempts.json", want: AttemptsJsonHandler)
     && selects(method: GET, path: "/workflow.json", want: WorkflowJsonHandler)
+    && selects(method: GET, path: "/standings.json", want: StandingsJsonHandler)
     && selects(method: GET, path: roadmap_dispatch_asset_path, want: DispatchAssetHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)

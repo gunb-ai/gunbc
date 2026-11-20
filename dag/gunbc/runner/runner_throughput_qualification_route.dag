@@ -235,7 +235,7 @@ data mtcollins1_image_leg: RouteLegStanding = LegWired {
 // it is an ensure over every slot exit whose success is the runner absent from the organization's
 // listing, with the host-side teardown carried by gunbc.runner.runner_teardown_receipt
 // RunnerTeardownRequest over a host-unit inventory. Both are pre-approved under the dispatching
-// run's authorization (operator ruling 2026-10-03), rowed in gunbc.auth.privileged_effect_census.
+// run's authorization (operator ruling 2026-10-03), rowed in gunbc.auth.privileged_effect_registry.
 // Dispatch is gunbc.runner.runner_qualification_dispatch dispatch_qualification_floor: CreateDispatch
 // with the attempt label as the workflow input, under the same run's authorization.
 data mtcollins1_registration_leg: RouteLegStanding = LegAuthorityImplemented {

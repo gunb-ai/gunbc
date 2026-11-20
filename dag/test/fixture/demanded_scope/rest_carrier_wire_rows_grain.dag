@@ -1,0 +1,47 @@
+module test.fixture.demanded_scope.rest_carrier_wire_rows_grain
+
+// THE DECLARING SIDE OF THE WIRE-ROWS-ONLY VICTIM SHAPE (node adhoc-cf8a613a-843; #16156 class,
+// sibling of service_op_grain.dag from #16279). A rest service whose namespace root is NOT its
+// module root (mirroring extdeps.github.actions_self_hosted_runners, which declares
+// service github.ActionsSelfHostedRunners), answering a page wire row. The consumer next to it
+// imports the WIRE ROW ONLY -- never the service, never the carrier RestResult -- and calls the
+// operation service-qualified in a function BODY (not a lambda subject, which #16279's pair
+// already witnesses). Under the #16156 demanded grain the carrier read is synthesized with no
+// authored lexeme to demand it, so the call refuses MethodExistenceUndecided naming the service
+// receiver -- the production shape is the github.ActionsSelfHostedRunners.ListOrganizationRunnersPage
+// call inside gunbc.fleet.organization_runner_roster_read::rest_roster_page.
+
+import std.types { String, NonEmptyStr, Int, List }
+import std.resources { Network }
+
+type RosterCarrierRunnerWire {
+  id: Int
+  name: String
+}
+
+type RosterCarrierPageWire {
+  total: Int
+  runners: List<RosterCarrierRunnerWire>
+}
+
+service fleetroster.RosterCarrierRest {
+  operation GetCarrierPage {
+    requires Network
+    input {
+      org: NonEmptyStr
+      per_page: Int
+    }
+    output {
+      result: RosterCarrierPageWire
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/orgs/\{org\}/actions/runners",
+      query: { per_page: per_page }
+    }
+    response {
+      200 => RosterCarrierPageWire
+    }
+  }
+}
