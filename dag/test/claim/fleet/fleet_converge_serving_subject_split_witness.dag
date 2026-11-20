@@ -281,7 +281,7 @@ test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
 // three act modes plus the two serving modes. If the install-rule list grew past the roster, a mode would be
 // handed the lenient rule by the script and the strict one by nothing -- or vice versa -- and the two halves
 // of the same gate would disagree.
-test fn the_rule_list_and_the_roster_name_the_same_pair() -> Bool {
+test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   length(roster) == 5
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
