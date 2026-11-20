@@ -79,8 +79,7 @@ test fn the_split_gate_covers_exactly_the_subject_roster() -> Bool {
   let cond = step_condition_text(step: fleet_converge_executor_subject_split_gate_step())
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   let outside = filter(map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m)), w => !any(roster, r => r == w))
-  length(roster) == 5
-    && all(roster, w => string_contains(s: cond, pattern: concat("'", w, "'")))
+  all(roster, w => string_contains(s: cond, pattern: concat("'", w, "'")))
     && !any(outside, w => string_contains(s: cond, pattern: concat("'", w, "'")))
     && any(roster, w => w == "remote_build_serving_converge")
     && any(roster, w => w == "remote_build_serving_observe")
@@ -271,10 +270,10 @@ test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
 test fn the_rule_list_and_the_roster_name_the_same_pair() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   length(fleet_converge_install_rule_mode_wires) == 2
-    && length(roster) == 5
     && all(fleet_converge_install_rule_mode_wires, w => any(roster, r => r == w))
-    && all(roster, w => any(fleet_converge_install_rule_mode_wires, x => x == w) || w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
     && all(fleet_converge_install_rule_mode_wires, w => install_rule_admits_its_own_mode(mode: w))
+    && all(roster, w => install_rule_admits_its_own_mode(mode: w) == any(fleet_converge_install_rule_mode_wires, x => x == w))
+    && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
     && !any(roster, w => w == "runner_host_file_observe")
 }
 
@@ -293,6 +292,17 @@ fn mode_named(name: String) -> FleetConvergeWorkflowMode {
 fn install_rule_admits_its_own_mode(mode: String) -> Bool {
   match fleet_converge_split_rule_for_mode(mode: mode) {
     SubjectMayBeTheExecutorsOwnMachine => true
+    _ => false
+  }
+}
+
+// The other half of the same split: a mode the list does not name falls through to the drain rule, which is
+// what a NEW subject-naming mode (a host-unit teardown, say) gets by default -- strict, subject required,
+// executor different from the subject. Asserting the halves rather than a roster count is what lets a sixth
+// mode arrive without editing this witness: it must land on one side of the split or the claim goes red.
+fn drain_rule_admits_its_own_mode(mode: String) -> Bool {
+  match fleet_converge_split_rule_for_mode(mode: mode) {
+    SubjectRequiredAndDistinct => true
     _ => false
   }
 }
