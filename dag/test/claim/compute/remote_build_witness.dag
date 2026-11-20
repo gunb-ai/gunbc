@@ -83,6 +83,8 @@ test fn a_compile_request_reads_back_as_itself() -> Bool {
             && match request.operation {
               RemoteCompileEntry { entry } => entry as String == "dag/gunbc/compute/remote_build.dag"
               RemoteRunClaims { entry: _, functions: _ } => false
+              // A gate request is a different operation; a compile request must not read back as one.
+              RemoteGateSubject { label: _ } => false
             }
       }
   }
@@ -181,6 +183,10 @@ test fn a_claims_request_reaches_the_provider_as_the_local_route_sends_it() -> B
         && match window { Present { value: _ } => false  Absent => true }
     CompileEntry { entry: _ } => false
     BuildGunbcBinaries { profile: _, bins: _ } => false
+    // The gate operation reaches the provider as an ADMISSION, not as an attached binary: there is no
+    // binary in it to name, and any arm that claimed one would be describing the dependent route this
+    // operation is not allowed to take.
+    TestGateSubject { label: _ } => false
   }
 }
 
