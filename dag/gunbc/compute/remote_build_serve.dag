@@ -46,6 +46,7 @@ import gunbc.compute.work_provider_local {
 import gunbc.compute.remote_build {
   RemoteBuildRequest, RemoteBuildRequestDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
   remote_build_request_refusal_text, remote_build_source_ref_name, remote_build_work_operation,
+  remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild,
   RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
   RemoteBuildCandidate, remote_build_candidates,
   RemoteBuildClientKey, remote_build_admitted_client_keys,
@@ -243,9 +244,60 @@ fn remote_build_provide_on(instance: HostDashboardInstance, request: RemoteBuild
   )
 }
 
-// THE BUILD FIRST, answered by its own typed outcome (gunbc.compute.remote_build, the dependency rule):
-// a failed build is the work's answer, a full pool or a build in flight is that, and only a build that
-// succeeded (produced or attached) goes on to the operation, which then attaches to it.
+// THE DEPENDENCY RULE DECIDES THE SHAPE OF THE RUN, and it is decided in gunbc.compute.remote_build,
+// not read off the request here. A request that depends on the seed build gets THE BUILD FIRST, answered
+// by its own typed outcome: a failed build is the work's answer, a full pool or a build in flight is
+// that, and only a build that succeeded (produced or attached) goes on to the operation, which then
+// attaches to it. A request that carries its own seed build goes to its operation directly, because for
+// it the attached binary is the wrong answer and the second reservation is a second door to refuse.
+//
+// THE SERVING BINARY'S IDENTITY applies to whichever shape ran: the question "which binary served this"
+// is asked of the serve, not of the operation, so the tail that turns a provided attempt into a wire
+// answer is shared by both -- one authority on what a completed serve attests (remote_build_serve_settled),
+// not two copies that can drift.
+fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
+  match remote_build_dependency_rule(op: request.operation) {
+    RemoteBuildCarriesItsOwnSeedBuild =>
+      remote_build_serve_settled(
+        instance: instance,
+        attempt: remote_build_provide_discharging(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+      )
+    RemoteBuildBuildsTheSeedFirst => {
+      let build = remote_build_provide_discharging(instance: instance, request: request, op: remote_build_dependency_operation())
+      match remote_build_ending_of_provide(r: build.result) {
+        ServeServed =>
+          remote_build_serve_settled(
+            instance: instance,
+            attempt: remote_build_provide_discharging(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+          )
+        // The dependency build did not serve: its ending IS the work's answer, identity aside.
+        _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build.result), text: remote_build_attempt_document(attempt: build))
+      }
+    }
+  }
+}
+
+// THE TAIL ONE PROVIDED ATTEMPT DESERVES, ONCE ITS SHAPE IS CHOSEN.
+//
+// Only a run the serving binary COMPLETED gets an identity folded in -- it is the answer to "which binary
+// served this", and the one outcome the identity machinery may touch. A damaged sidecar then REFUSES that
+// success claim (you cannot attest a clean serve you cannot vouch for); no build outcome is lost, because
+// the only ending it can overwrite is the success it attests.
+//
+// Not served (unsuccessful, refused, host full, in flight): the work's OWN typed outcome is the answer,
+// untouched. The serving binary never attested a success here, so there is nothing to vouch for and a
+// present-but-broken identity file must not overwrite the work's verdict.
+fn remote_build_serve_settled(instance: HostDashboardInstance, attempt: RemoteBuildServeAttempt) -> CliWireResponse {
+  let work_ending = remote_build_ending_of_provide(r: attempt.result)
+  match work_ending {
+    ServeServed => remote_build_serve_identity_answer(
+      ending: ServeServed,
+      document: remote_build_attempt_document(attempt: attempt),
+      identity: read_serve_binary_identity(serve_binary: instance.serve_binary as String),
+    )
+    _ => remote_build_serve_answer(ending: work_ending, text: remote_build_attempt_document(attempt: attempt))
+  }
+}
 // THE SERVING BINARY'S IDENTITY, read from the sidecar the converge step writes beside the binary.
 // A receipt that does not say WHICH binary served it lets a stale or substituted serve binary pass for
 // the dispatched one, so the receipt names the dispatched revision and the binary's own sha256. The
@@ -408,34 +460,6 @@ fn remote_build_attempt_document(attempt: RemoteBuildServeAttempt) -> String {
     Present { value: pass } => concat(provide_result_document(r: attempt.result), remote_build_discharge_note(pass: pass))
   }
 }
-
-fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
-  let build = remote_build_provide_discharging(instance: instance, request: request, op: remote_build_dependency_operation())
-  match remote_build_ending_of_provide(r: build.result) {
-    ServeServed => {
-      let result = remote_build_provide_discharging(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
-      let work_ending = remote_build_ending_of_provide(r: result.result)
-      match work_ending {
-        // Only a run the serving binary COMPLETED gets an identity folded in -- it is the answer to
-        // "which binary served this", and the one outcome the identity machinery may touch. A damaged
-        // sidecar then REFUSES that success claim (you cannot attest a clean serve you cannot vouch for);
-        // no build outcome is lost, because the only ending it can overwrite is the success it attests.
-        ServeServed => remote_build_serve_identity_answer(
-          ending: ServeServed,
-          document: remote_build_attempt_document(attempt: result),
-          identity: read_serve_binary_identity(serve_binary: instance.serve_binary as String),
-        )
-        // Not served (unsuccessful, refused, host full, in flight): the work's OWN typed outcome is the
-        // answer, untouched. The serving binary never attested a success here, so there is nothing to
-        // vouch for and a present-but-broken identity file must not overwrite the work's verdict.
-        _ => remote_build_serve_answer(ending: work_ending, text: remote_build_attempt_document(attempt: result))
-      }
-    }
-    // The dependency build did not serve: its ending IS the work's answer, identity aside.
-    _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build.result), text: remote_build_attempt_document(attempt: build))
-  }
-}
-
 // A LOST HOST RECORD IS NOT A CLEAN RUN, the same reading gunbc.compute.test_run gives it: the work's
 // own ending is in the document, but the run is answered as unsuccessful so the loss is heard.
 fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
