@@ -3313,32 +3313,19 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
       executions: FreeSemigroup {
         head: RetainedExecutionResult {
           control: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_hand_staged_entry_under_the_edge_staging_subtree_is_stale"),
-          run: "green at ca0b9c46b3d1 (the landed pull request's head, an ancestor of 6f1e4de1eac8) inside "
-            "test.claim.fleet.site_pxe_edge_converge_witness: 108 claims, 108 pass, 0 fail, clean tree, claim_batch "
-            "sha256 b569513e8ffcb5ca884647e8de81df2fde2cecdfbdfa537068e75fc4b0453934 built from fb2127fc88f8; local "
-            "serial, one claim_batch at a time. RED as a planted pair, each reverted in place: with the staging root "
-            "removed from site_pxe_edge_owned_install_roots this claim fails (3 claims run: pass=1 fail=2).",
-          conclusion: "The hand-staged install entry under the edge's staging/ subtree is inside the set the fold "
-            "claims, so the converge lists it as residue and can remove it. Drop that ownership arm and it is "
-            "invisible to the fold -- which is exactly the half this row carried open.",
+          run: "green at ca0b9c46b3d1 (the landed pull request's head, an ancestor of 6f1e4de1eac8) inside test.claim.fleet.site_pxe_edge_converge_witness: 108 claims, 108 pass, 0 fail, clean tree, claim_batch sha256 b569513e8ffcb5ca884647e8de81df2fde2cecdfbdfa537068e75fc4b0453934 built from fb2127fc88f8; local serial, one claim_batch at a time. RED as a planted pair, each reverted in place: with the staging root removed from site_pxe_edge_owned_install_roots this claim fails (3 claims run: pass=1 fail=2).",
+          conclusion: "The hand-staged install entry under the edge's staging/ subtree is inside the set the fold claims, so the converge lists it as residue and can remove it. Drop that ownership arm and it is invisible to the fold -- which is exactly the half this row carried open.",
         },
         tail: [
           RetainedExecutionResult {
             control: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_directory_emptied_by_the_withdrawal_is_pruned_and_the_family_roots_stay"),
-            run: "same batch, same binary, same revision as the entry claim above. RED twice, each reverted in "
-              "place: with the staging root dropped (pass=1 fail=2), and with site_pxe_edge_ancestor_directories "
-              "returning no ancestors (pass=2 fail=1), the second plant being the one that shows the protection walk "
-              "is load-bearing -- without it the seed directory this run renders into lands on the prune list.",
-            conclusion: "A directory a completed removal has emptied is retired, inside the owned families only, "
-              "deepest first, while each family root and every directory the fold keeps or renders content into is "
-              "protected.",
+            run: "same batch, same binary, same revision as the entry claim above. RED twice, each reverted in " place: with the staging root dropped (pass=1 fail=2), and with site_pxe_edge_ancestor_directories " returning no ancestors (pass=2 fail=1), the second plant being the one that shows the protection walk " is load-bearing -- without it the seed directory this run renders into lands on the prune list.",
+            conclusion: "A directory a completed removal has emptied is retired, inside the owned families only, " deepest first, while each family root and every directory the fold keeps or renders content into is " protected.",
           },
           RetainedExecutionResult {
             control: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_refused_directory_removal_refuses_the_apply"),
-            run: "same batch, same binary, same revision; green, and it stays green under both plants, which is the "
-              "correct shape -- it tests the apply's failure path, not which roots are owned.",
-            conclusion: "An apply that cannot remove an emptied directory fails rather than reporting success, so a "
-              "partially pruned edge can never read as a clean one.",
+            run: "same batch, same binary, same revision; green, and it stays green under both plants, which is the correct shape -- it tests the apply's failure path, not which roots are owned.",
+            conclusion: "An apply that cannot remove an emptied directory fails rather than reporting success, so a partially pruned edge can never read as a clean one.",
           },
         ],
       },
@@ -4192,6 +4179,7 @@ data integration_concerns: List<IntegrationConcern> = [systemctl_user_show_omits
 // revision is claimed for the landing itself, because gunbc.recurring_failure_mode
 // ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
 // stand on, and a pending change has none until it lands.
+data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
 // The landing that drew the edge's staging/ subtree into the fold that prunes install residue, and that retires the
 // directories a completed removal leaves empty. It is an ancestor of main (git merge-base --is-ancestor holds), and
 // AT THAT REVISION the declarations cited as the replacement below exist -- site_pxe_edge_served_root,
