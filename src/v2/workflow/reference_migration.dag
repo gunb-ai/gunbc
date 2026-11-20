@@ -1553,7 +1553,9 @@ fn migration_judge_targets(env: AcquisitionEnv, candidates: List<DeclarationRef>
   let sites = list_map(xs: migration_numbered(candidates: candidates), f: fn(pair) {
     ReferenceSite { file: "@migration-target", site: AnnotationReference { reference: pair.reference, start: pair.index, end: pair.index + 1 } }
   })
-  let verdicts = reference_verdicts(env: env, sites: sites)
+  // Synthesized target sites have no caller file, so no run-step target-name evidence is
+  // supplied; the verdicts here judge coordinate resolution only.
+  let verdicts = reference_verdicts(env: env, sites: sites, target_callers: Empty)
   list_reverse(xs: fold_list(xs: sites, empty: Empty, cons: fn(acc, site) {
     match migration_first_containing(lines: verdicts.lines, head: site_head(site: site)) {
       Present { value: line } => Cons { head: MigrationTargetFailure { index: site.site.start, reason: line }, tail: acc }
