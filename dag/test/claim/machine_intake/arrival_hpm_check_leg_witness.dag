@@ -1,0 +1,102 @@
+module test.claim.machine_intake.arrival_hpm_check_leg_witness
+
+import std.types { Bool, NonEmptyStr, FilePath }
+import std.algebra { string_contains }
+import std.measure { second, second_count }
+import gunbc.machine_intake.arrival_run {
+  arrival_wet_hpm_check_source,
+  arrival_wet_hpm_check_refusal,
+  arrival_wet_hpm_retention_refusal,
+  arrival_wet_hpm_check_path,
+  arrival_hpm_check_leg_bound,
+  arrival_ipmi_leg_bound,
+}
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_arrival_converge_step_timeout_minutes }
+
+// THE ARRIVAL hpm LEG, WITNESSED AT ITS RENDERINGS AND ITS BUDGET ENTRY. The leg runs inside the
+// door's wet skin (arrival_run_wet_gated calls the ONE shared transport,
+// gunbc.machine_intake.bmc_firmware_hpm_read::bmc_hpm_check_transport -- the same function the
+// boot lane calls) and executes only where a controller answers. What is established hermetically
+// here is the lane's contract, exactly as the boot lane's witness establishes its own:
+//  - the source line names the command, the ARRIVAL endpoint (not the boot lane's), the probed
+//    instant and the credential FILE's role -- never a credential string;
+//  - the two failure arms render two DIFFERENT causes, and the retention arm never claims a
+//    controller exit code, never says "was not read", and never reaches for the credential
+//    (review 96635's rule, held per lane: a local write failure must never send the operator to
+//    inspect the controller);
+//  - the retained path is run-keyed, so a rerun cannot read back a previous attempt's table;
+//  - the leg is PAID FOR: its bound equals the one arm every other ipmitool leg is bounded by
+//    (an independent bound would let the roster and the fold drift), and the arrival step still
+//    carries the signed 21-minute figure -- the leg entered the fold inside the 21-minute band,
+//    so no budget raise was needed (if a future term pushes the sum past the band, the pairing
+//    witness goes red and the raise must come with a ruling row, never silently).
+// The discriminating pairs: exit 124 vs exit 1 render different causes (a timeout is not a
+// session failure is not a refused read); the retention refusal is distinct from BOTH transport
+// renderings; drop the phase or change the bound and the budget claims below go red while the
+// wording claims stay green, and vice versa.
+
+data arrival_controller_host: NonEmptyStr = "192.168.1.247"
+data at_instant: NonEmptyStr = "2026-11-20T08:40:00Z"
+data run_wire_key: NonEmptyStr = "44134741714"
+
+test fn w_the_arrival_source_line_names_the_command_the_endpoint_and_instant_and_no_credential() -> Bool {
+  let path = arrival_wet_hpm_check_path(evidence_root: "/srv15/evidence" as FilePath, run_wire: run_wire_key)
+  let source = arrival_wet_hpm_check_source(host: arrival_controller_host, at: at_instant, retained_path: path) as String
+  string_contains(s: source, pattern: "ipmitool hpm check at ")
+    && string_contains(s: source, pattern: arrival_controller_host as String)
+    && string_contains(s: source, pattern: at_instant as String)
+    && string_contains(s: source, pattern: "/srv15/evidence")
+    && !string_contains(s: source, pattern: "password")
+}
+
+test fn w_the_transport_refusal_names_the_cause_and_no_credential_and_the_two_causes_differ() -> Bool {
+  let timeout = arrival_wet_hpm_check_refusal(
+    host: arrival_controller_host, at: at_instant, exit_code: 124, transport_stderr: "",
+    retained_path: "/srv15/evidence/hpm-check-44134741714",
+  ) as String
+  let session = arrival_wet_hpm_check_refusal(
+    host: arrival_controller_host, at: at_instant, exit_code: 1, transport_stderr: "unable to establish a session",
+    retained_path: "/srv15/evidence/hpm-check-44134741714",
+  ) as String
+  string_contains(s: timeout, pattern: "ARRIVAL WET HPM CHECK REFUSED")
+    && string_contains(s: timeout, pattern: "hpm check was not read at ")
+    && string_contains(s: timeout, pattern: "exit 124")
+    && string_contains(s: timeout, pattern: arrival_controller_host as String)
+    && string_contains(s: session, pattern: "exit 1")
+    && string_contains(s: session, pattern: "unable to establish a session")
+    && timeout != session
+    && !string_contains(s: timeout, pattern: "password")
+    && !string_contains(s: session, pattern: "password")
+}
+
+test fn w_the_retention_failure_names_the_write_never_the_controller() -> Bool {
+  let cause = arrival_wet_hpm_retention_refusal(
+    at: at_instant,
+    retained_path: "/srv15/evidence/hpm-check-44134741714",
+    write_error: "no space left on device",
+  ) as String
+  string_contains(s: cause, pattern: "ARRIVAL WET HPM RETENTION REFUSED")
+    && string_contains(s: cause, pattern: "the controller answered")
+    && string_contains(s: cause, pattern: "/srv15/evidence/hpm-check-44134741714")
+    && string_contains(s: cause, pattern: "no space left on device")
+    && string_contains(s: cause, pattern: at_instant as String)
+    && !string_contains(s: cause, pattern: "was not read")
+    && !string_contains(s: cause, pattern: "exit ")
+    && !string_contains(s: cause, pattern: "password")
+}
+
+test fn w_the_retained_path_is_run_keyed_under_the_unit_evidence_root() -> Bool {
+  let this_run = arrival_wet_hpm_check_path(evidence_root: "/srv15/evidence" as FilePath, run_wire: "44134741714" as NonEmptyStr) as String
+  let other_run = arrival_wet_hpm_check_path(evidence_root: "/srv15/evidence" as FilePath, run_wire: "44134741715" as NonEmptyStr) as String
+  string_contains(s: this_run, pattern: "/srv15/evidence/hpm-check-44134741714")
+    && this_run != other_run
+}
+
+test fn w_the_leg_is_bounded_by_the_one_ipmitool_arm() -> Bool {
+  second_count(s: arrival_hpm_check_leg_bound()) == second_count(s: arrival_ipmi_leg_bound())
+    && second_count(s: arrival_hpm_check_leg_bound()) == second_count(s: second(count: 6))
+}
+
+test fn w_the_arrival_step_still_carries_the_signed_twenty_one_minutes() -> Bool {
+  fleet_converge_arrival_converge_step_timeout_minutes() == 21
+}
