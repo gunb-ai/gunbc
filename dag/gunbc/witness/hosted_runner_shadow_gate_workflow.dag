@@ -343,7 +343,7 @@ fn shadow_gate_remote_build_step() -> Step {
       concat(
         join([
           "set -euo pipefail",
-          concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=${{ inputs.pattern || \""), shadow_gate_plumbing_proof_pattern), "\" }} --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json"),
+          concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=${{ inputs.pattern || '"), shadow_gate_plumbing_proof_pattern), "' }} --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json"),
           "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
         ], " && "),
         "\n"
