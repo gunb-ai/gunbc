@@ -95,10 +95,11 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // their legacy labels, ken/butch/bobo/dan/... their drawn names), never a per-host carve-out.
 // This fixes the defect where the fold returned the bare identity for any non-guest, non-bound host.
 // A modeled Spark router reservation still wins over the name (it is a more specific address).
-// A SOLD asset fails closed: gunbc.spark.dgx_procurement::dgx_spark_disposed_units names it as no
-// longer ours, so it yields NO endpoint at all -- the empty target every downstream reader refuses
-// A DISPOSED (sold) unit is kept OUT of the allocation-name rule: it keeps the pre-existing bare-identity
-// passthrough (its slot string, exactly as on main), NOT a drawn tailnet name. Its hostname_allocation row
+// A DISPOSED (sold) unit -- named no-longer-ours by gunbc.spark.dgx_procurement::dgx_spark_disposed_units
+// -- is kept OUT of the allocation-name rule: it keeps the pre-existing bare-identity passthrough (its
+// slot string, exactly as on main), NOT a drawn tailnet name. It is NOT a typed refusal yet: a String
+// return cannot write "no endpoint" in the type, so the bare handle stays until the replacement lands
+// (see the concern below). Its hostname_allocation row
 // survives as a naming fixture, but the unit is no longer owned, so resolving srv9 -> francis.tailecbe08.ts.net
 // would hand a consumer a live MagicDNS name that may now answer for someone else's device — the sold-asset
 // hazard. The bare id is the same total passthrough this function already gave unmodeled spellings; it is not
