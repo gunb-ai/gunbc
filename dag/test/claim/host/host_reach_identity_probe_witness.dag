@@ -204,19 +204,27 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
     }
 }
 
-// (msg_1c4e0bce, superseded 2026-11-19 by the tailnet-name rule) An OWNED host that has a
-// hostname_allocation row resolves to its MagicDNS name -- uniformly: legacy-label hosts srv1..4 AND
-// drawn-name hosts ken/butch/... alike. A SOLD Group B unit (dgx_spark_disposed_units) yields NO
-// endpoint at all -- the empty target every downstream reader refuses -- never its bare id (which
-// /etc/hosts or LAN DNS could still dial). Identity stays the receipt key.
-test fn registry_hosts_resolve_to_tailnet_names_sold_units_to_none() -> Bool {
+// The tailnet-name rule (operator: hosts pin to tailscale names, not IP addresses). An OWNED host that
+// has a hostname_allocation row resolves to its MagicDNS name -- uniformly: legacy-label hosts srv1..4
+// AND drawn-name hosts ken/butch/... alike. This is the change: on main every one of these resolved to
+// its bare identity handle (srv1 -> "srv1", ken -> "host-e2d4b7"), so each line is RED at the base and
+// GREEN here. A SOLD Group B unit (dgx_spark_disposed_units) is kept OUT of the allocation rule and
+// keeps its bare-id passthrough -- it is NOT handed the drawn MagicDNS name its (retained-as-fixture)
+// allocation row would otherwise give it (srv9 -> francis.tailecbe08.ts.net would be a live name a new
+// owner's device could answer). The guard's content is precisely that no tailnet name leaks to a sold
+// unit; the bare id is the same passthrough this total function already gave unmodeled spellings, not a
+// sentinel. Representing sold absence as a typed no-endpoint (rather than a bare handle) is the deferred
+// follow-up: gunbc.integration_concern::sold_units_keep_bare_passthrough_pending_typed_absence.
+test fn registry_hosts_resolve_to_tailnet_names_and_sold_units_keep_the_bare_handle() -> Bool {
   // Uniform positive rule (RED on main, GREEN with this change).
   fleet_probe_endpoint_for(host: "srv1") == "srv1.tailecbe08.ts.net"
     && fleet_probe_endpoint_for(host: "host-e2d4b7") == "ken.tailecbe08.ts.net"
     && fleet_probe_endpoint_for(host: "srv14") == "butch.tailecbe08.ts.net"
-    // Sold units fail closed: no endpoint, not a name a new owner may answer.
-    && fleet_probe_endpoint_for(host: "srv9") == ""
-    && fleet_probe_endpoint_for(host: "srv10") == ""
+    // Sold units: no drawn tailnet name leaks to a unit we no longer own.
+    && fleet_probe_endpoint_for(host: "srv9") == "srv9"
+    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
+    && fleet_probe_endpoint_for(host: "srv9") != "francis.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "srv10") != "emerson.tailecbe08.ts.net"
 }
 
 // The undecided slot exists only as a fixture: both production bindings are SlotAssigned, so this
@@ -225,13 +233,6 @@ test fn registry_hosts_resolve_to_tailnet_names_sold_units_to_none() -> Bool {
 // allocation is decided, and it is reachable from this projection's denominator, which is any
 // binding at all.
 data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv9 }
-
-fn spark_endpoint_or_empty(binding: DgxSparkRouterBinding) -> String {
-  match spark_endpoint_for_binding(binding: binding) {
-    Absent => ""
-    Present { value: endpoint } => endpoint
-  }
-}
 
 // AN UNDECIDED SLOT YIELDS NO ENDPOINT — not a fabricated address and not a placeholder. This is
 // the refusal spark_endpoint_for_binding's header claims, asserted through the projection rather
@@ -244,23 +245,19 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
   }
 }
 
-// THE DISCRIMINATING CONTROL FOR THE 2026-08-23 DUPLICATE REMOVAL. fleet_probe_endpoint_for used
-// to re-derive the projection with its own inline render instead of calling
-// spark_endpoint_for_binding, so the two could silently drift. Each side of this comparison is
-// computed by a DIFFERENT entry point over the same binding, which is the whole content: a mutant
-// that restores the inline derivation and changes it — a different render, a dropped cast, a
-// stale address — TYPECHECKS and reds here. After the repair one implementation feeds both, so
-// this is a permanent regression control rather than a probe that retires: it stays enrolled as
-// the executing evidence that the two entry points have not forked again (gunbc.design_argument::guarantee_ladder meta-obligation 4 —
-// a climb deletes the redundant production machinery, never the evidence).
+// THE BINDING-FOLD REGRESSION CONTROL. fleet_probe_endpoint_for folds dgx_spark_router_bindings
+// through spark_endpoint_for_binding rather than re-deriving an inline render, so the two entry points
+// cannot drift. On main the fold has zero live occupancy (all eight procured Sparks are sold,
+// dgx_spark_router_bindings is empty), so the fold never overrides the allocation-name init for any
+// host. The live content of THIS change is therefore the init itself: an owned host resolves through the
+// allocation rule to its tailnet name (RED on main, where the fold init was the bare handle), while a
+// sold unit is short-circuited ahead of the fold to its bare handle so no drawn name leaks. If a
+// retained Spark ever lands a SlotAssigned binding again, the fold-override arm reactivates and the
+// undecided-slot control above still pins what an undecided binding yields.
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  // Sold units short-circuit ahead of the (currently empty) dgx_spark_router_bindings fold, so both
-  // entry points agree they yield no endpoint. dgx_spark_router_bindings is empty on main (all eight
-  // procured Sparks sold), so the binding-override arm has no live occupancy; this stays as the
-  // regression guard that fleet_probe_endpoint_for calls spark_endpoint_for_binding rather than
-  // re-deriving, if a retained Spark lands a binding again.
-  fleet_probe_endpoint_for(host: "srv9") == ""
-    && fleet_probe_endpoint_for(host: "srv10") == ""
+  // The fold init (allocation name for owned, bare handle for sold) is what feeds both entry points.
+  fleet_probe_endpoint_for(host: "srv1") == "srv1.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "srv9") == "srv9"
 }
 
 // IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.

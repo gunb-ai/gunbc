@@ -97,11 +97,19 @@ fn fleet_probe_endpoint_for(host: String) -> String {
 // A modeled Spark router reservation still wins over the name (it is a more specific address).
 // A SOLD asset fails closed: gunbc.spark.dgx_procurement::dgx_spark_disposed_units names it as no
 // longer ours, so it yields NO endpoint at all -- the empty target every downstream reader refuses
-// (parse_network_host("") => SshTargetRefused; classify_reach_probe_wire("") => RefusedTarget).
-// Returning the bare id instead would name a machine that /etc/hosts or LAN DNS may still resolve.
+// A DISPOSED (sold) unit is kept OUT of the allocation-name rule: it keeps the pre-existing bare-identity
+// passthrough (its slot string, exactly as on main), NOT a drawn tailnet name. Its hostname_allocation row
+// survives as a naming fixture, but the unit is no longer owned, so resolving srv9 -> francis.tailecbe08.ts.net
+// would hand a consumer a live MagicDNS name that may now answer for someone else's device — the sold-asset
+// hazard. The bare id is the same total passthrough this function already gave unmodeled spellings; it is not
+// a sentinel and not a name. Representing this absence as a TYPED no-endpoint (not a string that happens to
+// name nothing) is deferred to the endpoint-authority replacement (gunbc.endpoint_authority_replacement_cut),
+// tracked by gunbc.integration_concern::sold_units_keep_bare_passthrough_pending_typed_absence; see the
+// PR note. A typed Absent would force a ~15-caller return-type change across fleet/host/runner that cannot be
+// validated within this change, so the follow-up is filed rather than half-taken.
 fn fleet_owned_probe_endpoint_for(host: String) -> String {
   match filter(dgx_spark_disposed_units, u => (u.former_slot as String) == host).first() {
-    Present { value: _ } => ""
+    Present { value: _ } => host
     Absent => fold(dgx_spark_router_bindings, init: fleet_allocated_endpoint_or_host(host: host), f: fn(acc, b) {
       if (router_binding_identity(binding: b) as String) == host {
         match spark_endpoint_for_binding(binding: b) {
