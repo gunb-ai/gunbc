@@ -38,9 +38,10 @@ module gunbc.tailscale_join_converge
 //     tailscale_fleet_auth_key_usable_on). An expired key fails the login, and a login failure reads like a
 //     network fault; refusing on the calendar says which one it was. A host that is already a member is a
 //     Noop regardless, because upstream is explicit that expiry stops enrollments and not membership.
-//   A BACKEND STATE THAT IS NOT RUNNING, including Starting and NeedsMachineAuth. The fleet's key is
-//     pre-approved, so NeedsMachineAuth means the key is not what the model says it is -- a custody and
-//     roster question, not something to retry past.
+//   A BACKEND STATE THAT IS NOT RUNNING, including Starting and NeedsMachineAuth. Device approval is OFF on
+//     this tailnet and the fleet key is tagged tag:ci, so a correctly-enrolled host never parks in
+//     NeedsMachineAuth -- seeing it means the node did not self-enroll as the model expects, a custody and
+//     tailnet-config question, not something to retry past.
 //   AN UNREADABLE PACKAGE QUERY OR STATUS. dpkg-query's "unknown" and a status document that will not parse
 //     are refusals, never defaults: "not installed" and "installed" produce opposite legs, and a guessed one
 //     installs or skips a package on a host nobody looked at.
@@ -55,8 +56,9 @@ module gunbc.tailscale_join_converge
 //     the sealed write and the portable-word check all carry their own refusal arms, and this module
 //     propagates them. No leg here is ever composed as a shell string.
 //
-// WHAT IT DOES NOT DO: approve a device in the admin console (the key is pre-approved, which is the operator
-// decision that makes the join non-interactive); restart or reauthenticate a daemon (`--force-reauth` is not
+// WHAT IT DOES NOT DO: approve a device in the admin console (there is nothing to approve -- device approval
+// is off on this tailnet, which is the operator setting that makes the join non-interactive); restart or
+// reauthenticate a daemon (`--force-reauth` is not
 // offered by extdeps.tailscale.join at all, because it may drop the connection it is being run over); or
 // render the router's upstream configuration, which is held for its own read-only diff.
 
@@ -425,14 +427,16 @@ fn tailscale_join_plan_requiring_key(
       cause: "the pinned auth key is expired, so this join cannot be authorized; existing members are unaffected (upstream: an expired key \"will not work after that date, but the nodes it authorized continue to work\")",
     }
   } else if string_contains(s: state, pattern: "NeedsMachineAuth") {
-    // Pre-approval is a property of the KEY (gunbc.tailscale_fleet_auth_key), and a node sitting in
-    // NeedsMachineAuth on a tailnet with device approval on means the key is not what that record says it is.
-    // Approving by hand would leave the model and the tailnet disagreeing about why the host is reachable.
+    // Device approval is OFF on this tailnet (gunbc.tailscale_fleet_auth_key records the key's approval as
+    // not-applicable), so a healthy tagged join never lands here. A node parked in NeedsMachineAuth means the
+    // node did not self-enroll as the model expects -- a custody / tailnet-config fault, not a key property to
+    // approve by hand. Approving it anyway would leave the model and the tailnet disagreeing about why the host
+    // is reachable.
     JoinPlanRefused {
       host: host,
       cause: concat(
         "backend state is ", state,
-        ", which on this tailnet means the key is not pre-approved",
+        ", which on this tailnet (device approval off) is unexpected: the node did not self-enroll -- a custody/tailnet-config fault, do not retry past it",
       ),
     }
   } else if !tailscale_join_tag_consistency() {
@@ -1159,7 +1163,7 @@ fn tailscale_join_outcome_receipt(outcome: TailscaleJoinOutcome) -> String {
           " against ",
           required_tag as String,
           ". Recovery, and it is an OPERATOR-approved act, not this converge's: re-authenticate the host",
-          " under the fleet's pre-approved key (`tailscale up --auth-key=file:<placed key> --force-reauth`;",
+          " under the fleet's tag:ci key (`tailscale up --auth-key=file:<placed key> --force-reauth`;",
           " a tagged key makes the node assume the key's tag -- tailscale.com/kb/1085/auth-keys). This",
           " converge never re-authenticates a host it did not join.\n",
         ],
