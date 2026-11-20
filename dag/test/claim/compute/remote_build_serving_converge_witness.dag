@@ -1227,6 +1227,46 @@ test fn install_slice_sorts_before_serve_binary() -> Bool {
   }
 }
 
+// RED CONTROL. A slice control nobody could read is an UNKNOWN, not drift: the same host with only the
+// memory.max read REFUSED (an ssh/sudo failure -- high/swap unchanged from the uncapped control) must plan
+// NO InstallUserWorkSlice. This is the minimal-delta opposite of uncapped_slice_plans_exactly_one_install_leg
+// (there max is established-unbounded -> exactly one install; here it is refused -> none), so a refused read
+// can never masquerade as 'uncapped' and drive an install toward a cgroup nobody read.
+fn slice_refused_max_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice.memory_max", cause: "ssh refused" } },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+test fn refused_slice_max_plans_no_install_leg() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: slice_refused_max_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          length(filter(plan_writes(plan), x => is_install_slice(x))) == 0
+        }
+      }
+    }
+  }
+}
+
 // After the unit file is installed, the leg hands systemd exactly two verbs in order: daemon-reload (so
 // systemd reads the new unit) THEN start (so the slice's cgroup exists). daemon-reload alone never
 // instantiates a never-active slice's cgroup, so without the start the cgroup readback would wait on a
