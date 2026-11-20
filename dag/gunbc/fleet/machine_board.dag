@@ -2,6 +2,7 @@ module gunbc.fleet.machine_board
 
 import std.types { List, NonEmptyStr }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.boards.types { BaseboardCatalogRow }
@@ -157,7 +158,7 @@ type RunnerArchStanding
   | RunnerArchUnknown
 
 fn fleet_converge_runner_arch_label(host: HostIdentity) -> RunnerArchStanding {
-  match find(xs: machine_board_rows, r => host_identity_eq(a: r.host, b: host)) {
+  match first_where(xs: machine_board_rows, keep: r => host_identity_eq(a: r.host, b: host)) {
     Absent => RunnerArchUnknown
     Present { value: r } => match machine_board_authority(standing: r.board) {
       Absent => RunnerArchUnknown
