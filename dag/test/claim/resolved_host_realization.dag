@@ -6,6 +6,12 @@ import std.types { Char, List }
 // The host declaration is in the same closure. This declaration must still run its own body.
 fn text_of_chars(scalars: List<Char>) -> HostText { "source declaration" }
 
+fn char_at(text: HostText, pos: Int) -> HostText { "source position reader" }
+
+test fn a_source_declaration_precedes_an_ambient_builtin_spelling() -> Bool {
+  char_at(text: "ab", pos: 0) == "source position reader"
+}
+
 test fn the_qualified_host_crossing_keeps_its_selected_declaration() -> Bool {
   std.host_text.text_of_chars(scalars: chars(text: "aé😀")) == "aé😀"
 }
