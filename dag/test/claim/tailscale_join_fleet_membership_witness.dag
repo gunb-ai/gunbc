@@ -46,6 +46,7 @@ import std.types { FilePath, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tailscale.acl { tag_serving }
 import extdeps.package_managers.dpkg {
+  DpkgInstalledState,
   DpkgPackageInstalled,
   DpkgPackageNotInstalled,
   DpkgPackageUnknown,
@@ -68,6 +69,8 @@ import gunbc.fleet.fleet_enrollment {
 }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
   JoinPlanNotFleetMember,
@@ -82,6 +85,7 @@ import gunbc.tailscale_join_converge {
   StatusBinaryAbsent,
   StatusUnreadable,
   tailscale_join_observation_of,
+  tailscale_join_package_verdict_of,
   TailscaleJoinPackageAction,
   JoinPackageInstall,
   JoinPackageAlreadyInstalled,
@@ -213,6 +217,69 @@ test fn w_package_decides_before_the_join_state() -> Bool {
   plan_installs(install)
     && plan_refused(refused)
     && plan_refused(installed_unreadable)
+}
+
+// The dpkg leg's wet decoding, witnessed at the decision the wet makes. `dpkg-query -s <absent>` exits 1 and
+// prints "... is not installed and no information is available" -- a dpkg ANSWER (Unknown = definite absence),
+// NOT an execution failure. The wet used to short-circuit ANY non-zero exit to Undecidable, so srv4 (live run
+// 44677315667) refused to install tailscale on a host that simply did not have it. Now a CONVERGED leg is decoded
+// by dpkg_query_status_verdict_of: the exit-1-marker shape -> Unknown -> (with a 127 binary-absent status) ->
+// JoinObsInstall -> the plan INSTALLS; a transport refusal and a genuine non-0/non-1 dpkg failure stay Undecidable
+// and refuse. Mirrors the proven sibling observe_site_pxe_edge_package.
+fn pkg_is_unknown(s: DpkgInstalledState) -> Bool {
+  match s {
+    DpkgPackageUnknown => true
+    _ => false
+  }
+}
+
+fn pkg_is_undecidable(s: DpkgInstalledState) -> Bool {
+  match s {
+    DpkgQueryUndecidable { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn w_fresh_host_dpkg_answer_installs_not_refuses() -> Bool {
+  let fresh_host = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecConverged {
+      result: SshSessionExecResult {
+        exit_code: 1,
+        success: false,
+        stdout: "",
+        stderr: "dpkg-query: package 'tailscale' is not installed and no information is available\nUse dpkg --info (= dpkg-deb --info) to examine archive files.",
+      },
+    },
+  )
+  let transport_down = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecRefused { reason: "ssh transport down" },
+  )
+  let dpkg_broken = tailscale_join_package_verdict_of(
+    outcome: TypedArgvExecConverged {
+      result: SshSessionExecResult {
+        exit_code: 2,
+        success: false,
+        stdout: "",
+        stderr: "dpkg-query: an unexpected failure with no recognizable answer",
+      },
+    },
+  )
+  let install_obs = tailscale_join_observation_of(package: fresh_host, status: StatusBinaryAbsent)
+  let refusal_transport = tailscale_join_observation_of(package: transport_down, status: StatusBinaryAbsent)
+  let refusal_broken = tailscale_join_observation_of(package: dpkg_broken, status: StatusBinaryAbsent)
+  pkg_is_unknown(fresh_host)
+    && obs_is_install(install_obs)
+    && plan_installs(
+      tailscale_join_plan(
+        host: operator_host_srv1,
+        observation: install_obs,
+        key_usable: true,
+      )
+    )
+    && pkg_is_undecidable(transport_down)
+    && obs_is_refused(refusal_transport)
+    && pkg_is_undecidable(dpkg_broken)
+    && obs_is_refused(refusal_broken)
 }
 
 // The guard (reviews 96824 + 96828). Install (and its destructive `tailscale up --force-reauth`) is authorized

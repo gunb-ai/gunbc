@@ -264,23 +264,45 @@ fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionCo
 // anything that is not exactly `install ok installed` is not-installed, and `unknown`/undecidable stay
 // separate refusals rather than being folded into "not installed".
 fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionContext) -> DpkgInstalledState {
-  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
-    target: target,
-    context: context,
-    argv: argv_words(command: dpkg_query_status_command(package: package_tailscale)),
-  ) {
-    TypedArgvExecOverran { deadline: d } => DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
+  tailscale_join_package_verdict_of(
+    outcome: typed_argv_exec_over_fleet_ssh(
+      kind: ProbeLeg,
+      target: target,
+      context: context,
+      argv: argv_words(command: dpkg_query_status_command(package: package_tailscale)),
+    ),
+  )
+}
+
+// The package leg's decoding, factored PURE so the wet wiring and the model share ONE shape and the decisive case
+// is witnessed (the wet's ssh call is not, the decision it feeds is). Mirrors
+// @ref(gunbc.fleet.site_pxe_edge_converge::observe_site_pxe_edge_package) -- the proven sibling: a CONVERGED
+// dpkg-query leg is handed WHOLESALE to
+// dpkg_query_status_verdict_of, which owns the four-way decode (exit 0 Status line -> installed/not-installed;
+// exit 1 with "no information is available" -> Unknown; everything else -> Undecidable). A NON-ZERO exit is a
+// dpkg ANSWER, not an execution failure: `dpkg-query -s <absent>` exits 1 and prints exactly that marker, so the
+// OLD `!r.success => Undecidable` short-circuit here refused EVERY fresh host -- the join could never install
+// tailscale (live run 44677315667, host=srv4: `dpkg-query -s tailscale` exit=1, misread as "dpkg could not
+// answer"). Only a TypedArgvExecRefused -- the ssh transport itself failing -- is a non-answer, and that still
+// yields Undecidable (fail closed). gunbc.design_argument::fail_closed; the model already says "Only the first
+// three are answers" (extdeps.package_managers.dpkg), and exit-1-marker is the third.
+fn tailscale_join_package_verdict_of(outcome: TypedArgvExecOutcome) -> DpkgInstalledState {
+  match outcome {
+    // THE OVERRUN STAYS UNDECIDABLE -- deliberately NOT the new Unknown arm. #16772 made exit-1-with-the
+    // 'no information is available' marker Unknown because that IS a dpkg answer about a package dpkg has
+    // no record of. A leg killed at its wall-clock ceiling is not an answer at all: reading it as Unknown
+    // would authorize an install on a host whose package state was never learned, which is what
+    // gunbc.design_argument::fail_closed forbids. So an overrun takes the same arm the transport refusal
+    // takes, carrying the ceiling, and the join waits for a read that actually happened.
+    TypedArgvExecOverran { deadline: d } =>
+      DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "tailscale join package", deadline: d) }
     TypedArgvExecRefused { reason: reason } => DpkgQueryUndecidable { reason: reason }
     TypedArgvExecConverged { result: r } =>
-      if !r.success {
-        DpkgQueryUndecidable { reason: concat("dpkg-query leg exit=", to_string(r.exit_code)) }
-      } else {
-        dpkg_query_status_verdict_of(
-          exit_code: r.exit_code,
-          stdout: r.stdout,
-          stderr: r.stderr,
-        )
-      }
+      dpkg_query_status_verdict_of(
+        exit_code: r.exit_code,
+        stdout: r.stdout,
+        stderr: r.stderr,
+      )
   }
 }
 
