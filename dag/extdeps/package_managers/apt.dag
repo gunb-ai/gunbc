@@ -3,7 +3,7 @@ module extdeps.package_managers.apt
 import std.types { String, NonEmptyStr, FilePath, Bool, List, Unit }
 import std.operation_argv { operation_argv_bind_text }
 
-import extdeps.external_authority { ExternalAuthority }
+undefined
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command {
   ArgvCommand,
@@ -201,19 +201,10 @@ fn apt_remove_command(package: NonEmptyStr) -> AptGetInstallCommand {
 // next edit to either -- moving them onto this shape is that concern's job, not this row's. This is the ONE
 // general shape: a new vendor is a ROW (see extdeps.tailscale::tailscale_apt_repo_noble), not a new module.
 //
-// THE PUBLISHED KEY IS PINNED, NOT TRUSTED. `keyring_fingerprint` is a measured fact and the install script
-// verifies the fetched key against it and REFUSES on mismatch, before anything is written under the keyring
-// directory: a key fetched by blind curl and trusted is a supply-chain fail-open
-// (gunbc.design_argument::fail_closed). A wrong fingerprint means the route stops, it does not install.
+undefined
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-type ThirdPartyAptRepo {
-  // The armored signing key, fetched unprivileged and verified against `keyring_fingerprint` before dearmor.
-  keyring_url: NonEmptyStr
-  // Where the dearmored key lands, and the target of the source line's `signed-by=`.
-  keyring_path: NonEmptyStr
-  // The 40-hex primary-key fingerprint the fetched key must carry, or the route refuses.
-  keyring_fingerprint: NonEmptyStr
+undefined
   // The repository URI, as apt spells it in the `deb` line (e.g. https://pkgs.tailscale.com/stable/ubuntu).
   repo_base: NonEmptyStr
   // The distribution codename (e.g. noble).
@@ -291,7 +282,7 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
         ),
         " ",
       ),
-      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'AptThirdPartyKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, " for ", repo.keyring_url as String, "' >&2; exit 1; }"], ""),
+undefined
       join(["echo '", apt_third_party_repo_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", repo.sources_list_path as String]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"], ""),
       join(
         map(
