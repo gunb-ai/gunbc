@@ -2882,6 +2882,21 @@ fn site_pxe_edge_placement_wire(placement: SitePxeEdgePlacementOutcome) -> Strin
 // and the open gap is
 // gunbc.integration_concern::edge_install_residue_lives_outside_the_fold_that_prunes_it.
 //
+// WHY OWNING THE SUBTREE WHOLE IS SAFE WITHOUT A NAME-BY-NAME EXCLUSION. The ordering dependency is real: the
+// placement leg (site_pxe_edge_place_image) fetches the installer image INTO this directory
+// (site_pxe_edge_image_staging_root IS /srv/gunbc-site-pxe-edge/staging), reads its digest there, publishes by
+// hard-link plus rename, and removes the staged copy -- all inside that leg, and the run takes placement
+// (:3114 region) before this listing (:3164 region). So at listing time a path here is either hand-staged residue
+// or the corpse of a fetch this run already refused, and the leg itself deletes the latter. If the order ever
+// flipped the cost is a re-download: the next placement fetches again and the digest is re-verified, and the
+// SERVED copy is never affected, because publishing is verify-then-link and the served file is digest-checked
+// after it lands. Two converge runs against this host do not race each other either: .github/workflows
+// /fleet-converge.yml:980 puts every mode that is not specially listed into the concurrency group
+// gunbc-host-mutation-<host> with cancel-in-progress false, and site_pxe_edge_observe / site_pxe_edge_converge are
+// not specially listed, so a second dispatch on srv4 queues behind the first. That is CI-level serialization per
+// host, not a lock on the host: a hand run of this module on srv4 would not be covered by it, which is the same
+// reason the lane rule says a person does not edit the edge by hand.
+//
 // A DIRECTORY THE REMOVAL HAS EMPTIED IS PART OF THE SAME WITHDRAWAL, inside the owned families only. An install's
 // seed lives in a directory named for the client that booted it, so removing its two files leaves the name behind,
 // and a directory whose only explanation is an install that no longer runs is where the next person re-derives a
