@@ -17,7 +17,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog, asrock_altrad
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog, supermicro_h11ssl_function_switch }
 import gunbc.fleet.board_function_topology { PcieDetachRoute, board_function_detach_route, ethernet_controller_detach_route }
 import gunbc.fleet.bmc_network_attachment { BmcNetworkAttachment, BmcOnDedicatedPort, BmcOnSharedPort, bmc_network_attachment }
-import gunbc.fleet.machine_board { MachineBoardRow, MachineBoardCatalogued, MachineBoardUncatalogued, MachineBoardProviderOwned, machine_board_rows }
+import gunbc.fleet.machine_board { MachineBoardRow, MachineBoardCatalogued, MachineBoardUncatalogued, MachineBoardAuthorityBound, MachineBoardProviderOwned, machine_board_rows }
 import gunbc.host.host_primary_network_desired { host_primary_network_rows }
 import gunbc.host.host_primary_network_observed { host_onboard_port_bindings }
 
@@ -261,6 +261,11 @@ fn machine_board_function_plans(row: MachineBoardRow) -> List<HostBoardFunctionP
     MachineBoardCatalogued { catalog, source: _ } =>
       concat(map(board_functions, f => function_plan(host: row.host, f: f, removal: board_function_removal(host: row.host, catalog: catalog, f: f))), port_plans(host: row.host, catalog: catalog))
     MachineBoardUncatalogued { board, obligation } => map(board_functions, f => function_plan(
+      host: row.host,
+      f: f,
+      removal: RemovalUnmodeled { cause: concat(board as String, concat(" has no board catalog row: ", obligation as String)) as NonEmptyStr },
+    ))
+    MachineBoardAuthorityBound { board, obligation, authority: _ } => map(board_functions, f => function_plan(
       host: row.host,
       f: f,
       removal: RemovalUnmodeled { cause: concat(board as String, concat(" has no board catalog row: ", obligation as String)) as NonEmptyStr },

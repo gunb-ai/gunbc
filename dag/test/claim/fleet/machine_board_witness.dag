@@ -15,9 +15,10 @@ module test.claim.fleet.machine_board_witness
 import std.types { Bool }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.machine_board { fleet_converge_runner_arch_label, RunnerArchKnown, RunnerArchUnknown }
+import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-  operator_host_e2d4b7, operator_host_183527,
+  operator_host_e2d4b7, operator_host_183527, operator_host_mtcollins1,
 }
 
 fn resolves_to(host: HostIdentity, expected: String) -> Bool {
@@ -51,4 +52,21 @@ test fn ken_runner_arch_derives_x64() -> Bool {
 // it is NOT defaulted to arm64 -- the plan must refuse rather than hand an unknown host an arm64 runner.
 test fn host_without_an_architecture_answers_unknown_never_arm64() -> Bool {
   answers_unknown(host: operator_host_183527) && !resolves_to(host: operator_host_183527, expected: "arm64")
+}
+
+// mtcollins1 reaches its arm64 through the DIRECT AUTHORITY BINDING (its machine-board row names the
+// cited mt_collins_board_authority, not a BaseboardCatalogRow -- its BMC family is only an expectation,
+// so a catalog row cannot honestly fill it). This is the "catalog OR binding" half of the one arch rule;
+// drop the binding and it falls to RunnerArchUnknown, and the dropdown claim below reddens with it.
+test fn mtcollins1_runner_arch_derives_arm64_through_its_board_authority() -> Bool {
+  resolves_to(host: operator_host_mtcollins1, expected: "arm64")
+}
+
+// IDENTITY JOIN over the same source the emitted host dropdown renders from (fleet_converge_enrolled_host
+// _options = map(fleet_hosts(), runner_host_label)). Every offered executor host MUST resolve an
+// architecture from its board -- none may be silently handed the old arm64 default. A dropdown host that
+// does not resolve is a missing/uncited board SoC edge, which reddens here at plan time instead of queueing
+// forever on the wrong runner. Joins over fleet_hosts() itself so this claim and the dropdown cannot disagree.
+test fn every_fleet_converge_dropdown_host_resolves_an_architecture() -> Bool {
+  length(filter(fleet_hosts(), h => answers_unknown(host: h))) == 0
 }

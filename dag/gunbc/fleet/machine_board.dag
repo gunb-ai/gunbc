@@ -1,12 +1,15 @@
 module gunbc.fleet.machine_board
 
 import std.types { List, NonEmptyStr }
+import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.board_soc { BoardSocArchitectureStanding, board_soc_architecture }
 import extdeps.github.actions { runner_arch_label }
 import gunbc.host.board_platform_facts { board_soc_edges_for }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
 import gunbc.fleet.fleet_host_identity {
@@ -31,6 +34,7 @@ import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard
 type MachineBoardStanding
   = MachineBoardCatalogued { catalog: BaseboardCatalogRow, source: DeclarationRef }
   | MachineBoardUncatalogued { board: NonEmptyStr, obligation: NonEmptyStr }
+  | MachineBoardAuthorityBound { authority: BoardAuthorityRef, board: NonEmptyStr, obligation: NonEmptyStr }
   | MachineBoardProviderOwned { provider: NonEmptyStr }
 
 type MachineBoardRow {
@@ -62,6 +66,36 @@ fn uncatalogued(host: HostIdentity, board: NonEmptyStr) -> MachineBoardRow {
   }
 }
 
+// A board whose AUTHORITATIVE identity is cited but whose BaseboardCatalogRow (manual, BMC family,
+// onboard ports) is not yet read. It yields the same board authority a catalog row would, so the
+// architecture seam below can resolve the SoC edge, WITHOUT asserting any catalog field the citation
+// does not support. Mt. Collins uses this: its board -> SoC edge is cited (extdeps.ampere.mt_collins_board
+// .mt_collins_board_soc_edge), but its BMC firmware family is only an expectation under the machine-intake
+// ruling 2026-08-29 §1 (gunbc#9690), so it cannot honestly fill a BaseboardCatalogRow yet.
+fn authority_bound(host: HostIdentity, authority: BoardAuthorityRef, board: NonEmptyStr) -> MachineBoardRow {
+  MachineBoardRow {
+    host: host,
+    board: MachineBoardAuthorityBound {
+      authority: authority,
+      board: board,
+      obligation: "a BaseboardCatalogRow for the board and a reading of its manual for how each board function is switched off; the board authority is cited, the catalog is not yet read",
+    },
+  }
+}
+
+// THE AUTHORITY SEAM (one rule, clever-raven-401 ruling). A machine-board row yields its board
+// authority either through its catalog (srv1-4, srv14) or through a direct authority binding
+// (mtcollins1); the architecture then flows from that one authority, never from a re-read of the
+// variant. Uncatalogued and provider-owned boards yield no authority.
+fn machine_board_authority(standing: MachineBoardStanding) -> BoardAuthorityRef? {
+  match standing {
+    MachineBoardCatalogued { catalog, source: _ } => Present { value: catalog.model }
+    MachineBoardAuthorityBound { authority, board: _, obligation: _ } => Present { value: authority }
+    MachineBoardUncatalogued { board: _, obligation: _ } => Absent
+    MachineBoardProviderOwned { provider: _ } => Absent
+  }
+}
+
 fn provider_owned(host: HostIdentity) -> MachineBoardRow {
   MachineBoardRow {
     host: host,
@@ -74,7 +108,7 @@ data machine_board_rows: List<MachineBoardRow> = [
   fleet_intent_board(host: operator_host_srv2, decl_name: "srv2_baseboard", catalog: srv2_baseboard.catalog),
   fleet_intent_board(host: operator_host_srv3, decl_name: "srv3_baseboard", catalog: srv3_baseboard.catalog),
   fleet_intent_board(host: operator_host_srv4, decl_name: "srv4_baseboard", catalog: srv4_baseboard.catalog),
-  uncatalogued(host: operator_host_mtcollins1, board: "Foxconn Ampere Mt. Collins"),
+  authority_bound(host: operator_host_mtcollins1, authority: mt_collins_board_authority, board: "Foxconn Ampere Mt. Collins"),
   uncatalogued(host: operator_host_mtjade1, board: "Foxconn Ampere Mt. Jade"),
   uncatalogued(host: operator_host_srv9, board: "NVIDIA DGX Spark"),
   uncatalogued(host: operator_host_srv10, board: "NVIDIA DGX Spark"),
@@ -125,10 +159,9 @@ type RunnerArchStanding
 fn fleet_converge_runner_arch_label(host: HostIdentity) -> RunnerArchStanding {
   match find(xs: machine_board_rows, r => host_identity_eq(a: r.host, b: host)) {
     Absent => RunnerArchUnknown
-    Present { value: r } => match r.board {
-      MachineBoardProviderOwned { provider: _ } => RunnerArchUnknown
-      MachineBoardUncatalogued { board: _, obligation: _ } => RunnerArchUnknown
-      MachineBoardCatalogued { catalog, source: _ } => match board_soc_edges_for(authority: catalog.model) {
+    Present { value: r } => match machine_board_authority(standing: r.board) {
+      Absent => RunnerArchUnknown
+      Present { value: authority } => match board_soc_edges_for(authority: authority) {
         Absent => RunnerArchUnknown
         Present { value: edge } => match board_soc_architecture(edge: edge) {
           Unestablished => RunnerArchUnknown
