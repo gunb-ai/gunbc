@@ -554,7 +554,7 @@ test fn the_bound_refusal_undoes_every_mask_this_attempt_filed() -> Bool {
 // written and the world masked, the observe line says withdrawn with both units and both certified
 // registrations; with the record absent it says nothing (a hand mask is not this route's to name).
 test fn the_observe_line_reports_withdrawn_from_the_record_and_not_without_it() -> Bool {
-  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context, _subject) {
+  let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context, subject) {
     let done = withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
     runner_host_withdraw_observe_line_for(host: "srv1", target: target, context: context, units: [u(n: "01"), u(n: "02")])
   })
