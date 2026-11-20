@@ -94,9 +94,10 @@ fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
     HostUnitRetirementRow {
       host: srv14_host_name,
       unit: "strata-pool@b.service" as NonEmptyStr,
-      // Same template fragment and retained copy as the a-instance row (read above): the rm is idempotent
-      // and `install` re-copies atomically, so the two rows deleting one shared fragment stay safe in any
-      // order. The per-row readback below judges the INSTANCE, which is what the ruling retires.
+      // Same template fragment and retained copy as the a-instance row (read above). Whichever engine row
+      // runs first copies the shared fragment and deletes it; the second's copy step is satisfied by the
+      // retained copy already on disk (see host_unit_retirement_act_row) and its rm -f is a no-op. The
+      // per-row readback below judges the INSTANCE, which is what the ruling retires.
       fragment_path: "/etc/systemd/system/strata-pool@.service",
       retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
       no_consumer_reason: "no consumer: same ruling retires the second engine; butch_b_strata_engine_memory's charge is retired by the post-frontier cut citing this dispatch's receipt" as NonEmptyStr,
@@ -127,6 +128,10 @@ type HostUnitRetirementObservation {
   unit: NonEmptyStr,
   load_state: String,
   active_state: String,
+  // The retained copy's path AS THE RUN WROTE IT, transcribed from the receipt -- not rebuilt from the
+  // unit name. The engine instances' retained copy lives at the SHARED template fragment's name
+  // (strata-pool@.service), which no function may reconstruct from `strata-pool@a.service`.
+  retained_path: String,
   retained_readable: Bool,
   probed_at: NonEmptyStr,
   dispatch_run_id: NonEmptyStr,
@@ -140,8 +145,10 @@ fn host_unit_retirement_observed_row_readback(o: HostUnitRetirementObservation) 
     HostUnitRetirementRow {
       host: srv14_host_name,
       unit: o.unit,
-      fragment_path: concat("/etc/systemd/system/", o.unit as String),
-      retained_path: concat(host_unit_retirement_retained_dir, "/", o.unit as String),
+      // The observation's readback only ever JUDGES; the fragment path is never consulted by the readback
+      // and the retained path is the receipt's own, so nothing here is rebuilt from the unit name.
+      fragment_path: "",
+      retained_path: o.retained_path,
       no_consumer_reason: "observed" as NonEmptyStr,
     },
     o.load_state,
@@ -207,6 +214,13 @@ fn host_unit_retirement_rows_cite_the_live_ruling() -> Bool {
   }
 }
 
+// The copy judgement, pure: a row's fragment is considered retained when the copy leg succeeded OR the
+// retained copy already exists readable (a sibling row retired a shared fragment). install_ok=false AND
+// no retained copy => false, so a row can never delete a fragment nothing retained.
+fn host_unit_retirement_copy_accepted(install_ok: Bool, retained_present: Bool) -> Bool {
+  install_ok || retained_present
+}
+
 // THE ACTS, over the fleet-ssh exec channel as the administrator. Every leg that exits non-zero reads as
 // a failed Convergence (result.success), never as an implicit pass.
 fn host_unit_retirement_exec_all(target: SshTarget, context: FleetSshExecutionContext, commands: List<List<String>>) -> List<TypedArgvExecOutcome> {
@@ -237,9 +251,15 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
     systemctl_stop_argv(unit: row.unit),
     systemctl_daemon_reload_argv(),
     mkdir_parents_argv(path: host_unit_retirement_retained_dir),
+    argv_words(command: test_regular_file_command(path: row.retained_path)),
     coreutils_install_file_argv(mode: "0444" as NonEmptyStr, source: row.fragment_path, dest: row.retained_path),
   ])
-  let copy_ok = host_unit_retirement_ok(acts.at(3))
+  // The copy is satisfied when THIS row wrote the retained copy, or when it already exists readable --
+  // the two engine rows share ONE template fragment, so the second row's `install` finds no source (the
+  // first row deleted it) while the retained copy is already on disk from the first row. Never the case
+  // that neither holds: with no retained copy anywhere the row keeps its fragment and reads refused.
+  let retained_present = host_unit_retirement_ok(acts.at(3))
+  let copy_ok = host_unit_retirement_ok(acts.at(4)) || retained_present
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
   // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent.
   let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ ["rm", "-f", row.fragment_path], systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }

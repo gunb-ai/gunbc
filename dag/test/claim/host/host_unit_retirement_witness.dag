@@ -32,6 +32,9 @@ import gunbc.host.host_unit_retirement {
   host_unit_retirement_committed_readbacks,
   host_unit_retirement_retained_dir,
   host_unit_retirement_subject_input_name,
+  host_unit_retirement_copy_accepted,
+  HostUnitRetirementObservation,
+  host_unit_retirement_observed_row_readback,
 }
 
 // THE PLAN IS THE RULING'S, VERBATIM IN SIZE AND IDENTITY.
@@ -103,6 +106,33 @@ test fn host_unit_retirement_live_units_still_refuse_retired() -> Bool {
   let b_state = host_unit_retirement_read_row(rows.at(1), "loaded", "inactive", false)
   let cap_state = host_unit_retirement_read_row(rows.at(2), "loaded", "failed", false)
   !host_unit_retirement_all_retired([ a_state, b_state, cap_state ])
+}
+
+// THE SHARED FRAGMENT CANNOT STRAND THE SECOND ROW (review 96883, fix 1): both engine rows name ONE
+// template fragment; the row whose install finds no source is satisfied ONLY by a retained copy already
+// on disk, and can never delete a fragment nothing retained.
+test fn host_unit_retirement_shared_fragment_copy_is_tolerant() -> Bool {
+  host_unit_retirement_copy_accepted(install_ok: true, retained_present: false)
+    && host_unit_retirement_copy_accepted(install_ok: false, retained_present: true)
+    && !host_unit_retirement_copy_accepted(install_ok: false, retained_present: false)
+}
+
+// THE OBSERVED READBACK JUDGES THE RECEIPT'S OWN RETAINED PATH (review 96883, fix 2): an instance row's
+// retained copy lives at the SHARED TEMPLATE's name; nothing may rebuild it from the unit name.
+test fn host_unit_retirement_observed_readback_uses_the_receipt_path() -> Bool {
+  let o = HostUnitRetirementObservation {
+    unit: "strata-pool@a.service" as NonEmptyStr,
+    load_state: "not-found",
+    active_state: "inactive",
+    retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
+    retained_readable: true,
+    probed_at: "2026-11-20T00:00:00Z" as NonEmptyStr,
+    dispatch_run_id: "test-run" as NonEmptyStr,
+  }
+  match host_unit_retirement_observed_row_readback(o) {
+    Retired { unit: _, retained_path: rp } => rp == "/var/lib/gunbc/retired-units/strata-pool@.service"
+    _ => false
+  }
 }
 
 // THE CLAIM THAT GOES GREEN ONLY WITH THE LIVE RUN: every ruled row has a committed observation, taken
