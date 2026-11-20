@@ -78,14 +78,6 @@ import std.goal_assessment {
 // a parse the module cannot trust. This is a DIFFERENT fact from the item being absent.
 type ServingLegFailure { item: String, cause: String }
 
-// A PROVED mismatch: the leg was read successfully and the host differs from the declaration
-// (absent, or present-but-wrong). Only these may be written by the apply. It is a COPRODUCT over
-// the item kinds so each arm carries its OWN typed reading — a uid is an Int, an owner name is a
-// String, a mode is a FileMode — and no arm flattens a value to display text. Text is minted only
-// where the receipt is rendered (serving_deviation_text) and for the apply's item-matching label
-// (serving_deviation_item); the deviation itself never stores a stringified value. This is
-// gunbc.design_argument::root_generalization applied to the verdict: one typed carrier per fact,
-// not one {item,desired,observed} tuple coerced to text (review 95870 finding 2).
 // Why the serve binary's identity sidecar drifted, for the receipt (PR-1c, clever-raven-401). The
 // sidecar (<serve_binary>.identity, the two-member {revision, sha256} object the converge writes next
 // to the binary) is judged against the BINARY THE HOST ACTUALLY RUNS, never against the revision: a
@@ -97,6 +89,14 @@ type ServeIdentityDriftReason
   | IdentitySidecarMalformed
   | IdentityShaMismatch { sidecar_sha: String, binary_sha: String }
 
+// A PROVED mismatch: the leg was read successfully and the host differs from the declaration
+// (absent, or present-but-wrong). Only these may be written by the apply. It is a COPRODUCT over
+// the item kinds so each arm carries its OWN typed reading — a uid is an Int, an owner name is a
+// String, a mode is a FileMode — and no arm flattens a value to display text. Text is minted only
+// where the receipt is rendered (serving_deviation_text) and for the apply's item-matching label
+// (serving_deviation_item); the deviation itself never stores a stringified value. This is
+// gunbc.design_argument::root_generalization applied to the verdict: one typed carrier per fact,
+// not one {item,desired,observed} tuple coerced to text (review 95870 finding 2).
 type ServingDeviation
   = PresentAbsent { item: String }
   | AccountUidMismatch { desired: Int, observed: Int? }
@@ -149,9 +149,6 @@ type ServingDeviation
   // can read it -- so the converge enables lingering on the account before it installs the slice.
   | UserManagerNotLingering { account_name: NonEmptyStr }
 
-// The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
-// matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
-// single source of truth and the label can never disagree with the typed values.
 // The serve binary's IDENTITY SIDECAR, as a READING -- never a string sentinel. Decoded ONCE by the
 // converge's observe caller of parse_serve_binary_identity (the single serve-side format authority), so
 // writer and reader cannot drift; everything downstream judges drift on these arms, not on stringly-typed
@@ -163,6 +160,9 @@ type SidecarRead
   | SidecarMalformed
   | SidecarRecorded { sha256: String }
 
+// The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
+// matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
+// single source of truth and the label can never disagree with the typed values.
 fn serving_deviation_item(dev: ServingDeviation) -> String {
   match dev {
     PresentAbsent { item } => item
