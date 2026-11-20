@@ -5,9 +5,10 @@ module test.claim.host.node_orch_operator_authorized_keys_witness
 // 2026-11-20 (each host's ~/.ssh/authorized_keys.bak-20261120 holds the pre-edit form); proves the from=
 // source-address restriction is admitted only through the checked constructor; folds each line's typed consumer
 // against its shipped forwarding posture (the tunnel unit -> no-port-forwarding ABSENT; the srv1->srv2-lan
-// sessions -> KEPT); and records the fleet-ownership asymmetry behind the (recorded, not enforced) undo hazard:
-// srv2's key is fleet-owned (a future operator-account reconcile could Remove it) while srv1's is not (a reconcile
-// already refuses it).
+// sessions -> KEPT); ties each line to the ruling that admits its out-of-band residence; and records the
+// fleet-ownership asymmetry behind the (recorded, not enforced) undo hazard: srv2's key is fleet-owned (a future
+// operator-account reconcile could Remove it) while srv1's is DELIBERATELY out-of-band residue admitted by ruling
+// gunbc.design_ruling.node_orch_operator_authorized_keys_out_of_band_2026_11_20, so a reconcile already refuses it.
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
@@ -111,9 +112,30 @@ test fn each_line_consumer_agrees_with_its_forwarding_posture() -> Bool {
 // The roster-ownership ASYMMETRY that the recorded (not enforced) silent-undo hazard rests on, checked against
 // the real fleet roster: srv2's node-orch key (the line on srv1) IS fleet-owned, so a future operator-account
 // reconcile could find it "owned but not desired there" and Remove it; srv1's own node-orch key (the line on srv2)
-// is NOT fleet-owned, so a reconcile already refuses it (OwnershipUnknown). This is a check of an existing roster
-// fact, not a keep-list -- the guard belongs on the operator-account converge named in the module's dissolve-on.
+// is NOT fleet-owned BY DESIGN -- it is the out-of-band residue the ruling admits, so a reconcile refuses it
+// (OwnershipUnknown), which is exactly what protects that live line today. This checks an existing roster fact,
+// not a keep-list -- the guard belongs on the operator-account converge named in the module's dissolve-on.
 test fn the_fleet_ownership_asymmetry_the_recorded_hazard_rests_on_is_checked() -> Bool {
   fleet_owned_holds(material: node_orch_ssh_key.material)
     && (fleet_owned_holds(material: node_orch_srv1_ssh_key.material) == false)
+}
+
+// Each line carries the ruling that admits its out-of-band residence, and that ruling is the operator's decision on
+// single_authority: decided 2026-11-20, governing gunbc.design_argument::single_authority. This is the real reader
+// of the line's `admission` field -- a renamed or re-pointed ruling fails here, not silently.
+test fn each_line_is_admitted_by_the_out_of_band_single_authority_ruling() -> Bool {
+  match node_orch_srv1_authorized_key_line() {
+    Absent => false
+    Present { value: srv1 } =>
+      srv1.admission.decided == "2026-11-20"
+        && srv1.admission.governs.module_path == ("gunbc.design_argument" as NonEmptyStr)
+        && srv1.admission.governs.decl_name == ("single_authority" as NonEmptyStr)
+  }
+    && (match node_orch_srv2_authorized_key_line() {
+      Absent => false
+      Present { value: srv2 } =>
+        srv2.admission.decided == "2026-11-20"
+          && srv2.admission.governs.module_path == ("gunbc.design_argument" as NonEmptyStr)
+          && srv2.admission.governs.decl_name == ("single_authority" as NonEmptyStr)
+    })
 }
