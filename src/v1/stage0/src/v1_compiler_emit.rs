@@ -46,8 +46,10 @@ use crate::std_literal_elaboration::KernelGroundingCrossing::{
     CrossingRefused, CrossingTotalWidening,
 };
 pub use crate::std_literal_elaboration::{
-    declaration_is_grounded_natural, kernel_grounding_crossing, KernelGroundingCrossing,
+    declaration_is_grounded_natural, kernel_grounding_crossing, kernel_grounding_width_crossing,
+    KernelGroundingCrossing,
 };
+pub use crate::std_measure::{bit_width_count, BitWidth};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::*;
@@ -74,9 +76,12 @@ pub use crate::v1_compiler_emit_core_support::{
     to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings, EmitResult,
     TestProjection,
 };
+use crate::v1_compiler_infer::InferMachineWidth::{
+    WidthNotConstrained, WidthReadable, WidthUnreadable,
+};
 pub use crate::v1_compiler_infer::{
-    build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
-    resolved_type_name, InferScope,
+    build_params_scope, call_param_caller_labels, extend_scope, infer_machine_width_of,
+    is_where_refinement_type, resolved_type_name, InferMachineWidth, InferScope,
 };
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::{
     DataVariantBareString, DataVariantInternalTagged, DataVariantSpellingRefused,
@@ -6987,6 +6992,46 @@ pub fn cast_through_target_syntax_or_refuse(
     }
 }
 
+pub fn width_fits_host_carrier(bits: BitWidth) -> bool {
+    (crate::std_measure::bit_width_count(bits) <= 63)
+}
+
+pub fn resolved_width_crossing_reaches_target(
+    n: Rc<Node>,
+    source: Rc<DeclarationRef>,
+    target: Rc<DeclarationRef>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    if !crate::std_decl_ref::declaration_ref_eq(
+        target.clone(),
+        crate::std_decl_ref::decl_ref("std.integer".to_string(), "Int".to_string()),
+    ) {
+        false
+    } else {
+        match (*crate::v1_compiler_infer::infer_machine_width_of(n, source_indices, env)).clone() {
+            InferMachineWidth::WidthReadable {
+                signedness, bits, ..
+            } => {
+                (width_fits_host_carrier(bits.clone())
+                    && match (*crate::std_literal_elaboration::kernel_grounding_width_crossing(
+                        kernel_grounding_rows(),
+                        source,
+                        signedness.clone(),
+                        bits.clone(),
+                        target.clone(),
+                    ))
+                    .clone()
+                    {
+                        KernelGroundingCrossing::CrossingTotalWidening => true,
+                        KernelGroundingCrossing::CrossingRefused { cause: _, .. } => false,
+                    })
+            }
+            _ => false,
+        }
+    }
+}
+
 pub fn cast_source_grounded_onto_target_carrier(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
@@ -7019,17 +7064,35 @@ pub fn cast_source_grounded_onto_target_carrier(
                         .clone()
                         {
                             KernelGroundingCrossing::CrossingTotalWidening => true,
-                            KernelGroundingCrossing::CrossingRefused { cause: _, .. } => false,
+                            KernelGroundingCrossing::CrossingRefused { cause: _, .. } => {
+                                resolved_width_crossing_reaches_target(
+                                    n.clone(),
+                                    d.clone(),
+                                    t.clone(),
+                                    source_indices.clone(),
+                                    env.clone(),
+                                )
+                            }
                         },
                         TypeReferenceDeclarationReading::TypeReferenceIsKernelType {
                             name: k,
                             ..
                         } => {
                             ((k.clone() == "Int".to_string())
-                                && crate::std_literal_elaboration::declaration_is_grounded_natural(
+                                && (crate::std_literal_elaboration::declaration_is_grounded_natural(
                                     kernel_grounding_rows(),
                                     d.clone(),
-                                ))
+                                )
+                                    || resolved_width_crossing_reaches_target(
+                                        n.clone(),
+                                        d.clone(),
+                                        crate::std_decl_ref::decl_ref(
+                                            "std.integer".to_string(),
+                                            "Int".to_string(),
+                                        ),
+                                        source_indices.clone(),
+                                        env.clone(),
+                                    )))
                         }
                         _ => false,
                     }

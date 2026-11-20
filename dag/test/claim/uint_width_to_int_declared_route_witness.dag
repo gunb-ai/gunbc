@@ -1,0 +1,202 @@
+module test.claim.uint_width_to_int_declared_route_witness
+
+// PINS THE DECLARED MACHINE-WIDTH-UNSIGNED-TO-INTEGRAL ROUTE end to end, under gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection (2026-11-15): the injection is total,
+// exact and semantics-preserving for EVERY width N. It is carried by the RULING and decided by the
+// EXECUTED crossing -- there is no stub in the corpus standing in for the route (review 96578: a
+// scaffold whose only consumer is a test that it is a scaffold is scaffold, and its trigger would
+// replace its signature and body wholesale). The declared Int-returning route lands together with the
+// runtime carrier, on gunbc.integration_concern::integer_width_compose_has_no_runtime_carrier_for_native_serve.
+// The crossing that realizes the injection (std.literal_elaboration kernel_grounding_width_crossing over
+// gunbc.structural_realization_bindings kernel_grounding_rows) is found by BOTH paths -- the
+// typecheck/interpretation path (the value tests below execute the cast) and native emission (the
+// emit checks). The RED direction -- Int as UInt8, which is NOT total and carries no declared route --
+// keeps refusing at the evaluator and at the emitter's cast wall; both directions are pinned here.
+// Per the ruling, the value tests pin VALUE IDENTITY through the route; they claim no runtime or
+// emitted-width guarantee beyond it.
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_blocking_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.integer { UInt8, UInt16, UInt32, UInt64, Int8 }
+
+// The cast site: `as Int` from a machine-width unsigned formal, the shape the roadmap serve entry
+// uses at gunbc.roadmap.roadmap_auth_routes (map(octets, o => o as Int) over List<UInt8>).
+fn octet_to_int(o: UInt8) -> Int { o as Int }
+
+// A second width: the route is generic in N, so a width other than 8 must take it unchanged.
+fn word_to_int(o: UInt16) -> Int { o as Int }
+
+// VALUE WITNESS, 0 and the maximum of the width: the injection lands on the SAME Int the unbounded
+// integers name for those magnitudes (the interval of UInt8 is [0, 255], every one of them an Int).
+test fn uint8_as_int_value_witness_at_bounds() -> Bool {
+  octet_to_int(0) == 0 && octet_to_int(255) == 255
+}
+
+// A second width, at its bounds too: [0, 65535] of UInt16 injects identically.
+test fn uint16_as_int_value_witness_at_bounds() -> Bool {
+  word_to_int(0) == 0 && word_to_int(65535) == 65535
+}
+
+// LEGALITY IS MODEL-WIDE (the ruling's total injection reaches EVERY width); HOST CAPACITY IS AN
+// EMITTER DECISION (gunbc.design_argument::closed_grounded_substrate: "Target realization may refuse
+// to realize a plan but never decides whether a conversion is legal"). A magnitude above the
+// UInt32 interval (2^32) proves the checker admits UInt64 as Int at the model level, and the
+// interpreter evaluates it on the unbounded integers.
+fn word64_to_int(o: UInt64) -> Int { o as Int }
+
+test fn uint64_as_int_is_legally_admitted_at_the_model_level() -> Bool {
+  word64_to_int(4294967296) == 4294967296 && word64_to_int(255) == 255
+}
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// A refusal PINNED to its class, plus the DIFFERENTIAL the module says is exact
+// (gunbc.compile_diagnostic_census header: "a bare blocking-total ... cannot say WHICH judgment fired").
+// The cast wall refuses an un-emittable cast as CastRealizationRefused -- src/v1/00_core.dag's Display
+// arm whose text starts "cast cannot be emitted for target", recorded by v1.compiler.emit's cast
+// realization arms (src/v1/05_emit.dag). Its subject_name is the refusal FACT (the uncastable pair), a
+// message string, so the discrimination here is class-scoped and differential: the probe source with
+// the cast must carry at least one such row, and the same shape WITHOUT the cast must carry none. That
+// is what makes the REDs below say "this cast refused, for the cast wall's reason" rather than "some
+// compile failed" (review 96603, finding 2).
+fn cast_wall_refusal_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "CastRealizationRefused"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data uint8_as_int_emit_source: String = "module probe_uint8_as_int_emit\nimport std.integer { UInt8 }\nfn octet(o: UInt8) -> Int { o as Int }\n"
+
+// EMISSION: the pair casts natively with the declared route -- no refusal spelling in the emitted
+// lib and no compile-clean hard diagnostic. The pinned-out string is the emitter's cast-wall refusal;
+// if the route disappears, this goes red two ways.
+test fn uint8_as_int_emits_with_the_declared_route() -> Bool {
+  compile_dag_rust_emit_check(
+    uint8_as_int_emit_source,
+    "src/probe_uint8_as_int_emit.rs",
+    ["fn octet"],
+    ["no declared conversion route"]
+  )
+}
+
+data int_as_uint8_source: String = "module probe_int_as_uint8_emit\nimport std.integer { UInt8 }\nfn octet(i: Int) -> UInt8 { i as UInt8 }\n"
+// The control arm of the differential: the SAME declaration with only the cast removed. Whatever the
+// probe's compile decides, the control's compile cannot produce a cast-realization refusal -- so the
+// probe's row is about the cast, not about the probe text.
+data int_as_uint8_control_source: String = "module probe_int_as_uint8_emit_control\nimport std.integer { UInt8 }\nfn octet(i: Int) -> UInt8 { i }\n"
+
+// THE RED, EMITTED DIRECTION: Int as UInt8 is not total (negatives and values above 2^N - 1 fall
+// outside the intersection) and no route is declared for it, so the emitter's cast wall still refuses
+// it. The refusal is PINNED, not merely negated (review 96603, finding 2): the emitted pair does not
+// compile clean; the census carries at least one blocking CastRealizationRefused row for the probe;
+// and the same declaration with the cast removed carries none. A bare negation would be satisfied by
+// any unrelated compile failure -- that is not what this claim says.
+test fn int_as_uint8_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    int_as_uint8_source,
+    "src/probe_int_as_uint8_emit.rs",
+    ["fn octet"],
+    []
+  ) && cast_wall_refusal_count(source: int_as_uint8_source) > 0 &&
+       cast_wall_refusal_count(source: int_as_uint8_control_source) == 0
+}
+
+data uint32_as_int_emit_source: String = "module probe_uint32_as_int_emit\nimport std.integer { UInt32 }\nfn word32(o: UInt32) -> Int { o as Int }\n"
+
+// EMISSION, WIDEST HOST-LOSABLE WIDTH: 32 bits fit the i64 carrier with room (values to 2^32 - 1
+// inside i64's non-negative range), so identity emission is honest and the refusal stays pinned out.
+test fn uint32_as_int_emits_with_the_declared_route() -> Bool {
+  compile_dag_rust_emit_check(
+    uint32_as_int_emit_source,
+    "src/probe_uint32_as_int_emit.rs",
+    ["fn word32"],
+    ["no declared conversion route"]
+  )
+}
+
+data uint64_as_int_emit_source: String = "module probe_uint64_as_int_emit\nimport std.integer { UInt64 }\nfn word64(o: UInt64) -> Int { o as Int }\n"
+// The control arm: same declaration, cast removed -- no cast-realization refusal is possible there.
+data uint64_as_int_control_source: String = "module probe_uint64_as_int_emit_control\nimport std.integer { UInt64 }\nfn word64(o: UInt64) -> UInt64 { o }\n"
+
+// THE RED, HOST CAPACITY (review 95725, finding 2): UInt64 holds values to 2^64 - 1, past the i64
+// host carrier's 2^63 - 1, so the emitter's realization arm (v1.compiler.emit
+// width_fits_host_carrier) REFUSES to realize the identity -- emitting it today would be the silent
+// wrap fail_closed forbids. Legality is untouched (the checker test above admits it); realization
+// refuses until the carrier frontier lands (std.machine_constraints
+// ::integer_width_carrier_realization_frontier). The refusal is pinned three ways (review 96603,
+// finding 2): the emitted pair does NOT compile clean; the census carries at least one blocking
+// CastRealizationRefused row for the probe (the cast wall's own class -- the refusal text is
+// "no declared conversion route from UInt64<UInt, MachineWidth<>> to i64: ..."); and the same
+// declaration WITHOUT the cast carries none, so the row is about this cast.
+test fn uint64_as_int_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    uint64_as_int_emit_source,
+    "src/probe_uint64_as_int_emit.rs",
+    ["fn word64"],
+    []
+  ) && cast_wall_refusal_count(source: uint64_as_int_emit_source) > 0 &&
+       cast_wall_refusal_count(source: uint64_as_int_control_source) == 0
+}
+
+// THE RED, SIGN POLICY REACHES THE NATURALS (review 96603, finding 3). The sign-gate exemption in
+// std.literal_elaboration (kernel_grounding_sign_change_allowed, the `|| target_is_unbounded_carrier`
+// arm) admits a sign change from ANY machine width into EITHER unbounded carrier -- Nat included, and a
+// SIGNED source included. What refuses Int8 as Nat is therefore not the exemption but the extent test
+// behind it (integer_extent_within over integer_interval_spec_contains: a signed width's negative lower
+// bound is not inside the naturals) together with the emitter's realization wall. The comment at that
+// gate asserts exactly this reliance; before this row nothing executed it. Pinned like the cast-wall REDs
+// above: the emitted pair is not clean, the census carries a blocking CastRealizationRefused row for the
+// probe ("no declared conversion route from Int8<i64, MachineWidth<>> to Nat: ..."), and the same
+// declaration with the cast removed carries none.
+data int8_as_nat_source: String = "module probe_int8_as_nat_emit\nimport std.integer { Int8 }\nfn octet(i: Int8) -> Nat { i as Nat }\n"
+data int8_as_nat_control_source: String = "module probe_int8_as_nat_emit_control\nimport std.integer { Int8 }\nfn octet(i: Int8) -> Nat { i }\n"
+
+test fn int8_as_nat_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    int8_as_nat_source,
+    "src/probe_int8_as_nat_emit.rs",
+    ["fn octet"],
+    []
+  ) && cast_wall_refusal_count(source: int8_as_nat_source) > 0 &&
+       cast_wall_refusal_count(source: int8_as_nat_control_source) == 0
+}
+
+// THE RED, SIGNED SOURCE INTO THE INTEGERS (review 96603, finding 3). The exemption's reach includes a
+// signed width into Int, and at the model level that widening is admitted (it is total and injective --
+// containment, not a taboo, decides it). What this row pins is where the standing stops: the signed width
+// does NOT reach the host carrier through any declared conversion, so the EMITTER refuses it
+// ("no declared conversion route from Int8<i64, MachineWidth<>> to i64: ..."). No un-routed signed
+// crossing reaches emission. Same three-fold pin as above.
+data signed_width_as_int_source: String = "module probe_int8_as_int_emit\nimport std.integer { Int8 }\nfn word(i: Int8) -> Int { i as Int }\n"
+data signed_width_as_int_control_source: String = "module probe_int8_as_int_emit_control\nimport std.integer { Int8 }\nfn word(i: Int8) -> Int { i }\n"
+
+test fn signed_width_as_int_still_refuses_emission() -> Bool {
+  !compile_dag_rust_emit_check(
+    signed_width_as_int_source,
+    "src/probe_int8_as_int_emit.rs",
+    ["fn word"],
+    []
+  ) && cast_wall_refusal_count(source: signed_width_as_int_source) > 0 &&
+       cast_wall_refusal_count(source: signed_width_as_int_control_source) == 0
+}
+
+// THE RED, CHECKED POPULATION: the census for the un-routed pair is reported (not unroutable), and
+// the width arm admitted nothing that changed the census for the DECLARED pair -- the declared pair's
+// census stays clean, which is what "the arm admits only the ruled population" means in numbers.
+test fn declared_pair_census_stays_clean() -> Bool {
+  blocking_count(uint8_as_int_emit_source) == 0
+}

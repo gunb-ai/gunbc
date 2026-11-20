@@ -5,6 +5,9 @@ import v1.compiler.infer_types { declaration_carried_through_resolution, declara
 import v1.compiler.infer_env { declared_module_owner, global_bare_declarer_in_scope, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent }
 import v1.std.core { divergent_type, expr_literal_symbol_optional, module_path_segments, field_access_spine }
 import v1.compiler.ownership { fold_terminal_expr }
+import std.integer { Signedness, Unsigned }
+import std.measure { BitWidth, bit_width }
+import std.checked_arithmetic { nat_magnitude }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, container_spelling_is_algebra, container_template_alias_algebra, is_container_type, is_container_algebra_carrier, kernel_type_set, is_kernel_type }
 import std.content_hash {
@@ -34,6 +37,7 @@ import std.literal_elaboration {
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
   carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
   kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
+  kernel_grounding_width_crossing,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
@@ -9545,7 +9549,117 @@ fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclaratio
   }
 }
 
-fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading, int_refinement_cast_domain: Bool) -> ErrorNode? {
+// RESOLVED GENERIC-WIDTH READING for v1: the v1 realization of the same resolved-type reader,
+// v2.compiler.infer's infer_machine_width_of, named for the frontier recorded in
+// std.machine_constraints: the width of a machine-width composition lives on the INSTANCE -- a
+// Compose head shared by every width cannot key it in a declaration-only map -- so the reading
+// walks the resolved application node and keys every position on its exact declaration (never a
+// leaf name), through the alias rule (UInt8 unfolds to its Compose right-hand side; UInt unfolds
+// to Nat). It answers only for the UNSIGNED population the standing gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection names: a signed carrier is not
+// unreadable by accident, it is OUT OF THE READING -- no ruling reaches it. A MachineWidth whose
+// argument is not a Nat literal (a width variable, a named platform width) is WidthUnreadable,
+// and callers must keep the closed decision for anything they cannot read.
+type InferMachineWidth
+  = WidthNotConstrained
+  | WidthReadable { signedness: Signedness, bits: BitWidth }
+  | WidthUnreadable { cause: String }
+
+fn infer_machine_width_of(t: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> InferMachineWidth {
+  match type_reference_declaration_ref(n: t, source_indices: source_indices, env: env) {
+    Absent => WidthNotConstrained
+    Present { value: head } =>
+      let composition = match alias_rhs_head_of_declaration(item_ref: head, env: env) {
+        Present { value: inner } => inner
+        Absent => head
+      }
+      if !declaration_ref_eq(a: composition, b: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose")) { WidthNotConstrained }
+      else if (t.children |> count) != 2 { WidthUnreadable { cause: "a machine-width composition carries a carrier and one width" } }
+      else {
+        match t.children |> first {
+          Absent => WidthUnreadable { cause: "a machine-width composition carries a carrier and one width" }
+          Present { value: carrier } =>
+            match t.children |> skip(1) |> first {
+              Absent => WidthUnreadable { cause: "a machine-width composition carries a carrier and one width" }
+              Present { value: width } =>
+                match type_reference_declaration_ref(n: width, source_indices: source_indices, env: env) {
+                  Absent => WidthUnreadable { cause: "the width position resolves to no declaration" }
+                  Present { value: width_head } =>
+                    if !declaration_ref_eq(a: width_head, b: decl_ref(module_path: "std.machine_constraints", decl_name: "MachineWidth")) {
+                      WidthUnreadable { cause: "the width position is not std.machine_constraints MachineWidth" }
+                    } else {
+                      match width.children |> first {
+                        Absent => WidthUnreadable { cause: "the width carries no literal argument" }
+                        Present { value: lit } =>
+                          match lit.expr_data {
+                            ExprLiteral { value: LitInt { value: v } } =>
+                              if infer_unsigned_width_carrier(carrier: carrier, source_indices: source_indices, env: env) {
+                                WidthReadable { signedness: Unsigned, bits: bit_width(count: nat_magnitude(a: v)) }
+                              } else {
+                                WidthUnreadable { cause: "the carrier is outside the unsigned reading this ruling reaches" }
+                              }
+                            _ => WidthUnreadable { cause: "the width argument is not an integer literal" }
+                          }
+                      }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// The unsigned algebra of the reading: std.nat::Nat, reached through the alias rule from std.integer's
+// UInt. The kernel Int spelling is the SIGNED carrier and is out of this reading's reach; a named or
+// variable carrier resolves to neither and is refused.
+fn infer_unsigned_width_carrier(carrier: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match type_reference_declaration_ref(n: carrier, source_indices: source_indices, env: env) {
+    Absent => false
+    Present { value: d } =>
+      let resolved = match alias_rhs_head_of_declaration(item_ref: d, env: env) {
+        Present { value: inner } => inner
+        Absent => d
+      }
+      declaration_ref_eq(a: resolved, b: decl_ref(module_path: "std.nat", decl_name: "Nat"))
+  }
+}
+
+// THE DECLARED-ROUTE VERDICT FOR `as Int` FROM A RESOLVED WIDTH INSTANCE (gunbc.design_ruling
+// ::machine_width_unsigned_to_int_is_a_declared_total_injection): the checker's grounded_cast_verdict
+// keys on the source's grounding row, and the composition carries none -- its identity lives on the
+// instance, not the head -- so the width crossing decides this population and nothing else does. The
+// target must BE std.integer::Int, the ruling's route's endpoint; every other target keeps the closed
+// decision it has today. ADMIT-ONLY: an unreadable width or a refused crossing returns NotDecided,
+// handing the cast back to the exact arms it walks today -- this verdict can never add a refusal.
+fn resolved_width_cast_verdict(
+  src_node: Node,
+  source_declaration: DeclarationRef?,
+  target_declaration: DeclarationRef?,
+  source_indices: Map<String, NewlineIndex>,
+  env: TypeEnv
+) -> GroundedCastVerdict {
+  match target_declaration {
+    Absent => GroundedCastNotDecided
+    Present { value: td } =>
+      if !declaration_ref_eq(a: td, b: decl_ref(module_path: "std.integer", decl_name: "Int")) { GroundedCastNotDecided }
+      else {
+        match source_declaration {
+          Absent => GroundedCastNotDecided
+          Present { value: sd } =>
+            match infer_machine_width_of(t: src_node, source_indices: source_indices, env: env) {
+              WidthReadable { signedness: signedness, bits: bits } =>
+                match kernel_grounding_width_crossing(rows: kernel_grounding_rows, source: sd, signedness: signedness, bits: bits, to: td) {
+                  CrossingTotalWidening => GroundedCastAdmitted
+                  CrossingRefused { cause: _ } => GroundedCastNotDecided
+                }
+              _ => GroundedCastNotDecided
+            }
+        }
+      }
+  }
+}
+
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading, int_refinement_cast_domain: Bool, env: TypeEnv) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
@@ -9574,6 +9688,18 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
           }
         Absent => source_name == target_name
       }
+      // The width crossing decides ONLY the population its ruling reaches (see
+      // resolved_width_cast_verdict), and its place in the chain IS the claim: it sits BELOW both
+      // grounded arms, so a GroundedCastRefused always wins and the width verdict is reached only where
+      // the identity rule did not fire AND the grounded verdict had no answer (NotDecided). It can admit
+      // a cast the grounded verdict left undecided; it can never override a grounded refusal -- a future
+      // grounding row that refuses a source stays refused even once a width grounding row admits the same
+      // source, which is what makes "this verdict can never add a refusal" true of the arm and not just
+      // of the function. It is also ASKED only where it is consulted: the call sits in the arm that needs
+      // it, not in a binding above the chain, because the walk it performs -- a declaration ref of the
+      // source, then that declaration's alias right-hand-side head -- is cost paid per cast over the whole
+      // corpus, and the arms above answer most casts (every `x as Int` whose source already names Int,
+      // every grounded admit, every grounded refusal) without ever needing it.
       if is_identity_cast { none }
       else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
       else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
@@ -9584,6 +9710,7 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- ", cause)
         Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
       }
+      else if (match resolved_width_cast_verdict(src_node: src_node, source_declaration: source_declaration, target_declaration: target_declaration, source_indices: source_indices, env: env) { GroundedCastAdmitted => true  _ => false }) { none }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
@@ -12791,7 +12918,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       // is_identity_cast computation), so a source already on the target carrier is admitted and a same-leaf-name
       // different-declaration source is refused -- both by the SAME key the evaluator uses, not a leaf-name string.
       let int_refinement_cast_domain = target_is_int_refined && source_int_kernel
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading, int_refinement_cast_domain: int_refinement_cast_domain)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading, int_refinement_cast_domain: int_refinement_cast_domain, env: scope.type_env)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []

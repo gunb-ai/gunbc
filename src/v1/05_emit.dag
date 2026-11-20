@@ -8,7 +8,8 @@ import std.compiler_entry {
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.coercion { TypeRealizationDecision }
-import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused }
+import std.literal_elaboration { declaration_is_grounded_natural, kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_grounding_width_crossing }
+import std.measure { BitWidth, bit_width_count }
 import gunbc.structural_realization_bindings { kernel_grounding_rows }
 import std.unicode.scalar { ascii_lowercase }
 
@@ -75,7 +76,8 @@ import v1.compiler.infer_lookup { lookup_func_sig }
 import v1.compiler.infer {
   InferScope, is_where_refinement_type,
   build_params_scope, extend_scope, call_param_caller_labels,
-  resolved_type_name
+  resolved_type_name,
+  infer_machine_width_of, InferMachineWidth, WidthReadable, WidthNotConstrained, WidthUnreadable
 }
 
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
@@ -3488,6 +3490,51 @@ fn cast_through_target_syntax_or_refuse(src_ty: String, ty_str: String, target: 
 // the Rust alias `Nat` (= i64), which is no host numeric ground, so a spelling comparison could not see the
 // coincidence. When a row realizes at a narrower host width the widening is a host conversion, not an identity,
 // and this realization reads the two widths instead.
+// THE EMISSION COUNTERPART of v1.compiler.infer's resolved_width_cast_verdict -- same ruling
+// (gunbc.design_ruling::machine_width_unsigned_to_int_is_a_declared_total_injection), same crossing
+// (std.literal_elaboration kernel_grounding_width_crossing, which answers through the ONE policy
+// function kernel_grounding_pair_crossing), same closed decision for everything the ruling does not
+// reach: the target must be std.integer::Int and the source must read as a machine-width UNSIGNED
+// instance, or this returns false and the emission keeps refusing the pair it refuses today. There is
+// no width branch in the emitter proper: the emitter asks the table, and the reading and the decision
+// live in std (the reading, like its v2 twin, in v1.compiler.infer).
+// HOST CAPACITY IS AN EMITTER DECISION, NEVER A LEGALITY DECISION (gunbc.design_argument
+// ::closed_grounded_substrate: "Target realization may refuse to realize a plan but never decides
+// whether a conversion is legal"; gunbc.design_argument::fail_closed: "a diff landing a silent
+// widen is a hard reject"). The checker's resolved_width_cast_verdict admits the WHOLE model range
+// (every unsigned width into the unbounded integers -- legality per the 2026-11-15 ruling), and this
+// emitter-side arm, which owns the host fact, refuses to REALIZE widths whose values the host carrier
+// cannot hold. The seed's Int host carrier is i64 (this emitter prints i64 for Int), so the
+// composition's values, naturals up to 2^N - 1, emit as carrier identity only while 2^N - 1 <=
+// 2^63 - 1 (N <= 63). The reading is unsigned-only by design -- the declared injection's domain is
+// the UNSIGNED composition (the signed tower's algebra is std.integer::Int, which the reader does not
+// read and the ruling does not cover; sign crossings of signed widths stay governed by the crossing's
+// own sign gate). Beyond 63 bits the cast keeps the refusal it had before this route was declared --
+// no silent wrap -- until the integer-width carrier frontier (std.machine_constraints
+// ::integer_width_carrier_realization_frontier) lands the exact host carrier and this bound becomes a
+// read of the realized carrier's extent. Today no composition VALUE exists natively at all (Compose
+// is Phantom); this guard fails closed the DAY a carrier lands and someone emits UInt64 as Int:
+// identity emission would wrap 2^63...2^64-1 silently (review 95725 finding 2; the dead signed arm a
+// first draft carried was removed per review 95730 / minimize_redundancy).
+fn width_fits_host_carrier(bits: BitWidth) -> Bool {
+  bit_width_count(b: bits) <= 63
+}
+
+fn resolved_width_crossing_reaches_target(n: Node, source: DeclarationRef, target: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  if !declaration_ref_eq(a: target, b: decl_ref(module_path: "std.integer", decl_name: "Int")) { false }
+  else {
+    match infer_machine_width_of(t: n, source_indices: source_indices, env: env) {
+      WidthReadable { signedness: signedness, bits: bits } =>
+        width_fits_host_carrier(bits: bits) &&
+        match kernel_grounding_width_crossing(rows: kernel_grounding_rows, source: source, signedness: signedness, bits: bits, to: target) {
+          CrossingTotalWidening => true
+          CrossingRefused { cause: _ } => false
+        }
+      _ => false
+    }
+  }
+}
+
 fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   match expr.inferred {
     Present { value: Resolved { node: n } } =>
@@ -3497,9 +3544,9 @@ fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, 
             TypeReferenceNamesDeclaration { declaration: t } =>
               match kernel_grounding_crossing(rows: kernel_grounding_rows, from: d, to: t) {
                 CrossingTotalWidening => true
-                CrossingRefused { cause: _ } => false
+                CrossingRefused { cause: _ } => resolved_width_crossing_reaches_target(n: n, source: d, target: t, source_indices: source_indices, env: env)
               }
-            TypeReferenceIsKernelType { name: k } => k == "Int" && declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d)
+            TypeReferenceIsKernelType { name: k } => k == "Int" && (declaration_is_grounded_natural(rows: kernel_grounding_rows, d: d) || resolved_width_crossing_reaches_target(n: n, source: d, target: decl_ref(module_path: "std.integer", decl_name: "Int"), source_indices: source_indices, env: env))
             _ => false
           }
         Absent => false
