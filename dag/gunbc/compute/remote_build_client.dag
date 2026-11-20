@@ -9,7 +9,13 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.github.github { github_https_clone_url }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
-import extdeps.ssh.session { SshSessionExecResult, ssh_session_exec_portable_words }
+// The leg returns the MODEL SUM, decoded once at the fleet authority: no remote-build consumer can
+// read a wire record, so a leg killed at its ceiling cannot be routed as an answer (review 96994).
+import extdeps.ssh.session {
+  SshSessionExecOutcome, SessionCompleted, SessionOverran, SessionWireInconsistent,
+  ssh_session_exec_wire_refusal_text,
+}
+import std.measure { Second, second_count }
 import extdeps.bazel.label { render_label }
 import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern, render_target_pattern, target_pattern_refusal_text,
@@ -24,7 +30,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetLegKind,
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
-  portable_remote_words, FleetRemoteLeg, FleetBareWordLeg, fleet_ssh_armed_key_leg,
+  portable_remote_words, FleetRemoteLeg, FleetBareWordLeg, fleet_ssh_exec_key_leg,
   OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {
@@ -220,25 +226,21 @@ fn remote_build_client_leg(kind: FleetLegKind, context: FleetSshExecutionContext
     SshTargetResolved { target } =>
       match portable_remote_words(raws: words) {
         Absent => RemoteBuildLegNotSent { detail: concat("a request word is not a portable remote word: ", join(words, " ")) }
-        // THE LEG ARMS ITS OWN CEILING: this caller declares the kind and takes the deadline from
-        // the armed leg; it neither computes the ceiling nor may omit it (review 96976).
-        Present { value: w } => {
-          let armed = fleet_ssh_armed_key_leg(
+        // THE LEG ARMS ITS OWN CEILING and comes back as the model sum: this caller declares the kind,
+        // the ceiling is read from the leg, and the decode happens once at the fleet authority. A
+        // consumer of a remote-build leg cannot read the wire record at all (review 96976, 96994).
+        Present { value: w } => RemoteBuildLegRan {
+          target: ssh_target_wire(target: target) as String,
+          outcome: fleet_ssh_exec_key_leg(
             context: context, leg: FleetBareWordLeg { target: target, words: w, kind: kind },
-          )
-          RemoteBuildLegRan {
-            target: ssh_target_wire(target: target) as String,
-            result: ssh_session_exec_portable_words(
-              client_args: armed.client_args, wall_deadline: armed.wall_deadline,
-            ),
-          }
+          ),
         }
       }
   }
 }
 
 type RemoteBuildLeg
-  = RemoteBuildLegRan { target: String, result: SshSessionExecResult }
+  = RemoteBuildLegRan { target: String, outcome: SshSessionExecOutcome }
   | RemoteBuildLegNotSent { detail: String }
 
 // ── ONE HOST, THEN THE ROSTER ────────────────────────────────────────────────────────────────────────
@@ -250,13 +252,40 @@ type RemoteBuildLeg
 fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuildRequest, candidate: RemoteBuildCandidate) -> RemoteBuildHostAnswer {
   match remote_build_client_leg(kind: ProbeLeg, context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
     RemoteBuildLegNotSent { detail } => HostUnreachable { detail: detail }
-    RemoteBuildLegRan { target: _, result: probe } =>
-      match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: probe.exit_code, stdout: probe.stdout, stderr: probe.stderr)) {
-        Present { value: moved_on } => moved_on
-        Absent =>
-          match remote_build_client_leg(kind: ProvisioningLeg, context: context, host: candidate.host, words: remote_build_request_words(r: request)) {
-            RemoteBuildLegNotSent { detail } => HostRefusedRequest { detail: detail }
-            RemoteBuildLegRan { target: _, result: sent } => remote_build_answer_from_exit(exit_code: sent.exit_code, stdout: sent.stdout, stderr: sent.stderr)
+    RemoteBuildLegRan { target: _, outcome: probe } =>
+      match probe {
+        // THE PROBE NEVER ANSWERED. Nothing was sent, so this host is simply not established reachable
+        // inside the ceiling it was given: answer with that ceiling, typed, and the walk moves on. The
+        // code this replaces fed the transport's own 255 to remote_build_probe_from_exit, which minted
+        // "the probe answered exit 255" out of a leg the MODEL had just killed (review 96994).
+        SessionOverran { deadline: d } => HostLegOverran { deadline_seconds: second_count(s: d) }
+        SessionWireInconsistent { fault: f } =>
+          HostUnreachable { detail: ssh_session_exec_wire_refusal_text(fault: f) }
+        SessionCompleted { exit_code: e, stdout: o, stderr: er } =>
+          match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: e, stdout: o, stderr: er)) {
+            Present { value: moved_on } => moved_on
+            Absent =>
+              match remote_build_client_leg(kind: ProvisioningLeg, context: context, host: candidate.host, words: remote_build_request_words(r: request)) {
+                RemoteBuildLegNotSent { detail } => HostRefusedRequest { detail: detail }
+                RemoteBuildLegRan { target: _, outcome: sent } =>
+                  match sent {
+                    // THE REQUEST WAS SENT AND ITS ANSWER WAS NEVER READ: that host may still be
+                    // building, so the outcome is unknown and the walk STOPS -- a second host would be
+                    // a second producer of one identity. Never an exit code, never a retry.
+                    SessionOverran { deadline: d } =>
+                      HostOutcomeUnknown {
+                        detail: concat(
+                          "the request leg overran its ",
+                          concat(int_to_decimal_string(value: second_count(s: d)),
+                            "s wall-clock deadline after the request was sent; the host may still be building, so the outcome is unknown and the walk stops"),
+                        )
+                      }
+                    SessionWireInconsistent { fault: f } =>
+                      HostOutcomeUnknown { detail: ssh_session_exec_wire_refusal_text(fault: f) }
+                    SessionCompleted { exit_code: e, stdout: o, stderr: er } =>
+                      remote_build_answer_from_exit(exit_code: e, stdout: o, stderr: er)
+                  }
+              }
           }
       }
   }
@@ -392,6 +421,8 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostUnreachable { detail: _ } => "unreachable"
     HostRefusedRequest { detail: _ } => "request-refused"
     HostOutcomeUnknown { detail: _ } => "outcome-unknown"
+    HostLegOverran { deadline_seconds: d } =>
+      concat("probe-leg-overran-at-", concat(int_to_decimal_string(value: d), "s"))
   }
 }
 
@@ -405,6 +436,8 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostUnreachable { detail } => detail
     HostRefusedRequest { detail } => detail
     HostOutcomeUnknown { detail } => detail
+    HostLegOverran { deadline_seconds: d } =>
+      concat("the probe leg overran its ", concat(int_to_decimal_string(value: d), "s wall-clock deadline; the process group was killed before the host answered"))
   }
 }
 

@@ -30,6 +30,11 @@ import gunbc.remote_shell_command {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Int }
+import extdeps.ssh.session {
+  SshSessionExecOutcome, ssh_session_exec_outcome,
+  ssh_session_exec_portable_words, ssh_session_exec_portable_words_with_stdin,
+}
+import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
 import extdeps.ssh.client_options {
   SshClientOption,
   openssh_exclusive_known_hosts_trust_options,
@@ -985,6 +990,65 @@ fn fleet_ssh_armed_password_leg(trust: FleetOpenSshTrustPolicy, leg: FleetRemote
     client_args: shape_fleet_ssh_password_leg_trusting(trust: trust, leg: leg),
     wall_deadline: fleet_remote_leg_wall_deadline(leg: leg),
   }
+}
+
+// THE FLEET PATH'S ONLY RESULT IS THE MODEL SUM. A fleet caller arms the leg, runs it and gets
+// SshSessionExecOutcome back -- SessionCompleted, SessionOverran{deadline}, or
+// SessionWireInconsistent{fault} -- decoded at the one site (extdeps.ssh.session
+// ssh_session_exec_outcome) and never handed on as the wire record. The point is not tidiness: the
+// wire record's exit_code after a kill is the transport's own code (255), and a consumer that reads
+// it reports "the host answered N" when in fact no answer was read within the ceiling (review 96994,
+// where the remote-build router turned an overrun into a fabricated exit -1). A consumer of a fleet
+// leg therefore CANNOT see an exit code without the overrun having been ruled out by its own arm.
+fn fleet_ssh_exec_key_leg(context: FleetSshExecutionContext, leg: FleetRemoteLeg) -> SshSessionExecOutcome {
+  let armed = fleet_ssh_armed_key_leg(context: context, leg: leg)
+  ssh_session_exec_outcome(
+    result: ssh_session_exec_portable_words(
+      client_args: armed.client_args, wall_deadline: armed.wall_deadline,
+    ),
+  )
+}
+
+fn fleet_ssh_exec_key_leg_with_stdin(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+  stdin_payload: String,
+) -> SshSessionExecOutcome {
+  let armed = fleet_ssh_armed_key_leg(context: context, leg: leg)
+  ssh_session_exec_outcome(
+    result: ssh_session_exec_portable_words_with_stdin(
+      client_args: armed.client_args, stdin_payload: stdin_payload, wall_deadline: armed.wall_deadline,
+    ),
+  )
+}
+
+fn fleet_ssh_exec_key_leg_on_fresh_connection(
+  context: FleetSshExecutionContext,
+  leg: FleetRemoteLeg,
+) -> SshSessionExecOutcome {
+  let armed = fleet_ssh_armed_key_leg_on_fresh_connection(context: context, leg: leg)
+  ssh_session_exec_outcome(
+    result: ssh_session_exec_portable_words(
+      client_args: armed.client_args, wall_deadline: armed.wall_deadline,
+    ),
+  )
+}
+
+fn fleet_ssh_exec_password_leg_with_stdin(
+  trust: FleetOpenSshTrustPolicy,
+  password_file: NonEmptyStr,
+  leg: FleetRemoteLeg,
+  stdin_payload: String,
+) -> SshSessionExecOutcome {
+  let armed = fleet_ssh_armed_password_leg(trust: trust, leg: leg)
+  ssh_session_exec_outcome(
+    result: password_file_ssh_exec_portable_words_with_stdin(
+      password_file: password_file,
+      client_args: armed.client_args,
+      stdin_payload: stdin_payload,
+      wall_deadline: armed.wall_deadline,
+    ),
+  )
 }
 
 fn fleet_remote_leg_strings(leg: FleetRemoteLeg) -> List<String> {
