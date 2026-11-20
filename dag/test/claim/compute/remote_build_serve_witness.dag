@@ -22,7 +22,7 @@ import gunbc.compute.remote_build {
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
   RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key, remote_build_ssh_key_fingerprint, remote_build_serving_instance,
-  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session,
+  RemoteBuildClientKey, remote_build_admitted_client_keys, remote_build_admitted_public_keys, remote_build_client_key_session, remote_build_client_key_ci,
 }
 import gunbc.compute.remote_build_serve {
   remote_build_fetch_argv, remote_build_serve_answer, remote_build_authorized_entry, remote_build_ending_of_provide,
@@ -204,6 +204,15 @@ test fn the_session_key_has_the_relayed_fingerprint() -> Bool {
   match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_session.public_key.material) {
     Absent => false
     Present { value: f } => f == remote_build_client_key_session.fingerprint as String
+  }
+}
+
+// The hosted-CI key's fingerprint is derived from the recorded material, so a mistyped key and a
+// mistyped fingerprint cannot both stand (mirrors the_session_key_has_the_relayed_fingerprint).
+test fn the_ci_key_has_the_relayed_fingerprint() -> Bool {
+  match ssh_key_blob_sha256_fingerprint(material: remote_build_client_key_ci.public_key.material) {
+    Absent => false
+    Present { value: f } => f == remote_build_client_key_ci.fingerprint as String
   }
 }
 
