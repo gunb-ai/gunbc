@@ -39,6 +39,7 @@ import gunbc.compute.unit_bounds {
   user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown,
 }
 import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
@@ -372,8 +373,8 @@ fn serving_slice_cap_of_read(read: ObservationAttempt<String, ServingLegFailure>
 // WITH 'No such file' -> Established("") as the proven-absent sentinel (the slice is not started, so it has
 // no cap -- uncapped, which licenses the install); any other cat failure -> Refused (unknown). A control
 // nobody could read is never presented as uncapped.
-fn serving_leg_cgroup_read(item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+fn serving_leg_cgroup_read(kind: FleetLegKind, item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
+  match typed_argv_exec_over_fleet_ssh(kind: kind, target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: r.stdout }
@@ -391,9 +392,9 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
     Absent => ServingSliceCap { max: unknown, high: unknown, swap: unknown }
     Present { value: u } => {
       let dir = serving_user_work_slice_cgroup_dir(uid: u)
-      let max_read = serving_leg_cgroup_read(item: "user_work.slice.memory_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.max")))
-      let high_read = serving_leg_cgroup_read(item: "user_work.slice.memory_high", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.high")))
-      let swap_read = serving_leg_cgroup_read(item: "user_work.slice.memory_swap_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.swap.max")))
+      let max_read = serving_leg_cgroup_read(kind: ProbeLeg, item: "user_work.slice.memory_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.max")))
+      let high_read = serving_leg_cgroup_read(kind: ProbeLeg, item: "user_work.slice.memory_high", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.high")))
+      let swap_read = serving_leg_cgroup_read(kind: ProbeLeg, item: "user_work.slice.memory_swap_max", target: target, context: context, argv: serving_cat_sudo(path: concat(dir, "/memory.swap.max")))
       ServingSliceCap {
         max: serving_slice_cap_of_read(read: max_read),
         high: serving_slice_cap_of_read(read: high_read),
@@ -613,6 +614,14 @@ type ConvergeAction =
   // write uses is a field here; expected_content is the rendered unit, compared back after install.
   | InstallUserWorkSlice { unit_name: NonEmptyStr, unit_path: String, memory_max: ByteSize, memory_high: ByteSize, memory_swap_max: ByteSize, expected_content: String }
   | InstallServeBinary { upload_path: String, install_path: String, expected_sha256: String }
+  // The serving binary's IDENTITY, written beside it at <install_path>.identity so a later serve
+  // receipt can name which binary served (the reader is gunbc.compute.remote_build_serve, PR-1a). It
+  // carries the dispatched revision and the local binary sha256 — the same two the settle gate holds
+  // the install to. RANKED after InstallServeBinary and written through the SAME content-install route
+  // (converge_install_content: stage, upload, sudo-install, read-back-equality); because the executor
+  // stops at the first failed write, the identity is written only once the binary itself has landed,
+  // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
+  | RecordServeIdentity { install_path: String, revision: String, sha256: String }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
 
 // The decision IS one of these; there is no Bool tag to keep in step with the fields (review 95922 #2 /
@@ -766,7 +775,10 @@ fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin
   match target_arch {
     ObservationEstablished { observed: a } => match a == pin.executor_arch {
       true => converge_bin_parent_dir(
-        ConvergeDraft { writes: concat([InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled },
+        ConvergeDraft { writes: concat([
+          RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
+          InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
+        ], acc.writes), unhandled: acc.unhandled },
         d,
       )
       false => converge_draft_unhandled(acc, "serve_binary.sha256")
@@ -865,9 +877,13 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     EnsureToolchain { channel: _, as_user: _ } => 7
     // The user-work slice is capped BEFORE the serve binary: a slice that never settles must stop the
     // pass (converge_execute_with halts at the first failed write) so no binary lands behind an
-    // un-admitted slice. swift-tern-46's RecordServeIdentity will take rank 10, after this.
+    // un-admitted slice.
     InstallUserWorkSlice { unit_name: _, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => 8
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 9
+    // The identity sidecar is recorded AFTER the binary install it documents (and after the slice the
+    // binary depends on); the executor's stop-at-first-failure means it is written only once the
+    // binary itself has landed -- never provenance for a binary that failed to install.
+    RecordServeIdentity { install_path: _, revision: _, sha256: _ } => 10
   }
 }
 
@@ -884,6 +900,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: u, rustup_home: _, cargo_home: _ } => concat("rustup:", u)
     InstallUserWorkSlice { unit_name: n, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => concat("slice:", n)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
+    RecordServeIdentity { install_path: i, revision: _, sha256: _ } => concat("identity:", i)
   }
 }
 
@@ -1255,7 +1272,7 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
         let remote_staging = concat(stage, "/slice.upload")
         match converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) {
           StepFailed { cause: c } => StepFailed { cause: c }
-          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: "0644" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, source: remote_staging, dest: unit_path))) {
+          StepDone => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: "0644" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, source: remote_staging, dest: unit_path))) {
             StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
             StepDone => {
               // Resolve the serving uid so the reload and the readback reach THAT account's user manager,
@@ -1268,9 +1285,9 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
               }
               match serving_passwd_uid(text: passwd_opt, name: d.account_name) {
                 Absent => StepFailed { cause: "cannot resolve the serving uid for the user-manager daemon-reload" }
-                Present { value: uid } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_reload_command_argv(uid: uid))) {
+                Present { value: uid } => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_reload_command_argv(uid: uid))) {
                   StepFailed { cause: c } => StepFailed { cause: concat("daemon-reload: ", c) }
-                  StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_start_command_argv(uid: uid))) {
+                  StepDone => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_start_command_argv(uid: uid))) {
                     StepFailed { cause: c } => StepFailed { cause: concat("slice start: ", c) }
                     StepDone => {
                       let cap = serving_leg_slice_cap(target: target, context: context, uid: Present { value: uid })
@@ -1306,6 +1323,27 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
       }
     }
   }
+}
+
+// Record the serving binary's identity beside it, at <install_path>.identity. The bytes are the
+// dispatched revision and the local binary sha256 -- the two the settle gate already holds the binary
+// to -- as one JSON object the serve reader (PR-1a) parses. It goes out through the SAME content route
+// as every other owner-written file (converge_install_content: stage, upload, sudo-install, read-back
+// equality), so a sidecar that did not land byte-for-byte is a failed write, and the executor's
+// stop-at-first-failure means it is never written for a binary that did not install.
+// The canonical bytes of the serving binary's identity sidecar: one JSON object carrying string members
+// `revision` and `sha256`. This is the WRITER's one authority on the grammar; the reader in
+// gunbc.compute.remote_build_serve (PR-1a) parses exactly this shape. Kept as a pure function so a
+// witness can hold the real producer to that contract without standing up a host.
+fn serve_identity_document(revision: String, sha256: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "revision", value: json_string(s: revision)),
+    json_kv(key: "sha256", value: json_string(s: sha256)),
+  ]))
+}
+
+fn converge_record_serve_identity(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: FileMode, install_path: String, revision: String, sha256: String) -> ConvergeStep {
+  converge_install_content(target: target, context: context, staging_local: "target/gunbc-serve_identity.upload", path: concat(install_path, ".identity"), owner: owner, group: group, mode: mode, content: serve_identity_document(revision: revision, sha256: sha256))
 }
 
 // A write that did not settle: its key (converge_action_key, the name the plan and the receipt share)
@@ -1348,6 +1386,7 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
     InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: mhigh, memory_swap_max: _, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_high: mhigh, expected_content: content)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
+    RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, kind: ProvisioningLeg, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
   })
 }
