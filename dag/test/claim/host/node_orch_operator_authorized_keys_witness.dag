@@ -5,8 +5,9 @@ module test.claim.host.node_orch_operator_authorized_keys_witness
 // 2026-11-20 (each host's ~/.ssh/authorized_keys.bak-20261120 holds the pre-edit form); proves the from=
 // source-address restriction is admitted only through the checked constructor; folds each line's typed consumer
 // against its shipped forwarding posture (the tunnel unit -> no-port-forwarding ABSENT; the srv1->srv2-lan
-// sessions -> KEPT); and pins the silent-undo hazard: srv2's key is fleet-owned (an operator-account reconcile
-// would Remove it unless the keep-set covers it) while srv1's key is not (a reconcile already refuses it).
+// sessions -> KEPT); and records the fleet-ownership asymmetry behind the (recorded, not enforced) undo hazard:
+// srv2's key is fleet-owned (a future operator-account reconcile could Remove it) while srv1's is not (a reconcile
+// already refuses it).
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
@@ -16,7 +17,6 @@ import gunbc.host.node_orch_operator_authorized_keys {
   NodeOrchOperatorConsumer,
   Srv1DockerTunnelUnit,
   Srv1ToSrv2LanSessions,
-  node_orch_operator_account_keep_materials,
   node_orch_operator_authorized_key_line_text,
   node_orch_srv1_authorized_key_line,
   node_orch_srv1_ssh_key,
@@ -38,10 +38,6 @@ data srv2_expected_line: String =
 
 fn fleet_owned_holds(material: NonEmptyStr) -> Bool {
   fold(fleet_authorized_keys, init: false, f: (acc, k) => acc || (k.material == material))
-}
-
-fn keep_holds(material: NonEmptyStr) -> Bool {
-  fold(node_orch_operator_account_keep_materials(), init: false, f: (acc, x) => acc || (x == material))
 }
 
 // A consumer is the docker-tunnel unit (the one that needs port forwarding).
@@ -112,14 +108,12 @@ test fn each_line_consumer_agrees_with_its_forwarding_posture() -> Bool {
     })
 }
 
-// The keep-set covers both node-orch materials. srv2's key is fleet-owned (an operator-account reconcile would
-// otherwise find it owned-but-not-desired and Remove it -- the silent undo); srv1's key is NOT fleet-owned (a
-// reconcile already refuses it). This pins why the keep-set is load-bearing for the srv2 line only.
-test fn the_keep_set_covers_both_and_names_the_ownership_hazard() -> Bool {
-  let keep = node_orch_operator_account_keep_materials()
-  keep.length() == 2
-    && keep_holds(material: node_orch_ssh_key.material)
-    && keep_holds(material: node_orch_srv1_ssh_key.material)
-    && fleet_owned_holds(material: node_orch_ssh_key.material)
+// The roster-ownership ASYMMETRY that the recorded (not enforced) silent-undo hazard rests on, checked against
+// the real fleet roster: srv2's node-orch key (the line on srv1) IS fleet-owned, so a future operator-account
+// reconcile could find it "owned but not desired there" and Remove it; srv1's own node-orch key (the line on srv2)
+// is NOT fleet-owned, so a reconcile already refuses it (OwnershipUnknown). This is a check of an existing roster
+// fact, not a keep-list -- the guard belongs on the operator-account converge named in the module's dissolve-on.
+test fn the_fleet_ownership_asymmetry_the_recorded_hazard_rests_on_is_checked() -> Bool {
+  fleet_owned_holds(material: node_orch_ssh_key.material)
     && (fleet_owned_holds(material: node_orch_srv1_ssh_key.material) == false)
 }

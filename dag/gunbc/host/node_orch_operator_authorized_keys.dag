@@ -20,17 +20,24 @@ module gunbc.host.node_orch_operator_authorized_keys
 // its own named consumer, per DESIGN's Consumption rule (admission held at the grain where the consumer exists)
 // and Source annotations (the admission is a typed fact the model folds, not commentary).
 //
-// THE SILENT-UNDO HAZARD THIS RECORD CLOSES. node_orch_ssh_key's material is already fleet-owned (the roster
-// grants it to the host-administrator account), so if a reconcile were ever pointed at the operator account it
-// would find that key "owned but not desired there" (authorized_keys_for_account(FleetAccountOperator) excludes
-// node-orch) and REMOVE it -- undoing the hand-edit. node_orch_operator_account_keep_materials() below is the
-// keep-set such a converge MUST union into its desired set. srv1's own node-orch key is not fleet-owned, so a
-// reconcile already refuses to tear it down (OwnershipUnknown); it is in the keep-set too so one set covers both.
+// THE SILENT-UNDO HAZARD IS RECORDED, NOT ENFORCED. Today nothing removes these lines: no modeled converge
+// writes the operator account's authorized_keys -- host_authorized_keys_reconcile plans only the
+// host-administrator (ubuntu) account, and runner_host_file_converge writes the bootstrap/administrator account.
+// So there is no route that touches these entries yet, and the rung is honestly "recorded", not "enforced". What
+// is recorded -- and checked by the witness against the roster -- is the ASYMMETRY that makes the hazard real if
+// someone adds such a converge: node_orch_ssh_key's material is fleet-owned (the roster grants it to the
+// host-administrator account), so an operator-account reconcile would see it "owned but not desired there"
+// (authorized_keys_for_account(FleetAccountOperator) excludes node-orch) and could REMOVE it; srv1's own node-orch
+// key is NOT fleet-owned, so a reconcile would already refuse it (OwnershipUnknown). No guard is wired here
+// (gunbc.design_argument::guarantee_ladder: the reported rung is what executed evidence establishes, and an inert
+// keep-list enforces nothing) -- the fix belongs on the operator-account converge, named in dissolve-on below.
 //
 // dissolve-on: when a modeled converge writes the operator (briansrls) account's authorized_keys, OR when
 // gunbc.fleet.fleet_ssh_access grants node-orch to FleetAccountOperator. Either way these two lines stop being
-// out-of-band residue and become a modeled per-host admission carried where the consumer exists, and this
-// module dissolves onto that admission. Until then the lines are human-hand-maintained and the units/sessions
+// out-of-band residue and become a modeled per-host admission carried where the consumer exists (and where the
+// srv2 node-orch key must be admitted into the keep/desired set so it is not removed), and this module dissolves
+// onto that admission. Until then the lines are human-hand-maintained and the units/sessions named as consumers
+// are the real authority for their options.
 // named as consumers are the real authority for their options.
 
 import std.types { List, NonEmptyStr, String }
@@ -149,13 +156,6 @@ fn node_orch_srv2_authorized_key_line() -> NodeOrchOperatorAuthorizedKeyLine? {
 // so the entry is derived from it rather than restating it.
 fn node_orch_authorized_key_entry_from_line(line: NodeOrchOperatorAuthorizedKeyLine) -> AuthorizedKeyEntry {
   AuthorizedKeyEntry { options: line.options, key: line.key }
-}
-
-// The node-orch materials that MUST be kept in the operator account's authorized_keys on srv1/srv2. A future
-// converge pointed at the operator account's authorized_keys MUST union this into its desired set (see the hazard
-// in the header). Both materials, so one keep-set covers the fleet-owned srv2 key and the out-of-band srv1 key.
-fn node_orch_operator_account_keep_materials() -> List<NonEmptyStr> {
-  [node_orch_ssh_key.material, node_orch_srv1_ssh_key.material]
 }
 
 // Render a line the way its live authorized_keys line reads -- the consumer of the from= option's rendering and
