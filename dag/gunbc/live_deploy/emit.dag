@@ -1630,6 +1630,33 @@ type UserWorkSliceUnitFile
   = UserWorkSliceUnitFileReady { file: SystemdUnitFile }
   | UserWorkSliceUnitFileRefused { cause: String }
 
+// THE SHARED RENDER BODY. Both the srv1 route and the per-host route below funnel the derived
+// MemoryMax through HERE, so MemoryHigh (user_work_slice_memory_high_of) and MemorySwapMax
+// (user_work_slice_memory_swap_max = 0) are computed identically for every host -- an inhabitance
+// claim that exercises one route is an inhabitance of the relation, not of a private copy.
+fn render_user_work_slice_from_max(max: ByteSize) -> UserWorkSliceUnitFile {
+  match user_work_slice_memory_high_of(memory_max: max) {
+    UserWorkSliceHighGapExceedsMax =>
+      UserWorkSliceUnitFileRefused {
+        cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
+      }
+    UserWorkSliceHighDerived { bytes: high } =>
+      UserWorkSliceUnitFileReady {
+        file: SliceUnitFile {
+          unit: [
+            Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
+          ],
+          slice: [
+            slice_memory_max(bytes: max),
+            slice_memory_high(bytes: high),
+            slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
+          ],
+          install: NotInstallable,
+        },
+      }
+  }
+}
+
 fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => {
@@ -1639,30 +1666,24 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
           UserWorkSliceUnitFileRefused {
             cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
           }
-        PeakBoundHolds { margin: _ } =>
-      match user_work_slice_memory_high_of(memory_max: max) {
-        UserWorkSliceHighGapExceedsMax =>
-          UserWorkSliceUnitFileRefused {
-            cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
-          }
-        UserWorkSliceHighDerived { bytes: high } =>
-          UserWorkSliceUnitFileReady {
-            file: SliceUnitFile {
-              unit: [
-                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
-              ],
-              slice: [
-                slice_memory_max(bytes: max),
-                slice_memory_high(bytes: high),
-                slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
-              ],
-              install: NotInstallable,
-            },
-          }
-      }
+        PeakBoundHolds { margin: _ } => render_user_work_slice_from_max(max: max)
       }
     }
   }
+}
+
+// THE PER-HOST RENDER (node adhoc-c0a6f401-440). The remote-build serve-converge leg renders the
+// gunbc-user-work.slice for the host it is acting on, with the ceiling read from the carve
+// (gunbc.compute.host_capacity user_work_slice_memory_max_for_host) and passed here as a number, so
+// emit keeps a single import surface and never imports compute. It SHARES render_user_work_slice_from_max
+// with the srv1 route, so MemoryHigh/MemorySwapMax derive identically; an inhabitance claim on this entry
+// goes through the SAME code the srv1 receipt attests. It deliberately does NOT apply srv1's recorded
+// cgroup peak check: that receipt is srv1's OWN observed user-work peak (its standing 2 x 22 GiB pool),
+// which is the wrong bound for a carved host whose ceiling is its reservation-derived appropriation. The
+// host's bound is the ceiling the caller read from the reservation row; the fail-closed guarantee is the
+// readback in the converge leg (settle only when MemoryMax and MemorySwapMax=0 read back equal), not here.
+fn user_work_slice_unit_file_for_host_ceiling(memory_max: ByteSize) -> UserWorkSliceUnitFile {
+  render_user_work_slice_from_max(max: memory_max)
 }
 
 type AttemptWorkerSliceUnitFile

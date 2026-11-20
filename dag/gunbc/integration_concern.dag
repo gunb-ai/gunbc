@@ -903,6 +903,57 @@ data grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror: Integration
   },
   disposition: Open,
 }
+// A reach endpoint is a String projection (gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for),
+// so "this unit is sold, it has no endpoint" cannot be written in the type today. A SOLD Group B unit
+// (in gunbc.spark.dgx_procurement::dgx_spark_disposed_units) is therefore kept OUT of the tailnet-name
+// allocation rule and keeps the function's pre-existing bare-identity passthrough (srv9 -> "srv9"), so
+// the sold unit is never handed the drawn MagicDNS name its retained-as-fixture allocation row would
+// otherwise yield (francis/emerson/... -- a live name a new owner's device could answer). The bare id is
+// the same total passthrough the function already gave unmodeled spellings, NOT an in-band sentinel.
+// Fail-closed wants this absence represented in the type (an Optional endpoint or a typed SoldUnit arm),
+// which is exactly what the endpoint-authority replacement cut models (an endpoint "whose ABSENCE IS
+// REPRESENTABLE"). Making that change is a return-type rewrite that fans out to ~15 callers across
+// fleet/host/runner (every fleet_ssh_target_at_standard_port / ProbeTargetReady / target-string build),
+// so it is filed against the replacement rather than half-taken inside the old total projection.
+data sold_units_keep_bare_passthrough_pending_typed_absence: IntegrationConcern = IntegrationConcern {
+  identity: "sold_units_keep_bare_passthrough_pending_typed_absence",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    requirement: "A host the model knows is sold must yield a typed no-endpoint, not a String that happens to name nothing and not its drawn MagicDNS tailnet name. fleet_probe_endpoint_for returns String, so a sold srv9..srv12 keeps its bare-slot passthrough (srv9 -> \"srv9\"): not the drawn name (francis.emerson.mil.bastien.tailecbe08.ts.net would hand a consumer a MagicDNS name that may now answer for another tenant's device), and not an empty sentinel. The bare id is still a string a caller could concatenate or dial; only a typed absence makes that a type error.",
+    standing: RequirementUnestablished {
+      decided_by: "the tailnet-name resolution change (ken pinned to ken.tailecbe08.ts.net) touches this function and forces the sold-arm decision. Representing sold absence in the type was measured to fan out to ~15 call sites that cannot be reached-and-typechecked within that change's budget; the endpoint-authority replacement cut is the designed home for a representable-absence endpoint. Filed under clever-raven-401's fallback ruling (msg_c08c60f0): when the Optional fan-out is unworkable, keep the passthrough and file this row rather than half-take a sentinel.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_owned_probe_endpoint_for"),
+    ],
+  },
+  question: "Where should a sold unit's reach endpoint become a typed no-endpoint rather than a String that happens to name nothing?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "398136026b345e087968a9db4ba42ec551c5ca4c" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_reach_endpoint", decl_name: "fleet_owned_probe_endpoint_for") },
+        tail: [],
+      },
+      account: "While pinning ken to its tailnet name, fleet_owned_probe_endpoint_for gains a uniform allocation-name rule; sold srv9..srv12 (dgx_spark_disposed_units, sold 2026-10-10) still carry hostname_allocation rows (francis/emerson/mil/bastien), so without a guard the rule resolves a sold unit to a live MagicDNS name. The landed short-circuit returns the bare slot string instead -- the function's existing total passthrough, not a sentinel -- because a typed Absent would change the String return and fan out to ~15 callers. The replacement cut already registers this function as the total String projection being replaced for exactly this reason.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.endpoint_authority_replacement_cut", decl_name: "endpoint_authority_cut_identity") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "test.claim.host.host_reach_identity_probe_witness", decl_name: "registry_hosts_resolve_to_tailnet_names_and_sold_units_keep_the_bare_handle"),
+        control: Absent,
+        statement: "a sold Group B unit (srv9/srv10) never resolves to a drawn tailnet name (francis/emerson/...) and keeps the bare handle, while every owned host with an allocation row resolves to its MagicDNS name -- the guard that must survive until the replacement lands a typed no-endpoint",
+      },
+    ],
+    next: climbs_when(capability: "the endpoint-authority replacement (X -> Y) lands an endpoint type whose absence is representable, so fleet_probe_endpoint_for can return a typed no-endpoint for a sold unit and the bare-passthrough guard retires"),
+  },
+}
 data run_unreached_function_bodies_typechecked: IntegrationConcern = IntegrationConcern {
   identity: "run_unreached_function_bodies_typechecked",
   kind: SuspectedCapabilityGap {
@@ -3145,7 +3196,7 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
   identity: "h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_pinned_members"),
-    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry is not in the stale set, so the model cannot say where it lives or that removing it is the converge's job. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
+    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry sat outside every family the fold claims, so the model could not say where it lived or that removing it was the converge's job. The ENTRY half is drawn in by the change this row now carries a sighting for: site_pxe_edge_owned_install_path takes the edge's staging/ subtree as a whole, derived from site_pxe_edge_served_root rather than from a second constant naming the same directory, and site_pxe_edge_empty_owned_install_dirs retires a directory the removal has emptied, inside the owned families only. That leaves the half quoted above -- a dnsmasq line with no line-level delta the model can read -- as what still stands unmodelled on this edge. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
     standing: RequirementEstablished {
       by: CitesArtifact {
         label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (srv4's own answers: stale-install-files=found naming this unit's seed paths; dnsmasq config before=differs; nothing written)",
@@ -3161,6 +3212,9 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
       decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_paths"),
       decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
       decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_install_nic_mac"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
+      decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_empty_owned_install_dirs"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
     ],
   },
   question: "The stale fold owns files under the edge's install roots. What owns the live state that is not such a file -- a dnsmasq line the model never rendered, an install entry that is not in the roots the fold lists -- and what does a converge run have to read before it removes one?",
@@ -3221,6 +3275,23 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
           ],
         },
         account: "Sighted on 2026-11-16 by still-fox-404 at smart-crane-730's instruction, and it is why this lane holds its own apply even though its read is done. Three of the five stale paths the observe listed are not this unit's: they carry 9c:6b:00:e7:ca:63, which gunbc.machine_intake.srv15_host_nic_observation records as SRV15's install NIC. So one stale set spans two hosts and two lanes -- the files this bring-up wants removed, and the hand-staged install entry and seed that srv15's arrival (the lane of #16357) targets. Deleting them before that lane admits its own binding would be a converge acting on a host whose model is mid-flight, and that is exactly what the stale fold cannot see: it computes staleness per edge, not per host's lifecycle stage. The hold is smart-crane-730's instruction inside his own bring-up-plan lane. It is NOT entered in gunbc.design_ruling: that ledger carries dated rulings of the operator, and nobody gave this one operator authority -- the MAC-to-srv15 fact it rests on is this repository's own record (gunbc.machine_intake.srv15_host_nic_observation), read here by a read-only observe. Held CONDITIONAL, per smart-crane-730, and not to be chased: the stale set is 'install files no admitted binding renders', so those three paths leave the stale set iff the install binding admitted on this edge renders exactly those paths; if the render lands elsewhere, they stay stale and the hand-staged files stay on the box. Whether they land at those three paths is a property of the render, not of any lane's intent -- and proud-badger's arrival renders nothing on this edge, so that is not the question to ask anyone. Nothing here says the render does or does not name them.",
+      },
+      ConcernSighting {
+        revision: edge_residue_read_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_edge_residue_2026_11_19"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_remove_stale"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.a_revision_citation_that_no_landing_contains", decl_name: "a_revision_citation_that_no_landing_contains"),
+            },
+          ],
+        },
+        account: "Read off srv4 read-only on 2026-11-19T20:55Z and again on 2026-11-20T06:19:53Z, and attributed to the fold by its OWN LOG rather than by mtimes. TWO OF THE THREE HAND-STAGED ARTIFACTS ARE ALREADY GONE, BY THE CONVERGE: fleet-converge run 44249605412 (dispatched 2026-11-18T06:12:13Z at head 418bf0a167) prints at 06:29:46.827Z stale-install-files=removed: over five paths -- this unit's seed user-data and meta-data, srv15's seed pair, and srv15's install config -- and in the same run, file dnsmasq-proxy-dhcp-config path=/etc/gunbc-site-pxe-edge.dnsmasq.conf before=differs outcome=written-and-read-back, which is what took the hand-added ken line out of the proxy config: the file now carries three dhcp-host lines and none of them names this unit's install MAC. THE THIRD SURVIVES BOTH READS: /srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg, 450 bytes, whose own header reads hand-staged 2026-11-15 (session 9a3ff854): one-shot autoinstall of the new H11SSL at BMC 192.168.1.249; remove after install, and which still carries a live autoinstall stanza naming srv4's installer image and seed URLs. It sits outside every family the owned-path predicate claims, and that run's log never contains h11new or withdrawn -- the fold has never listed it. The second read adds what a file-only rule cannot see at all: the directories the removal left empty -- http/seed/ac-1f-6b-e6-75-eb and http/seed/9c-6b-00-e7-ca-63, both emptied by that run at 06:29:46Z, http/seed/9c-6b-00-e7-ca-9c, empty since 2026-11-10, and tftp/grub/install. DIRECTION is settled by smart-crane-730's ruling of 2026-11-19, relayed to this session: draw the owned set from WHAT THE FOLD RENDERS, not from the name somebody gave a directory -- the fold renders nothing under the served root's staging/ subtree, so anything found there is residue by construction -- and refuse to model withdrawn-*, which is one person's naming convention and would mint vocabulary for a hand act. The change rides in this row's own diff: the staging subtree joins the owned roots through site_pxe_edge_served_root, and site_pxe_edge_empty_owned_install_dirs retires a directory the removal has emptied, inside the owned families only, deepest first. The ordering that change depends on is stated where it can be read rather than assumed: the placement leg stages the installer image under that same subtree, verifies it by digest and un-stages it inside one leg, and the run takes that leg BEFORE the stale listing; the witness pins the order the run reports, and if the order ever flipped the cost is a re-download verified by digest again, never a corrupted served copy. WHAT KEEPS THIS ROW OPEN is the dnsmasq half quoted in the requirement -- a line-level delta the model cannot read -- plus the removal on srv4 itself, which happens only through a fleet-converge dispatch the operator authorizes (nothing is dispatched from this lane) and the re-read afterwards that turns the read obligation into a receipt. The DISPOSITION stays Open deliberately even though the ownership change rides in the same diff: closing it would need an integrated_at naming a revision that already contains the new fold, and no such revision exists until this lands -- the invalid state gunbc.recurring_failure_mode::a_revision_citation_that_no_landing_contains files. The closure goes to a follow-up that can name the landing revision, the way h11ssl_unit3_three_gpu_functions_against_two_reported_cards did.",
       },
     ],
   },
@@ -4023,7 +4094,33 @@ data typed_argv_exec_argv_shape_ambiguity: IntegrationConcern = IntegrationConce
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [typed_argv_exec_argv_shape_ambiguity, site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
+data systemctl_user_show_omits_the_uid_machine_connector: IntegrationConcern = IntegrationConcern {
+  identity: "systemctl_user_show_omits_the_uid_machine_connector",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_machine_connector"),
+    requirement: "a systemctl --user read of a unit property carries the UID@ machine connector the way the daemon-reload and start and enable family already do, so a root-elevated converge reads the owning UID's user manager and not root's",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_daemon_reload_argv") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_user_property_argv"),
+    tail: [ decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_machine_connector") ],
+  },
+  question: "How does a systemctl --user show reach the owning UID's user manager from a root-elevated converge: does the show argv grow the UID@ connector its sibling builders carry, or does every user-bus property read route through a uid-taking builder so a bare --user never reads root's manager for another uid's unit?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "ad2f4552470380f92edaa354ecc76f464dc97a64",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_user_property_argv") },
+        tail: [ CitesDeclaration { declaration: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_daemon_reload_argv") } ],
+      },
+      account: "systemctl_show_user_property_argv spells systemctl --user show with no UID@ connector, while systemctl_user_daemon_reload_argv carries it for the same user bus. A root-elevated converge that reads a user unit's property through the show builder reaches root's manager and reports about a unit that was never touched. The slice readback in remote_build_serving_converge reads the slice's cgroup files through the same function the admitting reader uses, so the slice leg is sound while this show builder stays wrong for its roadmap belt consumer.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [systemctl_user_show_omits_the_uid_machine_connector, typed_argv_exec_argv_shape_ambiguity, site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, sold_units_keep_bare_passthrough_pending_typed_absence, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
   inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
   string_duration_transport_surface,
@@ -4041,6 +4138,14 @@ data integration_concerns: List<IntegrationConcern> = [typed_argv_exec_argv_shap
   h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing,
   normalize_drops_fn_with_out_of_scope_capability, h11ssl_unit3_three_gpu_functions_against_two_reported_cards, h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, three_spark_lan_endpoint_rows_answer_their_addresses_twice, srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands]
+
+// The main revision the 2026-11-19 and 2026-11-20 read-only edge listings were taken against -- the ref those
+// readings are a statement about. The ownership change they evidence is carried by this row's fifth sighting; no
+// revision is claimed for the landing itself, because gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
+// stand on, and a pending change has none until it lands.
+data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
+
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

@@ -5,7 +5,7 @@ import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveBootFile, SiteP
 import gunbc.host_command_binding { CommandHost, FleetSshCommandHost }
 import gunbc.fleet.site_pxe_edge_live_build_relation { SitePxeEdgeLiveBuildReading, BuildRelationRead, BuildRelationUnread, site_pxe_edge_live_build_relation_on }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_cas_path_is, SitePxeEdgeLivePlacementMode, LivePlaceFromStaging, LiveDoNotPlace, SitePxeEdgeLiveBootEvidence, SitePxeEdgeLiveEvidenceReading, LiveEvidenceRead, LiveEvidenceUnread, site_pxe_edge_live_evidence_on, site_pxe_edge_live_root_relative_contained }
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs, Milliseconds, Set }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
 import gunbc.systemctl_show_read { SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_value_from_stdout }
@@ -2874,27 +2874,118 @@ fn site_pxe_edge_placement_wire(placement: SitePxeEdgePlacementOutcome) -> Strin
 }
 
 // THE INSTALL SURFACE THIS EDGE OWNS, AND WHAT A WITHDRAWAL MUST REMOVE FROM IT. Writing the desired files is
-// not enough to withdraw an install: a request a run stops passing leaves its served files behind
-// behind, and an install file left on disk is a standing authorization to erase whichever client reaches it. So
-// the edge owns three paths outright -- grub/install/ (the per-host configurations the entry grub.cfg loads),
-// grub/grub.cfg-01-* (the per-MAC names the signed GRUB never read, left by every run before 2026-11-10) and the
-// HTTP seed/ tree -- and every file under them that no admitted binding renders is stale. Apply removes each one,
-// whatever the gate says, because removing an install can only make the edge less destructive; observe reports
-// them. A listing that cannot be read is unobservable and fails the run, never "nothing stale".
+// not enough to withdraw an install: a request a run stops passing leaves its served files behind, and an install
+// file left on disk is a standing authorization to erase whichever client reaches it. So the edge owns four
+// families outright -- grub/install/ (the per-host configurations the entry grub.cfg loads), grub/grub.cfg-01-*
+// (the per-MAC names the signed GRUB never read, left by every run before 2026-11-10), the HTTP seed/ tree, and
+// the edge staging/ subtree -- and every file under them that no admitted binding renders is stale. Apply removes
+// each one, whatever the gate says, because removing an install can only make the edge less destructive; observe
+// reports them. A listing that cannot be read is unobservable and fails the run, never "nothing stale".
+//
+// THE FOURTH FAMILY IS THE STAGING SUBTREE, AND IT IS OWNED BECAUSE NOTHING HERE RENDERS A FILE IN IT. The fold
+// that writes the edge has no path under staging/, so whatever a run finds there was put there by a hand for one
+// install and will outlive it. The alternative rule -- own the particular directory some session happened to
+// create -- keys a safety rule to one person's naming habit and misses the next hand staging step whatever it is
+// called; that is how a hand-staged stanza sat on srv4 under staging/withdrawn-h11new/ through two converge runs
+// that each printed stale-install-files=removed and never named it. The sighting is
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_edge_residue_2026_11_19
+// and the open gap is
+// gunbc.integration_concern::edge_install_residue_lives_outside_the_fold_that_prunes_it.
+//
+// WHY OWNING THE SUBTREE WHOLE IS SAFE WITHOUT A NAME-BY-NAME EXCLUSION. The ordering dependency is real: the
+// placement leg (site_pxe_edge_place_image) fetches the installer image INTO this directory
+// (site_pxe_edge_image_staging_root IS /srv/gunbc-site-pxe-edge/staging), reads its digest there, publishes by
+// hard-link plus rename, and removes the staged copy -- all inside that leg, and the run takes placement
+// (:3114 region) before this listing (:3164 region). So at listing time a path here is either hand-staged residue
+// or the corpse of a fetch this run already refused, and the leg itself deletes the latter. If the order ever
+// flipped the cost is a re-download: the next placement fetches again and the digest is re-verified, and the
+// SERVED copy is never affected, because publishing is verify-then-link and the served file is digest-checked
+// after it lands. Two converge runs against this host do not race each other either: .github/workflows
+// /fleet-converge.yml:980 puts every mode that is not specially listed into the concurrency group
+// gunbc-host-mutation-<host> with cancel-in-progress false, and site_pxe_edge_observe / site_pxe_edge_converge are
+// not specially listed, so a second dispatch on srv4 queues behind the first. That is CI-level serialization per
+// host, not a lock on the host: a hand run of this module on srv4 would not be covered by it, which is the same
+// reason the lane rule says a person does not edit the edge by hand.
+//
+// A DIRECTORY THE REMOVAL HAS EMPTIED IS PART OF THE SAME WITHDRAWAL, inside the owned families only. An install's
+// seed lives in a directory named for the client that booted it, so removing its two files leaves the name behind,
+// and a directory whose only explanation is an install that no longer runs is where the next person re-derives a
+// hand step off the edge. The family roots themselves are never removed -- they are where this fold writes, and the
+// owned prefixes all end at them -- and a path outside the owned families is not this converge's to touch.
 type SitePxeEdgeStaleOutcome
   = StaleLeftObserveOnly
   | StaleRemoved
   | StaleRemovalRefused { path: String, reason: String }
 
+// The residue a run found under the served root. The `paths` list carries both halves of the withdrawal -- a file no
+// admitted binding renders, and a directory inside an owned family that the removal has emptied -- because a run
+// retires one install, and the file and the name it leaves behind are one withdrawal, reported on one wire line.
 type SitePxeEdgeStaleStanding
   = StaleInstallFilesUnobservable { reason: String }
   | StaleInstallFilesNone
   | StaleInstallFilesFound { paths: List<String>, outcome: SitePxeEdgeStaleOutcome }
 
+// WHERE THE EDGE LIVES, said once. The served root is the parent of the tftp root, which stays the single authority
+// for where an edge is; a second constant naming the same directory would be a fork.
+fn site_pxe_edge_served_root() -> String {
+  path_parent_directory(path: site_pxe_edge_tftp_root as String)
+}
+
+// THE OWNED FAMILIES, as prefixes, read by both halves of the withdrawal -- the file rule and the emptied-directory
+// rule -- so neither can be widened without the other. Every prefix ends inside its family: the three that name a
+// directory carry the trailing separator, so the directory named by the prefix itself is NOT inside its own family
+// and is never a removal candidate. The grub.cfg-01- family has no directory to protect: it is a name pattern the
+// edge owns outright.
+fn site_pxe_edge_owned_install_roots() -> List<String> {
+  [
+    join([site_pxe_edge_tftp_root as String, "/grub/install/"], ""),
+    join([site_pxe_edge_tftp_root as String, "/grub/grub.cfg-01-"], ""),
+    join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_root], ""),
+    join([site_pxe_edge_served_root(), "/staging/"], ""),
+  ]
+}
+
 fn site_pxe_edge_owned_install_path(path: String) -> Bool {
-  starts_with(s: path, prefix: join([site_pxe_edge_tftp_root as String, "/grub/install/"], ""))
-    || starts_with(s: path, prefix: join([site_pxe_edge_tftp_root as String, "/grub/grub.cfg-01-"], ""))
-    || starts_with(s: path, prefix: join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_root], ""))
+  any(site_pxe_edge_owned_install_roots(), root => starts_with(s: path, prefix: root))
+}
+
+// EVERY DIRECTORY A PATH SITS IN, the path itself excluded. One segment walk per path: the walk stops where
+// path_parent_directory returns its argument, which std.filesystem defines for `/`, so it terminates on absolute and
+// relative paths alike.
+fn site_pxe_edge_ancestor_directories(path: String) -> List<String> {
+  let parent = path_parent_directory(path: path)
+  if parent == path {
+    []
+  } else {
+    [parent] + site_pxe_edge_ancestor_directories(path: parent)
+  }
+}
+
+// THE DIRECTORIES THAT STILL HOLD SOMETHING AFTER THE WITHDRAWAL. A file this run keeps -- one the listing names that
+// is not in the stale set, or one the run itself renders -- marks every directory above it, so emptiness is decided
+// by a set lookup per candidate rather than a scan per candidate: membership over the listing inside the candidate
+// fold is quadratic, and gunbc.design_argument::how_to_work fixes a proven cost shape regardless of the realized n.
+fn site_pxe_edge_protected_install_dirs(listed_files: List<String>, stale_files: List<String>, desired: List<SitePxeEdgeFile>) -> Set<String> {
+  let stale = site_pxe_edge_stale_file_set(stale_files: stale_files)
+  let kept = flat_map(listed_files, f => if set_contains(stale, f) { [] } else { site_pxe_edge_ancestor_directories(path: f) })
+  let rendered = flat_map(desired, x => site_pxe_edge_ancestor_directories(path: x.path as String))
+  (kept + rendered) |> fold(init: empty_set(), f: (acc, d) => set_insert(acc, d))
+}
+
+fn site_pxe_edge_stale_file_set(stale_files: List<String>) -> Set<String> {
+  fold(stale_files, init: empty_set(), f: (acc, p) => set_insert(acc, p))
+}
+
+// THE EMPTY-DIRECTORY HALF OF THE SAME DECISION, as a pure fold over the two listings so the withdrawal stays
+// decidable from supplied values: an owned directory that holds no kept file at any depth and under which this run
+// renders nothing. Longest path first, which is what makes a chain of empty directories come out bottom-up: no
+// directory is a prefix of another at the same length, so ordering by length orders every ancestor pair, and rmdir
+// -- which refuses a directory that still has an entry -- is never reached while a child is left standing.
+fn site_pxe_edge_empty_owned_install_dirs(listed_dirs: List<String>, listed_files: List<String>, stale_files: List<String>, desired: List<SitePxeEdgeFile>) -> List<String> {
+  let protected = site_pxe_edge_protected_install_dirs(listed_files: listed_files, stale_files: stale_files, desired: desired)
+  filter(listed_dirs, d => site_pxe_edge_owned_install_path(path: d) && !set_contains(protected, d))
+    |> sort_by(d => string_length(s: d))
+    |> reverse()
 }
 
 // The stale set as a pure fold over a listing, so the withdrawal is decidable from supplied values: every owned
@@ -2918,26 +3009,57 @@ fn site_pxe_edge_remove_stale(target: SshTarget, context: FleetSshExecutionConte
   }
 }
 
+// AN EMPTIED DIRECTORY GOES WITH rmdir, not with rm: the rule is that the directory has nothing left in it, and a
+// removal that could take a subtree would be a wider authority than the listing just read. A refusal is reported the
+// same way a refused file removal is, with the path that refused and why.
+fn site_pxe_edge_remove_empty_install_dirs(target: SshTarget, context: FleetSshExecutionContext, dirs: List<String>) -> SitePxeEdgeStaleOutcome {
+  match dirs.first() {
+    Absent => StaleRemoved
+    Present { value: d } =>
+      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["rmdir", "--", d], step: "rmdir emptied install dir") {
+        Present { value: why } => StaleRemovalRefused { path: d, reason: why }
+        Absent => site_pxe_edge_remove_empty_install_dirs(target: target, context: context, dirs: skip(xs: dirs, n: 1))
+      }
+  }
+}
+
 // The served root may not exist on an edge that never ran; that is nothing stale, read as such by a second probe,
 // not assumed from find's failure.
 fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode, desired: List<SitePxeEdgeFile>) -> SitePxeEdgeStaleStanding {
-  let root = path_parent_directory(path: site_pxe_edge_tftp_root as String)
-  match typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg,target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "f"])) {
+  let root = site_pxe_edge_served_root()
+  match typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg, target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "f"])) {
     TypedArgvExecOverran { deadline: d } => StaleInstallFilesUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        let stale = site_pxe_edge_stale_install_paths(listed: site_pxe_edge_listing_paths(stdout: r.stdout), desired: desired)
-        if length(stale) == 0 {
-          StaleInstallFilesNone
-        } else {
-          StaleInstallFilesFound {
-            paths: stale,
-            outcome: match mode {
-              SitePxeEdgeObserveOnly => StaleLeftObserveOnly
-              SitePxeEdgeApply => site_pxe_edge_remove_stale(target: target, context: context, paths: stale)
-            },
-          }
+        let listed_files = site_pxe_edge_listing_paths(stdout: r.stdout)
+        let stale = site_pxe_edge_stale_install_paths(listed: listed_files, desired: desired)
+        // The directory listing is read the same way the file listing is, and its failure makes the whole standing
+        // unobservable rather than "nothing empty": an unreadable listing has never been allowed to read as clear.
+        match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "d"])) {
+          TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: join(["directory listing refused: ", why], "") }
+          TypedArgvExecConverged { result: d } =>
+            if !d.success {
+              StaleInstallFilesUnobservable { reason: join(["find -type d exit=", to_string(d.exit_code), " ", trim(s: d.stderr)], "") }
+            } else {
+              let emptied = site_pxe_edge_empty_owned_install_dirs(listed_dirs: site_pxe_edge_listing_paths(stdout: d.stdout), listed_files: listed_files, stale_files: stale, desired: desired)
+              let residue = stale + emptied
+              if length(residue) == 0 {
+                StaleInstallFilesNone
+              } else {
+                StaleInstallFilesFound {
+                  paths: residue,
+                  outcome: match mode {
+                    SitePxeEdgeObserveOnly => StaleLeftObserveOnly
+                    SitePxeEdgeApply => match site_pxe_edge_remove_stale(target: target, context: context, paths: stale) {
+                      StaleLeftObserveOnly => StaleLeftObserveOnly
+                      StaleRemovalRefused { path: p, reason: why } => StaleRemovalRefused { path: p, reason: why }
+                      StaleRemoved => site_pxe_edge_remove_empty_install_dirs(target: target, context: context, dirs: emptied)
+                    },
+                  },
+                }
+              }
+            }
         }
       } else {
         match site_pxe_edge_posix_leg(target: target, context: context, argv: ["test", "-d", root], step: "test -d served root") {
