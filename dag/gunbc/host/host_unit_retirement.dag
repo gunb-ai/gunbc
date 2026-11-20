@@ -28,6 +28,7 @@ import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { Cons, Empty, string_contains, trim, list_head }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.design_ruling { hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
@@ -297,10 +298,10 @@ fn host_unit_retirement_ci_wet() -> ProcessExit {
       match host_unit_retirement_rows_for(subject_host) {
         Empty => exit_failure(reason: concat("host_unit_retirement: no retirement rows are modeled for subject ", subject_host, "; the ruling retires units on srv14 only"))
         _ =>
-          match runner_host_spec_for(operator_host_srv14) {
+          match runner_host_spec_for(subject_host as HostIdentity) {
             RunnerHostSpecAbsent { host: _ } => exit_failure(reason: concat("host_unit_retirement: ", subject_host, " has no RunnerHostSpec; there is nothing to dial"))
             RunnerHostSpecFound { spec: _ } =>
-              match administrator_ssh_target(host: operator_host_srv14) {
+              match administrator_ssh_target(host: subject_host as HostIdentity) {
                 SshTargetRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the administrator target for ", subject_host, " is refused: ", reason))
                 SshTargetResolved { target } =>
                   match prepare_fleet_ssh_agent_context(attempt_raw: host_unit_retirement_attempt_raw) {
