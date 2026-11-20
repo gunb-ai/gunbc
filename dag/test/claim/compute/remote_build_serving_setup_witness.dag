@@ -18,8 +18,9 @@ import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7 }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
+  remote_build_serving_candidate_hosts,
   remote_build_serving_desired, RemoteBuildServingDesired, serving_ledger_service_user,
   serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
   serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
@@ -1497,4 +1498,17 @@ fn settled_slice_high(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimit
     UserWorkSliceHighDerived { bytes: h } => ObservationEstablished { observed: CgroupMemoryLimited { bytes: h } }
     UserWorkSliceHighGapExceedsMax => ObservationEstablished { observed: CgroupMemoryLimited { bytes: byte_size(0) } }
   }
+}
+
+// KEN'S CANDIDATE ROW DOES NOT OPEN THE LIVE GATE. ken (operator_host_e2d4b7) is in the candidate set -- that
+// enables the OBSERVE/CONVERGE arm so the converge can create its /opt/gunbc/compute/capacity home -- but it is
+// NOT on gunbc.compute.remote_build_hosts::remote_build_serving_hosts, so it is not in client dispatch either:
+// remote_build_host_is_serving reads that roster, the ONE live dispatch gate. Red control: srv9 (retired) is
+// neither candidate nor serving, so the candidate arm is not vacuously true; if candidacy ever leaked straight
+// into the roster, ken's !remote_build_host_is_serving goes red.
+test fn ken_candidate_row_does_not_admit_to_roster_or_dispatch() -> Bool {
+  any(remote_build_serving_candidate_hosts(), h => h == operator_host_e2d4b7)
+    && !remote_build_host_is_serving(host: operator_host_e2d4b7)
+    && !any(remote_build_serving_candidate_hosts(), h => h == operator_host_srv9)
+    && !remote_build_host_is_serving(host: operator_host_srv9)
 }
