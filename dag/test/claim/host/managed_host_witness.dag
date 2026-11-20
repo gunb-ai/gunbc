@@ -18,7 +18,9 @@ import gunbc.host.managed_host {
   managed_hosts,
 }
 import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
+import gunbc.machine_intake.mtcollins1_access_observation {
+  mtcollins1_access_observation, mtcollins1_observed_at,
+}
 import extdeps.board_authority { BoardFruRead, BoardFruIdentity }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.ampere_smpro_observation {
@@ -97,7 +99,10 @@ fn witness_evidence_reporting(h: ManagedHost, build: BmcFirmwareReleaseIdentity)
         label: "hypothetical roster-witness build reading (no artifact behind it)",
         digest: content_hash_of_value(value: "roster witness hypothetical build reading"),
       },
-      observed_at: o.observed_at,
+      // THE READING'S INSTANT IS THE PASS'S OWN CLOCK READING. The build reading keeps a point field
+      // because gunbc.host.megarac_operation_standing orders build readings with `<` and `>`; an access
+      // receipt's time is a captured band now and has no lawful way into a point field.
+      observed_at: mtcollins1_observed_at,
     )
     BmcAccessUnobserved { endpoint: _ } => megarac_operation_evidence_fixture_none()
   }

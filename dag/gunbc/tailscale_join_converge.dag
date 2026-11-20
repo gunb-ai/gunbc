@@ -274,8 +274,9 @@ fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionC
 }
 
 // The package leg's decoding, factored PURE so the wet wiring and the model share ONE shape and the decisive case
-// is witnessed (the wet's ssh call is not, the decision it feeds is). Mirrors observe_site_pxe_edge_package
-// (site_pxe_edge_converge:2355) -- the proven sibling: a CONVERGED dpkg-query leg is handed WHOLESALE to
+// is witnessed (the wet's ssh call is not, the decision it feeds is). Mirrors
+// @ref(gunbc.fleet.site_pxe_edge_converge::observe_site_pxe_edge_package) -- the proven sibling: a CONVERGED
+// dpkg-query leg is handed WHOLESALE to
 // dpkg_query_status_verdict_of, which owns the four-way decode (exit 0 Status line -> installed/not-installed;
 // exit 1 with "no information is available" -> Unknown; everything else -> Undecidable). A NON-ZERO exit is a
 // dpkg ANSWER, not an execution failure: `dpkg-query -s <absent>` exits 1 and prints exactly that marker, so the

@@ -29,6 +29,7 @@ import std.optional { Optional, Present, Absent }
 import std.decl_ref { decl_ref }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.clock { captured_point }
 import extdeps.bmc.types {
   BootTargetPxe, BootTargetCd, BootOverrideModeUefi, BootOverrideModeLegacy,
   BootOverrideOnce, BootOverrideContinuous,
@@ -137,7 +138,7 @@ import extdeps.bmc.ipmi_channel {
 }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
-import extdeps.board_authority { BoardFruIdentity, BoardFruRead }
+import extdeps.board_authority { BoardFruIdentity, BoardFruNotRead, BoardFruRead }
 import std.content_hash { content_hash_of_value }
 import gunbc.machine_intake.subject {
   AssemblyManifest, FirmwareEntry, FirmwareManifest, IntakeAttemptId, MachineIntakeSubject,
@@ -491,7 +492,16 @@ data srv15_observed_firmware: BmcFirmwareReleaseIdentity = BmcFirmwareReleaseIde
 data srv15_observed_identity: BmcObservedIdentity = BmcObservedIdentity {
   board: BoardFruRead { fru: BoardFruIdentity {
     manufacturer: "ASRock Rack" as NonEmptyStr,
-    product: srv15_baseboard.catalog.model,
+    // WHAT THE BOARD'S FRU AREA SAYS IS A STRING, NOT OUR AUTHORITY FOR THE BOARD. The reference on the
+    // catalog row (BaseboardCatalogRow.model, a BoardAuthorityRef) names which board srv15 is; the receipt's
+    // product field carries the text the board reports. srv15 has no FRU capture on main --
+    // artifacts/bmc/srv15-inband-recovery-2026-10-29/ holds Redfish JSON, efibootmgr, host identity and a PXE
+    // discovery, never an `ipmitool fru print` -- so nothing here may be claimed as READ from this machine:
+    // the licensed text is the catalog row's own label, and the claim below pins that it is that row's label.
+    // Corroboration, not a read of srv15: the same model's in-band print
+    // (artifacts/bmc/altrad8ud-1l2t-6-fru-full-2026-11-11/fru_print_0.txt, butch/srv14, 2026-11-11) reports
+    // `Board Product: ALTRAD8UD-1L2T`, the label without the vendor prefix our catalog carries.
+    product: srv15_baseboard.catalog.model_label,
     part_number: none,
   } },
   chassis_part_number: none,
@@ -514,7 +524,7 @@ fn srv15_access_observation(endpoint: BmcControllerEndpoint) -> BmcAccessObserva
     successful_read_surfaces: [SurfaceSystemInventory, SurfaceBootControl],
     successful_write_surfaces: [],
     raw_response: content_hash_of_value(value: "srv15-witness-access-observation"),
-    observed_at: srv15_rotation_applied_at,
+    observed_at: captured_point(at: srv15_rotation_applied_at),
   } }
 }
 
@@ -1429,5 +1439,21 @@ test fn w_an_installed_host_is_protected_by_more_than_an_absent_row() -> Bool {
           Absent => false
         }
     Present { value: _ } => false
+  }
+}
+
+// THE FRU RECEIPT RESOLVES TO srv15's CATALOG ROW, AND IT IS AN EXPECTED STRING, NOT A READ.
+// Before this change the receipt's product was written from srv15_baseboard.catalog.model -- a
+// BoardAuthorityRef, a structured declaration reference, put into a NonEmptyStr position. That is the class
+// the declared-type wall (PR #16699) refuses, the third instance left on main after PR #16717 cleared five
+// and this change cleared two, and it closed all 34 claims of this entry. The row's label is the honest
+// value while srv15 has no FRU capture of its own; this claim pins both halves: the product equals the label
+// OF srv15's catalog row (not another board's), and reading it back is not presented as a capture -- the
+// string is licensed by the catalog, and an FRU read of srv15 would be a different fact needing its own
+// artifact.
+test fn the_fixture_fru_product_resolves_to_srv15s_catalog_row() -> Bool {
+  match srv15_observed_identity.board {
+    BoardFruRead { fru: fru } => fru.product == srv15_baseboard.catalog.model_label
+    BoardFruNotRead { cause: _reason } => false
   }
 }
