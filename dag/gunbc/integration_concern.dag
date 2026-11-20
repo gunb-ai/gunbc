@@ -4155,6 +4155,75 @@ data systemctl_user_show_omits_the_uid_machine_connector: IntegrationConcern = I
   disposition: Open,
 }
 
+// CONVERGE MODES THAT ACT ON A MACHINE OTHER THAN THE ONE THEY RUN FROM, WITHOUT NAMING IT AS A SUBJECT
+// (filed 2026-11-20 on manager direction, from the bounded audit that folded the tailscale join arm).
+// What was inspected, so the scope is repeatable: every github.event.inputs.* name in
+// gunbc.fleet.fleet_converge_workflow -- host 33 times, subject_host 10, target 7, sweep_host 4,
+// reset_observer 4, arrival_subject 4, and no other name denotes a machine -- then the step function that
+// passes each one, then the entry module that reads the env that key-value sets, looking for a dial
+// (fleet_ssh_target_at_standard_port, anchored_ssh_target, typed_argv_exec_over_fleet_ssh). Seven modes
+// pass the filter: the six spark steps (SPARK_CONVERGE_TARGET -- spark/managed_access_apply's
+// managed_principal_leg and privileged_leg, spark/grant_privileged_operation's spark_grant_install_target)
+// and managed_host_network_install (arrival_subject -- host/network_install_ci reads that env at its line
+// 233 and resolves an SshTarget in network_install_ci_edge_target). Their facts rows declare
+// SubjectRuleNotApplicable with ExecutorDomain, so the split gate never sees them and their runner lane is
+// chosen by the executor's own label. Two other shapes the same audit found are already carried: hostname
+// converge (its target input, SubjectRequiredAndDistinct, TargetHostDomain) and the two serving modes
+// (subject_host, may_be_executors_own, with srv4 run 44822470270 as the refusal receipt); the tailscale
+// join is folded in the change that files this row. Two shapes are excluded honestly rather than by
+// silence: the two sweeps name a roster entry and a capture path uploaded by another run, and neither
+// runner_lost_boot_sweep_run nor runner_jit_dead_sweep_run contains a dial; host_reset_return's
+// reset_observer is a runner LABEL expression for the observer job, not a machine to act on.
+data converge_modes_naming_a_target_without_a_subject_rule: IntegrationConcern = IntegrationConcern {
+  identity: "converge_modes_naming_a_target_without_a_subject_rule",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts"),
+    requirement: "a fleet-converge mode whose act reaches a machine other than the one its job runs from names that machine as a subject on its facts row (a subject rule and a target-host mutation domain), so the lane the run is granted and the machine it changes cannot silently diverge",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_executor_subject_split", decl_name: "fleet_converge_install_subject_decision") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_grants_step"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_bootstrap_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_serving_apply_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_native_serving_apply_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_runtime_image_probe_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_wireless_link_converge_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_managed_host_network_install_step"),
+      decl_ref(module_path: "gunbc.spark.managed_access_apply", decl_name: "privileged_leg"),
+      decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_edge_target"),
+    ],
+  },
+  question: "How does a converge mode whose act lands on a machine other than its executor name that machine in a form the split gate can see -- a subject input plus a rule declared on the facts row -- instead of binding the executor's own label to both the lane and the target, and does any of these seven want the MAY-BE-ITS-OWN-MACHINE rule rather than the distinct one?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "d4d5088c216cb93fb83bf286ed0ef08e3c646be7",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_wireless_link_converge_step") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_executor_subject_split_gate_step") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_edge_target") },
+        ],
+      },
+      account: "Reading the join arm to make butch reachable, the same two-field question arises for seven other modes: they dial a machine named by a dispatch input while their facts row declares no subject rule, so the gate that refuses a run whose acted-on machine is its own executor never admits them and their lane comes from the executor's label. The join arm showed what that costs when the binding is only half-moved: the step bound github.event.inputs.host to BOTH the runner label and TAILSCALE_JOIN_HOST, so flipping the arm's domain without moving the binding would have joined the executor instead of the requested host. No fold is made here; the six spark modes and the network-install mode are named, unowned, and left as they are.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_serving_apply_step"),
+        control: Absent,
+        statement: "a spark apply run reaches the machine its dispatch named, and no other: after any fold the emitted step still passes that machine under the shared subject input name and its entry resolves the acted-on target from that input, with today's behaviour readable against the target resolution in spark/managed_access_apply's privileged_leg",
+      },
+    ],
+    next: climbs_when(capability: "each of the seven facts rows states a subject rule and a target-host mutation domain, its step passes the machine under the shared subject input name, and its entry resolves the acted-on host through the same rule-aware read the serving entries use -- measured at this revision, a mutation of the rule for these seven modes reddens nothing, because none of them is in the gated roster"),
+  },
+}
+
 data integration_concerns: List<IntegrationConcern> = [systemctl_user_show_omits_the_uid_machine_connector, typed_argv_exec_argv_shape_ambiguity, site_pxe_edge_pinned_chainloader_member_absent_from_srv4, h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model, h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster, h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture, fleet_converge_roster_vs_closed_sum, claim_witness_import_block_absent_corpus, serving_width_uses_pre_engine_fixed_overhead, host_allocation_conservation_effect_join_callees, qualified_corpus_reference_minted_as_kernel, controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, user_work_slice_admission_deferral_has_no_visible_count, user_work_slice_admission_check_races_within_a_tick, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence, emitter_never_moves_unique_accumulator_field, approval_submit_deadline_restated_per_caller, gcp_token_lifetime_condition_and_expiry_unconsumed, jwks_cache_freshness_without_origin_evidence, operator_route_unit_chosen_by_hand, credential_secret_field_reads_confined_by_name_not_construction, gh_cli_routes_authenticate_from_ambient_login, fleet_automation_principal_has_two_names, sold_units_keep_bare_passthrough_pending_typed_absence, equality_alias_argument_not_expanded_before_admission, ledger_sighting_cannot_state_what_it_established, host_effect_apply_witness_import_block_absent, equality_wall_three_site_measure_stopgap_interim, branch_match_arm_closure_declared_return_not_admitted, converge_retires_before_replacement_has_run, cp_probe_labels_are_built_from_an_unbound_subject, microvm_lane_install_writes_no_slot_realization, run_unreached_function_bodies_typechecked, install_target_disk_binds_a_disk_beside_the_seed_selector, runner_capacity_realize_apply_has_no_executing_route, runner_connectivity_observe_admitted_by_no_controller_key_stager, nbd_install_actuator_boot_once_hard_codes_srv3,
   inband_smbios_board_parse_fleet_and_arrival_lanes, untyped_lambda_handler_in_generic_binding_never_grounds_state, srv14_slot_admission_answered_by_envelope_and_verdict, fleet_reach_endpoint_ignores_the_modeled_lan_address, port22_byte_golden_drifts_with_the_anchor_registry, role_singleton_assessor_claims_stand_red_and_one_eval_hangs, grain_witness_tests_are_hand_written_rust_in_the_stage0_mirror, departed_dag_outside_regen_inputs_refuses_heal, emitter_string_return_carries_no_typed_refusal, mkdir_parents_command_has_two_module_authorities, managed_host_boot_once_and_oob_boot_handoff_gate_the_same_boot_once,
   authenticated_lanplus_retry_bound_pinned_only_in_declared_ops,
@@ -4164,6 +4233,7 @@ data integration_concerns: List<IntegrationConcern> = [systemctl_user_show_omits
   remote_build_serving_fresh_account_has_no_toolchain_bootstrap,
   remote_build_serving_checkout_pin_has_no_declared_owner,
   remote_build_converge_action_is_not_the_whole_write,
+  converge_modes_naming_a_target_without_a_subject_rule,
   group_membership_append_spelled_by_two_tools,
   machine_width_uint8_int_crossing_has_no_declared_route,
   srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs,
