@@ -12,7 +12,7 @@ import extdeps.exec.command {
   OperationRowArgvCommandRefused,
 }
 import std.resources { Network }
-import std.algebra { string_contains }
+import std.algebra { string_contains, trim }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.tools.gnu_coreutils { coreutils_install_directory_argv }
 import extdeps.access.posix { FileMode, PermissionBits }
@@ -257,6 +257,12 @@ data apt_third_party_keyrings_directory_mode: FileMode = FileMode {
   sticky: false,
 }
 
+// Where the armored key is fetched and VERIFIED before it is ever dearmored into `keyring_path`. It lives
+// OUTSIDE /etc/apt/keyrings so a key that fails the check never sits in the trusted keyring directory; the
+// route's `umask 077` makes the fetch private. The path is fixed (not a shell variable) so the dearmor into
+// `keyring_path` is a constant-word argv the sudo elevation can quote.
+data apt_third_party_staged_key_path: NonEmptyStr = "/tmp/apt-third-party-keyring.armored"
+
 // THE ONE SOURCE-LINE RENDERER. `deb [arch=X signed-by=Y] BASE SUITE COMP...` -- the apt line shape every
 // third-party repository documents, rendered from the row so no vendor re-spells it and no caller hand-builds
 // an apt line. Components are joined in order because the row owns their order.
@@ -278,24 +284,42 @@ fn apt_third_party_repo_source_line(repo: ThirdPartyAptRepo) -> String {
   )
 }
 
-// THE KEYRING CHECK, AS A VALUE. The install route verifies a fetched key with `gpg --show-keys --with-colons
-// <keyring> | grep -q <pinned>`; this is that check as a function, so a witness can exercise the DECISION -- a
-// key whose fingerprint differs from the row's must FAIL, and the route's `|| exit 1` then refuses before the
-// keyring is ever written into the deb line's `signed-by=` (trusted). It models the exact `grep -q` the route
-// runs: the check passes iff the pinned fingerprint appears in gpg's colon output. The emitted script is
-// generated from the row's own pinned value, so predicate and script cannot drift (the inhabitance claim ties
-// them); this exists so the refusal is witnessed, not string-grepped.
+// THE KEYRING CHECK, AS A VALUE -- the security property, as a decision a witness can exercise.
+//
+// A fetched apt signing key is trusted only if it is EXACTLY ONE primary key (one `pub` record) whose primary
+// `fpr` record equals the pinned fingerprint FIELD-FOR-FIELD. The naive check -- `grep -q <pin>` over gpg's
+// --with-colons output -- is FAIL-OPEN: a fetched file holding the genuine key PLUS a second attacker key
+// still contains the pin as a substring, passes, and then `signed-by=` trusts both keys. So this establishes
+// the record structure (exactly one `pub`) and compares the primary fingerprint as a field (gpg's --with-colons
+// puts it in colon field 10, index 9 after the leading `fpr`), never as a substring. Mirror of that exact check
+// lives in the install route below (same single-primary rule, same field compare); the inhabitance claim ties
+// the route to this module so the two cannot drift. A file that is not a single genuine key -- zero `pub`, two
+// `pub`, or a differing primary fingerprint -- FAILS here and the route refuses.
 fn apt_third_party_keyring_fingerprint_ok(show_keys_colons: String, pinned: NonEmptyStr) -> Bool {
-  string_contains(s: show_keys_colons, pattern: pinned as String)
+  let lines = split(s: show_keys_colons, delimiter: "\n")
+  let pub_count = filter(lines, l => starts_with(s: l, prefix: "pub:")).count()
+  let primary_fpr = match filter(lines, l => starts_with(s: l, prefix: "fpr:")).first() {
+    Present { value: fpr_line } =>
+      match split(s: fpr_line, delimiter: ":").skip(n: 9).first() {
+        Present { value: v } => trim(s: v)
+        Absent => ""
+      }
+    Absent => ""
+  }
+  pub_count == 1
+    && primary_fpr == (pinned as String)
 }
 
-// THE ONE INSTALL ROUTE: keyring directory, fetch the armored key, dearmor it, verify the pinned fingerprint
-// and REFUSE before the keyring is trusted, write the source line, apt-get update, then install the packages.
-// It is the docker/nvidia provisioning sequence, lifted into the one place apt's contract lives. Each simple
-// command is elevated through extdeps.sudo.elevation before shell quoting; the pipes and redirection belong to
-// the surrounding shell, so gpg and tee still consume stdin while sudo refuses without prompting. `set -e`
-// plus the fingerprint guard means a bad key stops the sequence at the key, not at the package: the fetched key
-// that fails the check is written nowhere it is trusted.
+// THE ONE INSTALL ROUTE: keyring directory, fetch the armored key to a PRIVATE staging file, VERIFY it there
+// against the pinned fingerprint and REFUSE, and only THEN dearmor it into the trusted keyring location, write
+// the source line, apt-get update, install the packages. The order is the security property: the fetched key is
+// checked at a path OUTSIDE /etc/apt/keyrings, so a key that is not the single genuine pinned key never sits in
+// the trusted directory at all. The check mirrors apt_third_party_keyring_fingerprint_ok exactly -- exactly one
+// `pub` record, the primary `fpr` (colon field 10) equal to the pin field-for-field -- not a substring `grep -q`
+// that an extra attacker key defeats. `umask 077` makes the fetch private. It is the docker/nvidia provisioning
+// sequence with that fail-open corrected. Each simple privileged command is elevated through
+// extdeps.sudo.elevation before shell quoting; the pipes and redirection belong to the surrounding shell, so
+// gpg and tee still consume stdin while sudo refuses without prompting.
 //
 // This is a medium-as-string shell leaf and dissolves when host_effect_apply binds an AptRepoEnsure plus
 // PackageInstall effect without the shell leaf -- the same dissolution the docker and nvidia leaves carry.
@@ -303,6 +327,7 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
   join(
     [
       "set -e",
+      "umask 077",
       join(
         map(
           sudo_elevate_argv(command: coreutils_install_directory_argv(mode: apt_third_party_keyrings_directory_mode, path: apt_keyrings_directory as String)),
@@ -310,7 +335,35 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
         ),
         " ",
       ),
-      join(["curl -fsSL ", repo.keyring_url as String, " | ", join(map(sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String]), w => posix_single_quote(spelling: w)), " ")], ""),
+      // fetch the armored key to the private staging path, unprivileged
+      join(["curl -fsSL ", repo.keyring_url as String, " -o ", apt_third_party_staged_key_path as String], ""),
+      // read gpg's colon records from the STAGED file, never from the trusted keyring path
+      join(["gpg --show-keys --with-colons ", apt_third_party_staged_key_path as String, " > ", apt_third_party_staged_key_path as String, ".colons"], ""),
+      // VERIFY: exactly one primary key, primary fpr field-for-field equal to the pin. Refuse before install.
+      join(
+        [
+          "pubs=$(grep -c '^pub:' ",
+          apt_third_party_staged_key_path as String,
+          ".colons || true); fpr=$(grep -m1 '^fpr:' ",
+          apt_third_party_staged_key_path as String,
+          ".colons | cut -d: -f10 || true); { [ $pubs -eq 1 ] && [ $fpr = ",
+          repo.keyring_fingerprint.value as String,
+          " ]; } || { echo 'AptThirdPartyKeyringFingerprintRefusal: the fetched key is not a single primary key carrying pinned fingerprint ",
+          repo.keyring_fingerprint.value as String,
+          " for ",
+          repo.keyring_url as String,
+          "' >&2; exit 1; }",
+        ],
+        "",
+      ),
+      // only after the check: dearmor the staged file into the trusted keyring path
+      join(
+        map(
+          sudo_elevate_argv(command: ["gpg", "--dearmor", "--yes", "-o", repo.keyring_path as String, apt_third_party_staged_key_path as String]),
+          w => posix_single_quote(spelling: w),
+        ),
+        " ",
+      ),
       join(
         map(
           sudo_elevate_argv(command: ["chmod", "a+r", repo.keyring_path as String]),
@@ -318,7 +371,13 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
         ),
         " ",
       ),
-      join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint.value as String, " || { echo 'AptThirdPartyKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint.value as String, " for ", repo.keyring_url as String, "' >&2; exit 1; }"], ""),
+      join(
+        map(
+          sudo_elevate_argv(command: ["rm", "-f", apt_third_party_staged_key_path as String, concat(apt_third_party_staged_key_path as String, ".colons")]),
+          w => posix_single_quote(spelling: w),
+        ),
+        " ",
+      ),
       join(["echo '", apt_third_party_repo_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", repo.sources_list_path as String]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"], ""),
       join(
         map(

@@ -685,3 +685,36 @@ test fn w_the_join_runs_the_route_not_a_copy() -> Bool {
   tailscale_join_repo_install_script(arch: "amd64")
     == apt_third_party_repo_install_script(repo: tailscale_apt_repo_noble(arch: "amd64"), packages: tailscale_packages)
 }
+
+// A two-KEY gpg --with-colons sample: two `pub` records, the FIRST carrying `first_fp`. This is the fail-open
+// case -- a fetched file holding the genuine key PLUS a second key. A substring grep would wave it through and
+// signed-by would trust both.
+fn gpg_colons_two_keys_containing(first_fp: String, second_fp: String) -> String {
+  join(
+    [
+      "pub:-:4096:1:0B4423A0D19062A6D4E4F5D2C1B0A9E8F7D6C5B4:1700000000:::::::::::\n",
+      "fpr:::::::::",
+      first_fp,
+      ":\n",
+      "uid:-::::::::Tailscale <pkg@tailscale.com>:::::::\n",
+      "pub:-:4096:1:11AA22BB33CC44DD55EE66FF77889900AABBCCDD:1700000000:::::::::::\n",
+      "fpr:::::::::",
+      second_fp,
+      ":\n",
+    ],
+    "",
+  )
+}
+
+// (a2) THE TWO-KEY RED CONTROL. A fetched keyring that carries the pinned fingerprint AND a second key must
+// FAIL the check -- it is not the single genuine key. This is the exact fail-open a substring `grep -q` would
+// wave through, letting signed-by= trust both keys; it is why the check is a record count plus a field compare.
+test fn w_b_two_key_output_containing_the_pin_refuses() -> Bool {
+  let row = tailscale_apt_repo_noble(arch: "amd64")
+  let pinned = row.keyring_fingerprint.value
+  let accepts_two_keys = apt_third_party_keyring_fingerprint_ok(
+    show_keys_colons: gpg_colons_two_keys_containing(first_fp: pinned as String, second_fp: "2222222222222222222222222222222222222222"),
+    pinned: pinned,
+  )
+  !accepts_two_keys
+}
