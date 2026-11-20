@@ -125,6 +125,8 @@ data list_lit_at_concrete_list_scalar_control_source: String = "module probe_lis
 // Red control: a bare foreign coproduct (NOT a list literal) at a FreeMonoid return refuses.
 data bare_foreign_coproduct_at_freemonoid_source: String = "module probe_bare_foreign_coproduct_at_freemonoid\nimport std.types { String, Int }\nimport std.algebra { FreeMonoid, Empty }\ntype C = A { a: String } | B { b: String }\ntype Pack = One { n: String } | Two { m: String }\nfn make_pack() -> Pack { One { n: \"x\" } }\nfn h() -> FreeMonoid<C> { make_pack() }\n"
 
+data bare_element_at_freemonoid_parameter_source: String = "module probe_bare_element_at_freemonoid_parameter\nimport std.types { String, Int }\nimport std.algebra { FreeMonoid, list_append }\ntype C = A { a: String } | B { b: String }\ntype Pack = One { n: String } | Two { m: String }\nfn probe(xs: FreeMonoid<C>, p: Pack) -> FreeMonoid<C> { list_append(left: xs, right: p) }\n"
+
 // --- RED: a foreign coproduct at a declared coproduct, one claim per position. ---
 test fn a_foreign_coproduct_at_a_declared_coproduct_return_refuses() -> Bool {
   blocking_of_class(source: foreign_coproduct_return_source, wanted: "DeclaredTypeNotInhabited") >= 1
@@ -196,9 +198,20 @@ test fn a_list_literal_at_concrete_list_scalar_is_clean() -> Bool {
   blocking_total(source: list_lit_at_concrete_list_scalar_control_source) == 0
 }
 
-// A bare foreign coproduct (not a list literal) at a FreeMonoid parameter MUST refuse.
+// RED control: a bare foreign coproduct (not a list literal) at a FreeMonoid RETURN position.
+// This is the second red; the discriminating one for the accepted list-literal controls below is
+// a_bare_element_at_a_freemonoid_parameter_refuses, which checks the SAME argument position.
 test fn a_bare_foreign_coproduct_at_freemonoid_refuses() -> Bool {
   blocking_of_class(source: bare_foreign_coproduct_at_freemonoid_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
+// RED control: a bare foreign coproduct (NOT a list literal) at the FreeMonoid<T> concat PARAMETER of
+// list_append -- the pre-fix firmware shape (firmware_network_boot_standing.dag:1944 was
+// list_append(left: acc, right: refusal) before #16767 landed the brackets). Same argument position the
+// accepted list-literal controls check, so those controls cannot stay green with a wall weakened at
+// argument positions only (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed).
+test fn a_bare_element_at_a_freemonoid_parameter_refuses() -> Bool {
+  blocking_of_class(source: bare_element_at_freemonoid_parameter_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
 // --- NOT-IDLE. ---
