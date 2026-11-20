@@ -19,7 +19,7 @@ import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimi
 import std.algebra { string_contains, non_empty_to_list }
 import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import std.list { first_duplicate_by_key, first_where }
+import std.list { first_duplicate_by_key, first_where, list_member }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
