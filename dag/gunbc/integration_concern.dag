@@ -3603,7 +3603,7 @@ data h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat: Integra
       },
     },
   },
-  question: "What read turns the operator's 2026-11-16 report into grounded access at this host? The sold srv9 row no longer stands in the way, so the open half is narrower and unchanged in kind: the lease table read naming which MAC holds 192.168.1.236, an in-band address read on the installed OS, and a host key confirmed from this unit's own console.",
+  question: "What read turns the operator's 2026-11-16 report into grounded access at this host? The sold srv9 row no longer stands in the way, so the open half is narrower and unchanged in kind: the tailscale report read from srv1 naming 100.96.80.109 (ken.tailecbe08.ts.net) as the machine holding this identity -- the lease table read on 192.168.1.236 is dropped as the binding read because .236 was the address gunbc.fleet.fleet_intent_network::srv9_host_lan_endpoint modeled for srv9 before it sold and ken answers only on the tailnet, so a lease of that LAN address names an address, not this machine -- an in-band address read on the installed OS, and a host key confirmed from this unit's own console.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: h11ssl_unit3_reach_report_sighting_revision,
