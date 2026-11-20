@@ -177,6 +177,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_owned_install_path,
   site_pxe_edge_empty_owned_install_dirs,
   site_pxe_edge_served_root,
+  site_pxe_edge_http_root,
+  site_pxe_edge_seed_path,
   StaleInstallFilesNone, StaleInstallFilesFound, StaleInstallFilesUnobservable,
   StaleRemoved, StaleLeftObserveOnly, StaleRemovalRefused,
   SitePxeEdgeInstallBinding,
@@ -1862,6 +1864,11 @@ test fn a_directory_emptied_by_the_withdrawal_is_pruned_and_the_family_roots_sta
     let desired = install_files_of(b: b, image: servable_image())
     let kept = map(desired, f => f.path as String)
     let staged = "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new/ac:1f:6b:e6:75:eb.cfg"
+    // The directory THIS RUN RENDERS CONTENT INTO, derived from the module's own roots rather than copied as a
+    // literal: it is listed by the probe, it is inside an owned family, and nothing stale sits under it -- so the
+    // only thing that keeps it off the prune list is site_pxe_edge_protected_install_dirs, which walks the
+    // ancestors of kept and rendered files. Remove that walk and this name starts disappearing from the edge.
+    let rendered_seed_dir = join([site_pxe_edge_http_root as String, "/", site_pxe_edge_seed_path(mac: x86_mac)], "")
     let emptied_seed_pair = ["/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/user-data", "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c/meta-data"]
     let listed = kept + [staged] + emptied_seed_pair
     let stale = site_pxe_edge_stale_install_paths(listed: listed, desired: desired)
@@ -1876,6 +1883,7 @@ test fn a_directory_emptied_by_the_withdrawal_is_pruned_and_the_family_roots_sta
       "/srv/gunbc-site-pxe-edge/http/seed/9c-6b-00-e7-ca-9c",
       "/srv/gunbc-site-pxe-edge/staging",
       "/srv/gunbc-site-pxe-edge/staging/withdrawn-h11new",
+      rendered_seed_dir,
     ]
     let pruned = site_pxe_edge_empty_owned_install_dirs(listed_dirs: dirs, listed_files: listed, stale_files: stale, desired: desired)
     // Exactly the two emptied names, deepest first, and no root among them.
@@ -1884,6 +1892,8 @@ test fn a_directory_emptied_by_the_withdrawal_is_pruned_and_the_family_roots_sta
       // A chain empties bottom-up, and a directory holding a file this run keeps is never a candidate.
       && site_pxe_edge_empty_owned_install_dirs(listed_dirs: ["/srv/gunbc-site-pxe-edge/staging/a", "/srv/gunbc-site-pxe-edge/staging/a/b"], listed_files: [], stale_files: [], desired: desired) == ["/srv/gunbc-site-pxe-edge/staging/a/b", "/srv/gunbc-site-pxe-edge/staging/a"]
       && !any(pruned, d => d == "/srv/gunbc-site-pxe-edge/http/seed" || d == "/srv/gunbc-site-pxe-edge/staging" || d == "/srv/gunbc-site-pxe-edge")
+      // A directory the fold renders into is never a prune candidate, listed or not.
+      && !any(pruned, d => d == rendered_seed_dir)
   })
 }
 
