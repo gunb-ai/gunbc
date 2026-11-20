@@ -18,7 +18,13 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 import product.host_identity { HostIdentity }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+}
+import gunbc.source_root_read { source_root_read_file }
+import extdeps.languages.json.emit { JsonValue, JsonObject, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
 import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_user, fleet_posix_remote_build_supplementary_groups,
@@ -239,22 +245,147 @@ fn remote_build_provide_on(instance: HostDashboardInstance, request: RemoteBuild
 // that, and only a build that succeeded (produced or attached) goes on to the operation, which then
 // attaches to it. A request that carries its own seed build goes to its operation directly, because for
 // it the attached binary is the wrong answer and the second reservation is a second door to refuse.
+//
+// THE SERVING BINARY'S IDENTITY applies to whichever shape ran: the question "which binary served this"
+// is asked of the serve, not of the operation, so the tail that turns a provided attempt into a wire
+// answer is shared by both -- one authority on what a completed serve attests (remote_build_serve_settled),
+// not two copies that can drift.
 fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
   match remote_build_dependency_rule(op: request.operation) {
-    RemoteBuildCarriesItsOwnSeedBuild => {
-      let carried = remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
-      remote_build_serve_answer(ending: remote_build_ending_of_provide(r: carried), text: provide_result_document(r: carried))
-    }
+    RemoteBuildCarriesItsOwnSeedBuild =>
+      remote_build_serve_settled(
+        instance: instance,
+        result: remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+      )
     RemoteBuildBuildsTheSeedFirst => {
       let build = remote_build_provide_on(instance: instance, request: request, op: remote_build_dependency_operation())
       match remote_build_ending_of_provide(r: build) {
-        ServeServed => {
-          let result = remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
-          remote_build_serve_answer(ending: remote_build_ending_of_provide(r: result), text: provide_result_document(r: result))
-        }
+        ServeServed =>
+          remote_build_serve_settled(
+            instance: instance,
+            result: remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+          )
+        // The dependency build did not serve: its ending IS the work's answer, identity aside.
         _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
       }
     }
+  }
+}
+
+// THE TAIL ONE PROVIDED ATTEMPT DESERVES, ONCE ITS SHAPE IS CHOSEN.
+//
+// Only a run the serving binary COMPLETED gets an identity folded in -- it is the answer to "which binary
+// served this", and the one outcome the identity machinery may touch. A damaged sidecar then REFUSES that
+// success claim (you cannot attest a clean serve you cannot vouch for); no build outcome is lost, because
+// the only ending it can overwrite is the success it attests.
+//
+// Not served (unsuccessful, refused, host full, in flight): the work's OWN typed outcome is the answer,
+// untouched. The serving binary never attested a success here, so there is nothing to vouch for and a
+// present-but-broken identity file must not overwrite the work's verdict.
+fn remote_build_serve_settled(instance: HostDashboardInstance, result: ProvideResult) -> CliWireResponse {
+  let work_ending = remote_build_ending_of_provide(r: result)
+  match work_ending {
+    ServeServed => remote_build_serve_identity_answer(
+      ending: ServeServed,
+      document: provide_result_document(r: result),
+      identity: read_serve_binary_identity(serve_binary: instance.serve_binary as String),
+    )
+    _ => remote_build_serve_answer(ending: work_ending, text: provide_result_document(r: result))
+  }
+}
+// THE SERVING BINARY'S IDENTITY, read from the sidecar the converge step writes beside the binary.
+// A receipt that does not say WHICH binary served it lets a stale or substituted serve binary pass for
+// the dispatched one, so the receipt names the dispatched revision and the binary's own sha256. The
+// bytes live at `<serve_binary>.identity`, written by the fleet-converge RecordServeIdentity step
+// (gunbc.compute.remote_build_serving_converge); this slice only READS them. The format is one JSON
+// object carrying string members `revision` and `sha256`; PR-1b writes exactly this, and the reader
+// here is the one authority on it.
+//
+// The three readings are distinct and never collapsed (gunbc.design_argument::fail_closed): the file
+// being ABSENT is the honest "no identity yet" (the member is simply absent, never fabricated), while a
+// file that is present but unreadable or not the documented object is REFUSED -- reading it as "absent"
+// would let a damaged identity file pass for a freshly-installed binary with none.
+type ServeBinaryIdentity
+  = ServeIdentityAbsent
+  | ServeIdentityObserved { revision: String, sha256: String }
+  | ServeIdentityRefused { cause: String }
+
+// One string member of an already-parsed JSON object, or none when it is absent, duplicated, or not a
+// string. Shared by the two members the identity file must carry.
+fn serve_identity_string_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    _ => Absent
+  }
+}
+
+// Parse the identity file's bytes. The file is present (the caller has already established that), so
+// anything short of the documented two-string object is a refusal, never an absent reading.
+fn parse_serve_binary_identity(content: String) -> ServeBinaryIdentity {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: gap } => ServeIdentityRefused { cause: concat("identity file is not readable JSON: ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
+      match serve_identity_string_member(doc: doc, key: "revision") {
+        Absent => ServeIdentityRefused { cause: "identity file carries no string `revision`" }
+        Present { value: revision } =>
+          match serve_identity_string_member(doc: doc, key: "sha256") {
+            Absent => ServeIdentityRefused { cause: "identity file carries no string `sha256`" }
+            Present { value: sha256 } => ServeIdentityObserved { revision: revision, sha256: sha256 }
+          }
+      }
+  }
+}
+
+// Read the sidecar beside the serving binary. Only the host's own absent answer is read as absent; an
+// unreadable path or an unexpected kind refuses with its own cause (extdeps.filesystem.filesystem_io
+// types the failure by the host, and a present-but-broken file is not the absent file).
+fn read_serve_binary_identity(serve_binary: String) -> ServeBinaryIdentity {
+  match source_root_read_file(path: concat(serve_binary, ".identity")) {
+    FilesystemExactPathRead { path: _, content: content } => parse_serve_binary_identity(content: content)
+    FilesystemExactPathAbsent { path: _ } => ServeIdentityAbsent
+    FilesystemExactPathUnreadable { path: unreadable, kind: _, error: error } =>
+      ServeIdentityRefused { cause: concat("identity file unreadable (", unreadable, "): ", error) }
+    FilesystemExactPathKindUnrecognized { path: unrecognized, observed: observed, error: error } =>
+      ServeIdentityRefused { cause: concat("identity file is not a regular file (", unrecognized, " is ", observed, "): ", error) }
+  }
+}
+
+// A receipt is the work's own JSON object; the identity is folded in as one top-level member. The
+// absent identity leaves the document untouched (member absent, never a null or a guess); a refused
+// identity refuses the whole answer rather than emitting a receipt that silently omits who served it.
+type ServeReceiptAugment = ReceiptAugmented { document: String } | ReceiptRefused { cause: String }
+
+fn serve_receipt_with_identity(document: String, identity: ServeBinaryIdentity) -> ServeReceiptAugment {
+  match identity {
+    ServeIdentityAbsent => ReceiptAugmented { document: document }
+    ServeIdentityRefused { cause: cause } => ReceiptRefused { cause: cause }
+    ServeIdentityObserved { revision: revision, sha256: sha256 } =>
+      match parse_json_document(s: document) {
+        JsonDocumentUnreadable { gap: gap } => ReceiptRefused { cause: concat("receipt is not readable JSON: ", json_document_gap_text(gap: gap)) }
+        JsonDocumentParsed { value: doc } => match doc {
+          JsonObject { members: members } => ReceiptAugmented {
+            document: serialize_json(v: json_object(members: concat(members, [json_kv(key: "serve_binary", value: json_object(members: [
+              json_kv(key: "revision", value: json_string(s: revision)),
+              json_kv(key: "sha256", value: json_string(s: sha256)),
+            ]))]))),
+          }
+          _ => ReceiptRefused { cause: "receipt is not a JSON object" }
+        }
+      }
+  }
+}
+
+// Reached ONLY for a completed serve (the caller gates on ServeServed), so the one ending a refused
+// identity can overwrite is the success the identity attests. A damaged sidecar is answered as
+// ServeRequestRefused rather than a clean receipt that omits who served it, and rather than a silent
+// re-use of ServeServed: a serve you cannot vouch for is not a serve (gunbc.design_argument::fail_closed).
+fn remote_build_serve_identity_answer(ending: RemoteBuildServeEnding, document: String, identity: ServeBinaryIdentity) -> CliWireResponse {
+  match serve_receipt_with_identity(document: document, identity: identity) {
+    ReceiptAugmented { document: text } => remote_build_serve_answer(ending: ending, text: text)
+    ReceiptRefused { cause: cause } => remote_build_serve_answer(ending: ServeRequestRefused, text: concat("serve binary identity: ", cause))
+  }
+}
+
   }
 }
 

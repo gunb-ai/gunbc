@@ -22,6 +22,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
   portable_remote_words, shape_fleet_ssh_exec,
+  OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, ssh_context_from_verified_binding_under,
@@ -102,16 +103,86 @@ fn remote_build_client_git(worktree: String, args: List<String>) -> ComputeExec 
 // ($HOME/.ssh/gunbc-remote-build). The ctrl session-image wrapper passes the provisioned session key
 // path ($HOME/.config/ctrl/remote-build/id_ed25519) so the container authenticates with the session
 // key rather than the operator's bind-mounted key.
-fn remote_build_client_context(attempt_raw: String, identity_file_override: String?) -> FleetSshContextPreparation {
-  match fleet_ssh_attempt_identity(raw: attempt_raw) {
-    Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
-    Present { value: attempt } =>
-      match identity_file_override {
-        Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path)
-        Absent => match remote_build_client_identity_file() {
-          Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
-          Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path as String)
+// THE CLIENT'S OWN JOB ROOT, ensured fail-closed on the fleet create-or-adopt core
+// (gunbc.fleet.fleet_known_hosts_anchor create_or_adopt_owner_only_directory). The job root is the
+// directory the client runs in; the known-hosts anchor and the control-socket directory live under it,
+// and the fleet layer creates only the multiplex CHILD here -- it never creates this root, so a fresh
+// worktree or a hosted runner refused the whole run at the multiplex step with a misleading "the
+// multiplex directory ... could not be created or read back". Ensuring it here, and refusing when it is
+// not a directory we own, gives that failure its own cause at the step that owns it (a wildcard that
+// discarded a failed mkdir was an uncounted degradation -- gunbc.design_argument::fail_closed). `root`
+// is a parameter so a witness can name a path that is not a directory and watch it refuse; production
+// passes remote_build_client_job_root_child.
+type RemoteBuildClientJobRoot
+  = JobRootReady { path: String }
+  | JobRootRefused { cause: String }
+
+// THE PURE ADMISSION of the client's job root, beside its effect below. A path that is not a directory --
+// a regular file sitting where the root should be -- refuses: a file is never a root. Beyond that, the job
+// root is checked by OWNERSHIP ALONE, exactly as the fleet checks the root it places a multiplex directory
+// under (materialize_fleet_ssh_multiplex_directory_under reads the runner root's OWNER, never its mode). The
+// 700 requirement belongs to the sun_path multiplex CHILD, which must not be group/world reachable as a
+// socket directory -- not to this parent, which is cargo's own target directory: cargo creates it 0755 under
+// the normal umask, and create-or-adopt leaves an existing name at its mode. Refusing a good 0755 checkout
+// root would forbid more of the world than the cited variables support
+// (gunbc.design_argument::epistemic_humility) and apply a child's contract at the parent it never needed
+// (gunbc.design_argument::earliest_unjustified_boundary). So: a directory owned by the running principal
+// proceeds; a non-directory, a foreign owner, or an unreadable principal each refuse with their own cause
+// (gunbc.design_argument::fail_closed).
+fn remote_build_client_job_root_decision(path: String, is_dir: Bool, owner: String, principal: String?) -> RemoteBuildClientJobRoot {
+  if !is_dir {
+    JobRootRefused { cause: join(["remote-build: the job root ", path, " is not a directory"], "") }
+  } else {
+    match principal {
+      Absent => JobRootRefused { cause: join(["remote-build: the job root ", path, " could not be checked against the running principal"], "") }
+      Present { value: me } =>
+        if owner != me {
+          JobRootRefused { cause: join(["remote-build: the job root ", path, " is owned by ", owner, ", not by the running principal"], "") }
+        } else {
+          JobRootReady { path: path }
         }
+    }
+  }
+}
+
+// THE EFFECT: create-or-adopt the client's job root on the fleet core, read back whether it is a directory,
+// its owner and the running principal, then hand those to the pure decision above. Both sides of the owner
+// comparison are read in ONE representation -- a user NAME: the owner from shell.Stat.OwnerOf (`stat -c %U`)
+// and the principal from shell.Id.UserName (`id -un`). Comparing `%U` against `id -u` (a numeric uid) would
+// refuse every directory the user owns, because the two producers emit different shapes
+// (gunbc.design_argument::witness_one_interface). `root` is a parameter so a witness can name a path that is
+// not a directory and watch it refuse at this step; production passes remote_build_client_job_root_child.
+fn materialize_remote_build_client_job_root(root: String) -> RemoteBuildClientJobRoot {
+  match create_or_adopt_owner_only_directory(path: root) {
+    OwnerOnlyDirectoryUnreadable { path: p } =>
+      JobRootRefused { cause: join(["remote-build: the job root ", p, " could not be created or read back"], "") }
+    OwnerOnlyDirectoryObserved { path: p, owner: o } => {
+      let is_dir = shell.Test.IsDirectory(path: p as FilePath).is_directory
+      let me = shell.Id.UserName()
+      remote_build_client_job_root_decision(
+        path: p,
+        is_dir: is_dir,
+        owner: o,
+        principal: if me.success { Present { value: trim(s: me.stdout) } } else { Absent },
+      )
+    }
+  }
+}
+
+fn remote_build_client_context(attempt_raw: String, identity_file_override: String?) -> FleetSshContextPreparation {
+  match materialize_remote_build_client_job_root(root: remote_build_client_job_root_child) {
+    JobRootRefused { cause } => FleetSshContextRefused { cause: cause }
+    JobRootReady { path: _ } =>
+      match fleet_ssh_attempt_identity(raw: attempt_raw) {
+        Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
+        Present { value: attempt } =>
+          match identity_file_override {
+            Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path)
+            Absent => match remote_build_client_identity_file() {
+              Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
+              Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path as String)
+            }
+          }
       }
   }
 }
