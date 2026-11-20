@@ -23,7 +23,9 @@ import gunbc.compute.remote_build_serving_setup {
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, serve_identity_document }
+import extdeps.languages.json.emit { JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 
 fn est_s(text: String) -> ObservationAttempt<String, ServingLegFailure> {
   ObservationEstablished { observed: text }
@@ -1033,4 +1035,41 @@ test fn ledger_group_extra_member_is_unhandled_not_planned() -> Bool {
       plan_is_settled(settled) && plan_is_unhandled(extra) && length(plan_writes(extra)) == 0
     }
   }
+}
+
+// ── the serving binary's identity sidecar (PR-1b: RecordServeIdentity) ──────────────────────────────
+// The identity the converge step records beside the binary must be exactly the grammar the serve reader
+// (gunbc.compute.remote_build_serve) parses, must be RANKED after the binary install it documents, and
+// must dedupe under its own key so the binary's key never absorbs it.
+
+// The bytes the converge writer produces are one JSON object with string members `revision` and
+// `sha256`, verbatim -- the contract the PR-1a reader parses. Held to the REAL producer, not a copy.
+test fn the_recorded_identity_is_the_documented_two_member_object() -> Bool {
+  match parse_json_document(s: serve_identity_document(revision: pin_rev(), sha256: pin_sha())) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "revision") {
+      JsonMemberFound { value: JsonString { value: r } } => r == pin_rev() &&
+        match json_object_unique_member(v: doc, key: "sha256") {
+          JsonMemberFound { value: JsonString { value: s } } => s == pin_sha()
+          _ => false
+        }
+      _ => false
+    }
+  }
+}
+
+// RED CONTROL on ordering: the identity is ranked STRICTLY after the binary install, so converge_order
+// emits it after the install and the executor's stop-at-first-failure never writes provenance for a
+// binary that did not land.
+test fn the_identity_is_ranked_after_the_binary_install() -> Bool {
+  let ident = RecordServeIdentity { install_path: "/srv/gunbc/bin/gunbc", revision: pin_rev(), sha256: pin_sha() }
+  converge_kind_rank(ident) == 9 && converge_kind_rank(b3_binary()) == 8 && converge_kind_rank(ident) > converge_kind_rank(b3_binary())
+}
+
+// RED CONTROL on dedup: the identity keyed by its path is NOT the binary's key for that same path, so
+// distinct_by_key collapses two identities but never lets the binary's write absorb (erase) the identity.
+test fn the_identity_key_is_distinct_from_the_binary_key() -> Bool {
+  let ident = RecordServeIdentity { install_path: "/srv/gunbc/bin/gunbc", revision: pin_rev(), sha256: pin_sha() }
+  converge_action_key(ident) == concat("identity:", "/srv/gunbc/bin/gunbc")
+    && converge_action_key(ident) != converge_action_key(b3_binary())
 }
