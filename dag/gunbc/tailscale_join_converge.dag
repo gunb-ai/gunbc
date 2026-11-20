@@ -78,7 +78,12 @@ import extdeps.package_managers.dpkg {
   dpkg_query_status_command,
   dpkg_query_status_verdict_of,
 }
-import extdeps.tailscale.apt_repo { tailscale_apt_repo_noble, tailscale_packages }
+import extdeps.tailscale.apt_repo {
+  tailscale_apt_repo_noble,
+  tailscale_apt_repo_suite,
+  tailscale_host_codename_command,
+  tailscale_packages,
+}
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import extdeps.tailscale.join {
@@ -603,6 +608,29 @@ fn tailscale_join_host_arch(
   }
 }
 
+// THE HOST-CODENAME READ, mirroring tailscale_join_host_arch: the host answers for its OWN Ubuntu codename
+// (lsb_release --codename --short). Absent when the read is refused, fails, or prints empty, so the install
+// refuses rather than trust a pinned suite to a host whose OS release nobody observed
+// (gunbc.design_argument::fail_closed).
+fn tailscale_join_host_codename(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+) -> NonEmptyStr? {
+  match typed_argv_exec_over_fleet_ssh(
+    target: target,
+    context: context,
+    argv: argv_words(command: tailscale_host_codename_command()),
+  ) {
+    TypedArgvExecRefused { reason: _ } => Absent
+    TypedArgvExecConverged { result: r } =>
+      if !r.success || !string_non_empty(value: trim(s: r.stdout)) {
+        Absent
+      } else {
+        Present { value: trim(s: r.stdout) as NonEmptyStr }
+      }
+  }
+}
+
 // THE REPOSITORY-AND-INSTALL SCRIPT. tailscale is not in Ubuntu's main/universe; the bare
 // `apt-get install -y tailscale` this route ran before exited 100 ("Unable to locate package tailscale") on
 // every fresh host -- the live srv4 run 44686507960 and srv3 run 44688299124 both failed there after the
@@ -1061,17 +1089,39 @@ fn tailscale_join_install_leg(
             value: "tailscale install refused: the host's dpkg architecture could not be read, so the tailscale apt repository line cannot be rendered",
           }
         Present { value: arch } =>
-          tailscale_join_elevated_refusal(
-            leg: run_elevated_leg(
-              subject: subject,
-              context: context,
-              // The model-rendered tailscale apt-repository + install script, fed to `bash -s` on stdin. The
-              // words are portable; the script is not argv, it is the medium the general apt route renders.
-              argv: ["bash", "-s"],
-              stdin_payload: tailscale_join_repo_install_script(arch: arch),
-            ),
-            label: "tailscale apt repository and package install",
-          )
+          match tailscale_join_host_codename(target: subject.target, context: context) {
+            // No codename read, no install: the row pins its Ubuntu suite (tailscale_apt_repo_suite); rendering
+            // a deb line for a host whose codename nobody observed could point apt at a suite the host cannot
+            // resolve. Refuse rather than assume the fleet is uniform (gunbc.design_argument::fail_closed).
+            Absent =>
+              Present {
+                value: "tailscale install refused: the host's Ubuntu codename could not be read, so it cannot be checked against the pinned tailscale repository suite",
+              }
+            Present { value: codename } =>
+              if (codename as String) != (tailscale_apt_repo_suite as String) {
+                Present {
+                  value: concat(
+                    "tailscale install refused: the host codename ",
+                    codename as String,
+                    " is not the pinned tailscale repository suite ",
+                    tailscale_apt_repo_suite as String,
+                    "; the tailscale channel is published only for the pinned suite",
+                  ),
+                }
+              } else {
+                tailscale_join_elevated_refusal(
+                  leg: run_elevated_leg(
+                    subject: subject,
+                    context: context,
+                    // The model-rendered tailscale apt-repository + install script, fed to `bash -s` on stdin. The
+                    // words are portable; the script is not argv, it is the medium the general apt route renders.
+                    argv: ["bash", "-s"],
+                    stdin_payload: tailscale_join_repo_install_script(arch: arch),
+                  ),
+                  label: "tailscale apt repository and package install",
+                )
+              }
+          }
       }
   }
 }

@@ -22,6 +22,8 @@ import std.types { NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 import extdeps.package_managers.apt { ThirdPartyAptRepo, PinnedAptKeyFingerprint, package_tailscale }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { uncataloged_program }
 
 // tailscale's own published apt channel is the authority for the repository URI, the noble suite and the
 // `main` component -- read from the dists/noble/Release it serves (Origin: Tailscale, Codename: noble,
@@ -44,6 +46,12 @@ data tailscale_apt_key_fingerprint_standing: CitedFigureStanding = TranscribedUn
   read_obligation: "Confirm 2596A99EAAB33821893C0A79458CA832957F5868 against a Tailscale-published signing-key fingerprint on a channel independent of the key file the route fetches (a Tailscale docs page, a signed announcement, or the key pinned by a third party such as a public OpenPGP keyserver looked up BY fingerprint) -- not the same https://pkgs.tailscale.com/stable/ubuntu/noble.gpg the install downloads. Until then the pin only proves the key is unchanged, not genuine.",
 }
 
+// THE PINNED SUITE. One value is the authority for both the deb line (below) and the host-codename guard
+// in gunbc.tailscale_join_converge::tailscale_join_install_leg: the tailscale channel is published only
+// for this Ubuntu suite (extdeps_external_authority_anchor), so the converge reads the host's OWN codename
+// and refuses when it differs -- the fleet is not assumed uniform (Single Authority).
+data tailscale_apt_repo_suite: NonEmptyStr = "noble"
+
 // THE ROW BUILDER. `arch` is a parameter, not a constant, because the fleet is mixed-arch (aarch64 and
 // x86_64 hosts both exist): the caller supplies the host's own dpkg architecture, read the way the serving
 // model reads host.arch (gunbc.compute.remote_build_serving_converge), never a pinned guess that would
@@ -58,7 +66,7 @@ fn tailscale_apt_repo_noble(arch: NonEmptyStr) -> ThirdPartyAptRepo {
       standing: tailscale_apt_key_fingerprint_standing,
     },
     repo_base: "https://pkgs.tailscale.com/stable/ubuntu",
-    suite: "noble",
+    suite: tailscale_apt_repo_suite,
     components: ["main"],
     arch: arch,
     sources_list_path: "/etc/apt/sources.list.d/tailscale.list",
@@ -67,4 +75,12 @@ fn tailscale_apt_repo_noble(arch: NonEmptyStr) -> ThirdPartyAptRepo {
 
 // The package the tailscale repository serves, named by the one apt row that carries it -- not a re-spelled
 // string, so the readback names the same package the install installs.
+// THE HOST-CODENAME READ, the sibling of the arch read (gunbc.tailscale_join_converge::
+// tailscale_join_host_arch): the row pins the Ubuntu suite it was published for (tailscale_apt_repo_suite),
+// so the converge reads the host's OWN codename with this command and refuses the install when it is not
+// the pinned suite. `lsb_release --codename --short` prints e.g. noble; one binary, like dpkg for arch.
+fn tailscale_host_codename_command() -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: "lsb_release"), arguments: ["--codename", "--short"])
+}
+
 data tailscale_packages: List<NonEmptyStr> = [package_tailscale]
