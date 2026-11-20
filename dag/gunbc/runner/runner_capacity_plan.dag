@@ -441,8 +441,8 @@ fn addition_actions(
 // is on the serving roster (gunbc.compute.remote_build_hosts::remote_build_host_is_serving) AND resolves no
 // dashboard instance of its own (a host that carries its own instance already reaches that reservation through
 // gunbc.serving.serving_reservation::host_memory_reserved, which runner_slot_allocation feeds into its
-// envelope in @ref(gunbc.runner.runner_slot_allocation::runner_memory_envelope_of) and
-// @ref(gunbc.runner.runner_slot_allocation::committed_width_of)). The CI memory envelope and
+// envelope in #gunbc.runner.runner_slot_allocation::runner_memory_envelope_of and
+// #gunbc.runner.runner_slot_allocation::committed_width_of). The CI memory envelope and
 // compute.host_capacity::host_capacity_build_seat both read that one function. This file therefore converts THE
 // SAME CARVE into the unit it plans in -- runner slots -- and keeps no population of its own: a second, hand-kept
 // list of build-slot holders would be a fork of that rule (gunbc.design_argument::single_authority), which is what

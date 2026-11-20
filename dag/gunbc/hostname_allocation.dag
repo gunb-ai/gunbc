@@ -244,6 +244,27 @@ data fleet_machine_srv4: HostnameAllocation = HostnameAllocation {
     } },
   }
 
+// SUPERMICRO H11SSL UNIT 3, the hand-installed board at BMC 192.168.1.249 (2026-11-15 sighting, modeled
+// 2026-11-16). THE NAME IS THE OPERATOR'S, not a spelling this module picked: the slot was put to them as a
+// name and they approved "ken" on 2026-11-16, so this row follows that answer. The ticket is replayed, not fitted -- 378917144892
+// is the least unused integer whose FirstOnly draw over the rows above is "ken" (378917144891 draws
+// "keith"; the two are adjacent in the corpus and the difference is the one a hand-picked ticket hides).
+// Bound as a handle (like fleet_machine_srv1..srv4) so gunbc.fleet.fleet_host_key_enrollment can name ken's
+// tailnet host-key row address via fleet_tailnet_name(machine: fleet_machine_ken) without restating the labels.
+// It is still the LAST element of fleet_machine_registry (which references this handle), so
+// prior_rows_excluding sees every other allocation as taken -- the order its own claim re-derives it against.
+// The machine's other facts, and what still lacks a read, are on
+// gunbc.fleet.fleet_host_identity::operator_host_e2d4b7 and in
+// gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.
+data fleet_machine_ken: HostnameAllocation = HostnameAllocation {
+    fleet_slot: operator_host_e2d4b7,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "ken" as DnsLabel },
+      draw: HumanNameDraw { entropy: 378917144892 },
+    },
+    next_name: Absent,
+  }
+
 data fleet_machine_registry: List<HostnameAllocation> = [
   fleet_machine_srv1,
   fleet_machine_srv2,
@@ -359,23 +380,10 @@ data fleet_machine_registry: List<HostnameAllocation> = [
     },
     next_name: Absent,
   },
-  // SUPERMICRO H11SSL UNIT 3, the hand-installed board at BMC 192.168.1.249 (2026-11-15 sighting, modeled
-  // 2026-11-16). THE NAME IS THE OPERATOR'S, not a spelling this module picked: the slot was put to them as a
-  // name and they approved "ken" on 2026-11-16, so this row follows that answer. The ticket is replayed, not fitted -- 378917144892
-  // is the least unused integer whose FirstOnly draw over the rows above is "ken" (378917144891 draws
-  // "keith"; the two are adjacent in the corpus and the difference is the one a hand-picked ticket hides).
-  // It sits at the END of the registry, so `prior_rows_excluding` sees every other allocation as taken, which
-  // is the order its own claim re-derives it against. The machine's other facts, and what still lacks a read,
-  // are on gunbc.fleet.fleet_host_identity::operator_host_e2d4b7 and in
-  // gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.
-  HostnameAllocation {
-    fleet_slot: operator_host_e2d4b7,
-    name: DrawnHumanName {
-      name: FirstOnly { first: "ken" as DnsLabel },
-      draw: HumanNameDraw { entropy: 378917144892 },
-    },
-    next_name: Absent,
-  },
+  // ken (SUPERMICRO H11SSL UNIT 3, hand-installed board at BMC 192.168.1.249) is the LAST element of the
+  // registry. Its binding and the ticket-replay rationale live on data fleet_machine_ken above; keeping it
+  // LAST means prior_rows_excluding sees every other allocation as taken -- the order its own claim re-derives it against.
+  fleet_machine_ken,
 ]
 
 // THE MACHINES, DERIVED FROM THE REGISTRY. A spelling resolves to a machine only by joining this

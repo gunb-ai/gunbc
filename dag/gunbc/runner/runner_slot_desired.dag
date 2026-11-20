@@ -236,8 +236,16 @@ data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory
 // never exceeds what it was before the host joined, and conservation stays gunbc.ci.ci_runner_placement's
 // to certify. There is no revision at which a slot is removed from CI without being held by a pool -- the
 // bug an ungated carve would leave between this PR and PR 5 (a full slot per host lost to neither side).
+// THE CARVE AS A PREDICATE ON A HOST, so a reader that must branch on "is this host carved" asks the SAME
+// question host_build_pool_reservation asks instead of re-deriving the two host facts or testing the
+// reservation amount for > 0 (which conflates "not carved" with a real zero carve). The carve rule itself
+// stays one function (build_pool_carve_is_due); this only applies it to a host.
+fn host_build_pool_is_carved(host: HostIdentity) -> Bool {
+  build_pool_carve_is_due(rostered: remote_build_host_is_serving(host: host), carries_own_ledger: host_carries_own_ledger(host))
+}
+
 fn host_build_pool_reservation(host: HostIdentity) -> ByteSize {
-  if build_pool_carve_is_due(rostered: remote_build_host_is_serving(host: host), carries_own_ledger: host_carries_own_ledger(host)) {
+  if host_build_pool_is_carved(host: host) {
     gunbc_runner_slot_memory_max
   } else {
     byte_size(0)
