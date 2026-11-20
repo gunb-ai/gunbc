@@ -353,13 +353,16 @@ type WithdrawRun<T>
   = WithdrawRunReturned { value: T, world: WithdrawWorld }
   | WithdrawRunEnded { cause: String }
 
-// THE RUN, on the srv1 subject (an admitted runner host in the model; srv3's 21-slot width would only
+// THE RUN, on the srv3 subject -- the same host the withdraw is being run for in the field. The unit
+// names this fixture builds are actions-runner@srv3-NN, and the cap bracket's drain authorization is
+// granted at host grain from the width authority, so subject host and unit names have to agree or the
+// stop leg is unauthorized and every actuation control here refuses before it acts.
 // multiply the same legs). The world is threaded through by the dispatcher; what comes back is the
 // host as the route LEFT it -- which is what every control below reads.
-// THE SUBJECT THE ROUTES DIAL. The model's srv1 subject supplies the target the hermetic transport
+// THE SUBJECT THE ROUTES DIAL. The model's srv3 subject supplies the target the hermetic transport
 // speaks to; its units and slot trees are re-pointed at THIS world's two slots, so a release's tree
 // presence read answers from the world -- including a tree the host never built -- rather than from
-// srv1's real roster. The owner is this fixture's own CI user literal; nothing in these controls reads it.
+// srv3's real roster. The owner is this fixture's own CI user literal; nothing in these controls reads it.
 fn withdraw_subject(sj: RunnerHostFileSubject) -> RunnerHostFileSubject {
   RunnerHostFileSubject {
     host: sj.host,
@@ -375,7 +378,7 @@ fn withdraw_subject(sj: RunnerHostFileSubject) -> RunnerHostFileSubject {
 }
 
 fn withdraw_run<T>(initial: WithdrawWorld, busy_override: Bool, body: fn(SshTarget, FleetSshExecutionContext, RunnerHostFileSubject) -> T) -> WithdrawRun<T> {
-  match runner_host_file_subject(host: "srv1" as HostIdentity) {
+  match runner_host_file_subject(host: "srv3" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: c } => WithdrawRunEnded { cause: concat("subject refused: ", c) }
     RunnerHostFileSubjectAdmitted { subject: sj } => match fleet_ssh_execution_context_hermetic_witness_fixture() {
       Absent => WithdrawRunEnded { cause: "the fleet witness context could not be sealed" }
@@ -399,17 +402,17 @@ fn withdraw_run<T>(initial: WithdrawWorld, busy_override: Bool, body: fn(SshTarg
 // the world half of this control even though its own verdict says Withdrawn.
 test fn withdraw_leaves_every_slot_masked_inactive_with_a_record() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match r {
     WithdrawRunEnded { cause: _ } => false
     WithdrawRunReturned { value: Withdrawn { units: us, certified: cs, record_written: rw }, world: w } =>
       rw && length(us) == 2 && length(cs) == 2
         && all(w.slots, s => s.load == "masked" && s.active == "inactive" && !s.worker && !s.listener)
-        && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String)
+        && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String)
           && string_contains(s: f.content, pattern: "\"actions-runner@srv3-01.service\"")
           && string_contains(s: f.content, pattern: "\"actions-runner@srv3-02.service\"")
-          && string_contains(s: f.content, pattern: "\"host\": \"srv1\""))
+          && string_contains(s: f.content, pattern: "\"host\": \"srv3\""))
     WithdrawRunReturned { value: WithdrawalRefused { refusal: _, left: _ }, world: _ } => false
   }
 }
@@ -421,17 +424,17 @@ test fn withdraw_leaves_every_slot_masked_inactive_with_a_record() -> Bool {
 // masked with the record gone -- and that fails this control.
 test fn restore_brings_the_recorded_units_back_admitting() -> Bool {
   let withdrawn = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match withdrawn {
     WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: true }, world: w0 } =>
       match withdraw_run(initial: w0, busy_override: false, body: fn(_target, context, subject) {
-        restore_host_over(subject: subject, context: context, host: "srv1", executor_runner_name: Present { value: "actions-runner@srv4-01" })
+        restore_host_over(subject: subject, context: context, host: "srv3", executor_runner_name: Present { value: "actions-runner@srv4-01" })
       }) {
         WithdrawRunReturned { value: Restored { units: us }, world: w } =>
           length(us) == 2
             && all(w.slots, s => s.load == "loaded" && s.file == "enabled" && s.active == "active" && s.listener && s.registered)
-            && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+            && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
         _ => false
       }
     _ => false
@@ -451,12 +454,12 @@ test fn restore_brings_the_recorded_units_back_admitting() -> Bool {
 // ends Restored with both slots 'admitting' and no tree leg ever dialed.
 test fn restore_refuses_a_kept_slot_whose_tree_the_host_never_built() -> Bool {
   let withdrawn = withdraw_run(initial: world_with(slots: admitted_slots(), mask_sticks: true, trees_absent: ["srv3-02"]), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match withdrawn {
     WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: true }, world: w0 } =>
       match withdraw_run(initial: w0, busy_override: false, body: fn(_target, context, subject) {
-        restore_host_over(subject: subject, context: context, host: "srv1", executor_runner_name: Present { value: "actions-runner@srv4-01" })
+        restore_host_over(subject: subject, context: context, host: "srv3", executor_runner_name: Present { value: "actions-runner@srv4-01" })
       }) {
         WithdrawRunReturned { value: RestorationRefused { refusal: RestorationRefusalNotActive { units: _, detail: detail } }, world: w } =>
           // The refusal names the slot whose tree is missing and says so at the tree step.
@@ -468,7 +471,7 @@ test fn restore_refuses_a_kept_slot_whose_tree_the_host_never_built() -> Bool {
             // that had blind-started it (main) cannot report.
             && match slot_of(w: w, unit: u(n: "02") as String) { Present { value: b } => b.load == "masked" && b.active == "inactive" Absent => false }
             // Still withdrawn, still recorded: the host has not been told it is back in service.
-            && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+            && any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
             // And the release really did ask the host for its trees before deciding anything.
             && any(w.acts, a => a == actions_runner_base_dir)
         _ => false
@@ -482,17 +485,17 @@ test fn restore_refuses_a_kept_slot_whose_tree_the_host_never_built() -> Bool {
 // stay green while 2b holds -- the tree read gates a release, it does not stall one.
 test fn restore_admits_a_kept_slot_whose_tree_is_present() -> Bool {
   let withdrawn = withdraw_run(initial: world_with(slots: admitted_slots(), mask_sticks: true, trees_absent: []), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match withdrawn {
     WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: true }, world: w0 } =>
       match withdraw_run(initial: w0, busy_override: false, body: fn(_target, context, subject) {
-        restore_host_over(subject: subject, context: context, host: "srv1", executor_runner_name: Present { value: "actions-runner@srv4-01" })
+        restore_host_over(subject: subject, context: context, host: "srv3", executor_runner_name: Present { value: "actions-runner@srv4-01" })
       }) {
         WithdrawRunReturned { value: Restored { units: us }, world: w } =>
           length(us) == 2
             && all(w.slots, s => s.load == "loaded" && s.file == "enabled" && s.active == "active")
-            && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+            && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
             && any(w.acts, a => a == actions_runner_base_dir)
         _ => false
       }
@@ -508,7 +511,7 @@ test fn restore_admits_a_kept_slot_whose_tree_is_present() -> Bool {
 test fn a_drain_past_the_bound_refuses_and_never_claims_withdrawn() -> Bool {
   let stubborn = map(admitted_slots(), s => if s.n == "02" { SlotWorld { n: s.n, load: s.load, file: s.file, active: s.active, worker: true, listener: true, registered: s.registered } } else { s })
   let r = withdraw_run(initial: world(slots: stubborn, mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match r {
     WithdrawRunEnded { cause: _ } => false
@@ -525,13 +528,13 @@ test fn a_drain_past_the_bound_refuses_and_never_claims_withdrawn() -> Bool {
 // claims Withdrawn, the readback control is decorative.
 test fn a_host_that_re_admits_after_withdraw_is_refused_not_certified() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: false), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match r {
     WithdrawRunEnded { cause: _ } => false
     WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: _ }, world: _ } => false
     WithdrawRunReturned { value: WithdrawalRefused { refusal: _, left: _ }, world: w } =>
-      !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+      !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
   }
 }
 
@@ -541,10 +544,10 @@ test fn a_host_that_re_admits_after_withdraw_is_refused_not_certified() -> Bool 
 test fn the_bound_refusal_undoes_every_mask_this_attempt_filed() -> Bool {
   let stubborn = map(admitted_slots(), s => if s.n == "02" { SlotWorld { n: s.n, load: s.load, file: s.file, active: s.active, worker: true, listener: true, registered: s.registered } } else { s })
   match withdraw_run(initial: world(slots: stubborn, mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   }) {
     WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalDrainBound { busy: _, unproven: _, waited: _ }, left: _ }, world: w } =>
-      !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+      !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
         && all(w.slots, s => s.load != "masked")
     _ => false
   }
@@ -555,8 +558,8 @@ test fn the_bound_refusal_undoes_every_mask_this_attempt_filed() -> Bool {
 // registrations; with the record absent it says nothing (a hand mask is not this route's to name).
 test fn the_observe_line_reports_withdrawn_from_the_record_and_not_without_it() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(target, context, subject) {
-    let done = withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
-    runner_host_withdraw_observe_line_for(host: "srv1", target: target, context: context, units: [u(n: "01"), u(n: "02")])
+    let done = withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    runner_host_withdraw_observe_line_for(host: "srv3", target: target, context: context, units: [u(n: "01"), u(n: "02")])
   })
   match r {
     WithdrawRunReturned { value: line, world: _ } =>
@@ -577,23 +580,23 @@ test fn the_observe_line_reports_withdrawn_from_the_record_and_not_without_it() 
 // -- the slot running itself.
 test fn a_withdraw_whose_executor_is_the_subject_refuses_with_zero_actuation() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv1-03" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv3-03" })
   })
   match r {
     WithdrawRunEnded { cause: _ } => false
     WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: _ }, world: _ } => false
     WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: why }, left: _ }, world: w } =>
-      w.acts == [] && string_contains(s: why, pattern: "REFUSED: fleet-converge self-subject") && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv1") as String))
+      w.acts == [] && string_contains(s: why, pattern: "REFUSED: fleet-converge self-subject") && !any(w.fs.files, f => f.path == (runner_host_withdraw_record_path(host: "srv3") as String))
     WithdrawRunReturned { value: WithdrawalRefused { refusal: _, left: _ }, world: _ } => false
   }
 }
 
-// The slot-name shape of the same fact: a runner named actions-runner@srv1-13 LIVES on srv1 even
+// The slot-name shape of the same fact: a runner named actions-runner@srv3-13 LIVES on srv1 even
 // though its name is not the host -- the deploy gate's own proving relation decides, and here it says
 // the executor belongs to the subject. Refused, zero actuation.
 test fn a_withdraw_whose_executor_slot_lives_on_the_subject_refuses_with_zero_actuation() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv1-13" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv3-13" })
   })
   match r {
     WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: _ }, left: _ }, world: w } => w.acts == []
@@ -605,7 +608,7 @@ test fn a_withdraw_whose_executor_slot_lives_on_the_subject_refuses_with_zero_ac
 // unregistered process proves nothing about not being the subject. Zero actuation again.
 test fn a_withdraw_with_no_executor_identity_refuses_with_zero_actuation() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: none)
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: none)
   })
   match r {
     WithdrawRunReturned { value: WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: why }, left: _ }, world: w } =>
@@ -620,7 +623,7 @@ test fn a_withdraw_with_no_executor_identity_refuses_with_zero_actuation() -> Bo
 // the same world, a legitimate executor, and the ledger comes back full of legs.
 test fn a_split_ok_withdraw_actuates_so_the_empty_ledgers_mean_something() -> Bool {
   let r = withdraw_run(initial: world(slots: admitted_slots(), mask_sticks: true), busy_override: false, body: fn(_target, context, subject) {
-    withdraw_host_over(subject: subject, context: context, host: "srv1", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
+    withdraw_host_over(subject: subject, context: context, host: "srv3", units: [u(n: "01"), u(n: "02")], executor_runner_name: Present { value: "actions-runner@srv4-01" })
   })
   match r {
     WithdrawRunReturned { value: Withdrawn { units: _, certified: _, record_written: _ }, world: w } =>
