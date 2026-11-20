@@ -1,0 +1,499 @@
+module extdeps.nvidia.gracebmc_ranger
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, File }
+import extdeps.bmc.aspeed_ast2600 {
+  AspeedAst2600CatalogRow, aspeed_ast2600, Ast2600GpioPin, ast2600_pin, ast2600_port_index, ast2600_bits_per_port, ast2600_pin_text,
+  PortB, PortF, PortI, PortN, PortO, PortP, PortQ, PortR, PortV, PortW,
+}
+
+// NVIDIA'S OPENBMC BUILD FOR THE RANGER TRAY'S CONTROLLER: "GraceBMC-23.06-2-rc1", machine "ranger", model
+// string "AST2600 Ranger BMC". It runs on the management module of a Ranger tray
+// (extdeps.nvidia.ranger_tray) and starts, watches and stops the tray's P4261 baseboard. Modelled: the lines
+// its pin table names with the controller pin each is on, and what its start-up scripts do with them.
+//
+// No NVIDIA source for this build has been read. Every row is cited to one owner's account of November
+// 2026, read on that owner's controller and committed with their permission, without naming them
+// (docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md). It is one build's behaviour. The pin table stops at the controller's pins: which baseboard contact carries a line,
+// and at what voltage, is wiring this module does not have.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md"
+  }
+}
+
+type GraceBmcBuild {
+  version: NonEmptyStr
+  machine: NonEmptyStr
+  model_string: NonEmptyStr
+  processor: AspeedAst2600CatalogRow
+  standing: CitedFigureStanding
+}
+
+data gracebmc_ranger: GraceBmcBuild = GraceBmcBuild {
+  version: "GraceBMC-23.06-2-rc1",
+  machine: "ranger",
+  model_string: "AST2600 Ranger BMC",
+  processor: aspeed_ast2600,
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.gracebmc_ranger",
+      decl_name: "gracebmc_ranger",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── THE LINES ───────────────────────────────────────────────────────────────────────────────────────
+
+// The twenty-six lines the pin table names. A signal is one of these and nothing else.
+type RangerSignal
+  = StbyPowerEn | BmcErotFpgaSpiMuxSel | FpgaErotRecoveryL | PwrBrakeL | ShdnReqL | ShdnForceL | SysRstInL
+  | ErotFpgaRstL | FpgaRstL | BmcReady | BmcEpPerstEn | LocalRunPwrEn | RunPowerEn | IomPwrEn | GlobalWp
+  | BbPrsntL | StbyPowerPg | FpgaReady | RunPowerPg | SysRstOutL
+  | ShdnOkL | RunPowerFaultL | ThermBbOvertL | ThermFpgaOvertL | ThermBbWarnL | FpgaErotFatalErrorL
+
+fn signal_name(s: RangerSignal) -> String {
+  match s {
+    StbyPowerEn => "STBY_POWER_EN", BmcErotFpgaSpiMuxSel => "BMC_EROT_FPGA_SPI_MUX_SEL", FpgaErotRecoveryL => "FPGA_EROT_RECOVERY_L",
+    PwrBrakeL => "PWR_BRAKE_L", ShdnReqL => "SHDN_REQ_L", ShdnForceL => "SHDN_FORCE_L", SysRstInL => "SYS_RST_IN_L",
+    ErotFpgaRstL => "EROT_FPGA_RST_L", FpgaRstL => "FPGA_RST_L", BmcReady => "BMC_READY", BmcEpPerstEn => "BMC_EP_PERST_EN",
+    LocalRunPwrEn => "LOCAL_RUN_PWR_EN", RunPowerEn => "RUN_POWER_EN", IomPwrEn => "IOM_PWR_EN", GlobalWp => "GLOBAL_WP",
+    BbPrsntL => "BB_PRSNT_L", StbyPowerPg => "STBY_POWER_PG", FpgaReady => "FPGA_READY", RunPowerPg => "RUN_POWER_PG",
+    SysRstOutL => "SYS_RST_OUT_L", ShdnOkL => "SHDN_OK_L", RunPowerFaultL => "RUN_POWER_FAULT_L",
+    ThermBbOvertL => "THERM_BB_OVERT_L", ThermFpgaOvertL => "THERM_FPGA_OVERT_L", ThermBbWarnL => "THERM_BB_WARN_L",
+    FpgaErotFatalErrorL => "FPGA_EROT_FATAL_ERROR_L",
+  }
+}
+
+fn same_signal(a: RangerSignal, b: RangerSignal) -> Bool {
+  signal_name(s: a) == signal_name(s: b)
+}
+
+// Which way a line goes: the controller drives the board, or the board answers the controller.
+type LineDirection
+  = ControllerDrives
+  | BoardAnswers
+
+// One row of the pin table: the line, its direction, the controller pin and ball, and the line number the
+// table gives (the pin's offset on the controller's main GPIO chip). The table lists the board's lines in
+// two groups, those "the sequence waits on" and those "the controller only watches"; `listed_as_awaited`
+// keeps which group a row was in. What a script or a watch rule actually does with a line is read from them
+// (is_awaited, is_watched), since one line can be both: RUN_POWER_PG is waited on at start and watched after.
+type SignalBinding {
+  signal: RangerSignal
+  direction: LineDirection
+  listed_as_awaited: Bool
+  pin: Ast2600GpioPin
+  ball: NonEmptyStr
+  reported_offset: Nat
+}
+
+fn drives(signal: RangerSignal, pin: Ast2600GpioPin, ball: NonEmptyStr, reported_offset: Nat) -> SignalBinding {
+  SignalBinding { signal: signal, direction: ControllerDrives, listed_as_awaited: false, pin: pin, ball: ball, reported_offset: reported_offset }
+}
+
+fn awaited(signal: RangerSignal, pin: Ast2600GpioPin, ball: NonEmptyStr, reported_offset: Nat) -> SignalBinding {
+  SignalBinding { signal: signal, direction: BoardAnswers, listed_as_awaited: true, pin: pin, ball: ball, reported_offset: reported_offset }
+}
+
+fn watched(signal: RangerSignal, pin: Ast2600GpioPin, ball: NonEmptyStr, reported_offset: Nat) -> SignalBinding {
+  SignalBinding { signal: signal, direction: BoardAnswers, listed_as_awaited: false, pin: pin, ball: ball, reported_offset: reported_offset }
+}
+
+data ranger_signal_bindings: List<SignalBinding> = [
+  drives(signal: StbyPowerEn, pin: ast2600_pin(port: PortW, bit: 7), ball: "AD8", reported_offset: 183),
+  drives(signal: BmcErotFpgaSpiMuxSel, pin: ast2600_pin(port: PortR, bit: 4), ball: "U25", reported_offset: 140),
+  drives(signal: FpgaErotRecoveryL, pin: ast2600_pin(port: PortR, bit: 6), ball: "W26", reported_offset: 142),
+  drives(signal: PwrBrakeL, pin: ast2600_pin(port: PortO, bit: 2), ball: "AD23", reported_offset: 114),
+  drives(signal: ShdnReqL, pin: ast2600_pin(port: PortB, bit: 5), ball: "G26", reported_offset: 13),
+  drives(signal: ShdnForceL, pin: ast2600_pin(port: PortQ, bit: 4), ball: "Y26", reported_offset: 132),
+  drives(signal: SysRstInL, pin: ast2600_pin(port: PortN, bit: 3), ball: "N24", reported_offset: 107),
+  drives(signal: ErotFpgaRstL, pin: ast2600_pin(port: PortR, bit: 5), ball: "T23", reported_offset: 141),
+  drives(signal: FpgaRstL, pin: ast2600_pin(port: PortW, bit: 5), ball: "AF7", reported_offset: 181),
+  drives(signal: BmcReady, pin: ast2600_pin(port: PortV, bit: 2), ball: "AD14", reported_offset: 170),
+  drives(signal: BmcEpPerstEn, pin: ast2600_pin(port: PortR, bit: 2), ball: "V24", reported_offset: 138),
+  drives(signal: LocalRunPwrEn, pin: ast2600_pin(port: PortO, bit: 0), ball: "AD26", reported_offset: 112),
+  drives(signal: RunPowerEn, pin: ast2600_pin(port: PortO, bit: 3), ball: "AD24", reported_offset: 115),
+  drives(signal: IomPwrEn, pin: ast2600_pin(port: PortF, bit: 4), ball: "C22", reported_offset: 44),
+  drives(signal: GlobalWp, pin: ast2600_pin(port: PortI, bit: 6), ball: "B16", reported_offset: 70),
+  awaited(signal: BbPrsntL, pin: ast2600_pin(port: PortP, bit: 4), ball: "W23", reported_offset: 124),
+  awaited(signal: StbyPowerPg, pin: ast2600_pin(port: PortW, bit: 6), ball: "AD7", reported_offset: 182),
+  awaited(signal: FpgaReady, pin: ast2600_pin(port: PortR, bit: 0), ball: "V25", reported_offset: 136),
+  awaited(signal: RunPowerPg, pin: ast2600_pin(port: PortO, bit: 1), ball: "AD22", reported_offset: 113),
+  awaited(signal: SysRstOutL, pin: ast2600_pin(port: PortN, bit: 2), ball: "N25", reported_offset: 106),
+  watched(signal: ShdnOkL, pin: ast2600_pin(port: PortB, bit: 4), ball: "J23", reported_offset: 12),
+  watched(signal: RunPowerFaultL, pin: ast2600_pin(port: PortO, bit: 4), ball: "AD25", reported_offset: 116),
+  watched(signal: ThermBbOvertL, pin: ast2600_pin(port: PortO, bit: 5), ball: "AC22", reported_offset: 117),
+  watched(signal: ThermFpgaOvertL, pin: ast2600_pin(port: PortO, bit: 7), ball: "AC23", reported_offset: 119),
+  watched(signal: ThermBbWarnL, pin: ast2600_pin(port: PortO, bit: 6), ball: "AC24", reported_offset: 118),
+  watched(signal: FpgaErotFatalErrorL, pin: ast2600_pin(port: PortR, bit: 7), ball: "U26", reported_offset: 143),
+]
+
+// THE NUMBERING IS THE FIRMWARE'S, DERIVED HERE: a line's offset on the main GPIO chip is eight per port
+// with port A at 0, and this build's sysfs number is that offset plus 816. The pin table's own numbers are
+// kept beside the pins so the two can be checked against each other; the owner read gpio-928, gpio-931 and
+// gpio-860 for O0, O3 and F4.
+data gracebmc_ranger_sysfs_base: Nat = 816
+
+fn gpio_offset(pin: Ast2600GpioPin) -> Nat {
+  ast2600_port_index(p: pin.port) * ast2600_bits_per_port + pin.bit
+}
+
+fn sysfs_number(pin: Ast2600GpioPin) -> Nat {
+  gracebmc_ranger_sysfs_base + gpio_offset(pin: pin)
+}
+
+fn binding_of(s: RangerSignal) -> List<SignalBinding> {
+  filter(ranger_signal_bindings, b => same_signal(a: b.signal, b: s))
+}
+
+fn is_driven(s: RangerSignal) -> Bool {
+  any(binding_of(s: s), b => match b.direction { ControllerDrives => true, BoardAnswers => false })
+}
+
+// Rows whose reported number is not the one the pin gives.
+fn bindings_with_wrong_offset(bs: List<SignalBinding>) -> List<SignalBinding> {
+  filter(bs, b => gpio_offset(pin: b.pin) != b.reported_offset)
+}
+
+// Rows that share a pin offset or a ball with another row: two lines cannot be on one pin.
+fn bindings_sharing_a_pin(bs: List<SignalBinding>) -> List<SignalBinding> {
+  filter(bs, b => count(filter(bs, o => gpio_offset(pin: o.pin) == gpio_offset(pin: b.pin))) != 1 || count(filter(bs, o => (o.ball as String) == (b.ball as String))) != 1)
+}
+
+// ── WHAT THE SCRIPTS DO ─────────────────────────────────────────────────────────────────────────────
+
+type LogicLevel
+  = Low
+  | High
+
+// How long a wait may last, as the account gave it: not stated, a stated limit, an approximate one ("about
+// 60 s"), or an upper bound ("up to 40 s").
+type WaitLimit
+  = LimitNotStated
+  | LimitSeconds { seconds: Nat }
+  | LimitAboutSeconds { seconds: Nat }
+  | LimitUpToSeconds { seconds: Nat }
+
+// What happens when a wait is missed.
+type OnMiss
+  = MissNotStated
+  | MissSetsBack { signal: RangerSignal, level: LogicLevel }
+  | MissForcesShutdown
+
+// ── THE BUS WORK BEFORE BMC_READY ───────────────────────────────────────────────────────────────────
+
+// All of it is in the script that runs up to BMC_READY, after FPGA_READY has read 1, and all of it is on one
+// I2C bus of the controller. The account gives the devices, the target and what the script's own comments say
+// the writes are for; it does not give the register numbers or the bytes written.
+type ControllerI2cBus {
+  number: Nat
+  adapter: NonEmptyStr
+}
+
+data ranger_board_i2c_bus: ControllerI2cBus = ControllerI2cBus { number: 2, adapter: "1e78a180.i2c-bus" }
+
+type EepromKind = At24c02 | At24c64
+
+// An EEPROM the script declares to the kernel at a seven-bit address. By the script's comment they sit behind
+// the board's FPGA and do not answer on a cold start until the FPGA is ready.
+type DeclaredEeprom {
+  kind: EepromKind
+  address: Nat
+}
+
+data ranger_declared_eeproms: List<DeclaredEeprom> = [
+  DeclaredEeprom { kind: At24c02, address: 78 },
+  DeclaredEeprom { kind: At24c64, address: 80 },
+  DeclaredEeprom { kind: At24c64, address: 81 },
+  DeclaredEeprom { kind: At24c64, address: 82 },
+  DeclaredEeprom { kind: At24c64, address: 83 },
+]
+
+// The device tree also declares a 24c02 at 0x67 on that bus; no driver is bound to it and no script reads it.
+data ranger_undriven_eeprom: DeclaredEeprom = DeclaredEeprom { kind: At24c02, address: 103 }
+
+type BusWork
+  = ControllerPcieResetReleased
+  | EepromsDeclared { bus: ControllerI2cBus, devices: List<DeclaredEeprom> }
+  | RegisterPairWrites { bus: ControllerI2cBus, target: Nat, pairs: Nat, each_pair: NonEmptyStr, stated_purpose: NonEmptyStr, celsius: Nat, modules: Nat }
+
+// Just before BMC_READY: four pairs of writes to target 0x60, each a data register and then a command
+// register. The script's comments call them SMBPBI registers of the FPGA and say they set a thermal alert
+// threshold of 105 C for four modules. That purpose is the comments' word, not a decoded message.
+data ranger_threshold_writes: BusWork = RegisterPairWrites {
+  bus: ranger_board_i2c_bus, target: 96, pairs: 4,
+  each_pair: "a data register, then a command register",
+  stated_purpose: "by the script's comments, SMBPBI registers of the FPGA: a thermal alert threshold",
+  celsius: 105, modules: 4,
+}
+
+// Whether the board starts without the EEPROM declarations or the threshold writes was not tested there.
+data ranger_bus_work_necessity_tested: Bool = false
+
+// ── WHERE THE SEQUENCE AND THE PIN TABLE LIVE ON THE CONTROLLER ─────────────────────────────────────
+
+type ScriptFileRole
+  = SequenceUpToBmcReady
+  | RunPowerAfterBmcReady
+  | StandbyRequest
+  | StandbyPowerStatusMonitor
+  | PowerStatusMonitor
+  | FpgaReadyMonitor
+  | ShutdownOkMonitor
+
+// The two main scripts are given with their directory; the others are named as small scripts beside them.
+type ScriptFile {
+  role: ScriptFileRole
+  file_name: NonEmptyStr
+  directory: NonEmptyStr?
+}
+
+data ranger_script_files: List<ScriptFile> = [
+  ScriptFile { role: SequenceUpToBmcReady, file_name: "bmc_ready.sh", directory: Present { value: "/usr/bin" } },
+  ScriptFile { role: RunPowerAfterBmcReady, file_name: "powerctrl.sh", directory: Present { value: "/usr/bin" } },
+  ScriptFile { role: StandbyRequest, file_name: "stbypowerctrl.sh", directory: Absent },
+  ScriptFile { role: StandbyPowerStatusMonitor, file_name: "standby_power_status_monitor.sh", directory: Absent },
+  ScriptFile { role: PowerStatusMonitor, file_name: "power_status_monitor.sh", directory: Absent },
+  ScriptFile { role: FpgaReadyMonitor, file_name: "fpga_ready_monitor.sh", directory: Absent },
+  ScriptFile { role: ShutdownOkMonitor, file_name: "shutdown_ok_monitor.sh", directory: Absent },
+]
+
+// The pin table is not a file. The names are the gpio-line-names of the main GPIO controller in the device
+// tree the firmware boots with, read on the running controller with gpioinfo and /sys/kernel/debug/gpio; the
+// ball of each comes from the pin controller's pin list in debugfs. /usr/share/gpio-config.json holds only
+// two alert lines for a monitor and is not the table.
+type GpioControllerNode {
+  node: NonEmptyStr
+  chip: Nat
+  line_count: Nat
+}
+
+data ranger_gpio_controller: GpioControllerNode = GpioControllerNode { node: "gpio@1e780000", chip: 0, line_count: 208 }
+
+// A reported line number at or past the controller's line count: none may exist.
+fn bindings_past_the_controller(bs: List<SignalBinding>) -> List<SignalBinding> {
+  filter(bs, b => b.reported_offset >= ranger_gpio_controller.line_count)
+}
+
+// One thing a script does. Where the account lists several lines in one step without an order, they are one
+// SetTogether and no order among them is claimed; where it gives an order, SetInOrder keeps it.
+type ScriptAction
+  = OnlyWhenReads { signal: RangerSignal, level: LogicLevel }
+  | SetLine { signal: RangerSignal, level: LogicLevel }
+  | SetTogether { signals: List<RangerSignal>, level: LogicLevel }
+  | SetInOrder { signals: List<RangerSignal>, level: LogicLevel, pause_between: Bool }
+  | SetThenRelease { signal: RangerSignal, level: LogicLevel }
+  | KeepsAt { signal: RangerSignal, level: LogicLevel }
+  | MustRead { signal: RangerSignal, level: LogicLevel }
+  | WaitUntil { signal: RangerSignal, level: LogicLevel, limit: WaitLimit, on_miss: OnMiss }
+  | PulseLine { signal: RangerSignal, level: LogicLevel, tenths_of_second: Nat }
+  | DelayTenths { tenths_of_second: Nat }
+  | ReadAgainAfter { signal: RangerSignal, seconds: Nat }
+  | SetIfPresent { condition: NonEmptyStr, signal: RangerSignal, level: LogicLevel, taken_on_reported_tray: Bool }
+  | AllDrivenLines { level: LogicLevel }
+  | BusStep { work: BusWork }
+  | BoardAnswersOn { signal: RangerSignal }
+
+type ScriptName
+  = ControllerBoot
+  | Standby
+  | RunPower
+  | GracefulOff
+  | ForcedOff
+  | HostReset
+  | StandbyOff
+
+type Script {
+  name: ScriptName
+  actions: List<ScriptAction>
+}
+
+// At its own boot the controller zeroes its outputs only when FPGA_READY reads 0 at that moment (the board
+// is not already up), then requires the board present. It checks nothing else before standby or run power:
+// no voltage, part number or FRU.
+data script_controller_boot: Script = Script { name: ControllerBoot, actions: [
+  OnlyWhenReads { signal: FpgaReady, level: Low },
+  SetTogether { signals: [BmcReady, RunPowerEn, LocalRunPwrEn, IomPwrEn, ErotFpgaRstL, FpgaRstL, BmcEpPerstEn, PwrBrakeL, ShdnReqL, ShdnForceL, SysRstInL, GlobalWp], level: Low },
+  MustRead { signal: BbPrsntL, level: Low },
+] }
+
+data script_standby: Script = Script { name: Standby, actions: [
+  SetLine { signal: StbyPowerEn, level: High },
+  WaitUntil { signal: StbyPowerPg, level: High, limit: LimitSeconds { seconds: 20 }, on_miss: MissSetsBack { signal: StbyPowerEn, level: Low } },
+  SetThenRelease { signal: BmcErotFpgaSpiMuxSel, level: High },
+  SetLine { signal: FpgaErotRecoveryL, level: High },
+  SetTogether { signals: [PwrBrakeL, ShdnReqL, ShdnForceL], level: High },
+  KeepsAt { signal: SysRstInL, level: Low },
+  SetInOrder { signals: [ErotFpgaRstL, FpgaRstL], level: High, pause_between: false },
+  WaitUntil { signal: FpgaReady, level: High, limit: LimitAboutSeconds { seconds: 60 }, on_miss: MissNotStated },
+  BusStep { work: ControllerPcieResetReleased },
+  BusStep { work: EepromsDeclared { bus: ranger_board_i2c_bus, devices: ranger_declared_eeproms } },
+  BusStep { work: ranger_threshold_writes },
+  SetLine { signal: BmcReady, level: High },
+] }
+
+data script_run_power: Script = Script { name: RunPower, actions: [
+  SetTogether { signals: [ShdnReqL, ShdnForceL], level: High },
+  SetLine { signal: SysRstInL, level: Low },
+  SetLine { signal: BmcEpPerstEn, level: High },
+  SetLine { signal: LocalRunPwrEn, level: High },
+  SetLine { signal: RunPowerEn, level: High },
+  WaitUntil { signal: RunPowerPg, level: High, limit: LimitSeconds { seconds: 20 }, on_miss: MissForcesShutdown },
+  SetIfPresent { condition: "an IO module is present", signal: IomPwrEn, level: High, taken_on_reported_tray: false },
+  SetLine { signal: SysRstInL, level: High },
+  WaitUntil { signal: SysRstOutL, level: High, limit: LimitNotStated, on_miss: MissNotStated },
+  ReadAgainAfter { signal: RunPowerPg, seconds: 5 },
+] }
+
+data script_graceful_off: Script = Script { name: GracefulOff, actions: [
+  PulseLine { signal: ShdnReqL, level: Low, tenths_of_second: 5 },
+  BoardAnswersOn { signal: ShdnOkL },
+] }
+
+data script_forced_off: Script = Script { name: ForcedOff, actions: [
+  SetTogether { signals: [ShdnReqL, ShdnForceL], level: Low },
+  SetLine { signal: BmcEpPerstEn, level: Low },
+  WaitUntil { signal: ShdnOkL, level: Low, limit: LimitUpToSeconds { seconds: 40 }, on_miss: MissNotStated },
+  DelayTenths { tenths_of_second: 20 },
+  SetLine { signal: RunPowerEn, level: Low },
+  WaitUntil { signal: RunPowerPg, level: Low, limit: LimitNotStated, on_miss: MissNotStated },
+  SetLine { signal: LocalRunPwrEn, level: Low },
+  SetTogether { signals: [ShdnReqL, ShdnForceL], level: High },
+] }
+
+data script_host_reset: Script = Script { name: HostReset, actions: [
+  PulseLine { signal: SysRstInL, level: Low, tenths_of_second: 1 },
+] }
+
+data script_standby_off: Script = Script { name: StandbyOff, actions: [
+  AllDrivenLines { level: Low },
+  SetLine { signal: StbyPowerEn, level: Low },
+] }
+
+data ranger_scripts: List<Script> = [script_controller_boot, script_standby, script_run_power, script_graceful_off, script_forced_off, script_host_reset, script_standby_off]
+
+// ── WHAT THE CONTROLLER WATCHES, AND DOES WHEN A LINE FALLS ─────────────────────────────────────────
+
+// The watched lines are active low and rest at 1 on the running tray. A fall is answered by actions, by a
+// hard power-off, or only by a log entry.
+type FallReaction
+  = ReactsWith { actions: List<ScriptAction> }
+  | HardPowerOff
+  | LoggedOnly
+
+type WatchRule {
+  signal: RangerSignal
+  reaction: FallReaction
+}
+
+data ranger_watch_rules: List<WatchRule> = [
+  WatchRule { signal: ShdnOkL, reaction: ReactsWith { actions: [SetLine { signal: SysRstInL, level: Low }, DelayTenths { tenths_of_second: 20 }, SetLine { signal: RunPowerEn, level: Low }] } },
+  WatchRule { signal: RunPowerFaultL, reaction: HardPowerOff },
+  WatchRule { signal: ThermBbOvertL, reaction: HardPowerOff },
+  WatchRule { signal: ThermFpgaOvertL, reaction: HardPowerOff },
+  WatchRule { signal: ThermBbWarnL, reaction: LoggedOnly },
+  WatchRule { signal: FpgaErotFatalErrorL, reaction: LoggedOnly },
+  WatchRule { signal: RunPowerPg, reaction: ReactsWith { actions: [SetLine { signal: SysRstInL, level: Low }] } },
+]
+
+// ── READING THE SCRIPTS ─────────────────────────────────────────────────────────────────────────────
+
+// The lines an action sets, as the controller driving them.
+fn signals_set(a: ScriptAction) -> List<RangerSignal> {
+  match a {
+    OnlyWhenReads { signal: _, level: _ } => []
+    SetLine { signal, level: _ } => [signal]
+    SetTogether { signals, level: _ } => signals
+    SetInOrder { signals, level: _, pause_between: _ } => signals
+    SetThenRelease { signal, level: _ } => [signal]
+    KeepsAt { signal, level: _ } => [signal]
+    MustRead { signal: _, level: _ } => []
+    WaitUntil { signal: _, level: _, limit: _, on_miss: _ } => []
+    PulseLine { signal, level: _, tenths_of_second: _ } => [signal]
+    DelayTenths { tenths_of_second: _ } => []
+    ReadAgainAfter { signal: _, seconds: _ } => []
+    SetIfPresent { condition: _, signal, level: _, taken_on_reported_tray: _ } => [signal]
+    AllDrivenLines { level: _ } => []
+    BusStep { work: _ } => []
+    BoardAnswersOn { signal: _ } => []
+  }
+}
+
+// The lines an action reads from the board.
+fn signals_read(a: ScriptAction) -> List<RangerSignal> {
+  match a {
+    OnlyWhenReads { signal, level: _ } => [signal]
+    SetLine { signal: _, level: _ } => []
+    SetTogether { signals: _, level: _ } => []
+    SetInOrder { signals: _, level: _, pause_between: _ } => []
+    SetThenRelease { signal: _, level: _ } => []
+    KeepsAt { signal: _, level: _ } => []
+    MustRead { signal, level: _ } => [signal]
+    WaitUntil { signal, level: _, limit: _, on_miss: _ } => [signal]
+    PulseLine { signal: _, level: _, tenths_of_second: _ } => []
+    DelayTenths { tenths_of_second: _ } => []
+    ReadAgainAfter { signal, seconds: _ } => [signal]
+    SetIfPresent { condition: _, signal: _, level: _, taken_on_reported_tray: _ } => []
+    AllDrivenLines { level: _ } => []
+    BusStep { work: _ } => []
+    BoardAnswersOn { signal } => [signal]
+  }
+}
+
+fn is_bus_work(a: ScriptAction) -> Bool {
+  match a {
+    BusStep { work: _ } => true
+    _ => false
+  }
+}
+
+fn script_sets(s: Script) -> List<RangerSignal> {
+  flat_map(s.actions, a => signals_set(a: a))
+}
+
+fn script_reads(s: Script) -> List<RangerSignal> {
+  flat_map(s.actions, a => signals_read(a: a))
+}
+
+// Lines a script sets that the pin table does not give the controller to drive, and lines it reads that the
+// controller drives: either would be a transcription slip.
+fn script_direction_slips(s: Script) -> List<RangerSignal> {
+  concat(filter(script_sets(s: s), x => !is_driven(s: x)), filter(script_reads(s: s), x => is_driven(s: x)))
+}
+
+// A line some script waits on or must read.
+fn is_awaited(s: RangerSignal) -> Bool {
+  any(ranger_scripts, sc => any(script_reads(s: sc), x => same_signal(a: x, b: s)))
+}
+
+// A line a watch rule is on.
+fn is_watched(s: RangerSignal) -> Bool {
+  any(ranger_watch_rules, r => same_signal(a: r.signal, b: s))
+}
+
+fn level_text(l: LogicLevel) -> String {
+  match l {
+    Low => "0"
+    High => "1"
+  }
+}
+
+fn binding_line(b: SignalBinding) -> String {
+  join([signal_name(s: b.signal), ": ", ast2600_pin_text(p: b.pin), ", ball ", b.ball as String, ", offset ", to_string(gpio_offset(pin: b.pin)), ", sysfs gpio-", to_string(sysfs_number(pin: b.pin))], "")
+}
+
+fn pin_table_lines() -> List<String> {
+  map(ranger_signal_bindings, b => binding_line(b: b))
+}

@@ -8,6 +8,7 @@ import extdeps.ssh.keys { SshPublicKey }
 import extdeps.netfilter.nfct { nfct_installed_path }
 import extdeps.tools.conntrack { conntrack_installed_path }
 import extdeps.sudo.visudo { visudo_binary_path }
+import extdeps.shadow.account_creation { useradd_binary_path, usermod_binary_path }
 import extdeps.netfilter.iptables_legacy { iptables_legacy_save_installed_path }
 import extdeps.nftables.ruleset { nft_installed_path }
 import std.content_hash { Fnv1a64Structural }
@@ -447,8 +448,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoSystemctl => fleet_systemctl_binary_path
     SudoTailscale => fleet_tailscale_binary_path
     SudoRm => fleet_rm_binary_path
-    SudoUseradd => fleet_useradd_binary_path
-    SudoUsermod => fleet_usermod_binary_path
+    SudoUseradd => useradd_binary_path
+    SudoUsermod => usermod_binary_path
     SudoNft => fleet_nft_binary_path
     SudoConntrack => fleet_conntrack_binary_path
     SudoIptablesLegacySave => fleet_iptables_legacy_save_binary_path
@@ -521,8 +522,6 @@ data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstal
 // a_preflight_demands_the_grant_its_gated_step_installs.
 data ci_runner_sudoers_install_binaries: List<CiRunnerSudoBinary> = [SudoVisudo, SudoInstall]
 
-data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
-data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
 data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"
 
@@ -817,7 +816,7 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
     // It is a service identity, not a login account and not the CI job user -- the listener accepts the
     // job, the job user (ghrunner) does the work -- so it holds NO sudo of its own. Its login name is THIS
     // module's authority, fleet_posix_runner_listener_login
-    // (@ref(gunbc.fleet.fleet_posix_accounts::fleet_posix_runner_listener_login)), which
+    // (#gunbc.fleet.fleet_posix_accounts::fleet_posix_runner_listener_login), which
     // gunbc.runner.runner_host_medium re-exports as runner_host_medium_runner_account -- never a second
     // literal; the account is host-assigned, so it carries policy and no operating-system label, exactly as
     // the automation and service identities already do.

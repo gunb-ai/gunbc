@@ -3,6 +3,7 @@ module gunbc.machine_intake.mtcollins1_access_observation
 import extdeps.board_authority { BoardFruIdentity, BoardFruRead }
 import std.types { EpochMs, Int, NonEmptyStr, String }
 import std.measure { Second, second }
+import extdeps.clock { CapturedInstant, captured_point }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
@@ -78,6 +79,12 @@ data mtcollins1_write_exercise_artifact_path: NonEmptyStr = "artifacts/bmc/mtcol
 data mtcollins1_write_exercise_byte_count: Int = 1844
 
 data mtcollins1_observed_at: EpochMs = 1788592988469
+
+// THE INTAKE PASS ANSWERED AT ONE MILLISECOND. The pass was taken live and its own capture stamps the
+// instant -- the value above carries a non-zero millisecond, which only an instrument read produces -- so
+// its observation's time is the degenerate band extdeps.clock mints for an instrument reading. Minted here,
+// beside the reading, not inside the record literal (extdeps.bmc.access_profile::BmcAccessObservation).
+data mtcollins1_observed_instant: CapturedInstant = captured_point(at: mtcollins1_observed_at)
 
 // THE WRITE EXERCISE HAS ITS OWN TIME because it is a separate attempt against the same unit. Using
 // the read pass's timestamp for a write that happened afterwards would place an effect before its
@@ -228,7 +235,7 @@ data mtcollins1_access_observation: BmcAccessObservation = BmcAccessObservation 
     SurfaceBootControl,
   ],
   raw_response: mtcollins1_evidence_manifest_digest,
-  observed_at: mtcollins1_observed_at,
+  observed_at: mtcollins1_observed_instant,
 }
 
 data mtcollins1_access_standing: BmcAccessObservationStanding = BmcAccessObserved {
@@ -354,6 +361,10 @@ data mtcollins1_boot_run_40258937016_boot_param_read_back_at: EpochMs = 17929834
 // the LATEST instant any read inside it was taken -- here boot 6's, since boot 5's writes precede them.
 data mtcollins1_boot_run_40264233543_observed_at: EpochMs = 1792996220000
 
+// BOOT 6'S DIAGNOSTICS STAMP THEIR OWN READS to the whole second (2026-10-26T06:30:20Z), so this
+// observation's time is licensed as one instant and enters the band carrier as a degenerate band.
+data mtcollins1_boot_run_40264233543_observed_instant: CapturedInstant = captured_point(at: mtcollins1_boot_run_40264233543_observed_at)
+
 // BOOT CONTROL OVER IPMI LANPLUS AT THIS BUILD -- carried, not claimed as written. Production SELECTS a
 // route from this row (gunbc.machine_intake.oob_boot_handoff first_observed_boot_control_route refuses
 // OobHandoffRouteUnobserved when the list is empty), and the boots drove parameter 5 over IPMI lanplus with
@@ -408,7 +419,7 @@ data mtcollins1_machine_read_access_observation: BmcAccessObservation? = match m
       // written.
       successful_write_surfaces: [SurfaceOemRestRemoteMedia],
       raw_response: mtcollins1_boot_run_40264233543_diagnostics_hash,
-      observed_at: mtcollins1_boot_run_40264233543_observed_at,
+      observed_at: mtcollins1_boot_run_40264233543_observed_instant,
     },
   }
 }

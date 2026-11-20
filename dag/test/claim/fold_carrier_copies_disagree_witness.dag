@@ -18,7 +18,7 @@ import std.process { ProcessExit }
 //     method form does NOT refine.
 // The two arms independently decide one refinement, which is a fork -- "a second place that
 // independently decides it is a fork" -- so the rule belongs to one authoritative definition.
-// @ref(gunbc.design_argument::single_authority) @ref(gunbc.design_argument::fail_closed)
+// #gunbc.design_argument::single_authority #gunbc.design_argument::fail_closed
 //
 // THE SOURCE IS HELD IDENTICAL EXCEPT THE FOLD'S FORM. `call_form` writes the carrier fold as
 // `fold(xs, init: Empty, f: ...)`; `method_form` writes the SAME fold as `xs.fold(init: Empty, f:

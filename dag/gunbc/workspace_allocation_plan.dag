@@ -14,7 +14,7 @@ import std.measure { money_amount_micro }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set { ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, HoldSlotHeld, HoldSlotAbsent, HoldSlotFree, HoldSlotUndecodable, HoldObservationUnavailable, HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable }
-import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
 import product.fabric.demand { Demand }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
 import product.fabric.supply { GrantDuration, offer_quote_currency }
@@ -40,6 +40,30 @@ type WorkspaceReservationPreparation
 type WorkspaceReservationApply
   = WorkspaceReservationObserved { reservation: WorkspaceReservation }
   | WorkspaceReservationApplyRefused { reason: NonEmptyStr }
+
+// The ONE canonical rendering of a selection policy, used to content-address the
+// provenance label `selection_policy`. content_hash_of_value is a std text-hash
+// primitive (value: NonEmptyStr); a policy is hashed only as an opaque label, so it is
+// rendered to JSON here exactly as the codebase's other policy hashes do
+// (tailscale_acl_policy_json, support_policy_json). No consumer decodes the digest.
+fn resource_budget_policy_json(policy: ResourceBudgetPolicy<NonEmptyStr>) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "authority", value: json_string(s: policy.authority as String)),
+    json_kv(key: "revision", value: json_string(s: policy.revision as String)),
+    json_kv(key: "demand", value: json_object(members: [
+      json_kv(key: "principal", value: json_string(s: policy.demand.principal as String)),
+      json_kv(key: "key", value: json_string(s: policy.demand.key as String)),
+    ])),
+    json_kv(key: "work", value: json_object(members: [
+      json_kv(key: "principal", value: json_string(s: policy.work.principal as String)),
+      json_kv(key: "key", value: json_string(s: policy.work.key as String)),
+    ])),
+    json_kv(key: "allowed_offers", value: json_array(elements: map(policy.allowed_offers, o => json_object(members: [
+      json_kv(key: "principal", value: json_string(s: o.principal as String)),
+      json_kv(key: "key", value: json_string(s: o.key as String)),
+    ])))),
+  ])
+}
 
 fn workspace_reservation_prepare(
   cells: FabricAllocationStore, request: WorkspaceRequest, demand: Demand<NonEmptyStr>,
@@ -75,7 +99,7 @@ fn workspace_reservation_prepare(
                     }
                     match next {
                       Absent => WorkspaceReservationPreparationRefused { reason: "slot generation exhausted" }
-                      Present { value: generation } => WorkspaceReservationPrepared { plan: workspace_reservation_plan_seal(root: cells.root, selection_policy: concat("resource-budget-v1:", serialize_content_hash(hash: content_hash_of_value(value: selected_policy))) as NonEmptyStr, reservation: WorkspaceReservation {
+                      Present { value: generation } => WorkspaceReservationPrepared { plan: workspace_reservation_plan_seal(root: cells.root, selection_policy: concat("resource-budget-v1:", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: resource_budget_policy_json(policy: selected_policy))))) as NonEmptyStr, reservation: WorkspaceReservation {
                         request: request, slot: member.slot, generation: generation, grant: grant, work: demand.work,
                         demand: demand.id, offer: offer.id, money_account: advanced, money_generation: 0,
                       }) }

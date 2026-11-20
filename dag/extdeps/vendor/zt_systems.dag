@@ -1,0 +1,31 @@
+module extdeps.vendor.zt_systems
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// ZT Systems, the maker named on the boards of NVIDIA's Ranger compute tray (the front IO board
+// 1395A3492101 and the tray's power board). Cited from its own site as the company entity; what its
+// boards are lives in the extdeps.zt_systems modules under their own citations.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ztsystems.com"
+  }
+}
+
+data zt_systems: Vendor<Hardware> = Vendor { legal_name: "ZT Group Int'l, Inc. (ZT Systems)" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.zt_systems",
+      decl_name: "zt_systems",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -1,0 +1,71 @@
+module extdeps.nvidia.p4261_k1_chassis
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, File }
+import extdeps.nvidia.p4261 { p4261_k1 }
+import extdeps.nvidia.p4261.population { P4261Position, p4261_position }
+
+// A K1-TYPE P4261 IN THE SERVER CHASSIS IT WAS PULLED FROM, AS AN INTEGRATION. A K1 owner reported on
+// 2026-10-31 that in that chassis a PCIe riser, HEPCBG4143, was cabled to the baseboard's J5 and J6 by cable
+// RRC164-0688, its top edge plugged into a separate front board with a coin cell; and that a ZT Systems
+// power distribution board fed the baseboard's J20 with 12 V from a plug-in 12 V VRM card. The chassis
+// itself is not identified. Every row is cited to that owner's account and is about a K1 in that chassis: it says nothing of what
+// J5 and J6 carry on an E1, whose running tray names other sockets for its links
+// (extdeps.nvidia.ranger_tray). The same owner later allowed what that lab sends to be recorded without
+// naming it (docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: File
+    locator: "docs/extdeps/nvidia_ranger_tray/owner_account_2026-11.md"
+  }
+}
+
+type K1ChassisRiser {
+  riser_part_number: NonEmptyStr
+  cable_part_number: NonEmptyStr
+  baseboard_positions: List<P4261Position>
+  standing: CitedFigureStanding
+}
+
+data k1_chassis_riser: K1ChassisRiser = K1ChassisRiser {
+  riser_part_number: "HEPCBG4143",
+  cable_part_number: "RRC164-0688",
+  baseboard_positions: [p4261_position(revision: p4261_k1, designator: "J5"), p4261_position(revision: p4261_k1, designator: "J6")],
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+// The chassis's power side: a ZT Systems power distribution board taking 48 to 54 V on two posts, a plug-in
+// "12V VRM" card stepping it down, and a harness from the board's J4 to the baseboard's J20 carrying 12 V.
+// That is a different feed from the Ranger tray's, whose power board the owner feeds with 48 V.
+type K1ChassisPowerFeed {
+  distribution_board_pcb: NonEmptyStr
+  distribution_board_label: NonEmptyStr
+  harness_label: NonEmptyStr
+  baseboard_input: P4261Position
+  volts_at_baseboard: Nat
+  standing: CitedFigureStanding
+}
+
+data k1_chassis_power_feed: K1ChassisPowerFeed = K1ChassisPowerFeed {
+  distribution_board_pcb: "1395A3492201",
+  distribution_board_label: "PB-00185-003",
+  harness_label: "RWHHW-U220",
+  baseboard_input: p4261_position(revision: p4261_k1, designator: "J20"),
+  volts_at_baseboard: 12,
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.p4261_k1_chassis",
+      decl_name: "k1_chassis_riser",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

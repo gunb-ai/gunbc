@@ -35,6 +35,17 @@ data dashboard_cutover_mac_dissolution_trigger: Disposition = Scaffold {
 
 data tag_ci: NonEmptyStr = "tag:ci"
 data tag_dashboard: NonEmptyStr = "tag:dashboard"
+// THE SERVING TAG, the identity the serving plane is keyed on. See tag_serving_label for the operator's
+// ruling that the fleet's both_participation hosts carry this alongside tag:ci (2026-11-18, chat).
+data tag_serving: NonEmptyStr = "tag:serving"
+// THE CI-DISPATCH TAG: ephemeral hosted-runner nodes that drive the remote build over the tailnet.
+// Operator ruling (@ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign):
+// "OK for ci-dispatch, as long as its all modeled/recorded for tailscale
+// convergence." The node is ephemeral (self-expires), tagged by the OAuth client, and reaches only the
+// remote-build hosts on ssh_tcp_port. It is NOT tag:ci: tag:ci is quarantined (reaches only the dashboard
+// on tcp:3737); a hosted runner joining as tag:ci would reach no build host.
+data tag_ci_dispatch: NonEmptyStr = "tag:ci-dispatch"
 data dashboard_tcp_port: NonEmptyStr = "tcp:3737"
 data ssh_tcp_port: NonEmptyStr = "tcp:22"
 
@@ -43,6 +54,12 @@ data ssh_tcp_port: NonEmptyStr = "tcp:22"
 // the dashboard plane to its API port. tag:ci stays quarantined to the dashboard port.
 data dusk_serving_ip: NonEmptyStr = "100.127.39.77"
 data dusk_serving_api_tcp_port: NonEmptyStr = "tcp:8080"
+// THE SERVING PLANE'S PORT RANGE. The live tailnet grants the dashboard plane reach to nodes carrying
+// tag:serving on these ports (added in the admin console 2026-11-18; the operator ruled the fleet's
+// both_participation hosts ken and dan carry tag:serving alongside tag:ci on the same date). This is the
+// REAL declaration the fleet's auth key cites -- gunbc.tailscale_fleet_auth_key points here for "where
+// the ACL's view of that tag lives". Before this row it was a dangling citation (the symbol did not exist).
+data tailscale_serving_port_grants: List<NonEmptyStr> = ["tcp:18081-18083"]
 
 type TailscaleAclSelector
   = AclTag { label: NonEmptyStr }
@@ -89,6 +106,12 @@ fn sel_wildcard() -> TailscaleAclSelector {
 
 data tag_ci_label: NonEmptyStr = "ci"
 data tag_dashboard_label: NonEmptyStr = "dashboard"
+// THE SERVING IDENTITY. Nodes carrying tag:serving expose the inference-serving ports. Per the operator's
+// ruling of 2026-11-18 ("C both tags is fine"; operator, in chat to smart-crane-730), the fleet's
+// both_participation hosts (ken, dan/h11-a16) carry it ALONGSIDE tag:ci, so the fleet converge reaches
+// them over the tailnet AND the serving grants still apply. Owner: autogroup:admin (see the tag-owner row).
+data tag_serving_label: NonEmptyStr = "serving"
+data tag_ci_dispatch_label: NonEmptyStr = "ci-dispatch"
 
 fn sel_tag_ci() -> TailscaleAclSelector {
   sel_tag(label: tag_ci_label)
@@ -96,6 +119,14 @@ fn sel_tag_ci() -> TailscaleAclSelector {
 
 fn sel_tag_dashboard() -> TailscaleAclSelector {
   sel_tag(label: tag_dashboard_label)
+}
+
+fn sel_tag_serving() -> TailscaleAclSelector {
+  sel_tag(label: tag_serving_label)
+}
+
+fn sel_tag_ci_dispatch() -> TailscaleAclSelector {
+  sel_tag(label: tag_ci_dispatch_label)
 }
 
 fn tailscale_acl_selector_eq(a: TailscaleAclSelector, b: TailscaleAclSelector) -> Bool {
@@ -172,6 +203,35 @@ fn tag_dashboard_to_dusk_serving_api_grant() -> TailscaleGrant {
   }
 }
 
+// THE DASHBOARD -> SERVING PLANE. The live tailnet's grant src [tag:dashboard] -> dst [tag:serving], ip
+// [tcp:18081-18083], added in the admin console 2026-11-18 (the operator's hand change). dst is the TAG,
+// not a pinned IP, so it reaches whichever host carries tag:serving -- the both_participation hosts the
+// operator ruled on 2026-11-18 ("C both tags is fine") carry it alongside tag:ci. The port ranges come
+// from the single declaration tailscale_serving_port_grants, not a literal, so the ports have one home.
+fn tag_dashboard_to_serving_grant() -> TailscaleGrant {
+  TailscaleGrant {
+    src: [sel_tag_dashboard()],
+    dst: [sel_tag_serving()],
+    ip: map(tailscale_serving_port_grants, p => sel_proto_port(spec: p)),
+  }
+}
+
+// THE CI-DISPATCH -> BUILD-HOSTS GRANT. The ephemeral hosted-runner (tag:ci-dispatch) may reach SSH
+// (tcp:22) on the fleet build hosts (tag:ci, the tailscale_fleet_node_tag carried by srv1/srv3/srv4)
+// and nothing else. The security boundary is the forced-command SSH key (gunbc.compute.remote_build
+// authorized_keys), not the network: the key restricts to the gunbc-build account's forced command.
+// srv1/srv3/srv4 do NOT run Tailscale SSH (tailscale_up_join_argv carries no --ssh flag, join.dag),
+// so the regular sshd with its authorized_keys forced_command governs the connection. No Tailscale SSH
+// rule for src tag:ci-dispatch is emitted; the network grant is sufficient and the key is the control.
+fn tag_ci_dispatch_to_build_hosts_ssh_grant() -> TailscaleGrant {
+  TailscaleGrant {
+    src: [sel_tag_ci_dispatch()],
+    dst: [sel_tag_ci()],
+    ip: [sel_proto_port(spec: ssh_tcp_port)],
+  }
+}
+
+// #gunbc.design_ruling::tailnet_serving_acl_admin_console_additions_2026_11_18
 fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
   [
     member_baseline_grant(),
@@ -179,6 +239,8 @@ fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
     tag_dashboard_self_grant(),
     tag_dashboard_to_ci_ssh_grant(),
     tag_dashboard_to_dusk_serving_api_grant(),
+    tag_dashboard_to_serving_grant(),
+    tag_ci_dispatch_to_build_hosts_ssh_grant(),
   ]
 }
 
@@ -214,10 +276,15 @@ fn operator_tailscale_acl_node_attrs() -> List<TailscaleNodeAttr> {
   ]
 }
 
+// #gunbc.design_ruling::tailnet_serving_acl_admin_console_additions_2026_11_18
 fn operator_tailscale_acl_tag_owners() -> List<TailscaleTagOwnerRow> {
   [
     TailscaleTagOwnerRow { tag: tag_ci, owners: ["autogroup:admin" as NonEmptyStr] },
     TailscaleTagOwnerRow { tag: tag_dashboard, owners: ["autogroup:admin" as NonEmptyStr] },
+    // tag:serving is owned by autogroup:admin, matching the live tailnet (added in the admin console
+    // 2026-11-18). It governs who may apply the tag to a node; it is NOT a reach grant.
+    TailscaleTagOwnerRow { tag: tag_serving, owners: ["autogroup:admin" as NonEmptyStr] },
+    TailscaleTagOwnerRow { tag: tag_ci_dispatch, owners: ["autogroup:admin" as NonEmptyStr] },
   ]
 }
 

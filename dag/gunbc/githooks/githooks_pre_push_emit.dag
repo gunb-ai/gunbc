@@ -98,12 +98,18 @@ fn emit_local_tidy_line(check: LocalTidyCheck) -> String {
 // ruling msg_0e7d195a: the toggle whose only effect is 'proceed as if the refusal had not
 // fired' is forbidden): a push touching ANY non-fleet ref runs every guard, and an empty
 // or unreadable stdin (ref_count 0) FAILS CLOSED — the guards run, exactly as today.
+//
+// refs/remote-build/* JOINS refs/fleet/* for the same reason. A remote-build ref carries a snapshot
+// of the session's worktree to a serving host for ONE build (gunbc.compute.remote_build
+// RemoteBuildSourceRef); the client deletes it once the host answers, and nothing reviews or merges
+// it. The source guards protect publication, and a build of work in progress must not be refused
+// because that work is not yet formatted -- finding out is what the build is for.
 fn emit_pre_push_fleet_ref_skip_preamble() -> String {
   concat(
     "_gunbc_only_fleet_refs=1\n_gunbc_ref_count=0\n",
     concat(
-      "while read -r _lref _lsha _rref _rsha; do\n  _gunbc_ref_count=$((_gunbc_ref_count+1))\n  case \"$_rref\" in\n    refs/fleet/*) : ;;\n    *) _gunbc_only_fleet_refs=0 ;;\n  esac\ndone\n",
-      "if [[ \"$_gunbc_ref_count\" -gt 0 && \"$_gunbc_only_fleet_refs\" == \"1\" ]]; then\n  echo \"[pre-push] refs/fleet/* only — skipping source guards (namespace-scoped)\" >&2\n  exit 0\nfi\n"
+      "while read -r _lref _lsha _rref _rsha; do\n  _gunbc_ref_count=$((_gunbc_ref_count+1))\n  case \"$_rref\" in\n    refs/fleet/*|refs/remote-build/*) : ;;\n    *) _gunbc_only_fleet_refs=0 ;;\n  esac\ndone\n",
+      "if [[ \"$_gunbc_ref_count\" -gt 0 && \"$_gunbc_only_fleet_refs\" == \"1\" ]]; then\n  echo \"[pre-push] refs/fleet/* and refs/remote-build/* only — skipping source guards (namespace-scoped)\" >&2\n  exit 0\nfi\n"
     )
   )
 }

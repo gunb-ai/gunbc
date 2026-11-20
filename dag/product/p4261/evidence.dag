@@ -16,7 +16,7 @@ import extdeps.nvidia.p4261.population {
   p4261_e1_positions,
   p4261_k1_positions,
 }
-import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq , designator_eq, designator_of }
+import extdeps.electronic_component.types { ElectronicComponentRow, electronic_component_row_eq , designator_eq, designator_of, designator_text }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.electrical.connectivity { ComponentInstanceIdentity, ElectricalTerminalRef, component_identity_eq, component_local_label }
 import product.electrical.photograph { Broken, Checkable, CitationStanding, CitationVerdict, Gap, Photograph, PhotographCitation, citation_verdict, cite }
@@ -1002,7 +1002,7 @@ fn net_unattributed(prop: P4261NetProposition, layout: CarrierLayoutObservation,
       if !p4261_revision_eq(a: p0.revision, b: layout.revision) { Present { value: NetPositionOfAnotherRevision } }
       else if !revision_supported(revision: p0.revision, specimen: layout) { Present { value: NetRevisionNotEstablishedOnBoard } }
       else { match (filter(ps, p => count(bindings_at(admitted: admitted, p: p)) == 0)).first() {
-        Present { value: p } => Present { value: NetPositionNotAdmitted { designator: p.designator } }
+        Present { value: p } => Present { value: NetPositionNotAdmitted { designator: designator_text(designator: p.designator) } }
         Absent => match layout.measured { Absent => Present { value: NoMeasuredBoard }, Present { value: _ } => Absent }
       } }
   }

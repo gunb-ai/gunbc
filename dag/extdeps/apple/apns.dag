@@ -113,9 +113,9 @@ fn apns_collapse_id(value: NonEmptyStr) -> ApnsCollapseId? {
 }
 
 // ── Payload ──────────────────────────────────────────────────────────────────────────────────
-// The aps dictionary's alert and mutable-content keys. mutable-content = 1 lets a Notification
-// Service Extension rewrite the content before display; custom keys travel beside aps at the top
-// level of the JSON body.
+// The aps dictionary's alert, mutable-content, sound and interruption-level keys. mutable-content = 1
+// lets a Notification Service Extension rewrite the content before display; custom keys travel beside
+// aps at the top level of the JSON body.
 type ApnsInterruptionLevel
   = InterruptionPassive
   | InterruptionActive
@@ -129,6 +129,20 @@ fn apns_interruption_level_wire(l: ApnsInterruptionLevel) -> NonEmptyStr {
   }
 }
 
+// TIME-SENSITIVE IS AN ENTITLEMENT, NOT A REQUEST: Apple delivers the time-sensitive level (through
+// Focus and Scheduled Summary) only to an app whose signed entitlements carry this key as true, and
+// silently treats it as active for any other app. So a sender may ask for it before every installed
+// build declares it; the app's entitlements are where it is granted.
+data apns_time_sensitive_entitlement_key: NonEmptyStr = "com.apple.developer.usernotifications.time-sensitive"
+
+// The aps sound key. ABSENT IS SILENT: iOS plays a sound for a remote alert only when the payload
+// names one, whatever the user's notification settings allow. "default" is the system alert sound.
+// A sound file bundled with the app, and the critical-alert dictionary, are further arms added when a
+// consumer needs one; neither is modeled until then.
+type ApnsSound
+  = SoundSilent
+  | SoundSystemDefault
+
 // subtitle and category are OPTIONAL keys, and absent is a different wire fact from empty: Apple
 // reads an empty category as a category named "". So their absence is the Optional's, never "".
 type ApnsAlert {
@@ -140,6 +154,7 @@ type ApnsAlert {
 type ApnsAps {
   alert: ApnsAlert
   mutable_content: Bool
+  sound: ApnsSound
   interruption_level: ApnsInterruptionLevel
   category: NonEmptyStr?
 }
@@ -202,7 +217,7 @@ fn apns_authorization_header(token: JwtCompactSerialization) -> ApnsHeader {
 data apns_id_header_name: NonEmptyStr = "apns-id"
 
 // The JSON body. aps holds Apple's keys; an optional key Apple documents is sent exactly when it is
-// Present (subtitle, category) or true (mutable-content). Custom keys sit beside aps at the top level.
+// Present (subtitle, category), true (mutable-content) or not silent (sound). Custom keys sit beside aps at the top level.
 fn apns_alert_json(a: ApnsAlert) -> JsonValue {
   json_object(members: concat(
     [json_kv(key: "title", value: json_string(s: a.title as String))],
@@ -219,8 +234,11 @@ fn apns_aps_json(aps: ApnsAps) -> JsonValue {
     concat(
       if aps.mutable_content { [json_kv(key: "mutable-content", value: json_int(n: 1))] } else { [] },
       concat(
-        [json_kv(key: "interruption-level", value: json_string(s: apns_interruption_level_wire(l: aps.interruption_level) as String))],
-        match aps.category { Absent => []  Present { value: c } => [json_kv(key: "category", value: json_string(s: c as String))] },
+        match aps.sound { SoundSilent => []  SoundSystemDefault => [json_kv(key: "sound", value: json_string(s: "default"))] },
+        concat(
+          [json_kv(key: "interruption-level", value: json_string(s: apns_interruption_level_wire(l: aps.interruption_level) as String))],
+          match aps.category { Absent => []  Present { value: c } => [json_kv(key: "category", value: json_string(s: c as String))] },
+        ),
       ),
     ),
   ))

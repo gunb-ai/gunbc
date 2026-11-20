@@ -344,6 +344,7 @@ import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectRes
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, SeatDischargeRan, SeatEnsureReleased, compute_seat_discharge_all,
   SeatDischargeStanding, SeatDischargeClean, SeatDischargePassRefused, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
+  compute_seat_discharge_pass_in, seat_discharge_pass_released_a_seat, compute_provide_pool_full,
 }
 import gunbc.compute.work_provider_local {
   compute_provide, ProvideResult, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
@@ -599,7 +600,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   OperatorWorkerGone, OperatorNotConfirmed,
 }
 import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
-import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
+import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryUnreadable, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
@@ -735,7 +736,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   filesystem_read_outcome,
   filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
-  filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  FilesystemExactRead, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized,
   filesystem_file_observation,
   FilesystemFileObservation,
@@ -1877,24 +1878,10 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
 // A COMPUTE SEAT OPENED FOR A DISPATCH ATTEMPT THAT HAS ENDED IS DISCHARGED, EVERY TICK. The belt is only the
 // executor: the ownership authority is the location the seat was recorded at (the dispatch attempt's own directory), the trigger is the
 // attempt's exit record, and the release is gunbc.compute.work_provider_local compute_recover_attempt_in,
-// which re-proves unit termination itself (gunbc.compute.compute_seat_ensure compute_seat_discharge_all).
-fn belt_compute_seat_discharge_pass(instance: HostDashboardInstance) -> SeatDischargePass {
-  match compute_capacity_subject(instance: instance) {
-    ComputeSubjectHostUnresolved { host: h } => SeatDischargeRefused { reason: join(["no capacity subject resolves for host ", h as String], "") }
-    ComputeSubjectResolved { subject: subj, appropriation: appropriation } =>
-      match compute_producer_leases(instance: instance) {
-        ComputeProducerLeasesUnready { detail: d } => SeatDischargeRefused { reason: join(["the producer leases are not admissible: ", d], "") }
-        ComputeProducerLeasesReady { leases: leases } =>
-          compute_seat_discharge_all(
-            instance: instance,
-            leases: leases,
-            subject: subj,
-            appropriation: appropriation,
-            source: ObserveUnitLifecycle)
-      }
-  }
-}
-
+// which re-proves unit termination itself. The pass itself -- capacity subject, producer leases, the
+// selection of ended and live dispatch seats -- is declared once at the layer that owns seats
+// (gunbc.compute.compute_seat_ensure compute_seat_discharge_pass_in), because the remote-build serve meets
+// the same full pool and must reach the same door without going through the belt.
 // A GRANT TAKEN FOR A SPAWN THAT DID NOT HAPPEN IS RETURNED AT ONCE, whatever step failed: the slot is
 // closed, the seat released and the release recorded (session_placement_abandon), and that sentence
 // is carried into the failure detail. A SpawnNotAdmitted cannot carry it (LaunchRefusal has no slot
@@ -2991,16 +2978,27 @@ fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
-// writes and a resume appends to), so the decision and the harness read one record. An unreadable
-// stream reads as no recovery: it can lose a resume, never manufacture one, and the lineage then ends
-// exactly as it did before this slice.
-fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SessionRecovery {
-  let read = Filesystem.Read(path: attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents))
-  if read.success {
-    session_recovery_of_events(lines: split(s: read.content, delimiter: "\n") |> filter(l => trim(l) != ""))
-  } else {
-    SessionRecoveryNone
+// writes and a resume appends to), so the decision and the harness read one record. Absent reads as no
+// recovery (nothing to recover); unreadable reads as SessionRecoveryUnreadable (the consumer can
+// distinguish a read failure from a malformed log by the typed arm alone).
+fn belt_prior_attempt_recovery_from_exact(exact: FilesystemExactRead) -> SessionRecovery {
+  match exact {
+    FilesystemExactPathAbsent { path: _ } => SessionRecoveryNone
+    FilesystemExactPathUnreadable { path: _, kind: _, error } =>
+      SessionRecoveryUnreadable { detail: error }
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } =>
+      SessionRecoveryUnreadable { detail: error }
+    FilesystemExactPathRead { path: _, content } =>
+      session_recovery_of_events(lines: split(s: content, delimiter: "\n") |> filter(l => trim(l) != ""))
   }
+}
+
+fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SessionRecovery {
+  let path = attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
+  let read = Filesystem.Read(path: path)
+  belt_prior_attempt_recovery_from_exact(
+    exact: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
+  )
 }
 
 // THE PRIOR ATTEMPT'S CAPTURE, AT ITS OWN HEAD. The spawn decision binds the same fact the
@@ -4807,7 +4805,7 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
-        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
+        seat_discharge: compute_seat_discharge_pass_in(instance: instance),
         discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
         slots_cutover: slots_cutover,
       }
@@ -4818,7 +4816,7 @@ fn belt_tick_for_instance(
         reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
-        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
+        seat_discharge: compute_seat_discharge_pass_in(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
         slots_cutover: slots_cutover,
       }
@@ -5040,7 +5038,7 @@ fn belt_run_once_in(
         reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
         spawn_outcomes: [],
         teardown_outcomes: [],
-        seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
+        seat_discharge: compute_seat_discharge_pass_in(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
         slots_cutover: AttemptSlotsCutoverNotRun { reason: "the roadmap authority projection refused, so this tick runs no actuation pass" },
       }
@@ -6624,23 +6622,50 @@ fn belt_commit_commondir_points_at(contents: String, expected_common: String) ->
   line == git_worktree_commondir_relative || line == expected_common
 }
 
+fn belt_commit_git_trust_gitfile_check(outcome: FilesystemReadOutcome, expected_git_dir: String) -> BeltCommitGitTrust? {
+  match outcome {
+    FilesystemReadRefused { error } =>
+      Present { value: BeltCommitGitUntrusted { cause: join(["worktree gitfile could not be read: ", error], "") } }
+    FilesystemReadSucceeded { content } =>
+      if !belt_commit_gitfile_points_at(contents: content, expected_git_dir: expected_git_dir) {
+        Present { value: BeltCommitGitUntrusted { cause: "worktree gitfile does not name the derived private git dir" } }
+      } else {
+        none
+      }
+  }
+}
+
+fn belt_commit_git_trust_commondir_check(outcome: FilesystemReadOutcome, expected_common: String, git_dir: String, work_tree: String) -> BeltCommitGitTrust {
+  match outcome {
+    FilesystemReadRefused { error } =>
+      BeltCommitGitUntrusted { cause: join(["worktree commondir could not be read: ", error], "") }
+    FilesystemReadSucceeded { content } =>
+      if !belt_commit_commondir_points_at(contents: content, expected_common: expected_common) {
+        BeltCommitGitUntrusted { cause: "worktree commondir does not name the derived common git dir" }
+      } else {
+        BeltCommitGitTrusted { git_dir: git_dir, work_tree: work_tree }
+      }
+  }
+}
+
 fn belt_commit_git_trust(instance: HostDashboardInstance, worktree: String) -> BeltCommitGitTrust {
   let pointers = dispatch_worker_git_pointer_files(instance: instance, attempt_worktree: worktree)
   let expected_git_dir = dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: worktree)
   let expected_common = join([instance.repo_root as String, "/.git"], "")
   let gitfile = Filesystem.Read(path: pointers.gitfile)
-  if !gitfile.success {
-    BeltCommitGitUntrusted { cause: "worktree gitfile is missing or unreadable" }
-  } else if !belt_commit_gitfile_points_at(contents: gitfile.content, expected_git_dir: expected_git_dir) {
-    BeltCommitGitUntrusted { cause: "worktree gitfile does not name the derived private git dir" }
-  } else {
-    let commondir = Filesystem.Read(path: pointers.commondir)
-    if !commondir.success {
-      BeltCommitGitUntrusted { cause: "worktree commondir is missing or unreadable" }
-    } else if !belt_commit_commondir_points_at(contents: commondir.content, expected_common: expected_common) {
-      BeltCommitGitUntrusted { cause: "worktree commondir does not name the derived common git dir" }
-    } else {
-      BeltCommitGitTrusted { git_dir: expected_git_dir, work_tree: worktree }
+  match belt_commit_git_trust_gitfile_check(
+    outcome: filesystem_read_outcome(content: gitfile.content, success: gitfile.success, error: gitfile.error),
+    expected_git_dir: expected_git_dir,
+  ) {
+    Present { value: untrusted } => untrusted
+    Absent => {
+      let commondir = Filesystem.Read(path: pointers.commondir)
+      belt_commit_git_trust_commondir_check(
+        outcome: filesystem_read_outcome(content: commondir.content, success: commondir.success, error: commondir.error),
+        expected_common: expected_common,
+        git_dir: expected_git_dir,
+        work_tree: worktree,
+      )
     }
   }
 }
@@ -9461,30 +9486,15 @@ fn belt_run_bounded_validation_units(
 // returned a seat (SeatEnsureReleased). The pass releases only seats whose unit termination it re-proves
 // (compute_seat_discharge_all): no age, no doubt, no expiry frees anything. A pass that returned nothing, was
 // refused, or any other refusal leaves the first result standing, so the refusal stays typed and located.
-// The two decisions of the converge step, pure so each is exercised in both directions: a first result whose
-// refusal is a full pool, and a discharge pass that actually returned a seat.
-fn belt_provide_pool_full(first: ProvideResult) -> Bool {
-  match first {
-    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: HostComputeCapacityFull { wire: _ } }, document: _, host_record: _ } => true
-    _ => false
-  }
-}
-
-fn belt_discharge_pass_released_a_seat(pass: SeatDischargePass) -> Bool {
-  match pass {
-    SeatDischargeRan { outcomes } =>
-      any(outcomes, o => match o {
-        SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => true
-        _ => false
-      })
-    _ => false
-  }
-}
+// The two decisions -- "is this first result a full pool" and "did the pass actually return a seat" -- are
+// declared once at the seat's own layer (gunbc.compute.compute_seat_ensure compute_provide_pool_full,
+// seat_discharge_pass_released_a_seat), because the remote-build serve asks the same two questions; the
+// converge step below is one of its callers, not its owner.
 
 fn belt_provide_converging(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   let first = compute_provide(instance: instance, owner: owner, commit: commit, op: op, target: TargetIsExecutingHost)
-  if belt_provide_pool_full(first: first) {
-    if belt_discharge_pass_released_a_seat(pass: belt_compute_seat_discharge_pass(instance: instance)) {
+  if compute_provide_pool_full(result: first) {
+    if seat_discharge_pass_released_a_seat(pass: compute_seat_discharge_pass_in(instance: instance)) {
       compute_provide(instance: instance, owner: owner, commit: commit, op: op, target: TargetIsExecutingHost)
     } else {
       first
@@ -15531,10 +15541,16 @@ fn belt_tick_receipt_from_result(
 
 data belt_publish_pass_note: String = "PUBLICATION IS THE ATTEMPT'S LAST OBLIGATION, run by the attempt's own unit once its head is reviewed (gunbc.roadmap.roadmap_belt_obligation PublishObligation; dogfood intervention #6 moved it off the tick). It is still a desired obligation reconciled against an observed one, and a producer nobody calls is still the defect this lane keeps producing, so the wiring is the deliverable, not the type.\\n\\nIT IS AN OBSERVATION OF THE REMOTE AS WELL AS AN EFFECT: running it records the true state - the branch is not published yet - and its next run revises it. The gate is what makes repetition safe, since only a receipt saying the head is on offer stops the revisions, and one PR per work item is ensured, never created twice.\\n\\nTHE TICK HOLDS NO CREDENTIAL AT ALL, and that is what this pass gave up in exchange for the publication boundary. It used to probe GITHUB_TOKEN once per tick and hand the source to every attempt; it now writes a typed request per attempt and reads the answer the publication helper wrote under its own principal. The cost is that a head is published on the SECOND run of its obligation rather than the first: the first writes the request, and the helper's answer arriving is the event that runs it again (the deployment's publication-answer path unit). The gain is that no process holding this token spawns a provider session. See gunbc.roadmap.roadmap_publication_helper for the boundary argument."
 
-// THE PRODUCER NEEDS A LIVE TRIGGER, AND belt_tick IS NOT ONE. belt_tick is the belt's actuation
-// pass and nothing calls it — not the serve routes, a timer or the CLI. A pre-existing gap shared
-// with the verification pass, wired into the same tick and equally undriven; this lane neither
-// created nor closes it.
+// THE PRODUCER NEEDS A LIVE TRIGGER, AND THE TICK HAS ONE ONLY WHEN SOMEONE STARTS IT. A tick entry
+// DOES exist -- roadmap_belt_tick_cli belt_run_once_cli runs the whole pass, seat discharge included --
+// so the sentence this comment used to carry ("nothing calls it, not the CLI") was wrong as written.
+// What is true, and is the gap that matters: NOTHING DEPLOYED STARTS THAT ENTRY. The belt unit the
+// deployment installs runs belt_launch_enqueue_cli -- the launch obligation, and nothing else -- and it
+// is started by a drained worker exit or by an operator, with no timer behind any of it
+// (live_deploy/spec.dag: "There is no belt timer"). So a tick, and with it the seat-discharge pass, runs
+// only when an attempt exit happened to start something, or a person runs it. A pre-existing gap shared
+// with the verification pass, wired into the same tick and equally undriven; this lane neither created
+// nor closes it -- and the remote-build serve no longer depends on the belt to reach the door.
 //
 // So wiring publication into belt_tick alone would leave the receipt unproduced in production, the
 // exact defect the recut fixes, one layer out. Publication therefore also gets a per-node entry the

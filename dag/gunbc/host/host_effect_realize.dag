@@ -36,7 +36,6 @@ import gunbc.host.host_effect {
   DeployAccessPreflight,
   EnsureActionsRunnerRelease,
   EnsureRunnerSlotDirectory,
-  EnsureRunnerJitWrapper,
   EnsureRunnerSystemdTemplate,
   EnsureRunnerMemoryCaps,
   ActivateRunnerSlot,
@@ -75,6 +74,7 @@ import extdeps.posix.test_utility {
   test_directory_command,
   test_exists_command,
   test_symbolic_link_command,
+  path_existence_reading_of_exit,
   entry_existence_reading,
   test_executable_command,
   PathExistenceReading,
@@ -106,7 +106,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.release_locus {
   approval_broker_helper_root_principal,
   HelperLocus,
-  helper_locus_dir,
+  helper_release_locus_record,
 }
 import gunbc.live_deploy.emit {
   approval_broker_slice_unit_file,
@@ -120,7 +120,7 @@ import gunbc.live_deploy.emit {
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
-import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_releases_dir, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
+import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
@@ -129,7 +129,7 @@ import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_dev
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
-import std.algebra { list_sort_by_key, TotalOrder, Ordering, Less, Greater, Equal }
+import std.algebra { TotalOrder, Ordering, Less, Greater, Equal }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
 import v2.extdeps.toolchain_interference {
@@ -195,7 +195,7 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.host_identity { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host.host_converge { HostConverge }
@@ -266,6 +266,7 @@ import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanSe
 import gunbc.live_deploy.apply_legs {
   DeployApplyLeg, DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, deploy_apply_plan_legs, deploy_apply_leg_step,
   ApplyLegEnsureDirectory, ApplyLegRepairDirectoryEntries, ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
+  ApplyLegSystemctl, ApplyLegDiagnosedSystemctl, systemctl_leg_render_command, systemctl_leg_render_diagnosis,
   ApplyLegRootHelperSnapshot, HelperSnapshotAction, HelperSnapshotInstall, HelperSnapshotRetireSuperseded, ApplyLegBrokerTree, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile,
   ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
   credstore_copy_stage_command, credstore_copy_commands,
@@ -290,7 +291,6 @@ import gunbc.live_deploy.release_locus {
 import gunbc.runner.runner_lifecycle_realize {
   runner_lifecycle_realize_ensure_actions_runner_release,
   runner_lifecycle_realize_ensure_runner_slot_directory,
-  runner_lifecycle_realize_ensure_runner_jit_wrapper,
   runner_lifecycle_realize_ensure_runner_systemd_template,
   runner_lifecycle_realize_ensure_runner_memory_caps,
   runner_lifecycle_realize_activate_runner_slot,
@@ -671,7 +671,6 @@ type ResolvedHostEffectCell =
       slot: RunnerSlotIdentity,
       artifact: ActionsRunnerBinaryArtifact,
     }
-  | EnsureRunnerJitWrapperOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
   | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
   | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
@@ -762,8 +761,6 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       EnsureActionsRunnerReleaseOnHost { node: n, runner_release: r }
     EnsureRunnerSlotDirectory { slot: s, artifact: a } =>
       EnsureRunnerSlotDirectoryOnHost { node: n, slot: s, artifact: a }
-    EnsureRunnerJitWrapper { host_label: l } =>
-      EnsureRunnerJitWrapperOnHost { node: n, host_label: l }
     EnsureRunnerSystemdTemplate { host_label: l } =>
       EnsureRunnerSystemdTemplateOnHost { node: n, host_label: l }
     EnsureRunnerMemoryCaps { slot: s } =>
@@ -846,8 +843,6 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: EnsureActionsRunnerRelease is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } =>
       IncompatibleCell { reason: "host_effect: EnsureRunnerSlotDirectory is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
-    EnsureRunnerJitWrapper { host_label: _ } =>
-      IncompatibleCell { reason: "host_effect: EnsureRunnerJitWrapper is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerSystemdTemplate { host_label: _ } =>
       IncompatibleCell { reason: "host_effect: EnsureRunnerSystemdTemplate is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, gunbc.design_argument::fail_closed." }
     EnsureRunnerMemoryCaps { slot: _ } =>
@@ -904,7 +899,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureActionsRunnerRelease { runner_release: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        EnsureRunnerJitWrapper { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerSystemdTemplate { host_label: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         EnsureRunnerMemoryCaps { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         ActivateRunnerSlot { slot: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -963,7 +957,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
-        EnsureRunnerJitWrapper { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_host_os_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1010,7 +1003,6 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         DeployAccessPreflight {} => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureActionsRunnerRelease { runner_release: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSlotDirectory { slot: _, artifact: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        EnsureRunnerJitWrapper { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerSystemdTemplate { host_label: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         EnsureRunnerMemoryCaps { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         ActivateRunnerSlot { slot: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1862,7 +1854,6 @@ fn realize_provision_codex_runtime(
     DeployAccessPreflight {} => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3519,8 +3510,10 @@ fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architect
   match effect_intent.target {
     HostOs { node: host } =>
       match compute_host_primary_cpu(host: host) {
-        Present { value: cpu } => Present { value: cpu.catalog.architecture }
-        Absent => none
+        PrimaryCpuMeasured { cpu: cpu } => Present { value: cpu.catalog.architecture }
+        // No arch is invented for a host with no CPU row, and none for a host nobody has surveyed.
+        PrimaryCpuAbsentFromSurvey { host: _ } => none
+        PrimaryCpuCensusUnread { host: _ } => none
       }
     BmcController { node: _ } => none
     RunnerLocalHost => none
@@ -3684,7 +3677,6 @@ fn realize_provision_build_cache(
     DeployAccessPreflight {} => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureActionsRunnerRelease { runner_release: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    EnsureRunnerJitWrapper { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerSystemdTemplate { host_label: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     EnsureRunnerMemoryCaps { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     ActivateRunnerSlot { slot: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
@@ -6115,9 +6107,14 @@ fn live_deploy_apply_state_directories_on_host(spec: DeploymentSpec, revision: R
 // legs because the units that name the snapshot are installed between them: the superseded snapshot is
 // retired only after the new units stand.
 fn live_deploy_apply_root_helper_snapshot_on_host(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, action: HelperSnapshotAction, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  // ONE mint from the port's own (locus, spine, revision): the directory the snapshot installs into is
+  // helper_locus_dir(locus, revision), derived from the SAME revision it names -- never a dir hand-copied
+  // beside an independent revision argument (review 95713). dark_helper_snapshot_at installs this record
+  // directly, so the directory and the revision it names cannot diverge.
+  let tree: ReleaseLocus = helper_release_locus_record(locus: locus, spine: spine, revision: revision)
   match (match action {
-    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, spine: spine, revision: revision, source_root: source_root, transport: transport)
-    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, revision: revision, transport: transport)
+    HelperSnapshotInstall => dark_helper_snapshot_at(locus: locus, tree: tree, source_root: source_root, transport: transport)
+    HelperSnapshotVerify => dark_helper_verify_at(locus: locus, tree: tree, transport: transport)
     HelperSnapshotRetireSuperseded => dark_helper_retire_at(locus: locus, revision: revision, transport: transport)
   }) {
     DarkOk => Absent
@@ -6229,11 +6226,11 @@ fn deploy_apply_retract_leg_failure(leg: DeployRetractLeg, ports: DeployRetractP
 
 // THE BROKER'S RELEASE TREE, through the same per-file install the dark install's broker stage runs.
 fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> Optional<String> {
+  let base_root: String = spec.approval_broker.repo_root as String
   match approval_broker_tree_install(
     owner: spec.service.service_user,
-    base_root: spec.approval_broker.repo_root as String,
+    locus: release_locus_record(base_root: base_root, revision: revision),
     source_root: source_root,
-    revision: revision,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: transport),
   ) {
@@ -6296,13 +6293,25 @@ fn deploy_apply_run_leg(leg: DeployApplyLeg, ports: DeployApplyPorts) -> Optiona
     }
     ApplyLegRepairDirectoryEntries { command: c } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegCommand { step: _, command: c } => deploy_retract_command_failure(outcome: command(c))
-    ApplyLegInstallFile { step: _, command: c, payload: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+    // The systemctl arms execute the command RENDERED from their typed (action, unit) pair -- the same
+    // rendering the gate's coverage inspects, so what is checked and what runs are one fact (review 96024).
+    ApplyLegSystemctl { step: _, action: a, unit: u } => deploy_retract_command_failure(outcome: command(systemctl_leg_render_command(action: a, unit: u)))
+    ApplyLegInstallFile { step: _, command: c, dest: _, source: src } => match src {
+      Payload { bytes: p } => deploy_retract_command_failure(outcome: ports.stdin(c, p))
+      Staged { source: _ } => deploy_retract_command_failure(outcome: command(c))
+    }
+    ApplyLegInstallDirectory { step: _, command: c, dest: _ } => deploy_retract_command_failure(outcome: command(c))
     ApplyLegReport { step: _, line: _ } => Absent
     ApplyLegDigestVerify { step: _, path: p, digest: d } => deploy_apply_digest_failure(path: p, digest: d, outcome: command(sha256sum_file_command(path: p)))
     ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: g } =>
       match deploy_retract_command_failure(outcome: command(c)) {
         Absent => Absent
         Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(g)) }
+      }
+    ApplyLegDiagnosedSystemctl { step: _, action: a, unit: u } =>
+      match deploy_retract_command_failure(outcome: command(systemctl_leg_render_command(action: a, unit: u))) {
+        Absent => Absent
+        Present { value: why } => Present { value: deploy_apply_diagnosed_failure(why: why, diagnosis: command(systemctl_leg_render_diagnosis(unit: u))) }
       }
     ApplyLegBrokerStateDirectories { revision: r } => ports.state_directories(r)
     ApplyLegRootHelperSnapshot { locus: l, spine: sp, revision: r, action: a } => ports.root_helper_snapshot(l, sp, r, a)
@@ -6329,7 +6338,10 @@ fn deploy_apply_leg_report(leg: DeployApplyLeg) -> List<String> {
     ApplyLegEnsureDirectory { target: _ } => []
     ApplyLegRepairDirectoryEntries { command: _ } => []
     ApplyLegCommand { step: _, command: _ } => []
-    ApplyLegInstallFile { step: _, command: _, payload: _ } => []
+    ApplyLegSystemctl { step: _, action: _, unit: _ } => []
+    ApplyLegDiagnosedSystemctl { step: _, action: _, unit: _ } => []
+    ApplyLegInstallFile { step: _, command: _, dest: _, source: _ } => []
+    ApplyLegInstallDirectory { step: _, command: _, dest: _ } => []
     ApplyLegBrokerStateDirectories { revision: _ } => []
     ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
     ApplyLegBrokerTree { revision: _ } => []
@@ -6422,7 +6434,7 @@ fn live_deploy_apply_orchestrate(
 //
 // THE RECEIPT IS INDEPENDENT READBACK. After the install the INSTALLED files under the release
 // directory are hashed on the host and compared, entry for entry, with the same hashes taken over
-// source_root's file set; sorting is bytewise (std.algebra list_sort_by_key over the canonical String
+// source_root's file set; sorting is bytewise (std.primitives::sort_by over the canonical String
 // order, which is LC_ALL=C sort). A single differing file refuses with step "readback", and the
 // receipt -- the completeness marker, written last -- is then NOT written. installed_digest is the
 // sha256 of the sorted `<hex>  <relative path>` lines, byte-for-byte what the retired shell receipt
@@ -6459,14 +6471,18 @@ type TreeInstallStepState
 
 fn tree_file_hash_path(e: TreeFileHash) -> String { e.path }
 
-data tree_path_total_order: TotalOrder<String> = { compare: tree_path_compare }
-
 fn tree_path_compare(a: String, b: String) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
 }
 
 fn sort_tree_file_hashes(entries: List<TreeFileHash>) -> List<TreeFileHash> {
-  list_sort_by_key(xs: entries, key: tree_file_hash_path, order: tree_path_total_order)
+  // The native `sort_by` kernel (std.primitives::sort_by) -- a stable sort over the canonical
+  // content order of the key -- so interpreted depth is constant in the entry count. It applies
+  // the same bytewise String order as gunbc.host.host_effect_realize::tree_path_compare (the fold's
+  // single declared path order, used by the metadata merge walk), so the fed tree-hash lines, and
+  // the digest built on them, are unchanged. The agreement between the native order and
+  // tree_path_compare is pinned by test.claim.runner.tree_hash_sort_equivalence.
+  entries |> sort_by(e => tree_file_hash_path(e))
 }
 
 // `<hex>  <path>` lines of sha256sum, the path rebased from the absolute `root` onto `sub`/<relative>.
@@ -6486,7 +6502,7 @@ fn tree_file_hashes_of_stdout(stdout: String, root: String, sub: String) -> List
 }
 
 fn tree_hash_lines(entries: List<TreeFileHash>) -> String {
-  join(list_map(xs: sort_tree_file_hashes(entries: entries), f: e => join([e.hex, "  ", e.path, "\n"], "")), "")
+  join(flat_map(sort_tree_file_hashes(entries: entries), e => [join([e.hex, "  ", e.path, "\n"], "")]), "")
 }
 
 fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>) -> Bool {
@@ -6498,7 +6514,7 @@ fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>)
 // Every enumeration that must create or compare directories walks THIS spine -- the file ancestors
 // and the metadata entries below cannot drift apart in ordering or dedup discipline (gunbc.design_argument::single_authority).
 fn tree_sorted_unique_paths(xs: List<String>) -> List<String> {
-  let walked = fold(list_sort_by_key(xs: xs, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+  let walked = fold(xs |> sort_by(p => p), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
     if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
   )
   walked.out
@@ -6727,7 +6743,10 @@ fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
 }
 
 fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
-  list_sort_by_key(xs: entries, key: e => e.path, order: tree_path_total_order)
+  // Same native kernel as sort_tree_file_hashes and tree_sorted_unique_paths: identical
+  // order and stability, so the ancestor/metadata/hash readbacks stay in lockstep
+  // (gunbc.design_argument::single_authority). Constant interpreted depth.
+  entries |> sort_by(e => e.path)
 }
 
 fn tree_metadata_lines(entries: List<TreeMetadataEntry>) -> String {
@@ -6784,28 +6803,43 @@ fn tree_installed_expectation_owned(entries: List<TreeMetadataEntry>, owner: Pos
 // -- linear, because both sides are sorted and a release tree can be a whole venv (gunbc.design_argument::how_to_work: a
 // proven quadratic fold is always fixed; n being small here is not time-stable).
 fn tree_metadata_disagreement(expected: List<TreeMetadataEntry>, observed: List<TreeMetadataEntry>) -> Optional<String> {
-  let expected_lines = list_map(xs: sort_tree_metadata(entries: expected), f: e => tree_metadata_entry_line(entry: e))
-  let observed_lines = list_map(xs: sort_tree_metadata(entries: observed), f: e => tree_metadata_entry_line(entry: e))
+  let expected_lines = flat_map(sort_tree_metadata(entries: expected), e => [tree_metadata_entry_line(entry: e)])
+  let observed_lines = flat_map(sort_tree_metadata(entries: observed), e => [tree_metadata_entry_line(entry: e)])
   tree_metadata_merge_disagreement(expected: expected_lines, observed: observed_lines)
 }
 
+type TreeMetadataMergeWalk {
+  obs: List<String>
+  bad: Optional<String>
+}
+
+// A NATIVE left-fold over the expected lines carrying the observed tail, replacing a self-recursive
+// walk whose depth grew with the number of metadata entries. The tree can be a whole release
+// (gunbc.design_argument::how_to_work: a proven entry-proportional recursion is always fixed); the
+// fold is constant-depth and short-circuits once a disagreement is recorded, so the first mismatch,
+// in path order, and its exact message are unchanged.
 fn tree_metadata_merge_disagreement(expected: List<String>, observed: List<String>) -> Optional<String> {
-  match expected {
-    Empty => match observed {
+  let stepped = fold(expected, init: TreeMetadataMergeWalk { obs: observed, bad: none }, f: (w, e) =>
+    match w.bad {
+      Present { value: _ } => w
+      Absent => match w.obs {
+        Empty => TreeMetadataMergeWalk { obs: [], bad: Present { value: join(["missing entry ", e], "") } }
+        Cons { head: o, tail: os } => match tree_path_compare(a: tree_metadata_line_path(line: e), b: tree_metadata_line_path(line: o)) {
+          Equal => if e == o {
+            TreeMetadataMergeWalk { obs: os, bad: none }
+          } else {
+            TreeMetadataMergeWalk { obs: os, bad: Present { value: join(["missing entry ", e, " (the installed line at this path is ", o, ")"], "") } }
+          }
+          Less => TreeMetadataMergeWalk { obs: w.obs, bad: Present { value: join(["missing entry ", e], "") } }
+          Greater => TreeMetadataMergeWalk { obs: os, bad: Present { value: join(["unexpected installed entry ", o], "") } }
+        }
+      }
+    })
+  match stepped.bad {
+    Present { value: why } => Present { value: why }
+    Absent => match stepped.obs {
       Empty => none
       Cons { head: o, tail: _os } => Present { value: join(["unexpected installed entry ", o], "") }
-    }
-    Cons { head: e, tail: es } => match observed {
-      Empty => Present { value: join(["missing entry ", e], "") }
-      Cons { head: o, tail: os } => match tree_path_compare(a: tree_metadata_line_path(line: e), b: tree_metadata_line_path(line: o)) {
-        Equal => if e == o {
-          tree_metadata_merge_disagreement(expected: es, observed: os)
-        } else {
-          Present { value: join(["missing entry ", e, " (the installed line at this path is ", o, ")"], "") }
-        }
-        Less => Present { value: join(["missing entry ", e], "") }
-        Greater => Present { value: join(["unexpected installed entry ", o], "") }
-      }
     }
   }
 }
@@ -7026,40 +7060,19 @@ fn tree_archive_member_of_line(line: String, archive_owner: NonEmptyStr) -> Tree
 
 fn approval_broker_tree_install(
   owner: NonEmptyStr,
-  base_root: String,
+  locus: ReleaseLocus,
   source_root: String,
-  revision: ReleaseRevisionBinding,
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  approval_broker_tree_install_at(
-    owner: owner,
-    spine: [base_root, release_locus_releases_dir(root: base_root)],
-    locus: release_locus_dir(root: base_root, revision: revision),
-    source_root: source_root,
-    revision: revision,
-    executables: executables,
-    transport: transport,
+  tree_install_in_realm(
+    realm: TreeInstallElevated { owner: owner }, spine: locus.spine, locus: locus.locus, source_root: source_root,
+    revision: locus.revision, executables: executables, transport: transport,
   )
 }
 
 // THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
 // /releases/ segment), so one install serves both rather than a copy per locus.
-fn approval_broker_tree_install_at(
-  owner: NonEmptyStr,
-  spine: List<String>,
-  locus: String,
-  source_root: String,
-  revision: ReleaseRevisionBinding,
-  executables: List<String>,
-  transport: HostEffectElevationRoute,
-) -> ApprovalBrokerTreeInstallVerdict {
-  tree_install_in_realm(
-    realm: TreeInstallElevated { owner: owner }, spine: spine, locus: locus, source_root: source_root,
-    revision: revision, executables: executables, transport: transport,
-  )
-}
-
 // THE TREE INSTALL, IN EITHER REALM (TreeInstallRealm): the one fold both the elevated deploy install
 // and the staged release build run.
 fn tree_install_in_realm(
@@ -7605,7 +7618,7 @@ fn dark_state_directories_install(i: DarkInstallInputs) -> DarkState {
 // incident never got.
 // ONE CARRIER, BOTH ARMS. The members this asks for are exactly the members the install produces:
 // the declared executable plus release_locus_tree_subdirs -- the same declarations
-// approval_broker_tree_install_at consumes at install time. Adding a fourth payload root to the
+// approval_broker_tree_install consumes at install time. Adding a fourth payload root to the
 // carrier moves install and verify together; verify can no longer pass over a snapshot missing a
 // root the install copies (review 90757).
 fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
@@ -7624,34 +7637,31 @@ fn dark_helper_verify_legs(locus: HelperLocus, dir: String) -> List<DarkLeg> {
 // THE VERIFY AT ACT TIME: no install, no tree-sync -- ask the question, fail by name. This is the
 // leg that turns "the drain unit names a snapshot nobody installed" from five hours of exit-127
 // workers into one refused apply step.
-fn dark_helper_verify_at(locus: HelperLocus, revision: ReleaseRevisionBinding, transport: HostEffectTransport) -> DarkState {
+fn dark_helper_verify_at(locus: HelperLocus, tree: ReleaseLocus, transport: HostEffectTransport) -> DarkState {
   dark_run_legs(
-    legs: dark_helper_verify_legs(locus: locus, dir: helper_locus_dir(locus: locus, revision: revision)),
+    legs: dark_helper_verify_legs(locus: locus, dir: tree.locus),
     transport: transport,
   )
 }
 
-fn dark_helper_snapshot_at(locus: HelperLocus, spine: List<String>, revision: ReleaseRevisionBinding, source_root: String, transport: HostEffectTransport) -> DarkState {
-  let dir = helper_locus_dir(locus: locus, revision: revision)
+fn dark_helper_snapshot_at(locus: HelperLocus, tree: ReleaseLocus, source_root: String, transport: HostEffectTransport) -> DarkState {
   match dark_run_leg(state: DarkOk, transport: transport, leg: DarkLegArgv {
     step: DarkStepSnapshot,
-    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: dir)),
+    command: sudo_elevate_command(command: coreutils_rm_force_recursive_argv(path: tree.locus)),
   }) {
     DarkFailed { step: s, reason: r } => DarkFailed { step: s, reason: r }
     DarkOk =>
-      match approval_broker_tree_install_at(
+      match approval_broker_tree_install(
         owner: locus.owner,
-        spine: spine,
-        locus: dir,
+        locus: tree,
         source_root: source_root,
-        revision: revision,
         executables: [gunbc_release_bin_name],
         transport: one_transport_route(transport: transport),
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
           DarkFailed { step: DarkStepSnapshot, reason: join(["tree step ", tree_install_step_name(step: ts), ": ", r], "") }
         TreeInstallConverged { installed_digest: _, files_installed: _ } =>
-          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: dir), transport: transport)
+          dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: locus, dir: tree.locus), transport: transport)
       }
   }
 }
@@ -7697,11 +7707,11 @@ fn dark_sidecar_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding, dig
 }
 
 fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
+  let base_root: String = i.spec.approval_broker.repo_root as String
   match approval_broker_tree_install(
     owner: i.spec.service.service_user,
-    base_root: i.spec.approval_broker.repo_root as String,
+    locus: release_locus_record(base_root: base_root, revision: i.revision),
     source_root: i.source_root,
-    revision: i.revision,
     executables: approval_broker_release_locus_executables,
     transport: one_transport_route(transport: i.transport),
   ) {
@@ -8560,8 +8570,6 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
     EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
       runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
-    EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-      runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
     EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
       runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
     EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
@@ -8735,7 +8743,6 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
     DeployAccessPreflight {} => access
     EnsureActionsRunnerRelease { runner_release: _ } => access
     EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
-    EnsureRunnerJitWrapper { host_label: _ } => access
     EnsureRunnerSystemdTemplate { host_label: _ } => access
     EnsureRunnerMemoryCaps { slot: _ } => access
     ActivateRunnerSlot { slot: _ } => access
@@ -8819,8 +8826,6 @@ fn host_effect_apply_gated(
           runner_lifecycle_realize_ensure_actions_runner_release(intent: intent)
         EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } =>
           runner_lifecycle_realize_ensure_runner_slot_directory(intent: intent)
-        EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } =>
-          runner_lifecycle_realize_ensure_runner_jit_wrapper(intent: intent)
         EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } =>
           runner_lifecycle_realize_ensure_runner_systemd_template(intent: intent)
         EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } =>
@@ -8901,7 +8906,6 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             LiveDeployServeRouteOnHost { node: _, endpoint: _, enabled: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureActionsRunnerReleaseOnHost { node: _, runner_release: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSlotDirectoryOnHost { node: _, slot: _, artifact: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
-            EnsureRunnerJitWrapperOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerSystemdTemplateOnHost { node: _, host_label: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             EnsureRunnerMemoryCapsOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ActivateRunnerSlotOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -9412,20 +9416,17 @@ fn host_remove_unreadable_reason(states: List<HostRemovePathState>) -> Optional<
   )
 }
 
-// PURE: the test status as a reading. Exit 0 present, 1 absent-or-unstattable, anything else (or a
-// refused transport) unreadable.
+// PURE: the test status as a reading. The 0/1/other law is NOT spelled out here -- it is
+// extdeps.posix.test_utility's path_existence_reading_of_exit, the one reader of what a `test` status
+// means, so this fold and this module's own path_existence_reading cannot drift from each other.
+// A transport that refused is unreadable with the transport's own words, which no exit-code mapping can
+// carry.
 fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathExistenceReading {
   match outcome {
     RunArgvTransportRefused { reason: why } =>
       PathExistenceUnreadable { reason: join(["`test` on ", path, " was refused: ", why], "") as NonEmptyStr }
     RunArgvTransportObserved { observed: o } =>
-      if o.exit_code == 0 {
-        PathPresent
-      } else if o.exit_code == 1 {
-        PathAbsentOrUnstattable
-      } else {
-        PathExistenceUnreadable { reason: join(["`test` on ", path, " exited ", to_string(o.exit_code), ": ", o.stderr], "") as NonEmptyStr }
-      }
+      path_existence_reading_of_exit(path: path, exit_code: o.exit_code, stderr: o.stderr)
   }
 }
 
@@ -10507,7 +10508,7 @@ fn microvm_controller_stdin_step(name: String, command: ArgvCommand, stdin_paylo
 // path is its own step so a failure names the directory that failed rather
 // than a batch. The retired pipeline ran `install -d -m 0755 -o OWNER -g OWNER`
 // for each of these via install_d_owned_for_user; the flags are the same words.
-fn microvm_controller_owned_dir_argv(path: String) -> List<String> {
+fn microvm_controller_owned_dir_argv(path: NonEmptyStr) -> List<String> {
   coreutils_install_directory_owned_argv(
     mode: install_d_shared_mode,
     owner: microvm_controller_owner,
@@ -10762,7 +10763,7 @@ fn revision_job_install_file_step(name: String, source: String, dest: String) ->
   )
 }
 
-fn revision_job_owned_dir_step(name: String, path: String) -> MicrovmControllerInstallStep {
+fn revision_job_owned_dir_step(name: String, path: NonEmptyStr) -> MicrovmControllerInstallStep {
   microvm_controller_argv_step(name: name, command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: path)))
 }
 
@@ -10965,7 +10966,7 @@ fn microvm_controller_install_steps(
         // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",
-          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()) as String)),
+          command: sudo_elevate_command(command: microvm_controller_owned_dir_argv(path: microvm_receipt_store_path(tree: host_state_tree()))),
         ),
         microvm_controller_argv_step(
           name: "cell readiness store dir",
@@ -11303,9 +11304,8 @@ fn realize_microvm_controller_install_on_host(
                 MicrovmControllerTreeStep { name: name } =>
                   match approval_broker_tree_install(
                     owner: microvm_controller_owner,
-                    base_root: microvm_controller_root,
+                    locus: release_locus_record(base_root: microvm_controller_root, revision: revision),
                     source_root: source_root,
-                    revision: revision,
                     executables: [gunbc_release_bin_name],
                     transport: transport,
                   ) {

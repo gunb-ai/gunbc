@@ -830,8 +830,10 @@ chain (`EventAlreadyPresent`) or at the operation record (the operation identity
 ## 5. Verify — the activation gate, and the source of the receipts — row `verify`
 
 `roadmap_acceptance_migration_verify` is the activation gate, and every one of its comparisons lives in ONE
-pure function — `roadmap_acceptance_migration_problems` (`roadmap_operator_acceptance.dag`) — so each
-refusal is witnessed directly over constructed lists, not only through a live carrier. It answers as seven separate claims (names at the receipts below), each constructed over lists rather than a
+pure function — `roadmap_acceptance_migration_problems` (`roadmap_event_log.dag`, beside the canonical fact it
+compares; the operator-close module `roadmap_operator_acceptance.dag` calls it and supplies the roster, and keeps
+no comparison of its own) — so each
+refusal is witnessed directly over constructed lists, not only through a live carrier. It answers as nine separate claims (names at the receipts below), each constructed over lists rather than a
 live carrier, so no facet can hide behind another:
 
 1. **Complete facts, as a MULTISET.** Each side's count of each COMPLETE canonical fact must agree. A fact is
@@ -840,14 +842,28 @@ live carrier, so no facet can hide behind another:
    — and for a revocation its disposition, reason, revoker and day. Node-and-digest membership would certify an event whose evidence had
    been swapped, and membership tested with `any` cannot see a count disagree: a manifest naming one acceptance
    twice against a log holding it once is a lost event. Both are refused, naming the fact and both counts.
-2. **Closedness, BOTH WAYS.** The receipts the manifest's own sequence leaves live, against what the log's
-   reader (`roadmap_operator_node_closed`) establishes — a lost acceptance refuses, and so does a node the log
-   calls closed that the manifest never accepted.
+2. **Closedness, BOTH WAYS, over the nodes the migration carried.** The receipts the manifest's own sequence leaves
+   live, against what the log's reader (`roadmap_operator_node_closed`) establishes — a lost acceptance refuses, and
+   so does a node the log calls closed that the manifest never accepted, for any node the migration spoke about.
 3. **A manifest that does not replay REFUSES** (`the exported manifest does not replay as an acceptance
    history; nothing can be certified from it`): an unorderable history used to fold to an empty expected set,
    which certified whatever the log happened to hold.
 4. **The retired roster**, against the fail-closed retired read — an unorderable retirement lane refuses rather
    than answering "nothing is retired", and a named node the log does not hold retired refuses.
+5. **The scope of the manifest's speech.** Comparisons 1 and 2 run over the log RESTRICTED to the nodes the
+   migration carried: the nodes its own acceptance events name, plus the roster it retires (`migration_roster`).
+   On every other node the manifest is SILENT, and silence is not a negation — the same rule this book applies to
+   what cannot be observed ("unobserved is not absent"). Reading silence as "no other node may be closed" made the
+   gate refuse whatever another lane appended afterwards through this very route: on 2026-11-17 the srv1 chain
+   refused with 12 disagreements — six foreign plan entries, each counted twice — while all 18 migrated facts
+   stood whole. An invention naming a node the migration DID carry still refuses on both counts; both sides of
+   that line are claimed (`a_migration_verifier_leaves_a_later_lanes_own_planning_out_of_the_verdict`,
+   `a_migration_verifier_still_refuses_a_foreign_event_naming_a_carried_node`). The roster is CHECKED, not
+   consumed: the file the export wrote is matched against `roadmap_migration_retirement_ids()` by the same
+   agreement predicate the pre-write gate uses (`roadmap_cutover_string_lists_agree`), and the verdict runs on the
+   model's list — a name dropped from the file would otherwise take that node out of the retired read and out of
+   the scope at once (`roadmap_migration_roster_refusals`; claimed by
+   `the_migration_verifier_refuses_a_retirement_dropped_from_the_supplied_roster` and its four siblings).
 
 It prints the committed event identities, and it prints `MIGRATION REFUSED` naming every disagreement
 instead of certifying.
@@ -1073,8 +1089,19 @@ STAGE_LOCK=/tmp/gunbc-t6-cutover-dispatch.lock
 # gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs refuses an empty
 # RLM_PLAN_ARTIFACT_HASH (fleet_converge_plan_revision.dag:413-419), and the workflow fills that variable from
 # inputs.plan_artifact_hash (.github/workflows/fleet-converge.yml:3370, 3484), so a deploy dispatch without it
-# cannot pass its own admission. expected_revision is NEVER omitted: omitting it admits github.sha, which is
-# exactly the unbound activation this step refuses. The input names below are the workflow's own
+# cannot pass its own admission. expected_revision is passed explicitly. It is a cross-check, not the revision
+# authority: an OMITTED value admits the CHECKOUT (admit_optional_expected_revision_given, the Absent arm,
+# actions_run_binding.dag:210), and this workflow's build pins that checkout to the plan's revision P, so an
+# omitted value admits P — NOT the event sha github.sha that an ORDINARY (non-fleet) dispatch would admit.
+# Passing it explicitly keeps the dispatch bound and surfaces any mismatch at admission.
+# expected_revision NAMES THE PLAN'S REVISION, NOT MAIN'S TIP.
+# This transaction dispatches the plan itself at $SHA, so here P == $SHA and passing $SHA is right; but the
+# value is the plan's revision because build checks out at the plan-revision job's output (the plan's sha) and
+# admit_optional_expected_revision cross-checks your value against THAT checkout. In a cutover whose plan ran in
+# an EARLIER dispatch, expected_revision must name that earlier plan run's revision P, never the current main tip
+# M: main moves between the plan and the deploy, and M != P is refused with RunRevisionRefused naming expected M,
+# observed P even when every path changed since P is unrelated (proven to pass on dispatch test 44488679086:
+# --ref main at a tip past P with expected_revision = P). The input names below are the workflow's own
 # workflow_dispatch inputs. IDENTITY COMES FROM THE RUN'S NAME, WHICH THE WORKFLOW ITSELF BUILDS FROM ITS
 # INPUTS. `gh api repos/<repo>/actions/runs/<id>` returns NO inputs object for this workflow — measured at
 # e87b8a7f on four dispatch runs including this book's own: `.inputs` is null for every one of them, so

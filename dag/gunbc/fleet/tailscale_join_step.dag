@@ -1,0 +1,33 @@
+module gunbc.fleet.tailscale_join_step
+
+// THE TAILSCALE FLEET JOIN CONVERGE RUN STEP lives here, beside tailscale_join_converge which owns the
+// convergence it drives, not in the central ci_spec. The machinery it borrows is shared and imported,
+// never reached through ci_spec: gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit
+// and witness_layer_roots from gunbc.ci.ci_layer_roots. The target is the converge module's own wet entry
+// -- the executing consumer review 95837 required -- and this step is how gunbc.fleet.fleet_converge_workflow
+// dispatches it: one job per host, TAILSCALE_JOIN_HOST and the runner label both bound to the dispatch's
+// `host` input, exactly as the host credential custody step binds its credential and executor.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
+
+data gunbc_ci_tailscale_join_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.tailscale_join_converge",
+  function: "tailscale_join_converge_ci_wet",
+)
+
+fn gunbc_ci_tailscale_join_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_tailscale_join_target,
+    claim_run: false,
+    receipt_rel: "target/tailscale-join-converge-receipt.txt"
+  )
+}

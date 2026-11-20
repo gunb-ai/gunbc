@@ -126,7 +126,7 @@ fn css_track_list_wire(l: CssTrackList) -> String {
 
 // The one-track case — what a single-column grid is. Delegates to std.algebra's own smart
 // constructor rather than hand-building the record, so this module cannot drift from how the
-// carrier is built everywhere else in the repo (ci_spec, scm.commit_closure). Named because
+// carrier is built everywhere else in the repo (gunbc.commit_workflow, scm.commit_closure). Named because
 // callers reach for it constantly, and building the semigroup by hand at each site is how an
 // empty list creeps back in.
 fn one_track(t: CssTrackSize) -> FreeSemigroup<CssTrackSize> {

@@ -327,6 +327,34 @@ fn native_serve_device_crypto_binding() -> TargetBinding {
   }
 }
 
+// THE ROADMAP DASHBOARD, SERVED NATIVELY (roadmap node demand-serve-program-image, Route B):
+// std.compiler_entry NativeIngressDriver over gunbc.roadmap.roadmap_native_ingress (handler
+// gunbc.roadmap.roadmap_serve roadmap_serve_handle -- the handler production serves on main; the
+// handler is what selects the instance, so fixing it at compile time MOVES deploy-time selection to
+// "which built product to start" and is the structural cure for the class behind the current prod
+// outage: a handler named only by --arg that the demanded run did not realize). The seed emits and
+// builds the program, starts it on a loopback port the OS chooses, and sends the fixed requests of
+// gunbc.instruments.native_serve_roadmap_probe over real TCP. FIRST SLICE: name each refusal between
+// a native run and serving. Run by name / dispatched on the change's head, not a merge gate.
+// `gunbc test //gunbc/instruments:native-serve-roadmap`.
+fn native_serve_roadmap_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve-roadmap" } }
+}
+
+fn native_serve_roadmap_entry() -> String {
+  "dag/gunbc/roadmap/roadmap_native_ingress.dag"
+}
+
+fn native_serve_roadmap_binding() -> TargetBinding {
+  TargetBinding {
+    target: native_serve_roadmap_label()
+    producer: NativeServeProgramProducer {
+      entry: native_serve_roadmap_entry()
+      probe: NativeServeProbe { reader: "dag/gunbc/instruments/native_serve_roadmap_probe.dag" phases: [] }
+    }
+  }
+}
+
 // THE STARTUP-FOLD CONTROL: std.compiler_entry NativeIngressDriver over
 // gunbc.instruments.native_serve_startup_refusal_fixture, whose startup fold (gunbc.native_serve
 // NativeServeStartup, named by its program descriptor) refuses exactly when dropping each single obligation of
@@ -1165,7 +1193,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), revision_request_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_roadmap_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), native_serve_unix_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 

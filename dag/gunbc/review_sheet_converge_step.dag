@@ -1,21 +1,25 @@
 module gunbc.review_sheet_converge_step
 
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
-import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
 
 // The review sheets' argv-free converge entry (gunbc.review_sheet_converge_cli). It writes no receipt
 // file: its verdict is the exit and the per-kind report on stderr, which names no token.
-data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/review_sheet_converge_cli.dag",
+data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.review_sheet_converge_cli",
   function: "converge_drive_half_cli",
-}
+)
 
 fn gunbc_ci_review_sheet_converge_invoke() -> String {
-  gunbc_run_step_script(
+  gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_review_sheet_converge_target.entry,
-    function: gunbc_ci_review_sheet_converge_target.function,
+    target: gunbc_ci_review_sheet_converge_target,
     claim_run: false,
     receipt_rel: none
   )

@@ -605,7 +605,7 @@ test fn witness_partially_applied_exit_zero_is_incomplete_at_apply_receipt() -> 
     plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
     prior_generation: base.prior_generation, planned_generation: base.planned_generation,
     expected_revision_admitted: base.expected_revision_admitted,
-    terminal: PartiallyApplied { refused_axis_count: 1, detail: "slot=0 cap=0 timer=1 fabric-cell=0 activation=0" },
+    terminal: PartiallyApplied { refused_axis_count: 1, owed: Absent, detail: "slot=0 cap=0 timer=1 fabric-cell=0 activation=0" },
     locked_apply_exit_code: 0,
   }
   incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: a }), member: "apply_receipt")

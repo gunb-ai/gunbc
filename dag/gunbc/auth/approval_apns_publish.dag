@@ -28,7 +28,7 @@ import extdeps.auth.jws {
 import extdeps.apple.apns {
   ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsTopic, ApnsCollapseId, apns_collapse_id, apns_payload_max_size,
   apns_provider_token_max_age, apns_provider_token_min_refresh, apns_provider_token_claims_json,
-  ApnsRequest, ApnsAps, ApnsAlert, PushTypeAlert, PriorityImmediate, InterruptionActive,
+  ApnsRequest, ApnsAps, ApnsAlert, PushTypeAlert, PriorityImmediate, InterruptionTimeSensitive, SoundSystemDefault,
   ApnsHeader, apns_request_url, apns_request_headers, apns_authorization_header, apns_id_header_name, apns_payload_json,
   ApnsSendOutcome, apns_send_outcome_of,
 }
@@ -401,8 +401,13 @@ fn new_device_push_notice(enrollment_id: NonEmptyStr) -> DevicePushNotice {
 }
 
 // ── The request ──────────────────────────────────────────────────────────────────────────────
-// Alert, immediately, active (not time-sensitive: that level needs an entitlement this app does not
-// declare, and Apple downgrades it silently without one).
+// Alert, immediately, time-sensitive, with the system sound (operator ruling 2026-11-14: approval
+// requests were being missed). A request waits a bounded time for its tap -- a fleet-converge grant
+// gives up after its await window -- so a push that sits silent behind Focus or in a summary costs the
+// run. The sound makes it audible; time-sensitive lets it through Focus. The level is granted by the
+// app's entitlement (extdeps.apple.apns apns_time_sensitive_entitlement_key, declared in
+// gunbc.approve_ios_project approve_entitlements); a build installed before that entitlement receives
+// it as active, which is what it got before, so the broker and the app ship in either order.
 
 type ApprovalPushRequest
   = ApprovalPushRequestReady { request: ApnsRequest }
@@ -438,7 +443,8 @@ fn approval_push_request(registration: PushRegistration, notice: DevicePushNotic
           aps: ApnsAps {
             alert: ApnsAlert { title: notice.title, subtitle: none, body: notice.body },
             mutable_content: false,
-            interruption_level: InterruptionActive,
+            sound: SoundSystemDefault,
+            interruption_level: InterruptionTimeSensitive,
             category: none,
           },
           custom: approval_push_custom_keys(h: ApprovalPushHint { notification_id: notice.locator }),

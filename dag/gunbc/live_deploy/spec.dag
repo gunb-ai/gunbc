@@ -312,6 +312,7 @@ type DeploymentServiceConfig<Binary> {
   listen: HttpServerListenConfig
   serve_cpu_limit: EvaluationLimit
   serve_wall_limit: EvaluationLimit
+  pair_delivery: PairDelivery
 }
 
 // THE BOUND EXISTS BECAUSE ITS ABSENCE WAS MEASURED IN PRODUCTION, NOT BECAUSE A BOUND IS
@@ -609,6 +610,7 @@ fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -
     },
     serve_cpu_limit: dashboard_serve_cpu_limit(),
     serve_wall_limit: dashboard_serve_wall_limit(),
+    pair_delivery: NotPairDelivered,
   }
 }
 
@@ -880,6 +882,18 @@ fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -
   join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.timer"], "") as NonEmptyStr
 }
 
+// THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; the operator ruling
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). Same stem discipline as the credential-recovery
+// backstop; the oneshot runs `belt_observe_once_cli` and the timer re-arms it every
+// belt_standings_refresh_backstop seconds.
+fn deployment_belt_standings_refresh_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-standings-refresh.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-standings-refresh.timer"], "") as NonEmptyStr
+}
+
 // THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
 // field (see that type's header for why a name is carried rather than derived). It is one account
 // for the host rather than one per instance, and that is correct rather than a shortcut: the
@@ -1017,6 +1031,49 @@ fn deployment_belt_credential_recovery_unit_path(names: DeploymentNames) -> NonE
 fn deployment_belt_credential_recovery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_credential_recovery_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
+
+fn deployment_belt_standings_refresh_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_standings_refresh_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_standings_refresh_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE PAIR-DELIVERY unit pair (node://lab-converges-release-pair): the service runs the staged wet delivery from
+// its own unit (fetch, observed build-key verify, fold, place at the per-revision locus, restart) and the timer
+// re-arms it on its own cadence. #16669 deferred the INSTALL-SPECIFIC builders — the timer unit NAME (needed by
+// its enable leg) and the two unit-path builders (needed by the install legs) — together with the apply_legs
+// registration to this stacked PR; they reappear here verbatim with the source-side observation that makes the
+// guard check real work.
+fn deployment_pair_delivery_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.service"], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.timer"], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_pair_delivery_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_pair_delivery_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// WHETHER A DEPLOYMENT RUNS A RELEASE PAIR is the instance's own declaration, carried on its DesiredDeployment
+// row and realized onto the service config. #gunbc.design_argument::single_authority: the per-revision
+// release locus root the wet CLI places into and reads the served binding from is NOT derivable from
+// instance_root, and it used to sit in a single global `data` beside these names — a fork against the
+// per-deployment fact the comment living there claimed it to be. It now lives ONLY in PairDelivered; every
+// reader (the emitted unit's environment, the install-leg gate) takes base_root from the instance's
+// PairDelivered, so there is no global left to drift. The three env-var NAME rows below stay foundational and
+// cycle-free so the CLI that reads them and the unit file that sets them share one spelling.
+type PairDelivery = PairDelivered { base_root: NonEmptyStr } | NotPairDelivered
+data release_pair_deliver_base_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_BASE_ROOT"
+data release_pair_deliver_serve_unit_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_SERVE_UNIT"
+data release_pair_deliver_repo_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_REPO_ROOT"
 
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
 // The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
@@ -1369,6 +1426,22 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
   }
 }
 
+// THE ENDPOINT THAT OWNS A TAILSCALE SERVE MAPPING STEP. The roster above emits exactly ONE
+// TailscaleServeMapping member, and it spells its path with tailscale_serve_route_member_path of
+// the spec's declared serve endpoint -- the route key, without its scope node (the note above
+// deployment_owned_steps). The step itself carries only {kind, path}, so what its backend addresses
+// is decided by finding THIS endpoint through that route key, never by re-spelling a second
+// endpoint inventory: a mapping step whose path is the declared endpoint's route label is that
+// endpoint's mapping, and one that is not belongs to no endpoint this spec declares.
+fn deployment_declared_serve_mapping_endpoint(names: DeploymentNames, step: DeploymentArtifactStep) -> TailscaleServeEndpoint? {
+  let declared = names.tailscale_serve_endpoint
+  if tailscale_serve_route_member_path(endpoint: declared) == step.path {
+    Present { value: declared }
+  } else {
+    none
+  }
+}
+
 // The fabric DB endpoint's one owned member, after the dashboard's own: the tailscale route to the
 // endpoint's door socket (routes to a live service, the same reason the dashboard's mapping is last). The
 // endpoint's OWN unit is not a member at all since the operator's ruling of 2026-11-10 -- see the note above
@@ -1552,6 +1625,7 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 fn deployment_service_config(
   instance: HostDashboardInstance,
   names: DeploymentNames,
+  pair_delivery: PairDelivery,
 ) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
@@ -1569,6 +1643,7 @@ fn deployment_service_config(
     },
     serve_cpu_limit: dashboard_serve_cpu_limit(),
     serve_wall_limit: dashboard_serve_wall_limit(),
+    pair_delivery: pair_delivery,
   }
 }
 
@@ -1593,6 +1668,7 @@ fn deployment_spec_for(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
+  pair_delivery: PairDelivery,
 ) -> DeploymentSpec {
   let holding = role_singleton_holding_under(realization: realization, instance: instance)
   DeploymentSpec {
@@ -1602,6 +1678,7 @@ fn deployment_spec_for(
     service: deployment_service_config(
       instance: instance,
       names: names,
+      pair_delivery: pair_delivery,
     ),
     approval_broker: approval_broker_service_config(
       instance: instance,

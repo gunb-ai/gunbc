@@ -26,7 +26,12 @@ import gunbc.runner.runner_group_restriction_observation { observe_runner_group_
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import extdeps.transports.rest { RestAnswered }
-import gunbc.fleet.host_credential_custody_converge { host_credential_custody_row, ServiceSlotAppKey, CustodyPathAsDeclared }
+import gunbc.fleet.host_credential_custody_roster {
+  host_credential_custody_row, ServiceSlotAppKey
+}
+import gunbc.fleet.host_credential_custody_converge {
+  CustodyPathAsDeclared
+}
 import gunbc.runner.runner_service_slot_controller {
   ServiceSlotPass, ServiceSlotPassDeregistered, ServiceSlotPassNothingRegistered, ServiceSlotPassRegistrationRemains,
   ServiceSlotMintAdmission, ServiceSlotKeyHeld, ServiceSlotListenerIsolated, ServiceSlotPassId, ListenerRun, ListenerNotLaunched, ListenerExited,
