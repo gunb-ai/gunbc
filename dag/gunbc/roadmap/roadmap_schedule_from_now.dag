@@ -119,8 +119,12 @@ import gunbc.roadmap.roadmap_leaf_realized_duration {
 import gunbc.roadmap.roadmap_schedule_calendar { date_text }
 import gunbc.roadmap.roadmap_schedule {
   NotScheduled, OverRefusedExpansion, PinnedLeaf, Schedule, ScheduleAnswer, ScheduleRefusal, Scheduled, ScheduledLeaf,
-  look_or, path_key, schedule, schedule_pinned,
+  path_key, schedule, schedule_pinned,
 }
+// `look_or` moved with the placement core: this unit reads the successor map the same total read builds, and the core
+// is where that read lives now. The repoint lives HERE (not on still-swift-742's branch) because their base has no
+// roadmap_placement to import from -- their PR landed first, this merge repoints against a main that does.
+import gunbc.roadmap.roadmap_placement { look_or }
 
 // THE UNIT A NUMBER FROM THIS UNIT IS IN, spelled out in its own output. Every day count below is WORKING days, the
 // Monday..Friday week is #16697's rule, and no holiday calendar exists anywhere in this repository.
