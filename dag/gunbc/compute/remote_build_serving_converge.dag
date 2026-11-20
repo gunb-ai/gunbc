@@ -55,10 +55,10 @@ import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declare
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
 // PR-1c: the identity sidecar leg reads the file through the ONE serve-side identity reader (single
-// format authority, so the converge writer and the serve reader cannot drift), and carries its judgment
-// value in a SubjectValueRead built with the shared malformed marker.
+// format authority, so the converge writer and the serve reader cannot drift) and carries the result as
+// the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
 import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIdentityObserved }
-import gunbc.compute.remote_build_serving_setup { SubjectValueRead, serving_identity_malformed_marker }
+import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
 import extdeps.tools.uname { uname_machine_command }
@@ -196,19 +196,19 @@ fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: a
 //   - a present file whose cat fails, or an ssh refusal, -> ObservationRefused (an unknown): we never
 //                        rewrite a sidecar on a host whose file we could not read.
 // A refused sudo grant short-circuits the whole leg (review 95915: sudo's refusal shares test -f's exit 1).
-fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
+fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
     ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
       TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
-        true => ObservationEstablished { observed: "" }
+        true => ObservationEstablished { observed: SidecarAbsent }
         false => match t.exit_code == 0 {
           false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
           true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
             ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
-              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: s }
-              _ => ObservationEstablished { observed: serving_identity_malformed_marker }
+              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: SidecarRecorded { sha256: s } }
+              _ => ObservationEstablished { observed: SidecarMalformed }
             }
             ObservationRefused { cause: c } => ObservationRefused { cause: c }
           }
@@ -578,12 +578,11 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     _ => Absent
   }
   // PR-1c: the identity sidecar is read only under a CONFIRMED-PRESENT binary (an absent binary means
-  // InstallServeBinary + its paired RecordServeIdentity own the write). Under the present binary the leg
-  // yields a SubjectValueRead whose value is the sidecar's sha256 (or the absent '' / malformed marker);
-  // a refused read stays an unknown. If the binary is absent/unread we pass Absent, which the constructor
-  // defaults to SubjectValueSkipped — the sidecar then says nothing, as it must.
+  // InstallServeBinary + its paired RecordServeIdentity own the write). The leg decodes the file into the
+  // SidecarRead sum (Absent / Malformed / Recorded); a refused read stays an unknown. Under an absent or
+  // unread binary we pass Absent, so the sidecar says nothing and the host stays a no-op on identity.
   let serve_identity_value = match serve_binary {
-    ObservationEstablished { observed: true } => Present { value: SubjectValueRead { read: serving_leg_serve_identity(elevation: elevation, item: "serve.binary.identity", target: target, context: context, path: concat((d.serve_binary as String), ".identity")) } }
+    ObservationEstablished { observed: true } => Present { value: serving_leg_serve_identity(elevation: elevation, item: "serve.binary.identity", target: target, context: context, path: concat((d.serve_binary as String), ".identity")) }
     _ => Absent
   }
   // THE USER-WORK SLICE cap, read from the slice's unit controls as the serving user manager reports them

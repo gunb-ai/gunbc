@@ -152,11 +152,16 @@ type ServingDeviation
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
 // single source of truth and the label can never disagree with the typed values.
-// The value the serve-identity leg carries when the sidecar file EXISTS but is not the documented
-// two-member {revision, sha256} object. A real sidecar sha256 is 64 hex chars and can never equal
-// this, so the judge reads it unambiguously as 'present but malformed' -> a re-record (PR-1c). The
-// absent sidecar is the EMPTY string (test -f confirmed no file), also never a valid sha256.
-const serving_identity_malformed_marker: String = "malformed-identity-sidecar"
+// The serve binary's IDENTITY SIDECAR, as a READING -- never a string sentinel. Decoded ONCE by the
+// converge's observe caller of parse_serve_binary_identity (the single serve-side format authority), so
+// writer and reader cannot drift; everything downstream judges drift on these arms, not on stringly-typed
+// markers. SidecarAbsent is a CONFIRMED missing file (test -f saw none); SidecarMalformed is a present
+// file that is not the documented two-member {revision, sha256} object; SidecarRecorded carries the
+// recorded sha256 of a well-formed sidecar. (PR-1c, clever-raven-401)
+type SidecarRead
+  = SidecarAbsent
+  | SidecarMalformed
+  | SidecarRecorded { sha256: String }
 
 fn serving_deviation_item(dev: ServingDeviation) -> String {
   match dev {
@@ -363,43 +368,41 @@ fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List
   }
 }
 
-// The identity-sidecar compare over its value leg (PR-1c, clever-raven-401). Unlike
-// serving_subject_value_deviation (which compares to a fixed PIN), the sidecar must equal the sha of
-// the binary the host ACTUALLY runs — a read value, not a constant — so it needs this one-off.
-// Gate: it mints nothing unless the binary's own sha was READ (binary_sha present); an absent or
-// unreadable binary is already an unknown / a presence deviation elsewhere, so the sidecar says nothing
-// on top. Under that gate: the empty string (confirmed no file) and the malformed marker are drift;
-// a sidecar sha EQUAL to the observed binary sha is settled EVEN AT AN OLDER REVISION (the revision is
-// not a drift signal — a .dag-only main yields a byte-identical binary); a different sha is drift. A
-// skipped/unread leg (binary not present) mints neither drift nor unknown here.
-fn serving_serve_identity_deviation(binary_sha: String?, leg: ServingSubjectValue, path: String) -> List<ServingDeviation> {
+// The identity-sidecar compare over its reading (PR-1c, clever-raven-401). Unlike
+// serving_subject_value_deviation (which compares to a fixed PIN), the sidecar must equal the sha of the
+// binary the host ACTUALLY RUNS -- a read value, not a constant -- so it needs this one-off. The reading
+// is the SidecarRead SUM, decoded once upstream; we judge on its arms, never on a string sentinel.
+// Gate: it mints nothing unless the binary's own sha was READ (binary_sha present) AND the sidecar was
+// spoken to (leg present); an absent/unread binary or an unspoken sidecar is already handled elsewhere.
+// Under the gate: SidecarAbsent and SidecarMalformed are drift; SidecarRecorded whose sha EQUALS the
+// observed binary sha is settled EVEN AT AN OLDER REVISION (the revision is not a drift signal -- a
+// .dag-only main yields a byte-identical binary); a differing sha is drift. A refused read is neither
+// drift nor (here) unknown -- the unknown fn owns that, so a refusal never silently rewrites.
+fn serving_serve_identity_deviation(binary_sha: String?, leg: ObservationAttempt<SidecarRead, ServingLegFailure>?, path: String) -> List<ServingDeviation> {
   match binary_sha {
     Absent => []
     Present { value: want } => match leg {
-      SubjectValueRead { read: ObservationEstablished { observed: v } } => match v == "" {
-        true => [ServingIdentityDrift { path: path, reason: IdentitySidecarMissing }]
-        false => match v == serving_identity_malformed_marker {
-          true => [ServingIdentityDrift { path: path, reason: IdentitySidecarMalformed }]
-          false => match v == want {
-            true => []
-            false => [ServingIdentityDrift { path: path, reason: IdentityShaMismatch { sidecar_sha: v, binary_sha: want } }]
-          }
-        }
+      Absent => []
+      Present { value: ObservationEstablished { observed: SidecarAbsent } } => [ServingIdentityDrift { path: path, reason: IdentitySidecarMissing }]
+      Present { value: ObservationEstablished { observed: SidecarMalformed } } => [ServingIdentityDrift { path: path, reason: IdentitySidecarMalformed }]
+      Present { value: ObservationEstablished { observed: SidecarRecorded { sha256: v } } } => match v == want {
+        true => []
+        false => [ServingIdentityDrift { path: path, reason: IdentityShaMismatch { sidecar_sha: v, binary_sha: want } }]
       }
-      _ => []
+      Present { value: ObservationRefused { cause: _ } } => []
     }
   }
 }
 
 // The identity-sidecar UNKNOWN: only when the binary's sha WAS read and the sidecar read itself was
-// refused (the file exists but could not be read, or ssh failed). A refused read is never treated as
-// 'absent' (which would rewrite the sidecar); it is an unknown so the apply halts fail-closed. A
-// skipped/unread leg (no binary) mints no unknown — the binary's own legs carry that.
-fn serving_serve_identity_unknown(binary_sha: String?, leg: ServingSubjectValue) -> List<ServingUnknown> {
+// REFUSED (the file exists but could not be read, or ssh failed). A refused read is never treated as
+// 'absent' (which would rewrite the sidecar); it is an unknown so the apply halts fail-closed. An
+// unspoken sidecar (Absent) mints no unknown -- the binary's own legs carry that.
+fn serving_serve_identity_unknown(binary_sha: String?, leg: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> List<ServingUnknown> {
   match binary_sha {
     Absent => []
     Present { value: _ } => match leg {
-      SubjectValueRead { read: ObservationRefused { cause: c } } => [ServingUnknown { item: "serve.binary.identity", cause: c.cause }]
+      Present { value: ObservationRefused { cause: c } } => [ServingUnknown { item: "serve.binary.identity", cause: c.cause }]
       _ => []
     }
   }
@@ -831,13 +834,11 @@ type ServingObserved {
   // confirmed-present file, and a refused read under a present subject is an unknown, never a pass.
   authorized_keys_mode: ServingSubjectValue
   serve_binary_mode: ServingSubjectValue
-  // The serve binary's IDENTITY SIDECAR (<serve_binary>.identity), gated on the serve binary being
-  // present (ServingSubjectValue, like the sha/mode legs). The leg carries the sidecar's recorded
-  // sha256 as its value: a confirmed-absent sidecar reads the empty string, a sidecar that is not the
-  // documented two-member object reads a fixed malformed marker, and a valid one reads its sha256.
-  // A refused read (the file exists but cat failed, or ssh failed) is an unknown, never a drift — we
-  // never rewrite a sidecar on a host whose file we could not read. (PR-1c, clever-raven-401)
-  serve_identity: ServingSubjectValue
+  // The serve binary's IDENTITY SIDECAR reading (<serve_binary>.identity), OPTIONAL. Absent means the
+  // sidecar was never spoken to (the binary was absent/unread, so nothing to compare -- a no-op that
+  // leaves the pre-PR-1c tallies untouched); Present carries the reading decoded once into SidecarRead
+  // (Absent / Malformed / Recorded{sha256}). Drift is judged on those arms, never on a string sentinel.
+  serve_identity: ObservationAttempt<SidecarRead, ServingLegFailure>?
   // The user-work slice's live cgroup cap, as READ FROM THE CGROUP FILES the reader reads
   // (memory.max / memory.high / memory.swap.max of the slice's own cgroup), each carried as its TYPED
   // outcome (value / unbounded / unparseable with its body / refused with its cause) rather than a folded
@@ -1530,13 +1531,12 @@ fn serving_observed_from_reads(
   // A3: the two file-mode legs, gated the same way — read only under a confirmed-present file.
   authorized_keys_mode: ObservationAttempt<String, ServingLegFailure>?,
   serve_binary_mode: ObservationAttempt<String, ServingLegFailure>?,
-  // PR-1c: the identity-sidecar leg, supplied FULLY BUILT (already gated on the binary being present)
-  // rather than derived here. It is OPTIONAL and defaults to SubjectValueSkipped: a fixture that does
-  // not speak to the sidecar mints neither drift nor unknown, so the existing tallies are untouched.
-  // Only the production observe and the identity witnesses pass it. It is NOT run through
-  // serving_subject_value_leg here, because that turns an absent read under a present subject into a
-  // refused read — an unwanted unknown for every fixture that never meant to test the sidecar.
-  serve_identity: ServingSubjectValue?,
+  // PR-1c: the identity-sidecar reading, OPTIONAL. Absent (a fixture that never speaks to the sidecar)
+  // makes the host a no-op on identity, so the pre-PR-1c tallies are untouched; the production observe
+  // and the identity witnesses pass the decoded SidecarRead. It is NOT routed through
+  // serving_subject_value_leg (whose absent-under-present would turn into a refused read = an unwanted
+  // unknown for every fixture that never meant to test the sidecar).
+  serve_identity: ObservationAttempt<SidecarRead, ServingLegFailure>?,
   // The user-work slice cgroup cap, read from the cgroup files by the observe's slice leg as the cgroup's
   // own typed value wrapped in the observation Attempt: an established CgroupMemoryLimited is a finite
   // byte count, CgroupMemoryUnlimited is the cgroup 'max', CgroupMemoryLimitUnparseable carries the raw
@@ -1584,7 +1584,7 @@ fn serving_observed_from_reads(
     ),
     authorized_keys_mode: serving_subject_value_leg("authorized_keys.mode", serving_authorized_keys_presence_gate(ak_g), authorized_keys_mode),
     serve_binary_mode: serving_subject_value_leg("serve.binary.mode", serve_binary_g, serve_binary_mode),
-    serve_identity: match serve_identity { Absent => SubjectValueSkipped  Present { value: s } => s },
+    serve_identity: serve_identity,
     user_work_slice_max: user_work_slice_max,
     user_work_slice_high: user_work_slice_high,
     user_work_slice_swap: user_work_slice_swap,
