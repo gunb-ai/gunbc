@@ -5,16 +5,18 @@ module test.claim.host.node_orch_operator_authorized_keys_witness
 // 2026-11-20 (each host's ~/.ssh/authorized_keys.bak-20261120 holds the pre-edit form); proves the from=
 // source-address restriction is admitted only through the checked constructor; folds each line's typed consumer
 // against its shipped forwarding posture (the tunnel unit -> no-port-forwarding ABSENT; the srv1->srv2-lan
-// sessions -> KEPT); ties each line to the ruling that admits its out-of-band residence; and records the
-// fleet-ownership asymmetry behind the (recorded, not enforced) undo hazard: srv2's key is fleet-owned (a future
-// operator-account reconcile could Remove it) while srv1's is DELIBERATELY out-of-band residue admitted by ruling
-// gunbc.design_ruling.node_orch_operator_authorized_keys_out_of_band_2026_11_20, so a reconcile already refuses it.
+// sessions -> KEPT); ties each line to the OPEN, unanswered operator escalation its out-of-band residence is
+// recorded under (pending, never a decided ruling); and records the fleet-ownership asymmetry behind the (recorded,
+// not enforced) undo hazard: srv2's key is fleet-owned (a future operator-account reconcile could Remove it) while
+// srv1's is DELIBERATELY out-of-band residue recorded under an open escalation, so a reconcile already refuses it.
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import extdeps.ssh.keys { authorized_key_from_source_addresses }
 import gunbc.host.node_orch_operator_authorized_keys {
+  NodeOrchOperatorAdmission,
+  PendingOperatorEscalation,
   NodeOrchOperatorConsumer,
   Srv1DockerTunnelUnit,
   Srv1ToSrv2LanSessions,
@@ -120,22 +122,29 @@ test fn the_fleet_ownership_asymmetry_the_recorded_hazard_rests_on_is_checked() 
     && (fleet_owned_holds(material: node_orch_srv1_ssh_key.material) == false)
 }
 
-// Each line carries the ruling that admits its out-of-band residence, and that ruling is the operator's decision on
-// single_authority: decided 2026-11-20, governing gunbc.design_argument::single_authority. This is the real reader
-// of the line's `admission` field -- a renamed or re-pointed ruling fails here, not silently.
-test fn each_line_is_admitted_by_the_out_of_band_single_authority_ruling() -> Bool {
+// Each line records its deviation as an OPEN, UNANSWERED operator escalation -- NOT a decided ruling: the admission
+// is the PendingOperatorEscalation variant, its ask_reference names the open ask, and its dissolves_when states the
+// trigger that closes it. This is the real reader of the `admission` field. Resolving the ask (binding a real
+// gunbc.design_ruling) adds an AdmittedByRuling variant, which makes this single-arm match non-exhaustive and forces
+// the test to be updated rather than to silently pass -- the model cannot quietly claim an approval it never got.
+test fn each_line_records_an_open_unanswered_escalation_not_a_ruling() -> Bool {
   match node_orch_srv1_authorized_key_line() {
     Absent => false
     Present { value: srv1 } =>
-      srv1.admission.decided == "2026-11-20"
-        && srv1.admission.governs.module_path == ("gunbc.design_argument" as NonEmptyStr)
-        && srv1.admission.governs.decl_name == ("single_authority" as NonEmptyStr)
+      match srv1.admission {
+        PendingOperatorEscalation { ask_reference: ask1, dissolves_when: dissolve1 } =>
+          ask1.contains("msg_bd172008-22d3-4cee-b060-5a0f8e08cd5f")
+            && ask1.contains("unanswered")
+            && (dissolve1.length() > 0)
+      }
   }
     && (match node_orch_srv2_authorized_key_line() {
       Absent => false
       Present { value: srv2 } =>
-        srv2.admission.decided == "2026-11-20"
-          && srv2.admission.governs.module_path == ("gunbc.design_argument" as NonEmptyStr)
-          && srv2.admission.governs.decl_name == ("single_authority" as NonEmptyStr)
+        match srv2.admission {
+          PendingOperatorEscalation { ask_reference: ask2, dissolves_when: dissolve2 } =>
+            ask2.contains("msg_bd172008-22d3-4cee-b060-5a0f8e08cd5f")
+              && dissolve2.contains("authorized_keys")
+        }
     })
 }
