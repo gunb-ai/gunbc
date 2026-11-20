@@ -340,9 +340,15 @@ type SpoolOpenVerdict
   | SpoolOpenUidUnreadable
   | SpoolOpenUidRoot
 
-// The process's own effective uid, read fresh from procfs. The kernel fixed it for the process; it does not
-// change under it, so two reads inside one launch agree. Nothing is memoized and nothing is guessed.
-fn compute_exit_spool_effective_uid() -> Int? {
+// THE UID THIS PROCESS RUNS AS, from /proc/self/status (proc(5)) -- THE ONE SPELLING of that read, in the one
+// module that needs it. The per-user runtime directory (work_provider_local compute_launching_user_runtime_dir) and
+// the seat's exit-spool partition (compute_attempt_exit_spool_open below) are BOTH derived from THIS function, so
+// they cannot disagree about how the uid is obtained (gunbc.design_argument::single_authority, one fact in one
+// place; review 97071). Stated precisely: this is one SPELLING, not one READ -- each caller reads /proc/self/status
+// for itself and nothing memoizes it; the two directories still agree because a process's effective uid does not
+// change under it, so two reads inside one launch return the same number; and if a read fails, its caller refuses
+// TYPED (UidUnreadable) rather than falling back, so a seat is never charged against a directory whose owner is guessed.
+fn compute_launching_uid() -> Int? {
   let status = Filesystem.Read(path: "/proc/self/status")
   if !status.success {
     none
@@ -372,7 +378,7 @@ fn attempt_exit_spool_uid_policy(uid: Nat) -> AttemptExitSpoolUidPolicy {
 // UNWRITABLE, not runtime-refused. The former public `spool_open_uid` (path + arbitrary uid) and the
 // `compute_exit_spool_open` wrapper beside it are DELETED -- no path-to-store route remains (review 95668).
 fn compute_attempt_exit_spool_open(instance: HostDashboardInstance) -> SpoolOpenVerdict {
-  match compute_exit_spool_effective_uid() {
+  match compute_launching_uid() {
     Absent => SpoolOpenUidUnreadable
     Present { value: uid } => match checked_int_to_nat(n: uid) {
       Absent => SpoolOpenUidUnreadable
