@@ -1,0 +1,69 @@
+module test.claim.attempt_metering_traversal_foreign_witness
+
+// FOREIGN-MODULE TRAVERSAL WITNESS (side-chat REQUEST_CHANGES, sealed stores PR 1, 2026-11-20).
+// The finding: attempt_metering_create_once(store, entry: NonEmptyStr, content) joined store.directory +
+// entry and ran WriteCreateNew, so entry "../outside" created bytes OUTSIDE the sealed attempt directory;
+// the index-store twin joined the same way; and attempt_metering_read_derived kept a raw directory AND a
+// raw name as a second reader beside the store. The fix admits every member name as a path segment at the
+// effect boundary: the only carrier is AttemptMeteringMemberName, a brand of std.types PathSegment minted
+// through path_segment_is_safe (the one law; no allowlist), and the roster directory reader enforces the
+// same law INSIDE the effect. These claims run FROM THIS FOREIGN MODULE.
+
+import std.types { String, Bool, NonEmptyStr, PathSegment, path_segment_is_safe }
+import std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, census_rows_of_class, census_total_count }
+import gunbc.roadmap.roadmap_attempt_metering {
+  AttemptMeteringMemberName, attempt_metering_member_name, attempt_metering_declared_member_name,
+}
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptMeteringRecordFile, attempt_state_member_name }
+
+fn mints_agree_with_the_law(raw: String) -> Bool {
+  match attempt_metering_member_name(raw: raw) {
+    Absent => !path_segment_is_safe(raw: raw)
+    Present { value: carrier } => (carrier as String) == raw && path_segment_is_safe(raw: raw)
+  }
+}
+
+test fn hostile_entry_spellings_never_mint_a_carrier() -> Bool {
+  let hostile = ["../outside", "..", ".", "a/b", "/etc", "", "sub/metering.json", "../..", "x/"]
+  all(hostile, h => mints_agree_with_the_law(raw: h))
+    && all(hostile, h => match attempt_metering_member_name(raw: h) { Absent => true, Present { value: _ } => false })
+}
+
+test fn declared_member_names_mint_and_round_trip() -> Bool {
+  match attempt_metering_declared_member_name(member: AttemptMeteringRecordFile) {
+    Absent => false
+    Present { value: carrier } => (carrier as String) == attempt_state_member_name(member: AttemptMeteringRecordFile)
+  }
+    && all(["launch.a.json", "metering-roster.json"], n => mints_agree_with_the_law(raw: n))
+}
+
+// ── THE REDS: the hostile call shapes no longer type-check; safe twins do. ─────────────────────────────
+
+data hostile_create_source: String = "module probe_amt_hostile_create\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, attempt_metering_create_once, AttemptMeteringCreateOnce }\nfn f(store: AttemptMeteringStore) -> AttemptMeteringCreateOnce { attempt_metering_create_once(store: store, entry: \"../outside\" as NonEmptyStr, content: \"escaped\") }\n"
+
+data safe_create_source: String = "module probe_amt_safe_create\nimport std.types { NonEmptyStr }\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, attempt_metering_create_once, AttemptMeteringCreateOnce, attempt_metering_member_name }\nfn f(store: AttemptMeteringStore) -> AttemptMeteringCreateOnce? { match attempt_metering_member_name(raw: \"metering.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_create_once(store: store, entry: mname, content: \"sealed\") } } }\n"
+
+data hostile_read_source: String = "module probe_amt_hostile_read\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { OptionalFileRead, attempt_metering_read_derived }\nfn f() -> OptionalFileRead { attempt_metering_read_derived(dir: \"/tmp/sealed-attempt\", name: \"../../etc/passwd\" as NonEmptyStr) }\n"
+
+data safe_read_source: String = "module probe_amt_safe_read\nimport std.types { NonEmptyStr }\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { OptionalFileRead, attempt_metering_read_derived, attempt_metering_member_name }\nfn f() -> OptionalFileRead? { match attempt_metering_member_name(raw: \"metering.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_read_derived(dir: \"/tmp/sealed-attempt\", name: mname) } } }\n"
+
+data hostile_index_source: String = "module probe_amt_hostile_index\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore, attempt_metering_index_create_once, AttemptMeteringCreateOnce }\nfn f(store: AttemptMeteringIndexStore) -> AttemptMeteringCreateOnce { attempt_metering_index_create_once(store: store, entry: \"../../outside.index.json\" as NonEmptyStr, content: \"escaped\") }\n"
+
+data safe_index_source: String = "module probe_amt_safe_index\nimport std.types { NonEmptyStr }\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore, attempt_metering_index_create_once, AttemptMeteringCreateOnce, attempt_metering_member_name }\nfn f(store: AttemptMeteringIndexStore) -> AttemptMeteringCreateOnce? { match attempt_metering_member_name(raw: \"metering-attempt.1.a.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_index_create_once(store: store, entry: mname, content: \"sealed\") } } }\n"
+
+fn type_mismatch_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch"))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_caller_chosen_entry_reaches_no_create_or_read_effect() -> Bool {
+  type_mismatch_count(source: hostile_create_source) >= 1
+    && type_mismatch_count(source: safe_create_source) == 0
+    && type_mismatch_count(source: hostile_read_source) >= 1
+    && type_mismatch_count(source: safe_read_source) == 0
+    && type_mismatch_count(source: hostile_index_source) >= 1
+    && type_mismatch_count(source: safe_index_source) == 0
+}
