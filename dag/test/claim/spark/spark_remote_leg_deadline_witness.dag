@@ -14,7 +14,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
 import gunbc.spark.model_snapshot_materialize {
   SparkRemoteRun, RemoteRan, RemoteUnreachable,
   LegNotAttempted, LegBeginUnobserved, LegOverran,
-  spark_remote_run_of_session, spark_argv_run_of_unreachable,
+  spark_remote_run_of_session, spark_argv_run_of_unreachable, spark_remote_unreachable,
 }
 
 // THE DEADLINE THE SPARK LEGS CARRY, asserted as exact argv. Fleet-converge run 37156689444 sat ~1h
