@@ -215,13 +215,13 @@ fn ssh_canonical_public_key_line_admitted(line: String) -> Bool {
 // to public key type, the authorization ... requires that the remote host name or address match one of
 // the patterns in the ... comma-separated pattern-list"; a pattern is a "hostname/IP address or CIDR
 // pattern". So this is the option that admits a connection by WHERE it comes from -- the line carries the
-// set of source addresses it accepts. It is modeled as a list (not a pre-joined string) so the address
-// set has one structure the model can read, fold and cross-check against the network roster, and is joined
-// with commas only at render. permitopen= (which restricts the forwarded ENDPOINT) stays unmodeled; this
-// variant is the source-address restriction only.
+// set of source addresses it accepts. It carries a checked AuthorizedKeySourceAddresses carrier (not a raw
+// list) so an address set that would break the quoting or the comma-split is unwritable, matching
+// AuthorizedKeyForcedCommand below; the list is joined with commas only at render. permitopen= (which restricts
+// the forwarded ENDPOINT) stays unmodeled; this variant is the source-address restriction only.
 type AuthorizedKeyOption
   = ForcedCommandOption { command: AuthorizedKeyForcedCommand }
-  | FromSourceAddresses { patterns: List<NonEmptyStr> }
+  | FromSourceAddresses { patterns: AuthorizedKeySourceAddresses }
   | NoAgentForwardingOption
   | NoPortForwardingOption
   | NoPtyOption
@@ -242,12 +242,16 @@ fn authorized_key_forced_command(text: String) -> AuthorizedKeyForcedCommand? {
   }
 }
 
-// A FROM= PATTERN IS ADMITTED ONLY WHEN IT NEEDS NO QUOTING. Each pattern sits inside the option's double
+// A FROM= PATTERN LIST IS ADMITTED ONLY WHEN IT NEEDS NO QUOTING. Each pattern sits inside the option's double
 // quotes, so a double quote, a backslash, a line break or any whitespace in it would need escaping or an
 // embedding this module does not model -- and whitespace is exactly what would break sshd's comma-separated
 // split. The list must also be non-empty: an empty from=""/from= list is sshd's own "no host can match"
-// foot-gun and a typo'd address set, so it has no constructor here rather than a silently-inert line.
-fn authorized_key_from_source_addresses(patterns: List<String>) -> AuthorizedKeyOption? {
+// foot-gun and a typo'd address set. So the carrier is a sole_constructor (like AuthorizedKeyForcedCommand):
+// the only way to make one is authorized_key_source_addresses, which refuses those states -- the bad line is
+// unwritable rather than caught after the fact (gunbc.design_argument::fail_closed, closed_grounded_substrate).
+type AuthorizedKeySourceAddresses sole_constructor { patterns: List<NonEmptyStr> }
+
+fn authorized_key_source_addresses(patterns: List<String>) -> AuthorizedKeySourceAddresses? {
   if patterns.length() == 0 {
     none
   } else {
@@ -265,17 +269,26 @@ fn authorized_key_from_source_addresses(patterns: List<String>) -> AuthorizedKey
           && !p.contains("\r"),
     )
     if all_ok {
-      Present { value: FromSourceAddresses { patterns: map(patterns, p => p as NonEmptyStr) } }
+      Present { value: AuthorizedKeySourceAddresses { patterns: map(patterns, p => p as NonEmptyStr) } }
     } else {
       none
     }
   }
 }
 
+// The from= OPTION, admitted only through the checked carrier above. Both production rows that carry a source
+// address build their option here (gunbc.host.node_orch_operator_authorized_keys), so no row can bypass the guard.
+fn authorized_key_from_source_addresses(patterns: List<String>) -> AuthorizedKeyOption? {
+  match authorized_key_source_addresses(patterns: patterns) {
+    Absent => none
+    Present { value: carrier } => Present { value: FromSourceAddresses { patterns: carrier } }
+  }
+}
+
 fn authorized_key_option_text(o: AuthorizedKeyOption) -> String {
   match o {
     ForcedCommandOption { command: c } => join(["command=\"", c.text as String, "\""], "")
-    FromSourceAddresses { patterns: ps } => join(["from=\"", join(map(ps, p => p as String), ","), "\""], "")
+    FromSourceAddresses { patterns: carrier } => join(["from=\"", join(map(carrier.patterns, p => p as String), ","), "\""], "")
     NoAgentForwardingOption => "no-agent-forwarding"
     NoPortForwardingOption => "no-port-forwarding"
     NoPtyOption => "no-pty"
