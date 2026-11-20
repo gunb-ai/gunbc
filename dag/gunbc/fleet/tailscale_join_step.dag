@@ -13,6 +13,7 @@ import v2.workflow.gunbc_invoke_step_emit {
   gunbc_run_step_script_for_target,
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import v2.std.diagnostic { Outcome }
 import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
@@ -23,7 +24,7 @@ data gunbc_ci_tailscale_join_target: GunbcRunStepTarget = gunbc_run_step_target(
   function: "tailscale_join_converge_ci_wet",
 )
 
-fn gunbc_ci_tailscale_join_invoke() -> String {
+fn gunbc_ci_tailscale_join_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_tailscale_join_target,

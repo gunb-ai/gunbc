@@ -3,6 +3,7 @@ module test.claim.fleet.fleet_identity_demand_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import std.algebra { string_contains }
 import extdeps.github.expressions { ingest_expression, serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.fleet.fleet_converge_workflow {
@@ -103,9 +104,12 @@ test fn unreadable_step_text_refuses_and_the_real_job_has_none() -> Bool {
   match fleet_identity_unreadable_text(candidates: [broken]) {
     Present { value: _ } => true
     Absent => false
-  } && match fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates()) {
-    Present { value: _ } => false
-    Absent => true
+  } && match outcome_accepted_values(fleet_converge_fleet_identity_reader_candidates()) {
+    Absent => false
+    Present { value: cands } => match fleet_identity_unreadable_text(candidates: cands) {
+      Present { value: _ } => false
+      Absent => true
+    }
   }
 }
 
@@ -128,25 +132,38 @@ test fn an_undecidable_conjunct_is_dropped_and_an_undecidable_whole_mints() -> B
 // THE REAL JOB. The emitted mint is the derivation over the job's own post-mint steps, nothing beside
 // it, and every reader's condition is one of its disjuncts.
 test fn the_emitted_auth_step_is_the_reader_derivation() -> Bool {
-  let auth = filter(fleet_converge_job().steps, s => step_id_of(s: s) == "wif_auth")
-  let readers = fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())
-  auth.length() == 1
-    && readers.length() > 0
-    && match auth.first() {
-      Present { value: s } => step_if_of(s: s) == fleet_converge_fleet_identity_auth_condition()
+  match outcome_accepted_value(fleet_converge_job()) {
+    Absent => false
+    Present { value: jj } => match outcome_accepted_values(fleet_converge_fleet_identity_reader_candidates()) {
       Absent => false
+      Present { value: cands } => match outcome_accepted_value(fleet_converge_fleet_identity_auth_condition()) {
+        Absent => false
+        Present { value: authcond } => {
+          let auth = filter(jj.steps, s => step_id_of(s: s) == "wif_auth")
+          let readers = fleet_identity_readers(candidates: cands)
+          auth.length() == 1
+            && readers.length() > 0
+            && match auth.first() {
+              Present { value: s } => step_if_of(s: s) == authcond
+              Absent => false
+            }
+            && all(readers, r => string_contains(s: authcond, pattern: concat(concat("(", fleet_identity_reader_mint_condition(step: r)), ")")))
+        }
+      }
     }
-    && all(readers, r => string_contains(s: fleet_converge_fleet_identity_auth_condition(), pattern: concat(concat("(", fleet_identity_reader_mint_condition(step: r)), ")")))
+  }
 }
 
 // THE FLEET KEY READS THE IDENTITY, so every key-consuming mode keeps the mint (RED: dropping the key
 // step from the candidates would strand it). Own-step readers keep it too.
 test fn the_fleet_key_and_own_step_readers_keep_the_mint() -> Bool {
-  let auth = fleet_converge_fleet_identity_auth_condition()
-  string_contains(s: auth, pattern: concat(concat("(", fleet_converge_fleet_ssh_key_step_if), ")"))
+  match outcome_accepted_value(fleet_converge_fleet_identity_auth_condition()) {
+    Absent => false
+    Present { value: auth } => string_contains(s: auth, pattern: concat(concat("(", fleet_converge_fleet_ssh_key_step_if), ")"))
     && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: FullHostPlan))
     && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: OrgActionsObserve))
     && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: R2MintPreflight))
+  }
 }
 
 data no_reader_modes: List<FleetConvergeWorkflowMode> = [
@@ -167,8 +184,8 @@ type MintReading = Mints | DoesNotMint | MintUnreadable
 
 // The emitted mint condition, EVALUATED for one dispatch mode: a `true` disjunct mints for every mode
 // without naming any, so a text search for the mode's clause cannot see it (review 91761).
-fn auth_mints_for(mode: FleetConvergeWorkflowMode) -> MintReading {
-  match ingest_expression(src: fleet_converge_fleet_identity_auth_condition()) {
+fn auth_mints_for(mode: FleetConvergeWorkflowMode, auth: String) -> MintReading {
+  match ingest_expression(src: auth) {
     Absent => MintUnreadable
     Present { value: e } =>
       match evaluate_expression(expression: e, github_path: fn(path) { mode_only_path(mode: fleet_converge_workflow_mode_wire(mode: mode), path: path) }) {
@@ -182,8 +199,11 @@ fn mints(r: MintReading) -> Bool { match r { Mints => true  DoesNotMint => false
 fn does_not_mint(r: MintReading) -> Bool { match r { Mints => false  DoesNotMint => true  MintUnreadable => false } }
 
 test fn modes_with_no_reader_do_not_reach_the_mint() -> Bool {
-  all(no_reader_modes, m => does_not_mint(r: auth_mints_for(mode: m)))
-    && mints(r: auth_mints_for(mode: FullHostPlan))
-    && mints(r: auth_mints_for(mode: OrgActionsObserve))
-    && mints(r: auth_mints_for(mode: MtCollins1FanObserve))
+  match outcome_accepted_value(fleet_converge_fleet_identity_auth_condition()) {
+    Absent => false
+    Present { value: authcond } => all(no_reader_modes, m => does_not_mint(r: auth_mints_for(mode: m, auth: authcond)))
+    && mints(r: auth_mints_for(mode: FullHostPlan, auth: authcond))
+    && mints(r: auth_mints_for(mode: OrgActionsObserve, auth: authcond))
+    && mints(r: auth_mints_for(mode: MtCollins1FanObserve, auth: authcond))
+  }
 }

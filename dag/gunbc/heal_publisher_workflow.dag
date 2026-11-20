@@ -278,22 +278,23 @@ fn heal_publisher_admit_step_name(profile: RepositoryCiProfile) -> String {
 // (gunb-ai/gunbc#16169); it is gone with the mirror's CI fork.
 fn heal_publisher_phase_script(
   profile: RepositoryCiProfile,
-  phase: DagInvocation,
+  phase: Outcome<DagInvocation>,
   source: PublisherCompilerSource
 ) -> Outcome<String> {
-  match source {
-    PublisherBuildsItsOwnCheckout { required_bins: _ } =>
-      outcome_accepted(
-        value: gunbc_run_step_script_with_prelude(
+  bind_outcome(
+    o: phase,
+    f: fn(p) { match source {
+      PublisherBuildsItsOwnCheckout { required_bins: _ } =>
+        gunbc_run_step_script_with_prelude(
           prelude: heal_publisher_cgroup_prelude(),
           source_roots: profile.roster.source_roots,
-          entry: phase.entry as String,
-          function: phase.function as String,
+          entry: p.entry as String,
+          function: p.function as String,
           claim_run: false,
           receipt_rel: none
         )
-      )
-  }
+    }
+   })
 }
 
 // THE PUBLICATION PHASE, over the same roots the gate admitted: the row's publish invocation, rendered by
@@ -639,7 +640,10 @@ fn publisher_job_executes_candidate_code(steps: List<HealPublisherBoundStep>, pr
 fn publication_candidate_holds_publication_credential(profile: RepositoryCiProfile) -> Bool {
   match profile.heal {
     Absent => false
-    Present { value: policy } => heal_job_holds_publication_credential(job: policy)
+    Present { value: policy } => match heal_job_holds_publication_credential(job: policy) {
+      Accepted { value: holds } => holds
+      Rejected { diagnostics: _ } => true
+    }
   }
 }
 
@@ -829,13 +833,13 @@ fn heal_publisher_cgroup_prelude() -> List<PipelineStep> {
 // the subject: a mirror's publisher composes its corpus there. The two publisher phases that need no tail
 // go through their invocations, which take this same prelude as data. Neither spelling re-writes the bind
 // commands, so the limit the two publishers share has one source (hosted_arm_runner_cgroup_memory_max).
-fn heal_publisher_cgroup_prelude_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+fn heal_publisher_cgroup_prelude_script() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: heal_publisher_cgroup_prelude(),
       on_failure: FailFast
     }),
-    "\n"
+    f: fn(body) { outcome_accepted(value: concat(body, "\n")) }
   )
 }
 
@@ -843,9 +847,9 @@ fn heal_publisher_cgroup_prelude_script() -> String {
 // publisher composes the public corpus with its own overlay and invokes gunbc there, so it cannot use
 // the ROOT-stamped step below; it takes the same cgroup and the same mint, down-scoped to ITS
 // repository by its own federation record, as one rendered fragment ahead of its own invocation.
-fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(p: Pipeline {
+fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(p: Pipeline {
       steps: concat(
         heal_publisher_cgroup_prelude(),
         github_app_installation_token_prelude(
@@ -854,6 +858,6 @@ fn heal_publisher_publish_prelude_script(f: HealPublisherFederation) -> String {
       ),
       on_failure: FailFast
     }),
-    "\n"
+    f: fn(body) { outcome_accepted(value: concat(body, "\n")) }
   )
 }

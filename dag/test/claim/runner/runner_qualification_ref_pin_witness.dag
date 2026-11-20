@@ -9,7 +9,8 @@ import extdeps.github.actions {
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
 import gunbc.runner.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of }
+import v2.std.diagnostic { outcome_accepted_value }
 import test.claim.github_app_registry { group_restricted_to }
 import gunbc.runner.runner_qualification_ref_pin { qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, branch_full_ref, qualification_group_target, QualificationGroupTargeted, QualificationGroupNotTargetable, branch_create_refusal, PinBranchPreexisting, PinBranchCreateRefused, PinBranchCreateAmbiguous, qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused, PinBranchReadbackMismatch, PinGroupReadbackRefused, classify_branch_removal, QualificationBranchRemoved, QualificationBranchRemovalRefused, BranchStillPresent, BranchReadUnreadable }
 import gunbc.runner.runner_qualification_group { qualification_selected_workflow, qualification_runner_group_name }
@@ -160,6 +161,12 @@ fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool 
 }
 
 test fn creating_a_qualification_branch_fires_no_generated_push_workflow() -> Bool {
-  !(fleet_converge_workflow.on |> any(t => push_trigger_could_fire_on(trigger: t, branch: "qualification/q-1")))
-    && push_trigger_could_fire_on(trigger: Push { branches: ["qualification/**"], paths: [] }, branch: "qualification/q-1")
+  // The committed fleet-converge workflow is emitted through the retyped run-step family, so its value is now
+  // an Outcome<Workflow>. Fail-closed: if its emission is ever refused this claim goes RED, never vacuously true.
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      !(wf.on |> any(t => push_trigger_could_fire_on(trigger: t, branch: "qualification/q-1")))
+        && push_trigger_could_fire_on(trigger: Push { branches: ["qualification/**"], paths: [] }, branch: "qualification/q-1")
+  }
 }

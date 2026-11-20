@@ -7,7 +7,8 @@ import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.runner.runner_ci_step { gunbc_ci_runner_host_file_converge_target }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_job }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_poison }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_target_entry_or_refusal }
+import v2.std.diagnostic { outcome_accepted_value }
 
 // A FLEET-CONVERGE MODE WHOSE ENTRY REACHES THE LIVE ROSTER READ CARRIES THE ORG-ADMIN TOKEN PRELUDE.
 //
@@ -31,7 +32,10 @@ fn step_runs(steps: List<Step>) -> List<String> {
 }
 
 fn runs_naming(t: GunbcRunStepTarget, runs: List<String>) -> List<String> {
-  filter(runs, r => string_contains(s: r, pattern: gunbc_run_step_target_entry_or_poison(target: t)) && string_contains(s: r, pattern: t.declaration.decl_name as String))
+  match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: t)) {
+    Absent => []
+    Present { value: entry } => filter(runs, r => string_contains(s: r, pattern: entry) && string_contains(s: r, pattern: t.declaration.decl_name as String))
+  }
 }
 
 fn target_carries_token(t: GunbcRunStepTarget, runs: List<String>) -> Bool {
@@ -40,27 +44,36 @@ fn target_carries_token(t: GunbcRunStepTarget, runs: List<String>) -> Bool {
 }
 
 test fn the_supplied_roster_reading_mode_carries_the_token() -> Bool {
-  target_carries_token(
-    t: gunbc_ci_runner_host_file_converge_target,
-    runs: step_runs(steps: fleet_converge_job().steps)
-  )
+  match outcome_accepted_value(fleet_converge_job()) {
+    Absent => false
+    Present { value: job } => target_carries_token(
+      t: gunbc_ci_runner_host_file_converge_target,
+      runs: step_runs(steps: job.steps)
+    )
+  }
 }
 
 // RED CONTROL ON THE SCOPE: the token is minted but unnarrowed (no request body), or narrowed to write: both refuse.
 test fn an_unnarrowed_or_widened_mint_is_refused() -> Bool {
-  let head = concat("gunbc run ", concat(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_runner_host_file_converge_target), concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))
-  let unnarrowed = concat(token_marker, head)
+  match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_runner_host_file_converge_target)) {
+    Absent => false
+    Present { value: zesty_entry } => let head = concat("gunbc run ", concat(zesty_entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))
+    let unnarrowed = concat(token_marker, head)
   let widened = concat(token_marker, concat("-d '{\"permissions\": {\"organization_self_hosted_runners\": \"write\"}}'", head))
   !target_carries_token(t: gunbc_ci_runner_host_file_converge_target, runs: [unnarrowed])
     && !target_carries_token(t: gunbc_ci_runner_host_file_converge_target, runs: [widened])
+  }
 }
 
 // RED CONTROL ON THE PREDICATE: the same check over a script with no prelude refuses.
 test fn a_converge_run_without_the_prelude_is_refused() -> Bool {
-  !target_carries_token(
-    t: gunbc_ci_runner_host_file_converge_target,
-    runs: [concat("gunbc run ", concat(gunbc_run_step_target_entry_or_poison(target: gunbc_ci_runner_host_file_converge_target), concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))]
-  )
+  match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_runner_host_file_converge_target)) {
+    Absent => false
+    Present { value: zesty_entry } => !target_carries_token(
+      t: gunbc_ci_runner_host_file_converge_target,
+      runs: [concat("gunbc run ", concat(zesty_entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))]
+    )
+  }
 }
 
 // A STEP THAT CARRIES A SCRIPT READING THE WIF TOKEN BINDS IT.
@@ -89,7 +102,10 @@ fn every_wif_reader_binds_it(steps: List<Step>) -> Bool {
 }
 
 test fn every_generated_step_reading_the_wif_token_binds_it() -> Bool {
-  every_wif_reader_binds_it(steps: fleet_converge_job().steps)
+  match outcome_accepted_value(fleet_converge_job()) {
+    Absent => false
+    Present { value: job } => every_wif_reader_binds_it(steps: job.steps)
+  }
 }
 
 // DISCRIMINATING CONTROLS on the predicate: a reader with no env, or with an env binding something else, refuses; a

@@ -36,6 +36,7 @@ import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_connect_timeout, gunb
 import gunbc.ci.ci_bash_step { gunbc_ci_bash_rendered, gunbc_ci_repo_root_statement }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.ci.ci_retry { ci_retry_body_run }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
@@ -89,7 +90,7 @@ data gunbc_ci_approval_ntfy_retire_target: GunbcRunStepTarget = gunbc_run_step_t
 // named (gunbc.auth.approval_broker_cutover release_admission). A receipt written by the installer
 // asserting it installed would be the control-plane fact standing in for the subject observation
 // that gunbc.recurring_failure_mode control_plane_acknowledgement_minted_as_effect exists to refuse.
-fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
+fn gunbc_ci_approval_broker_dark_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_approval_broker_dark_install_target,
@@ -101,7 +102,7 @@ fn gunbc_ci_approval_broker_dark_install_invoke() -> String {
 // THE ntfy RETIREMENT'S INVOKE. claim_run is false and receipt_rel is none, for the reason the dark
 // install's annotation gives: the fold writes its own readback receipt to the step summary, and a
 // run-step receipt would be the installer asserting it retired.
-fn gunbc_ci_approval_ntfy_retire_invoke() -> String {
+fn gunbc_ci_approval_ntfy_retire_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_approval_ntfy_retire_target,
@@ -159,20 +160,23 @@ fn gunbc_ci_submission_key_trap_body() -> List<Node> {
   [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE"), bash_build_word_var(name: "SUB_FILE")])]
 }
 
-fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
+fn gunbc_ci_submission_key_statements(stem: String) -> Outcome<List<Node>> {
+  bind_outcome(
+    o: gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_trap_body(), set_e: false),
+    f: fn(trap_text) {
   let fetch = bash_build_command_with_words(words: [
     bash_build_word_lit(text: "curl"), bash_build_word_lit(text: "-sSf"), bash_build_word_lit(text: "--connect-timeout"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
     bash_build_word_lit(text: "--max-time"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "RESP_FILE"),
     bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: approval_submission_mac_access_url()),
   ])
   let decode = bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "SUB_FILE"))
-  [
+  outcome_accepted(value: [
     bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]),
     bash_build_command_from_lits(lits: ["umask", "077"]),
     bash_build_assign(name: "HDR_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-auth-header"))])),
     bash_build_assign(name: "RESP_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-sm.json"))])),
     bash_build_assign(name: "SUB_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: "/approval-submission-mac-key")])),
-    bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_trap_body(), set_e: false)), bash_build_word_lit(text: "EXIT")]),
+    bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: trap_text), bash_build_word_lit(text: "EXIT")]),
     bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE")),
     bash_build_if_else_from_stmts(cond: bash_build_and_then(left: fetch, right: decode), then_stmts: [
         bash_build_command_with_words(words: [bash_build_word_lit(text: "chmod"), bash_build_word_lit(text: "600"), bash_build_word_var(name: "SUB_FILE")]),
@@ -182,7 +186,9 @@ fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
         bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "submission MAC key not materialized: a run that must file will refuse there; a held lifecycle resumes without it")])]),
       ]),
     gunbc_ci_repo_root_statement(),
-  ]
+  ])
+    }
+  )
 }
 
 // THE D0 DOOR'S PRELUDE materializes the submission MAC key alone (the door signs one filing; it
@@ -195,23 +201,42 @@ fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
 // typed cause (gunbc.auth.approval_gate approval_file_stored_request), a resume proceeds. The
 // transport is the one shared fetch (gunbc_ci_sm_secret_to_dest_file_command), bounded inside the
 // prelude allowance.
-fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
-  join([
-    gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-    claim_run: false), "\n",
-  ], "")
+fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
+    claim_run: false),
+    f: fn(zesty_c) {
+      bind_outcome(
+        o: gunbc_ci_submission_key_statements(stem: stem),
+        f: fn(key_stmts) {
+          bind_outcome(
+            o: gunbc_ci_bash_rendered(stmts: key_stmts, set_e: false),
+            f: fn(key_text) {
+              outcome_accepted(value:join([key_text, "\n", zesty_c, "\n"], ""))
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
-fn gunbc_ci_approval_keyring_converge_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
-    gunbc_run_step_script_with_prelude_for_target(
+
+fn gunbc_ci_approval_keyring_converge_invoke() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_step_script_with_prelude_for_target(
       prelude: gunbc_ci_approval_keyring_converge_prelude(),
       source_roots: witness_layer_roots,
       target: gunbc_ci_approval_keyring_converge_target,
       claim_run: false,
       receipt_rel: none
-    )
+    ),
+    f: fn(zesty_c) {
+      outcome_accepted(value:concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_approval_keyring_converge_shell_emit_dissolution_trigger), "\n")),
+    zesty_c
+  ))
+    }
   )
 }
+

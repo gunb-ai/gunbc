@@ -2,7 +2,7 @@ module v2.workflow.gunbc_invoke_step_emit
 
 import std.algebra { Cons, Empty, FreeMonoid, list_flat_map }
 import std.types { Char }
-import v2.std.text { string_contains_char }
+import v2.std.text { string_contains_char, String }
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_shell_unquoted_path_alphabet, orch_shell_unquoted_path_ok }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
@@ -24,7 +24,22 @@ import v2.std.orchestration {
   Run,
 }
 import std.optional { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  DeclarationLocus,
+  Locus,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  UserInputBoundary,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { symbol_intern_lexeme }
 
 // THE SINGLE ROOT for emitting a `gunbc run` workflow step. Before this module every
 // such step was a per-site concat of a shell string (gunbc.cli_invoke gunbc_run_shell),
@@ -116,48 +131,72 @@ fn gunbc_invoke_sanitize_word(word: String) -> String {
   list_flat_map(xs: word, f: gunbc_invoke_sanitize_char)
 }
 
-data gunbc_invoke_step_emit_refused_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step: an invocation word carried characters outside the emitter unquoted-word alphabet. This marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen). The refused word is shown SANITIZED through that same alphabet, every refused character replaced by an underscore, so no byte of the refused input reaches a runner. Sanitized refused word: "
+// THE WORD-WALL REFUSAL, typed and located: an invocation word (literal flag, entry path, function
+// name, source root) fell outside the orchestration emitter's unquoted-word alphabet. The refused word
+// is projected through the SAME alphabet that judged it (gunbc_invoke_sanitize_word), so the reason
+// NAMES which word failed and WHERE its bad characters were while no byte of untrusted input reaches
+// the emitted bytes or a runner -- the injection lesson above, now carried in the refusal reason
+// instead of a marker line: the reason travels downstream like the old marker did, so it too must lie
+// inside the alphabet by construction, never splice the word verbatim. It rides the carrier to
+// gunbc.generated_artifact_emit artifact_generate, where it becomes a typed, located
+// ArtifactGenerationRefused -- never a sentinel in the rendered workflow.
+data gunbc_invoke_word_wall_reason_prefix: String = "gunbc invoke word wall refused: v2.workflow.gunbc_invoke_step_emit refused to render a gunbc run step because an invocation word carried characters outside the emitter unquoted-word alphabet (gunbc.design_argument::fail_closed: refuse, never widen). The refused word is shown sanitized through that same alphabet, every refused character replaced by an underscore. Sanitized refused word: "
 
-data gunbc_invoke_step_orch_refused_poison: String = "__GUNBC_INVOKE_EMIT_REFUSED__ v2.compiler.emit_orchestration rejected the gunbc run step pipeline; this marker is not valid workflow shell, so the committed workflow drift gate goes red rather than a hand-spelled fallback masking the refusal (gunbc.design_argument::fail_closed: refuse, never widen)\n"
-
-fn gunbc_invoke_word_unsafe_poison(word: String) -> String {
-  concat(
-    gunbc_invoke_step_emit_refused_poison_prefix,
-    concat(gunbc_invoke_sanitize_word(word: word), "\n")
-  )
+// THE CITATION FORM FOR THIS MODULE'S OWN REFUSALS: a DeclarationLocus naming the refusing authority by
+// its qualified path, so the refusal stays located at what refused even after any re-stamping.
+fn gunbc_invoke_step_emit_locus() -> Locus {
+  DeclarationLocus {
+    declaration: Cons {
+      head: symbol_intern_lexeme(lexeme: "v2.workflow.gunbc_invoke_step_emit"),
+      tail: Empty
+    }
+  }
 }
 
-// THE THIRD SIBLING OF THIS REFUSAL FAMILY: a run-step TARGET whose module derives no storage path
-// (gunbc.source_layout layout_module_storage_path answers Absent). The refusal renders HERE, with this
-// module's own character map -- one sanitizer for the whole family, no copy beside the alphabet's home
-// (gunbc.design_argument::single_authority). Like the word-wall poison it LOCATES itself in the rendered
-// bytes: the words after the marker carry the target's module_path and decl_name sanitized through the
-// alphabet, so the gate's reason can name the family while the marker line names the row. The typed
-// threading that would delete this sentinel with its siblings is integration concern
-// `emitter_string_return_carries_no_typed_refusal` (gunbc.integration_concern).
-data gunbc_run_step_target_unstored_poison_prefix: String = "__GUNBC_INVOKE_EMIT_REFUSED__ gunbc.ci.ci_run_step_target refused to render a run-step target: the named module derives no storage path from gunbc.source_layout layout_module_storage_path (a bare or top-level name, or a module outside every registered storage root). This marker is not valid workflow shell, so the Tier O generated-artifact gate refuses the workflow rather than committing a step whose file cannot be named (gunbc.design_argument::fail_closed: refuse, never fabricate). Refused target, sanitized per character through the emitter alphabet, module_path then decl_name: "
-
-fn gunbc_run_step_target_unstored_poison(target: GunbcRunStepTarget) -> String {
-  concat(
-    concat(
-      concat(
-        concat(gunbc_run_step_target_unstored_poison_prefix, gunbc_invoke_sanitize_word(word: target.declaration.module_path as String)),
-        " ",
-      ),
-      gunbc_invoke_sanitize_word(word: target.declaration.decl_name as String),
-    ),
-    "\n",
-  )
+fn gunbc_invoke_word_wall_diagnostic(word: String) -> Diagnostic {
+  Diagnostic {
+    reason: symbol_intern_lexeme(lexeme: concat(gunbc_invoke_word_wall_reason_prefix, gunbc_invoke_sanitize_word(word: word))),
+    at: gunbc_invoke_step_emit_locus,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
-// THE PATH AS ONE TOTAL CONSUMER VIEW: the derived path, or this family's located refusal. A caller
-// that renders a run-step invocation into script text takes this and lets the Tier O gate turn the
-// poison into a typed ArtifactGenerationRefused; a caller that must branch on Absent itself takes
-// gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path.
-fn gunbc_run_step_target_entry_or_poison(target: GunbcRunStepTarget) -> String {
+
+// THE ORCHESTRATION REFUSAL carries no text of its own: the orchestration emitter
+// (v2.compiler.emit_orchestration orch_emit_pipeline) ALREADY answers with a located
+// v2.std.diagnostic Outcome, so the step emitter FORWARDS those diagnostics rather than collapsing them
+// into its own words (gunbc.design_argument::single_authority -- the diagnostic authority is the
+// orchestrator's, not a copy here). See gunbc_invoke_step_emit_pipeline.
+
+// THE THIRD SIBLING, typed and located: a run-step TARGET whose module derives no storage path
+// (gunbc.source_layout layout_module_storage_path answers Absent). Its module_path and decl_name are
+// carried STRUCTURALLY in a DeclarationLocus -- the citation form the diagnostic model reserves for
+// naming a refusal's subject so it survives re-stamping -- AND sanitized through the alphabet in the
+// reason, so the artifact refusal is both located (the locus) and human-readable (the reason) without a
+// fabricated path ever reaching the bytes (gunbc.design_argument::fail_closed: refuse, never fabricate).
+data gunbc_run_step_target_unstored_reason_prefix: String = "gunbc.ci.ci_run_step_target refused to render a run-step target: the named module derives no storage path from gunbc.source_layout layout_module_storage_path (a bare or top-level name, or a module outside every registered storage root). Refused target, sanitized per character through the emitter alphabet, module_path then decl_name: "
+
+fn gunbc_run_step_target_unstored_diagnostic(target: GunbcRunStepTarget) -> Diagnostic {
+  Diagnostic {
+    reason: symbol_intern_lexeme(lexeme: concat(concat(concat(gunbc_run_step_target_unstored_reason_prefix, gunbc_invoke_sanitize_word(word: target.declaration.module_path as String)), " "), gunbc_invoke_sanitize_word(word: target.declaration.decl_name as String))),
+    at: DeclarationLocus {
+      declaration: Cons {
+        head: symbol_intern_lexeme(lexeme: target.declaration.module_path as String),
+        tail: Cons { head: symbol_intern_lexeme(lexeme: target.declaration.decl_name as String), tail: Empty }
+      }
+    },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+// THE PATH AS ONE TOTAL CONSUMER VIEW, typed: the derived path, or this family's located refusal as a
+// carrier. A caller that renders a run-step invocation into script text binds this outcome and lets the
+// refusal reach gunbc.generated_artifact_emit, which turns it into a typed ArtifactGenerationRefused; a
+// caller that must branch on Absent itself takes gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path.
+fn gunbc_run_step_target_entry_or_refusal(target: GunbcRunStepTarget) -> Outcome<String> {
   match gunbc_run_step_target_entry_path(target: target) {
-    Present { value: path } => path
-    Absent => gunbc_run_step_target_unstored_poison(target: target)
+    Present { value: path } => outcome_accepted(path)
+    Absent => outcome_rejected(d: gunbc_run_step_target_unstored_diagnostic(target: target))
   }
 }
 
@@ -239,7 +278,7 @@ fn gunbc_run_command(
   entry: String,
   function: String,
   claim_run: Bool
-) -> String {
+) -> Outcome<String> {
   let words = gunbc_run_invocation_words(
     source_roots: source_roots,
     entry: entry,
@@ -248,31 +287,36 @@ fn gunbc_run_command(
   )
   let unsafe_word = gunbc_invoke_first_unsafe_word(words: words)
   if unsafe_word != "" {
-    gunbc_invoke_word_unsafe_poison(word: unsafe_word)
+    outcome_rejected(d: gunbc_invoke_word_wall_diagnostic(word: unsafe_word))
   } else {
-    gunbc_invoke_words_command(words: words)
+    outcome_accepted(value: gunbc_invoke_words_command(words: words))
   }
 }
 
 // THE ONE ENTRY POINT FOR INVOKING A RUN-STEP TARGET (gunbc.design_argument::root_generalization). A
 // caller hands over the target; it never restates an entry path and a function name -- the entry path
-// is DERIVED from the target's declaration by gunbc_run_step_target_entry_or_poison in this module,
+// is DERIVED from the target's declaration by gunbc_run_step_target_entry_or_refusal in this module,
 // which reads gunbc.ci.ci_run_step_target gunbc_run_step_target_entry_path (the single target-to-path
-// derivation) and renders this family's poison above (never a fabricated path) when the module belongs
-// to no registered storage root;
-// the Tier O gate turns that poison into a typed ArtifactGenerationRefused. Everything below this line
-// -- words, alphabet, receipts, root stamps, preludes -- is shared machinery these target entry points
-// delegate to; no caller composes those from a target's parts.
+// derivation) and returns this family's located refusal in the carrier (never a fabricated path) when
+// the module belongs to no registered storage root; the refusal rides the carrier to
+// gunbc.generated_artifact_emit, which turns it into a typed ArtifactGenerationRefused. Everything below
+// this line -- words, alphabet, receipts, root stamps, preludes -- is shared machinery these target
+// entry points delegate to; no caller composes those from a target's parts.
 fn gunbc_run_command_for_target(
   source_roots: List<String>,
   target: GunbcRunStepTarget,
   claim_run: Bool
-) -> String {
-  gunbc_run_command(
-    source_roots: source_roots,
-    entry: gunbc_run_step_target_entry_or_poison(target: target),
-    function: target.declaration.decl_name as String,
-    claim_run: claim_run
+) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_step_target_entry_or_refusal(target: target),
+    f: fn(path) {
+      gunbc_run_command(
+        source_roots: source_roots,
+        entry: path,
+        function: target.declaration.decl_name as String,
+        claim_run: claim_run
+      )
+    }
   )
 }
 
@@ -286,37 +330,40 @@ fn gunbc_run_step_intent(
   function: String,
   claim_run: Bool,
   receipt_rel: String?
-) -> Pipeline {
-  Pipeline {
-    steps: concat(
-      concat(
-        prelude,
-        [
-          gunbc_invoke_root_stamp_step(),
-          gunbc_invoke_do(
-            command: gunbc_run_command(
-              source_roots: source_roots,
-              entry: entry,
-              function: function,
-              claim_run: claim_run
-            )
-          )
-        ]
-      ),
-      gunbc_invoke_receipt_steps(receipt_rel: receipt_rel)
+) -> Outcome<Pipeline> {
+  bind_outcome(
+    o: gunbc_run_command(
+      source_roots: source_roots,
+      entry: entry,
+      function: function,
+      claim_run: claim_run
     ),
-    on_failure: FailFast
-  }
+    f: fn(command) {
+      outcome_accepted(value: Pipeline {
+        steps: concat(
+          concat(
+            prelude,
+            [
+              gunbc_invoke_root_stamp_step(),
+              gunbc_invoke_do(command: command)
+            ]
+          ),
+          gunbc_invoke_receipt_steps(receipt_rel: receipt_rel)
+        ),
+        on_failure: FailFast
+      })
+    }
+  )
 }
 
-fn gunbc_invoke_step_emit_pipeline(p: Pipeline) -> String {
+fn gunbc_invoke_step_emit_pipeline(p: Pipeline) -> Outcome<String> {
   match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        None => source.carried
-        Some { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+        None => outcome_accepted(value: source.carried)
+        Some { diagnostics: ds } => Rejected { diagnostics: ds }
       }
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
   }
 }
 
@@ -330,16 +377,17 @@ fn gunbc_run_step_script(
   function: String,
   claim_run: Bool,
   receipt_rel: String?
-) -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: gunbc_run_step_intent(
+) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_step_intent(
       prelude: [],
       source_roots: source_roots,
       entry: entry,
       function: function,
       claim_run: claim_run,
       receipt_rel: receipt_rel
-    )
+    ),
+    f: fn(p) { gunbc_invoke_step_emit_pipeline(p: p) }
   )
 }
 
@@ -350,13 +398,18 @@ fn gunbc_run_step_script_for_target(
   target: GunbcRunStepTarget,
   claim_run: Bool,
   receipt_rel: String?
-) -> String {
-  gunbc_run_step_script(
-    source_roots: source_roots,
-    entry: gunbc_run_step_target_entry_or_poison(target: target),
-    function: target.declaration.decl_name as String,
-    claim_run: claim_run,
-    receipt_rel: receipt_rel
+) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_step_target_entry_or_refusal(target: target),
+    f: fn(path) {
+      gunbc_run_step_script(
+        source_roots: source_roots,
+        entry: path,
+        function: target.declaration.decl_name as String,
+        claim_run: claim_run,
+        receipt_rel: receipt_rel
+      )
+    }
   )
 }
 
@@ -368,16 +421,19 @@ fn gunbc_run_step_script_with_prelude_for_target(
   target: GunbcRunStepTarget,
   claim_run: Bool,
   receipt_rel: String?
-) -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: gunbc_run_step_intent(
-      prelude: prelude,
-      source_roots: source_roots,
-      entry: gunbc_run_step_target_entry_or_poison(target: target),
-      function: target.declaration.decl_name as String,
-      claim_run: claim_run,
-      receipt_rel: receipt_rel
-    )
+) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_step_target_entry_or_refusal(target: target),
+    f: fn(path) {
+      gunbc_run_step_script_with_prelude(
+        prelude: prelude,
+        source_roots: source_roots,
+        entry: path,
+        function: target.declaration.decl_name as String,
+        claim_run: claim_run,
+        receipt_rel: receipt_rel
+      )
+    }
   )
 }
 
@@ -391,16 +447,17 @@ fn gunbc_run_step_script_with_prelude(
   function: String,
   claim_run: Bool,
   receipt_rel: String?
-) -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: gunbc_run_step_intent(
+) -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_run_step_intent(
       prelude: prelude,
       source_roots: source_roots,
       entry: entry,
       function: function,
       claim_run: claim_run,
       receipt_rel: receipt_rel
-    )
+    ),
+    f: fn(p) { gunbc_invoke_step_emit_pipeline(p: p) }
   )
 }
 
@@ -413,11 +470,11 @@ fn gunbc_run_step_script_with_prelude(
 // its steps with newlines and does not terminate the last one, which is right for a whole step and
 // wrong for a fragment something else continues: the first emission of this ran the stamp and the
 // next command together on one line. A caller cannot get that wrong if the line arrives complete.
-fn gunbc_invoke_root_stamp_script() -> String {
-  concat(
-    gunbc_invoke_step_emit_pipeline(
+fn gunbc_invoke_root_stamp_script() -> Outcome<String> {
+  bind_outcome(
+    o: gunbc_invoke_step_emit_pipeline(
       p: Pipeline { steps: [gunbc_invoke_root_stamp_step()], on_failure: FailFast }
     ),
-    "\n"
+    f: fn(s) { outcome_accepted(value: concat(s, "\n")) }
   )
 }

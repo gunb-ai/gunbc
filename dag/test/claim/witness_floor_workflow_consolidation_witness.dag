@@ -8,7 +8,8 @@ import gunbc.witness.witness_floor_workflow { expected_witness_floor_yml, Witnes
 import gunbc.witness.witness_floor_lanes { build_lane_job_id, floor_lane_job_id, required_lanes_roster }
 import gunbc.fabric.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of }
+import v2.std.diagnostic { outcome_accepted_value }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Outcome }
 import extdeps.languages.yaml.gha_workflow { pr_activity_string, workflow_triggers_yaml }
@@ -269,11 +270,17 @@ test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool
 // notice -- every other clause here reads the job ids from their declarations, so all of them
 // stay green under a rename that reintroduces the collision.
 test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
-  !any(fleet_converge_workflow.jobs, j => j.id == build_lane_job_id)
-    && !any(fleet_converge_workflow.jobs, j => j.id == floor_lane_job_id)
-    && build_lane_job_id != floor_lane_job_id
-    && build_lane_job_id != witness_floor_workflow_job_id
-    && floor_lane_job_id != witness_floor_workflow_job_id
+  // The committed fleet-converge workflow is emitted through the retyped run-step family, so its value is now
+  // an Outcome<Workflow>. Fail-closed: a refused emission makes this claim RED rather than vacuously true.
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      !any(wf.jobs, j => j.id == build_lane_job_id)
+        && !any(wf.jobs, j => j.id == floor_lane_job_id)
+        && build_lane_job_id != floor_lane_job_id
+        && build_lane_job_id != witness_floor_workflow_job_id
+        && floor_lane_job_id != witness_floor_workflow_job_id
+  }
 }
 
 // NO LANE WAITS ON ANOTHER, WHICH IS THE ENTIRE CONTENT OF "PARALLEL" -- and the

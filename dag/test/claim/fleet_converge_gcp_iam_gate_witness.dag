@@ -11,6 +11,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_gcp_iam_bootstrap_request_job_id,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_run { gcp_iam_bootstrap_delta_approved_output }
+import v2.std.diagnostic { outcome_accepted_value }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,9 +25,18 @@ fn emitted_if_is(emitted: String?, gate: Expression) -> Bool {
 }
 
 test fn each_gcp_iam_gate_is_what_the_workflow_emits() -> Bool {
-  emitted_if_is(emitted: fleet_converge_gcp_iam_bootstrap_job().if_condition, gate: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
-    && emitted_if_is(emitted: fleet_converge_gcp_iam_bootstrap_request_job().if_condition, gate: fleet_converge_gcp_iam_bootstrap_step_gate)
-    && emitted_if_is(emitted: fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr).if_condition, gate: fleet_converge_gcp_iam_job_gate)
+  match outcome_accepted_value(fleet_converge_gcp_iam_bootstrap_job()) {
+    Present { value: j1 } => emitted_if_is(emitted: j1.if_condition, gate: fleet_converge_gcp_iam_bootstrap_apply_job_gate)
+      && match outcome_accepted_value(fleet_converge_gcp_iam_bootstrap_request_job()) {
+        Present { value: j2 } => emitted_if_is(emitted: j2.if_condition, gate: fleet_converge_gcp_iam_bootstrap_step_gate)
+          && match outcome_accepted_value(fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)) {
+            Present { value: j3 } => emitted_if_is(emitted: j3.if_condition, gate: fleet_converge_gcp_iam_job_gate)
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 data approved_conjunct: Expression = Equals {

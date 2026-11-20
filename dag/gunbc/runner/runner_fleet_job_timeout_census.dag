@@ -82,7 +82,8 @@ import gunbc.heal_publisher_workflow { heal_publisher_census_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow_of }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow_triggers }
-import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow }
+import gunbc.fleet.branch_run_grant_broker_workflow { branch_run_grant_broker_workflow_of }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_reason_lexemes }
 import gunbc.ci.ci_fleet { gunbc_ci_fleet_offer }
 import gunbc.ci.repository_ci_profile {
   gunbc_heal_job, gunbc_drift_watch_job, gunbc_repository_ci_profile
@@ -154,40 +155,92 @@ type FleetWorkflowCensusOmission {
 // that exists whether or not the repository declared the job. A repository with no heal job therefore has
 // no heal row in this census, which is the truth about its committed YAML, rather than a census row about a
 // job whose id, runner and ceiling were invented because nothing declared them.
+// THE ONE MATCH PER COMMITTED EMISSION PRODUCER. The three committed workflows whose bodies are emitted
+// through the run-step invoke family (heal, drift-watch, branch-run-grant-broker) each decide accept-or-refuse
+// exactly once here. fleet_workflow_census_rows projects the accepted arms and fleet_workflow_census_refusals
+// projects the refused arms from THIS single list, so the two can never drift apart: a refusal recorded for one
+// producer is a row dropped for that same producer, and no producer's refusal can be left uncounted
+// (gunbc.design_argument::fail_closed -- every degradation is typed, located and countable; and
+// gunbc.design_argument::root_generalization -- one leaf answers all three siblings rather than a leaf per
+// consumer). A structural absence (the heal job, or the drift job/cron, is not declared) yields NO emission:
+// it is the truth about the committed YAML, not a refusal, so it contributes neither a row nor a refusal.
+type FleetCensusEmission
+  = Emitted { artifact: GeneratedArtifact, workflow: Workflow }
+  | Refused { artifact: GeneratedArtifact, reason: String }
+
+fn fleet_census_emissions() -> List<FleetCensusEmission> {
+  concat(
+    match gunbc_heal_job() {
+      Present { value: job } => match heal_workflow_of(job: job) {
+        Accepted { value: wf } => [Emitted { artifact: HealWorkflowYamlArtifact, workflow: wf }]
+        Rejected { diagnostics: d } => [Refused { artifact: HealWorkflowYamlArtifact, reason: concat("the committed heal workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
+      }
+      Absent => []
+    },
+    concat(
+      match gunbc_drift_watch_job() {
+        Present { value: row } => match row.cron {
+          Present { value: cron } => match drift_watch_workflow_of(row: row, cron: cron) {
+            Accepted { value: wf } => [Emitted { artifact: DriftWatchWorkflowYamlArtifact, workflow: wf }]
+            Rejected { diagnostics: d } => [Refused { artifact: DriftWatchWorkflowYamlArtifact, reason: concat("the committed drift-watch workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
+          }
+          Absent => []
+        }
+        Absent => []
+      },
+      match branch_run_grant_broker_workflow_of() {
+        Accepted { value: wf } => [Emitted { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: wf }]
+        Rejected { diagnostics: d } => [Refused { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, reason: concat("the committed branch-run-grant-broker workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
+      }
+    )
+  )
+}
+
+// THE EMITTED CENSUS ROWS: the two structurally-present committed workflows (the witness-floor compiler-gate
+// constant, and the publisher handed over explicitly), plus the accepted arm of each emission producer, read
+// off the single fleet_census_emissions list above.
 fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
   concat(
+    [FleetWorkflowCensusRow { artifact: WitnessFloorYamlArtifact, workflow: compiler_gate_workflow }],
     concat(
-      [FleetWorkflowCensusRow { artifact: WitnessFloorYamlArtifact, workflow: compiler_gate_workflow }],
-      concat(
-        match gunbc_heal_job() {
-          Present { value: job } => [FleetWorkflowCensusRow { artifact: HealWorkflowYamlArtifact, workflow: heal_workflow_of(job: job) }]
-          Absent => []
-        },
-        concat(
-          // THE PUBLISHER ROW, HANDED OVER EXPLICITLY. This census enumerates this repository's own four
-          // committed workflows, so it names gunbc's row rather than having the emitter read a global on its
-          // behalf; a refused row yields no census row, and the claim that every committed artifact appears
-          // in this census is what makes that loud.
-          match heal_publisher_census_workflow(profile: gunbc_repository_ci_profile()) {
-            Present { value: workflow } => [
-              FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: workflow }
-            ]
-            Absent => []
-          },
-          match gunbc_drift_watch_job() {
-            Present { value: row } =>
-              match row.cron {
-                Present { value: cron } => [
-                  FleetWorkflowCensusRow { artifact: DriftWatchWorkflowYamlArtifact, workflow: drift_watch_workflow_of(row: row, cron: cron) }
-                ]
-                Absent => []
-              }
-            Absent => []
+      // THE PUBLISHER ROW, HANDED OVER EXPLICITLY. This census enumerates this repository's own committed
+      // workflows, so it names gunbc's row rather than having the emitter read a global on its behalf; a
+      // publisher that is not declared is a structural absence (Optional), not an emission refusal.
+      match heal_publisher_census_workflow(profile: gunbc_repository_ci_profile()) {
+        Present { value: workflow } => [FleetWorkflowCensusRow { artifact: HealPublisherWorkflowYamlArtifact, workflow: workflow }]
+        Absent => []
+      },
+      list_flat_map(
+        xs: fleet_census_emissions(),
+        f: fn(e) {
+          match e {
+            Emitted { artifact: a, workflow: wf } => [FleetWorkflowCensusRow { artifact: a, workflow: wf }]
+            Refused { artifact: _, reason: _ } => []
           }
-        )
+        }
       )
-    ),
-    [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow }]
+    )
+  )
+}
+
+// THE CENSUS REFUSALS: the committed workflows whose run-step emission was refused. A refused workflow does
+// not render, so it contributes no row to fleet_workflow_census_rows and no jobs to the bound -- the drop
+// there is sound, because a workflow that fails to emit never ships and so has no jobs to bound. But it is NOT
+// silently lost: the refusal is recorded here, typed and located (which artifact, which refusal reason), read
+// off the SAME fleet_census_emissions list as the rows, so no producer's refusal -- including the heal arm --
+// can go uncounted. This ledger is deliberately SEPARATE from fleet_workflow_census_omissions: those are
+// structural, discharged omissions (a workflow legitimately outside the bound population); a refusal is an
+// UNMET obligation, not an exemption, so the artifact must stay unexplained to fleet_census_domain_is_explained
+// (which stays red), rather than be laundered into an omission that would make the domain check pass over a gap.
+fn fleet_workflow_census_refusals() -> List<FleetWorkflowCensusOmission> {
+  list_flat_map(
+    xs: fleet_census_emissions(),
+    f: fn(e) {
+      match e {
+        Emitted { artifact: _, workflow: _ } => []
+        Refused { artifact: a, reason: r } => [FleetWorkflowCensusOmission { artifact: a, reason: r }]
+      }
+    }
   )
 }
 

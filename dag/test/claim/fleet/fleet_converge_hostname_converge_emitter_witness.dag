@@ -17,6 +17,7 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
+import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import extdeps.languages.yaml.types { YamlString }
 import extdeps.github.actions {
   ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput, DispatchInputType,
@@ -24,6 +25,7 @@ import extdeps.github.actions {
   workflow_dispatch_max_inputs,
 }
 import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_workflow_of,
   FleetConvergeYamlGenerated,
   FleetConvergeYamlGenerationRefused,
   HostnameConverge,
@@ -66,7 +68,10 @@ import gunbc.host.host_hostname_converge {
 data hostname_converge_job_id: String = "hostname-converge"
 
 fn emitted_jobs() -> List<Job> {
-  fleet_converge_jobs()
+  match outcome_accepted_values(fleet_converge_jobs()) {
+    Present { value: jobs } => jobs
+    Absent => []
+  }
 }
 
 fn job_with_id(id: String) -> Job? {
@@ -87,6 +92,16 @@ fn step_named(job: Job, name: String) -> Step? {
   }
 }
 
+// fleet_converge_hostname_converge_job() now yields Outcome<Job>; unwrap the accepted job at an arm value
+// (the position the checker resolves) and delegate to step_named. A refused job yields none, so the caller's
+// `Absent => false` arm makes the witness fail closed rather than pass over a missing committed job.
+fn step_named_in(job_o: Outcome<Job>, name: String) -> Step? {
+  match outcome_accepted_value(job_o) {
+    Present { value: job } => step_named(job: job, name: name)
+    Absent => none
+  }
+}
+
 fn step_name_text(step: Step) -> String {
   match step {
     RunStep { name: Present { value: n }, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => n
@@ -98,6 +113,34 @@ fn step_if_text(step: Step) -> String {
   match step {
     RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: c }, continue_on_error: _, timeout_minutes: _ } => c
     _ => ""
+  }
+}
+
+// THE RETYPED PRODUCERS YIELD Outcome<Step>. The type checker's floor defect accepts an Outcome<Step> where a
+// Step is declared, so handing one straight to step_name_text/step_if_text does NOT error — the RunStep match
+// simply misses and returns the empty string, silently. Unwrap the accepted step first; a refusal yields the
+// empty text so an assertion over it fails closed rather than passing on a fabricated blank.
+fn step_name_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => step_name_text(step: step)
+    Absent => ""
+  }
+}
+
+fn step_if_of(step_o: Outcome<Step>) -> String {
+  match outcome_accepted_value(step_o) {
+    Present { value: step } => step_if_text(step: step)
+    Absent => ""
+  }
+}
+
+// A _of helper yields "" on a refusal, so a POSITIVE assertion (contains/==) over it fails closed — but a
+// NEGATIVE one (!=, !contains, count == 0) would pass vacuously against the blank. Any such assertion must
+// first require the step actually emitted. This is that guard.
+fn is_accepted_step(step_o: Outcome<Step>) -> Bool {
+  match outcome_accepted_value(step_o) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -206,10 +249,10 @@ test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() 
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+      match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
-          step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+          step_if_text(step: plan) == step_if_of(step_o: fleet_converge_hostname_converge_read_back_step())
             && string_contains(s: step_if_text(step: plan), pattern: hostname_converge_mode as String)
             && !string_contains(s: step_if_text(step: plan), pattern: "converge ==")
       }
@@ -335,7 +378,7 @@ test fn the_act_row_carries_no_default_and_asks_for_nothing() -> Bool {
 // alone must not be enough to rename a machine -- and neither half may be dropped: a gate that lost the mode
 // half would run an apply on any dispatch that happened to send `converge` for some other mode's form.
 test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
-  match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_apply_step())) {
+  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_of(step_o: fleet_converge_hostname_converge_apply_step())) {
     Absent => false
     Present { value: apply } =>
       string_contains(
@@ -371,7 +414,7 @@ test fn the_apply_step_is_locked_behind_the_act_word() -> Bool {
 // THE RE-ADOPT HAS ITS OWN GATE, separate from actuation: moving the committed baseline is a different
 // authority from writing a hostname, and one dispatch must not reach both by meaning one of them.
 test fn the_readopt_step_is_locked_behind_its_own_choice() -> Bool {
-  match step_named(job: fleet_converge_hostname_converge_job(), name: step_name_text(step: fleet_converge_hostname_converge_readopt_step())) {
+  match step_named_in(job_o: fleet_converge_hostname_converge_job(), name: step_name_of(step_o: fleet_converge_hostname_converge_readopt_step())) {
     Absent => false
     Present { value: readopt } =>
       string_contains(
@@ -442,12 +485,15 @@ test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> B
       },
     ],
   )
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: over) {
-    FleetConvergeYamlGenerationRefused { reason: r } =>
-      string_contains(s: r, pattern: "the_row_that_broke_the_file")
-        && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
-        && string_contains(s: r, pattern: "EVERY mode")
-    FleetConvergeYamlGenerated { content: _ } => false
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } => match fleet_converge_yml_after_dispatch_input_capacity(inputs: over, wf: wf) {
+      FleetConvergeYamlGenerationRefused { reason: r } =>
+        string_contains(s: r, pattern: "the_row_that_broke_the_file")
+          && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
+          && string_contains(s: r, pattern: "EVERY mode")
+      FleetConvergeYamlGenerated { content: _ } => false
+    }
   }
 }
 
@@ -458,11 +504,14 @@ test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> B
 // boundary if the roster changes size -- and the roster sits exactly ON the cap today, which is the whole
 // reason this mode declares no input of its own.
 test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) {
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } => match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs, wf: wf) {
       FleetConvergeYamlGenerationRefused { reason: _ } => false
       FleetConvergeYamlGenerated { content: c } =>
         string_contains(s: c, pattern: "hostname-converge")
     }
+  }
 }
 
 // THE JOB WAITS ON THE RELEASE BINS, which is what lets it run on a peer that has no checkout of its own
@@ -596,7 +645,7 @@ test fn the_target_and_the_peer_are_read_from_different_declared_fields() -> Boo
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+      match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
           let target = step_env_value(step: plan, key: hostname_converge_target_env_name as String)
@@ -685,10 +734,10 @@ fn lock_compares_a_declared_field_against_a_declared_word(text: String) -> Bool 
 
 test fn every_lock_compares_a_declared_field_against_a_word_the_form_offers() -> Bool {
   lock_compares_a_declared_field_against_a_declared_word(
-    text: step_if_text(step: fleet_converge_hostname_converge_apply_step()),
+    text: step_if_of(step_o: fleet_converge_hostname_converge_apply_step()),
   )
     && lock_compares_a_declared_field_against_a_declared_word(
-      text: step_if_text(step: fleet_converge_hostname_converge_readopt_step()),
+      text: step_if_of(step_o: fleet_converge_hostname_converge_readopt_step()),
     )
 }
 
@@ -700,12 +749,15 @@ test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
   match job_with_id(id: hostname_converge_job_id) {
     Absent => false
     Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
+      match step_named(job: job, name: step_name_of(step_o: fleet_converge_hostname_converge_plan_step())) {
         Absent => false
         Present { value: plan } =>
-          step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_apply_step())
-            && step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_readopt_step())
-            && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+          is_accepted_step(step_o: fleet_converge_hostname_converge_apply_step())
+            && is_accepted_step(step_o: fleet_converge_hostname_converge_readopt_step())
+            && is_accepted_step(step_o: fleet_converge_hostname_converge_read_back_step())
+            && step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_apply_step())
+            && step_if_text(step: plan) != step_if_of(step_o: fleet_converge_hostname_converge_readopt_step())
+            && step_if_text(step: plan) == step_if_of(step_o: fleet_converge_hostname_converge_read_back_step())
       }
   }
 }

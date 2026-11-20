@@ -24,6 +24,7 @@ import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_c
 import gunbc.runner.runner_ci_step { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
 import extdeps.github.expressions { serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_step_budget_env_name, host_cap_bracket_budget, runner_host_cap_drain_policy }
+import v2.std.diagnostic { outcome_accepted_value }
 
 // THE LINKAGE CONTROLS OF THE CAP BRACKET'S WORKFLOW: the emitted job carries the release step and the budget
 // delivery, and its timeout covers converge + release (a job-level timeout is a cancellation).
@@ -39,22 +40,40 @@ fn step_id_of(st: Step) -> String {
 fn job_step_ids(j: Job) -> List<String> { map(j.steps, s => step_id_of(st: s)) }
 
 test fn the_job_timeout_covers_the_converge_step_plus_its_release() -> Bool {
-  match fleet_converge_job().timeout_minutes {
-    Present { value: m } => m >= fleet_converge_host_cap_job_floor_minutes() && m == fleet_converge_job_timeout_minutes()
+  match outcome_accepted_value(fleet_converge_job()) {
+    Present { value: j } => match j.timeout_minutes {
+      Present { value: m } =>
+        match outcome_accepted_value(fleet_converge_host_cap_job_floor_minutes()) {
+          Present { value: floor_m } =>
+            match outcome_accepted_value(fleet_converge_job_timeout_minutes()) {
+              Present { value: tm } => m >= floor_m && m == tm
+              Absent => false
+            }
+          Absent => false
+        }
+      Absent => false
+    }
     Absent => false
   }
 }
 
 test fn the_emitted_job_carries_the_converge_and_the_always_release_steps() -> Bool {
-  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_file_converge")
-    && any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release")
+  match outcome_accepted_value(fleet_converge_job()) {
+    Present { value: j } =>
+      any(job_step_ids(j: j), i => i == "runner_host_file_converge")
+        && any(job_step_ids(j: j), i => i == "runner_host_cap_release")
+    Absent => false
+  }
 }
 
 test fn the_converge_step_is_delivered_the_declared_budget() -> Bool {
-  match fleet_converge_runner_host_file_converge_step() {
-    RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
-      any(kvs, e => e.key == runner_host_cap_step_budget_env_name)
-    _ => false
+  match outcome_accepted_value(fleet_converge_runner_host_file_converge_step()) {
+    Present { value: s } => match s {
+      RunStep { name: _, id: _, run: _, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+        any(kvs, e => e.key == runner_host_cap_step_budget_env_name)
+      _ => false
+    }
+    Absent => false
   }
 }
 
@@ -63,7 +82,10 @@ test fn the_release_does_not_write_the_converge_receipt() -> Bool {
 }
 
 test fn the_job_carries_the_release_receipt_upload() -> Bool {
-  any(job_step_ids(j: fleet_converge_job()), i => i == "runner_host_cap_release_receipt_upload")
+  match outcome_accepted_value(fleet_converge_job()) {
+    Present { value: j } => any(job_step_ids(j: j), i => i == "runner_host_cap_release_receipt_upload")
+    Absent => false
+  }
 }
 
 // ─── THE SPLIT CONTROLS OF THE EMITTED JOB (operator ruling 2026-10-24, run 40085967610) ──────────
@@ -90,14 +112,18 @@ fn env_pairs_of(st: Step) -> List<YamlKeyValue> {
 // all sit after fleet_converge_executor_subject_split_gate in the emitted job, so nothing can actuate
 // before the precondition has run. Positions are computed, not remembered.
 test fn the_split_gate_precedes_every_drain_and_mask_step() -> Bool {
-  let ids = job_step_ids(j: fleet_converge_job())
-  match index_of(ids: ids, wanted: "fleet_converge_executor_subject_split_gate") {
+  match outcome_accepted_value(fleet_converge_job()) {
     Absent => false
-    Present { value: gate } =>
-      all(["runner_host_file_converge", "runner_host_withdraw", "runner_host_restore"], a => match index_of(ids: ids, wanted: a) {
+    Present { value: j } =>
+      { let ids = job_step_ids(j: j)
+      match index_of(ids: ids, wanted: "fleet_converge_executor_subject_split_gate") {
         Absent => false
-        Present { value: i } => gate < i
-      })
+        Present { value: gate } =>
+          all(["runner_host_file_converge", "runner_host_withdraw", "runner_host_restore"], a => match index_of(ids: ids, wanted: a) {
+            Absent => false
+            Present { value: i } => gate < i
+          })
+      } }
   }
 }
 
@@ -122,17 +148,25 @@ fn index_of_from(ids: List<String>, wanted: String, i: Int) -> Optional<Int> {
 // beyond the gate's own echo. (The invoke strings are the entries' identities: the gate not containing
 // them is the gate not invoking them.)
 test fn the_split_gate_step_carries_the_refusal_and_no_act_entry() -> Bool {
-  match fleet_converge_executor_subject_split_gate_step() {
-    RunStep { name: _, id: Present { value: i }, run: r, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
-      i == "fleet_converge_executor_subject_split_gate"
-        && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
-        && string_contains(s: r, pattern: "exit 1")
-        && !string_contains(s: r, pattern: gunbc_ci_runner_host_withdraw_invoke())
-        && !string_contains(s: r, pattern: gunbc_ci_runner_host_restore_invoke())
-        && !string_contains(s: r, pattern: "--entry")
-        && any(kvs, e => e.key == fleet_converge_expected_host_env_name && env_value_is(e, "${{ github.event.inputs.host }}"))
-        && any(kvs, e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
-    _ => false
+  match outcome_accepted_value(gunbc_ci_runner_host_withdraw_invoke()) {
+    Absent => false
+    Present { value: withdraw_script } =>
+      match outcome_accepted_value(gunbc_ci_runner_host_restore_invoke()) {
+        Absent => false
+        Present { value: restore_script } =>
+          match fleet_converge_executor_subject_split_gate_step() {
+            RunStep { name: _, id: Present { value: i }, run: r, shell: _, env: Present { value: kvs }, working_directory: _, if_condition: Present { value: cond }, continue_on_error: _, timeout_minutes: _ } =>
+              i == "fleet_converge_executor_subject_split_gate"
+                && string_contains(s: r, pattern: fleet_converge_split_refusal_marker)
+                && string_contains(s: r, pattern: "exit 1")
+                && !string_contains(s: r, pattern: withdraw_script)
+                && !string_contains(s: r, pattern: restore_script)
+                && !string_contains(s: r, pattern: "--entry")
+                && any(kvs, e => e.key == fleet_converge_expected_host_env_name && env_value_is(e, "${{ github.event.inputs.host }}"))
+                && any(kvs, e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
+            _ => false
+          }
+      }
   }
 }
 
@@ -250,12 +284,23 @@ fn env_value_of(e: YamlKeyValue) -> String {
 // finalizer included, because a converge that died mid-bracket must have its masks lifted on the
 // SUBJECT, not re-admitted on the executor.
 test fn the_subject_named_steps_carry_their_subject_env() -> Bool {
-  let steps = map([
+  let carriers = [
     fleet_converge_runner_host_file_converge_step(),
     fleet_converge_runner_host_withdraw_step(),
     fleet_converge_runner_host_restore_step(),
     fleet_converge_runner_host_cap_release_step(),
-  ], st => any(env_pairs_of(st: st), e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}")))
-  all(steps, ok => ok)
-    && any(env_pairs_of(st: fleet_converge_runner_host_file_converge_step()), e => e.key == fleet_converge_expected_host_env_name && string_contains(s: env_value_of(e: e), pattern: "github.event.inputs.host"))
+  ]
+  let checks = map(carriers, o =>
+    match outcome_accepted_value(o) {
+      Present { value: st } =>
+        any(env_pairs_of(st: st), e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}"))
+      Absent => false
+    }
+  )
+  all(checks, ok => ok)
+    && match outcome_accepted_value(fleet_converge_runner_host_file_converge_step()) {
+         Present { value: st0 } =>
+           any(env_pairs_of(st: st0), e => e.key == fleet_converge_expected_host_env_name && string_contains(s: env_value_of(e: e), pattern: "github.event.inputs.host"))
+         Absent => false
+       }
 }

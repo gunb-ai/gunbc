@@ -38,6 +38,10 @@ import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
+import v2.std.diagnostic {
+  Outcome, StageDiagnosticPolicy, ShortCircuit,
+  bind_outcome, outcome_accepted, sequence_outcome, diagnostics_reason_lexemes
+}
 
 // THE SCHEDULED, READ-ONLY HALF OF GENERATION: IT FINDS DRIFT AND REPAIRS NOTHING.
 //
@@ -75,51 +79,70 @@ fn drift_watch_checkout_step() -> Step {
   }
 }
 
-fn drift_watch_check_step(row: ProjectionDrift) -> Step {
-  RunStep {
-    name: Present { value: "Compare each Tier O artifact with its authority (read-only)" },
-    id: none,
-    // THE CHECK TARGET, FROM THE REPOSITORY'S ROW. The row's `check` is the same DagInvocation the
-    // mirror's drift emitter reads, so one invocation answers both repositories' "are the committed bytes
-    // what the authority emits" question; this emitter no longer reaches past the row for it.
-    run: gunbc_run_step_script(
-      source_roots: witness_layer_roots,
-      entry: row.check.entry as String,
-      function: row.check.function as String,
-      claim_run: false,
-      receipt_rel: none
-    ),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
+fn drift_watch_check_step(row: ProjectionDrift) -> Outcome<Step> {
+  // THE SCRIPT IS A REFUSAL CARRIER, SO THE STEP IS TOO: a refused run-step target (word wall,
+  // orchestration refusal, or a module deriving no storage path) refuses the STEP here, located, and
+  // the job fold below drops the whole workflow rather than committing a step whose script was refused
+  // (gunbc.design_argument::fail_closed).
+  bind_outcome(
+    o: row.check,
+    f: fn(check) {
+      bind_outcome(
+        o: gunbc_run_step_script(
+          source_roots: witness_layer_roots,
+          entry: check.entry as String,
+          function: check.function as String,
+          claim_run: false,
+          receipt_rel: none
+        ),
+        f: fn(script) {
+      outcome_accepted(value: RunStep {
+        name: Present { value: "Compare each Tier O artifact with its authority (read-only)" },
+        id: none,
+        // THE CHECK TARGET, FROM THE REPOSITORY'S ROW. The row's `check` is the same DagInvocation the
+        // mirror's drift emitter reads, so one invocation answers both repositories' "are the committed bytes
+        // what the authority emits" question; this emitter no longer reaches past the row for it.
+        run: script,
+        shell: none,
+        env: none,
+        working_directory: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: none
+        })
+      }
+    )
+    }
+  )
 }
 
 type DriftWatchBoundStep {
-  step: Step
+  step: Outcome<Step>
   role: StepCapabilityRole
   step_name: String
 }
 
+// THE RUN-STEP FOLD POLICY. A run-step emission refusal is located on the step that could not be
+// rendered; the job short-circuits on the first refusal (gunbc.design_argument::fail_closed), never
+// emitting a partial job whose refused step would render as committed workflow bytes.
+data drift_watch_short_circuit: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: ShortCircuit }
+
 fn drift_watch_bound_steps(row: ProjectionDrift) -> List<DriftWatchBoundStep> {
   [
-    DriftWatchBoundStep { step: drift_watch_checkout_step(), role: capability_neutral, step_name: "Checkout the default branch" },
-    DriftWatchBoundStep { step: toolchain_home_isolation_step(), role: capability_neutral, step_name: "Isolate toolchain homes" },
+    DriftWatchBoundStep { step: outcome_accepted(value: drift_watch_checkout_step()), role: capability_neutral, step_name: "Checkout the default branch" },
+    DriftWatchBoundStep { step: outcome_accepted(value: toolchain_home_isolation_step()), role: capability_neutral, step_name: "Isolate toolchain homes" },
     DriftWatchBoundStep {
-      step: witness_floor_toolchain_step(),
+      step: outcome_accepted(value: witness_floor_toolchain_step()),
       role: provides_only(capabilities: [CargoCapability, RustcCapability, RustfmtCapability, RustupCapability]),
       step_name: "Install Rust toolchain",
     },
     DriftWatchBoundStep {
-      step: toolchain_pin_rustup_default_step(),
+      step: outcome_accepted(value: toolchain_pin_rustup_default_step()),
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
     DriftWatchBoundStep {
-      step: witness_floor_build_step(step_name: drift_watch_build_step_name, build_script: repo_self_build_command(bins: drift_watch_required_bins)),
+      step: outcome_accepted(value: witness_floor_build_step(step_name: drift_watch_build_step_name, build_script: repo_self_build_command(bins: drift_watch_required_bins))),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: drift_watch_build_step_name,
     },
@@ -146,47 +169,54 @@ data drift_watch_permissions: WorkflowPermissions = WorkflowPermissions {
   id_token: none
 }
 
-fn drift_watch_job(row: ProjectionDrift) -> Job {
-  Job {
-    id: row.job_id as String,
-    name: none,
-    runner: ci_runner_target_spec(target: row.runner),
-    environment: none,
-    steps: list_map(xs: drift_watch_bound_steps(row: row), f: fn(b) { b.step }),
-    needs: [],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    timeout_minutes: Present { value: minute_count(m: row.timeout) },
-    continue_on_error: none,
-    concurrency: none,
-    permissions: Present { value: drift_watch_permissions }
-  }
+fn drift_watch_job(row: ProjectionDrift) -> Outcome<Job> {
+  bind_outcome(
+    o: sequence_outcome(xs: list_map(xs: drift_watch_bound_steps(row: row), f: fn(b) { b.step }), policy: drift_watch_short_circuit),
+    f: fn(steps) {
+      outcome_accepted(value: Job {
+        id: row.job_id as String,
+        name: none,
+        runner: ci_runner_target_spec(target: row.runner),
+        environment: none,
+        steps: steps,
+        needs: [],
+        env: none,
+        outputs: none,
+        if_condition: none,
+        timeout_minutes: Present { value: minute_count(m: row.timeout) },
+        continue_on_error: none,
+        concurrency: none,
+        permissions: Present { value: drift_watch_permissions }
+      })
+    }
+  )
 }
 
 // THE WORKFLOW, BUILT FROM THE ROW THE EMITTER WAS GIVEN. Name, job id, runner, cadence, timeout and
 // check target are all reads of that one row; nothing here can be rendered for a repository that did not
 // declare a drift watch, which is the difference between a mirror without a drift check and a mirror with
 // a job that checks nothing on a machine the row never named.
-fn drift_watch_workflow_of(row: ProjectionDrift, cron: CronSchedule) -> Workflow {
-  Workflow {
-  name: row.workflow_name as String,
-  run_name: none,
-  on: [Schedule { cron: cron }, WorkflowDispatch { inputs: [] }],
-  concurrency: Present { value: ConcurrencyMappingQueueNotMax {
-    group: "drift-watch",
-    cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
-    explicit_single: none
-  } },
-  env: Present {
-    value: [
-      kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-      kv(key: "MALLOC_ARENA_MAX", value: yaml_string(s: "2"))
-    ]
-  },
-  permissions: Present { value: drift_watch_permissions },
-  jobs: [drift_watch_job(row: row)]
-}
+fn drift_watch_workflow_of(row: ProjectionDrift, cron: CronSchedule) -> Outcome<Workflow> {
+  bind_outcome(o: drift_watch_job(row: row), f: fn(job) {
+    outcome_accepted(value: Workflow {
+      name: row.workflow_name as String,
+      run_name: none,
+      on: [Schedule { cron: cron }, WorkflowDispatch { inputs: [] }],
+      concurrency: Present { value: ConcurrencyMappingQueueNotMax {
+        group: "drift-watch",
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      } },
+      env: Present {
+        value: [
+          kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
+          kv(key: "MALLOC_ARENA_MAX", value: yaml_string(s: "2"))
+        ]
+      },
+      permissions: Present { value: drift_watch_permissions },
+      jobs: [job]
+    })
+  })
 }
 
 type DriftWatchWorkflowGenerationOutcome
@@ -235,21 +265,29 @@ fn drift_watch_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> Dri
 }
 
 fn emit_drift_watch_workflow(row: ProjectionDrift, cron: CronSchedule) -> DriftWatchWorkflowGenerationOutcome {
-  match admit_workflow_checkout_refs(workflow: drift_watch_workflow_of(row: row, cron: cron), declared: []) {
-    WorkflowCheckoutRefsRefused { refusals: crs } =>
-      DriftWatchWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.drift_watch_workflow", refusals: crs) }
-    WorkflowCheckoutRefsAdmitted =>
-      match admit_workflow_toolchain_homes(workflow: drift_watch_workflow_of(row: row, cron: cron)) {
-        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-          DriftWatchWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-        WorkflowToolchainHomesAdmitted =>
-          if !drift_watch_capability_closure_holds(row: row) {
-            DriftWatchWorkflowGenerationRefused { reason: drift_watch_capability_refusal_reason }
-          } else {
-            match emit_yaml(v: project_workflow_to_yaml(workflow: drift_watch_workflow_of(row: row, cron: cron))) {
-              EmittedYaml { text: t } => DriftWatchWorkflowGenerated { content: t }
-              YamlEmitRefused { path: p, reason: r } => DriftWatchWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.drift_watch_workflow", path: p, reason: r) }
-            }
+  // THE ONE UNWRAP, AT THE ARTIFACT BOUNDARY (the integration concern this change integrates): the
+  // run-step refusal is a typed value from the emitter through the step, the job fold and the workflow;
+  // it becomes the located DriftWatchWorkflowGenerationRefused here, so the gate in
+  // gunbc.tier_o_artifact_emit needs no sentinel scan to refuse it (gunbc.design_argument::fail_closed).
+  match drift_watch_workflow_of(row: row, cron: cron) {
+    Rejected { diagnostics: d } => DriftWatchWorkflowGenerationRefused { reason: diagnostics_reason_lexemes(diagnostics: d) }
+    Accepted { value: w, diagnostics: _ } =>
+      match admit_workflow_checkout_refs(workflow: w, declared: []) {
+        WorkflowCheckoutRefsRefused { refusals: crs } =>
+          DriftWatchWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.drift_watch_workflow", refusals: crs) }
+        WorkflowCheckoutRefsAdmitted =>
+          match admit_workflow_toolchain_homes(workflow: w) {
+            WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+              DriftWatchWorkflowGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+            WorkflowToolchainHomesAdmitted =>
+              if !drift_watch_capability_closure_holds(row: row) {
+                DriftWatchWorkflowGenerationRefused { reason: drift_watch_capability_refusal_reason }
+              } else {
+                match emit_yaml(v: project_workflow_to_yaml(workflow: w)) {
+                  EmittedYaml { text: t } => DriftWatchWorkflowGenerated { content: t }
+                  YamlEmitRefused { path: p, reason: r } => DriftWatchWorkflowGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.drift_watch_workflow", path: p, reason: r) }
+                }
+              }
           }
       }
   }

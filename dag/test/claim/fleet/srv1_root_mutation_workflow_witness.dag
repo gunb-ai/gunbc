@@ -19,6 +19,7 @@ module test.claim.fleet.srv1_root_mutation_workflow_witness
 import gunbc.fleet.srv1_root_mutation_approval_step { gunbc_ci_srv1_root_mutation_approval_invoke }
 import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
 import std.algebra { string_contains, list_map }
+import v2.std.diagnostic { Outcome, outcome_accepted_value }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
@@ -84,7 +85,9 @@ test fn the_generator_delegates_the_family_wire_and_job_names() -> Bool {
 // THE MODE REACHES EVERY STEP OF THE JOB AT JOB LEVEL: the gate step AND the inheriting steps rebuild
 // the same request from the run's variables, so a mode only one step could see would make the others
 // refuse mid-job, after the operator has already said yes.
-fn job_binds_its_mode_at_job_level(j: Job) -> Bool {
+fn job_binds_its_mode_at_job_level(o: Outcome<Job>) -> Bool {
+  match outcome_accepted_value(o) {
+    Present { value: j } =>
   match j.env {
     Absent => false
     Present { value: kvs } => any(kvs, e => match e {
@@ -93,15 +96,17 @@ fn job_binds_its_mode_at_job_level(j: Job) -> Bool {
       _ => false
     })
   }
+    Absent => false
+  }
 }
 
 test fn every_root_mutation_job_hands_its_mode_to_every_step() -> Bool {
-  job_binds_its_mode_at_job_level(j: fleet_converge_dashboard_deploy_job())
-    && job_binds_its_mode_at_job_level(j: fleet_converge_desired_instance_deploy_job())
-    && job_binds_its_mode_at_job_level(j: fleet_converge_approval_broker_dark_install_job())
-    && job_binds_its_mode_at_job_level(j: fleet_converge_microvm_controller_install_job())
-    && job_binds_its_mode_at_job_level(j: fleet_converge_approval_ntfy_retire_job())
-    && !job_binds_its_mode_at_job_level(j: fleet_converge_printer_job())
+  job_binds_its_mode_at_job_level(o: fleet_converge_dashboard_deploy_job())
+    && job_binds_its_mode_at_job_level(o: fleet_converge_desired_instance_deploy_job())
+    && job_binds_its_mode_at_job_level(o: fleet_converge_approval_broker_dark_install_job())
+    && job_binds_its_mode_at_job_level(o: fleet_converge_microvm_controller_install_job())
+    && job_binds_its_mode_at_job_level(o: fleet_converge_approval_ntfy_retire_job())
+    && !job_binds_its_mode_at_job_level(o: fleet_converge_printer_job())
 }
 
 fn step_id_of(st: Step) -> String {
@@ -114,7 +119,9 @@ fn step_id_of(st: Step) -> String {
 
 // THE ORDER, read off the emitted job: WIF auth, then the gate, then the root step. The fold's state
 // is how far the sequence has got; a root step seen before the gate is sticky at -1.
-fn gated_before(j: Job, root_step: String) -> Bool {
+fn gated_before(o: Outcome<Job>, root_step: String) -> Bool {
+  match outcome_accepted_value(o) {
+    Present { value: j } =>
   let reached = fold(j.steps, init: 0, f: fn(at, st) {
     let id = step_id_of(st: st)
     if at < 0 { at }
@@ -124,14 +131,16 @@ fn gated_before(j: Job, root_step: String) -> Bool {
     else { at }
   })
   reached == 3
+    Absent => false
+  }
 }
 
 test fn every_srv1_root_mutation_job_runs_the_gate_before_its_root_step() -> Bool {
-  gated_before(j: fleet_converge_dashboard_deploy_job(), root_step: "dashboard_deploy")
-    && gated_before(j: fleet_converge_desired_instance_deploy_job(), root_step: "desired_instance_deploy")
-    && gated_before(j: fleet_converge_approval_broker_dark_install_job(), root_step: "approval_broker_dark_install")
-    && gated_before(j: fleet_converge_microvm_controller_install_job(), root_step: "microvm_controller_install")
-    && gated_before(j: fleet_converge_approval_ntfy_retire_job(), root_step: "approval_ntfy_retire")
+  gated_before(o: fleet_converge_dashboard_deploy_job(), root_step: "dashboard_deploy")
+    && gated_before(o: fleet_converge_desired_instance_deploy_job(), root_step: "desired_instance_deploy")
+    && gated_before(o: fleet_converge_approval_broker_dark_install_job(), root_step: "approval_broker_dark_install")
+    && gated_before(o: fleet_converge_microvm_controller_install_job(), root_step: "microvm_controller_install")
+    && gated_before(o: fleet_converge_approval_ntfy_retire_job(), root_step: "approval_ntfy_retire")
 }
 
 fn kv_strings(kvs: List<YamlKeyValue>?) -> List<String> {
@@ -157,7 +166,9 @@ fn step_input_strings(st: Step) -> List<String> {
 // each env or with value after the gate that reads an input names one the gate binds, or host / mode,
 // which the job's own condition fixes. A step that starts reading a new input without the selection
 // naming it fails here, so the approved subject cannot silently fall behind what the job converges.
-fn later_inputs_are_selected(j: Job, selects: List<String>) -> Bool {
+fn later_inputs_are_selected(o: Outcome<Job>, selects: List<String>) -> Bool {
+  match outcome_accepted_value(o) {
+    Present { value: j } =>
   let bound = concat(selects, ["host", "mode"])
   let after = fold(j.steps, init: [], f: fn(acc, st) {
     if step_id_of(st: st) == "srv1_root_mutation_approval" { [st] } else if acc == [] { acc } else { concat(acc, [st]) }
@@ -166,30 +177,36 @@ fn later_inputs_are_selected(j: Job, selects: List<String>) -> Bool {
     && all(after.skip(n: 1), st => all(step_input_strings(st: st), v =>
       !string_contains(s: v, pattern: "inputs.")
         || any(bound, n => string_contains(s: v, pattern: join(["inputs.", n, " "], "")))))
+    Absent => false
+  }
 }
 
 test fn every_input_a_root_step_consumes_is_in_the_approved_selection() -> Bool {
-  later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: fleet_converge_dashboard_deploy_selected_inputs)
-    && later_inputs_are_selected(j: fleet_converge_microvm_controller_install_job(), selects: fleet_converge_microvm_controller_install_selected_inputs)
-    && later_inputs_are_selected(j: fleet_converge_approval_broker_dark_install_job(), selects: fleet_converge_approval_broker_dark_install_selected_inputs)
-    && later_inputs_are_selected(j: fleet_converge_approval_ntfy_retire_job(), selects: fleet_converge_approval_ntfy_retire_selected_inputs)
-    && !later_inputs_are_selected(j: fleet_converge_dashboard_deploy_job(), selects: ["plan_workflow_run_id"])
+  later_inputs_are_selected(o: fleet_converge_dashboard_deploy_job(), selects: fleet_converge_dashboard_deploy_selected_inputs)
+    && later_inputs_are_selected(o: fleet_converge_microvm_controller_install_job(), selects: fleet_converge_microvm_controller_install_selected_inputs)
+    && later_inputs_are_selected(o: fleet_converge_approval_broker_dark_install_job(), selects: fleet_converge_approval_broker_dark_install_selected_inputs)
+    && later_inputs_are_selected(o: fleet_converge_approval_ntfy_retire_job(), selects: fleet_converge_approval_ntfy_retire_selected_inputs)
+    && !later_inputs_are_selected(o: fleet_converge_dashboard_deploy_job(), selects: ["plan_workflow_run_id"])
 }
 
 // A NON-srv1 DISPATCH NEVER REACHES THE CREDENTIAL (review 5649820707): the host check is the job's
 // own condition, so the WIF step and the submission-key fetch never run on another host's runner.
-fn job_admits_srv1_only(j: Job) -> Bool {
+fn job_admits_srv1_only(o: Outcome<Job>) -> Bool {
+  match outcome_accepted_value(o) {
+    Present { value: j } =>
   match j.if_condition {
     Absent => false
     Present { value: c } => string_contains(s: c, pattern: "github.event.inputs.host == 'srv1'")
   }
+    Absent => false
+  }
 }
 
 test fn a_non_srv1_dispatch_never_reaches_the_credential_steps() -> Bool {
-  job_admits_srv1_only(j: fleet_converge_dashboard_deploy_job())
-    && job_admits_srv1_only(j: fleet_converge_approval_broker_dark_install_job())
-    && job_admits_srv1_only(j: fleet_converge_microvm_controller_install_job())
-    && job_admits_srv1_only(j: fleet_converge_approval_ntfy_retire_job())
+  job_admits_srv1_only(o: fleet_converge_dashboard_deploy_job())
+    && job_admits_srv1_only(o: fleet_converge_approval_broker_dark_install_job())
+    && job_admits_srv1_only(o: fleet_converge_microvm_controller_install_job())
+    && job_admits_srv1_only(o: fleet_converge_approval_ntfy_retire_job())
 }
 
 fn step_name_of(st: Step) -> String {
@@ -204,11 +221,21 @@ fn is_key_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), patt
 
 fn is_key_cleanup_step(st: Step) -> Bool { string_contains(s: step_name_of(st: st), pattern: "kill the in-run ssh-agent") }
 
+// The desired_instance_deploy job is carried as an Outcome<Job>; its positive-control witnesses read the
+// emitted steps. An Accepted job yields its steps; a Refused job yields [] so every positive control fails.
+fn deploy_job_steps() -> List<Step> {
+  match outcome_accepted_value(fleet_converge_desired_instance_deploy_job()) {
+    Present { value: j } => j.steps
+    Absent => []
+  }
+}
+
 // THE ADMINISTRATOR'S KEY EXISTS ONLY IN AN APPROVED RUN, read off the emitted job: the gate, then the
 // key, then the install, and the agent's teardown last. A key step before the gate leaves the fold
 // sticky at -1; a job with no key step, or no teardown after the install, never reaches 4.
 test fn the_controller_install_holds_the_fleet_key_only_after_its_approval() -> Bool {
-  let j = fleet_converge_microvm_controller_install_job()
+  match outcome_accepted_value(fleet_converge_microvm_controller_install_job()) {
+    Present { value: j } =>
   let reached = fold(j.steps, init: 0, f: fn(at, st) {
     if at < 0 { at }
     else if step_id_of(st: st) == "srv1_root_mutation_approval" { if at == 0 { 1 } else { at } }
@@ -218,6 +245,8 @@ test fn the_controller_install_holds_the_fleet_key_only_after_its_approval() -> 
     else { at }
   })
   reached == 4
+    Absent => false
+  }
 }
 
 // THE THREE JOBS THAT CARRY THE APPROVAL STEP FIT INSIDE THE PLATFORM CEILING. Review 91262 asked for
@@ -296,7 +325,7 @@ test fn the_entry_refuses_the_prod_role_holder_row_but_not_the_lab() -> Bool {
 // THE DEPLOY STEP CARRIES THE NAMED INSTANCE THROUGH THE ENV: the generated step (id desired_instance_deploy)
 // puts the instance env in, because a run step reaches its entry only through the environment.
 test fn the_deploy_step_carries_the_named_instance_env() -> Bool {
-  let steps = fleet_converge_desired_instance_deploy_job().steps
+  let steps = deploy_job_steps()
   any(steps, st => match st {
     RunStep { name: _, id: Present { value: i }, run: _, shell: _, env: envv, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       i == "desired_instance_deploy" && match envv {
@@ -380,7 +409,7 @@ test fn the_subject_host_input_offers_the_packed_lab_option() -> Bool {
 // uploads and asserts must point at the SAME per-instance location. A lab deploy that named the srv1-live
 // receipt would be a receipt-honesty defect; this witness locks the fix.
 test fn the_receipt_upload_and_assert_read_the_resolve_output() -> Bool {
-  let steps = fleet_converge_desired_instance_deploy_job().steps
+  let steps = deploy_job_steps()
   let upload_ok = any(steps, st => match st {
     UsesStep { name: _, id: Present { value: i }, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       i == "desired_instance_receipt_upload"
@@ -401,7 +430,7 @@ test fn the_receipt_upload_and_assert_read_the_resolve_output() -> Bool {
 // fold checks only the generic transaction inputs), but its run-log NAME and id must name the instance-scoped
 // mode, not dashboard_deploy, so a reader of this job sees the admission labelled for the mode it runs in.
 test fn the_admit_step_is_labelled_for_the_mode() -> Bool {
-  let steps = fleet_converge_desired_instance_deploy_job().steps
+  let steps = deploy_job_steps()
   any(steps, st => match st {
     RunStep { name: Present { value: n }, id: Present { value: i }, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
       i == "admit_desired_instance_deploy_inputs"
@@ -416,9 +445,12 @@ test fn the_admit_step_is_labelled_for_the_mode() -> Bool {
 // contain it. The srv1-live name is a non-empty constant, so this is not vacuously true; the positive witness
 // above proves the per-instance resolve output is what is used instead.
 test fn the_desired_instance_job_never_uploads_the_srv1_live_receipt() -> Bool {
-  let steps = fleet_converge_desired_instance_deploy_job().steps
+  let steps = deploy_job_steps()
   let srv1_live_name = gunbc_live_deploy_receipt_artifact_name
   let names_it_nonempty = string_contains(s: srv1_live_name, pattern: "srv1-live")
   let any_names_it = any(steps, st => any(step_input_strings(st: st), s => string_contains(s: s, pattern: srv1_live_name)))
-  names_it_nonempty && !any_names_it
+  // Fail closed: a refused desired_instance_deploy_job yields deploy_job_steps() == [] (the retyped
+  // producer is Outcome<Job>), and !any([]) would pass vacuously -- claiming "never uploads" from a job
+  // we never actually saw emitted. Require the job to be non-empty so a refusal makes this RED, not green.
+  names_it_nonempty && count(steps) > 0 && !any_names_it
 }

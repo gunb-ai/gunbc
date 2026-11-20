@@ -29,14 +29,16 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present }
+import std.optional { Present, Absent }
+import v2.std.diagnostic { outcome_accepted_value }
 import std.measure { second, second_count, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
-import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
+import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_workflow_census_refusals, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name, gunbc_roster_gate }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow_of, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow, instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow, microvm_shakedown_workflow_triggers }
 
@@ -150,15 +152,22 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
 test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> Bool {
   let budget = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
   let step_minutes = fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)])
-  let job_minutes = fleet_converge_job_timeout_minutes()
-  let release_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
   let upload_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
-  budget == bound_seconds()
-      + (second_count(s: runner_host_cap_drain_policy.operations_allowance) as Int)
-      + (second_count(s: runner_host_cap_drain_policy.release_allowance) as Int)
-    && step_minutes * 60 >= budget
-    && job_minutes >= step_minutes + release_minutes + upload_minutes
-    && job_minutes <= max_job_timeout_minutes
+  match outcome_accepted_value(fleet_converge_job_timeout_minutes()) {
+    Absent => false
+    Present { value: job_minutes } => match outcome_accepted_value(fleet_converge_runner_host_cap_release_step()) {
+      Absent => false
+      Present { value: release_st } => {
+        let release_minutes = step_declared_timeout_minutes(st: release_st)
+        budget == bound_seconds()
+          + (second_count(s: runner_host_cap_drain_policy.operations_allowance) as Int)
+          + (second_count(s: runner_host_cap_drain_policy.release_allowance) as Int)
+          && step_minutes * 60 >= budget
+          && job_minutes >= step_minutes + release_minutes + upload_minutes
+          && job_minutes <= max_job_timeout_minutes
+      }
+    }
+  }
 }
 
 // 6. THE DOMAIN IS EXPLAINED, and the rows carry the authorities' OWN Workflow values (the fold is
@@ -166,7 +175,8 @@ test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> 
 // THE THREE OMITTED WORKFLOW ARTIFACTS ARE FORCED THERE, not merely declared there (review of
 // 2026-10-24: an identity check alone proves nothing about the reasons). The proof reads each
 // omission reason AT THE LEVEL IT IS STATED, by construction (side-chat ruling, 2026-10-24):
-//   - fleet_converge_workflow is a constant Workflow whose modeled 'on' set carries no autonomous
+//   - fleet_converge_workflow_of is the committed Workflow (emitted through the run-step family) whose
+//     modeled 'on' set carries no autonomous
 //     trigger; if it ever grows one (a schedule, a push), it must join the fold and this goes red;
 //   - the two function-built omissions discharge on their MODULE-LEVEL TRIGGER CONSTANTS
 //     (instrument_dispatch_workflow_triggers / microvm_shakedown_workflow_triggers), which the
@@ -179,10 +189,18 @@ fn omission_autonomous_count_triggers(ts: List<WorkflowTrigger>) -> Int {
 }
 
 test fn fleet_converge_workflow_is_genuinely_dispatch_only_so_its_omission_holds() -> Bool {
-  length(fleet_converge_workflow.jobs) > 0
-    && length(fleet_converge_workflow.on) > 0
-    && omission_autonomous_count_triggers(ts: fleet_converge_workflow.on) == 0
-    && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: FleetConvergeYamlArtifact))
+  // The committed fleet-converge workflow is emitted through the retyped run-step invoke family, so its
+  // Workflow value is now an Outcome<Workflow>. Fail-closed: if its emission is ever refused the dispatch-only
+  // omission cannot be established and this claim goes RED -- a refused fleet-converge workflow must never
+  // silently vouch for its own omission.
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      length(wf.jobs) > 0
+        && length(wf.on) > 0
+        && omission_autonomous_count_triggers(ts: wf.on) == 0
+        && any(fleet_workflow_census_omissions(), o => artifact_eq(a: o.artifact, b: FleetConvergeYamlArtifact))
+  }
 }
 
 test fn the_function_built_omissions_discharge_on_their_trigger_constants() -> Bool {
@@ -219,6 +237,14 @@ test fn the_census_domain_is_explained_and_reads_the_authorities() -> Bool {
         r => any(r.workflow.jobs, k => k.id == j.id && job_declared_timeout_minutes(j: k) == job_declared_timeout_minutes(j: j))
       )
     )
+}
+
+// A committed workflow whose run-step emission is refused must never silently vanish from the census.
+// fleet_workflow_census_refusals records every such refusal, typed and located; in the committed tree
+// none are refused, so this is empty. If a producer ever refuses, this claim goes RED and the refusal
+// record names the artifact and the diagnostic -- fail-closed (gunbc.design_argument::fail_closed).
+test fn no_committed_workflow_is_refused_from_the_census() -> Bool {
+  length(fleet_workflow_census_refusals()) == 0
 }
 
 // THE MUTATION SENTINEL, stated explicitly so the 2700 restoration's redness is never an accident of

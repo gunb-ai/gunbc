@@ -13,6 +13,7 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_jwt_prelude }
 import gunbc.ci.ci_run_step_target { GunbcRunStepTarget, gunbc_run_step_target }
+import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted}
 
 // THE APP CONTROL PLANE INSPECTION RUN-STEP TARGET: the entry is named by its DECLARATION and the
 // workflow-visible path is DERIVED from it (gunbc.ci.ci_run_step_target), so no row authors a path.
@@ -21,7 +22,7 @@ data gunbc_ci_app_control_plane_inspect_target: GunbcRunStepTarget = gunbc_run_s
   function: "app_control_plane_inspect_wet",
 )
 
-fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
+fn gunbc_ci_app_control_plane_inspect_invoke() -> Outcome<String> {
   gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_app_jwt_prelude(),
     source_roots: witness_layer_roots,

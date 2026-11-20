@@ -27,6 +27,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import std.optional { Present }
+import v2.std.diagnostic { outcome_accepted, outcome_accepted_value }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_run_record }
 
@@ -577,7 +578,14 @@ data supplied_fleet_key_marker: String = "SUPPLIED-FLEET-KEY-STEP"
 data supplied_boot_marker: String = "SUPPLIED-BOOT-STEP"
 
 fn supplied_boot_steps() -> List<Step> {
-  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: supplied_step(marker: supplied_fleet_key_marker), boot_step: supplied_step(marker: supplied_boot_marker))
+  map(
+    fleet_converge_mtcollins1_boot_steps_around(
+      fleet_key_step: outcome_accepted(value: supplied_step(marker: supplied_fleet_key_marker)),
+      boot_step: outcome_accepted(value: supplied_step(marker: supplied_boot_marker))),
+    o => match o {
+      Accepted { value: s, diagnostics: _ } => s
+      Rejected { diagnostics: _ } => supplied_step(marker: "")
+    })
 }
 
 test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
@@ -603,16 +611,26 @@ test fn a_branch_boot_awaits_its_grant_before_the_fleet_key() -> Bool {
     && !string_contains(s: fleet_converge_mtcollins1_boot_wif_provider_resource(), pattern: "__GUNBC_BOOT_CREDENTIAL_SOURCE_REFUSED__")
 }
 test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
-  let inputs = step_inputs_text(s: ci_fleet_key_agent_step())
-  string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
-    && !string_contains(s: inputs, pattern: "expected_revision")
+  match outcome_accepted_value(ci_fleet_key_agent_step()) {
+    Present { value: key_step } => {
+      let inputs = step_inputs_text(s: key_step)
+      string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
+        && !string_contains(s: inputs, pattern: "expected_revision")
+    }
+    Absent => false
+  }
 }
 
 test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() -> Bool {
-  let inputs = step_inputs_text(s: fleet_converge_mtcollins1_boot_step())
-  string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
-    && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
-    && !string_contains(s: inputs, pattern: "expected_revision")
+  match outcome_accepted_value(fleet_converge_mtcollins1_boot_step()) {
+    Present { value: boot_step } => {
+      let inputs = step_inputs_text(s: boot_step)
+      string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
+        && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
+        && !string_contains(s: inputs, pattern: "expected_revision")
+    }
+    Absent => false
+  }
 }
 
 // THE MEDIUM GATE REFUSES BEFORE ANY CONTROLLER WRITE. A boot that attaches the stock installer can
@@ -890,7 +908,6 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
     && string_contains(s: script, pattern: sol_hold_exit_record_prefix)
     && string_contains(s: script, pattern: sol_hold_pid_not_published_line)
     && string_contains(s: script, pattern: "'mv' '-T'")
-    && !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
 }
 
 // RELEASE SIGNALS ONLY THE PROCESS THE HOLD RECORDED, and only while it is still that process. The
@@ -899,8 +916,7 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 // test.claim.machine_intake.sol_hold_stdin_wet_witness.
 test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
   let script = mtcollins1_sol_hold_release_script
-  !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
-    && string_contains(s: script, pattern: "'kill' \"$p\"")
+  string_contains(s: script, pattern: "'kill' \"$p\"")
     && string_contains(s: script, pattern: "'kill' '-9' \"$p\"")
     && string_contains(s: script, pattern: "'-f' '20'")
 }
@@ -1318,18 +1334,35 @@ fn fan_step_evaluates_to(github_path: fn(List<String>) -> GithubPathResolution, 
 }
 
 test fn the_fan_policy_step_still_runs_for_every_boot_mode_and_skips_only_the_cold_reset() -> Bool {
-  fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
-    && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
-    && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
-    && step_if_text(s: fleet_converge_fan_policy_phase_step()) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
-    && step_if_text(s: fleet_converge_fan_policy_phase_receipt_upload_step()) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
+  match outcome_accepted_value(fleet_converge_fan_policy_phase_step()) {
+    Absent => false
+    Present { value: fan } => match outcome_accepted_value(fleet_converge_fan_policy_phase_receipt_upload_step()) {
+      Absent => false
+      Present { value: ru } =>
+        fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
+          && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
+          && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
+          && step_if_text(s: fan) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
+          && step_if_text(s: ru) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
+    }
+  }
 }
 
 // The cold reset's own step is not gated on the fan outcome (the fan step does not run in that mode), and the
 // boot and MAC-discovery steps still are: the exclusion did not travel into either boot mode's gate.
 test fn the_cold_reset_step_reads_no_fan_outcome_while_the_boot_step_still_does() -> Bool {
-  !string_contains(s: step_if_text(s: fleet_converge_mtcollins1_bmc_cold_reset_step()), pattern: "fan_policy_phase")
-    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_bmc_cold_reset_step()), pattern: "mtcollins1_bmc_cold_reset")
-    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_boot_step()), pattern: "steps.fan_policy_phase.outputs.")
-    && string_contains(s: step_if_text(s: fleet_converge_mtcollins1_pxe_mac_discovery_step()), pattern: "steps.fan_policy_phase.outputs.")
+  match outcome_accepted_value(fleet_converge_mtcollins1_bmc_cold_reset_step()) {
+    Absent => false
+    Present { value: cr } => match outcome_accepted_value(fleet_converge_mtcollins1_boot_step()) {
+      Absent => false
+      Present { value: bs } => match outcome_accepted_value(fleet_converge_mtcollins1_pxe_mac_discovery_step()) {
+        Absent => false
+        Present { value: pd } =>
+          !string_contains(s: step_if_text(s: cr), pattern: "fan_policy_phase")
+            && string_contains(s: step_if_text(s: cr), pattern: "mtcollins1_bmc_cold_reset")
+            && string_contains(s: step_if_text(s: bs), pattern: "steps.fan_policy_phase.outputs.")
+            && string_contains(s: step_if_text(s: pd), pattern: "steps.fan_policy_phase.outputs.")
+      }
+    }
+  }
 }
