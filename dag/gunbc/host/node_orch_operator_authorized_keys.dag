@@ -38,7 +38,6 @@ module gunbc.host.node_orch_operator_authorized_keys
 // srv2 node-orch key must be admitted into the keep/desired set so it is not removed), and this module dissolves
 // onto that admission. Until then the lines are human-hand-maintained and the units/sessions named as consumers
 // are the real authority for their options.
-// named as consumers are the real authority for their options.
 
 import std.types { List, NonEmptyStr, String }
 import std.optional { Absent, Present }
