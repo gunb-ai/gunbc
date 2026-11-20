@@ -1221,6 +1221,33 @@ fn materialize_fleet_ssh_multiplex_directory() -> FleetSshMultiplexPreparation {
   }
 }
 
+// THE CREATE-OR-ADOPT-THEN-READ-BACK CORE the fleet ssh route relies on. Create the directory
+// owner-only (`mkdir -m 0700` fails when the name already exists at all, so a success arm is proof THIS
+// process created it at mode 700); read back its octal mode and its owning principal. A read-back that
+// fails -- because creation failed and the name is not there to read -- is reported unreadable, never as
+// a success. The pure admission is left to the caller: the multiplex site adds its sun_path fits test and
+// agrees the owner with the job root it sits under, while the remote-build client's job root agrees the
+// owner with the running principal and requires a directory. ONE ensure-dir, not a hand-rolled second.
+type OwnerOnlyDirectoryReadBack
+  = OwnerOnlyDirectoryUnreadable { path: String }
+  | OwnerOnlyDirectoryObserved { path: String, created: Bool, mode_text: String, owner: String }
+
+fn create_or_adopt_owner_only_directory(path: String) -> OwnerOnlyDirectoryReadBack {
+  let created = shell.Mkdir.NewOwnerOnly(path: path as FilePath)
+  let mode = shell.Stat.ModeOf(path: path as FilePath)
+  let owner = shell.Stat.OwnerOf(path: path as FilePath)
+  if !mode.success || !owner.success {
+    OwnerOnlyDirectoryUnreadable { path: path }
+  } else {
+    OwnerOnlyDirectoryObserved {
+      path: path,
+      created: created.success,
+      mode_text: trim(s: mode.stdout),
+      owner: trim(s: owner.stdout),
+    }
+  }
+}
+
 // THE SAME DIRECTORY UNDER A CALLER-NAMED JOB ROOT. A CI job's root is its RUNNER_TEMP (above); a
 // caller outside CI names the directory it owns for the run -- the remote-build client names the
 // target directory it runs in (gunbc.compute.remote_build_client). The admission is the same either
@@ -1233,20 +1260,23 @@ fn materialize_fleet_ssh_multiplex_directory_under(runner_temp: String) -> Fleet
     if !fleet_ssh_multiplex_directory_fits(path: path, multiplexing: fleet_ssh_multiplexing) {
       fleet_ssh_multiplex_directory_admitted(path: path, created: false, mode_text: "", owner: "", runner_temp_owner: "")
     } else {
-      let created = shell.Mkdir.NewOwnerOnly(path: path as FilePath)
-      let mode = shell.Stat.ModeOf(path: path as FilePath)
-      let owner = shell.Stat.OwnerOf(path: path as FilePath)
-      let temp_owner = shell.Stat.OwnerOf(path: runner_temp as FilePath)
-      if !mode.success || !owner.success || !temp_owner.success {
-        FleetSshMultiplexRefused { cause: join(["the multiplex directory ", path, " could not be created or read back"], "") }
-      } else {
-        fleet_ssh_multiplex_directory_admitted(
-          path: path,
-          created: created.success,
-          mode_text: trim(s: mode.stdout),
-          owner: trim(s: owner.stdout),
-          runner_temp_owner: trim(s: temp_owner.stdout),
-        )
+      match create_or_adopt_owner_only_directory(path: path) {
+        OwnerOnlyDirectoryUnreadable { path: p } =>
+          FleetSshMultiplexRefused { cause: join(["the multiplex directory ", p, " could not be created or read back"], "") }
+        OwnerOnlyDirectoryObserved { path: p, created: c, mode_text: m, owner: o } => {
+          let temp_owner = shell.Stat.OwnerOf(path: runner_temp as FilePath)
+          if !temp_owner.success {
+            FleetSshMultiplexRefused { cause: join(["the multiplex directory ", p, " could not be created or read back"], "") }
+          } else {
+            fleet_ssh_multiplex_directory_admitted(
+              path: p,
+              created: c,
+              mode_text: m,
+              owner: o,
+              runner_temp_owner: trim(s: temp_owner.stdout),
+            )
+          }
+        }
       }
     }
   }
