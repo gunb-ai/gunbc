@@ -37,6 +37,15 @@ fn primitive_identity_runtime_name(identity: PrimitiveIdentity) -> String {
 // inside a module scope so two same-named declarations collapse into one, and it has no room for a
 // fidelity distinction. Module qualification answers the second; this single carrier answers the
 // first; ProjectionFidelity answers the third.
+//
+// EVALUATION CONSUMES THE SAME DECISION AS EMISSION. Resolve the callable declaration before
+// consulting this relation; a closure-wide entry with the same spelling is not that declaration.
+// HostRealizedSeam requires a realization and cannot fall through to its self-call body.
+// ModeledProjection permits its own declared body when no host realization exists.
+// DivergentProjection and an absent row preserve the selected source declaration. A lexical
+// function value keeps its selected declaration even when its local binder has another name.
+// v1.compiler.infer.lookup::resolved_declaration_call_target already realizes these three cases;
+// the seed evaluator consumes that result rather than maintaining a second semantic roster.
 
 // HostRealizedSeam and ModeledProjection agree at the resolver -- both mean the declaration and the
 // primitive are ONE authority, so a candidate collector must not report them as two. They are kept
