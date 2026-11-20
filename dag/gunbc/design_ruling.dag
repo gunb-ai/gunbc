@@ -1199,6 +1199,7 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
   provenance: "Operator decision 2026-11-19, escalation msg_dd4f5177 decided in msg_5d6b035d, option chosen verbatim: \"Lift it (I record a design_ruling row quoting you; rows 894/911 drop the gate)\". Supersedes the default-approved msg_91e05714, which was approved by default, not by the operator. WHAT THIS LIFTS: the 2026-10-03 fabric-bring-up-first gate on native SCM. Four deliverable rows (2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model, 2-claim-indexed-evidence) were held behind the fabric bring-up by a prerequisite edge onto the fabric-bringup project node; two sibling rows (2-scm-compatibility-shape, 2-scm-p0-landing-spine) carried the same 'revisited after the fabric bring-up (operator ruling 2026-10-03)' only in their contribution text. HISTORY: no 2026-10-03 design_ruling row ever existed -- that gate was asserted only in roadmap row text, never recorded in this ledger; this row is both its first record and its lifting record. The prerequisite edges onto the fabric-bringup project are deleted, the rows stay factory members, and the fabric-bringup red_control dispatch-gate sentence is removed.",
 }
 
+
 fn design_rulings() -> List<DesignRuling> {
   [
     ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
