@@ -91,6 +91,7 @@ test fn the_emitted_workflow_carries_the_dispatch_evidence_input_defaulting_to_t
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "workflow_dispatch:")
     && contains(haystack: rendered, needle: "pattern:")
-    && contains(haystack: rendered, needle: "inputs.pattern ||")
-    && contains(haystack: rendered, needle: "//dag/test/claim/compute/host_capacity_seal_witness.dag")
+    && contains(haystack: rendered, needle: "GUNBC_GATE_PATTERN: ${{ inputs.pattern }}")
+    && contains(haystack: rendered, needle: "--arg pattern=\"")
+    && contains(haystack: rendered, needle: "GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}\"")
 }

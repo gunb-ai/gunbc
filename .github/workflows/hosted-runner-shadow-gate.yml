@@ -68,5 +68,7 @@ jobs:
         id: remote-build-plumbing-proof
         run: |
           set -euo pipefail && echo '--- remote gate step ---' && ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv1.tailecbe08.ts.net true
-          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=${{ inputs.pattern || '//dag/test/claim/compute/host_capacity_seal_witness.dag' }} --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
+          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
         shell: bash
+        env:
+          GUNBC_GATE_PATTERN: ${{ inputs.pattern }}
