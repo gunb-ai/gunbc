@@ -5663,6 +5663,418 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The estimates the planning page prices with: an edge graph whose prerequisites cannot contradict the containment the same authority derives, so authoring refuses what only the Gantt read used to catch."),
     ),
+    // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
+    // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
+    // Nothing in the authority covered it: no boot row, no PXE-install row, no mtcollins1
+    // boot-retirement row -- the only earlier records of this program were the now-closed gunbc#15350
+    // and gunbc#15287. The intention each row serves is the plan carrier
+    // gunbc.plans.new_server_bringup, registered at gunbc.plan_registry the day these rows landed.
+    // Every PR state below is a live read through
+    // gh pr view <n> --json number,state,isDraft,mergeable,mergeStateStatus,updatedAt,mergedAt,headRefName,title
+    // on 2026-11-20, not a restatement of any brief or plan line; where a handed-down state and the
+    // live read disagreed the row records the live read and names the correction in its own updates
+    // thread.
+    roadmap_node(
+      identity: "rn_7BQM3KZT4VW1XN8RJC5YD6AP2S",
+      id: "site-boot-and-management-edge",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: level_fields(
+        headline: "srv4 carries the site's boot and management edge, and mtcollins1's boot duties retire",
+        boundary: "The program, not the keystrokes. It owns the repository's claims about how a bare host becomes a serving member of this site: srv4 (the SitePxeEdge at gunbc.network_boot_delivery) serving DHCP/PXE/TFTP for installs, the machine-intake arrival chain admitting the host, the one-shot network install dispatching, and the management duties mtcollins1 still carries (boot, arrival, BMC reach, runner legs) moving onto modeled rows that converge. Physical actions -- power, cabling, console, Apply, GO -- are the operator's and stay out.",
+        approach: "Four lanes, each a row under this one, sequenced by the plan carrier: (a) the PXE edge carries installs and bobo (srv15) is the first host installed; (b) butch (srv14) reaches the executor route under the standing CI-substrate ruling; (c) srv4's edge artifacts move from hand-placed staging into modeled rows with an operator Apply; (d) mtcollins1's boot legs -- arrival budgets, dispatch/collect/deregister, qualification, disk rows, the handless repeat -- land so its boot duties can be retired. Operator-held decisions are their own decision-gate rows, so a blocked lane names the person who unblocks it instead of pretending to be agent work.",
+        red_control: "Met only through its members: every lane row is either accepted or refused with a reason, and the fleet's own reading of the boot and management edge carries no unmodeled dependency -- srv4 declared as the edge, no host depending on a hand-tended mtcollins1 boot duty that no row models.",
+        displaced_cost: "A second hand-tended boot path that nothing converges and nothing witnesses. Today a new host's path runs through notes and an operator's hands, so a wrong MAC, a stale prior life or a hand-placed TFTP artifact surfaces as a failed install on the floor rather than as a RED witness, and nobody can say from the repository whether mtcollins1's boot duties are still load-bearing.",
+        handback: "A boot and management edge the fleet's own reading accounts for: srv4 declared and converging as the edge, bobo installed through the modeled chain, mtcollins1's boot duties retired with their last consumer moved, and each lane's live state readable from its row rather than from a chat."
+      )),
+      parent: in_project(project: "fabric-application-authority", contribution: "The site's boot and management edge as fleet-owned claims: what the repository asserts about how a host boots, arrives and is managed here, held to the same convergence and reading as every other fleet authority."),
+    ),
+    roadmap_node(
+      identity: "rn_2HWDKX9TQ5LZ8C3VJMR6YE17PN",
+      id: "bobo-arrival-door-refusal-carrier",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The arrival door's epoch reading returns its refusal as a value (gunbc#16736)",
+        displaced_cost: "A refusal the arrival door drops instead of returning is a refusal nobody sees: the door reads as having decided when it never did, and the install path behind it is graded on a reading that quietly failed.",
+        boundary: "The carrier-at-scalar class, site 1 of the 2 remaining: the arrival door's epoch reading returns its refusal as a value rather than swallowing it. One reading, one return path; no change to what the door decides.",
+        first_slice: "Land gunbc#16736 as it stands: the epoch reading returning its refusal, the witnesses green on the post-wall binary, the operator merge. No re-scoping while it is open.",
+        red_control: "A door reading that fails while returning nothing refuses once the refusal is a value the caller must match; the swallowing form is the control's RED case.",
+        out_of_scope: "The second remaining site of the same class; the live srv15 arrival run; the install dispatch; the host's runner join, which is another session's; any change to what the door admits.",
+        handback: "An arrival door whose every reading, including its refusals, reaches the caller -- so the install path behind it is graded on readings that cannot go missing."
+      ), on: "2026-11-20", note: "Head of the install lane, and the queue's head. Live read 2026-11-20: gunbc#16736 OPEN, not draft, mergeable MERGEABLE, merge state CLEAN, updated 2026-11-20T01:41:43Z, branch dev/carrier-at-scalar-remaining-two, title 'fix(dag): the arrival door's epoch reading returns its refusal as a value (#16717 class, site 1 of 2)'. Correction to the hand-down: the brief labeled it 'wall-site carrier fixes'; what it changes is the arrival door's epoch reading on bobo's arrival path, and it is site 1 of 2 of the carrier-at-scalar class -- the second site is still owed and is not in this PR.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The install path's first reading is made un-skippable: a door that refuses says so to its caller."),
+      centering: plan(text: "new_server_bringup_plan: the install path can only be graded on readings that reach their caller, so the arrival door's epoch reading must return its refusal as a value before any host is dispatched at it. Target: the arrival door behind dag/gunbc/machine_intake/mtcollins1_boot_run.dag."),
+    ),
+    roadmap_node(
+      identity: "rn_9FTR4ZKC6XQ2N8MVHJD7YB3S5W",
+      id: "bobo-arrival-converge-budget-fold",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/site_pxe_edge_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The arrival-converge step is budgeted as a fold over the door's declared legs (gunbc#16691)",
+        displaced_cost: "The arrival-converge step runs on a budget no fold over the door's own declared legs produced, so its minutes are a guess: an arrival either dies on a step budget nobody admitted, or it runs long and nothing said it would.",
+        boundary: "One PR, one shape: the arrival-converge step's budget derived as a fold over the legs the door itself declares, so the budget follows the model instead of a hand. Data plus one fold; no new budget mechanism.",
+        first_slice: "Rebase gunbc#16691 onto main, re-run its witnesses plus the ci_budget_raise family on one post-wall binary, and land it with the budget claim RED against an un-folded budget and GREEN against the fold.",
+        red_control: "An arrival-converge step whose budget does not equal the fold over its declared legs refuses by name; a planted leg that raises the fold refuses the stale budget.",
+        out_of_scope: "Granting any budget outside ci_budget_raise's admission (the mtcollins1 grants row owns that); the live arrival run; the install dispatch; anything that has to run on the floor.",
+        handback: "An arrival-converge budget derived from the door's declared legs, so the arrival cannot fail on minutes nobody admitted."
+      ), on: "2026-11-20", note: "Live read 2026-11-20: gunbc#16691 OPEN, not draft, mergeable CONFLICTING, merge state DIRTY, updated 2026-11-19T08:59:18Z, branch dev/arrival-converge-budget, title 'fleet-converge: budget the arrival-converge step as a fold over the door's declared legs' -- a rebase is required before its witnesses can be trusted. Correction to the hand-down: the brief labeled this 'live prior-life archive'; the live PR is the arrival-converge budget fold, and no prior-life archive PR is open -- the prior-life question, if it is real, opens as its own row against today's code rather than as a label on this one. The arrival-door row is its prerequisite: budgeting a fold over legs whose door can swallow a refusal budgets a reading that may never have happened.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The arriving host's minutes derived from the model's own declared legs, not from a hand."),
+      centering: plan(text: "new_server_bringup_plan: bobo (srv15) is the first host installed through the PXE edge, and its arrival-converge step is budgeted from the legs the door declares. Target: dag/gunbc/fleet/site_pxe_edge_converge.dag and the arrival-converge step it feeds."),
+    ),
+    roadmap_node(
+      identity: "rn_5NXJ8QV2TW7Z4RCMKYD6HB3F1P",
+      id: "srv15-arrival-environment-approval",
+      owner: "operator",
+      carriers: carrier(path: "dag/gunbc/auth/srv15_arrival_federation_provision.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "DECISION GATE: the operator approves the srv15-arrival environment",
+        displaced_cost: "Everything after it in the lane queues: the CI arrival leg, the live hpm check and the install dispatch all need credentials from an environment only the operator can create.",
+        boundary: "The operator creates and approves the srv15-arrival environment that gunbc.auth.srv15_arrival_federation_provision is modeled ReadyPendingOperatorCreate for. The repository's job ends at stating the shape; the creation and the approval are not agent work.",
+        first_slice: "The operator creates the srv15-arrival environment per the modeled provision; the witness that reads the provision's ReadyPendingOperatorCreate arm flips once the environment is real.",
+        red_control: "A run that asks the modeled provision to act while the environment is still Pending refuses on that arm, so no lane step can pretend the environment exists.",
+        out_of_scope: "Any agent-side action: creating the environment, holding its credentials, or approving it on the operator's behalf.",
+        handback: "An approved srv15-arrival environment whose credentials the CI arrival leg can be issued against."
+      ), on: "2026-11-20", note: "Recorded as its own row because it is the lane's only hard operator-held dependency before the host can be installed: the model is ReadyPendingOperatorCreate, and no row in this repository can close it. The module's name is itself the obligation it carries -- the row waits on a person, not on a review.")),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The operator-held half of the install path, named as a gate so the queue reads it as waiting on a person, not as stalled work."),
+    ),
+    roadmap_node(
+      identity: "rn_3KZP7YD2VQ9X48HNRCMT6B5FJW",
+      id: "bobo-install-credential-and-ci-arrival-leg",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/host/network_install.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The network install's BMC credential comes through the one authority (gunbc#16715), then this lane's CI arrival leg",
+        displaced_cost: "An install whose BMC credential arrives by any route other than the one authority is an install whose credential nobody can account for -- and without a CI arrival leg the host's arrival is never exercised, so the install dispatch would be dispatched by a hand rather than by the workflow meant to own it.",
+        boundary: "Two things in order. Land gunbc#16715, which produces the network install's BMC credential through the one authority and makes the capability refusal name its observation. Then author this lane's own arrival leg against the approved srv15-arrival environment, so the arrival runs from CI with issued credentials.",
+        first_slice: "Merge gunbc#16715 as it stands; then add the arrival leg as data over the existing arrival workflow and run it once with the approved environment's credentials.",
+        red_control: "An install credential produced off the one authority refuses by name, and a capability refusal that names no observation refuses; the same leg passes with the credential through the authority and the environment's credentials bound.",
+        out_of_scope: "Creating the environment (its gate row); the live hpm check; the install dispatch itself; the host's runner join, which belongs to another session's rows.",
+        handback: "An install credential that comes through the one authority, and a CI-driven arrival for bobo with issued credentials."
+      ), on: "2026-11-20", note: "Live read 2026-11-20: gunbc#16715 OPEN, not draft, mergeable MERGEABLE, merge state CLEAN, updated 2026-11-19T06:35:08Z, branch session/wise-otter-90-bmc-cap, title 'feat(ci): the network install produces its BMC credential through the one authority; the capability refusal names its observation' -- ready; wise-otter-90 is idle. Correction to the hand-down: the brief described it as 'the arrival leg', and the live PR is the install's BMC credential through the one authority; the arrival leg is the second half of this row and has no PR yet, which is why it is stated here rather than linked. This row waits on the operator's environment approval, not on review.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The install's credential and the host's arrival, both through the authorities that own them."),
+      centering: plan(text: "new_server_bringup_plan: srv15's arrival is a modeled CI leg with a credential from the one authority, so the install path is reproducible. Target: dag/gunbc/host/network_install.dag and the arrival workflow it feeds."),
+    ),
+    roadmap_node(
+      identity: "rn_8VQD2KJ7TY5Z3N6XWHMR9C4BPF",
+      id: "bobo-live-hpm-check-and-evidence",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/host/boot_medium.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The live hpm check on bobo, and the evidence PR that records it",
+        displaced_cost: "A firmware check that has never been read live cannot tell an install-ready host from a host whose BMC will drop the mount mid-install -- and without the evidence PR, the next reader has no way to tell whether the check was ever done.",
+        boundary: "Run the modeled hpm firmware check against bobo once, read the result, and open the evidence PR that records the reading with its provenance. The reading is data; the PR is its receipt.",
+        first_slice: "One live hpm read against bobo, its result compared with the modeled expectation, and the evidence PR carrying the reading, the time and the reader.",
+        red_control: "A claimed hpm standing with no live reading behind it refuses, and the same claim passes once the reading is recorded and quoted.",
+        out_of_scope: "Acting on the reading: firmware updates, resets, or any repair are operator actions on the floor; a second host.",
+        handback: "A live firmware reading for bobo, quoted in its evidence PR, that the install dispatch can gate on."
+      ), on: "2026-11-20", note: "Ordered after the credential and arrival-leg row: the check is only meaningful once the host is arriving through the modeled chain and the reading has somewhere to be recorded.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The firmware truth about the host that is about to be installed, read once and recorded once."),
+      centering: plan(text: "new_server_bringup_plan: an install is dispatched against evidence, not expectation. Target: dag/gunbc/host/boot_medium.dag and the hpm firmware-check standing it feeds."),
+    ),
+    roadmap_node(
+      identity: "rn_6MZT4XQK9RV2J7YDHNC8WB3FP5",
+      id: "bobo-pxe-install-dispatch",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/host/network_install.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Dispatch bobo's one-shot network install over the PXE edge",
+        displaced_cost: "The whole point of the lane: until a host is actually installed over the edge, srv4 is a boot edge only in the model, and every later lane (the runner join, the census reading of the edge) waits on a host that does not exist.",
+        boundary: "Dispatch the modeled one-shot network install for bobo against the converged edge, then keep the install's receipt. The dispatch is the repository's act; the boot itself is the host's.",
+        first_slice: "One dispatch of the modeled network install for bobo against the converged edge, its install receipt recorded and quoted back to this row.",
+        red_control: "A dispatch that lacks the install's target-disk identity, the edge's converged standing or the operator's GO refuses, and the same dispatch passes with all three present.",
+        out_of_scope: "What the host does after first boot -- the tag:ci join and the first live build belong to their own sessions' rows; a second host's install; the edge's own Apply (its own operator gate row).",
+        handback: "bobo installed over the edge with a receipt, and the edge itself demonstrated by a real install rather than asserted."
+      ), on: "2026-11-20", note: "Every prerequisite is a row. The one that gates hardest is the operator's boot GO: a boot attempt is the operator's call, and the standing precedent is at dag/gunbc/auth/privileged_effect_registry.dag:553, where exactly one cold reset of mtcollins1's controller was approved and a second needs a new operator go -- so this row waits on operator-boot-or-reset-go and is not dispatched past it.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The install itself: the first host brought up over the modeled boot edge."),
+      centering: plan(text: "new_server_bringup_plan: srv4 becomes the site's boot edge by installing something, and bobo (srv15) is the host it installs. Target: dag/gunbc/host/network_install.dag and the one-shot install dispatch it models."),
+    ),
+    roadmap_node(
+      identity: "rn_4YHB7NQM2KZ9X5VT6RJW8DC3FP",
+      id: "bobo-first-boot-handoff-to-remote-build",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The boundary at bobo's first boot: from there the host is remote-build's, not this lane's",
+        displaced_cost: "Without a stated boundary two lanes both think they own the host: the install lane keeps reaching past first boot, and the runner lane waits for someone else to say the host is ready to join.",
+        boundary: "Record the handoff, and nothing of the handoff's content. From first boot, bobo belongs to quick-lynx-508 under clever-raven-401's remote-build root, on the operator's default-approved split of 2026-11-19: the tag:ci join, the host key, the MemTotal row, the roster row and one live build. Those rows are theirs; this one is the edge where this lane stops and reaches into their work.",
+        first_slice: "State the handoff on this row and link it by edge to the remote-build CI bridge the join lands in; say in the handback who owns what, by name.",
+        red_control: "A first-boot claim in this lane that also claims a runner-roster or tag:ci fact is refused -- the same fact may not be owned from both sides of the boundary.",
+        out_of_scope: "The tag:ci join, the host-key enrollment, the MemTotal row, the roster row and the first live build: all authored by quick-lynx-508 and clever-raven-401, never here.",
+        handback: "One sentence a reader can trust: bobo is installed at first boot, and everything after that is the remote-build lane's."
+      ), on: "2026-11-20", note: "The brief's instruction is explicit that this is a boundary row and not the join itself; it exists so the join has an edge to hang from without this lane authoring another session's work. The edge it draws points at the existing row remote-build-ci-bridge, which the operator's 2026-11-19 ruling admitted (landed by gunbc#16748, MERGED 2026-11-20T00:57:17Z).")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The lane's stopping line: the install path ends at first boot and hands the host to the remote-build lane."),
+      centering: plan(text: "new_server_bringup_plan: the install path is bounded at first boot; the runner join is another lane's work on the operator's default-approved split. Target: dag/gunbc/compute/remote_build.dag, where the join lands."),
+    ),
+    roadmap_node(
+      identity: "rn_7CJQ5ZKX2WN84TRHDY6MBV9FP3",
+      id: "butch-executor-route-under-the-ci-ruling",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_host_deploy.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "butch (srv14) is the executor route only, at runner width zero, under the 2026-11-19 CI ruling",
+        displaced_cost: "Read the old way, butch looks like a runner host that is merely slow to join, and the next reader spends the day chasing a width the ruling set to zero on purpose -- and the fleet charges itself for capacity that was never granted.",
+        boundary: "Model what the operator's 2026-11-19 ruling (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign, dag/gunbc/design_ruling.dag:40, landed by gunbc#16748) narrowed gunbc#16655 to: the executor route only, runner width 0. The tailnet anchor stands; the runner capacity does not.",
+        first_slice: "Land gunbc#16655 in its narrowed form: srv14's tailnet anchor, a first-contact hop admitted by exactly two modes, and the witness that says so.",
+        red_control: "Any srv14 row that claims runner capacity above zero refuses while the ruling stands, and a planted executor-route claim passes.",
+        out_of_scope: "Retiring mtcollins1 from its runner role and re-reading bobo's strata at the 56G trim -- a separate PR; and the per-host trust policy, which is the operator's decision-gate row, not this one.",
+        handback: "A srv14 that is honestly executor-only in the model, so nobody charges the fleet for capacity the ruling refused to grant."
+      ), on: "2026-11-20", note: "Live read 2026-11-20: gunbc#16655 OPEN, not draft, mergeable MERGEABLE, merge state CLEAN, updated 2026-11-20T01:05:20Z, branch session/tidy-swift-586-tailnet-anchor, title 'B3b model: tailnet anchor for srv14; a first-contact hop admitted by exactly two modes'. What the model holds today: srv14 is the already-installed CI-only host at dag/gunbc/runner/runner_host_deploy.dag:341, and srv14_runner_host_spec refuses until its LAN address is modeled; no srv14 runner-width row exists anywhere under dag/gunbc/runner/, which is exactly the legibility this row buys. Correction to the hand-down: butch's ed25519 host key is already enrolled as a LAN endpoint host key at dag/gunbc/fleet/fleet_host_key_enrollment.dag (landed by gunbc#16276, MERGED 2026-11-11T00:07:47Z, title 'enroll srv14/butch's ed25519 host key: scan-proven, first contact 2026-11-10'); what is owed is the tailnet anchor, which is this row's own subject.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The management half of the edge: what a host may do here is modeled, and a ruling that caps a host is legible from the model."),
+      centering: plan(text: "new_server_bringup_plan: capacity decisions are recorded as model state, so a ruling that sets a host to executor-only is enforceable rather than folklore. Target: dag/gunbc/runner/runner_host_deploy.dag, where srv14's spec and its absence are already decided."),
+    ),
+    roadmap_node(
+      identity: "rn_2KZ8Q3XW7VJ5N9DRMYH6TC4BP1",
+      id: "srv4-staging-artifact-ownership",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/site_pxe_edge_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The srv4 staging ownership split: hand-placed edge artifacts become modeled rows",
+        displaced_cost: "srv4 runs a boot edge whose artifacts were placed by hand. Nothing converges them, nothing witnesses them, and the fleet's own reading of the edge cannot say whether it is real.",
+        boundary: "Settle and model who owns srv4's staged artifacts, and move them from hand-placed files into the rows that converge them. The split is being negotiated with still-fox-404, who owns the srv4 edge itself.",
+        first_slice: "Agree the split with still-fox-404 and land the modeling half: the staged artifacts named as rows with owners, so the next change is a merge and not a hand.",
+        red_control: "An artifact claimed as staged and converged while no row models it is refused; the same artifact passes once its row exists.",
+        out_of_scope: "The Apply that puts them on srv4 (its own operator gate row); the user-data drift and the SitePxeEdgeLiveSource row, each of which is its own row here.",
+        handback: "A staging ownership split stated in the model, with the artifacts' owners named."
+      ), on: "2026-11-20", note: "Correction to the hand-down: the brief named a staging ownership PR as in flight. Live read 2026-11-20 found no such pull request open on gunb-ai/gunbc -- none by head-ref or author under still-fox-404 -- so what exists today is the negotiation with still-fox-404 plus this row. What is verifiable in the repository instead: the edge's desired-file set is modeled at dag/gunbc/fleet/site_pxe_edge_converge.dag (site_pxe_edge_desired_files, fed from site_pxe_edge_desired_inputs at :3020 and :3052), and its live-source roster is empty at :1757 -- the modeled half of the split has nowhere to land until this row's agreement holds.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The boot edge's artifacts as modeled state, so the edge is converged and witnessed like every other fleet authority."),
+      centering: plan(text: "new_server_bringup_plan: srv4 is the site's boot edge, and a boot edge with hand-placed artifacts is not yet an authority. Target: dag/gunbc/fleet/site_pxe_edge_converge.dag and the desired-file set its roster feeds."),
+    ),
+    roadmap_node(
+      identity: "rn_9XKQ4VZ2T7MH6NDYRCW8JB3FP5",
+      id: "srv4-install-client-user-data-drift",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/site_pxe_edge_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "srv4's served install user-data for bobo's client 9c:6b:00:e7:ca:63 is modeled drift",
+        displaced_cost: "The install client's MAC is modeled as an observation, but what srv4 actually serves that client as user-data is known only by reading the host. Unmodeled, a stale entry means an install that silently PXE-boots and seeds the wrong target.",
+        boundary: "Model srv4's per-client install user-data for 9c:6b:00:e7:ca:63 as the drift it is -- the served document as a row that can disagree with the model -- so the client entry converges and a mismatch refuses instead of seeding a stranger.",
+        first_slice: "Model the served install-user-data document for that client as a row with its MAC and its seed digest, and let the drift gate report it against what srv4 actually serves.",
+        red_control: "A client entry whose MAC does not match the observed binding refuses, and the observed binding passes.",
+        out_of_scope: "Applying it to srv4 (the operator's Apply gate row); the SitePxeEdgeLiveSource roster row; anything on the floor.",
+        handback: "The install client and its served document in the model, with drift reported rather than discovered at install time."
+      ), on: "2026-11-20", note: "Verified 2026-11-20: the MAC is modeled as an observation at gunbc.machine_intake.srv15_host_nic_observation (imported by dag/gunbc/fleet/site_pxe_edge_converge.dag:114 and dag/gunbc/machine_intake/inband_host_identity.dag:8), and it is the netboot I210 of the board srv13 and srv15 both named (serial BR80S6102300049, dag/gunbc/fleet/fleet_host_identity.dag:81). The literal string itself appears in no production row -- only in witness fixtures (dag/test/claim/host/network_install_witness.dag:262, dag/test/claim/machine_intake/arrival_bmc_witness.dag:273). The served document today exists only as a render keyed off the roster: site_pxe_edge_converge.dag:1336 renders the install-user-data file for site_pxe_edge_client_mac, and :1093-1132 renders one request's seed through admit_public_nocloud_seed -- and the roster it keys off is empty.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The edge's per-client install state, converged and drift-checked like the rest of the fleet record."),
+      centering: plan(text: "new_server_bringup_plan: the install path is only safe if the client the edge serves and the document it serves are modeled, not remembered. Target: dag/gunbc/fleet/site_pxe_edge_converge.dag and the install-user-data file it renders per client."),
+    ),
+    roadmap_node(
+      identity: "rn_5TRQ8ZKD2VX7N4JY6WHM9BC3FP",
+      id: "srv4-site-pxe-edge-live-source-row",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/site_pxe_edge_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The SitePxeEdgeLiveSource rows that let srv4's edge be read as live",
+        displaced_cost: "site_pxe_edge_live_sources is an empty roster, so the edge has no live source at all: the client-MAC frontier stays withheld, the edge's liveness is asserted rather than read, and the install path the roster feeds cannot be graded.",
+        boundary: "Give the edge its live-source rows -- read from srv4, not typed -- so the roster is non-empty and the frontier that waits on it can dissolve. The read is the repository's act; the Apply that made the live state is the operator's.",
+        first_slice: "One SitePxeEdgeLiveSource row read from srv4, with the client MAC its dnsmasq observed, and the withheld site_pxe_edge_live_client_mac_frontier dissolving against it.",
+        red_control: "A live-source row whose client MAC was not observed by the edge refuses; the empty roster keeps the frontier withheld today, which is the control's positive case.",
+        out_of_scope: "Any live change on srv4 -- reading is allowed, applying and restarting are not. Those need the operator's Apply GO, its own gate row.",
+        handback: "An edge with a read live source, and the frontier that waited on it dissolved."
+      ), on: "2026-11-20", note: "Verified 2026-11-20: data site_pxe_edge_live_sources is [] at dag/gunbc/fleet/site_pxe_edge_converge.dag:1757, and site_pxe_edge_live_client_mac_frontier is withheld_at that roster (:1773), its trigger read verbatim -- srv4's dnsmasq having observed the MAC the data NIC sends in a PXE request, read back from the edge, after which one SitePxeEdgeLiveSource lands. Two sibling frontiers wait on the same roster for orphan collection and partial placement. The row's client MAC is the one this program's user-data row models, and the roster's first row is the one the plan's acceptance bar reads.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The census sees the boot edge: srv4's edge is a counted live source, not an unmodeled dependency."),
+      centering: plan(text: "new_server_bringup_plan: the edge is only demonstrated once it can be read as live, which needs the roster the withheld frontier waits on. Target: dag/gunbc/fleet/site_pxe_edge_converge.dag, its empty site_pxe_edge_live_sources roster and the client-MAC frontier withheld at it."),
+    ),
+    roadmap_node(
+      identity: "rn_6ZKD9QXW4VJT2N8RYH7MCB3FP5",
+      id: "operator-boot-or-reset-go",
+      owner: "operator",
+      carriers: carrier(path: "dag/gunbc/auth/privileged_effect_registry.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "DECISION GATE: every reset and boot outside the admitted boot modes needs the operator's GO",
+        displaced_cost: "Either a machine resets without the operator deciding it may, or the lane stalls forever because nobody named who says GO. Both are expensive; the second is cheap to avoid.",
+        boundary: "One row that says plainly what the authority already holds: the fleet-converge mtcollins1_boot and host_reset_return modes run from main under their workload identity with no per-run or standing approval, provided each run takes the unit's maintenance hold -- while a cold reset outside those modes is approved per occasion, and exactly one has ever been given. Rows that dispatch a boot or a reset outside the admitted modes wait here.",
+        first_slice: "State the standing rule and its boundary on this row, and make every boot- or reset-dispatching row in the program name it as a prerequisite.",
+        red_control: "A boot or reset dispatch outside the admitted modes whose GO is absent refuses; the same dispatch passes once the GO is recorded for that occasion.",
+        out_of_scope: "Giving the GO; issuing it on the operator's behalf; widening or narrowing which actions need one -- the boundary is the registry's, not this row's.",
+        handback: "A legible rule: boots and resets inside the admitted modes run on the hold, anything else carries an operator GO, and a row that lacks one is visibly waiting."
+      ), on: "2026-11-20", note: "Named as a decision-gate row at the operator's instruction. The two authorities it records are both on main: the standing no-approval ruling for the admitted modes at dag/gunbc/auth/privileged_effect_registry.dag:408 (operator chat rulings 2026-09-23 and 2026-09-25, quoted again at dag/gunbc/machine_intake/mtcollins1_boot_run.dag:3419), and the single approved cold reset at :553, which says on its face that a second dispatch has no approval behind it and needs a new operator go.")),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The operator's hold over destructive boot actions, recorded so no row can quietly skip it."),
+    ),
+    roadmap_node(
+      identity: "rn_3WZK5VQD8XJT4N2RYH6MCB7FP9",
+      id: "operator-mtcollins1-per-host-trust-policy",
+      owner: "operator",
+      carriers: carrier(path: "dag/gunbc/auth/authorization_pattern_selection.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "DECISION GATE: the per-host trust policy for mtcollins1's remaining duties",
+        displaced_cost: "Two lanes wait on it and neither can move: butch's route past the executor-only cap, and mtcollins1's dispatch/collect/deregister leg. Without it the model cannot say what mtcollins1 may be trusted to do.",
+        boundary: "The operator states, per host, what is trusted -- which actions may run without a per-run approval and which never may. The repository's half is to consume that statement at gunbc.auth.authorization_pattern_selection; the statement itself is the operator's.",
+        first_slice: "The operator's per-host trust statement for mtcollins1, recorded and consumed by the authorization-pattern fold.",
+        red_control: "A pattern selected for a host whose trust statement does not authorize it refuses by name.",
+        out_of_scope: "Choosing the policy; any agent-side change to a trust statement; hosts outside this program.",
+        handback: "A per-host trust policy the authorization fold can be checked against, with the two waiting lanes unblocked by name."
+      ), on: "2026-11-20", note: "Recorded because the hand-down lists it as operator-held and two rows (butch-executor-route-under-the-ci-ruling and mtcollins1-runner-dispatch-collect-deregister) wait on it. Related but distinct, and already settled: the standing ruling at dag/gunbc/auth/privileged_effect_registry.dag:408 covers the BOOT (the admitted mtcollins1_boot and host_reset_return modes need no per-run approval); it does not speak to the runner duties this policy governs, which is why this row is still open.")),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The operator's trust decisions, kept as a row so the model's authority selections have a named source."),
+    ),
+    roadmap_node(
+      identity: "rn_8XKD5QZJ2VT7N4WHY6RCMB3FP9",
+      id: "operator-mtcollins1-runner-group-qualification-go",
+      owner: "operator",
+      carriers: carrier(path: "dag/gunbc/host/memory_envelope.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "DECISION GATE: the operator's GO on mtcollins1's runner group and its qualification",
+        displaced_cost: "mtcollins1's first qualification run cannot be charged to a runner group that has not been agreed, so the qualification leg -- and with it the retirement of mtcollins1's boot duties -- waits indefinitely on an unstated decision.",
+        boundary: "The operator names the runner group mtcollins1's work is qualified under and gives the GO for the qualification run itself. The memory envelope and the receipt are this program's modeling; the group and the GO are not.",
+        first_slice: "The named runner group plus the GO for one qualification run, recorded here so the qualification row can cite it.",
+        red_control: "A qualification receipt naming no group, or claiming a run with no GO recorded, refuses.",
+        out_of_scope: "Naming the group or giving the GO; running the qualification; the memory-envelope modeling, which is its own row.",
+        handback: "A runner group and a GO that the qualification row can be charged against."
+      ), on: "2026-11-20", note: "Operator-held per the hand-down; recorded so mtcollins1-first-qualification-run has a named blocker rather than a vague one.")),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The operator's charge decisions over mtcollins1's runner work, held to the same accountability as every other charge."),
+    ),
+    roadmap_node(
+      identity: "rn_2VQX8KZD5JWN4T7RYH6MCB3FP9",
+      id: "operator-srv4-site-pxe-edge-apply-go",
+      owner: "operator",
+      carriers: carrier(path: "dag/gunbc/fleet/site_pxe_edge_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "DECISION GATE: the operator's GO to Apply on srv4",
+        displaced_cost: "Three rows end at this gate. Without a named GO they read as unfinished agent work instead of as work waiting on a person, and the edge stays hand-tended by default.",
+        boundary: "The operator's GO to Apply the modeled state on srv4 -- the edge, its staged artifacts and the served install user-data. Everything up to the Apply is repository work; the Apply itself is the operator's.",
+        first_slice: "The GO, recorded on this row, after which the Apply runs and the three srv4 rows can be closed on evidence.",
+        red_control: "A live claim about srv4's edge that cites no Apply GO refuses; the same claim passes once the GO and the Apply's readback are recorded.",
+        out_of_scope: "Giving the GO; running the Apply; the modeling rows that precede it.",
+        handback: "A recorded GO and an Apply readback, with the srv4 rows closed on evidence rather than on expectation."
+      ), on: "2026-11-20", note: "Operator-held per the hand-down; prerequisite of srv4-site-pxe-edge-live-source-row and of the live half of srv4-install-client-user-data-drift.")),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The one act that changes srv4's live edge stays the operator's, and is named as such."),
+    ),
+    roadmap_node(
+      identity: "rn_5JZQ8XKD2VWT4N7RYH6MCB3FP9",
+      id: "ken-strata-56g-reread-dissolves-build-seat-frontier",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/serving/serving_host_memory.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "ken's strata engine is re-read at the 56G trim, and the build-seat frontier dissolves",
+        displaced_cost: "serving_host_memory still carries ken's strata engine ceiling as 112G, read 2026-11-18T21:21Z, while the operator trimmed it to 56G on 2026-11-19. Until the live number is re-read the model believes a serving charge that no longer exists, and gunbc.serving.serving_reservation's h11ssl_unit3_serving_charge_blocks_build_seat_frontier stays up -- holding the second build seat the trim was bought to fund.",
+        boundary: "Re-read ken's strata engine live, replace the 112G reading with the 56G one and its provenance, and let the frontier dissolve through its own rule. Owner: still-fox-404.",
+        first_slice: "One live read of ken's strata engine ceiling, the memory row updated with it and its provenance, and the frontier's dissolve check green at the new number.",
+        red_control: "A frontier that dissolves without a live read behind the new ceiling refuses; the 112G reading still holds the frontier today, which is the control's positive case.",
+        out_of_scope: "ken's tailnet pin, host key and srv9 endpoint -- tidy-pike-449's, edged to and not authored here; any live change to ken's engine (the trim was the operator's act); butch's engines.",
+        handback: "A serving charge the model reads from the machine, and a build-seat frontier that dissolved because the number earned it."
+      ), on: "2026-11-20", note: "The ruling is live on main: gunbc.design_ruling::ken_strata_memory_trim_buys_two_build_seats_2026_11_19 (dag/gunbc/design_ruling.dag:1378, landed by gunbc#16745, MERGED 2026-11-20T01:15:35Z), which states that the 112G reading stays load-bearing until a live re-read replaces it. The stale ceiling is the memory_max of data ken_strata_engine_memory at dag/gunbc/serving/serving_host_memory.dag:570-573 (read over ssh ubuntu@192.168.1.236 on 2026-11-18T21:21Z), and the frontier is data h11ssl_unit3_serving_charge_blocks_build_seat_frontier at dag/gunbc/serving/serving_reservation.dag:373. Correction to the hand-down: srv9 is modeled, not missing -- gunbc#16712 (MERGED 2026-11-19T05:52:57Z, 'fleet: retire the sold srv9 LAN endpoint, hold .236 as a dated observation on ken, and model the GPU read its retirement frees') retired the sold endpoint and holds .236 as a dated observation on ken's row at dag/gunbc/fleet/fleet_intent_network.dag:226. What is genuinely owed is the tailnet name pin and a host key confirmed from the unit's own console, both carried as read obligations and owned by tidy-pike-449.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The management edge keeps the fleet's memory truth: a charge the operator trimmed is a charge the model re-reads, and the capacity it frees is released by rule."),
+      centering: plan(text: "new_server_bringup_plan: capacity the operator grants is only real once the model can see it, so the 56G trim is re-read and the build-seat frontier the 112G reading held dissolves. Target: dag/gunbc/serving/serving_host_memory.dag and the frontier at gunbc.serving.serving_reservation."),
+    ),
+    roadmap_node(
+      identity: "rn_7QKZ3XDV9WT2N5RYH6MCB8FP4",
+      id: "mtcollins1-arrival-budget-grants",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/ci/ci_budget_raise.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "mtcollins1's arrival budgets get admitted grants in ci_budget_raise",
+        displaced_cost: "The arrival budgets are wired through ci_budget_raise's budget_admission, but nothing grants them: an arrival run either dies on a refusal nobody planned for, or a reader believes it is budget-admitted when no row ever admitted it.",
+        boundary: "Add the grants the arrival legs need, in the shape the module already uses. Precedent to follow, from the same module a day ago: gunbc#16746 dropped the budget_admitted Bool and had the witness read the refusal by its arm -- grants are admitted by their arm, not by a flag.",
+        first_slice: "The arrival-leg grants as BudgetRaiseGrant rows with their witnesses, RED against no grant and GREEN against the planted one.",
+        red_control: "An arrival leg whose budget no grant admits is refused by arm, and the same leg passes with its grant planted.",
+        out_of_scope: "Inventing a second budget path; the arrival run itself; any grant for a host outside this program.",
+        handback: "Arrival legs whose minutes the authority itself admitted, in the module's own idiom."
+      ), on: "2026-11-20", note: "Live read 2026-11-20 on the cited PRs: gunbc#16668 MERGED 2026-11-19T21:13:40Z (title 'bmc_cold_reset: a sustained-availability window after recovery; RecoveredThenLost (#16659)' -- it raised the cold-reset step's budget, and it added no grant for the arrival legs) and gunbc#16746 MERGED 2026-11-19T23:33:24Z (title 'ci_budget_raise: drop the budget_admitted Bool; the witness reads the refusal by its arm'). Verified in the module: dag/gunbc/ci/ci_budget_raise.dag carries exactly two BudgetRaiseGrant rows today -- the serve entry-verdict step at 45 minutes (:37) and mtcollins1's BMC cold-reset step at 67 minutes (:45) -- and nothing for the arrival legs, with budget_admission at :86 refusing by arm. This row waits on bobo-arrival-converge-budget-fold, which is where those legs and their minutes are first declared.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The boot path's minutes are budget-admitted like every other raised budget, so an arrival run is planned rather than lucky."),
+      centering: plan(text: "new_server_bringup_plan: mtcollins1 stays the site's boot host until its duties move, and while it does, its arrival legs must be budget-admitted rather than improvised. Target: dag/gunbc/ci/ci_budget_raise.dag and its budget_admission fold."),
+    ),
+    roadmap_node(
+      identity: "rn_4ZQK7XJW2VT9N5RYH6MCB3FP8",
+      id: "mtcollins1-runner-dispatch-collect-deregister",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/runner/runner_slot_desired.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "mtcollins1's dispatch, collect and deregister legs need their design PR",
+        displaced_cost: "Three legs of the runner lifecycle are named in the program and modeled nowhere: today they are performed by hand on a machine the site is trying to stop depending on, and no fold can say whether they happened.",
+        boundary: "One design PR that puts the dispatch, collect and deregister legs where they belong: the desired-state folds at gunbc.runner.runner_slot_desired, the trust selection at gunbc.auth.authorization_pattern_selection, and fleet_revision_acceptance for what a completed leg owes. No code before the design lands.",
+        first_slice: "The design PR: the three legs stated as desired state with their acceptance obligations, reviewed and merged; implementation follows as separate rows.",
+        red_control: "A claimed runner leg with no desired-state row and no acceptance obligation behind it refuses; a planted leg with both passes.",
+        out_of_scope: "The qualification leg (its own row); the fleet-converge mode question and the job-roster closure, which stay out until the design says otherwise; any runner-side execution.",
+        handback: "A merged design the three legs can be implemented against, with the trust and acceptance seams named."
+      ), on: "2026-11-20", note: "Two holds, both named: the S4 host key T1 (sleek-deer-601 -- branch session/sleek-deer-601-delivery4 exists at b24ac05b81b8 with no pull request open, read 2026-11-20) and this program's per-host trust policy row, operator-mtcollins1-per-host-trust-policy. Still owed inside the pairing: the HostEffectTransport pairing that gunbc#14738 opened (MERGED 2026-10-22T09:41:12Z, title 'Host-bound transport: join a HostEffectTransport to the managed host it reaches') -- its pairing is not complete -- and a read-only dry run of the lost-boot sweep against the real org runner listing, whose plan and run models exist at dag/gunbc/runner/runner_lost_boot_sweep_plan.dag and runner_lost_boot_sweep_run.dag.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The management edge covers a host's whole runner life: dispatch, collect and deregister are modeled, not remembered."),
+      centering: plan(text: "new_server_bringup_plan: retiring mtcollins1's duties means each duty has a modeled home first; dispatch, collect and deregister do not yet. Target: dag/gunbc/runner/runner_slot_desired.dag with the trust selection at gunbc.auth.authorization_pattern_selection."),
+    ),
+    roadmap_node(
+      identity: "rn_9DKZ2QVX7WT4N5RYH6MCB3FP8",
+      id: "mtcollins1-first-qualification-run",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/host/memory_envelope.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "mtcollins1's first qualification run, with its memory envelope and receipt",
+        displaced_cost: "A boot host that also carries runner work without a qualified envelope is a machine the site cannot reason about: the memory envelope is what makes the two duties compatible instead of merely coexisting.",
+        boundary: "Read mtcollins1's memory envelope, model it at gunbc.host.memory_envelope, and record one qualified run's receipt against the runner group the operator names. The run itself needs the GO, so it waits on the gate.",
+        first_slice: "The envelope read live, its row, and a receipt for one qualification run against the named group.",
+        red_control: "A qualification receipt that cites no envelope, or no runner group, refuses; the envelope's own reads refuse a receipt whose charge exceeds it.",
+        out_of_scope: "Naming the group or giving the GO (the gate row); the dispatch/collect/deregister design (its own row); any live change to mtcollins1.",
+        handback: "An envelope and a receipt, so the qualification leg is a fact the model holds."
+      ), on: "2026-11-20", note: "Waits on operator-mtcollins1-runner-group-qualification-go, and on the trust policy for anything that runs without a per-run approval. No worker is assigned to this row or to any of the mtcollins1 boot rows: they come from merry-fox-82's wind-down, and recording them is what keeps them from being lost.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The management edge proves mtcollins1's runner work is charged and bounded, not incidental."),
+      centering: plan(text: "new_server_bringup_plan: mtcollins1's duties retire only once each is modeled and qualified somewhere else; its runner qualification is one of them. Target: dag/gunbc/host/memory_envelope.dag and the receipt it supports."),
+    ),
+    roadmap_node(
+      identity: "rn_3XKZ7QVD2WT9N5RYH6MCB4FP8",
+      id: "mtcollins1-boot-later-work",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "mtcollins1's boot path grows up: disk rows, then a boot-install-qualify repeat with no hand step",
+        displaced_cost: "The boot path still needs a person between steps. Until disk rows exist and the sequence can repeat unattended, mtcollins1 is not a boot service, it is a person with a boot habit -- and every later row that claims its duties are retired is claiming it of a host that still cannot boot itself.",
+        boundary: "Two things, in order. First the disk rows the boot path reads -- their PR is owed. Then the full sequence over PXE, diskless and disk-backed both: boot, install, qualify, and repeat with no hand step between them, which is the persistence axis the boot design named.",
+        first_slice: "The disk-rows PR: the boot path reads its disks from modeled rows instead of hand-stated values.",
+        red_control: "A boot run that claims persistence across a repeat with no modeled disk row refuses; the modeled rows pass, and a planted hand-stated value fails.",
+        out_of_scope: "The host's runner legs; anything needing an operator GO (those are the gate rows); a second boot host.",
+        handback: "A boot path that repeats unattended against modeled disks -- the precondition for retiring the duties it carries."
+      ), on: "2026-11-20", note: "Live read 2026-11-20: the persistence axis comes from gunbc#15645 (MERGED 2026-11-02T06:58:33Z, title 'Boot design: delivery, persistence and role are independent axes (ruling + plan)' -- its P1 axis). This row is the later half of the boot program; the install lane's rows run in parallel with it.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The boot host becomes a service: repeatable, modeled, and no longer dependent on a hand between steps."),
+      centering: plan(text: "new_server_bringup_plan: mtcollins1's boot duties retire only once the boot path can run itself. Target: dag/gunbc/machine_intake/mtcollins1_boot_run.dag and the disk rows it should read."),
+    ),
+    roadmap_node(
+      identity: "rn_6ZQK2XWD9VT5N7RYH6MCB3FP8",
+      id: "mtcollins1-boot-duty-retirement",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "mtcollins1's boot duties are retired onto srv4, and the last consumer moves",
+        displaced_cost: "Nothing today carries this. No row anywhere in the authority models retiring mtcollins1's boot duties -- the only records that existed were two closed pull requests. So the site runs a second, unwitnessed boot path with no plan for ending it, and nobody can say what still depends on it.",
+        boundary: "Name every boot duty mtcollins1 still carries, name where each moves (the srv4 edge rows above, as transitions within the lifecycle gunbc.plans.fleet_machine_authority already models), move the consumers, and then delete the duties. Retirement is the last step and it is data: rows deleted, consumers repointed, the fleet's reading of the edge showing no gap.",
+        first_slice: "The duty census: an enumerated list of what mtcollins1 still does at boot, each item with the row that replaces it or a named blocker.",
+        red_control: "A duty that cannot name its replacement or its blocker refuses the retirement, so retirement cannot pass by forgetting a duty.",
+        out_of_scope: "Anything that needs the operator's GO; the srv4 rows themselves (their own rows); the physical decommissioning of hardware -- duties, not machines.",
+        handback: "A boot path with one home, and the fleet's reading of the boot and management edge showing srv4 where mtcollins1 was."
+      ), on: "2026-11-20", note: "Verified 2026-11-20 against the authority: no row in dag/gunbc/roadmap/roadmap_authority.dag carried mtcollins1's boot retirement, and no plan under dag/gunbc/plans named it. Searched before adding, and the nearest existing models are linked rather than duplicated: gunbc.plans.fleet_machine_authority already governs the machine lifecycle as modeled transitions (retire and replace included, and its own bobo-lane line retires srv13's identity rows), and gunbc.plans.fleet_hardware_fact_consumption governs the GPU facts a hardware read produces -- neither says which of mtcollins1's boot duties moves to which srv4 row, which is the gap this row closes. Its prerequisites are the srv4 live-source row and the later-work row; the boot duties stay load-bearing until the 56G re-read lands, per the 2026-11-19 ruling at dag/gunbc/design_ruling.dag:1378.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The program's closing claim: the boot and management edge lives on srv4 because every duty moved there in the model first."),
+      centering: plan(text: "new_server_bringup_plan: the point of srv4 as the site's boot and management edge is that mtcollins1 stops being it. Target: dag/gunbc/machine_intake/mtcollins1_boot_run.dag, whose duties move onto the srv4 edge rows."),
+    ),
+    roadmap_node(
+      identity: "rn_8QZK5XVD2WT9N4RYH6MCB3FP7",
+      id: "bmc-nfs-share-server-through-endpoint-authority",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/megarac_media_model.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The BMC virtual-media share resolves its server through the fleet endpoint authority, not a pinned literal",
+        displaced_cost: "The virtual-media share the boot path attaches carries 192.168.1.201 as a typed-in server string wherever it is built. Pin an address and the day the server moves, the boot path breaks somewhere no witness predicted.",
+        boundary: "Resolve that server through the fleet endpoint authority the rest of the fleet already uses -- the pattern srv4's own TFTP server address follows at dag/gunbc/fleet/site_pxe_edge_converge.dag:824, read out of srv4's LAN endpoint row -- and keep the literal only as a dated observation. Finishing the shape the closed gunbc#15350 opened.",
+        first_slice: "The MegaRacShare server resolved through the endpoint authority, with the pinned literal retired to a dated observation and a witness that refuses a share not resolved by authority.",
+        red_control: "A share whose server does not resolve through the endpoint authority refuses by name; the literal-only form is the control's RED case.",
+        out_of_scope: "Moving any server; the boot path's other consumers until they read the resolved address; the approval question gunbc#15287 raised, which the standing ruling settled.",
+        handback: "A boot path whose share server is resolved, not remembered -- with the recommendation on the two closed PRs recorded where a reader will find it."
+      ), on: "2026-11-20", note: "Verified 2026-11-20: MegaRacShare carries server/source_path/share_type at dag/gunbc/megarac_media_model.dag:34, and every place the server is spelled is a witness fixture pinning '192.168.1.201' (dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix.dag:748 real_share, dag/test/claim/machine_intake/megarac_media_0_45_3_witness.dag:1122, dag/test/claim/bmc/megarac_csrf_header_argv_witness.dag:148); 201 is srv2's LAN address at dag/gunbc/fleet/fleet_intent_network.dag:86. The two closed pull requests this row disposes of, both read 2026-11-20: gunbc#15350 (BMC NFS share server_address through the fleet endpoint authority) is CLOSED, opened as a DRAFT, mergeable CONFLICTING / merge state DIRTY, last updated 2026-11-20T01:17:19Z, never merged -- its work is still owed, which is why this row exists. RECOMMENDATION: re-author from this row on current main rather than reopening, because the endpoint-authority pattern it wanted now has a working precedent (srv4's TFTP address, site_pxe_edge_converge.dag:824) and its tree no longer applies. gunbc#15287 (mtcollins1_boot approval-free from a trusted branch, gated on a reader-key mint) is CLOSED, not draft, mergeable CONFLICTING / DIRTY, last updated 2026-11-20T01:17:27Z, and SUPERSEDED rather than owed: the standing ruling at dag/gunbc/auth/privileged_effect_registry.dag:408 already grants the admitted boot modes with no per-run or standing approval (operator chat rulings 2026-09-23 and 2026-09-25, repeated at dag/gunbc/machine_intake/mtcollins1_boot_run.dag:3419), which is what the PR was trying to arrange. RECOMMENDATION: close as superseded by that ruling; if any residual approval is ever found in the boot path, it opens as a new row against today's code rather than as a reopening. Neither pull request was touched by this change.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "site-boot-and-management-edge", contribution: "The boot path stops depending on remembered addresses: the share server is resolved by the same authority that resolves every other endpoint."),
+      centering: plan(text: "new_server_bringup_plan: the boot and management edge is a modeled path, and a path that pins an address in a parameter string is not modeled. Target: dag/gunbc/megarac_media_model.dag's share and the fleet endpoint authority it should read through."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -5880,6 +6292,32 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "cc-evidence-to-consumers", parent: "cc-path-census"),
     edge(child: "cc-guaranteed-cleanup", parent: "cc-path-census"),
     edge(child: "serve-held-open-response", parent: "fabric-worker-event-log"),
+    // ---- the boot and management edge program (2026-11-20) ──────────────────────────────────
+    // Prerequisites the plan carrier names and the live read confirms; child depends on parent, the
+    // direction the graph's endpoint law reads. Deliberately absent: an edge from a row to its own
+    // container, which the containment witness refuses.
+    edge(child: "bobo-arrival-converge-budget-fold", parent: "bobo-arrival-door-refusal-carrier"),
+    edge(child: "srv15-arrival-environment-approval", parent: "bobo-arrival-converge-budget-fold"),
+    edge(child: "bobo-install-credential-and-ci-arrival-leg", parent: "srv15-arrival-environment-approval"),
+    edge(child: "bobo-live-hpm-check-and-evidence", parent: "bobo-install-credential-and-ci-arrival-leg"),
+    edge(child: "bobo-pxe-install-dispatch", parent: "bobo-live-hpm-check-and-evidence"),
+    edge(child: "bobo-pxe-install-dispatch", parent: "bmc-nfs-share-server-through-endpoint-authority"),
+    edge(child: "bobo-pxe-install-dispatch", parent: "srv4-site-pxe-edge-live-source-row"),
+    edge(child: "bobo-pxe-install-dispatch", parent: "operator-boot-or-reset-go"),
+    edge(child: "bobo-first-boot-handoff-to-remote-build", parent: "bobo-pxe-install-dispatch"),
+    edge(child: "bobo-first-boot-handoff-to-remote-build", parent: "remote-build-ci-bridge"),
+    edge(child: "butch-executor-route-under-the-ci-ruling", parent: "operator-mtcollins1-per-host-trust-policy"),
+    edge(child: "srv4-install-client-user-data-drift", parent: "srv4-staging-artifact-ownership"),
+    edge(child: "srv4-site-pxe-edge-live-source-row", parent: "srv4-staging-artifact-ownership"),
+    edge(child: "srv4-site-pxe-edge-live-source-row", parent: "srv4-install-client-user-data-drift"),
+    edge(child: "srv4-site-pxe-edge-live-source-row", parent: "operator-srv4-site-pxe-edge-apply-go"),
+    edge(child: "mtcollins1-arrival-budget-grants", parent: "bobo-arrival-converge-budget-fold"),
+    edge(child: "mtcollins1-runner-dispatch-collect-deregister", parent: "operator-mtcollins1-per-host-trust-policy"),
+    edge(child: "mtcollins1-first-qualification-run", parent: "operator-mtcollins1-runner-group-qualification-go"),
+    edge(child: "mtcollins1-boot-later-work", parent: "mtcollins1-first-qualification-run"),
+    edge(child: "mtcollins1-boot-duty-retirement", parent: "srv4-site-pxe-edge-live-source-row"),
+    edge(child: "mtcollins1-boot-duty-retirement", parent: "mtcollins1-boot-later-work"),
+    edge(child: "mtcollins1-boot-duty-retirement", parent: "bobo-pxe-install-dispatch"),
   ], guarantee_ladder_edges())
 }
 
