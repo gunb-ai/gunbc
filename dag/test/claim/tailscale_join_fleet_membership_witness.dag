@@ -127,73 +127,75 @@ fn state_of(fixture: FilePath) -> TailscaleJoinState {
 fn plan_for(document: String, key_usable: Bool) -> TailscaleJoinPlan {
   tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag),
+    join_state: Present { value: tailscale_up_join_state_of(status_json: document, required_tag: tailscale_fleet_node_tag) },
     package_state: DpkgPackageInstalled,
     key_usable: key_usable,
   )
 }
 
-// DPkg DECIDES BEFORE THE JOIN STATE (the fix for srv4, run 44643376146). Every case here passes the join
-// state JoinStateUnreadable on purpose: when the package is absent, the plan must reach install+join WITHOUT
-// letting an unreadable status refuse it -- a host with no binary cannot report a status, and srv4 refused
-// exactly because the old plan consulted the status first. srv4's dpkg read (exit 1 + "no information is
-// available") is DpkgPackageUnknown, so the Unknown arm installing is the receipt-carrying case; Undecidable
-// still refuses (absent is never inferred from a failed dpkg); and Installed-but-unreadable still refuses
-// (the binary is there, so a failed status is a real fault, not an absent package).
+// DPkg DECIDES BEFORE THE JOIN STATE (the fix for srv4, run 44643376146). The join state is now Optional and
+// the wet passes Absent whenever the package is not installed, so the install arms have NO join state to be
+// refused by -- making the absent state unwritable rather than catching it (gunbc.design_argument::fail_closed).
+// Two install shapes are proven: (a) `absent` passes a PRESENT unreadable state on an absent package and still
+// installs -- even a status cannot refuse an absent binary; (b) `never_seen` passes Absent, the real wet shape
+// for srv4's dpkg-Unknown read (exit 1 + "no information is available"). Undecidable refuses (absent is never
+// inferred from a failed dpkg); Installed-but-unreadable refuses (the binary is there, so a failed status is a
+// real fault); and Installed-with-no-state-read refuses (the wet skipped a read it owes).
+fn plan_installs(p: TailscaleJoinPlan) -> Bool {
+  match p {
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action } =>
+      action == JoinPackageInstall
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanRefused { host: _, cause: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+  }
+}
+
+fn plan_refused(p: TailscaleJoinPlan) -> Bool {
+  match p {
+    JoinPlanRefused { host: _, cause: cause } => cause != ""
+    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
+    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
+    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
+  }
+}
+
 test fn w_package_decides_before_the_join_state() -> Bool {
   let absent = tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: JoinStateUnreadable { cause: "status leg exited 127" },
+    join_state: Present { value: JoinStateUnreadable { cause: "status leg exited 127" } },
     package_state: DpkgPackageNotInstalled { status: "" },
     key_usable: true,
   )
   let never_seen = tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: JoinStateUnreadable { cause: "status leg exited 127" },
+    join_state: Absent,
     package_state: DpkgPackageUnknown,
     key_usable: true,
   )
   let undecidable = tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: JoinStateNotJoined { state: "" },
+    join_state: Absent,
     package_state: DpkgQueryUndecidable { reason: "dpkg itself failed" },
     key_usable: true,
   )
   let installed_unreadable = tailscale_join_plan(
     host: operator_host_srv1,
-    join_state: JoinStateUnreadable { cause: "status leg exited non-zero with the binary present" },
+    join_state: Present { value: JoinStateUnreadable { cause: "status leg exited non-zero with the binary present" } },
     package_state: DpkgPackageInstalled,
     key_usable: true,
   )
-  match absent {
-    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action } =>
-      action == JoinPackageInstall
-        && match never_seen {
-          JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: action2 } =>
-            action2 == JoinPackageInstall
-              && match undecidable {
-                JoinPlanRefused { host: _, cause: cause_u } =>
-                  cause_u != ""
-                    && match installed_unreadable {
-                      JoinPlanRefused { host: _, cause: cause_i } => cause_i != ""
-                      JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
-                      JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
-                      JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
-                    }
-                JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
-                JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
-                JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
-              }
-          JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
-          JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
-          JoinPlanRefused { host: _, cause: _ } => false
-          JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
-        }
-    JoinPlanNoop { host: _, tailnet_name: _, reason: _ } => false
-    JoinPlanPlaceAndJoin { host: _, tailnet_name: _, hostname: _, package_action: _ } => false
-    JoinPlanRefused { host: _, cause: _ } => false
-    JoinPlanNotFleetMember { host: _, tailnet_name: _, required_tag: _, observed_tags: _ } => false
-  }
+  let installed_no_state = tailscale_join_plan(
+    host: operator_host_srv1,
+    join_state: Absent,
+    package_state: DpkgPackageInstalled,
+    key_usable: true,
+  )
+  plan_installs(absent)
+    && plan_installs(never_seen)
+    && plan_refused(undecidable)
+    && plan_refused(installed_unreadable)
+    && plan_refused(installed_no_state)
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────
