@@ -75,7 +75,8 @@ use crate::v1_std_core::{
     lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
     param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, transport_wall_deadline,
+    type_name_compatible,
     unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
     FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
     SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
@@ -18243,11 +18244,61 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
     }
 }
 
+/// THE PER-LEG CEILING OF A SHELL LEG, READ FROM THE TRANSPORT DECLARATION (review 96999).
+///
+/// `wall_deadline:` is a FIELD OF THE DECLARED `transport shell` BLOCK, read through v1.std.core's
+/// `transport_wall_deadline` exactly as the declared `stdin:` field is read at the dispatch, and the
+/// field's expression is evaluated in the call's environment. It used to be looked up in the
+/// caller's parameter environment BY NAME (`param_env.lookup(ctx.sym("wall_deadline"))`), which
+/// installed a second, unmodeled authority in the seed's symbol table: an operation whose input
+/// happened to be spelled `wall_deadline` became killable whether or not its transport meant to
+/// carry a ceiling, and a transport that wanted one under any other input name silently had none.
+/// The transport declaration is the only authority the seed reads. Absent is unbounded under the
+/// outer whole-receipt budget; Present(N) arms a per-leg ceiling; a non-positive count is refused,
+/// never folded to "none" (0-means-none is forbidden by the design). The second half of the pair is
+/// the `Second` the ceiling was built from, which the shell result echoes -- both come from here, so
+/// no consumer can be handed an overrun with no deadline, or a deadline with no overrun.
+fn declared_shell_leg_ceiling(
+    ctx: &InterpContext,
+    intent: &str,
+    transport: &Rc<Node>,
+    param_env: &Rc<Env>,
+) -> InterpResult<(Option<std::time::Duration>, Option<Value>)> {
+    let ceiling_node = match transport_wall_deadline(transport.clone(), ctx.si()) {
+        None => return Ok((None, None)),
+        Some(ceiling_node) => ceiling_node,
+    };
+    match eval_expr(&ceiling_node, param_env, ctx)? {
+        Value::Variant { variant_name, .. } if ctx.resolve(*variant_name) == "Absent" => {
+            Ok((None, None))
+        }
+        Value::Variant { variant_name, fields, .. } if ctx.resolve(*variant_name) == "Present" => {
+            let second = ctx.field(fields, "value").ok_or_else(|| InterpError::TypeError {
+                msg: format!("{intent}: shell transport wall_deadline Present carries no value"),
+            })?;
+            let secs = record_field(ctx, second, "count")
+                .and_then(|v| match v { Value::Int(n) => Some(n), _ => None })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!("{intent}: shell transport wall_deadline Second must carry an integer count"),
+                })?;
+            if secs <= 0 {
+                return Err(InterpError::TypeError {
+                    msg: format!("{intent}: shell transport wall_deadline must be a positive number of seconds (a per-leg deadline is never 0-means-none)"),
+                });
+            }
+            Ok((Some(std::time::Duration::from_secs(secs as u64)), Some(second)))
+        }
+        other => Err(InterpError::TypeError {
+            msg: format!("{intent}: shell transport wall_deadline must be Optional<Second>, found `{other}`"),
+        }),
+    }
+}
+
 /// Arm the process-group kill ONLY when some ceiling actually exists.
 ///
 /// Two independent ceilings can need it: the OUTER whole-receipt witness budget
-/// (`ctx.witness_wall_deadline`) and the PER-LEG wall deadline a fleet ssh transport passes
-/// (`leg_deadline`, the `wall_deadline: Option<Second>` on the session dispatch). Either one
+/// (`ctx.witness_wall_deadline`) and the PER-LEG wall deadline declared on the shell transport
+/// (`leg_deadline`, read by `declared_shell_leg_ceiling` above). Either one
 /// armed means a group kill must be possible, so the child leads its own group. NEITHER armed
 /// means NO `process_group(0)`: the child then stays in the gunbc process's own foreground
 /// group, exactly as before the per-leg deadline existed, so Ctrl-C at a terminal still kills
@@ -18588,38 +18639,22 @@ fn dispatch_shell(
         },
     };
 
-    // The caller-passed PER-LEG wall ceiling (extdeps.ssh session transport-shell
-    // `wall_deadline: Option<Second> = Absent`). Honor EXACTLY this and nothing else: Absent
-    // keeps today's behavior under the outer whole-receipt budget; Present(N) arms a per-leg
-    // ceiling. A non-positive count is refused, never folded to "none" (0-means-none is
-    // forbidden by the design).
-    let mut leg_deadline_value: Option<Value> = None;
-    let leg_deadline: Option<std::time::Duration> = match param_env.lookup(ctx.sym("wall_deadline")) {
-        None => None,
-        Some(Value::Variant { variant_name, .. }) if ctx.resolve(*variant_name) == "Absent" => None,
-        Some(Value::Variant { variant_name, fields, .. }) if ctx.resolve(*variant_name) == "Present" => {
-            let second = ctx.field(fields, "value").ok_or_else(|| InterpError::TypeError {
-                msg: format!("{intent}: shell transport wall_deadline Present carries no value"),
-            })?;
-            leg_deadline_value = Some(second.clone());
-            let secs = record_field(ctx, second, "count")
-                .and_then(|v| match v { Value::Int(n) => Some(n), _ => None })
-                .ok_or_else(|| InterpError::TypeError {
-                    msg: format!("{intent}: shell transport wall_deadline Second must carry an integer count"),
-                })?;
-            if secs <= 0 {
-                return Err(InterpError::TypeError {
-                    msg: format!("{intent}: shell transport wall_deadline must be a positive number of seconds (a per-leg deadline is never 0-means-none)"),
-                });
-            }
-            Some(std::time::Duration::from_secs(secs as u64))
-        }
-        Some(other) => {
-            return Err(InterpError::TypeError {
-                msg: format!("{intent}: shell transport wall_deadline must be Optional<Second>, found `{other}`"),
-            })
-        }
-    };
+    // THE CEILING IS DECLARED BY THE TRANSPORT. `wall_deadline:` is a field of the shell transport
+    // block -- extdeps.ssh.session and extdeps.ssh.password_session declare it, naming the call's
+    // Optional<Second> -- and it is read through v1.std.core's `transport_wall_deadline`, exactly the
+    // way the declared `stdin:` field is read a few lines below. It used to be looked up in the
+    // caller's parameter environment BY NAME, which installed a second, unmodeled authority in the
+    // seed's symbol table: any operation whose input happened to be spelled `wall_deadline` became
+    // killable whether or not its transport meant to carry a ceiling, and a transport that wanted one
+    // under any other input name silently had none. The transport declaration is now the only
+    // authority: no declared field means the dispatch is byte-identical to before the field existed
+    // (no group, no kill, no overrun arm); Absent is unbounded under the outer whole-receipt budget;
+    // Present(N) arms a per-leg ceiling; a non-positive count is refused, never folded to "none"
+    // (0-means-none is forbidden by the design). Review 96999.
+    // THE CEILING IS DECLARED BY THE TRANSPORT -- see `declared_shell_leg_ceiling`, whose comment
+    // carries the authority story (review 96999). A transport without the declared field keeps
+    // main's behaviour byte for byte.
+    let (leg_deadline, leg_deadline_value) = declared_shell_leg_ceiling(ctx, &intent, &transport, param_env)?;
 
     let (capture_opt, overran) = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
@@ -28945,9 +28980,10 @@ mod wall_deadline_kill_tests {
     use crate::v1_compiler_infer_items::ResolvedGraph;
 
     use super::{
-        configure_shell_process_group_for_wall_kill, kill_shell_process_group,
-        map_budget_error_to_witness_refusal, wait_child_honoring_wall_deadline, EvaluationClock,
-        ExecutionMode, InterpContext, InterpError,
+        configure_shell_process_group_for_wall_kill, declared_shell_leg_ceiling,
+        kill_shell_process_group, map_budget_error_to_witness_refusal, variant_value,
+        wait_child_honoring_wall_deadline, Env, EvaluationClock, ExecutionMode, InterpContext,
+        InterpError, Value,
     };
 
     fn wet_ctx() -> InterpContext {
@@ -29393,6 +29429,175 @@ mod wall_deadline_kill_tests {
             assert!(!output.exit_status.success(), "killed group is not green");
         }
     }
+
+    // THE CEILING IS THE TRANSPORT'S DECLARATION, NOT A PARAMETER SPELLING (review 96999). A call
+    // whose environment binds an input named `wall_deadline` but whose transport does NOT declare
+    // the field gets no per-leg ceiling -- and so no process group, so a terminal Ctrl-C still
+    // reaches the child. The same environment through a transport that DOES declare the field gets
+    // exactly the ceiling that field carries. Absent on a declared field is a decision made on the
+    // transport, not a default applied behind the caller's back; a non-positive ceiling is refused
+    // rather than folded into "none".
+    #[test]
+    fn the_ceiling_is_the_transport_declaration_not_a_parameter_spelling() {
+        use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+        use crate::std_syntax::LiteralValue;
+        use crate::v1_std_core::{
+            kernel_span, make_expr_node, make_field_init_node, make_named_expr_node,
+            make_transport_node, no_span, ExprData,
+        };
+
+        fn pgid_of(pid: u32) -> i32 {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("stat");
+            let rest = &stat[stat.rfind(')').expect("comm") + 2..];
+            rest.split_whitespace()
+                .nth(2)
+                .expect("pgrp")
+                .parse()
+                .expect("int")
+        }
+
+        let occ = Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic);
+        let ctx = wet_ctx();
+
+        let argv_expr = make_expr_node(
+            occ.clone(),
+            Rc::new(ExprData::ExprLiteral {
+                value: Rc::new(LiteralValue::LiteralString {
+                    text: "true".to_string(),
+                }),
+            }),
+            Rc::new(vec![]),
+            None,
+            no_span(),
+        );
+        let argv_field = make_field_init_node(
+            occ.clone(),
+            "argv".to_string(),
+            argv_expr,
+            no_span(),
+            kernel_span("argv".to_string()),
+        );
+        // `wall_deadline: wall_deadline` -- the transport field naming the call's Optional<Second>.
+        let ceiling_expr = make_named_expr_node(
+            occ.clone(),
+            "wall_deadline".to_string(),
+            Rc::new(ExprData::ExprVar { binding_kind: None }),
+            Rc::new(vec![]),
+            None,
+            no_span(),
+            kernel_span("wall_deadline".to_string()),
+        );
+        let ceiling_field = make_field_init_node(
+            occ.clone(),
+            "wall_deadline".to_string(),
+            ceiling_expr,
+            no_span(),
+            kernel_span("wall_deadline".to_string()),
+        );
+        let bare_transport = make_transport_node(
+            occ.clone(),
+            Rc::new(vec![argv_field.clone()]),
+            Rc::new(vec![]),
+            None,
+            no_span(),
+        );
+        let declared_transport = make_transport_node(
+            occ.clone(),
+            Rc::new(vec![argv_field, ceiling_field]),
+            Rc::new(vec![]),
+            None,
+            no_span(),
+        );
+
+        // The call BINDS an input spelled `wall_deadline`, carrying a real 2s ceiling. Under the old
+        // seed behaviour that alone armed a kill; under the transport declaration it decides nothing.
+        let env = Env::with_binding(
+            &Env::empty(),
+            ctx.sym("wall_deadline"),
+            variant_value(
+                &ctx,
+                "Optional",
+                "Present",
+                vec![("value", variant_value(&ctx, "Second", "MeasureSecond", vec![("count", Value::Int(2))]))],
+            ),
+        );
+
+        let (bare_deadline, bare_echo) =
+            declared_shell_leg_ceiling(&ctx, "probe", &bare_transport, &env).expect("bare transport");
+        assert!(
+            bare_deadline.is_none() && bare_echo.is_none(),
+            "an input spelled `wall_deadline` must not arm a ceiling on a transport that does not declare the field"
+        );
+
+        let (declared_deadline, declared_echo) =
+            declared_shell_leg_ceiling(&ctx, "probe", &declared_transport, &env)
+                .expect("declared transport");
+        assert_eq!(
+            declared_deadline,
+            Some(std::time::Duration::from_secs(2)),
+            "the declared transport field is the ceiling"
+        );
+        assert!(declared_echo.is_some(), "the ceiling's Second is echoed with it");
+
+        // A declared field may SAY unbounded; that is a decision on the transport.
+        let absent_env = Env::with_binding(
+            &Env::empty(),
+            ctx.sym("wall_deadline"),
+            variant_value(&ctx, "Optional", "Absent", vec![]),
+        );
+        let (absent_deadline, _) =
+            declared_shell_leg_ceiling(&ctx, "probe", &declared_transport, &absent_env)
+                .expect("Absent on a declared field is legal");
+        assert!(absent_deadline.is_none(), "Absent is unbounded under the outer budget");
+
+        // A declared non-positive ceiling is refused, never folded to "none".
+        let zero_env = Env::with_binding(
+            &Env::empty(),
+            ctx.sym("wall_deadline"),
+            variant_value(
+                &ctx,
+                "Optional",
+                "Present",
+                vec![("value", variant_value(&ctx, "Second", "MeasureSecond", vec![("count", Value::Int(0)])))],
+            ),
+        );
+        assert!(
+            declared_shell_leg_ceiling(&ctx, "probe", &declared_transport, &zero_env).is_err(),
+            "a 0-second ceiling is refused, not treated as no deadline"
+        );
+
+        // The observable consequence: the spelling alone leaves the child in OUR group (so Ctrl-C
+        // kills it); the declared field puts it in its own group (so the per-leg kill can reach it).
+        let mut bare_cmd = Command::new("sleep");
+        bare_cmd.arg("5").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        configure_shell_process_group_for_wall_kill(&mut bare_cmd, &ctx, bare_deadline);
+        let bare_child = bare_cmd.spawn().expect("spawn bare");
+        let bare_pid = bare_child.id();
+        assert_eq!(
+            pgid_of(bare_pid),
+            pgid_of(std::process::id()),
+            "no declared field: the child stays in our foreground group"
+        );
+        let _ = bare_child.kill();
+        let _ = bare_child.wait();
+
+        let mut declared_cmd = Command::new("sleep");
+        declared_cmd
+            .arg("5")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        configure_shell_process_group_for_wall_kill(&mut declared_cmd, &ctx, declared_deadline);
+        let declared_child = declared_cmd.spawn().expect("spawn declared");
+        let declared_pid = declared_child.id();
+        assert_ne!(
+            pgid_of(declared_pid),
+            pgid_of(std::process::id()),
+            "declared field: the child leads its own group so the per-leg kill can reach it"
+        );
+        let _ = declared_child.kill();
+        let _ = declared_child.wait();
+    }
 }
 
 #[cfg(test)]
@@ -29527,6 +29732,7 @@ mod argv_arg_limit_test {
             ]),
             Rc::new(im_vec![]),
             None,
+            None,
             span,
         )
     }
@@ -29649,6 +29855,7 @@ mod argv_arg_limit_test {
                 span.clone()
             )]),
             Rc::new(im_vec![]),
+            None,
             None,
             span,
         )

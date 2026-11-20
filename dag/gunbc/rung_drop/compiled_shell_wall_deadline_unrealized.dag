@@ -32,7 +32,7 @@ data compiled_shell_wall_deadline_unrealized: RungDrop = RungDrop {
       previous: MechanicallyPreventable,
       temporary: Mitigatable,
       reason: ReplacementStaged {
-        replacement: "a wall-deadline kill realized in emit_shell_call for compiled shell transport: arm a timer from the wall_deadline input, kill the process group on expiry, set overran=true and wall_deadline_seconds in the emitted output"
+        replacement: "a wall-deadline kill realized in emit_shell_call for compiled shell transport: arm a timer from the `wall_deadline:` field the transport block declares (the same declaration the interpreter reads through v1.std.core transport_wall_deadline), kill the process group on expiry, set overran=true and wall_deadline_seconds in the emitted output"
       },
       population: Enumerated { members: compiled_shell_wall_deadline_unrealized_population },
       restoration_trigger: "THE CAPABILITY: emit_shell_call in 05_emit_rust.dag arms a per-leg wall-clock timer on the spawned Command, kills the process group on expiry, and emits overran/wall_deadline_seconds fields; shell_channel_realized_by_target flips ShellChanOverran and ShellChanWallDeadlineSeconds to true for the Rust target. The first live compiled caller of the fleet ssh legs (a .dag module compiled via v2-bootstrap that calls typed_argv_exec_over_fleet_ssh) is the urgency trigger; the capability is the closure."

@@ -1,6 +1,7 @@
 module gunbc.compute.remote_build
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.measure { Second }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import product.host_identity { HostIdentity }
@@ -418,7 +419,10 @@ type RemoteBuildHostAnswer
   // produced by a PROBE leg -- a probe names no work, so nothing can have started, and the host is
   // simply not established reachable within the ceiling it was given. A REQUEST leg that overruns is
   // HostOutcomeUnknown, because the work may have started there.
-  | HostLegOverran { deadline_seconds: Int }
+  // The ceiling is carried as std.measure's Second, the unit the authority mints it in: an Int here
+  // would flatten a measured quantity into an unqualified number at the boundary between the model and
+  // its receipt (review 96999).
+  | HostLegOverran { deadline: Second }
 
 type RemoteBuildAttempt {
   host: HostIdentity
@@ -442,7 +446,7 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
     HostOutcomeUnknown { detail: _ } => false
     // Nothing was sent on a probe that overran, so the next candidate is tried; the overrun is in the
     // attempt record either way.
-    HostLegOverran { deadline_seconds: _ } => true
+    HostLegOverran { deadline: _ } => true
   }
 }
 

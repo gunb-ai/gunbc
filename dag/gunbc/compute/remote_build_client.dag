@@ -258,7 +258,9 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
         // inside the ceiling it was given: answer with that ceiling, typed, and the walk moves on. The
         // code this replaces fed the transport's own 255 to remote_build_probe_from_exit, which minted
         // "the probe answered exit 255" out of a leg the MODEL had just killed (review 96994).
-        SessionOverran { deadline: d } => HostLegOverran { deadline_seconds: second_count(s: d) }
+        // The ceiling travels as the Second the authority minted it in; only the receipt's TEXT
+        // projects it to a count.
+        SessionOverran { deadline: d } => HostLegOverran { deadline: d }
         SessionWireInconsistent { fault: f } =>
           HostUnreachable { detail: ssh_session_exec_wire_refusal_text(fault: f) }
         SessionCompleted { exit_code: e, stdout: o, stderr: er } =>
@@ -421,8 +423,8 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostUnreachable { detail: _ } => "unreachable"
     HostRefusedRequest { detail: _ } => "request-refused"
     HostOutcomeUnknown { detail: _ } => "outcome-unknown"
-    HostLegOverran { deadline_seconds: d } =>
-      concat("probe-leg-overran-at-", concat(int_to_decimal_string(value: d), "s"))
+    HostLegOverran { deadline: d } =>
+      concat("probe-leg-overran-at-", concat(int_to_decimal_string(value: second_count(s: d)), "s"))
   }
 }
 
@@ -436,8 +438,8 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostUnreachable { detail } => detail
     HostRefusedRequest { detail } => detail
     HostOutcomeUnknown { detail } => detail
-    HostLegOverran { deadline_seconds: d } =>
-      concat("the probe leg overran its ", concat(int_to_decimal_string(value: d), "s wall-clock deadline; the process group was killed before the host answered"))
+    HostLegOverran { deadline: d } =>
+      concat("the probe leg overran its ", concat(int_to_decimal_string(value: second_count(s: d)), "s wall-clock deadline; the process group was killed before the host answered"))
   }
 }
 
