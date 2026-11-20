@@ -22,6 +22,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
   portable_remote_words, shape_fleet_ssh_exec,
+  OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, ssh_context_from_verified_binding_under,
@@ -100,19 +101,70 @@ fn remote_build_client_git(worktree: String, args: List<String>) -> ComputeExec 
 // ($HOME/.ssh/gunbc-remote-build). The ctrl session-image wrapper passes the provisioned session key
 // path ($HOME/.config/ctrl/remote-build/id_ed25519) so the container authenticates with the session
 // key rather than the operator's bind-mounted key.
+// THE CLIENT'S OWN JOB ROOT, ensured fail-closed on the fleet create-or-adopt core
+// (gunbc.fleet.fleet_known_hosts_anchor create_or_adopt_owner_only_directory). The job root is the
+// directory the client runs in; the known-hosts anchor and the control-socket directory live under it,
+// and the fleet layer creates only the multiplex CHILD here -- it never creates this root, so a fresh
+// worktree or a hosted runner refused the whole run at the multiplex step with a misleading "the
+// multiplex directory ... could not be created or read back". Ensuring it here, and refusing when it is
+// not a directory we own, gives that failure its own cause at the step that owns it (a wildcard that
+// discarded a failed mkdir was an uncounted degradation -- gunbc.design_argument::fail_closed). `root`
+// is a parameter so a witness can name a path that is not a directory and watch it refuse; production
+// passes remote_build_client_job_root_child.
+data RemoteBuildClientJobRoot
+  = JobRootReady { path: String }
+  | JobRootRefused { cause: String }
+
+// THE PURE ADMISSION of the client's job root, beside its effect below. A path that is not a directory --
+// a regular file sitting where the root should be -- refuses even when its mode is 700: a file is never a
+// root. Beyond that it is the fleet's own rule (gunbc.fleet.fleet_known_hosts_anchor
+// fleet_ssh_multiplex_directory_admitted): mode 700 and owned by the running principal. Every other
+// outcome -- a wider mode, a foreign owner, a principal that could not be read -- refuses with its own
+// cause, never silently proceeding (gunbc.design_argument::fail_closed).
+fn remote_build_client_job_root_decision(path: String, is_dir: Bool, mode_text: String, owner: String, principal: String?) -> RemoteBuildClientJobRoot {
+  if !is_dir {
+    JobRootRefused { cause: join(["remote-build: the job root ", path, " is not a directory"], "") }
+  } else if mode_text != "700" {
+    JobRootRefused { cause: join(["remote-build: the job root ", path, " reads mode ", mode_text, ", not 700"], "") }
+  } else {
+    match principal {
+      Absent => JobRootRefused { cause: join(["remote-build: the job root ", path, " could not be checked against the running principal"], "") }
+      Present { value: me } =>
+        if owner != me {
+          JobRootRefused { cause: join(["remote-build: the job root ", path, " is owned by ", owner, ", not by the running principal"], "") }
+        } else {
+          JobRootReady { path: path }
+        }
+    }
+  }
+}
+
+// THE EFFECT: create-or-adopt the client's job root on the fleet core, read back its mode, whether it is a
+// directory and its owner, and the running principal, then hand those to the pure decision above. `root` is
+// a parameter so a witness can name a path that is not a directory and watch it refuse at this step;
+// production passes remote_build_client_job_root_child.
+fn materialize_remote_build_client_job_root(root: String) -> RemoteBuildClientJobRoot {
+  match create_or_adopt_owner_only_directory(path: root) {
+    OwnerOnlyDirectoryUnreadable { path: p } =>
+      JobRootRefused { cause: join(["remote-build: the job root ", p, " could not be created or read back"], "") }
+    OwnerOnlyDirectoryObserved { path: p, mode_text: m, owner: o } => {
+      let is_dir = shell.Test.IsDirectory(path: p as FilePath).is_directory
+      let me = shell.Id.UserId()
+      remote_build_client_job_root_decision(
+        path: p,
+        is_dir: is_dir,
+        mode_text: m,
+        owner: o,
+        principal: if me.success { Present { value: trim(s: me.stdout) } } else { Absent },
+      )
+    }
+  }
+}
+
 fn remote_build_client_context(attempt_raw: String, identity_file_override: String?) -> FleetSshContextPreparation {
-  // The client's own working directory (remote_build_client_job_root_child) is the root under which the
-  // known-hosts anchor and the control-socket directory live. A fresh worktree or a hosted runner has no
-  // such directory; the fleet layer creates only the multiplex CHILD under this root and STAT's the root
-  // itself -- it never creates the root, so a missing root refuses the whole run with "the multiplex
-  // directory ... could not be created or read back". The context therefore ensures its own root first,
-  // owner-only -- the same admission the multiplex child uses. NewOwnerOnly fails when the name already
-  // exists, so an existing root is adopted unchanged and the effect is idempotent; the result is consumed
-  // by a wildcard arm and does NOT gate the run, because an existing (CI) root must proceed.
-  // (gunbc.fleet.fleet_known_hosts_anchor materialize_fleet_ssh_multiplex_directory_under)
-  let job_root = shell.Mkdir.NewOwnerOnly(path: remote_build_client_job_root_child as FilePath)
-  match job_root.success {
-    _ =>
+  match materialize_remote_build_client_job_root(root: remote_build_client_job_root_child) {
+    JobRootRefused { cause } => FleetSshContextRefused { cause: cause }
+    JobRootReady { path: _ } =>
       match fleet_ssh_attempt_identity(raw: attempt_raw) {
         Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
         Present { value: attempt } =>

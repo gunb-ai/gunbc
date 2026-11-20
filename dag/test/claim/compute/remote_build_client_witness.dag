@@ -17,6 +17,7 @@ import gunbc.compute.remote_build_client {
   RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
   RemoteSelectionSent, RemoteSelectionDeclined, RemoteSelectionFailed,
   remote_selection_operation, remote_selection_declined, remote_selection_failed, remote_not_sent_json,
+  RemoteBuildClientJobRoot, JobRootReady, JobRootRefused, remote_build_client_job_root_decision,
 }
 
 // HERMETIC CONTROLS for the requesting side of gunbc.compute.remote_build. The wet control -- the
@@ -109,4 +110,39 @@ test fn a_selected_module_that_could_not_be_sent_fails_the_run() -> Bool {
     && remote_build_run_served(r: w_run(results: [served]))
     && !remote_build_run_clean(run: w_run(results: [served]), failed: failed)
     && remote_build_run_clean(run: w_run(results: [served]), failed: flat_map([sent, declined], remote_selection_failed))
+}
+
+// THE CLIENT'S OWN JOB ROOT, decided over supplied readback facts (the effect lives in
+// remote_build_client_job_root_decision's caller, materialize_remote_build_client_job_root). Created or
+// adopted at 700 by the running principal is ready; anything else refuses with its own cause, so a fresh
+// worktree or hosted runner whose root cannot be ensured stops AT the job-root step rather than later at
+// the multiplex step with a misleading cause. These mirror the fleet's own directory decision
+// (gunbc.test.claim.fleet.fleet_ssh_multiplexing_witness).
+fn w_job_root_ready(r: RemoteBuildClientJobRoot) -> Bool {
+  match r { JobRootReady { path: _ } => true  JobRootRefused { cause: _ } => false }
+}
+
+test fn an_owner_only_job_root_is_admitted() -> Bool {
+  w_job_root_ready(r: remote_build_client_job_root_decision(path: "target", is_dir: true, mode_text: "700", owner: "gunbc-build", principal: Present { value: "gunbc-build" }))
+}
+
+// RED, the case the wildcard once let through: a path that is not a directory -- a regular file where the
+// root should be -- refuses AT the job-root step even when it carries mode 700, because a file is never a
+// root. This is the "root path that is a regular file must refuse at the job-root step" control.
+test fn red_a_regular_file_at_the_job_root_refuses() -> Bool {
+  !w_job_root_ready(r: remote_build_client_job_root_decision(path: "target", is_dir: false, mode_text: "700", owner: "gunbc-build", principal: Present { value: "gunbc-build" }))
+}
+
+test fn red_a_wider_job_root_mode_refuses() -> Bool {
+  !w_job_root_ready(r: remote_build_client_job_root_decision(path: "target", is_dir: true, mode_text: "755", owner: "gunbc-build", principal: Present { value: "gunbc-build" }))
+}
+
+test fn red_a_foreign_job_root_owner_refuses() -> Bool {
+  !w_job_root_ready(r: remote_build_client_job_root_decision(path: "target", is_dir: true, mode_text: "700", owner: "mallory", principal: Present { value: "gunbc-build" }))
+}
+
+// A principal that cannot be read is not "ours" by default -- the read fails closed, it does not pass the
+// run through unverified (gunbc.design_argument::fail_closed).
+test fn red_a_job_root_of_unreadable_principal_refuses() -> Bool {
+  !w_job_root_ready(r: remote_build_client_job_root_decision(path: "target", is_dir: true, mode_text: "700", owner: "gunbc-build", principal: Absent))
 }
