@@ -5,7 +5,7 @@ import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains, FreeSemigroup }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
 
@@ -53,7 +53,11 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadma
 // The revised leaves below are working-day priors for their named deliverables, not measured durations. FindingsOf
 // deliberately leaves the residual population unknown: its per-member days are a simulation assumption, NOT a
 // completed estimate. Before dispatch, replace a finding with a named, independently sized repair (or split it).
-// A total containing FindingsOf is provisional; reducing an invented population is not a measured speedup.
+// An unprobed FindingsOf family is unsized, never priced as one member; reducing an invented population is not
+// a measured speedup (roadmap-unprobed-findings-are-unsized).
+// Source review at 398136026b345e087968a9db4ba42ec551c5ca4c adds dated assessments to all 79 decomposed
+// tickets. Existing implementation is repriced as evidence/integration work only where its producer was read;
+// these are residual effort priors, not acceptance events. Unknown findings still prevent a delivery forecast.
 // Read on 9e9994480d1: roster_head_rows already maps first to list_head, but roster_import_row_home still emits
 // imports; service_evidence_inputs_for_attempt already gathers placement, metering and result-returned. Neither
 // the old bare-name count nor the old seven-reader count describes the remaining implementation.
@@ -159,55 +163,148 @@ fn decomposition(node: String, waits_on: List<StageDependency>, stages: List<Lis
   WorkDecomposition { node: nid(s: node), waits_on: waits_on, stages: stages_of(stages: stages) }
 }
 
-// ---- folds over a piece: counted members (a FindingsOf family counts as one leaf, its population being unknown)
-fn population_members(p: Population) -> Int {
+// ---- folds over a piece. The member count of a family is KNOWN only for a Produced or Reading population. A
+// FindingsOf family carries no count until its probe runs, so the population's cardinality is TYPED (Known | Unprobed)
+// and the pricing and counting folds are typed too: they answer the days/members total ONLY when every family in
+// them has a known population, and otherwise name every unprobed family and its probe. This is the fail-closed move
+// the estimates ruling (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)) demands --
+// "unsized is listed, never priced" -- so no unmeasured population is ever multiplied into a total as one member.
+// There is exactly ONE pricing function (stages_leaf_days) and ONE count function (stages_leaf_count); neither here
+// nor anywhere downstream invents a member count for a population that has not been measured.
+
+// An unprobed FindingsOf family, named: its label and the probe whose typed findings will populate it. Carried in
+// every Unpriced/Uncounted total so a reader (and the estimate's Unsized cause) can name WHICH population is missing.
+type UnprobedFamily {
+  family: String
+  probe: String
+}
+
+// WHY LeafPricing and LeafCount stay SEPARATE types (answers gunbc.design_argument::root_generalization, which
+// rejects a repeated pattern "until the author answers why it should not be generalized"). They are the same SHAPE
+// (a known Int, or a nonempty sequence of unprobed families) and merge_count parallels merge_pricing on purpose --
+// but a portfolio day total and a member count are DIFFERENT quantities, and collapsing them into one Int-carrying
+// carrier is exactly the defect this change removes: it would let an unpriced population's member count be summed as
+// a day total and reach the portfolio unmarked. The two carriers are the type-level guard that a count can never be
+// read as a price. The one genuinely-shared operation -- merging two nonempty unprobed-family sequences -- is NOT
+// duplicated: both folds call the single fs_append. PopulationCardinality is a third shape only superficially: it is
+// per-population grain, its Unprobed carries the probe STRING (a single population was not measured), it has no fold,
+// and it is the INPUT that the aggregates are built from -- not a second implementation of the aggregate rule.
+// The days total over a piece/stage: Priced only when no FindingsOf family in it is unprobed; otherwise Unpriced,
+// naming every unprobed family and its probe. THE pricing authority the estimates read. `families` is a
+// FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup), ruling
+// gunbc.design_ruling::nonemptiness_is_constructed_or_proved): an Unpriced total that names NO family is unwritable,
+// so no caller can fall back to a made-up cause for an "unpriced but nameless" state.
+type LeafPricing
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
+  = Priced { days: Int }
+  | Unpriced { families: FreeSemigroup<UnprobedFamily> }
+
+// The member-count total over a piece/stage: Counted only when no FindingsOf family in it is unprobed; otherwise
+// Uncounted, naming every unprobed family and its probe. THE count authority; it never reports a member count for a
+// population that has not been measured. Nonempty by construction for the same reason as LeafPricing::Unpriced.
+type LeafCount
+  = Counted { members: Int }
+  | Uncounted { families: FreeSemigroup<UnprobedFamily> }
+
+// The single authority on a population's cardinality. A FindingsOf population is Unprobed -- not zero, not one.
+// Unprobed carries the probe so a caller can name WHICH population is missing without re-matching the population
+// (single_authority: the produced/reading/findings decision lives HERE alone).
+type PopulationCardinality
+  = Known { members: Int }
+  | Unprobed { probe: String }
+
+fn population_cardinality(p: Population) -> PopulationCardinality {
   match p {
-    Produced { producer, members, on } => members
-    Reading { members, on, basis } => members
-    FindingsOf { probe } => 1
+    Produced { producer, members, on } => Known { members: members }
+    Reading { members, on, basis } => Known { members: members }
+    FindingsOf { probe } => Unprobed { probe: probe }
   }
 }
 
-fn population_is_findings(p: Population) -> Bool {
-  match p {
-    Produced { producer, members, on } => false
-    Reading { members, on, basis } => false
-    FindingsOf { probe } => true
+// the one finding a FindingsOf family contributes to an Unpriced / Uncounted total: its label and its probe, in a
+// nonempty carrier (a single family makes the whole total unpriced, and it always names itself).
+fn findings_unprobed(label: String, probe: String) -> FreeSemigroup<UnprobedFamily> {
+  FreeSemigroup { head: UnprobedFamily { family: label, probe: probe }, tail: Empty }
+}
+
+// concatenate two nonempty unprobed-family sequences, a's families first then b's, preserving the nonempty head.
+fn fs_append(a: FreeSemigroup<UnprobedFamily>, b: FreeSemigroup<UnprobedFamily>) -> FreeSemigroup<UnprobedFamily> {
+  FreeSemigroup { head: a.head, tail: concat(a.tail, Cons { head: b.head, tail: b.tail }) }
+}
+
+// the ONE fold that totals pricing over a population: priced days accumulate; the first unprobed family makes the
+// whole total unpriced (an unmeasured population is never partially priced) and every unprobed family is collected,
+// in order, so no caller can price it and no caller can forget to check.
+fn merge_pricing(a: LeafPricing, b: LeafPricing) -> LeafPricing {
+  match a {
+    Priced { days: da } => match b {
+      Priced { days: db } => Priced { days: da + db }
+      Unpriced { families: fb } => Unpriced { families: fb }
+    }
+    Unpriced { families: fa } => match b {
+      Priced { days: db } => Unpriced { families: fa }
+      Unpriced { families: fb } => Unpriced { families: fs_append(a: fa, b: fb) }
+    }
   }
 }
 
-fn piece_leaf_count(p: WorkPiece) -> Int {
+// the ONE fold that totals the member count over a population; parallels merge_pricing (separate carriers by
+// design -- see the root_generalization answer above LeafPricing) so an unmeasured population makes the whole count
+// uncounted rather than reporting a fabricated member count. The shared step -- merging unprobed families -- is fs_append.
+fn merge_count(a: LeafCount, b: LeafCount) -> LeafCount {
+  match a {
+    Counted { members: ma } => match b {
+      Counted { members: mb } => Counted { members: ma + mb }
+      Uncounted { families: fb } => Uncounted { families: fb }
+    }
+    Uncounted { families: fa } => match b {
+      Counted { members: mb } => Uncounted { families: fa }
+      Uncounted { families: fb } => Uncounted { families: fs_append(a: fa, b: fb) }
+    }
+  }
+}
+
+fn piece_leaf_count(p: WorkPiece) -> LeafCount {
   match p {
-    Leaf { label, days, evidence } => 1
-    Family { label, days, population, owner } => population_members(p: population)
-    Join { label } => 0
-    Decision { label, alternatives } => 1
+    Leaf { label, days, evidence } => Counted { members: 1 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => Counted { members: members }
+      Unprobed { probe } => Uncounted { families: findings_unprobed(label: label, probe: probe) }
+    }
+    Join { label } => Counted { members: 0 }
+    Decision { label, alternatives } => Counted { members: 1 }
     Composite { label, stages } => stages_leaf_count(stages: stages)
   }
 }
 
-fn stages_leaf_count(stages: List<WorkStage>) -> Int {
-  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_count(p: p) }) })
+fn stages_leaf_count(stages: List<WorkStage>) -> LeafCount {
+  fold(stages, init: Counted { members: 0 }, f: fn(acc, s) { fold(s.pieces, init: acc, f: fn(a, p) { merge_count(a: a, b: piece_leaf_count(p: p)) }) })
 }
 
-fn piece_leaf_days(p: WorkPiece) -> Int {
+fn piece_leaf_days(p: WorkPiece) -> LeafPricing {
   match p {
-    Leaf { label, days, evidence } => days
-    Family { label, days, population, owner } => days * population_members(p: population)
-    Join { label } => 0
-    Decision { label, alternatives } => decision_days
+    Leaf { label, days, evidence } => Priced { days: days }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => Priced { days: days * members }
+      Unprobed { probe } => Unpriced { families: findings_unprobed(label: label, probe: probe) }
+    }
+    Join { label } => Priced { days: 0 }
+    Decision { label, alternatives } => Priced { days: decision_days }
     Composite { label, stages } => stages_leaf_days(stages: stages)
   }
 }
 
-fn stages_leaf_days(stages: List<WorkStage>) -> Int {
-  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_days(p: p) }) })
+fn stages_leaf_days(stages: List<WorkStage>) -> LeafPricing {
+  fold(stages, init: Priced { days: 0 }, f: fn(acc, s) { fold(s.pieces, init: acc, f: fn(a, p) { merge_pricing(a: a, b: piece_leaf_days(p: p)) }) })
 }
 
 fn piece_findings_families(p: WorkPiece) -> Int {
   match p {
     Leaf { label, days, evidence } => 0
-    Family { label, days, population, owner } => if population_is_findings(p: population) { 1 } else { 0 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => 0
+      Unprobed { probe: _ } => 1
+    }
     Join { label } => 0
     Decision { label, alternatives } => 0
     Composite { label, stages } => stages_findings_families(stages: stages)
@@ -237,7 +334,10 @@ fn stages_leaf_days_within(stages: List<WorkStage>) -> Bool {
 fn piece_stages_nonempty(p: WorkPiece) -> Bool {
   match p {
     Leaf { label, days, evidence } => true
-    Family { label, days, population, owner } => population_members(p: population) >= 1
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => members >= 1
+      Unprobed { probe: _ } => true
+    }
     Join { label } => true
     Decision { label, alternatives } => true
     Composite { label, stages } => count(stages) >= 1 && stages_nonempty(stages: stages)
@@ -359,12 +459,10 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
           Absent => false
           Present { value: pc } => match pc {
             Leaf { label, days, evidence } => member_index == 0
-            Family { label, days, population, owner } =>
-              if population_is_findings(p: population) {
-                false
-              } else {
-                member_index < population_members(p: population)
-              }
+            Family { label, days, population, owner } => match population_cardinality(p: population) {
+              Known { members } => member_index < members
+              Unprobed { probe: _ } => false
+            }
             Join { label } => false
             Decision { label, alternatives } => false
             Composite { label, stages } => false
@@ -478,9 +576,9 @@ fn decompositions_leaf_days_bounded() -> Bool { all(roadmap_decompositions, d =>
 
 fn decompositions_stages_nonempty() -> Bool { all(roadmap_decompositions, d => count(d.stages) >= 1 && stages_nonempty(stages: d.stages)) }
 
-fn decomposition_leaf_count() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) }) }
+fn decomposition_leaf_count() -> LeafCount { fold(roadmap_decompositions, init: Counted { members: 0 }, f: fn(acc, d) { merge_count(a: acc, b: stages_leaf_count(stages: d.stages)) }) }
 
-fn decomposition_leaf_days() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) }) }
+fn decomposition_leaf_days() -> LeafPricing { fold(roadmap_decompositions, init: Priced { days: 0 }, f: fn(acc, d) { merge_pricing(a: acc, b: stages_leaf_days(stages: d.stages)) }) }
 
 fn decomposition_findings_families() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_findings_families(stages: d.stages) }) }
 
@@ -513,10 +611,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     [
       piece(label: "the producer reads a name table, not the pool", stages: [
         [
-          leaf(label: "name table carrier: qualified path to declaration, built once from the universe", days: 5),
+          leaf(label: "measure the existing keyed pool and identify unnecessary retained trees; reuse its declaration index", days: 2),
         ],
         [
-          leaf(label: "producer reads the table; same edges on the N7 closure", days: 5),
+          leaf(label: "producer consumes the existing keyed declaration index without unnecessary retained trees; same edges on the N7 closure", days: 5),
         ],
         [
           leaf(label: "old pool path deleted; unknown path refuses", days: 3),
@@ -619,28 +717,26 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "declaration-provider-outcomes", waits_on: [
   ], stages: [
     [
-      leaf(label: "vertical: a valid declaration beside an invalid one", days: 5),
-      leaf(label: "dependency propagation", days: 5),
-      leaf(label: "module-admission control", days: 5),
+      leaf(label: "reuse the recorded 13/13 provider-control receipt; reconcile per-declaration and module-wide refusal coverage with the handback and rerun only for a changed producer", days: 2),
     ],
     [
-      leaf(label: "controls executing on the native resolve route", days: 5),
+      leaf(label: "verify the existing controls on the native resolve route; distinguish seed-hosted witness execution and repair only a named regression", days: 2),
     ],
     [
-      leaf(label: "native-seven rerun at the landing head", days: 2),
+      leaf(label: "native-seven rerun at the same head; publish reached-subject and first-stop evidence", days: 1),
     ],
   ]),
   decomposition(node: "native-seven-names-homed", waits_on: [
   ], stages: [
     [
-      leaf(label: "classify the native-seven call sites against declared contracts and roster_head_rows: first reuses list_head; inspect starts_with, split, replace, to_string and code_point by argument type, then the remaining closure names; hand back only missing contracts and uncovered mappings (probe)", days: 3),
+      leaf(label: "validate the recorded native-seven caller classes against resolved occurrences, including method and pipeline forms and lexical shadowing; inspect only unclassified contract cases (probe)", days: 3),
       leaf(label: "extend the existing sweep from import insertion to resolved qualified references: preserve lexical binders, qualify appended callees, refuse changed bindings and prove a second run is byte-stable; one shared generator change", days: 5),
     ],
     [
-      findings_family(label: "one missing semantic contract: name the owning std or operation/text declaration, actual caller requirement and discriminating claims; reprice individually, never redeclare an existing home", days: 3, probe: "classify the native-seven call sites against declared contracts and roster_head_rows: first reuses list_head; inspect starts_with, split, replace, to_string and code_point by argument type, then the remaining closure names; hand back only missing contracts and uncovered mappings (probe)", owner: "one-standard-library"),
+      findings_family(label: "one missing semantic contract: name the owning std or operation/text declaration, actual caller requirement and discriminating claims; reprice individually, never redeclare an existing home", days: 3, probe: "validate the recorded native-seven caller classes against resolved occurrences, including method and pipeline forms and lexical shadowing; inspect only unclassified contract cases (probe)", owner: "one-standard-library"),
     ],
     [
-      findings_family(label: "one uncovered rewrite contract after its home exists: exact labels, carrier crossing or appended argument, occurrence-scoped where types differ; reuse first and list_push rows without charging a new row", days: 2, probe: "classify the native-seven call sites against declared contracts and roster_head_rows: first reuses list_head; inspect starts_with, split, replace, to_string and code_point by argument type, then the remaining closure names; hand back only missing contracts and uncovered mappings (probe)", owner: "native-seven-names-homed"),
+      findings_family(label: "one uncovered rewrite contract after its home exists: exact labels, carrier crossing or appended argument, occurrence-scoped where types differ; reuse first and list_push rows without charging a new row", days: 2, probe: "validate the recorded native-seven caller classes against resolved occurrences, including method and pipeline forms and lexical shadowing; inspect only unclassified contract cases (probe)", owner: "native-seven-names-homed"),
     ],
     [
       leaf(label: "run the closure sweep once; compare resolved bindings and calling-module claims under seed and native routes, classify every difference and report native-seven's first stop before and after; a compiler stop is not proof the rewrite failed", days: 3),
@@ -711,10 +807,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "literal-elaboration", waits_on: [
   ], stages: [
     [
-      leaf(label: "run the landed specimens (#12550, #12758) at head; receipt or the failed clause (probe)", days: 3),
+      leaf(label: "reuse the recorded literal, map and fold-operand passes; reconcile uncovered literal-form coverage and execute only those specimens or changed producers (probe)", days: 3),
     ],
     [
-      findings_family(label: "one failed clause repaired", days: 3, probe: "run the landed specimens (#12550, #12758) at head; receipt or the failed clause (probe)", owner: "literal-elaboration"),
+      findings_family(label: "one failed clause repaired", days: 3, probe: "reuse the recorded literal, map and fold-operand passes; reconcile uncovered literal-form coverage and execute only those specimens or changed producers (probe)", owner: "literal-elaboration"),
     ],
     [
       join(label: "acceptance event"),
@@ -723,10 +819,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "shared-check-lets-and-matches", waits_on: [
   ], stages: [
     [
-      leaf(label: "run gunbc#15931: both binder kinds reach inhabitance through one reader; receipt or the failed clause (probe)", days: 3),
+      leaf(label: "repair the known GroundingNoValue fixture admission gap, rerun let controls and reconcile the two match frontier diagnostics with constructor inference; then run the shared-reader mutation control from gunbc#15931 (probe)", days: 3),
     ],
     [
-      findings_family(label: "one failed clause repaired", days: 3, probe: "run gunbc#15931: both binder kinds reach inhabitance through one reader; receipt or the failed clause (probe)", owner: "shared-check-lets-and-matches"),
+      findings_family(label: "one remaining shared-inhabitance or constructor/frontier cause after the named reruns; distinguish stale expectation from missing typing, retain wrong-instantiation refusal, and reprice by cause", days: 3, probe: "repair the known GroundingNoValue fixture admission gap, rerun let controls and reconcile the two match frontier diagnostics with constructor inference; then run the shared-reader mutation control from gunbc#15931 (probe)", owner: "shared-check-lets-and-matches"),
     ],
     [
       join(label: "acceptance event"),
@@ -827,20 +923,20 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       probe(label: "run the rebuild-scope witness and establish whether its subject is the emitted closure (it assembles a fixture executable today); diagnostic otherwise", days: 2, module_path: "v2.test.claim.stage0_partition_rebuild_scope_witness", decl_name: "witness_leaf_edit_compiles_owner_and_downstream_holds"),
     ],
     [
-      leaf(label: "read the emitted closure into the module-graph carrier", days: 5),
+      leaf(label: "verify the existing emission-derived graph against the retained closure; identify missing returned edges", days: 2),
     ],
     [
-      piece(label: "derive the partition", stages: [
+      piece(label: "ground interfaces and reuse the existing partition", stages: [
         [
-          leaf(label: "partition rule: condensation of the module graph with a size bound", days: 5),
+          leaf(label: "ground exported declarations and by-value type rows in source; replace ungrounded interface maps", days: 5),
         ],
         [
-          leaf(label: "partition emitted for the N7 closure; pieces acyclic, claim green", days: 5),
+          leaf(label: "run the existing partition policy over the N7 closure with grounded interfaces; acyclicity and export controls", days: 3),
         ],
       ]),
     ],
     [
-      leaf(label: "generated workspace", days: 5),
+      leaf(label: "reuse the generated workspace renderer and replace glob over-approximation with the grounded interface boundary", days: 3),
     ],
     [
       leaf(label: "build and behavioral run", days: 5),
@@ -854,7 +950,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 3, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "missing root exits 2; directory root walked", days: 3),
+      leaf(label: "run the existing native CLI missing-root and directory/layout controls at the chosen compiler identity", days: 1),
     ],
     [
       leaf(label: "generation two builds", days: 5),
@@ -930,7 +1026,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "native-production-admission", waits_on: [
     waits(item: "native-frontier-required-lane", from_stage: 2, into_stage: 0),
     waits(item: "demand-d13-dependency-demand", from_stage: 2, into_stage: 0),
-    waits(item: "namespace-unique-on-chain", from_stage: 0, into_stage: 0),
+    waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
     waits(item: "import-grammar-and-lines-deleted", from_stage: 2, into_stage: 0),
   ], stages: [
     [
@@ -1299,7 +1395,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "ci-executed-coverage-receipt", waits_on: [
   ], stages: [
     [
-      leaf(label: "repoint the deleted carrier", days: 2),
+      leaf(label: "trace the current required verdict to its executed denominator and upstream-failure producer; the intention carrier is already repointed", days: 1),
     ],
     [
       leaf(label: "executed population on the required check", days: 5),
@@ -1312,11 +1408,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "factory-dogfood-route", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the payload kind", days: 3),
+      leaf(label: "worker round/item payload over the existing generic fabric event log", days: 3),
     ],
     [
-      leaf(label: "append path", days: 5),
-      leaf(label: "read path", days: 5),
+      leaf(label: "connect worker event production to event_log_append_with; reuse storage and concurrency refusal", days: 5),
+      leaf(label: "attempt/cursor projection through event_log_read_partition_with; preserve order and detect gaps", days: 5),
     ],
     [
       leaf(label: "order, gap and refusal receipts", days: 5),
@@ -1381,13 +1477,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "work-exec-2-durable-route-first-consumer", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "read the evidence rows", days: 3),
+      leaf(label: "persist completed-attempt samples and read them back by work class through the existing WorkClassPeakSample contract", days: 3),
     ],
     [
-      leaf(label: "derive the budget; refuse without evidence", days: 4),
+      leaf(label: "wire the existing work_class_grant rule to durable samples; preserve its missing/insufficient-sample ceiling policy", days: 2),
     ],
     [
-      leaf(label: "claims green", days: 3),
+      leaf(label: "execute second-run sizing, insufficient-sample and capped-budget controls against the durable writer/reader", days: 2),
     ],
   ]),
   decomposition(node: "work-exec-4-local-work-cutover", waits_on: [
@@ -1468,34 +1564,34 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "roadmap-schedule-leaf-expansion", waits_on: [
   ], stages: [
     [
-      leaf(label: "expand one decomposition with a FindingsOf family and two stages into leaf occurrences with their edges, through the carrier's own well-formedness claim", days: 4),
+      leaf(label: "run the existing leaf-expansion witness, including the controlled barrier and real decomposition; attach acceptance evidence", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-list-scheduling", waits_on: [
     waits(item: "roadmap-schedule-leaf-expansion", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "longest-remaining-path list schedule answering start, finish, lanes, in-flight per day and the critical path, computed from the carriers and the log, cacheable and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read)), with the two-worker and one-worker controls", days: 4),
+      leaf(label: "run the existing one/two-worker schedule and refusal controls over the shared placement core; attach per-leaf outputs", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
     waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "bind the schedule's days to the read date over five working days a week, kept out of the scheduler", days: 1),
+      leaf(label: "run the existing calendar weekday/weekend/week-later controls and retain the dated outputs", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-claim-names-leaf", waits_on: [
   ], stages: [
     [
-      leaf(label: "the Claimed payload names the leaf path as the decomposition spells it, and a path it does not have refuses at append (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing))", days: 2),
+      leaf(label: "verify existing leaf coordinates at append: known leaf accepted and nonexistent leaf refused without log mutation", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-leaf-in-flight-set", waits_on: [
     waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the in-flight leaf set derived from the log alone, with the claimed-then-released control", days: 2),
+      leaf(label: "run the existing in-flight-set claim/release/acceptance witness and verify consumer reuse", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-leaf-realized-duration", waits_on: [
@@ -1504,7 +1600,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-schedule-calendar-binding", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "claimed-to-accepted working days read from the log, taken where they exist, with the used-value reported", days: 3),
+      leaf(label: "run the existing realized-duration witness and report prior versus realized evidence, including accepted without claim", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-from-now", waits_on: [
@@ -1512,7 +1608,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "in-flight leaves pinned at their claim day with their remaining days, the unclaimed scheduled around them", days: 3),
+      leaf(label: "run the existing from-now pinning, day-two and capacity controls; verify consumer read-date binding", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-bottlenecks-and-offer", waits_on: [
@@ -1597,8 +1693,8 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // piece lists, while the member index counts UP as the Nat the occurrence is keyed by -- how-many-left and
 // which-one are distinct concepts, not one position twice. That Nat bound comes from the findings_count
 // simulation input (already a Nat, so a negative assumed count is UNWRITABLE -- fail_closed prefers making the
-// bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's bare Int `population_members`
-// (imported, never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
+// bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's typed `population_cardinality`
+// (its Known { members } arm; the Unprobed arm is the findings path, never a fabricated count), imported never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
 // via the checked crossing `checked_int_to_nat`, whose Absent (a non-positive count) REFUSES as `OccsRejected` --
 // the refusal is in the builder's own type, not a bool gate a caller could skip and not a fabricated zero. The
 // expansion and the parent resolution both consume that typed `OccurrenceBuild`. So no UNCHECKED Int ever reaches
@@ -1645,13 +1741,14 @@ type ExpansionRefusal =
 // omission is said, not hidden): it reports each top-level Composite keyed by the TOP-LEVEL piece's own LeafPath
 // (no new path format) with its nested day total read from the ONE count helper piece_leaf_days. This is a REPORT,
 // never a claim -- occurrence_is_offered_claimable admits only paths drawn from `occurrences`, never these.
-// The nested day total is the SAME working-day prior as WorkPiece.days (read from the ONE count helper
-// piece_leaf_days, which returns the same bare Int), held as a bare Int until the measure carrier grows.
+// The nested day total is the SAME working-day prior as WorkPiece.days, read from the ONE pricing helper
+// piece_leaf_days -- which now returns a typed LeafPricing, so an omitted composite whose nested population includes
+// an unprobed FindingsOf family reports Unpriced naming those families rather than a fabricated nested day total.
 // feature:working-day-prior-carrier -- dissolve-on: std.measure grows a working-day (effort) family.
 // Owning lane: std.measure.
 type UnexpandedComposite {
   path: LeafPath
-  nested_days: Int
+  nested_days: LeafPricing
 }
 
 // A waits_on endpoint that is WELL-FORMED -- the carrier's OWN well-formedness claim already admitted the row
@@ -1746,15 +1843,13 @@ fn declared_member_nat(n: Int) -> Optional<Nat> {
 fn piece_occurrences(item: RoadmapNodeId, stage: Nat, piece: Nat, p: WorkPiece, findings_count: Nat) -> OccurrenceBuild {
   match p {
     Leaf { label, days, evidence } => OccsBuilt { occurrences: [ member_occurrence(item: item, stage: stage, piece: piece, member: Zero, source: Declared) ] }
-    Family { label, days, population, owner } =>
-      if population_is_findings(p: population) {
-        OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
-      } else {
-        match declared_member_nat(n: population_members(p: population)) {
-          Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
-          Absent => OccsRejected { item: item }
-        }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Unprobed { probe: _ } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
+      Known { members } => match declared_member_nat(n: members) {
+        Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
+        Absent => OccsRejected { item: item }
       }
+    }
     Join { label } => OccsBuilt { occurrences: [] }
     Decision { label, alternatives } => OccsBuilt { occurrences: [] }
     Composite { label, stages } => OccsBuilt { occurrences: [] }
@@ -2147,7 +2242,8 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // emits those very members as occurrences with count_source Assumed -- a declared simulation input
 // (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is computed over the
 // carriers, and an Assumed occurrence is scheduled with its source kept visible). Here the findings member index is
-// NOT bounded by population_members (which answers 1 for a FindingsOf carrier, a count the probe does not hold);
+// NOT bounded by a member count (a FindingsOf population is Unprobed under population_cardinality -- there is no
+// count the probe holds yet);
 // it is bounded by the member set the expansion itself emitted, which the scheduler checks against its own
 // occurrence set (MemberIndexBeyondExpansion) instead of here. A Produced or Reading family IS bounded by its
 // declared count in both.
@@ -2162,14 +2258,10 @@ fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Optional<Int> {
       Absent => Absent
       Present { value: pc } => match pc {
         Leaf { label, days, evidence } => if member_index == 0 { Present { value: days } } else { Absent }
-        Family { label, days, population, owner } =>
-          if population_is_findings(p: population) {
-            Present { value: days }
-          } else if member_index < population_members(p: population) {
-            Present { value: days }
-          } else {
-            Absent
-          }
+        Family { label, days, population, owner } => match population_cardinality(p: population) {
+          Unprobed { probe: _ } => Present { value: days }
+          Known { members } => if member_index < members { Present { value: days } } else { Absent }
+        }
         Join { label } => Absent
         Decision { label, alternatives } => Absent
         Composite { label, stages } => Absent

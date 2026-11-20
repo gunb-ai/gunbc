@@ -99,13 +99,6 @@ fn budget_admission(minutes: Minute, approvals: StepBudgetApprovals) -> BudgetAd
   }
 }
 
-fn budget_admitted(admission: BudgetAdmission) -> Bool {
-  match admission {
-    BudgetAdmitted { minutes: _, coverage: _ } => true
-    _ => false
-  }
-}
-
 // THE VALUE THE BUDGET RUNS AT. Admitted: the required value. Not admitted: the introduction -- the one value that
 // stands without any grant -- so neither an unsigned raise nor a grant for another budget reaches a generated
 // workflow. That value is NOT a claim that it covers the required one: a consumer whose work needs the required value

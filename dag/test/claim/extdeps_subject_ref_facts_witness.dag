@@ -1,0 +1,103 @@
+module test.claim.extdeps_subject_ref_facts_witness
+
+import v2.std.decl_index { ExtdepsSubjectRefFact, SubjectNotLiteralWhy, extdeps_subject_ref_facts }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List, Int, Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS ESTABLISHES. The host census `extdeps_subject_ref_facts` reads an
+// ExternalModelScope data declaration's `subject.declaration { module_path, decl_name }` as TYPED
+// fields, and REFUSES a row whose subject is not a literal -- PER ROW, as a typed sum, never a
+// positional guess. DP-M3b (dp-m3-subject-ref-resolved) consumes this surface to obtain the subjects
+// it then resolves; before this node it had none, because the keyed `decl_facts_at` exposes only flat
+// authored_string_lexemes and `record_field_projection` is Absent for extdeps scopes (the marshal
+// falls to constructor_resolution_refused_projection -- see the roadmap boundary).
+//
+// THE POPULATION IS A SELF-CONTAINED FIXTURE, not the live corpus. `fixtures/extdeps_subject_ref_facts/
+// census_subjects.dag` carries exactly two authored ExternalModelScope rows -- one literal, one whose
+// subject is a dotted named reference (the bazel `subject: <X_subject>` shape in the live corpus) --
+// so both census arms are witnessed deterministically and the claim does not drift with unrelated
+// edits to `dag/extdeps`.
+//
+// RED ON BASE, GREEN ON HEAD: on base `extdeps_subject_ref_facts` is not a declared builtin, so this
+// module does not compile and every `test fn` here fails to resolve. On head the census exists and the
+// four assertions below hold. The positive control (`the_census_reads_both_planted_rows`) is what keeps
+// the two arm assertions from passing vacuously on an empty or silently-failed scan.
+//
+// WHAT IS NOT CLAIMED: that a subject is ever RESOLVED. This node returns the subject REFERENCE as
+// typed data (literal or refused-and-located); resolution is DP-M3b's job. And the refusal is per row:
+// a non-literal row is typed, located by its declaring module_path/decl_name, and countable -- never a
+// whole-census error and never a positional stand-in.
+
+fn fixture_census() -> List<ExtdepsSubjectRefFact> {
+  extdeps_subject_ref_facts(pool_roots: ["fixtures/extdeps_subject_ref_facts"])
+}
+
+fn is_subject_literal(f: ExtdepsSubjectRefFact) -> Bool {
+  match f {
+    SubjectLiteral { decl_name: _ } => true
+    _ => false
+  }
+}
+
+fn is_subject_not_literal(f: ExtdepsSubjectRefFact) -> Bool {
+  match f {
+    SubjectNotLiteral { decl_name: _ } => true
+    _ => false
+  }
+}
+
+fn why_is_named_reference(why: SubjectNotLiteralWhy) -> Bool {
+  match why {
+    SubjectNamedReference => true
+    _ => false
+  }
+}
+
+// The literal arm is read TYPED: the row is a SubjectLiteral at the planted declaring name, and its
+// subject.declaration carries the exact authored module_path / decl_name as data (not a lexeme soup).
+fn literal_row_matches(f: ExtdepsSubjectRefFact, decl: String, subject_module_path: String, subject_decl_name: String) -> Bool {
+  match f {
+    SubjectLiteral { decl_name: d, subject_module_path: smp, subject_decl_name: sdn } =>
+      d == decl && smp == subject_module_path && sdn == subject_decl_name
+    _ => false
+  }
+}
+
+// The refusal arm is typed and located: a SubjectNotLiteral at the planted declaring name, whose `why`
+// names the shape (a named reference) rather than leaving the row to be guessed.
+fn not_literal_row_matches(f: ExtdepsSubjectRefFact, decl: String) -> Bool {
+  match f {
+    SubjectNotLiteral { decl_name: d, why: w } => d == decl && why_is_named_reference(w)
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL. The census reaches the fixture and reads BOTH planted rows. If the pool root were
+// wrong, the census silently empty, or the census errored, the two arm assertions below would be green
+// for the wrong reason; this one fails in every such case, because it demands the census still SEES two
+// rows at all.
+test fn the_census_reads_both_planted_rows() -> Bool {
+  length(fixture_census()) == 2
+}
+
+// THE LITERAL ARM: one row read as SubjectLiteral carrying the authored subject.declaration as typed
+// fields -- the read DP-M3b joins against.
+test fn the_literal_subject_is_read_as_typed_fields() -> Bool {
+  length(filter(fixture_census(), f => literal_row_matches(f, "census_literal_scope", "extdeps.vendor.acme", "AcmeSubject"))) == 1
+}
+
+// THE REFUSAL ARM: the named-reference subject row is refused PER ROW as SubjectNotLiteral with the
+// typed `why` SubjectNamedReference -- located at the declaring row, never a positional guess.
+test fn the_indirect_subject_refuses_as_typed_named_reference() -> Bool {
+  length(filter(fixture_census(), f => not_literal_row_matches(f, "census_indirect_scope"))) == 1
+}
+
+// NEITHER ROW IS GUESSED: the population splits into exactly one literal and one not-literal, and that
+// partition is the whole census (no row silently dropped, no row coerced into the wrong arm).
+test fn the_split_is_exactly_one_each_with_no_row_dropped() -> Bool {
+  length(filter(fixture_census(), f => is_subject_literal(f))) == 1 &&
+    length(filter(fixture_census(), f => is_subject_not_literal(f))) == 1 &&
+    length(filter(fixture_census(), f => is_subject_literal(f))) + length(filter(fixture_census(), f => is_subject_not_literal(f))) == length(fixture_census())
+}
