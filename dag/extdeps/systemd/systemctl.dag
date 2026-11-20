@@ -4,7 +4,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import std.optional { Absent, Present }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
@@ -479,6 +479,34 @@ fn systemctl_user_start_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String
 // serializer and the system-bus reader use, so a property never has two names.
 fn systemctl_user_show_for_uid_argv(unit: NonEmptyStr, properties: List<SystemdUnitProperty>, uid: Int) -> List<String> {
   ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), systemctl_show_verb as String, concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")), unit as String]
+}
+
+// systemd's OWN bus-open failures, the messages systemctl prints when it cannot open the bus to answer a
+// `--user` (optionally `--machine=<uid>@`) query because that account's user manager is not running: it cannot
+// answer the query at all, so it fails with a bus-open error rather than a property. systemctl(1) documents the
+// `--user`/`--machine` verbs (the module authority anchor); the failure text is systemd's own bus-open path
+// (sd_bus_open_user and the machined transport) printing "Failed to connect to bus:" with the errno, and across
+// `--machine` reporting the machine/user manager down. They live HERE, beside the verbs that emit them and under
+// the systemctl(1) anchor, not in a consumer that reads them. Each is the lowercase mid-sentence span of the
+// capitalised message (the loginctl_linger_reading technique), so the "Failed"/"Cannot" prefix is not part of
+// the pattern. The set is confirmed against the pinned systemd at the wet dispatch, not assumed.
+data systemctl_bus_connect_failure: NonEmptyStr = "connect to bus" as NonEmptyStr
+data systemctl_user_scope_bus_failure: NonEmptyStr = "connect to user scope bus" as NonEmptyStr
+data systemctl_machine_connect_failure: NonEmptyStr = "connect to machine" as NonEmptyStr
+data systemctl_transport_disconnected: NonEmptyStr = "transport endpoint is not connected" as NonEmptyStr
+data systemctl_host_down: NonEmptyStr = "host is down" as NonEmptyStr
+
+// Whether systemctl's stderr is systemd's user-manager-unreachable family: the bus / machine transport could
+// not be opened, so a non-zero `systemctl show` means "there was no user manager to ask", NOT "a cap was read."
+// A non-zero show whose stderr matches NONE of these is not a manager-down reading -- the caller must refuse it
+// as an unknown rather than guess a cap (fail_closed: a failure arm refuses, never widens).
+fn systemctl_user_manager_unreachable(stderr: String) -> Bool {
+  let e = trim(s: stderr)
+  string_contains(s: e, pattern: systemctl_bus_connect_failure as String)
+    || string_contains(s: e, pattern: systemctl_user_scope_bus_failure as String)
+    || string_contains(s: e, pattern: systemctl_machine_connect_failure as String)
+    || string_contains(s: e, pattern: systemctl_transport_disconnected as String)
+    || string_contains(s: e, pattern: systemctl_host_down as String)
 }
 
 fn systemctl_user_restart_for_uid_argv(unit: NonEmptyStr, uid: Int) -> List<String> {

@@ -65,7 +65,7 @@ import gunbc.live_deploy.emit { user_work_slice_unit_file_for_host_ceiling, User
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, user_work_slice_memory_swap_max, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv, systemctl_user_show_for_uid_argv, systemctl_show_property_value }
+import extdeps.systemd.systemctl { systemctl_user_daemon_reload_argv, systemctl_user_start_for_uid_argv, systemctl_user_show_for_uid_argv, systemctl_show_property_value, systemctl_user_manager_unreachable }
 import extdeps.systemd { SystemdUnitProperty, MemoryMax, MemoryHigh, MemorySwapMax, systemd_unit_property_wire, SystemdCgroupMemoryLimit, MemoryLimitAbsent, MemoryLimitBytes, MemoryLimitUnbounded, parse_systemd_memory_limit_show }
 // The user-manager leg reads Linger and enables it through the one shared loginctl model (unelevated read,
 // elevated enable) -- the same argv the runner lane uses, never a second spelling.
@@ -407,7 +407,8 @@ fn serving_slice_cap_of_show(text: String) -> ServingSliceCap {
 // The cap a present account's UNREACHABLE user manager reads: every control established-unbounded, i.e.
 // uncapped. A manager that is not up has no slice cap in force, so there is nothing to honour yet -- uncapped
 // licenses the install and the enable-linger that starts the manager. Reached ONLY when
-// serving_user_manager_unreachable has matched systemd's user-bus-down spelling for this account; every other
+// serving_slice_cap_of_exec has matched systemd's user-bus-down spelling (extdeps.systemd.systemctl::
+// systemctl_user_manager_unreachable) for this account; every other
 // non-zero `systemctl` failure is REFUSED (see serving_slice_cap_of_exec), so a reading nobody made cannot
 // reach this branch. One-way and safe: it only ever LICENSES a (re)install, it can never report a slice
 // settled, because 'settled' is decided by a separate zero-exit `systemctl show` read-back
@@ -433,33 +434,15 @@ fn serving_slice_cap_refused(cause: String) -> ServingSliceCap {
 
 // Whether a NON-ZERO `systemctl show` was the serving user manager being unreachable for this account (its
 // bus is down / the machine's user manager is not running), as opposed to a sudo denial, a malformed argv or
-// any other command error. systemd prints these as capitalised sentences, so the fragments matched are the
-// lowercase mid-sentence spans (the technique loginctl_linger_reading uses for 'is not logged in or
-// lingering'). Only a positive match here licenses the manager-down reading; a failure that matches NONE of
-// them is REFUSED as an unknown, never widened into a fabricated cap -- fail_closed: "a failure arm refuses,
-// never widens, and every degradation is typed, located and countable." The wet path validates the exact
-// spelling at dispatch and this set is widened from the located stderr it reports, not guessed ahead.
-fn serving_user_manager_unreachable(stderr: String) -> Bool {
-  let e = trim(s: stderr)
-  string_contains(s: e, pattern: "connect to bus")
-    || string_contains(s: e, pattern: "connect to user scope bus")
-    || string_contains(s: e, pattern: "connect to machine")
-    || string_contains(s: e, pattern: "transport endpoint is not connected")
-    || string_contains(s: e, pattern: "host is down")
-}
-
-// THE CAP DECISION, SPLIT FROM THE I/O SO A WITNESS CAN REACH IT (the gunbc.runner.runner_slot_retirement
-// pattern: judge the exact strings `systemctl show` returns, never a hand-built subject). A zero exit means
-// the manager ANSWERED, so decode its properties -- an absent/blank control is uncapped (licenses the
-// install), a byte count is a cap to compare. A NON-ZERO exit is classified, never blanket-trusted: a PROVEN
-// manager-down bus failure reads uncapped (no cap in force -> licenses the install and the enable-linger that
-// starts the manager); any OTHER non-zero exit -- a sudo denial, a wrong --machine connector, a malformed
-// argv, a bus error that is not the manager-down spelling -- is REFUSED as an unknown, because a reading
-// nobody made must not drive a write toward the cap.
+// any other command error, is systemd's OWN judgment and lives with the verbs that emit it:
+// extdeps.systemd.systemctl::systemctl_user_manager_unreachable. Only a positive match there licenses the
+// manager-down reading; a failure that matches none of systemd's bus-down messages is REFUSED as an unknown,
+// never widened into a fabricated cap -- fail_closed: "a failure arm refuses, never widens, and every
+// degradation is typed, located and countable."
 fn serving_slice_cap_of_exec(exit_code: Int, stdout: String, stderr: String) -> ServingSliceCap {
   if exit_code == 0 {
     serving_slice_cap_of_show(text: stdout)
-  } else if serving_user_manager_unreachable(stderr: stderr) {
+  } else if systemctl_user_manager_unreachable(stderr: stderr) {
     serving_slice_cap_unreachable_manager()
   } else {
     serving_slice_cap_refused(join(["systemctl show exit ", to_string(value: exit_code), ": ", trim(s: stderr)], ""))
