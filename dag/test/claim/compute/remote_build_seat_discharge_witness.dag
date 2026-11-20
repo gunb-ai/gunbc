@@ -4,8 +4,8 @@ import std.types { Bool, String }
 import std.optional { Present, Absent }
 import std.measure { kibibyte }
 import std.algebra { count_where, string_contains }
-import gunbc.compute.work_request { WorkRefusedByInfrastructure, HostComputeCapacityFull, HostCannotServe, WorkCancelled }
-import gunbc.compute.work_provider_local { ProvideResult, ProvideFresh, ProvideAttached, HostRecordWritten, HostRecordUnreadable, provide_result_document }
+import gunbc.compute.work_request { WorkRefusedByInfrastructure, HostComputeCapacityFull, HostBelowMemoryFloor, WorkCancelled }
+import gunbc.compute.work_provider_local { ProvideResult, ProvideFresh, ProvideAttached, HostRecordWritten, HostRecordLost, provide_result_document }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargeRan, SeatDischargeRefused, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused,
 }
@@ -89,7 +89,7 @@ test fn a_clean_pass_says_the_door_opened_without_refusal_or_red() -> Bool {
 // product, an unreadable host record, or a served run -- the answer carries no discharge line at all. This
 // is the control against the change leaking into endings it was never about.
 test fn every_answer_that_is_not_a_full_pool_carries_no_discharge_record() -> Bool {
-  count_where(xs: [g_cancelled(), ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordUnreadable }],
+  count_where(xs: [g_cancelled(), ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordLost { detail: "the record slot is unreadable" }],
     r => remote_build_attempt_document(attempt: RemoteBuildServeAttempt { result: r, discharge: Absent })
       == provide_result_document(r: r)) == 2
 }
@@ -134,13 +134,15 @@ test fn a_full_pool_plus_a_returned_seat_earns_the_second_request_and_nothing_el
 }
 
 // A refusal that is NOT a capacity fact never earns a recovery pass at all -- not a cancelled attempt, and
-// not a host refusing for a different infrastructure reason. The host never stated its pool is full, so a
-// pass run here would be acting on a fact the host did not state, and a retry after it would be a second
-// request made on a guess.
+// not a host refusing because the MACHINE has less live memory than this class needs. That last one is the
+// close call and the reason the arm exists separately (work_request WorkInfrastructureRefusal: below-floor
+// is somebody else's memory, not this pool's commitments, and one arm for three remedies is the conflation
+// fail_closed forbids): a below-floor answer says a release in THIS pool would not help, so knocking the
+// pool's door and re-asking is a second request made on a fact the host did not state.
 test fn a_refusal_that_is_not_a_capacity_fact_earns_no_second_request_even_after_a_clean_pass() -> Bool {
   !remote_build_retry_after_discharge(first: g_cancelled(), pass: g_released_seat()) &&
     !remote_build_retry_after_discharge(first: ProvideFresh {
-      outcome: WorkRefusedByInfrastructure { identity: "gate@1", cause: HostCannotServe { detail: "the provider cannot serve" } },
+      outcome: WorkRefusedByInfrastructure { identity: "gate@1", cause: HostBelowMemoryFloor { requested: kibibyte(count: 25600), available: kibibyte(count: 4096) } },
       document: "work-document", host_record: HostRecordWritten }, pass: g_released_seat()) &&
-    !remote_build_retry_after_discharge(first: ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordUnreadable }, pass: g_released_seat())
+    !remote_build_retry_after_discharge(first: ProvideAttached { identity: "gate@1", ending: "attached", document: "work-document", host_record: HostRecordLost { detail: "the record slot is unreadable" }, pass: g_released_seat())
 }
