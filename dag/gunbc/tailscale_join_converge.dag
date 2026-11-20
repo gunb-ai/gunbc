@@ -50,7 +50,8 @@ module gunbc.tailscale_join_converge
 //     the key's tag while the plan claimed another, and every reachability judgment this converge then makes
 //     would be about a tag the node is not in.
 //   A PING THAT ANSWERS AS SOMEBODY ELSE. The read-back compares the node name in the pong against the
-//     expected tailnet name and refuses on a mismatch: an address answering from a stale peer record is not
+//     node label the expected tailnet name is composed from (the pong names the peer short, not by FQDN),
+//     and refuses on a mismatch: an address answering from a stale peer record is not
 //     the host that was just joined.
 //   ANYTHING THE TYPED SURFACES REFUSE. The argv builders, the custody row and placement, the ssh targets,
 //     the sealed write and the portable-word check all carry their own refusal arms, and this module
@@ -193,7 +194,7 @@ import std.list { list_member }
 import std.measure { Second, second, second_count, seconds_per_day }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath, string_non_empty }
-import std.algebra { string_contains, trim }
+import std.algebra { list_head, string_contains, trim }
 
 // The bounded waits, both this fleet's choice, both load-bearing: upstream blocks FOREVER by default on `up`
 // and gives up after five seconds by default on `ping`, which are the two wrong answers for a converge -- one
@@ -685,8 +686,20 @@ fn tailscale_join_observe_name_resolution(
 
 // Whether the node named in a pong is the host this converge just joined. Separate from the comparison so
 // the branded name and the upstream's unbranded string meet in one place with the cast visible.
+//
+// `tailscale ping <fqdn>` names the answering peer by its NODE LABEL -- the MachineName, e.g. "srv4" --
+// not by its MagicDNS FQDN. Comparing the pong's short name against the full FQDN can therefore never
+// match, and it refused a join that had in fact settled. Compare like with like: project the expected
+// tailnet address to its FIRST dot-separated label -- the very label the model composes first, since
+// gunbc.fleet.fleet_tailnet::tailnet_host_labels puts the canonical name ahead of the zone labels -- and
+// compare that to the pong's node name. The label is derived from the model, never trimmed from the
+// observed pong, so a stale peer record answering as a different node still mismatches and the read-back
+// still refuses on a wrong name.
 fn tailscale_ping_pong_is_expected(expected: NonEmptyStr, node_name: String) -> Bool {
-  node_name == expected as String
+  match list_head(xs: split(s: expected as String, delimiter: ".")) {
+    Present { value: node_label } => node_label == node_name
+    Absent => false
+  }
 }
 
 type TailscaleJoinAnswer
