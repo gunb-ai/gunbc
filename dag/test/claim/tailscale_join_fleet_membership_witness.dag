@@ -77,7 +77,7 @@ import extdeps.package_managers.apt {
   apt_third_party_keyring_fingerprint_ok,
   apt_third_party_repo_install_script_scaffold,
 }
-import std.disposition { Scaffold, SingleAuthority }
+import std.disposition { Scaffold, RealizationDispatch }
 import extdeps.tailscale.apt_repo { tailscale_apt_repo_noble, tailscale_packages }
 import gunbc.tailscale_join_converge {
   JoinPlanNoop,
@@ -745,7 +745,7 @@ test fn w_d_key_is_staged_privately_and_dearmored_from_the_checked_bytes() -> Bo
 // hatch; DESIGN.md's shell-as-code rule requires the disposition so the leaf retires rather than fossilizes.
 test fn w_e_shell_leaf_carries_scaffold_marker() -> Bool {
   match apt_third_party_repo_install_script_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true,
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true,
     _ => false,
   }
 }
