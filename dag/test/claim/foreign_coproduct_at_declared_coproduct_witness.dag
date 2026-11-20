@@ -28,7 +28,7 @@ module test.claim.foreign_coproduct_at_declared_coproduct_witness
 // coproduct, or a declared alias -- and the whole witness is read against a not-idle control that
 // plants a different definite refusal on this same census route (`the_harness_is_not_idle`). The
 // same coproduct, a declared alias, and a generic formal stay clean. See
-// @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel)
+// @ref(gunbc.recurring_failure_mode.declared_type_wall_keyed_on_the_value_being_a_kernel::declared_type_wall_keyed_on_the_value_being_a_kernel)
 // ::declared_type_wall_keyed_on_the_value_being_a_kernel (the dated 2026-11-19 receipt `#calm-moth-138`).
 
 import std.types { Bool, Int, String }
