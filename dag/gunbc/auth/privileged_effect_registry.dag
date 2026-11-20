@@ -805,7 +805,7 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     hold_owning_roots: [
       InterlockRoot {
         root: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
-        acquires_at: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+        acquires_at: site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet_admitted"),
         operations: ["controller cold reset" as NonEmptyStr],
         sealed_by: [
           site(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_send"),

@@ -271,6 +271,7 @@ test fn witness_every_reported_figure_owes_its_read() -> Bool {
     supermicro_h11ssl_unit3_install_nic_port_label,
     supermicro_h11ssl_unit3_seen_host_key_fingerprint,
     supermicro_h11ssl_unit3_gpu_report,
+    supermicro_h11ssl_unit3_gpu_count_restated_by_operator_2026_11_19,
     supermicro_h11ssl_unit3_gpu_idle_temperature_and_power_cap_reported,
     supermicro_h11ssl_unit3_fan_zone_duty_needed_reported,
     supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported,
