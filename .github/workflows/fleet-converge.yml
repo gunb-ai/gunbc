@@ -2653,15 +2653,16 @@ jobs:
         id: fleet_converge_executor_subject_split_gate
         run: |
           set -e
-          if '[' '1' '=' '1' ']' && '[' "$FLEET_CONVERGE_MODE" '!=' 'remote_build_serving_observe' ']' && '[' "$FLEET_CONVERGE_MODE" '!=' 'remote_build_serving_converge' ']' && ('[' '-z' "$FLEET_CONVERGE_SUBJECT_HOST" ']' || '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'); then 'echo' 'REFUSED: fleet-converge subject absent: a mode that drains its subject must name both' >&2; exit 1; fi
+          if '[' "$FLEET_CONVERGE_SUBJECT_RULE" '=' 'required_and_distinct' ']' && ('[' '-z' "$FLEET_CONVERGE_SUBJECT_HOST" ']' || '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'); then 'echo' 'REFUSED: fleet-converge subject absent: a mode that drains its subject must name both' >&2; exit 1; fi
+          if '[' '-z' "$FLEET_CONVERGE_SUBJECT_RULE" ']' || ('[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'not_applicable' ']' && '[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'required_and_distinct' ']' && '[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'may_be_executors_own' ']'); then 'echo' 'REFUSED: fleet-converge subject absent: FLEET_CONVERGE_SUBJECT_RULE carries no rule the facts table declares' >&2; exit 1; fi
           if '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'; then 'echo' 'REFUSED: fleet-converge executor identity absent: the dispatch named no executor lane' >&2; exit 1; fi
-          if '[' '1' '=' '1' ']' && '[' "$FLEET_CONVERGE_MODE" '!=' 'remote_build_serving_observe' ']' && '[' "$FLEET_CONVERGE_MODE" '!=' 'remote_build_serving_converge' ']' && '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
+          if '[' "$FLEET_CONVERGE_SUBJECT_RULE" '=' 'required_and_distinct' ']' && '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
           'echo' 'split precondition holds for the dispatched mode'\''s rule'
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
-          FLEET_CONVERGE_MODE: ${{ github.event.inputs.mode }}
-        if: github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'remote_build_serving_observe' || github.event.inputs.mode == 'remote_build_serving_converge'
+          FLEET_CONVERGE_SUBJECT_RULE: ${{ github.event.inputs.mode == 'remote_build_serving_observe' && 'may_be_executors_own' || github.event.inputs.mode == 'remote_build_serving_converge' && 'may_be_executors_own' || github.event.inputs.mode == 'runner_host_file_converge' && 'required_and_distinct' || github.event.inputs.mode == 'runner_host_withdraw' && 'required_and_distinct' || github.event.inputs.mode == 'runner_host_restore' && 'required_and_distinct' || 'not_applicable' }}
+        if: github.event.inputs.mode == 'remote_build_serving_observe' || github.event.inputs.mode == 'remote_build_serving_converge' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore'
       - name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back"
         id: runner_host_file_converge
         run: |-
