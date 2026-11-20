@@ -2443,7 +2443,7 @@ test fn the_guard_refuses_a_path_it_cannot_resolve() -> Bool {
   // permission. The pair-binding is `admitted`, the ordinary scratch root still taken.
   let root = wet_claim_root(tag: "guard-no-answer" as NonEmptyStr)
   let blocked = join([root, "/blocked"], "")
-  let made = wet_ok(command: Filesystem.Write(path: blocked, content: "not a directory" as NonEmptyStr).success)
+  let made = Filesystem.Write(path: blocked, content: "not a directory" as NonEmptyStr).success
   let beneath = join([blocked, "/gunbc-sandbox-probe-abc123"], "")
   let tool_answered = wet_out(command: realpath_canonicalize_missing_command(path: beneath)) != ""
   let refuses_silence = witness_resolved_root_is_refused(candidate: "")
