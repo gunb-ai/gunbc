@@ -65,7 +65,18 @@ module gunbc.tailscale_join_converge
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.package_managers.apt {
-  apt_third_party_repo_install_script,
+  apt_third_party_repo_install_plan,
+  apt_third_party_keyring_colons_are_pinned,
+  apt_repo_install_leg_kind_name,
+  AptRepoInstallArgvToken,
+  AptRepoArgvLiteral,
+  AptRepoArgvStagingDir,
+  AptRepoInstallLegKind,
+  AptRepoLegMktemp,
+  AptRepoLegShowKeys,
+  AptRepoInstallStep,
+  AptRepoLeg,
+  AptRepoGuard,
   package_tailscale,
 }
 import extdeps.package_managers.dpkg {
@@ -76,12 +87,16 @@ import extdeps.package_managers.dpkg {
   DpkgQueryUndecidable,
   dpkg_print_architecture_command,
   dpkg_query_status_command,
-  lsb_release_codename_command,
   dpkg_query_status_verdict_of,
+}
+
+import extdeps.os_release {
+  lsb_release_codename_command,
 }
 import extdeps.tailscale.apt_repo {
   tailscale_apt_repo_noble,
   tailscale_apt_repo_suite,
+  tailscale_signing_key,
   tailscale_packages,
 }
 import extdeps.posix.getent { getent_hosts_command, getent_key_not_found_exit }
@@ -631,17 +646,247 @@ fn tailscale_join_host_codename(
   }
 }
 
-// THE REPOSITORY-AND-INSTALL SCRIPT. tailscale is not in Ubuntu's main/universe; the bare
-// `apt-get install -y tailscale` this route ran before exited 100 ("Unable to locate package tailscale") on
-// every fresh host -- the live srv4 run 44686507960 and srv3 run 44688299124 both failed there after the
-// dpkg-absent fix correctly decided to install. tailscale's own apt repository must be present before the
-// package resolves, so the install renders the one general route (extdeps.package_managers.apt::
-// apt_third_party_repo_install_script) for the tailscale row (extdeps.tailscale.apt_repo::
-// tailscale_apt_repo_noble) at the host's own arch: keyring fetched and verified against the pinned
-// fingerprint (refuses before trust), deb line written, apt-get update, then the package install. The package
-// name is still the one apt.dag row that carries it (tailscale_packages -> package_tailscale).
-fn tailscale_join_repo_install_script(arch: NonEmptyStr) -> String {
-  apt_third_party_repo_install_script(repo: tailscale_apt_repo_noble(arch: arch), packages: tailscale_packages)
+// THE REPOSITORY-INSTALL ROUTE, WALKED AS TYPED ELEVATED LEGS. Where this leg once rendered a POSIX shell
+// script and piped it to `bash -s`, it now walks apt_third_party_repo_install_plan -- the ONE ordered leg plan
+// apt.dag owns -- running each leg through run_elevated_leg (which elevates internally, so the plan's raw argv
+// is passed untouched) and re-spelling none of its commands. tailscale is not in Ubuntu's main/universe; the
+// bare `apt-get install -y tailscale` this route ran before exited 100 on every fresh host (the live srv4 run
+// 44686507960 and srv3 run 44688299124), so its vendor apt repository must reach the host first -- and it now
+// reaches it as typed legs, not as hand shell. The walk captures the per-run staging directory from Mktemp and
+// the key listing from ShowKeys, enforces the keyring Guard on that listing, and -- on the first refusal,
+// nonzero exit, or refused leg -- stops (no later leg runs, so a half-trusted keyring or a half-written sources
+// line is never left behind) and removes the staging directory, if it was ever created. The result is the same
+// String? refusal shape every other leg returns: none is success, a Some names why.
+type TailscaleJoinAptRepoState {
+  dir: String?
+  colons: String?
+  refusal: String?
+}
+
+// Resolve an install leg's argv tokens against the staging directory known so far. A leg that references the
+// staging directory before Mktemp has produced it resolves to none -- the walk refuses rather than run a
+// command with an empty path. Every resolved word is portable, so the leg crosses the far-side shell re-parse
+// allowlist word by word (a command whose argv would need a space cannot be built as a token in the first place).
+fn tailscale_join_apt_repo_argv(
+  tokens: List<AptRepoInstallArgvToken>,
+  dir: String?,
+) -> List<String>? {
+  let needs_dir = fold(
+    tokens,
+    init: false,
+    f: fn(acc, t) {
+      match t {
+        AptRepoArgvStagingDir { suffix: _ } => true
+        AptRepoArgvLiteral { value: _ } => acc
+      }
+    },
+  )
+  match dir {
+    Present { value: d } =>
+      Present {
+        value: map(
+          tokens,
+          fn(t) {
+            match t {
+              AptRepoArgvLiteral { value: v } => v
+              AptRepoArgvStagingDir { suffix: s } => concat(d, s)
+            }
+          },
+        )
+      }
+    Absent =>
+      if needs_dir {
+        none
+      } else {
+        Present { value: map(tokens, fn(t) { match t { AptRepoArgvLiteral { value: v } => v  AptRepoArgvStagingDir { suffix: s } => s } }) }
+      }
+  }
+}
+
+// A leg's stdin payload crosses run_elevated_leg's transport as a plain String: Absent becomes the empty
+// payload (the leg reads no stdin), Present becomes the text. The Optional lives in the PLAN (where "no stdin"
+// must not be an empty-string sentinel); this is the one place it becomes a transport string.
+fn tailscale_join_apt_repo_stdin(payload: String?) -> String {
+  match payload {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// Fold one leg's ElevatedLeg answer back into the walk state. A refused leg or a nonzero exit sets the refusal
+// (which stops the walk and, after it, triggers cleanup). Mktemp captures the TRIMMED staging directory and
+// refuses an empty one; ShowKeys captures the colon listing the Guard will read; every other leg only has to
+// succeed to advance the walk.
+fn tailscale_join_apt_repo_after_leg(
+  kind: AptRepoInstallLegKind,
+  leg: ElevatedLeg,
+  state: TailscaleJoinAptRepoState,
+) -> TailscaleJoinAptRepoState {
+  match leg {
+    ElevatedLegRefused { reason: reason } =>
+      TailscaleJoinAptRepoState {
+        dir: state.dir,
+        colons: state.colons,
+        refusal: Present {
+          value: concat("tailscale apt repository install refused: ", apt_repo_install_leg_kind_name(kind: kind), " (", reason, ")"),
+        },
+      }
+    ElevatedLegRan { exit_code: exit_code, stdout: stdout, stderr: _ } =>
+      if exit_code != 0 {
+        TailscaleJoinAptRepoState {
+          dir: state.dir,
+          colons: state.colons,
+          refusal: Present {
+            value: concat("tailscale apt repository install failed: ", apt_repo_install_leg_kind_name(kind: kind), " exited nonzero"),
+          },
+        }
+      } else {
+        match kind {
+          AptRepoLegMktemp => {
+            let d = trim(s: stdout)
+            if string_non_empty(value: d) {
+              TailscaleJoinAptRepoState { dir: Present { value: d }, colons: state.colons, refusal: state.refusal }
+            } else {
+              TailscaleJoinAptRepoState {
+                dir: state.dir,
+                colons: state.colons,
+                refusal: Present { value: "tailscale apt repository install refused: mktemp printed no staging directory" },
+              }
+            }
+          }
+          AptRepoLegShowKeys =>
+            TailscaleJoinAptRepoState { dir: state.dir, colons: Present { value: stdout }, refusal: state.refusal }
+          _ => state
+        }
+      }
+  }
+}
+
+// The GUARD step, as data over the captured listing. With no listing (ShowKeys never ran) it refuses; with a
+// listing it asks apt.dag's pure fold whether the pin is the single genuine key, and refuses if not. The guard
+// lives in apt.dag as a fold the witnesses can exercise without a host -- here it is only invoked.
+fn tailscale_join_apt_repo_guard(state: TailscaleJoinAptRepoState) -> TailscaleJoinAptRepoState {
+  match state.colons {
+    Absent =>
+      TailscaleJoinAptRepoState {
+        dir: state.dir,
+        colons: state.colons,
+        refusal: Present { value: "tailscale apt repository install refused: the signing key was never listed, so its fingerprint cannot be checked" },
+      }
+    Present { value: colons } =>
+      if apt_third_party_keyring_colons_are_pinned(colons: colons, pinned: tailscale_signing_key) {
+        state
+      } else {
+        TailscaleJoinAptRepoState {
+          dir: state.dir,
+          colons: state.colons,
+          refusal: Present {
+            value: concat(
+              "tailscale apt repository install refused: the fetched signing key is not the single key pinned as ",
+              tailscale_signing_key.value as String,
+            ),
+          },
+        }
+      }
+  }
+}
+
+// Run one step: the Guard evaluates the fold; every other step resolves its argv against the staging directory
+// and runs it elevated. A step that needs the staging directory before it exists refuses without running.
+fn tailscale_join_apt_repo_step(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  step: AptRepoInstallStep,
+  state: TailscaleJoinAptRepoState,
+) -> TailscaleJoinAptRepoState {
+  match step {
+    AptRepoGuard => tailscale_join_apt_repo_guard(state: state)
+    AptRepoLeg { kind: kind, argv: argv, stdin: stdin } =>
+      match tailscale_join_apt_repo_argv(tokens: argv, dir: state.dir) {
+        Absent =>
+          TailscaleJoinAptRepoState {
+            dir: state.dir,
+            colons: state.colons,
+            refusal: Present {
+              value: concat(
+                "tailscale apt repository install refused: the ",
+                apt_repo_install_leg_kind_name(kind: kind),
+                " leg needed the staging directory before it existed",
+              ),
+            },
+          }
+        Present { value: words } =>
+          tailscale_join_apt_repo_after_leg(
+            kind: kind,
+            leg: run_elevated_leg(
+              subject: subject,
+              context: context,
+              argv: words,
+              stdin_payload: tailscale_join_apt_repo_stdin(payload: stdin),
+            ),
+            state: state,
+          )
+      }
+  }
+}
+
+// Remove the private staging directory, if one was created. This runs on the refusal path AFTER the walk has
+// stopped (the success path removes it through the plan's own Cleanup leg). Its own refusal is appended to the
+// original cause rather than replacing it, so a failure that also could not be cleaned up still names the
+// failure that mattered.
+fn tailscale_join_apt_repo_cleanup(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  dir: String?,
+) -> String? {
+  match dir {
+    Absent => none
+    Present { value: d } =>
+      tailscale_join_elevated_refusal(
+        leg: run_elevated_leg(
+          subject: subject,
+          context: context,
+          argv: coreutils_rm_force_argv(paths: [d]),
+          stdin_payload: "",
+        ),
+        label: "remove the tailscale apt repository staging directory",
+      )
+  }
+}
+
+// WALK the tailscale apt repository install plan as elevated legs, in the single order apt.dag defines. Any leg
+// that is refused, exits nonzero, or trips the keyring Guard stops the walk and is returned as a refusal (the
+// same String? shape the other legs use); the private staging directory, if it was created, is then removed.
+fn tailscale_join_repo_install_route(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  arch: NonEmptyStr,
+) -> String? {
+  let steps = apt_third_party_repo_install_plan(
+    repo: tailscale_apt_repo_noble(arch: arch),
+    packages: tailscale_packages,
+  )
+  let walked = fold(
+    steps,
+    init: TailscaleJoinAptRepoState { dir: none, colons: none, refusal: none },
+    f: fn(state, step) {
+      match state.refusal {
+        Present { value: _ } => state
+        Absent => tailscale_join_apt_repo_step(subject: subject, context: context, step: step, state: state)
+      }
+    },
+  )
+  match walked.refusal {
+    Absent => none
+    Present { value: why } => {
+      let cleanup = tailscale_join_apt_repo_cleanup(subject: subject, context: context, dir: walked.dir)
+      match cleanup {
+        Absent => Present { value: why }
+        Present { value: cleanup_why } =>
+          Present { value: concat(why, "; and the staging directory could not be removed: ", cleanup_why) }
+      }
+    }
+  }
 }
 
 // THE JOIN COMMAND, built from the plan's own hostname and the custody key file. Its credential argument is
@@ -1109,17 +1354,7 @@ fn tailscale_join_install_leg(
                   ),
                 }
               } else {
-                tailscale_join_elevated_refusal(
-                  leg: run_elevated_leg(
-                    subject: subject,
-                    context: context,
-                    // The model-rendered tailscale apt-repository + install script, fed to `bash -s` on stdin. The
-                    // words are portable; the script is not argv, it is the medium the general apt route renders.
-                    argv: ["bash", "-s"],
-                    stdin_payload: tailscale_join_repo_install_script(arch: arch),
-                  ),
-                  label: "tailscale apt repository and package install",
-                )
+                tailscale_join_repo_install_route(subject: subject, context: context, arch: arch)
               }
           }
       }

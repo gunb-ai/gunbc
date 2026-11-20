@@ -150,14 +150,3 @@ data dpkg_program: NonEmptyStr = "dpkg"
 fn dpkg_print_architecture_command() -> ArgvCommand {
   argv_command(program: uncataloged_program(invocation: dpkg_program), arguments: ["--print-architecture"])
 }
-
-// THE HOST OS-CODENAME READ, the sibling of dpkg_print_architecture_command above: the host answers for its
-// own Ubuntu codename via lsb_release --codename --short (one binary, like dpkg for arch). Used by
-// gunbc.tailscale_join_converge to check the host's OS release against a third-party apt repo's pinned suite
-// before installing from it -- an OS fact, so it lives with the other host-identity reads, not in the
-// tailscale module.
-data lsb_release_program: NonEmptyStr = "lsb_release"
-
-fn lsb_release_codename_command() -> ArgvCommand {
-  argv_command(program: uncataloged_program(invocation: lsb_release_program), arguments: ["--codename", "--short"])
-}

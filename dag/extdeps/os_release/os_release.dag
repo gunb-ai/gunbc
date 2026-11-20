@@ -1,0 +1,18 @@
+module extdeps.os_release
+import extdeps.exec.command {ArgvCommand,argv_command}
+import extdeps.exec.program {ProgramIdentity, uncataloged_program}
+
+import std.types { NonEmptyStr, List }
+
+// THE HOST OS-CODENAME READ, at OS level. The host answers for its own Ubuntu codename via
+// `lsb_release --codename --short` (one binary, the sibling of dpkg --print-architecture for arch). gunbc
+// .tailscale_join_converge uses this to check the host's OS release against a third-party apt repository's
+// pinned suite before installing from it. `lsb_release` ships in distro-info-data, not dpkg, and the Ubuntu
+// release codename it prints is an OS fact, not dpkg's -- the suites an apt source line pins are chosen by the
+// OS release -- so the read lives here at OS level rather than under extdeps.package_managers.dpkg (review
+// 96916 finding B), and reading the release no longer routes through the dpkg module.
+data lsb_release_program: NonEmptyStr = "lsb_release"
+
+fn lsb_release_codename_command() -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: lsb_release_program), arguments: ["--codename", "--short"])
+}

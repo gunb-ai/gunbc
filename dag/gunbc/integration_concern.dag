@@ -4955,7 +4955,7 @@ data integration_concern_third_party_apt_repo_leaves_unified: IntegrationConcern
     tail: [
       decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "NvidiaContainerToolkitAptRepo"),
       decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "ThirdPartyAptRepo"),
-      decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_script"),
+      decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_plan"),
     ],
   },
   question: "Which declaration decides the shape and provisioning sequence of a third-party apt repository -- the URI, suite, components and architecture, the signed-by keyring path, and the pinned fingerprint the fetched key must match or the route refuses -- so a vendor is a row and a fix to the shared discipline lands once?",
@@ -4966,7 +4966,7 @@ data integration_concern_third_party_apt_repo_leaves_unified: IntegrationConcern
         head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "docker_ce_repo_install_script") },
         tail: [
           CitesDeclaration { declaration: decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_container_toolkit_apt_source_line") },
-          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_script") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_plan") },
         ],
       },
       account: "tailscale had to be onboarded onto its own apt repository (a fresh host cannot locate the tailscale package without it; the live srv4 join run 44686507960 failed at apt-get install exit=100 'Unable to locate package tailscale'). Its provisioning sequence -- keyrings dir, fetch the armored key, dearmor, verify the pinned fingerprint and refuse, write the deb line, apt-get update, install -- is word-for-word the sequence docker_ce_repo_install_script and the nvidia leaf already render, differing only in the cited values. Rather than add a third leaf, the sequence was lifted into extdeps.package_managers.apt::ThirdPartyAptRepo and tailscale became a row (extdeps.tailscale.apt_repo::tailscale_apt_repo_noble). The two container leaves were left in place -- migrating them is out of scope for the tailscale onboarding that motivated this, and would change live runner/GPU provisioning paths under an unrelated deadline. They are named here so the next edit to either carries it onto the general shape instead of editing the leaf.",

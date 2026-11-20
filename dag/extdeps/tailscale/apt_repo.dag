@@ -71,6 +71,4 @@ fn tailscale_apt_repo_noble(arch: NonEmptyStr) -> ThirdPartyAptRepo {
   }
 }
 
-// The package the tailscale repository serves, named by the one apt row that carries it -- not a re-spelled
-// string, so the readback names the same package the install installs.
 data tailscale_packages: List<NonEmptyStr> = [package_tailscale]
