@@ -177,8 +177,8 @@ fn show_block(s: SlotWorld) -> String {
   let six = systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active)
   let tasks = if s.worker || s.listener { "1" } else { "0" }
   concat(
-    concat(six, concat(concat(systemd_unit_property_wire(p: ControlGroup) as String, "=system.slice/"), concat(concat(u(n: s.n) as String, ".service\n"), ""))),
-    concat(concat(systemd_unit_property_wire(p: TasksCurrent) as String, "="), concat(tasks, "\n")),
+    concat(six, concat(concat(systemd_unit_property_wire(property: ControlGroup) as String, "=system.slice/"), concat(concat(u(n: s.n) as String, ".service\n"), ""))),
+    concat(concat(systemd_unit_property_wire(property: TasksCurrent) as String, "="), concat(tasks, "\n")),
   )
 }
 

@@ -175,7 +175,7 @@ import gunbc.runner.runner_slot_actuation {
   SlotReadingUnknownWord, slot_task_count_of_show, SlotTasks, SlotCgroupAbsent, SlotTasksUnread,
   run_slot_steps_over,
 }
-import gunbc.runner.runner_local_state { NoMainProcess, MainProcessUnread, MainProcessUngrounded }
+import gunbc.runner.runner_local_state { MainProcess, NoMainProcess, MainProcessUnread, MainProcessUngrounded }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, deploy_slot_identities, committed_slot_identities, CommittedPopulationDerived, host_transitional_ci_slot_identities, identity_in_list, gunbc_runner_slot_desired_for }
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
 import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
@@ -2980,7 +2980,7 @@ type LoopSettlement
 fn runner_slot_loop_settlement_is_due(instantiation: RunnerSlotInstantiation, presence: RunnerSlotTreePresence, kept: Bool) -> Bool {
   kept
     && (match presence { TreeAbsent => true  _ => false })
-    && (match instantiation { SlotInstantiationAnomalous { why: _ } => true  _ => false })
+    && (match instantiation { SlotInstantiationAnomalous { unit: _, detail: _ } => true  _ => false })
 }
 
 fn settle_unprovisioned_slot_loop_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, unit: NonEmptyStr, presence: RunnerSlotTreePresence) -> LoopSettlement {
@@ -3064,7 +3064,11 @@ fn converge_runner_slot_tree(
     Absent => none
     Present { value: o } => if o { observe_runner_slot_tree_release(subject: subject, context: context, target: target, runner_release: runner_release) } else { none }
   }
-  match runner_slot_tree_step(target: target, runner_release: runner_release, account_held: account_held, instantiation: instantiation, owned: owned, release_current: release_current, mode: mode, privilege: privilege) {
+  // A loop this admission could not quiet is a typed refusal naming the step it died at; the tree is never
+  // built under a unit the manager still considers live, and nothing is retried to find out what happens.
+  match loop_refusal {
+    Present { value: why } => RunnerSlotTreeRefused { unit: unit, cause: join(["the restart loop was not settled: ", why], "") as NonEmptyStr }
+    Absent => match runner_slot_tree_step(target: target, runner_release: runner_release, account_held: account_held, instantiation: instantiation, owned: owned, release_current: release_current, mode: mode, privilege: privilege) {
     RunnerSlotTreeSettled { standing: st } => st
     RunnerSlotTreeDrainThenRebuild =>
       // NEVER MASK A RUNNING UNIT (gunbc.runner.runner_slot_actuation NeverMaskARunningUnit): an idle slot is
@@ -3110,6 +3114,7 @@ fn converge_runner_slot_tree(
             unit: unit,
             cause: join(["the drain answered a hand-capacity notice: ", notice, "; the tree is left as it is"], "") as NonEmptyStr,
           }
+      }
       }
   }
     }
