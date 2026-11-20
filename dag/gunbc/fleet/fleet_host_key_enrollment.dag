@@ -28,7 +28,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.mac { Eui48Address }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
 import gunbc.fleet.fleet_intent_network { host_lan_address }
-import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7 }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, host_by_ipv4, render_network_host, parse_network_host, NetworkHostParsed, NetworkHostRefused }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
@@ -189,7 +189,7 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = list_append(
     provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
   },
   KnownHostKeyRow {
-    host: "host-e2d4b7" as HostIdentity,
+    host: operator_host_e2d4b7,
     address: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: fleet_machine_ken)),
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIGmwHT6TB01o//nxJr0cmpxRdbPz3aS5Zz8jN3WNM7kA",
