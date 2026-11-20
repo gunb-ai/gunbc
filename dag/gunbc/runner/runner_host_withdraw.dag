@@ -135,11 +135,12 @@ fn withdraw_host_over(subject: RunnerHostFileSubject, context: FleetSshExecution
   // zero legs dispatched -- the witness pins that with an empty actuation ledger.
   match fleet_converge_split_precheck(executor_runner_name: executor_runner_name, subject_host: Present { value: host }) {
     SplitRefused { reason: why } => WithdrawalRefused { refusal: WithdrawalRefusalSplit { reason: fleet_converge_split_refusal_line(reason: why) }, left: HostLeftAsRead { detail: "nothing was masked: the split precondition refused before the first leg" } }
-    SplitOk { executor_runner_name: _, subject_host: _ } => withdraw_host_split_ok(target: target, context: context, host: host, units: units)
+    SplitOk { executor_runner_name: _, subject_host: _ } => withdraw_host_split_ok(subject: subject, context: context, host: host, units: units)
   }
 }
 
-fn withdraw_host_split_ok(target: SshTarget, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> WithdrawalOutcome {
+fn withdraw_host_split_ok(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, host: String, units: List<NonEmptyStr>) -> WithdrawalOutcome {
+  let target = subject.target
   match step_budget_seconds() {
     Absent => WithdrawalRefused { refusal: WithdrawalRefusalBudget { cause: join(["the enclosing step did not declare its budget (the declared budget variable ", runner_host_cap_step_budget_env_name, " is unset or is not an integer)"], "") }, left: HostLeftAsRead { detail: "nothing was masked: the budget was unreadable before the first leg" } }
     Present { value: seconds } =>
