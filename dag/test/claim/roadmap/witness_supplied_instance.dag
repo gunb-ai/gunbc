@@ -22,11 +22,11 @@ import gunbc.host.host_effect_realize {
   ApprovalBrokerTreeInstallVerdict, TreeDigestComputed, TreeDigestRefused, TreeInstallConverged,
   TreeInstallRefused, TreeInstallStep, TreeLinesDigest, TreeObserved, TreeObservation,
   TreeObservationFailed, TreeStepInstallDirectory, TreeStepSourceObserve,
-  approval_broker_tree_install_at, observe_tree_hashes, one_transport_route, tree_digest_lines,
+  approval_broker_tree_install, observe_tree_hashes, one_transport_route, tree_digest_lines,
   tree_hash_lines, tree_install_step_name,
 }
 import gunbc.live_deploy.release_locus {
-  HelperLocus, ReleaseRevisionBinding, RevisionBoundAtEmission,
+  HelperLocus, ReleaseLocus, ReleaseRevisionBinding, RevisionBoundAtEmission,
   approval_broker_helper_root_principal, release_locus_tree_subdirs,
 }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
@@ -34,6 +34,7 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_l
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, whoami_command,
   install_file_mode_command, mkdir_parents_command,
+  realpath_canonicalize_missing_command,
 }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -43,6 +44,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_dashboard_lab_id,
   srv1_dashboard_lab_root,
   srv1_dashboard_lab_provision_parent,
+  host_capacity_home_root,
   WorkerIsServiceUser,
   dashboard_instance_child,
   dashboard_inbox_under,
@@ -360,10 +362,50 @@ fn parse_principal_numbers(uid_text: String, gid_text: String) -> Optional<Princ
 // this guard writes into the live lab root. Every claim that takes a witness root checks it through this one
 // decision.
 fn witness_supplied_root_is_refused(candidate: String) -> Bool {
-  is_under(text: candidate, root: srv1_dashboard_lab_provision_parent as String)
+  witness_path_spelling_is_refused(candidate: candidate)
+    || witness_resolved_root_is_refused(candidate: candidate)
+    || is_under(text: candidate, root: srv1_dashboard_lab_provision_parent as String)
     || is_under(text: candidate, root: srv1_dashboard_lab_root as String)
-    || is_under(text: candidate, root: "/opt/gunbc" as String)
+    || is_under(text: candidate, root: host_capacity_home_root as String)
     || !is_under(text: candidate, root: witness_scratch_prefix as String)
+}
+
+// THE SPELLING OF A PATH IS NOT ITS LOCATION. `is_under` is a string-prefix test, and a prefix test cannot see
+// through `..`: measured at review 5999428189, `GUNBC_WITNESS_SANDBOX_BASE=/tmp/../opt/gunbc-lab` sits under
+// `witness_scratch_prefix` by string test and under `srv1_dashboard_lab_root` once the kernel resolves it, so the
+// whole guard stayed GREEN while `mktemp -d` created its tree inside the live install root. A spelling carrying a
+// navigation component is therefore refused outright, in this pure function, before any process starts and before
+// anything is created. Duplicate slashes are NOT refused here — a leading `/` makes one empty component in every
+// absolute path — and are left to the resolved arm below, which compares canonical strings rather than spellings.
+fn witness_path_spelling_is_refused(candidate: String) -> Bool {
+  !starts_with(s: candidate, prefix: "/")
+    || any(
+      split(s: candidate, delimiter: "/"),
+      c => c == "." || c == "..",
+    )
+}
+
+// RESOLVE, THEN CHECK, IN THAT ORDER — the arm no lexical rule can replace. A symlink admitted under `/tmp`
+// whose target is the live install root, or anything outside the resolved scratch prefix, passes every string
+// test ever written, because the string genuinely IS under `/tmp`. `realpath -m` is asked BEFORE the create, so
+// the path need not exist yet.
+//
+// NO ANSWER IS A NO. `wet_out` yields the empty string when realpath cannot be spawned or exits nonzero — an
+// unreadable component, a host without coreutils — and a guard that read silence as permission would be a hole
+// exactly the size of the error it swallowed. So an empty answer refuses, and the claim
+// `the_guard_refuses_a_path_it_cannot_resolve` names that case instead of leaving it to be inferred from a batch
+// of unexplained reds.
+fn witness_resolved_root_is_refused(candidate: String) -> Bool {
+  let resolved = wet_out(command: realpath_canonicalize_missing_command(path: candidate))
+  let resolved_prefix = wet_out(
+    command: realpath_canonicalize_missing_command(path: witness_scratch_prefix as String),
+  )
+  resolved == ""
+    || resolved_prefix == ""
+    || is_under(text: resolved, root: srv1_dashboard_lab_provision_parent as String)
+    || is_under(text: resolved, root: srv1_dashboard_lab_root as String)
+    || is_under(text: resolved, root: host_capacity_home_root as String)
+    || !is_under(text: resolved, root: resolved_prefix)
 }
 
 // A PREFIX TEST, NOT A SUBSTRING TEST, and the direction matters twice over. A substring test would accept
@@ -570,7 +612,7 @@ fn witness_production_writable_roots(instance: HostDashboardInstance) -> List<Fi
 // (`src/v1/stage0/src/cli_run.rs`'s `spawn_workspace_root_locus`) requires that directory to hold a `dag` DIRECTORY plus a regular
 // file named by `gunbc.cli_run_workspace_root_scaffold::release_locus_tree_receipt_name`.
 // So the supplied root gets its locus the only honest way: through the fold that installs one,
-// `gunbc.host.host_effect_realize::approval_broker_tree_install_at`. That fold installs
+// `gunbc.host.host_effect_realize::approval_broker_tree_install`. That fold installs
 // the spine and ancestor dirs, the tree files at 0644 and the binaries at 0755 out of
 // `cargo_default_release_dir`, then reads EVERY path back through `find | sha256sum` on both sides,
 // refuses unless the two digests agree, and writes the receipt LAST through
@@ -667,7 +709,7 @@ fn witness_claim_helper_locus(instance: HostDashboardInstance) -> HelperLocus {
 // here would be a second rule beside production's, and a mutation of the real derivation would then
 // still find a hand-written path to pass on.
 // WHAT A HELPER LOCUS MUST CARRY, in the names the fold is handed. ONE list, two consumers: the install
-// route above passes it to `approval_broker_tree_install_at`, and `the_plant_leaves_the_executables_the_fold_
+// route above passes it to `approval_broker_tree_install`, and `the_plant_leaves_the_executables_the_fold_
 // contract_requires` requires a staged file for every name in it. A plant that stages half of it is caught
 // by the claim instead of by an `install: cannot stat` on a host that can elevate -- which is how srv2 found
 // it (fold-cost-small died at `install: cannot stat '<root>/source/target/release/gunbc'`, 3.1M steps of
@@ -830,12 +872,26 @@ fn witness_locus_install(
       reason: witness_locus_needs_elevation_cause as String,
     }
   } else {
-    approval_broker_tree_install_at(
+    // THE LOCUS RECORD, MINTED HERE AND NOT THROUGH THE TWO SANCTIONED FOLDS, AND THAT IS THE POINT.
+    // `release_locus_record` and `helper_release_locus_record` both DERIVE the directory from the
+    // revision they carry (`release_locus_dir` / `helper_locus_dir`), which is the right rule for a
+    // host release install. This witness is not one: its directory is named by the DIGEST OF WHAT IT
+    // WILL HOLD (`witness_locus_key`), while the revision it records is the guest tree's commit — the
+    // two arguments do different jobs, spelled above. Routing through either fold would install into
+    // the commit-named directory and read the receipt back from the content-named one, which is the
+    // split `gunbc.live_deploy.release_locus` exists to remove and srv2 run15794v measured as costing
+    // a second whole fold per launching leg. The record is therefore constructed with the directory
+    // the fold writes into AND the revision the receipt names, as one value, at one place — and
+    // `witness_locus_receipt_path` derives its readback from the SAME `witness_locus_dir_text`, so no
+    // caller can carry a directory that drifted from the revision beside it.
+    approval_broker_tree_install(
       owner: approval_broker_helper_root_principal,
-      spine: witness_locus_install_spine(instance: instance),
+      locus: ReleaseLocus {
+        revision: revision,
+        spine: witness_locus_install_spine(instance: instance),
+        locus: witness_locus_dir_text(instance: instance, locus_key: locus_key),
+      },
       source_root: instance.repo_root as String,
-      locus: witness_locus_dir_text(instance: instance, locus_key: locus_key),
-      revision: revision,
       executables: witness_locus_executables,
       transport: one_transport_route(transport: LocalShell),
     )

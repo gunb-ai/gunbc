@@ -95,6 +95,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_worker_user,
+  srv1_dashboard_lab_root,
 }
 // THE SUPPLIED-ROOT FIXTURE (PR #15627). Every claim in this file builds its lab row
 // through it, so no claim's effects land under the live lab root the srv1 row points at.
@@ -106,6 +107,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_refused_instance, witness_unnameable_principal,
   witness_supplied_credstore_dir, witness_supplied_credential_source, witness_supplied_credential_is_confined,
   wet_ok, wet_out, wet_argv_ok, wet_argv_out,
+  witness_path_spelling_is_refused, witness_resolved_root_is_refused,
   witness_claim_helper_locus, witness_locus_dir_text, witness_locus_dag_dir,
   witness_locus_receipt_path, witness_locus_binary_path, witness_locus_source_roots,
   witness_locus_receipt_seal_path, witness_seal_locus_receipt, witness_file_sha256_hex,
@@ -120,8 +122,10 @@ import test.claim.roadmap.witness_supplied_instance {
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
+  ls_almost_all_one_per_line_command,
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, pwd_command,
+  ln_symbolic_force_command,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 // The fleet's ONE environment read: `shell.Env.Get` (extdeps/shell.dag, transport shell
@@ -342,13 +346,47 @@ fn wet_label_is_admissible(label: String) -> Bool {
 data wet_sandbox_base_env_var: NonEmptyStr = "GUNBC_WITNESS_SANDBOX_BASE" as NonEmptyStr
 
 fn wet_claim_root(tag: NonEmptyStr) -> String {
+  wet_claim_root_under(base: wet_claim_root_base(), tag: tag)
+}
+
+// THE BASE THE ROOTS ARE MADE UNDER, AS A VALUE. The environment is read in exactly one place and
+// handed to `wet_claim_root_under`, which is where the ordering lives. The split is what makes the
+// ordering TESTABLE: a claim cannot set its own environment (this codebase models only
+// `shell.Env.Get` — there is no setenv route), so a regression for "the guard runs before the
+// create" had to be able to hand the create route a base it knows is inadmissible. It does that
+// through this parameter, and the two claims filed by review 5999428189 do exactly that.
+fn wet_claim_root_base() -> String {
   let base = wet_environment_value(name: wet_sandbox_base_env_var)
-  let parent = if base == "" { witness_scratch_prefix as String } else { base }
-  wet_out(
-    command: mktemp_directory_command(
-      template: join([parent, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
-    ),
-  )
+  if base == "" { witness_scratch_prefix as String } else { base }
+}
+
+// THE GUARD RUNS BEFORE THE CREATE, AND THE CREATE NEVER SEES AN INADMISSIBLE BASE. Review
+// 5999428189 filed the ordering: `is_under` was a STRING-PREFIX test, so a base that spelled its way
+// out of the admitted prefix (`/tmp/../opt/gunbc-lab`) was admitted, `mktemp -d` built its tree in
+// the live install root, and the refusal afterwards only declined to USE what had already been made.
+// The base is now judged first — spelling rule and resolved-ancestry rule, both in the fixture — and
+// an inadmissible one yields the empty string, the same `Absent` every caller already turns into a
+// refusal, with no directory created anywhere. The result of the create is judged a second time
+// because `mktemp -d` can answer with a path through a symlinked prefix even when the base text was
+// clean; a root that fails then is removed before this returns, so a refusal leaves nothing behind.
+fn wet_claim_root_under(base: String, tag: NonEmptyStr) -> String {
+  if witness_supplied_root_is_refused(candidate: base) {
+    ""
+  } else {
+    let made = wet_out(
+      command: mktemp_directory_command(
+        template: join([base, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
+      ),
+    )
+    if made != "" && witness_supplied_root_is_refused(candidate: made) {
+      let _ = wet_stage(stage: "made-root-refused", ok: wet_ok(
+        command: rm_recursive_force_command(path: made),
+      ))
+      ""
+    } else {
+      made
+    }
+  }
 }
 
 // THE HOST-SAID PRINCIPAL. Empty text or an unparseable uid/gid yields the fixture's unnameable
@@ -2254,8 +2292,175 @@ fn reading_is_refused(reading: SandboxTouchReading) -> Bool {
   }
 }
 
+// --------------------------------------------------------------------------------
+// THE GUARD RUNS BEFORE THE CREATE, AND BOTH WAYS OF LYING ABOUT A PATH ARE REFUSED.
+// Filed by review 5999428189. `is_under` was a STRING-PREFIX test, so a base that spelled its way
+// out of the admitted prefix (`GUNBC_WITNESS_SANDBOX_BASE=/tmp/../opt/gunbc-lab`) was admitted,
+// `mktemp -d` built its tree inside the live install root, and the refusal that followed declined
+// only to USE what had already been made. A symlink was worse and needed no spelling at all: the
+// string genuinely is under `/tmp`. Both environment variables the harness reads for a base —
+// `GUNBC_WITNESS_SANDBOX_BASE` here, `WITNESS_LOCUS_BASE` below — name a directory that is CREATED
+// UNDER or INSTALLED INTO, so each gets its own claim, and each claim is pair-bound: an arm whose
+// values need no live host at all (teeth on any machine), and an arm whose create would have
+// SUCCEEDED without the guard (teeth against a guard that simply refuses everything).
+//
+// WHAT THESE CLAIMS CANNOT DO, SAID PLAINLY. This codebase models only `shell.Env.Get` — there is
+// no setenv route, so a claim cannot put a value into its own environment and have the read observe
+// it. The two variables are therefore tested at the single place their values are consumed: the base
+// arrives at the create route through `wet_claim_root_under`'s PARAMETER (which is why the ordering
+// is testable at all), and at the fold through `witness_batch_locus_base`, whose one read is the
+// guarded call. A packet `--self-test` arm carries the end-to-end half, because the environment is
+// the RUNNER's input and the packet is what sets these two variables.
+// --------------------------------------------------------------------------------
+
+// HOW MANY ROOTS A CREATE ROUTE ACTUALLY MADE UNDER `base`. The behavioural half of the two
+// before-the-create claims: a refusal is only proven by the ABSENCE of the directory that would have
+// been made, and `mktemp -d` under a base that exists does make one — so removing the guard turns
+// this count from 0 into 1, on a host with no live install root anywhere.
+fn wet_names_under(base: String, prefix: NonEmptyStr) -> Int {
+  if base == "" {
+    0
+  } else {
+    count(filter(
+      split(s: wet_out(command: ls_almost_all_one_per_line_command(path: base)), delimiter: "\n"),
+      e => starts_with(s: e, prefix: prefix as String)
+    ))
+  }
+}
+
+test fn the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create() -> Bool {
+  let root = wet_claim_root(tag: "sandbox-base-traversal" as NonEmptyStr)
+  let parent = join([root, "/admit"], "")
+  let made_parent = wet_ok(command: mkdir_parents_command(path: parent))
+  // A base that EXISTS, sits under the admitted prefix, and reaches its own directory only through
+  // `..`; and the live install root spelled the same way, named rather than approximated. Every
+  // string test ever written admits both. The ordinary path beside them is admitted, so this cannot
+  // be satisfied by a rule that refuses everything — that is the pair-binding.
+  let by_traversal = join([parent, "/../admit"], "")
+  let live_spelling = join(["/tmp/../", srv1_dashboard_lab_root as String], "")
+  let refusals_hold = witness_path_spelling_is_refused(candidate: by_traversal)
+    && witness_path_spelling_is_refused(candidate: live_spelling)
+    && witness_supplied_root_is_refused(candidate: live_spelling)
+    && !witness_path_spelling_is_refused(candidate: parent)
+  // THE ORDERING, BEHAVIOURALLY. `parent` is a real directory, so an unguarded `mktemp -d` under it
+  // succeeds: with the guard removed the answer below is a path and the count is 1, and this claim is
+  // the RED that the review asked for. What a refusal must look like is the empty string — the same
+  // `Absent` every caller of `wet_claim_root` already turns into a refusal — and nothing anywhere
+  // under the base may have been created to produce it.
+  let answer = wet_claim_root_under(base: by_traversal, tag: "traversal-probe" as NonEmptyStr)
+  let nothing_made = wet_names_under(base: parent, prefix: "gunbc-sandbox-" as NonEmptyStr) == 0
+  wet_claim_verdict_with_root_readback(
+    verdict: wet_claim_is_confined(
+      instance: wet_supplied_lab_instance(
+        scratch_parent: root,
+        repo: join([root, "/source"], "") as FilePath,
+        principal: wet_principal(),
+      ),
+      root: root,
+    )
+      && root != "" && made_parent && refusals_hold && answer == "" && nothing_made,
+    root: root as NonEmptyStr,
+  )
+}
+
+test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused() -> Bool {
+  let root = wet_claim_root(tag: "sandbox-base-symlink" as NonEmptyStr)
+  // A DISPOSABLE DESTINATION, as the review asked. `/var/tmp` is outside the declared scratch prefix
+  // `/tmp`, so this is a real escape and not a rename of somewhere already admitted; the claim owns
+  // the directory and hands it to the same root readback that removes its own root.
+  let away = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-alias-target-XXXXXX" as NonEmptyStr,
+  ))
+  let link = join([root, "/alias"], "")
+  let linked = wet_ok(command: ln_symbolic_force_command(target: away, link_name: link))
+  // THE DISCRIMINATING PAIR, and it is the whole claim. The lexical arm ADMITS this path — it is
+  // under `/tmp` and carries no navigation component, so every string test on it passes — and only
+  // the resolved arm can refuse it. Delete the resolved arm and the second conjunct is red; delete
+  // the lexical arm and the first is.
+  let arms_split = !witness_path_spelling_is_refused(candidate: link)
+    && witness_resolved_root_is_refused(candidate: link)
+    && witness_supplied_root_is_refused(candidate: link)
+  // AND THE CREATE ROUTE REFUSES IT, which is the part a unit test of a predicate cannot fake: the
+  // link resolves to a real, existing, writable directory, so `mktemp -d` through it WOULD have made
+  // its tree inside the escape destination.
+  let answer = wet_claim_root_under(base: link, tag: "symlink-probe" as NonEmptyStr)
+  let nothing_escapes = wet_names_under(base: away, prefix: "gunbc-sandbox-" as NonEmptyStr) == 0
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(
+      instance: wet_supplied_lab_instance(
+        scratch_parent: root,
+        repo: join([root, "/source"], "") as FilePath,
+        principal: wet_principal(),
+      ),
+      root: root,
+    )
+      && root != "" && away != "" && linked && arms_split && answer == "" && nothing_escapes,
+    roots: [root as NonEmptyStr, away as NonEmptyStr],
+  )
+}
+
+test fn the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold() -> Bool {
+  let root = wet_claim_root(tag: "locus-base-traversal" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(
+    scratch_parent: root,
+    repo: join([root, "/source"], "") as FilePath,
+    principal: wet_principal(),
+  )
+  // `WITNESS_LOCUS_BASE` names the directory the helper fold installs INTO, so an escaped spelling
+  // here is a root-owned install inside the live lab root — precisely what `approval_broker_tree_install`
+  // must never be handed. The hole was identical to the sandbox base's, and so is the closure:
+  // `witness_batch_locus_base` reads the variable in ONE place and refuses an inadmissible value
+  // there, BEFORE any locus path is derived, falling back to the instance's own root. What the fold
+  // receives is therefore always derived from an admitted base, and the two directions below are
+  // what keep that from being a claim about reading code: the escape is refused as a spelling AND as
+  // a resolution, and the directory the fold is handed sits under the base the resolver returned and
+  // is itself admissible.
+  let by_traversal = join(["/tmp/../", srv1_dashboard_lab_root as String], "")
+  let escape_refused = witness_path_spelling_is_refused(candidate: by_traversal)
+    && witness_resolved_root_is_refused(candidate: by_traversal)
+    && witness_supplied_root_is_refused(candidate: by_traversal)
+  let admitted_base = witness_batch_locus_base(instance: inst)
+  let fold_target = witness_locus_dir_text(instance: inst, locus_key: "regression-key" as NonEmptyStr)
+  let target_follows_the_base = !witness_supplied_root_is_refused(candidate: admitted_base)
+    && starts_with(s: fold_target, prefix: admitted_base)
+    && !witness_supplied_root_is_refused(candidate: fold_target)
+  wet_claim_verdict_with_root_readback(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && escape_refused && target_follows_the_base,
+    root: root as NonEmptyStr,
+  )
+}
+
+test fn the_guard_refuses_a_path_it_cannot_resolve() -> Bool {
+  // THE RESOLVED ARM REFUSES ON A NO, NOT ON A YES. `realpath -m` exits nonzero when a component of
+  // the path is not a directory — here, a REGULAR FILE standing where a directory belongs — and an
+  // implementation that read the empty output as "fine, not under anything" would wave through every
+  // path it failed to inspect. The conjunct `admitted` is the pair-binding: the ordinary scratch root
+  // is still admitted, so this claim cannot be satisfied by a guard that refuses everything.
+  let root = wet_claim_root(tag: "guard-no-answer" as NonEmptyStr)
+  let blocked = join([root, "/blocked"], "")
+  let made = wet_ok(command: Filesystem.Write(path: blocked, content: "not a directory" as NonEmptyStr).success)
+  let beneath = join([blocked, "/gunbc-sandbox-probe-abc123"], "")
+  let refused = witness_resolved_root_is_refused(candidate: beneath)
+    && witness_supplied_root_is_refused(candidate: beneath)
+  let admitted = !witness_supplied_root_is_refused(candidate: root)
+  wet_claim_verdict_with_root_readback(
+    verdict: wet_claim_is_confined(
+      instance: wet_supplied_lab_instance(
+        scratch_parent: root,
+        repo: join([root, "/source"], "") as FilePath,
+        principal: wet_principal(),
+      ),
+      root: root,
+    )
+      && root != "" && made && refused && admitted,
+    root: root as NonEmptyStr,
+  )
+}
+
 // RED for the control, on supplied values: a refused touch whose control could not write reads
 // inconclusive, never refused; the same refusal with a writing control stands.
+
 test fn a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive() -> Bool {
   reading_is_inconclusive(reading: refusal_reading_after_control(control_wrote: false, reading: SandboxTouchRefusedReading))
     && reading_is_refused(reading: refusal_reading_after_control(control_wrote: true, reading: SandboxTouchRefusedReading))
@@ -3737,7 +3942,7 @@ fn wet_suffixed_label_is_refused(root: FilePath, suffix: String) -> Bool {
 // "n is small here" is not time-stable. So the measurement is a claim, with its numbers in the run log
 // beside the claims it explains.
 //
-// WHAT IS MEASURED. The fold (`witness_locus_install` → production's `approval_broker_tree_install_at`)
+// WHAT IS MEASURED. The fold (`witness_locus_install` → production's `approval_broker_tree_install`)
 // observes the planted tree through `observe_tree_hashes` -- one `find … -exec sha256sum` per release
 // subtree, every line parsed into a `TreeFileHash` -- sorts it, installs it file by file through the
 // elevated route, and observes it back. Both claims below plant through the ONE plant route and then

@@ -368,6 +368,15 @@ fn realpath_canonical_command(path: String) -> ArgvCommand {
   argv_command(program: realpath_program(), arguments: ["-e", "--", path])
 }
 
+// realpath -m CANONICALIZES A PATH THAT NEED NOT EXIST: realpath(1), "-m, --canonicalize-missing: no component
+// of the path need exist" — symlinks that do exist are resolved, "." and ".." are collapsed, and a missing
+// trailing component is accepted rather than refused. This is the form a guard running BEFORE a create needs:
+// the -e row above refuses on a missing component, which is exactly the state of the path being judged when the
+// question is "may anything be created here".
+fn realpath_canonicalize_missing_command(path: String) -> ArgvCommand {
+  argv_command(program: realpath_program(), arguments: ["-m", "--", path])
+}
+
 fn readlink_command(path: String) -> ArgvCommand {
   argv_command(program: readlink_program(), arguments: [path])
 }

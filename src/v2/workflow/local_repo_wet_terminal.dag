@@ -4218,6 +4218,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_guard_refuses_a_path_it_cannot_resolve" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_guard_refuses_a_path_it_cannot_resolve",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused",
