@@ -15,6 +15,7 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead, Ubuntu2404,
 }
 import extdeps.tailscale.github_action { tailscale_github_action_v4_4_0 }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description}
 import extdeps.bazel.label { render_label }
 import gunbc.action_use_admission {
   checkout_action,
@@ -44,10 +45,24 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 //   4. The drift watch covers it independently: each generated artifact has its own producer.
 //
 // THE NETWORK PATH: the hosted runner joins the tailnet as tag:ci-dispatch (the operator ruling of
-// 2026-11-19: "no new tag, use CI"). The member baseline grant (autogroup:member -> *) gives the
-// ephemeral node IP connectivity to the fleet hosts; what it can DO on a host is bounded by the
-// forced-command SSH key, not the network ACL. The CI key is a dedicated key for the gunbc-build
-// forced-command account only, admitted by gunbc.compute.remote_build's authorized-keys line.
+// 2026-11-19: "OK for ci-dispatch, as long as its all modeled/recorded for tailscale convergence").
+// The emitted ACL grant (extdeps.tailscale.acl tag_ci_dispatch_to_build_hosts_ssh_grant) gives
+// tag:ci-dispatch tcp:22 to tag:ci (the fleet hosts' tag). Only the gunbc-build forced-command
+// account admits the CI key, so the blast radius is the remote-build gate operation and nothing
+// else on the host. Even if a host ran Tailscale SSH, no ssh rule names tag:ci-dispatch.
+//
+// THE CONFIG-CHECK ARM (manager ruling 2026-11-19): when the required secrets are absent (the
+// operator has not yet set them), the config-check step prints ::notice::not configured:: and all
+// downstream steps skip via if_condition. The job is not green-as-passed (it reports the gate was
+// not attempted) and not red. Red control: when secrets ARE present and the remote gate fails, the
+// step's exit code propagates and the job goes red.
+//
+// THE HAND-SHELL GATE (ctrl review policy): the run: fields build shell as strings. This is a
+// scaffold; the dissolution trigger below names the capability that would replace it (bash-node
+// grammar rows in the emitter). The carrier-level marker dissolves when that capability lands.
+//
+// THE DISSOLUTION: this entire workflow dissolves at remote-build cutover. The carrier-level
+// DissolutionCondition below records it.
 //
 // THE GATE OPERATION: per emitted_subject_build_rows row, the job invokes the remote-build client's
 // gate operation (gunbc.compute.remote_build_client remote_gate_cli). Until that CLI lands (work
@@ -60,6 +75,11 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 // ── THE WORKFLOW IDENTITY ────────────────────────────────────────────────────────────────────────
 
 data shadow_gate_workflow_name: String = "hosted-runner-shadow-gate"
+// CARRIER-LEVEL DISSOLUTION MARKER (HAND-SHELL GATE policy + the operator's 2026-11-19 ruling):
+// this workflow is a scaffold. It dissolves at remote-build cutover, when the fleet runs the
+// remote build natively and the v2-bootstrap required context's witnesses.yml drops.
+data shadow_gate_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: remote-build cutover -- the fleet runs the remote build natively; this shadow gate and its hosted runner are no longer needed. The v2-bootstrap required context dissolves (same ruling, 2026-11-19); this job dissolves with it.")
+
 data shadow_gate_job_id: String = "remote-build-shadow"
 data shadow_gate_timeout_minutes: Int = 30
 
@@ -113,6 +133,47 @@ fn shadow_gate_secret_ref(name: String) -> String {
 data shadow_gate_tailscale_tags: String = "tag:ci-dispatch"
 data shadow_gate_tailscale_args: String = "--accept-dns=false --ephemeral"
 
+// ── THE CONFIG-CHECK STEP ─────────────────────────────────────────────────────────────────────────
+//
+// Before anything that needs a secret runs, this step checks whether the required secrets
+// are present. If they are absent (the operator has not set them yet), it prints the typed
+// notice and writes configured=false to the step output; every downstream step skips via
+// if_condition. The job is neither green-as-passed nor red: it reports the gate was not
+// attempted. The red control: when secrets ARE present and the remote gate fails, the
+// exit code propagates normally.
+
+data shadow_gate_config_check_id: String = "config-check"
+
+fn shadow_gate_step_guard() -> String {
+  concat("steps.", concat(shadow_gate_config_check_id, ".outputs.configured == 'true'"))
+}
+
+fn shadow_gate_config_check_step() -> Step {
+  RunStep {
+    name: Present { value: "Check gate configuration" },
+    id: Present { value: shadow_gate_config_check_id },
+    run: concat(
+      concat(
+        concat(
+          concat(
+            concat(concat("if [ -z \"${{ secrets.", "TS_OAUTH_CLIENT_ID"), " }}\" ]"),
+            concat(concat(" || [ -z \"${{ secrets.", "TS_OAUTH_SECRET"), " }}\" ]")
+          ),
+          concat(concat(" || [ -z \"${{ secrets.", "GUNBC_REMOTE_BUILD_CI_SSH_KEY"), " }}\" ]")
+        ),
+        "; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::not configured: required secret absent; remote build gate not attempted'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n"
+      ),
+      ""
+    ),
+    shell: Present { value: Bash },
+    env: [],
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none,
+    working_directory: none
+  }
+}
+
 fn shadow_gate_tailscale_join_step() -> Step {
   UsesStep {
     name: Present { value: "Join tailnet (ephemeral, tag:ci-dispatch)" },
@@ -125,7 +186,7 @@ fn shadow_gate_tailscale_join_step() -> Step {
       kv(key: "args", value: yaml_string(s: shadow_gate_tailscale_args)),
     ] },
     env: none,
-    if_condition: none,
+    if_condition: Present { value: shadow_gate_step_guard() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -155,7 +216,7 @@ fn shadow_gate_ssh_setup_step() -> Step {
     shell: Present { value: Bash },
     working_directory: none,
     env: none,
-    if_condition: none,
+    if_condition: Present { value: shadow_gate_step_guard() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -221,7 +282,7 @@ fn shadow_gate_remote_build_step_for_row(row: EmittedSubjectBuildRow) -> Step {
     shell: Present { value: Bash },
     working_directory: none,
     env: none,
-    if_condition: none,
+    if_condition: Present { value: shadow_gate_step_guard() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -247,7 +308,7 @@ fn shadow_gate_checkout_step() -> Step {
     uses: checkout_action,
     with: Present { value: [kv(key: "persist-credentials", value: yaml_bool(b: false))] },
     env: none,
-    if_condition: none,
+    if_condition: Present { value: shadow_gate_step_guard() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -261,7 +322,7 @@ fn shadow_gate_build_step() -> Step {
     shell: Present { value: Bash },
     working_directory: none,
     env: none,
-    if_condition: none,
+    if_condition: Present { value: shadow_gate_step_guard() },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -292,6 +353,7 @@ fn shadow_gate_all_steps() -> List<Step> {
   list_append(
     left: [
       shadow_gate_checkout_step(),
+      shadow_gate_config_check_step(),
       shadow_gate_build_step(),
       shadow_gate_tailscale_join_step(),
       shadow_gate_ssh_setup_step(),
