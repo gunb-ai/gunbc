@@ -342,6 +342,27 @@ fn apt_third_party_keyring_fingerprint_ok(show_keys_colons: String, pinned: NonE
 // extdeps.sudo.elevation before shell quoting; the pipes and redirection belong to the surrounding shell, so
 // gpg and tee still consume stdin while sudo refuses without prompting.
 //
+// THE single apt signing-key fingerprint guard. ONE string, used verbatim by the install route AND executed wet
+// by the witness against fixture colon files, so the artifact that protects `signed-by=` is the artifact that is
+// tested -- they cannot drift green. Trust a fetched key only if gpg --with-colons shows EXACTLY one primary key
+// (one `pub` record) whose primary `fpr` (colon field 10, index 9 past the leading `fpr`) equals the pin
+// field-for-field. `grep -q <pin>` would be FAIL-OPEN: a file holding the genuine key PLUS an attacker key still
+// contains the pin as a substring, passes, and `signed-by=` trusts both. So this counts the `pub` records and
+// compares the fpr as a FIELD, never a substring; zero `pub`, two `pub`, or a differing primary fpr exits 1
+// (refuse) before the key is ever dearmored.
+fn apt_third_party_keyring_check_shell(pinned: NonEmptyStr, colons_path: NonEmptyStr, source: NonEmptyStr) -> String {
+  join(
+    [
+      "pubs=$(grep -c '^pub:' ", colons_path as String,
+      " || true); fpr=$(grep -m1 '^fpr:' ", colons_path as String,
+      " | cut -d: -f10 || true); { [ $pubs -eq 1 ] && [ $fpr = ", pinned as String,
+      " ]; } || { echo 'AptThirdPartyKeyringFingerprintRefusal: the fetched key is not a single primary key carrying pinned fingerprint ",
+      pinned as String, " for ", source as String, "' >&2; exit 1; }",
+    ],
+    "",
+  )
+}
+
 // This is a medium-as-string shell leaf tracked by apt_third_party_repo_install_script_scaffold; it retires when
 // a typed realization (host_effect_apply or v2.workflow.bash_emit) covers the keyring/source/update/install steps.
 fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<NonEmptyStr>) -> String {
@@ -363,18 +384,11 @@ fn apt_third_party_repo_install_script(repo: ThirdPartyAptRepo, packages: List<N
       join(["curl -fsSL ", repo.keyring_url as String, " -o $d/key.armored"], ""),
       // read gpg's colon records from the staged file, never from the trusted keyring path
       join(["gpg --show-keys --with-colons $d/key.armored > $d/key.colons"], ""),
-      // VERIFY: exactly one primary key, primary fpr field-for-field equal to the pin. Refuse before install.
-      join(
-        [
-          "pubs=$(grep -c '^pub:' $d/key.colons || true); fpr=$(grep -m1 '^fpr:' $d/key.colons | cut -d: -f10 || true); { [ $pubs -eq 1 ] && [ $fpr = ",
-          repo.keyring_fingerprint.value as String,
-          " ]; } || { echo 'AptThirdPartyKeyringFingerprintRefusal: the fetched key is not a single primary key carrying pinned fingerprint ",
-          repo.keyring_fingerprint.value as String,
-          " for ",
-          repo.keyring_url as String,
-          "' >&2; exit 1; }",
-        ],
-        "",
+      // VERIFY via the ONE guard string the witness also executes wet; refuse before the key is trusted.
+      apt_third_party_keyring_check_shell(
+        pinned: repo.keyring_fingerprint.value,
+        colons_path: "$d/key.colons",
+        source: repo.keyring_url,
       ),
       // only after the check, and still as the same root shell, dearmor the SAME verified bytes from the
       // private dir into the trusted keyring path. The route already runs under sudo (elevated), so this
