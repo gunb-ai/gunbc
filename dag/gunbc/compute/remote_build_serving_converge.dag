@@ -446,6 +446,21 @@ fn serving_leg_linger(item: String, target: SshTarget, context: FleetSshExecutio
   }
 }
 
+// Whether the serving account's user manager is lingering, read unelevated: `loginctl show-user <account>
+// --property=Linger` answers for any caller, so no sudo rides it (the enable verb below IS elevated).
+// established-true is lingering, established-false is proven not-lingering (it licenses the enable write),
+// and a refused read is an unknown -- the assess never writes toward a linger state nobody read.
+fn serving_leg_linger(item: String, target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ObservationAttempt<Bool, ServingLegFailure> {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: loginctl_show_user_linger_command(subject: account))) {
+    TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecConverged { result: r } => match loginctl_linger_reading(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
+      LoginctlLingerEnabled => ObservationEstablished { observed: true }
+      LoginctlLingerDisabled => ObservationEstablished { observed: false }
+      LoginctlLingerUnread { cause: c } => ObservationRefused { cause: ServingLegFailure { item: item, cause: c } }
+    }
+  }
+}
+
 fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ServingObservedView {
   // The elevation precondition is read ONCE and handed to the sudo-dependent legs (typed precondition, not
   // a per-leg re-check). If 'sudo -n true' is refused, the 'test'-based legs short-circuit to refused, and

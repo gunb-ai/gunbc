@@ -15,6 +15,7 @@ import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq, render_ipv4_address }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments, HostEnrollmentIntent, HostKeyLoginAdmitted, HostKeyLoginRefused, HostReachPolicy }
 import gunbc.runner.runner_connectivity_recovery { host_reach_admission_for_fleet_host }
@@ -234,7 +235,7 @@ test fn witness_bmc_credential_stands_as_factory_in_force() -> Bool {
       (text(attested_by) != "")
         && (match route {
             RotationRouteNotYetRunnable {
-              secret_name_convention: _, secret_name_blocked_on: _, route_authority: _,
+              secret_name: _, secret_name_allocated_by: _, route_blocked_on: _, route_authority: _,
               secret_ref_precedent: _, gate_precedent: _, secret_placement: _, who_owes_which_step: _,
             } => true
             RotationRouteStandingCommitted { standing: _ } => false
@@ -397,13 +398,17 @@ test fn witness_the_gpu_figure_reads_ids_by_sysfs_and_leaves_the_pairing_unread(
 }
 
 // THE ROTATION IS NOT RUNNABLE YET, AND WHAT IT IS WAITING ON IS CITED, NOT DESCRIBED. The standing must
-// be the variant that says no route is committed, and it must point by citation at (a) the authority that
-// owns the fleet name the credential id is keyed to, (b) the BmcSecure standing that does not exist yet,
-// (c) srv15's secret-ref row and (d) the deployment-environment gate that carries srv15's arrival. Rename
-// any of those four and this reds -- a paragraph naming them in prose would not. And the credential name
-// is carried as a FORM with the name still blank: a concrete id here before the allocation authority
-// fills the slot would be minting an identity through a side door.
-test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Bool {
+// be the variant that says no route is committed, and it must point by citation at (a) the allocation that
+// supplies the fleet name the credential id is keyed to, (b) the predicate that refuses an ungrounded route,
+// (c) the BmcRotationRouteStanding the controller does not have yet, (d) srv15's secret-ref row and (e) the
+// deployment-environment gate that carries srv15's arrival. Rename any of those and this reds -- a paragraph
+// naming them in prose would not. The credential id is no longer a blank to be filled: the allocation
+// authority drew "ken" for this slot on 2026-11-16, so the row carries bmc-ken-admin, and the claim DERIVES
+// that id from the registry row through canonical_hostname_for_fleet_slot rather than comparing it to a
+// spelled literal -- if the slot is ever renamed, the row goes red instead of keeping a stale secret name.
+// Naming the id is still not custody: the row stays RotationRouteNotYetRunnable, and no SecretRef for this
+// controller is minted in gunbc.secret_provision until the operator places the secret.
+test fn witness_bmc_rotation_is_planned_and_its_secret_id_follows_the_allocation() -> Bool {
   match supermicro_h11ssl_unit3_bmc_credential_standing {
     FactoryCredentialInForce {
       attested_by: _,
@@ -413,19 +418,25 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
     } =>
       match route {
         RotationRouteNotYetRunnable {
-          secret_name_convention: convention,
-          secret_name_blocked_on: name_gate,
+          secret_name: secret_name,
+          secret_name_allocated_by: name_allocation,
+          route_blocked_on: route_blocker,
           route_authority: route_authority,
           secret_ref_precedent: secret_precedent,
           gate_precedent: gate_precedent,
           secret_placement: placement,
           who_owes_which_step: _,
         } =>
-          decl_ref_names(ref: name_gate, module_path: "gunbc.hostname_allocation", decl_name: "hostname_allocation_admission")
+          decl_ref_names(ref: name_allocation, module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry")
+            && decl_ref_names(ref: route_blocker, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "rotation_route_is_grounded")
+            && (match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_e2d4b7) {
+                Present { value: allocated } => text(secret_name) == join(["bmc-", allocated as String, "-admin"], "")
+                Absent => false
+              })
             && decl_ref_names(ref: route_authority, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "BmcRotationRouteStanding")
             && decl_ref_names(ref: secret_precedent, module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref")
             && decl_ref_names(ref: gate_precedent, module_path: "gunbc.auth.srv15_arrival_federation_provision", decl_name: "srv15_arrival_environment_creation_frontier")
-            && string_contains(s: text(convention), pattern: "-admin")
+            && string_contains(s: text(secret_name), pattern: "-admin")
             && string_contains(s: text(placement), pattern: "stdin")
         RotationRouteStandingCommitted { standing: _ } => false
       }
