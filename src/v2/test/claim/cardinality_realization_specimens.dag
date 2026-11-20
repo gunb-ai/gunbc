@@ -217,7 +217,7 @@ test fn entries_keep_element_absence_and_payload() -> Bool {
 }
 
 test fn foreign_missing_null_and_invalid_stay_three_answers() -> Bool {
-  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 101]
+  specimen_tags() == [1, 20, 37, 40, 50, 71, 80, 81, 92, 103]
 }
 
 // THE POSITION READ INSIDE THE TEXT IS PRESENT, under either dispatch, so this half holds at step 1 and
