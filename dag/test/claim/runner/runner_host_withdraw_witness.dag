@@ -34,6 +34,7 @@ import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge { runner_host_file_subject, RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, RunnerSlotTreeTarget }
 import gunbc.runner.runner_slot_job_role { CiJobSlot }
+import extdeps.systemd { ControlGroup, TasksCurrent, systemd_unit_property_wire }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
@@ -166,10 +167,25 @@ fn slot_put(w: WithdrawWorld, unit: String, s: SlotWorld) -> WithdrawWorld {
 // while looking like a route regression. MainPID and Result are not decoration -- MainPID is what says an
 // active unit has a listener, Result is what distinguishes a cleanly stopped slot from a failed one, and
 // the drain's stop leg decides on exactly those words.
+// THE BLOCK AS THE HOST ANSWERS A SHOW OVER A SLOT: the six words the slot reader requires, plus the two
+// the cgroup count lives in (ControlGroup, TasksCurrent) -- because the stop admission in
+// gunbc.runner.runner_host_file_converge reads them from the SAME observation, and a world that answered
+// only six words would make every admission refuse for a reason the host never gave. The count is not
+// scripted per claim: it follows the row's own worker/listener grain, the same grain the ps listing and
+// the org roster are built from.
+fn show_block(s: SlotWorld) -> String {
+  let six = systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active)
+  let tasks = if s.worker || s.listener { "1" } else { "0" }
+  concat(
+    concat(six, concat(concat(systemd_unit_property_wire(p: ControlGroup) as String, "=system.slice/"), concat(concat(u(n: s.n) as String, ".service\n"), ""))),
+    concat(concat(systemd_unit_property_wire(p: TasksCurrent) as String, "="), concat(tasks, "\n")),
+  )
+}
+
 fn show_answer(s: SlotWorld) -> ShellExchangeObservation {
   ShellProcessExited {
     exit_code: 0,
-    stdout: systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active),
+    stdout: show_block(s: s),
     stderr: "",
   }
 }
@@ -671,7 +687,7 @@ test fn a_split_ok_withdraw_actuates_so_the_empty_ledgers_mean_something() -> Bo
 // back refused, bracket acquisition refused with ownership-unproven before a leg was dispatched, and
 // eight controls went red three layers below the fixture that was wrong. If the reader's contract moves
 // again, THIS control fails, and it names the fixture.
-fn show_stdout_of(s: SlotWorld) -> String { systemctl_show_fixture(n: s.n, load: s.load, file: s.file, active: s.active) }
+fn show_stdout_of(s: SlotWorld) -> String { show_block(s: s) }
 
 test fn the_withdrawal_worlds_show_block_parses_through_the_slot_reader() -> Bool {
   all([
