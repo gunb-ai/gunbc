@@ -1,0 +1,34 @@
+// RED-FIRST REGRESSION WITNESS for the fail-closed defect: an item whose pieces include an unprobed FindingsOf family
+// must be UNSIZED -- listed, never priced as one member
+// (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward): unsized is listed, never priced).
+//
+// names-bind-to-the-unique-declaration's decomposition carries a FindingsOf family (its member count is unknown until
+// the probe runs) and it has no authored row, so it reaches the pieces branch. On main, population_members answered
+// FindingsOf with 1 and the pieces were priced at 1 x days, so the item was NOT in the answer's unsized list. This
+// file uses ONLY the estimate_answer(...) shape and its Answered{unsized} arm, which the fix does NOT change, and
+// references NO fix-only symbol, so it COMPILES against main and FAILS there -- a value-level red, not a compile
+// error -- and is GREEN after the fix. Kept as a permanent guard that the fabricated 1-member price never returns.
+module test.claim.roadmap.roadmap_estimate_unprobed_findings_red_witness
+
+import std.types { Bool, Int, List, String }
+import gunbc.roadmap.roadmap_authority { nid, declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_effort_estimate { roadmap_estimate_entries }
+import gunbc.roadmap.roadmap_estimate_derivation { EstimateAnswer, Answered, Refused, estimate_answer }
+
+test fn an_unprobed_findings_item_is_listed_as_unsized() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(unsized, id => id == nid(s: "names-bind-to-the-unique-declaration"))) == 1
+    Refused { refusals: _ } => false
+  }
+}
+
+// A sibling with only declared populations (no findings family) is unaffected: it stays priced, so it is NOT listed
+// unsized -- on main and on the fix alike. The control that the fix does not over-refuse.
+test fn a_declared_population_item_still_prices_members_times_days() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(unsized, id => id == nid(s: "the-v1-dag-file-was-a-carrier-not-an-executable"))) == 0
+    Refused { refusals: _ } => false
+  }
+}

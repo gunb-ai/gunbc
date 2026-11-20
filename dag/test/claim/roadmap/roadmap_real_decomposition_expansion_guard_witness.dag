@@ -8,9 +8,9 @@ module test.claim.roadmap.roadmap_real_decomposition_expansion_guard_witness
 //
 //   (1) EVERY entry of the real roadmap_decompositions EXPANDS (Expanded). There is NO allow-list of expected refusers:
 //       a refusal here means a real work item has lost its schedule, which is exactly what must never go quiet.
-//   (2) the three waits that wait ON an occurrence-less milestone / project Join -- v1-emitter-quarantine,
-//       native-production-admission, factory -- EXPAND and NAME that wait in unresolved_waits with the
-//       EndpointEmitsNoOccurrence reason: reported, counted, never silently dropped (fail_closed).
+//   (2) v1-emitter-quarantine and factory report their occurrence-less waits with EndpointEmitsNoOccurrence.
+//       Native production admission instead consumes its concrete resolver and grammar handbacks; both waits
+//       resolve, and restoring the whole namespace-project wait turns that control red.
 //
 // (1) alone would already be broken by the pre-fix data (the six refused); (2) pins the SPECIFIC rows so a future edit
 // that quietly drops a milestone wait from the report (instead of recording it) goes red, not merely non-refused.
@@ -71,15 +71,19 @@ test fn v1_emitter_quarantine_milestone_wait_is_reported_unresolved() -> Bool {
   }
 }
 
-// (2b) native-production-admission waits on namespace-unique-on-chain, a project JOIN with no occurrences: the wait's
-// FROM side (the parent) is reported unresolved with the Join kind; the item still expands.
-test fn native_production_admission_join_wait_is_reported_unresolved() -> Bool {
-  match expand_node(item: nid(s: "native-production-admission"), findings_count: 1) {
-    Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } =>
-      count(unresolved_waits) == 1
-        && reports_wait(node: "native-production-admission", want_into: false, stage: 0, parent: "namespace-unique-on-chain", kind: JoinKind)
-    ExpansionRejected { cause: _ } => false
-  }
+// (2b) Admission consumes the sole-resolver and grammar handbacks, not the namespace project join.
+// That project's retirement member waits for interpreter deletion, which itself waits for admission.
+// The concrete waits must expand without losing either production obligation.
+test fn native_production_admission_concrete_waits_resolve() -> Bool {
+  any(roadmap_decompositions, d =>
+    d.node == nid(s: "native-production-admission")
+      && any(d.waits_on, w => w.item == nid(s: "names-bind-to-the-unique-declaration") && w.from_stage == 3 && w.into_stage == 0)
+      && any(d.waits_on, w => w.item == nid(s: "import-grammar-and-lines-deleted") && w.from_stage == 2 && w.into_stage == 0)
+      && !any(d.waits_on, w => w.item == nid(s: "namespace-unique-on-chain") || w.item == nid(s: "namespace-legacy-choice-retirement") || w.item == nid(s: "v1-interpreter-delete")))
+    && match expand_node(item: nid(s: "native-production-admission"), findings_count: 1) {
+      Expanded { occurrences: _, edges: _, omitted_composites: _, unresolved_waits } => count(unresolved_waits) == 0
+      ExpansionRejected { cause: _ } => false
+    }
 }
 
 // (2c) factory is a lone project Join whose three waits all aim into its own occurrence-less stage 0: all three are

@@ -172,6 +172,15 @@ pub fn primitive_data_decl_type_facts() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_extdeps_subject_ref_facts() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("extdeps_subject_ref_facts".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_concept_decl_facts() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -489,6 +498,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_data_decl_type_facts(),
             "v2.std.decl_index".to_string(),
             "data_decl_type_facts".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_extdeps_subject_ref_facts(),
+            "v2.std.decl_index".to_string(),
+            "extdeps_subject_ref_facts".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

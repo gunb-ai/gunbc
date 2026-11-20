@@ -3,7 +3,9 @@ module gunbc.machine_intake.mtcollins1_bmc_cold_reset
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.optional { Present, Absent, Optional }
-import std.measure { Second, second, second_count, Minute, minute }
+import std.measure { Second, second, second_count, Minute, minute, minute_count, second_to_millisecond }
+import extdeps.linux.proc_uptime { proc_uptime_read }
+import gunbc.ci.ci_budget_raise { StepBudgetApprovals, BudgetIntroduction, BudgetAdmission, BudgetAdmitted, BudgetRaiseUnapproved, BudgetRaiseGrantForAnotherBudget, budget_admission, budget_admitted_minutes, mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -23,7 +25,8 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.host.bmc_control_binding { bmc_control_binding, BmcControlBound, BmcControlAccessUnobserved, BmcControlNotSecured, BmcControlEndpointMismatch, bmc_control_route_account, bmc_control_route_observation }
 import gunbc.host.bmc_cold_reset {
-  ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRecovered, WatchLossNotObserved, WatchRecoveryNotObserved,
+  ColdResetWatchBounds, ColdResetPoll, ColdResetWatch, ColdResetWatchEnd, WatchRecoveredSustained, WatchRecoveredThenLost, WatchSustainNotEstablished, WatchLossNotObserved, WatchRecoveryNotObserved,
+  WatchPacingNotEstablished, WatchClockNotEstablished,
   WatchEnded, WatchContinues, cold_reset_watch_start, cold_reset_watch_step, cold_reset_poll_of, cold_reset_baseline_text,
   ColdResetVerdict, cold_reset_verdict, cold_reset_verdict_text, cold_reset_power_text,
   ColdResetAcceptance, ColdResetAttemptAccepted, ColdResetAttemptNotAccepted, cold_reset_attempt_acceptance,
@@ -31,7 +34,8 @@ import gunbc.host.bmc_cold_reset {
 import gunbc.host.managed_host_unit_hold { UnitHeld, UnitHoldRefused, UnitHoldProof, UnitHoldReleaseOutcome, boot_run_acquire_unit_hold, unit_hold_release_outcome, unit_hold_release_compose, unit_hold_proof_refusal }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_prelude_allowance }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_prelude_allowance, mtcollins1_boot_issue_allowance }
+import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance }
 import gunbc.machine_intake.mtcollins1_pxe_mac_discovery {
   mtcollins1_pxe_mac_discovery_host,
   mtcollins1_pxe_mac_discovery_release_line,
@@ -52,12 +56,14 @@ import gunbc.machine_intake.mtcollins1_pxe_mac_discovery {
 // more than that.
 //
 // THE SEQUENCE: under the unit hold, read mc info and chassis status; attempt the cold reset ONCE; watch for the
-// controller's availability to be lost and then recovered, within a declared bound; read chassis status again.
+// controller's availability to be lost and then recovered, within a declared bound, and then to stay available
+// through the sustained window (below); read chassis status again.
 // It refuses before any attempt when the power state before cannot be read. After the attempt, whatever ipmitool
 // reported, the read-only watch runs and nothing is sent again: a nonzero or unrecognised reply leaves the
 // effect UNCERTAIN, and is reported as attempted, never as "not sent". It is accepted only when ipmitool reported
-// sending and the watch saw the loss and the recovery of a controller that was available before, with host
-// power read the same at both endpoints (gunbc.host.bmc_cold_reset cold_reset_attempt_acceptance).
+// sending and the watch saw the loss and the recovery of a controller that was available before, and its answers
+// through the whole sustained window, with host power read the same at both endpoints
+// (gunbc.host.bmc_cold_reset cold_reset_attempt_acceptance).
 //
 // WHAT THE CONTROLS ESTABLISH. test.claim.host.bmc_cold_reset_witness exercises the pure judgment over parsed
 // observations, and its captured-bytes claim shows only that this unit's real mc info and chassis status bytes
@@ -88,32 +94,116 @@ data mtcollins1_bmc_cold_reset_receipt_absent_line: String = "mtcollins1-bmc-col
 // silent read fails at once, and at most the allowance below when every silent read runs to its timeout.
 // These counts are a policy bound chosen for a MegaRAC controller reinitializing, not a cited figure; a controller slower than
 // them refuses loudly (ColdResetRecoveryNotObserved), it is never waited on without limit.
-data mtcollins1_bmc_cold_reset_bounds: ColdResetWatchBounds = ColdResetWatchBounds { drop_polls: 6, answer_polls: 40 }
+//
+// THE SUSTAINED WINDOW (gunbc#16659; merry-fox-82 msg_19f1c5e6, option A). After the recovering answer, the controller
+// must answer available on every poll until W has elapsed on the monotonic clock (the side chat on gunbc#16668: W is a
+// span of wall time, so the window ends by time, never by a count of polls), where W is what the consumer needs: the
+// span of one boot of this
+// unit during which it depends on the controller up to the media handoff -- the boot's prelude, its issue phase and the
+// MegaRAC media convergence (gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_prelude_allowance and
+// mtcollins1_boot_issue_allowance, gunbc.machine_intake.megarac_media_attach megarac_convergence_allowance). W is
+// DERIVED from those three rows, so a change to any of them moves the window.
+//
+// THE CLOCK is /proc/uptime (extdeps.linux.proc_uptime proc_uptime_read), the boot-based clock this unit's boot already
+// times its own phases on (gunbc.machine_intake.mtcollins1_boot_run, gunbc.host.managed_host_boot_phase_timing): a
+// wall-clock step does not move it, and the boot's dry realization answers it on its virtual clock, so the window's
+// route claims run on the same time the route's sleeps advance. Every window poll is preceded by a successful sleep
+// of the interval, so the watch's pace IS the interval (one row, read twice): a sample that advanced less than the
+// interval since the previous one refuses at once (ClockNotEstablished), which makes the window's clock and the
+// step's wall time the same time, and a stalled clock refuses within one poll rather than running polls out (side chat
+// on gunbc#16668, F2). The window poll ceiling is ceil(W / interval) + 1, one past the paced polls that must reach W,
+// so on this route it never fires; it is the loop's structural bound, and it never accepts.
+//
+// WHAT AN ACCEPTED VERDICT DOES NOT SAY. The one observation behind this window is that the controller fell silent
+// again about 45 min after an accepted reset (run 44217632446), and 45 min may well exceed W. A controller that stays
+// up through W and relapses after it IS accepted here, by design: the boot needs W, not more. The verdict is that the
+// controller held for one boot's controller span, and it is never a statement that the controller is healthy.
+fn mtcollins1_bmc_cold_reset_sustain_window() -> Second {
+  second(count: second_count(s: mtcollins1_boot_prelude_allowance) + second_count(s: mtcollins1_boot_issue_allowance) + second_count(s: megarac_convergence_allowance()))
+}
 
 data mtcollins1_bmc_cold_reset_poll_interval: Second = second(count: 15)
+
+fn mtcollins1_bmc_cold_reset_sustain_polls_at_most() -> Int {
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  (w + i - 1) / i + 1
+}
+
+data mtcollins1_bmc_cold_reset_bounds: ColdResetWatchBounds = ColdResetWatchBounds {
+  drop_polls: 6,
+  answer_polls: 40,
+  sustain: second_to_millisecond(s: mtcollins1_bmc_cold_reset_sustain_window()),
+  pace: second_to_millisecond(s: mtcollins1_bmc_cold_reset_poll_interval),
+  sustain_polls_at_most: mtcollins1_bmc_cold_reset_sustain_polls_at_most(),
+}
 
 fn mtcollins1_bmc_cold_reset_read_ceiling() -> Second {
   second(count: (second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)) as Int)
 }
 
+// THE WINDOW AT ITS WORST (side chat on gunbc#16668, F2): every window poll the watch permits, each at its worst --
+// sustain_polls_at_most x (interval + read ceiling). The bound is STRUCTURAL, a count of polls times what one poll can
+// take, and deliberately not a function of the clock it would be checking: the pace guard bounds the clock's progress
+// from below only, so a clock running slow (advancing exactly the interval per sample while each poll takes the
+// interval plus a full read) passes it and the window ends only when that slow clock reaches W, or at the ceiling.
+// Nothing on the runner measures elapsed time independently of that clock, and a poll-count budget tight enough to end
+// inside W + 2 read ceilings + 1 interval would refuse a healthy clock whose reads are fast, so the timeout carries the
+// structural bound instead. The pace guard stays: it still refuses a frozen or slower clock at its poll.
+fn mtcollins1_bmc_cold_reset_window_allowance() -> Second {
+  let ceiling = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let interval = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  second(count: mtcollins1_bmc_cold_reset_bounds.sustain_polls_at_most * (interval + ceiling))
+}
+
 // The step's budget, derived: the credential prelude, the four single reads (mc info and chassis status
-// before, the reset call, chassis status after), and every poll at its worst (interval plus a read that runs
-// to its timeout). The after mc info IS the answering poll, so it is not counted twice.
+// before, the reset call, chassis status after), every loss and recovery poll at its worst (interval plus a read
+// that runs to its timeout), and the window at its worst (above). The clock reads are local file reads and are not
+// budgeted.
 fn mtcollins1_bmc_cold_reset_allowance() -> Second {
   let ceiling = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling())
+  let interval = second_count(s: mtcollins1_bmc_cold_reset_poll_interval)
   let polls = mtcollins1_bmc_cold_reset_bounds.drop_polls + mtcollins1_bmc_cold_reset_bounds.answer_polls
   second(count: (second_count(s: mtcollins1_boot_prelude_allowance)
     + 4 * ceiling
-    + polls * (second_count(s: mtcollins1_bmc_cold_reset_poll_interval) + ceiling)) as Int)
+    + polls * (interval + ceiling)
+    + second_count(s: mtcollins1_bmc_cold_reset_window_allowance())) as Int)
 }
 
-fn mtcollins1_bmc_cold_reset_step_timeout_minutes() -> Minute {
+// The minutes the step REQUIRES: the allowance in whole minutes (67 at this revision).
+fn mtcollins1_bmc_cold_reset_step_required_minutes() -> Minute {
   minute(count: (second_count(s: mtcollins1_bmc_cold_reset_allowance()) + 59) / 60)
+}
+
+// THE STEP'S APPROVALS (ruling gunbc.design_ruling ci_job_budgets_closed_to_growth; admitted by
+// gunbc.ci.ci_budget_raise). The budget is named by the declaration the workflow emits from, so a grant for any other
+// budget is refused rather than counted. It was introduced at 35 min with the mode (gunb-ai/gunbc#16529), a new step
+// and not a raise. The sustained window (gunbc#16659) requires 67 (mtcollins1_bmc_cold_reset_step_required_minutes);
+// the operator signed that raise off (gunbc.design_ruling mtcollins1_bmc_cold_reset_step_raised_to_67_minutes), and
+// its grant is the one raise, so the admission of 67 is BudgetAdmitted under that grant and the entry runs the watch.
+// A further raise needs its own ruling and grant.
+data mtcollins1_bmc_cold_reset_step_budget_approvals: StepBudgetApprovals = StepBudgetApprovals {
+  budget: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_step_timeout_minutes"),
+  introduced: BudgetIntroduction { minutes: minute(count: 35), carried_by: "gunb-ai/gunbc#16529 (the MtCollins1BmcColdReset mode)" },
+  raises: [mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant],
+}
+
+fn mtcollins1_bmc_cold_reset_step_budget_admission() -> BudgetAdmission {
+  budget_admission(minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), approvals: mtcollins1_bmc_cold_reset_step_budget_approvals)
+}
+
+// THE STEP'S TIMEOUT, as emitted into the generated workflow (gunbc.fleet.fleet_converge_workflow): the ADMITTED
+// value, never the required one on its own -- 67 under the signed grant. Were the admission ever to refuse (a required
+// value above every grant), this would fall back to the highest approved value, and the entry would refuse before the
+// hold rather than run the watch under it (ColdResetStepBudgetUnapproved); no shorter window is fitted into a budget.
+fn mtcollins1_bmc_cold_reset_step_timeout_minutes() -> Minute {
+  budget_admitted_minutes(admission: mtcollins1_bmc_cold_reset_step_budget_admission(), approvals: mtcollins1_bmc_cold_reset_step_budget_approvals)
 }
 
 // ── THE STAGES THE RECEIPT RECORDS ───────────────────────────────────────────────────────────────
 type ColdResetPreHoldRefusal
-  = ColdResetCredentialUnset
+  = ColdResetStepBudgetUnapproved { required: Minute, admitted: Minute }
+  | ColdResetCredentialUnset
   | ColdResetRunIdentityUnset
   | ColdResetHostNotManaged
   | ColdResetControllerAccessUnobserved
@@ -123,6 +213,8 @@ type ColdResetPreHoldRefusal
 
 fn cold_reset_pre_hold_reason(refusal: ColdResetPreHoldRefusal) -> String {
   match refusal {
+    ColdResetStepBudgetUnapproved { required: r, admitted: a } =>
+      join(["the step requires ", to_string(minute_count(m: r)), " min (the sustained window's allowance, mtcollins1_bmc_cold_reset_allowance) and its budget admits ", to_string(minute_count(m: a)), " min: the raise is unapproved (gunbc.design_ruling ci_job_budgets_closed_to_growth; gunbc.ci.ci_budget_raise BudgetRaiseUnapproved), so the watch is not run under a timeout that could end its window; blocked on the signed ruling row"], "")
     ColdResetCredentialUnset => concat(host_reset_bmc_credential_path_env, " is unset: the shared BMC credential fetch did not run")
     ColdResetRunIdentityUnset => "GITHUB_RUN_ID or GITHUB_SHA is unset"
     ColdResetHostNotManaged => "mtcollins1 has no managed membership"
@@ -227,14 +319,23 @@ fn mtcollins1_bmc_cold_reset_read_power(bmc_host: NonEmptyStr, username: NonEmpt
 }
 
 // One poll after the interval, then the watch's own step decides whether to poll again. Each poll's record is kept,
-// in order.
+// in order. THE SLEEP'S RESULT GATES THE POLL (side chat on gunbc#16668, F1): a failed pacing sleep ends the watch as
+// WatchPacingNotEstablished before any further read, in every phase (gunbc.host.bmc_cold_reset says why). The
+// monotonic clock is read just before and just after each poll; the watch's step decides which reading it uses.
+data mtcollins1_bmc_cold_reset_pacing_failed_record: String = "pacing sleep failed; no poll taken"
+
 type ColdResetWatchRun { end: ColdResetWatchEnd, poll_records: List<String> }
 
 fn mtcollins1_bmc_cold_reset_watch_poll(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?, watch: ColdResetWatch, records: List<String>) -> ColdResetWatchRun {
   let waited = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_bmc_cold_reset_poll_interval)
+  if !waited {
+    return ColdResetWatchRun { end: WatchPacingNotEstablished { watch: watch }, poll_records: records + [mtcollins1_bmc_cold_reset_pacing_failed_record] }
+  }
+  let before = proc_uptime_read()
   let polled = mtcollins1_bmc_cold_reset_read_mc(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite, verbosity: IpmitoolVerboseOnce, bound: bmc_ipmi_watch_poll_retry_bound())
+  let after = proc_uptime_read()
   let kept = records + [polled.record]
-  return match cold_reset_watch_step(watch: watch, poll: polled.poll, bounds: mtcollins1_bmc_cold_reset_bounds) {
+  return match cold_reset_watch_step(watch: watch, poll: polled.poll, before: before, after: after, bounds: mtcollins1_bmc_cold_reset_bounds) {
     WatchEnded { end: e } => ColdResetWatchRun { end: e, poll_records: kept }
     WatchContinues { watch: next } => mtcollins1_bmc_cold_reset_watch_poll(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite, watch: next, records: kept)
   }
@@ -267,7 +368,7 @@ fn mtcollins1_bmc_cold_reset_send(bmc_host: NonEmptyStr, username: NonEmptyStr, 
 // refused here, before McResetCold.
 fn mtcollins1_bmc_cold_reset_held(proof: UnitHoldProof, host: HostIdentity, bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ColdResetStage
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet_admitted"),
   ]
 {
   match unit_hold_proof_refusal(proof: proof, host: host, label: mtcollins1_bmc_cold_reset_label as String) {
@@ -284,10 +385,14 @@ fn mtcollins1_bmc_cold_reset_held(proof: UnitHoldProof, host: HostIdentity, bmc_
           let reply = mtcollins1_bmc_cold_reset_send(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
           let run = mtcollins1_bmc_cold_reset_watch_poll(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite, watch: cold_reset_watch_start, records: [])
           let end = run.end
-          // A FRESH after-read, taken only once the watch saw a recovery; never the baseline reading again.
+          // A FRESH after-read, taken only once the watch saw the recovery sustained; never the baseline reading again.
           let after = match end {
-            WatchRecovered { polls_to_loss: _, loss: _, polls_to_recovery: _, report: _ } =>
+            WatchRecoveredSustained { polls_to_loss: _, loss: _, polls_to_recovery: _, sustained_polls: _, elapsed: _, report: _ } =>
               Present { value: mtcollins1_bmc_cold_reset_read_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite) }
+            WatchRecoveredThenLost { polls_to_loss: _, loss: _, polls_to_recovery: _, answered_polls: _, relapse: _ } => none
+            WatchSustainNotEstablished { polls_to_loss: _, loss: _, polls_to_recovery: _, answered_polls: _, last: _ } => none
+            WatchPacingNotEstablished { watch: _ } => none
+            WatchClockNotEstablished { watch: _, detail: _ } => none
             WatchLossNotObserved { polls: _, last: _ } => none
             WatchRecoveryNotObserved { polls_to_loss: _, loss: _, polls: _, last: _ } => none
           }
@@ -314,7 +419,24 @@ fn cold_reset_stage_exit(stage: ColdResetStage) -> ProcessExit {
 }
 
 // ── THE ENTRY ────────────────────────────────────────────────────────────────────────────────────
+// The step's entry (gunbc.machine_intake.mtcollins1_boot_step): the route under the PRODUCTION budget admission --
+// BudgetAdmitted{67} under the signed grant, so the entry runs the watch. A required value above every grant would
+// make the same call refuse before any credential read, hold or controller contact (ColdResetStepBudgetUnapproved).
 fn mtcollins1_bmc_cold_reset_wet() -> ProcessExit {
+  mtcollins1_bmc_cold_reset_wet_admitted(budget: mtcollins1_bmc_cold_reset_step_budget_admission())
+}
+
+// THE ROUTE UNDER A GIVEN BUDGET ADMISSION. It takes a SUPPLIED admission only so the acceptance matrix can execute
+// the refusal the production admission no longer produces; it is not a second production entry. The seal says so: its
+// callers are the entry above and the matrix's one runner, nothing else. The hold and the held sequence admit this
+// function in the entry's place, one name for one name (boot_run_acquire_unit_hold, mtcollins1_bmc_cold_reset_held,
+// gunbc.auth.privileged_effect_registry), so no caller is added to either seal.
+fn mtcollins1_bmc_cold_reset_wet_admitted(budget: BudgetAdmission) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_wet"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "matrix_cold_reset_run_in"),
+  ]
+{
   let run_id = match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
@@ -322,6 +444,11 @@ fn mtcollins1_bmc_cold_reset_wet() -> ProcessExit {
   let sha = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  match budget {
+    BudgetRaiseUnapproved { minutes: required, highest_approved: admitted } => return mtcollins1_bmc_cold_reset_refused(run_id: run_id, sha: sha, refusal: ColdResetStepBudgetUnapproved { required: required, admitted: admitted })
+    BudgetRaiseGrantForAnotherBudget { minutes: required, grant: _ } => return mtcollins1_bmc_cold_reset_refused(run_id: run_id, sha: sha, refusal: ColdResetStepBudgetUnapproved { required: required, admitted: mtcollins1_bmc_cold_reset_step_budget_approvals.introduced.minutes })
+    BudgetAdmitted { minutes: _, coverage: _ } => {}
   }
   let cred = actions_variable_trimmed(name: host_reset_bmc_credential_path_env)
   if cred == "" {
