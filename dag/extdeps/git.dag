@@ -1045,6 +1045,11 @@ fn shape_git_add_argv() -> List<String> {
 // deferral.
 data git_program_word: String = "git"
 
+// The git program name as a NonEmptyStr, for a caller that invokes git on a spawn route that takes a
+// non-empty program directly (gunbc.git_workdir_free_route). Derived from git_program_word so the two
+// spellings cannot drift.
+data git_program_name: NonEmptyStr = "git"
+
 fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
@@ -2447,6 +2452,91 @@ fn shape_git_remote_add_in_repo_args(
   url: String,
 ) -> List<String> {
   concat(["-C", repo as String], shape_git_remote_add_args(remote: remote, url: url))
+}
+
+// ---- Sanctioned IN-REPO argv for the workdir-FREE route ------------------------------------
+// A git step that carries no working directory must name the repository it acts on: the wall
+// (`gunbc/git_argv_route_wall.dag`) admits a workdir-free argv only when it is dressed `-C <dir>` /
+// `--git-dir <dir>`, or its verb is a safe read-only inspection. These builders produce exactly that
+// dressing so a step reaching the sanctioned spawn route (`gunbc/git_workdir_free_route.dag`) names
+// its place. They live with the other `shape_git_*` argv so a route never hand-spells a word list
+// (`gunbc.design_argument::interface_realization_policy`); they build a word list only -- no spawn,
+// no grounding, no policy (`extdeps/git.dag` stays anemic).
+
+// `git init` a fresh repository at `<parent>/<leaf>`, expressed as the wall's sanctioned dressing
+// (cd into the already-existing `<parent>`, init the relative leaf) rather than a bare `init <path>`
+// -- which carries no place and is refused at a workdir-free route. Identical result.
+fn shape_git_init_in_parent_args(parent: String, leaf: String) -> List<String> {
+  ["-C", parent, "init", "-q", leaf]
+}
+
+fn shape_git_init_bare_in_parent_args(parent: String, leaf: String) -> List<String> {
+  ["-C", parent, "init", "-q", "--bare", leaf]
+}
+
+fn shape_git_init_default_branch_in_parent_args(
+  parent: String,
+  branch: String,
+  leaf: String,
+) -> List<String> {
+  ["-C", parent, "init", "-q", "-b", branch, leaf]
+}
+
+fn shape_git_config_set_in_repo_args(repo: String, key: String, value: String) -> List<String> {
+  ["-C", repo, "config", key, value]
+}
+
+fn shape_git_commit_allow_empty_silent_in_repo_args(repo: String, message: String) -> List<String> {
+  ["-C", repo, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", message]
+}
+
+fn shape_git_diff_quiet_head_in_repo_args(repo: String) -> List<String> {
+  ["-C", repo, "diff", "--quiet", "HEAD", "--"]
+}
+
+fn shape_git_branch_create_in_repo_args(repo: String, branch: String, sha: String) -> List<String> {
+  ["-C", repo, "branch", branch, sha]
+}
+
+fn shape_git_update_ref_in_repo_args(repo: String, ref: String, value: String) -> List<String> {
+  ["-C", repo, "update-ref", ref, value]
+}
+
+fn shape_git_pack_refs_in_repo_args(repo: String) -> List<String> {
+  ["-C", repo, "pack-refs", "--all", "--prune"]
+}
+
+fn shape_git_push_in_repo_args(repo: String, remote: String, refspec: String) -> List<String> {
+  ["-C", repo, "push", "-q", remote, refspec]
+}
+
+fn shape_git_checkout_detached_in_repo_args(repo: String, revision: String) -> List<String> {
+  ["-C", repo, "checkout", "-q", "--detach", revision]
+}
+
+fn shape_git_read_tree_in_repo_args(repo: String, revision: String) -> List<String> {
+  ["-C", repo, "read-tree", revision]
+}
+
+// A commit into a named repository given by BOTH its git-dir and its work-tree (the sandbox-commit
+// dressing). Admitted by the wall on the strength of `--git-dir` naming the repository, never on
+// `--work-tree` (see `git_argv_is_in_repo_dressed`).
+fn shape_git_commit_in_git_dir_work_tree_args(
+  git_dir: String,
+  work_tree: String,
+  user_email: String,
+  user_name: String,
+  message: String,
+) -> List<String> {
+  [
+    "--git-dir", git_dir, "--work-tree", work_tree,
+    "-c", concat("user.email=", user_email), "-c", concat("user.name=", user_name),
+    "commit", "--allow-empty", "-q", "-m", message,
+  ]
+}
+
+fn shape_git_worktree_add_detached_in_repo_args(repo: String, path: String) -> List<String> {
+  ["-C", repo, "worktree", "add", "--detach", "--", path, "HEAD"]
 }
 
 fn shape_git_fetch_unshallow_argv(

@@ -37,6 +37,15 @@ data git_program: String = "git"
 // dressing and bare read-only inspection are handed back to spawn. Remove the wall consult from the
 // route -- make it always admit -- and `workdir_free_route_refuses_bare_mutation_before_producing_a_command`
 // goes red: the refusal is load-bearing, not decoration.
+//
+// WHERE THE ROUTE IS EXECUTED. This file is the hermetic gate witness -- the red control: it calls only
+// the pure gate (`spawn_git_argv_workdir_free`), never `shell.Exec.RunArgv`, so it stays green under
+// Hermetic. The sanctioned SPAWN (`run_git_argv_workdir_free`, gunbc.git_workdir_free_route -- the only
+// path from a workdir-free git argv to the local process seam) is executed for real by the workdir-free
+// wet witnesses that now route their git steps through it (repository_bootstrap, harness_shell_job,
+// repository_convergence, roadmap/dispatch_worker_writable_sandbox, live_deploy/pre_swap): each admitted
+// git step is a real `RunArgv` there. Those wet files, not this one, are the executing consumers
+// (consumption); this one keeps the guard's ability to redden.
 
 // The route refuses argv -- and the refused arm carries NO command. The Admitted arm returning false
 // is the whole point: a refused argv yields nothing to spawn. At a workdir-free route the gate refuses

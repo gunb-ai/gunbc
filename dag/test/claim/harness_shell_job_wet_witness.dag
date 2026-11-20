@@ -10,6 +10,11 @@ import extdeps.filesystem.filesystem_io
 import extdeps.tools.gnu_coreutils { pwd_command }
 import gunbc.command_runner { run_shell_command_capture, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.git
+import gunbc.git_workdir_free_route {
+  run_git_argv_workdir_free, git_workdir_free_exit_code, git_workdir_free_stdout,
+  git_workdir_free_spawned,
+}
 import extdeps.languages.json.emit { json_object, json_kv, json_string }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_shell_job_policy {
@@ -426,40 +431,47 @@ test fn unread_job_output_is_typed_unreadable_not_empty() -> Bool {
 test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
   let dir = shell.Mktemp.Dir()
   let out = shell.Mktemp.Dir()
-  let inited = shell.Exec.RunArgv(program: "git" as NonEmptyStr, arguments: ["-C", dir.path, "init", "-q"])
-  let configured = shell.Exec.RunArgv(
-    program: "git" as NonEmptyStr,
-    arguments: ["-C", dir.path, "config", "user.email", "job@example.test"],
+  let inited = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_init_in_repo_args(repo: dir.path as FilePath),
   )
-  let named = shell.Exec.RunArgv(
-    program: "git" as NonEmptyStr,
-    arguments: ["-C", dir.path, "config", "user.name", "job"],
+  let configured = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_config_set_in_repo_args(
+      repo: dir.path, key: "user.email", value: "job@example.test",
+    ),
   )
-  let committed = shell.Exec.RunArgv(
-    program: "git" as NonEmptyStr,
-    arguments: ["-C", dir.path, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "seed"],
+  let named = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_config_set_in_repo_args(repo: dir.path, key: "user.name", value: "job"),
   )
-  let before = shell.Exec.RunArgv(
-    program: "git" as NonEmptyStr,
-    arguments: ["-C", dir.path, "status", "--porcelain"],
+  let committed = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_commit_allow_empty_silent_in_repo_args(repo: dir.path, message: "seed"),
+  )
+  let before = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_status_porcelain_argv(repo: dir.path as FilePath),
   )
   let step = harness_run_command_scheduled(
     environment: env_at(worktree: dir.path, output: out.path),
     command: "true",
     schedule: fixture_schedule(),
   )
-  let after = shell.Exec.RunArgv(
-    program: "git" as NonEmptyStr,
-    arguments: ["-C", dir.path, "status", "--porcelain"],
+  let after = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_status_porcelain_argv(repo: dir.path as FilePath),
   )
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
   let _cleanup_out = shell.Remove.RecursiveForce(path: out.path)
   dir.success && out.success
-    && inited.exit_code == 0
-    && configured.exit_code == 0
-    && named.exit_code == 0
-    && committed.exit_code == 0
-    && before.stdout == after.stdout
+    && git_workdir_free_exit_code(run: inited) == 0
+    && git_workdir_free_exit_code(run: configured) == 0
+    && git_workdir_free_exit_code(run: named) == 0
+    && git_workdir_free_exit_code(run: committed) == 0
+    && git_workdir_free_spawned(run: before)
+    && git_workdir_free_spawned(run: after)
+    && git_workdir_free_stdout(run: before) == git_workdir_free_stdout(run: after)
     && match step.outcome {
       ToolCompleted { text: _, exit_code, standing: _ } => exit_code == 0
       ToolJob { id: _, text: _ } => false

@@ -13,6 +13,9 @@ import gunbc.live_deploy.pre_swap_admission {
 }
 import extdeps.git
 import extdeps.git.inspect { merge_base_outcome, MergeBaseOutcome }
+import gunbc.git_workdir_free_route {
+  run_git_argv_workdir_free, git_workdir_free_exit_code,
+}
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
@@ -32,19 +35,30 @@ fn ancestry_scratch() -> AncestryScratch? {
   let root = dir.path as String
   let on = concat(root, "/on")
   let off = concat(root, "/off")
-  let init = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", "-b", "main", on])
+  let init = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_init_default_branch_in_parent_args(parent: root, branch: "main", leaf: "on"),
+  )
   let email = git.Core.ConfigLocalSetInRepo(repo: on as FilePath, key: "user.email", value: "witness@example.invalid")
   let name = git.Core.ConfigLocalSetInRepo(repo: on as FilePath, key: "user.name", value: "witness")
   let wrote_on = Filesystem.Write(path: concat(on, "/tracked"), content: "on-main")
   let added_on = git.Core.AddAllInRepo(repo: on as FilePath)
   let committed_on = git.Core.CommitInRepo(repo: on as FilePath, message: "on-main")
-  let tracked_ref = shell.Exec.RunArgv(program: "git", arguments: ["-C", on, "update-ref", "refs/remotes/origin/main", "HEAD"])
-  let detached = shell.Exec.RunArgv(program: "git", arguments: ["-C", on, "checkout", "-q", "--detach", "HEAD"])
+  let tracked_ref = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_update_ref_in_repo_args(
+      repo: on, ref: "refs/remotes/origin/main", value: "HEAD",
+    ),
+  )
+  let detached = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_checkout_detached_in_repo_args(repo: on, revision: "HEAD"),
+  )
   let copied = shell.Exec.RunArgv(program: "cp", arguments: ["-a", on, off])
   let wrote_off = Filesystem.Write(path: concat(off, "/tracked"), content: "off-main")
   let added_off = git.Core.AddAllInRepo(repo: off as FilePath)
   let committed_off = git.Core.CommitInRepo(repo: off as FilePath, message: "off-main")
-  if dir.success && init.exit_code == 0 && email.success && name.success && wrote_on.success && added_on.exit_code == 0 && committed_on.exit_code == 0 && tracked_ref.exit_code == 0 && detached.exit_code == 0 && copied.exit_code == 0 && wrote_off.success && added_off.exit_code == 0 && committed_off.exit_code == 0 {
+  if dir.success && git_workdir_free_exit_code(run: init) == 0 && email.success && name.success && wrote_on.success && added_on.exit_code == 0 && committed_on.exit_code == 0 && git_workdir_free_exit_code(run: tracked_ref) == 0 && git_workdir_free_exit_code(run: detached) == 0 && copied.exit_code == 0 && wrote_off.success && added_off.exit_code == 0 && committed_off.exit_code == 0 {
     Present { value: AncestryScratch { root: root, on_main: on, off_main: off } }
   } else { none }
 }

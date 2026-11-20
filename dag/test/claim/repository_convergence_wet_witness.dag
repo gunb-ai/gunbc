@@ -6,6 +6,7 @@ import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.git
+import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_exit_code }
 import extdeps.filesystem.filesystem_io
 import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -46,8 +47,14 @@ fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
   let repo = concat(root, "/repo")
   let linked = concat(root, "/linked")
   let repo_path = repo as FilePath
-  let bare = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", "--bare", remote])
-  let init = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", repo])
+  let bare = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_init_bare_in_parent_args(parent: root, leaf: "remote.git"),
+  )
+  let init = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_init_in_parent_args(parent: root, leaf: "repo"),
+  )
   let email = git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "user.email", value: "witness@example.invalid")
   let name = git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "user.name", value: "witness")
   let wrote_old = Filesystem.Write(path: concat(repo, "/tracked"), content: "old")
@@ -60,23 +67,54 @@ fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
   let candidate = git.Core.RevParseInRepo(repo: repo_path, target: "HEAD" as GitRef)
   let old_sha = trim(s: old.revision)
   let candidate_sha = trim(s: candidate.revision)
-  let branch = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "branch", "dispatch-linked", old_sha])
+  let branch = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_branch_create_in_repo_args(repo: repo, branch: "dispatch-linked", sha: old_sha),
+  )
   let worktree = git.Core.WorktreeAddInRepo(repo: repo_path, path: linked as FilePath, start_point: "dispatch-linked")
-  let packed_ref = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "update-ref", "refs/dispatch/packed", old_sha])
-  let pack = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "pack-refs", "--all", "--prune"])
-  let loose_ref = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "update-ref", "refs/dispatch/loose", old_sha])
-  let remote_add = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "remote", "add", "origin", remote])
-  let pushed = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "push", "-q", "origin", concat(candidate_sha, ":refs/heads/main")])
-  let detached = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "checkout", "-q", "--detach", old_sha])
-  let tracking = shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "update-ref", "refs/remotes/origin/main", old_sha])
+  let packed_ref = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_update_ref_in_repo_args(repo: repo, ref: "refs/dispatch/packed", value: old_sha),
+  )
+  let pack = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_pack_refs_in_repo_args(repo: repo),
+  )
+  let loose_ref = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_update_ref_in_repo_args(repo: repo, ref: "refs/dispatch/loose", value: old_sha),
+  )
+  let remote_add = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_remote_add_in_repo_args(repo: repo_path, remote: "origin", url: remote),
+  )
+  let pushed = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_push_in_repo_args(
+      repo: repo, remote: "origin", refspec: concat(candidate_sha, ":refs/heads/main"),
+    ),
+  )
+  let detached = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_checkout_detached_in_repo_args(repo: repo, revision: old_sha),
+  )
+  let tracking = run_git_argv_workdir_free(
+    program: git_program_name,
+    argv: shape_git_update_ref_in_repo_args(repo: repo, ref: "refs/remotes/origin/main", value: old_sha),
+  )
   let positioned = if already_candidate {
     git.Core.ResetHardInRepo(repo: repo_path, target: candidate_sha).exit_code == 0
       && shell.Copy.File(source: concat(repo, "/.git/index") as FilePath, destination: concat(root, "/good-index") as FilePath).success
-      && shell.Exec.RunArgv(program: "git", arguments: ["-C", repo, "read-tree", old_sha]).exit_code == 0
+      && git_workdir_free_exit_code(
+        run: run_git_argv_workdir_free(
+          program: git_program_name,
+          argv: shape_git_read_tree_in_repo_args(repo: repo, revision: old_sha),
+        ),
+      ) == 0
   } else {
     git.Core.ResetHardInRepo(repo: repo_path, target: old_sha).exit_code == 0
   }
-  if dir.success && bare.exit_code == 0 && init.exit_code == 0 && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && branch.exit_code == 0 && worktree.exit_code == 0 && packed_ref.exit_code == 0 && pack.exit_code == 0 && loose_ref.exit_code == 0 && remote_add.exit_code == 0 && pushed.exit_code == 0 && detached.exit_code == 0 && tracking.exit_code == 0 && positioned {
+  if dir.success && git_workdir_free_exit_code(run: bare) == 0 && git_workdir_free_exit_code(run: init) == 0 && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && git_workdir_free_exit_code(run: branch) == 0 && worktree.exit_code == 0 && git_workdir_free_exit_code(run: packed_ref) == 0 && git_workdir_free_exit_code(run: pack) == 0 && git_workdir_free_exit_code(run: loose_ref) == 0 && git_workdir_free_exit_code(run: remote_add) == 0 && git_workdir_free_exit_code(run: pushed) == 0 && git_workdir_free_exit_code(run: detached) == 0 && git_workdir_free_exit_code(run: tracking) == 0 && positioned {
     Present { value: ScratchRepository { root: root, repo: repo, remote_path: remote, old: old_sha, candidate: candidate_sha } }
   } else { none }
 }
