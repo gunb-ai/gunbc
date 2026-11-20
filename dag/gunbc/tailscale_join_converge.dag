@@ -297,13 +297,13 @@ type TailscaleJoinPackageAction = JoinPackageInstall | JoinPackageAlreadyInstall
 
 // ONE OBSERVATION SUM, not a package_state sitting next to an independent join_state. Constructing this in
 // the wet makes the illegal pairings UNWRITABLE, not merely refused: an Installed observation MUST carry the
-// join_state that was read for it, and an install (NotInstalled/Unknown) carries no join_state to be ignored.
+// join_state that was read for it, and an install (NotInstalled/Unknown) carries no join_state, only the observed not-joined state string -- Present from a parsed not-joined (so the NeedsMachineAuth guard can still fire on it) or Absent when the binary was absent and no status was read.
 // gunbc.design_argument::fail_closed ("stronger than catching a wrong state is making it unwritable") and
 // gunbc.design_argument::guarantee_ladder (the top rung is "the bad value has no constructor"). The wet reads
 // the status only on the installed leg, so a status can never be attached to a not-installed host.
 type TailscaleJoinObservation
   = JoinObsInstalled { join_state: TailscaleJoinState }
-  | JoinObsInstall
+  | JoinObsInstall { status_string: Optional<String> }
   | JoinObsRefused { cause: String }
 
 // The shell's 127 convention: the command was not found. When `tailscale status` exits 127 the PROGRAM was
@@ -368,10 +368,16 @@ fn tailscale_join_observation_from_status(
     StatusParsed { state: st } => match st {
       JoinStateJoinedWithRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: st }
       JoinStateJoinedWithoutRequiredTag { self_tags: _ } => JoinObsInstalled { join_state: st }
-      JoinStateNotJoined { state: _ } => JoinObsInstall
+      // Carry the observed not-joined state string: a non-apt tailscale can report a not-joined BackendState of
+      // "NeedsMachineAuth", and the plan's NeedsMachineAuth guard must see it (review 96846). Absent is only for
+      // the binary-absent arm below, where no status was read at all.
+      JoinStateNotJoined { state: state } => JoinObsInstall { status_string: Present { value: state } }
       JoinStateUnreadable { cause: cause } => JoinObsRefused { cause: concat("status unreadable on a host dpkg cannot see: ", cause) }
     }
-    StatusBinaryAbsent => JoinObsInstall
+    // Binary absent (127): the program was not found, so NO status was read. status_string is genuinely Absent
+    // here -- and a host with no tailscale binary cannot be parked awaiting machine approval, so the guard's
+    // Absent => false is correct for THIS arm (and only this arm).
+    StatusBinaryAbsent => JoinObsInstall { status_string: Absent }
     StatusUnreadable { cause: cause } => JoinObsRefused { cause: concat("status unreadable: ", cause) }
   }
 }
@@ -418,19 +424,21 @@ fn tailscale_join_plan(
         Present { value: tailnet_name } =>
           match observation {
             // INSTALL: the builder authorized this ONLY on a readable signal that the host is not joined -- either
-            // a typed binary-absent (status exit 127) or a parsed positive not-joined -- AND dpkg has no usable
-            // installed record, so installing cannot clobber an operator-chosen identity. An UNREADABLE status
-            // never reaches this arm (the builder refuses it), and a joined host never installs. The join state is
-            // not consulted because JoinObsInstall carries none to consult; the destructive-action guard (a joined
-            // host with a non-apt tailscale must NOT be reinstalled) lives in tailscale_join_observation_of, which
-            // is witnessed directly. srv4 (run 44643376146) was the argv-shaped status read that exited 127 ->
-            // StatusBinaryAbsent -> install.
-            JoinObsInstall =>
+            // a typed binary-absent (status exit 127 -> status_string Absent) or a parsed positive not-joined
+            // (-> status_string Present(the observed state)) -- AND dpkg has no usable installed record, so
+            // installing cannot clobber an operator-chosen identity. An UNREADABLE status never reaches this arm
+            // (the builder refuses it), and a joined host never installs. The observed not-joined string is
+            // threaded to the key guard so a "NeedsMachineAuth" BackendState on a running non-apt tailscale still
+            // REFUSES rather than being installed/force-reauthed over (review 96846); dropping it here was the
+            // fabricated-default defect. The joined-host destructive-action guard lives in
+            // tailscale_join_observation_of. srv4 (run 44643376146) was the argv-shaped read that exited 127 ->
+            // StatusBinaryAbsent -> install, status_string Absent.
+            JoinObsInstall { status_string: status_string } =>
               tailscale_join_plan_requiring_key(
                 host: host,
                 tailnet_name: tailnet_name,
                 hostname: hostname,
-                status_string: Absent,
+                status_string: status_string,
                 key_usable: key_usable,
                 package_action: JoinPackageInstall,
               )
@@ -499,9 +507,12 @@ fn tailscale_join_plan_requiring_key(
   key_usable: Bool,
   package_action: TailscaleJoinPackageAction,
 ) -> TailscaleJoinPlan {
-  // NeedsMachineAuth is read ONLY from a status that was actually observed. The install arms pass Absent
-  // (no binary, no status), and a host without tailscale cannot be parked awaiting machine approval, so
-  // there is nothing to check -- and no fabricated state string to check it against.
+  // NeedsMachineAuth is read ONLY from a status that was actually observed. A parsed-not-joined install arm
+  // passes Present(the observed state), so a non-apt tailscale parked in NeedsMachineAuth still refuses here;
+  // ONLY the binary-absent install arm passes Absent (no binary was found, so no status was read at all), and a
+  // host with no tailscale binary cannot be parked awaiting machine approval -- so Absent => false is correct for
+  // that arm alone, and is NOT a stand-in for a status that was read (review 96846: dropping the observed string
+  // was the fabricated-default defect that let a running non-apt tailscale be force-reauthed with the fleet key).
   let needs_machine_auth = match status_string {
     Present { value: s } => string_contains(s: s, pattern: "NeedsMachineAuth")
     Absent => false
