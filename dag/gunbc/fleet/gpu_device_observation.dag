@@ -174,7 +174,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
   // why: the readings were not deleted, nor retyped into annotations. A dated observation is a receipt, and
   // gunbc.design_argument::source_annotations puts receipts in a typed carrier and forbids an annotation from
   // restating what a declaration says -- "the project reserves the right to delete any comment at any time", so
-  // @ref(gunbc.fleet.gpu_device_observation::retired_gpu_device_observations) below, which no current-state consumer
+  // #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations below, which no current-state consumer
   // folds. DO NOT "FIX" THE ABSENCE HERE BY ADDING GpuDeviceNotEnumerated ROWS FOR srv14: not-enumerated is the
   // state of a card that IS seated and fails to show up, and these cards are seated nowhere -- the honest
   // current state is no row, not a device with a fault.

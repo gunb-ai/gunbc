@@ -1179,7 +1179,7 @@ data codex_app_server_trip_pinned_oracle_repointed_to_direct_argv: DesignRuling 
 
 // The operator's 2026-11-18 tailnet ruling, carried as a TYPED row (not `//` prose) so its authority
 // cannot be deleted without the reference check failing. Cited by
-// gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation with @ref.
+// gunbc.tailscale_fleet_auth_key::tailscale_desired_tags_for_participation by marker.
 data ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18"),
   decided: "2026-11-18",
@@ -1189,7 +1189,7 @@ data ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18: DesignRu
 
 // The operator's two 2026-11-18 admin-console ACL additions, carried as a TYPED row so the authority for
 // the new grant and tag-owner row cannot be deleted without the reference check failing. Cited from
-// extdeps.tailscale.acl::operator_tailscale_acl_grants and ::operator_tailscale_acl_tag_owners with @ref.
+// extdeps.tailscale.acl::operator_tailscale_acl_grants and ::operator_tailscale_acl_tag_owners by marker.
 data tailnet_serving_acl_admin_console_additions_2026_11_18: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailnet_serving_acl_admin_console_additions_2026_11_18"),
   decided: "2026-11-18",

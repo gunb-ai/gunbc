@@ -4236,9 +4236,9 @@ data host_allocation_conservation_effect_join_callees: IntegrationConcern = Inte
 // What follows from it is a bet, stated as one: a witness with no import line whose
 // claims reference imported declarations cannot resolve at all -- the lens that reads a
 // module's import closure reports the first unbound name and goes no further
-// (@ref(v2.lens.module_graph::import_resolution_facts_live)) -- and so has no executing
+// (#v2.lens.module_graph::import_resolution_facts_live) -- and so has no executing
 // claim, which makes it not a check that has passed
-// (@ref(gunbc.design_argument::fail_closed)). A witness that references only its own
+// (#gunbc.design_argument::fail_closed). A witness that references only its own
 // declarations or always-in-scope names could carry no import line and still load, and
 // nobody has run the resolver over the corpus to say how many of the 182 are that case.
 // What is confirmed rather than inferred is this lane's 23: each was refused by the
@@ -4247,14 +4247,14 @@ data host_allocation_conservation_effect_join_callees: IntegrationConcern = Inte
 // neither repaired here nor measured further.
 //
 // The measurement -- command, revision, list hash -- is the sighting below, once
-// (@ref(gunbc.design_argument::source_annotations)).
+// (#gunbc.design_argument::source_annotations).
 //
 // WHY IT SURVIVES MERGING is the actual gap, and it is not the import grammar's
 // fault. The checkout-wide resolution check,
-// @ref(test.claim.module_graph.import_closure_live::expected_conformance_closure),
+// #test.claim.module_graph.import_closure_live::expected_conformance_closure,
 // pins the import closure of ONE eleven-file conformance fixture reached from
 // conformance_imports_only.dag; the producer it exercises
-// (@ref(v2.lens.module_graph::import_resolution_facts_live)) is the very lens that
+// (#v2.lens.module_graph::import_resolution_facts_live) is the very lens that
 // could sweep the corpus, but no standing asks it to. That witness already knows the
 // failure mode in the small: its own header says the closure golden it replaced "went
 // stale unseen because this module did not resolve: witness_layer_roots was used bare."

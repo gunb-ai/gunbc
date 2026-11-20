@@ -275,7 +275,7 @@ fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionC
 
 // The package leg's decoding, factored PURE so the wet wiring and the model share ONE shape and the decisive case
 // is witnessed (the wet's ssh call is not, the decision it feeds is). Mirrors
-// @ref(gunbc.fleet.site_pxe_edge_converge::observe_site_pxe_edge_package) -- the proven sibling: a CONVERGED
+// #gunbc.fleet.site_pxe_edge_converge::observe_site_pxe_edge_package -- the proven sibling: a CONVERGED
 // dpkg-query leg is handed WHOLESALE to
 // dpkg_query_status_verdict_of, which owns the four-way decode (exit 0 Status line -> installed/not-installed;
 // exit 1 with "no information is available" -> Unknown; everything else -> Undecidable). A NON-ZERO exit is a
@@ -483,7 +483,7 @@ fn tailscale_join_plan(
               // replace an identity the OPERATOR chose (a node is a member as the tag of the key that enrolled
               // it, or as the person who joined it -- tailscale.com/kb/1085/auth-keys), and silently changing a
               // host's tailnet identity is not this converge's authority. It refuses, typed and located, and
-              // names the remedy the operator performs (@ref(gunbc.design_argument::fail_closed)).
+              // names the remedy the operator performs (#gunbc.design_argument::fail_closed).
               JoinStateJoinedWithoutRequiredTag { self_tags: self_tags } =>
                 JoinPlanNotFleetMember {
                   host: host,
@@ -766,7 +766,7 @@ fn tailscale_join_readback(
 // (gunbc.tailscale_fleet_auth_key records the pin this was read against).
 //
 // THE WET ENTRY AT THE FOOT OF THIS MODULE IS ITS EXECUTING CONSUMER (review 95837 asked for exactly
-// this; @ref(gunbc.design_argument::consumption): "Every declaration a change adds ... is consumed by a
+// this; #gunbc.design_argument::consumption: "Every declaration a change adds ... is consumed by a
 // named consumer over an executing route, or it is dangling, however well modeled"). One dispatch runs
 // one host: tailscale_join_converge_ci_wet reads the named host from the environment, gates on the
 // live-clock expiry check BEFORE fetching anything, fetches the pinned version through
@@ -786,7 +786,7 @@ type TailscaleJoinOutcome
       // Whether the converge's own removal of the placed key copy succeeded. A join is a join either way
       // (the read-back already proved membership), but a left-behind copy of a reusable enrollment key is a
       // fact the caller must be able to see and act on -- never one the model hides (
-      // @ref(gunbc.design_argument::epistemic_humility)).
+      // #gunbc.design_argument::epistemic_humility).
       key_removed: Bool,
       removal_cause: String?,
     }

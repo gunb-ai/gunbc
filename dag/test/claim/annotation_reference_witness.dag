@@ -7,14 +7,13 @@ import std.decl_ref { DeclarationRef, NamedField, TypeParameter, WholeDeclaratio
 import std.annotation_reference {
   AnnotationReference,
   AnnotationReferenceExtraction,
-  CoordinateMalformed,
   MalformedReferenceMarker,
-  MarkerUnterminated,
   annotation_references_text,
 }
 
 // The extractor's discriminating cases, each run through the one production extractor over the raw
-// lexeme text a lexer hands it.
+// lexeme text a lexer hands it. The hashtag grammar's two load-bearing rules both have a RED here:
+// a span is a marker only if it reaches `::`, and a `#` glued to a word or path is never a marker.
 
 fn only_reference(x: AnnotationReferenceExtraction) -> DeclarationRef? {
   if length(xs: x.malformed) != 0 || length(xs: x.references) != 1 {
@@ -45,79 +44,108 @@ fn malformed_only(text: String, count: Int) -> Bool {
 }
 
 test fn whole_declaration_reference_extracts() -> Bool {
-  extracts_exactly(text: "// see @ref(std.decl_ref::DeclarationRef) here", expected: decl_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef"))
+  extracts_exactly(text: "// see #std.decl_ref::DeclarationRef here", expected: decl_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef"))
 }
 
 test fn named_field_reference_extracts() -> Bool {
-  extracts_exactly(text: "// @ref(std.decl_ref::DeclarationRef::module_path)", expected: decl_field_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef", field_name: "module_path"))
+  extracts_exactly(text: "// #std.decl_ref::DeclarationRef::module_path", expected: decl_field_ref(module_path: "std.decl_ref", decl_name: "DeclarationRef", field_name: "module_path"))
 }
 
 test fn type_parameter_reference_extracts() -> Bool {
-  extracts_exactly(text: "// @ref(std.optional::Optional::<T>)", expected: decl_type_parameter_ref(module_path: "std.optional", decl_name: "Optional", parameter: "T"))
+  extracts_exactly(text: "// #std.optional::Optional::<T>", expected: decl_type_parameter_ref(module_path: "std.optional", decl_name: "Optional", parameter: "T"))
 }
 
-test fn unmarked_prose_and_external_sections_are_not_references() -> Bool {
-  extracts_nothing(text: "// RFC 8725 §3 and std.decl_ref::DeclarationRef written as code, ref(x) and @ref without paren")
+// The operator's evidence list, one RED each.
+
+test fn issue_numbers_and_hashtags_are_prose() -> Bool {
+  extracts_nothing(text: "// fixes #16630, see #define, colour #f4f1ec, #comment")
+}
+
+test fn trailing_period_is_excluded_from_the_coordinate() -> Bool {
+  extracts_exactly(text: "// see #a.b::c.", expected: decl_ref(module_path: "a.b", decl_name: "c"))
+}
+
+test fn url_fragments_and_path_anchors_are_prose() -> Bool {
+  extracts_nothing(text: "// see issues/1#issuecomment-5 and x/y#a::b")
 }
 
 test fn escaped_marker_is_literal() -> Bool {
-  extracts_nothing(text: "// write \\@ref(std.decl_ref::DeclarationRef) to show the marker")
+  extracts_nothing(text: "// write \\#a::b to show the marker")
 }
 
-test fn bare_module_path_is_malformed_not_guessed() -> Bool {
-  malformed_only(text: "// @ref(std.decl_ref)", count: 1)
+test fn coordinate_ending_at_colons_is_malformed() -> Bool {
+  malformed_only(text: "// see #a.b:: here", count: 1)
 }
 
-test fn single_colon_is_malformed() -> Bool {
-  malformed_only(text: "// @ref(std.decl_ref:DeclarationRef)", count: 1)
+// The documented gap: with no `::` reached the span is prose and NO finding fires. Pinned as the
+// accepted trade-off (the module header states it), never as parity with the old paren grammar.
+test fn typo_without_double_colon_is_silent_prose() -> Bool {
+  extracts_nothing(text: "// see #a.b:c and #a.b and bare # for free")
+}
+
+test fn unmarked_qualified_names_are_not_references() -> Bool {
+  extracts_nothing(text: "// RFC 8725 §3 and std.decl_ref::DeclarationRef written as code")
+}
+
+test fn single_colon_is_silent_prose_too() -> Bool {
+  extracts_nothing(text: "// std.decl_ref:DeclarationRef is a typo shape, not a marker")
 }
 
 test fn four_segments_are_malformed() -> Bool {
-  malformed_only(text: "// @ref(a::b::c::d)", count: 1)
+  malformed_only(text: "// #a::b::c::d", count: 1)
 }
 
 test fn leading_digit_segment_is_malformed() -> Bool {
-  malformed_only(text: "// @ref(std.9x::Y)", count: 1)
+  malformed_only(text: "// #std.9x::Y", count: 1)
 }
 
-test fn unterminated_marker_is_reported() -> Bool {
-  let x = annotation_references_text(text: "// @ref(std.decl_ref::DeclarationRef", start: 0)
-  match list_head(xs: x.malformed) {
-    Present { value: m } => length(xs: x.references) == 0 && length(xs: x.malformed) == 1 && match m.cause { MarkerUnterminated => true CoordinateMalformed => false }
-    Absent => false
-  }
+test fn bare_colons_are_malformed() -> Bool {
+  malformed_only(text: "// #::", count: 1)
 }
 
-// A malformed marker must not hide a later valid one: the breaking character is scanned again.
-test fn malformed_marker_does_not_swallow_the_next() -> Bool {
-  let x = annotation_references_text(text: "// @ref(broken @ref(std.decl_ref::DeclarationRef)", start: 0)
+// A parenthesis inside a span that reached `::` breaks it hard: a located finding, and the next
+// marker after it still fires (the breaking character is scanned again).
+test fn paren_breaks_the_span_and_does_not_swallow_the_next() -> Bool {
+  let x = annotation_references_text(text: "// #a::b( #std.decl_ref::decl_ref", start: 0)
   length(xs: x.malformed) == 1 && length(xs: x.references) == 1
 }
 
-test fn adjacent_marker_breaks_and_rescans() -> Bool {
-  let x = annotation_references_text(text: "// @ref(a.b@ref(std.decl_ref::decl_ref)", start: 0)
-  length(xs: x.malformed) == 1 && length(xs: x.references) == 1
+test fn space_separated_prose_then_reference() -> Bool {
+  let x = annotation_references_text(text: "// #a.b #c::d", start: 0)
+  length(xs: x.malformed) == 0 && length(xs: x.references) == 1
+}
+
+// A `#` glued to the end of a broken span is still a predecessor-blocked character: `#a.b#c::d`
+// has no marker at all, because the second `#` sits right after `b`.
+test fn hashtag_glued_to_a_broken_span_stays_prose() -> Bool {
+  let x = annotation_references_text(text: "// #a.b#c::d", start: 0)
+  length(xs: x.malformed) == 0 && length(xs: x.references) == 0
+}
+
+test fn doubled_hash_opens_the_marker() -> Bool {
+  let x = annotation_references_text(text: "// ##a::b", start: 0)
+  length(xs: x.malformed) == 0 && length(xs: x.references) == 1
 }
 
 test fn two_references_on_one_line_both_extract() -> Bool {
-  let x = annotation_references_text(text: "// @ref(a.b::C) and @ref(d.e::F::g)", start: 0)
+  let x = annotation_references_text(text: "// #a.b::C and #d.e::F::g", start: 0)
   length(xs: x.malformed) == 0 && length(xs: x.references) == 2
 }
 
 // Offsets are octets from the capture start: `// é ` is 2 + 1 + 2 + 1 = 6 octets, so the marker
-// starts at start + 6 and ends after its 15 ASCII octets.
+// starts at start + 6 and its 9-octet coordinate `a.b::Cdef` ends one after it.
 test fn offsets_are_octets_on_non_ascii_text() -> Bool {
-  let x = annotation_references_text(text: "// é @ref(a.b::Cdef)", start: 100)
+  let x = annotation_references_text(text: "// é #a.b::Cdef", start: 100)
   match list_head(xs: x.references) {
-    Present { value: r } => r.start == 106 && r.end == 121
+    Present { value: r } => r.start == 106 && r.end == 116
     Absent => false
   }
 }
 
 test fn malformed_marker_carries_its_location_and_text() -> Bool {
-  let x = annotation_references_text(text: "// @ref(x)", start: 10)
+  let x = annotation_references_text(text: "// see #a::b:c then", start: 10)
   match list_head(xs: x.malformed) {
-    Present { value: m } => m.start == 13 && m.end == 20 && m.text == "@ref(x)" && match m.cause { CoordinateMalformed => true MarkerUnterminated => false }
+    Present { value: m } => m.start == 17 && m.end == 24 && m.text == "#a::b:c"
     Absent => false
   }
 }

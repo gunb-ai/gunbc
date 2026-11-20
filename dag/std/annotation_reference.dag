@@ -9,27 +9,44 @@ import std.unicode.char_class { unicode_char_code_point }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 
 // AN EXPLICIT DECLARATION REFERENCE INSIDE A SOURCE ANNOTATION. A comment stays best-effort prose
-// (DESIGN 4c): nothing here reads what it claims. What an author deliberately MARKS is a reference
-// to a declaration, and a marked reference is an obligation the comment carries until it resolves
-// or the comment is deleted. Unmarked text -- examples, external spec section signs, qualified names
-// written as code -- is never a reference, so the marker is what makes intent decidable rather than
-// a guess about which `a::b` spans were meant.
+// (gunbc.design_argument::source_annotations): nothing here reads what it claims. What an author
+// deliberately MARKS is a reference to a declaration, and a marked reference is an obligation the
+// comment carries until it resolves or the comment is deleted. Unmarked text -- examples, external
+// spec section signs, qualified names written as code -- is never a reference, so the marker is
+// what makes intent decidable rather than a guess about which `a::b` spans were meant.
 //
-// THE GRAMMAR. `\@ref(` COORDINATE `)` (written here escaped, as every literal marker in a comment must be) where COORDINATE is
+// THE GRAMMAR. The operator chose the hashtag form on 2026-11-19 ("yeah i'd like to use the
+// hashtag thanks"). A marker is `#` IMMEDIATELY FOLLOWED BY a COORDINATE:
 //   module.path::decl              a whole declaration
 //   module.path::decl::field       a named field of decl
 //   module.path::decl::<T>         a type parameter of decl
-// and each segment is an ASCII identifier. `\@ref(` is the literal spelling and is not a reference.
-// The coordinate is parsed straight into the std.decl_ref carrier; it is NOT the inverse of
-// `declaration_ref_display_key`, which is a presentation and can give two refs one string. Here a
-// decl or field segment cannot contain `::`, so each accepted coordinate has exactly one reading.
+// and each segment is an ASCII identifier. The coordinate ends at the first character that cannot
+// continue it (identifier characters, `.`, `:`, `<`, `>` continue; everything else ends the span --
+// a `(` or `\` breaks it hard, a `#` ends it and may open the next marker, a `)` ends it as
+// sentence-adjacent punctuation so a marker in parentheses -- (#gunbc.design_argument::fail_closed)
+// -- still resolves). A trailing `.` or `:` not followed by an identifier character is sentence punctuation
+// and is excluded from the coordinate. The coordinate is parsed straight into the std.decl_ref
+// carrier; it is NOT the inverse of `declaration_ref_display_key`, which is a presentation and can
+// give two refs one string. Here a decl or field segment cannot contain `::`, so each accepted
+// coordinate has exactly one reading.
+//
+// A `#` SPANS INTO A MARKER ONLY IF IT REACHES `::`. That is what keeps the hashtag literate in
+// ordinary prose: `#16630`, `#define`, `#f4f1ec`, `#comment` and `#a.b:c` stay text -- not markers,
+// not findings. A `#` preceded by an ASCII identifier character or `/` never opens a marker, so URL
+// fragments (issues/1#issuecomment) and path anchors (x/y#a::b) stay prose. The escape is `\#`.
 //
 // THE SEGMENT ALPHABET is ASCII identifier characters. A declaration whose name lies outside it is
-// not citable by marker today; such a marker reports CoordinateMalformed rather than a guessed target.
+// not citable by marker; such a coordinate reports CoordinateMalformed rather than a guessed target.
 //
-// EVERY UNESCAPED MARKER IS ACCOUNTED FOR: it is a parsed reference or a located finding. A marker
-// whose body breaks before `)` is reported and scanning RESUMES AT THE CHARACTER THAT BROKE IT, so a
-// malformed marker cannot swallow a later valid one.
+// THE TRADE-OFF, stated plainly (gunbc.design_argument::fail_closed, gunbc.design_argument::epistemic_humility).
+// Under the old `\#` COORDINATE `)` form, every unescaped marker was accounted for: a marker
+// whose body broke was a located finding, so no deliberately-marked reference could vanish. Under
+// `#`, a span that never reaches `::` is indistinguishable from prose, so a typo like `#a.b:c` is
+// SILENT PROSE and is no longer a finding. That is the accepted cost of a marker the rest of the
+// world already uses: accounting for every `#` would put every issue number and colour code in
+// every comment on the diagnostic path. What stays fail-closed is the accounted half: everything
+// that reaches `::` is either a parsed reference or a located CoordinateMalformed finding, and the
+// marker-to-marker rename/move rules still surface a reference whose target has moved.
 //
 // OFFSETS ARE UTF-8 OCTETS, the unit every lexer offset uses (v2.compiler.tokenize advances by
 // std.unicode.types unicode_scalar_utf8_octet_count), so `start` of the scanned text plus an offset
@@ -41,12 +58,11 @@ type AnnotationReference {
   end: Int
 }
 
-type MalformedReferenceCause
-  = MarkerUnterminated
-  | CoordinateMalformed
-
+// A span that reached `::` and does not parse. There is exactly one way to fail, so there is no
+// cause enum: the old `MarkerUnterminated` cause died with the closing parenthesis that made it
+// meaningful, and its remains were deleted rather than kept as a dead arm. A span that never
+// reaches `::` is prose by the grammar above and never becomes a finding at all.
 type MalformedReferenceMarker {
-  cause: MalformedReferenceCause
   text: String
   start: Int
   end: Int
@@ -69,15 +85,39 @@ fn code_point_is_identifier_continue(cp: Int) -> Bool {
   code_point_is_ascii_letter(cp: cp) || code_point_is_ascii_digit(cp: cp) || cp == 95
 }
 
-// What may appear between the marker and `)`: identifier characters and the coordinate punctuation.
-// Anything else ends the marker as unterminated.
-fn code_point_is_coordinate_body(cp: Int) -> Bool {
+// What continues a coordinate span: identifier characters and the coordinate punctuation `. : < >`.
+// A `#`, `(`, `)` or `\` breaks the span; everything else ends it as an ordinary character (and,
+// for `.` `:` `,` after a coordinate, as sentence punctuation excluded from the coordinate).
+fn code_point_is_coordinate_continue(cp: Int) -> Bool {
   code_point_is_identifier_continue(cp: cp) || cp == 46 || cp == 58 || cp == 60 || cp == 62
 }
 
-// THE MARKER'S SPELLING, ONCE. The scan reads it a scalar at a time, the check's spelling test and
-// every rendered finding read it whole; none spells it again.
-data annotation_reference_marker: String = "@ref("
+// A `#` directly after one of these is not the start of a marker: it is a URL fragment, an anchor
+// inside a path, or a hashtag glued to a word.
+fn code_point_is_marker_predecessor(cp: Int) -> Bool {
+  code_point_is_identifier_continue(cp: cp) || cp == 47
+}
+
+// Trailing sentence punctuation excluded from a finished coordinate: `.` and `:`. A `,` never
+// enters the coordinate at all -- it ends the span as a non-continuing character.
+fn code_point_is_strippable_trailing(cp: Int) -> Bool {
+  cp == 46 || cp == 58
+}
+
+// Characters that break a span HARD: `(` (never a coordinate character; the old form's opening
+// paren was balanced by a closing delimiter the hashtag does not have) and `\` (escape territory).
+// While the span has reached `::` a hard break is a CoordinateMalformed finding; before that it is
+// prose. A `#` is not hard: it ENDS this span (which is then evaluated) and may open the next
+// marker. A `)` is not hard either: it ends the span as an ordinary character, so a marker written
+// in sentence parentheses -- (#gunbc.design_argument::guarantee_ladder) -- still resolves, and the
+// parenthesis stays out of the coordinate.
+fn code_point_is_hard_break(cp: Int) -> Bool {
+  cp == 40 || cp == 92
+}
+
+// THE MARKER'S SPELLING, ONCE. The scan reads it a scalar at a time, the check's spelling tests,
+// the prefilter and every rendered finding read it whole; none spells it again.
+data annotation_reference_marker: String = "#"
 
 data annotation_reference_marker_scalars: List<Int> = list_map(xs: unicode_scalar_unfold(s: annotation_reference_marker), f: fn(c) { unicode_char_code_point(c: c) })
 
@@ -91,8 +131,8 @@ fn marker_code_point_at(k: Int) -> Int {
 }
 
 type ReferenceScanMode
-  = Seeking { progress: Int, marker_start: Int, escaped: Bool }
-  | InCoordinate { marker_start: Int, body: FreeMonoid<Char> }
+  = Seeking { progress: Int, marker_start: Int, escaped: Bool, pred: Int }
+  | Candidate { marker_start: Int, body: FreeMonoid<Char>, reached_double_colon: Bool, pending_colon: Bool }
 
 type ReferenceScan {
   mode: ReferenceScanMode
@@ -104,7 +144,7 @@ type ReferenceScan {
 
 fn reference_scan_initial(start: Int) -> ReferenceScan {
   ReferenceScan {
-    mode: Seeking { progress: 0, marker_start: start, escaped: false },
+    mode: Seeking { progress: 0, marker_start: start, escaped: false, pred: 0 },
     position: start,
     previous: 0,
     references: [],
@@ -241,29 +281,28 @@ fn annotation_reference_coordinate(body: FreeMonoid<Char>) -> Optional<Declarati
   }
 }
 
-// ---- the scan ----------------------------------------------------------------------------------
+// ---- the scan -----------------------------------------------------------------------------------
 
-fn marker_text(body_reversed: FreeMonoid<Char>, closed: Bool) -> String {
-  let body = unicode_scalar_fold(xs: list_reverse(xs: body_reversed))
-  if closed { concat(annotation_reference_marker, concat(body, ")")) } else { concat(annotation_reference_marker, body) }
+// Drop the run of trailing `.` / `:` sentence punctuation from a finished coordinate: walk the
+// reversed body, dropping while still inside the trailing run, then keep everything else.
+type CoordinateTrim {
+  inside_trailing_run: Bool
+  kept: FreeMonoid<Char>
 }
 
-fn reference_scan_unterminated(scan: ReferenceScan, marker_start: Int, body: FreeMonoid<Char>) -> ReferenceScan {
-  ReferenceScan {
-    mode: Seeking { progress: 0, marker_start: scan.position, escaped: false },
-    position: scan.position,
-    previous: scan.previous,
-    references: scan.references,
-    malformed: list_snoc_item(xs: scan.malformed, item: MalformedReferenceMarker {
-      cause: MarkerUnterminated,
-      text: marker_text(body_reversed: body, closed: false),
-      start: marker_start,
-      end: scan.position,
-    }),
-  }
+fn trim_trailing_coordinate(body: FreeMonoid<Char>) -> FreeMonoid<Char> {
+  let kept = fold(list_reverse(xs: body), init: CoordinateTrim { inside_trailing_run: true, kept: Empty }, f: (acc, c) =>
+    let cp = unicode_char_code_point(c: c)
+    if !acc.inside_trailing_run {
+      CoordinateTrim { inside_trailing_run: false, kept: list_snoc_item(xs: acc.kept, item: c) }
+    } else if code_point_is_strippable_trailing(cp: cp) {
+      acc
+    } else {
+      CoordinateTrim { inside_trailing_run: false, kept: list_snoc_item(xs: acc.kept, item: c) }
+    })
+  list_reverse(xs: kept.kept)
 }
 
-// Advance the octet position past `cp` and remember it as the previous code point.
 fn reference_scan_advanced(scan: ReferenceScan, mode: ReferenceScanMode, cp: Int) -> ReferenceScan {
   ReferenceScan {
     mode: mode,
@@ -274,78 +313,137 @@ fn reference_scan_advanced(scan: ReferenceScan, mode: ReferenceScanMode, cp: Int
   }
 }
 
-fn reference_scan_seek(scan: ReferenceScan, progress: Int, marker_start: Int, escaped: Bool, c: Char) -> ReferenceScan {
+fn reference_scan_accept(scan: ReferenceScan, reference: AnnotationReference) -> ReferenceScan {
+  ReferenceScan {
+    mode: scan.mode,
+    position: scan.position,
+    previous: scan.previous,
+    references: list_snoc_item(xs: scan.references, item: reference),
+    malformed: scan.malformed,
+  }
+}
+
+fn reference_scan_malformed(scan: ReferenceScan, marker_start: Int, text: String, end: Int) -> ReferenceScan {
+  ReferenceScan {
+    mode: scan.mode,
+    position: scan.position,
+    previous: scan.previous,
+    references: scan.references,
+    malformed: list_snoc_item(xs: scan.malformed, item: MalformedReferenceMarker { text: text, start: marker_start, end: end }),
+  }
+}
+
+// The character after a completed marker, or any character while seeking. On a completed marker the
+// `#` was already consumed by the match; here the coordinate itself is grown or the span is ended.
+// While seeking, a scalar matching the marker continues the attempt; the marker's first scalar
+// restarts it.
+fn reference_scan_seek(scan: ReferenceScan, progress: Int, marker_start: Int, escaped: Bool, pred: Int, c: Char) -> ReferenceScan {
   let cp = unicode_char_code_point(c: c)
   if cp == marker_code_point_at(k: progress) {
     let started = if progress == 0 { scan.position } else { marker_start }
     let is_escaped = if progress == 0 { scan.previous == 92 } else { escaped }
+    let is_prose = if progress == 0 { code_point_is_marker_predecessor(cp: pred) } else { false }
     if progress + 1 == marker_length {
-      if is_escaped {
-        reference_scan_advanced(scan: scan, mode: Seeking { progress: 0, marker_start: started, escaped: false }, cp: cp)
+      if is_escaped || is_prose {
+        // The `#` is a fragment, an anchor, or escaped: prose, and the `#` is consumed by this
+        // advance; a following `#` is a fresh marker attempt from the next step.
+        reference_scan_advanced(scan: scan, mode: Seeking { progress: 0, marker_start: started, escaped: false, pred: 0 }, cp: cp)
       } else {
-        reference_scan_advanced(scan: scan, mode: InCoordinate { marker_start: started, body: Empty }, cp: cp)
+        reference_scan_advanced(scan: scan, mode: Candidate { marker_start: started, body: Empty, reached_double_colon: false, pending_colon: false }, cp: cp)
       }
     } else {
-      reference_scan_advanced(scan: scan, mode: Seeking { progress: progress + 1, marker_start: started, escaped: is_escaped }, cp: cp)
+      reference_scan_advanced(scan: scan, mode: Seeking { progress: progress + 1, marker_start: started, escaped: is_escaped, pred: pred }, cp: cp)
     }
-  } else if cp == 64 {
-    reference_scan_advanced(scan: scan, mode: Seeking { progress: 1, marker_start: scan.position, escaped: scan.previous == 92 }, cp: cp)
+  } else if progress > 0 && cp == marker_code_point_at(k: 0) {
+    reference_scan_advanced(scan: scan, mode: Seeking { progress: 1, marker_start: scan.position, escaped: scan.previous == 92, pred: scan.previous }, cp: cp)
   } else {
-    reference_scan_advanced(scan: scan, mode: Seeking { progress: 0, marker_start: scan.position, escaped: false }, cp: cp)
+    reference_scan_advanced(scan: scan, mode: Seeking { progress: 0, marker_start: scan.position, escaped: false, pred: 0 }, cp: cp)
   }
 }
 
-fn reference_scan_close(scan: ReferenceScan, marker_start: Int, body: FreeMonoid<Char>, cp: Int) -> ReferenceScan {
-  let end = scan.position + unicode_scalar_utf8_octet_count(code_point: cp)
-  let seeking = Seeking { progress: 0, marker_start: end, escaped: false }
-  match annotation_reference_coordinate(body: list_reverse(xs: body)) {
-    Present { value: reference } =>
-      ReferenceScan {
-        mode: seeking,
-        position: end,
-        previous: cp,
-        references: list_snoc_item(xs: scan.references, item: AnnotationReference { reference: reference, start: marker_start, end: end }),
-        malformed: scan.malformed,
+// The span ended on `c` (which is NOT part of the coordinate and is scanned again from Seeking, so
+// it may itself open the next marker). A span that never reached `::` was prose and leaves no
+// trace. A span that reached `::` is a marker: its coordinate is trimmed of trailing sentence
+// punctuation and parsed; anything that does not parse -- or that broke on a hard-break character
+// after reaching `::` -- is a located CoordinateMalformed finding.
+fn reference_scan_terminate(scan: ReferenceScan, marker_start: Int, body: FreeMonoid<Char>, reached_double_colon: Bool, hard: Bool, c: Char) -> ReferenceScan {
+  if !reached_double_colon {
+    reference_scan_seek(scan: scan, progress: 0, marker_start: scan.position, escaped: false, pred: scan.previous, c: c)
+  } else {
+    let coordinate = trim_trailing_coordinate(body: body)
+    let reported = if hard {
+      reference_scan_malformed(scan: scan, marker_start: marker_start, text: concat(annotation_reference_marker, unicode_scalar_fold(xs: coordinate)), end: scan.position)
+    } else {
+      match annotation_reference_coordinate(body: coordinate) {
+        Absent =>
+          reference_scan_malformed(scan: scan, marker_start: marker_start, text: concat(annotation_reference_marker, unicode_scalar_fold(xs: coordinate)), end: scan.position)
+        Present { value: reference } =>
+          reference_scan_accept(
+            scan: scan,
+            reference: AnnotationReference {
+              reference: reference,
+              start: marker_start,
+              end: marker_start + marker_length + length(xs: coordinate),
+            },
+          )
       }
-    Absent =>
-      ReferenceScan {
-        mode: seeking,
-        position: end,
-        previous: cp,
-        references: scan.references,
-        malformed: list_snoc_item(xs: scan.malformed, item: MalformedReferenceMarker {
-          cause: CoordinateMalformed,
-          text: marker_text(body_reversed: body, closed: true),
-          start: marker_start,
-          end: end,
-        }),
-      }
+    }
+    reference_scan_seek(scan: reported, progress: 0, marker_start: reported.position, escaped: false, pred: reported.previous, c: c)
   }
 }
 
 fn reference_scan_step(scan: ReferenceScan, c: Char) -> ReferenceScan {
   match scan.mode {
-    Seeking { progress: progress, marker_start: marker_start, escaped: escaped } =>
-      reference_scan_seek(scan: scan, progress: progress, marker_start: marker_start, escaped: escaped, c: c)
-    InCoordinate { marker_start: marker_start, body: body } =>
-      let cp = unicode_char_code_point(c: c)
-      if cp == 41 {
-        reference_scan_close(scan: scan, marker_start: marker_start, body: body, cp: cp)
-      } else if code_point_is_coordinate_body(cp: cp) {
-        reference_scan_advanced(scan: scan, mode: InCoordinate { marker_start: marker_start, body: Cons { head: c, tail: body } }, cp: cp)
+    Seeking { progress: progress, marker_start: marker_start, escaped: escaped, pred: pred } =>
+      if progress == 0 {
+        // A fresh attempt: the marker's predecessor is the character just consumed, and the
+        // marker starts here.
+        reference_scan_seek(scan: scan, progress: 0, marker_start: scan.position, escaped: false, pred: scan.previous, c: c)
       } else {
-        // The breaking character is scanned again from Seeking, so it may itself open the next marker.
-        let reported = reference_scan_unterminated(scan: scan, marker_start: marker_start, body: body)
-        reference_scan_seek(scan: reported, progress: 0, marker_start: reported.position, escaped: false, c: c)
+        reference_scan_seek(scan: scan, progress: progress, marker_start: marker_start, escaped: escaped, pred: pred, c: c)
+      }
+    Candidate { marker_start: marker_start, body: body, reached_double_colon: reached_double_colon, pending_colon: pending_colon } =>
+      let cp = unicode_char_code_point(c: c)
+      if code_point_is_coordinate_continue(cp: cp) {
+        reference_scan_advanced(
+          scan: scan,
+          mode: Candidate {
+            marker_start: marker_start,
+            body: list_snoc_item(xs: body, item: c),
+            reached_double_colon: if cp == 58 && pending_colon { true } else { reached_double_colon },
+            pending_colon: cp == 58,
+          },
+          cp: cp,
+        )
+      } else {
+        reference_scan_terminate(scan: scan, marker_start: marker_start, body: body, reached_double_colon: reached_double_colon, hard: code_point_is_hard_break(cp: cp), c: c)
       }
   }
 }
 
 fn reference_scan_finish(scan: ReferenceScan) -> AnnotationReferenceExtraction {
   let closed = match scan.mode {
-    Seeking { progress: _, marker_start: _, escaped: _ } => scan
-    InCoordinate { marker_start: marker_start, body: body } =>
-      reference_scan_unterminated(scan: scan, marker_start: marker_start, body: body)
+    Seeking { progress: _, marker_start: _, escaped: _, pred: _ } => scan
+    Candidate { marker_start: marker_start, body: body, reached_double_colon: reached_double_colon, pending_colon: _ } =>
+      if !reached_double_colon {
+        // End of text with a span that never reached `::`: prose, never a marker, never a finding.
+        scan
+      } else {
+        let coordinate = trim_trailing_coordinate(body: body)
+        match annotation_reference_coordinate(body: coordinate) {
+          Absent =>
+            reference_scan_malformed(scan: scan, marker_start: marker_start, text: concat(annotation_reference_marker, unicode_scalar_fold(xs: coordinate)), end: scan.position)
+          Present { value: reference } =>
+            reference_scan_accept(
+              scan: scan,
+              reference: AnnotationReference {
+                reference: reference,
+                start: marker_start,
+                end: marker_start + marker_length + length(xs: coordinate),
+              },
+            )
+        }
+      }
   }
   AnnotationReferenceExtraction { references: closed.references, malformed: closed.malformed }
 }
