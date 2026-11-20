@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.board_soc { BoardSocArchitectureStanding, board_soc_architecture }
+import extdeps.toolchain.types { Architecture }
 import extdeps.github.actions { runner_arch_label }
 import gunbc.host.board_platform_facts { board_soc_edges_for }
 import extdeps.board_authority { BoardAuthorityRef }
@@ -157,18 +158,32 @@ type RunnerArchStanding
   = RunnerArchKnown { label: String }
   | RunnerArchUnknown
 
-fn fleet_converge_runner_arch_label(host: HostIdentity) -> RunnerArchStanding {
+// THE ARCHITECTURE SOURCE OF TRUTH for a runner. Reads the host's board authority -> SoC edge ->
+// Architecture ENUM (never a rendered string). Every runner label -- the GH arch label AND the self-hosted
+// label set the build job uses -- is DERIVED from this one enum, so no second place decides architecture
+// (clever-raven-401 ruling). A host whose board establishes no architecture yields Absent, which the
+// caller must refuse loudly rather than default to arm64.
+fn fleet_converge_runner_arch(host: HostIdentity) -> Architecture? {
   match first_where(xs: machine_board_rows, keep: r => host_identity_eq(a: r.host, b: host)) {
-    Absent => RunnerArchUnknown
+    Absent => Absent
     Present { value: r } => match machine_board_authority(standing: r.board) {
-      Absent => RunnerArchUnknown
+      Absent => Absent
       Present { value: authority } => match board_soc_edges_for(authority: authority) {
-        Absent => RunnerArchUnknown
+        Absent => Absent
         Present { value: edge } => match board_soc_architecture(edge: edge) {
-          Unestablished => RunnerArchUnknown
-          Established { architecture } => RunnerArchKnown { label: runner_arch_label(arch: architecture) }
+          Unestablished => Absent
+          Established { architecture } => Present { value: architecture }
         }
       }
     }
+  }
+}
+
+// The GH runner arch LABEL, derived from the single Architecture source above via runner_arch_label.
+// Kept as the name the dropdown identity-join claim and the plan-revision arch output consume.
+fn fleet_converge_runner_arch_label(host: HostIdentity) -> RunnerArchStanding {
+  match fleet_converge_runner_arch(host: host) {
+    Absent => RunnerArchUnknown
+    Present { value: architecture } => RunnerArchKnown { label: runner_arch_label(arch: architecture) }
   }
 }
