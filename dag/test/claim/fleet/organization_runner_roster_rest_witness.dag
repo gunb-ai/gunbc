@@ -205,17 +205,22 @@ fn prelude_marker() -> String {
 }
 
 test fn the_sweep_step_has_no_prelude_credential_path() -> Bool {
-  let sweep = gunbc_ci_service_runner_lost_boot_sweep_invoke()
-  let with_prelude = gunbc_run_step_script_with_prelude_for_target(
+  match gunbc_run_step_script_with_prelude_for_target(
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_service_runner_lost_boot_sweep_target,
     claim_run: false,
     receipt_rel: none
-  )
-  string_contains(s: with_prelude, pattern: prelude_marker())
-    && !string_contains(s: sweep, pattern: prelude_marker())
-    && !string_contains(s: sweep, pattern: "GH_TOKEN")
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: with_prelude } => match gunbc_ci_service_runner_lost_boot_sweep_invoke() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: sweep } =>
+        string_contains(s: with_prelude, pattern: prelude_marker())
+          && !string_contains(s: sweep, pattern: prelude_marker())
+          && !string_contains(s: sweep, pattern: "GH_TOKEN")
+    }
+  }
 }
 
 // THE LADDER IS ONE FUNCTION FOR BOTH TRANSPORTS (registration_from_fields), so a refusal the json
