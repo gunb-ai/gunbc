@@ -10,7 +10,14 @@ module test.claim.compute.remote_build_serving_converge_witness
 //     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
 
 import std.optional { Present, Absent }
+import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host }
+import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_work_slice_unit_name, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
+import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
+import std.measure { byte_size_count }
+import std.measure { byte_size_count, byte_size, ByteSize }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited }
 import std.algebra { string_contains, non_empty_to_list }
+import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.list { first_duplicate_by_key, first_where }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -23,7 +30,7 @@ import gunbc.compute.remote_build_serving_setup {
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, serve_identity_document }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 
@@ -97,6 +104,9 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -206,6 +216,9 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       ), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
@@ -260,6 +273,9 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -292,6 +308,9 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -358,6 +377,9 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
     serve_binary_sha256: Absent, checkout_revision: Absent,
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -420,6 +442,9 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
         checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
         serve_binary_sha256: Absent, checkout_revision: Absent, authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s("riscv64"), ledger_rows: matched_ledger(d: d),
       )
       let plan = converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin), pin: pin, target_arch: est_s("riscv64"), rustup: est_absent())
@@ -448,6 +473,9 @@ test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let ws = plan_writes(converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok()))
@@ -512,6 +540,9 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
         serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -542,6 +573,9 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
         checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
         serve_binary_sha256: Absent, checkout_revision: Absent,
         authorized_keys_mode: Absent, serve_binary_mode: Absent,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       )
       let a = serving_assess(d: d, o: o, pin: pin_ok())
@@ -577,6 +611,9 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
           target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
@@ -593,6 +630,9 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
@@ -609,6 +649,9 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
           serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         ), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
@@ -639,6 +682,9 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -655,6 +701,9 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -1019,6 +1068,9 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   )
 }
@@ -1034,6 +1086,225 @@ test fn ledger_group_extra_member_is_unhandled_not_planned() -> Bool {
       let extra = converge_plan(d: d, a: serving_assess(d: d, o: matched_with_group(d: d, line: line, group_text: converged_groups_with_intruder()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_settled(settled) && plan_is_unhandled(extra) && length(plan_writes(extra)) == 0
     }
+  }
+}
+
+// ── InstallUserWorkSlice: the cap the reader reads ──
+//
+// The reader wraps build work into the slice with systemd-run --user at a --user launch
+// (gunbc.compute.unit_bounds user_work_slice_binding_properties); its admission decides from the
+// slice's own cgroup memory, not from a systemctl view. The leg therefore installs where that reader
+// looks and settles on the same read. These claims hold the plan side: an uncapped slice is a real
+// deviation, it plans exactly one InstallUserWorkSlice, that write names the reader's own unit, and
+// it sorts ahead of InstallServeBinary (rank 8 before 9), so a slice that never settles halts the
+// pass before the binary is touched.
+
+fn slice_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+fn is_install_slice(a: ConvergeAction) -> Bool {
+  match a {
+    InstallUserWorkSlice { unit_name: _, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => true
+    _ => false
+  }
+}
+
+fn is_install_binary(a: ConvergeAction) -> Bool {
+  match a {
+    InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true
+    _ => false
+  }
+}
+
+// An uncapped slice assesses as a real drift and plans exactly one InstallUserWorkSlice, refused and
+// unhandled both false. The single-drift fixture keeps the count an assertion, not a "some write
+// appeared".
+test fn uncapped_slice_plans_exactly_one_install_leg() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: slice_uncapped_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          plan_is_refused(plan) == false
+            && plan_is_unhandled(plan) == false
+            && length(filter(plan_writes(plan), x => is_install_slice(x))) == 1
+        }
+      }
+    }
+  }
+}
+
+// The planned write names the reader's own unit: the path srv1 installs to and the Slice= value
+// unit_bounds wraps with. The leg and the reader's wrap are pinned to one declaration so they cannot
+// drift apart.
+test fn install_slice_names_the_readers_unit() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: slice_uncapped_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          match filter(plan_writes(plan), x => is_install_slice(x)) {
+            Cons { head: InstallUserWorkSlice { unit_name: n, unit_path: up, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ }, tail: _ } =>
+              n == user_work_slice_unit_name && up == (gunbc_user_work_slice_unit_path() as String)
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// The write carries the reservation's ceiling as MemoryMax, the model's zero as the swap floor, and a
+// rendered unit — the ceiling is read from the reservation row (never a hardcoded seat count), so the
+// srv3/srv4 cap moves when the row does.
+test fn install_slice_carries_ceiling_swap_floor_and_unit() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: slice_uncapped_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          match filter(plan_writes(plan), x => is_install_slice(x)) {
+            Cons { head: InstallUserWorkSlice { unit_name: _, unit_path: _, memory_max: mmax, memory_high: _, memory_swap_max: mswap, expected_content: content }, tail: _ } =>
+              byte_size_count(b: mmax) == byte_size_count(b: user_work_slice_memory_max_for_host(host: d.host))
+                && byte_size_count(b: mswap) == 0
+                && string_contains(s: content, pattern: "MemoryMax")
+                && string_contains(s: content, pattern: "MemorySwapMax")
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// The slice write sorts ahead of the binary write: converge_order places rank 8 before rank 9, so the
+// executor reaches the slice first and a slice that never settles stops the pass before the binary.
+test fn install_slice_sorts_before_serve_binary() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: slice_uncapped_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          match filter(plan_writes(plan), x => is_install_slice(x)) {
+            Cons { head: slice, tail: _ } => {
+              let ranked = converge_kind_rank(slice) < converge_kind_rank(b3_binary())
+              match converge_order([b3_binary(), slice]) {
+                Cons { head: h0, tail: Cons { head: h1, tail: _ } } => ranked && is_install_slice(h0) && is_install_binary(h1)
+                _ => false
+              }
+            }
+            Empty => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// RED CONTROL. A slice control nobody could read is an UNKNOWN, not drift: the same host with only the
+// memory.max read REFUSED (an ssh/sudo failure -- high/swap unchanged from the uncapped control) must plan
+// NO InstallUserWorkSlice. This is the minimal-delta opposite of uncapped_slice_plans_exactly_one_install_leg
+// (there max is established-unbounded -> exactly one install; here it is refused -> none), so a refused read
+// can never masquerade as 'uncapped' and drive an install toward a cgroup nobody read.
+fn slice_refused_max_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice.memory_max", cause: "ssh refused" } },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  )
+}
+
+test fn refused_slice_max_plans_no_install_leg() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: slice_refused_max_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          length(filter(plan_writes(plan), x => is_install_slice(x))) == 0
+        }
+      }
+    }
+  }
+}
+
+// After the unit file is installed, the leg hands systemd exactly two verbs in order: daemon-reload (so
+// systemd reads the new unit) THEN start (so the slice's cgroup exists). daemon-reload alone never
+// instantiates a never-active slice's cgroup, so without the start the cgroup readback would wait on a
+// directory that never appears. Both reach the serving ACCOUNT's user manager via the --machine=UID@
+// connector (bare --user would reload root's manager), and the start names the reader's own slice, so the
+// settled cgroup is the very unit the wrap binds into. install (upload) and the cgroup readback bracket
+// these two structurally in the wet leg; this fixes their order and content so leg and reader cannot drift.
+test fn install_slice_reloads_then_starts_the_reader_unit() -> Bool {
+  let uid = 4242
+  let verbs = user_work_slice_install_command_argv(uid: uid)
+  let connector = systemctl_user_machine_connector(uid: uid)
+  let reload_is_first = match verbs.first() {
+    Absent => false
+    Present { value: v } => {
+      let j = join(v, " ")
+      string_contains(s: j, pattern: "daemon-reload") && string_contains(s: j, pattern: "--user") && string_contains(s: j, pattern: connector) && string_contains(s: j, pattern: "start") == false
+    }
+  }
+  let start_is_last = match reverse(verbs).first() {
+    Absent => false
+    Present { value: v } => {
+      let j = join(v, " ")
+      string_contains(s: j, pattern: "start") && string_contains(s: j, pattern: user_work_slice_unit_name) && string_contains(s: j, pattern: "--user") && string_contains(s: j, pattern: connector)
+    }
+  }
+  verbs.length() == 2 && reload_is_first && start_is_last
+}
+
+// Fixture caps: a settled observation carries the ceiling's value, its derived high, and the forbidden
+// swap; these build the two value caps the settle demands (a settled slice reads capped, an uncapped one
+// is built directly with unbounded caps).
+fn settled_slice_max(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> { ObservationEstablished { observed: CgroupMemoryLimited { bytes: ceiling } } }
+fn settled_slice_high(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimitValue, ServingLegFailure> {
+  match user_work_slice_memory_high_of(memory_max: ceiling) {
+    UserWorkSliceHighDerived { bytes: h } => ObservationEstablished { observed: CgroupMemoryLimited { bytes: h } }
+    UserWorkSliceHighGapExceedsMax => ObservationEstablished { observed: CgroupMemoryLimited { bytes: byte_size(0) } }
   }
 }
 
@@ -1063,7 +1334,7 @@ test fn the_recorded_identity_is_the_documented_two_member_object() -> Bool {
 // binary that did not land.
 test fn the_identity_is_ranked_after_the_binary_install() -> Bool {
   let ident = RecordServeIdentity { install_path: "/srv/gunbc/bin/gunbc", revision: pin_rev(), sha256: pin_sha() }
-  converge_kind_rank(ident) == 9 && converge_kind_rank(b3_binary()) == 8 && converge_kind_rank(ident) > converge_kind_rank(b3_binary())
+  converge_kind_rank(ident) == 10 && converge_kind_rank(b3_binary()) == 9 && converge_kind_rank(ident) > converge_kind_rank(b3_binary())
 }
 
 // RED CONTROL on dedup: the identity keyed by its path is NOT the binary's key for that same path, so
