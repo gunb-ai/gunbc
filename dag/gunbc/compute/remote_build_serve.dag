@@ -19,9 +19,10 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, source_root_read_file,
+  Filesystem,
   FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
 }
+import gunbc.source_root_read { source_root_read_file }
 import extdeps.languages.json.emit { JsonValue, JsonObject, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
@@ -322,8 +323,10 @@ fn serve_receipt_with_identity(document: String, identity: ServeBinaryIdentity) 
   }
 }
 
-// The answer goes out with the identity folded in, or is refused outright when a present identity file
-// cannot be read -- a damaged sidecar is a refusal the client hears, not a clean receipt that omits it.
+// Reached ONLY for a completed serve (the caller gates on ServeServed), so the one ending a refused
+// identity can overwrite is the success the identity attests. A damaged sidecar is answered as
+// ServeRequestRefused rather than a clean receipt that omits who served it, and rather than a silent
+// re-use of ServeServed: a serve you cannot vouch for is not a serve (gunbc.design_argument::fail_closed).
 fn remote_build_serve_identity_answer(ending: RemoteBuildServeEnding, document: String, identity: ServeBinaryIdentity) -> CliWireResponse {
   match serve_receipt_with_identity(document: document, identity: identity) {
     ReceiptAugmented { document: text } => remote_build_serve_answer(ending: ending, text: text)
@@ -333,13 +336,28 @@ fn remote_build_serve_identity_answer(ending: RemoteBuildServeEnding, document: 
 
 fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
   let build = remote_build_provide_on(instance: instance, request: request, op: remote_build_dependency_operation())
-  let identity = read_serve_binary_identity(serve_binary: instance.serve_binary as String)
   match remote_build_ending_of_provide(r: build) {
     ServeServed => {
       let result = remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation))
-      remote_build_serve_identity_answer(ending: remote_build_ending_of_provide(r: result), document: provide_result_document(r: result), identity: identity)
+      let work_ending = remote_build_ending_of_provide(r: result)
+      match work_ending {
+        // Only a run the serving binary COMPLETED gets an identity folded in -- it is the answer to
+        // "which binary served this", and the one outcome the identity machinery may touch. A damaged
+        // sidecar then REFUSES that success claim (you cannot attest a clean serve you cannot vouch for);
+        // no build outcome is lost, because the only ending it can overwrite is the success it attests.
+        ServeServed => remote_build_serve_identity_answer(
+          ending: ServeServed,
+          document: provide_result_document(r: result),
+          identity: read_serve_binary_identity(serve_binary: instance.serve_binary as String),
+        )
+        // Not served (unsuccessful, refused, host full, in flight): the work's OWN typed outcome is the
+        // answer, untouched. The serving binary never attested a success here, so there is nothing to
+        // vouch for and a present-but-broken identity file must not overwrite the work's verdict.
+        _ => remote_build_serve_answer(ending: work_ending, text: provide_result_document(r: result))
+      }
     }
-    _ => remote_build_serve_identity_answer(ending: remote_build_ending_of_provide(r: build), document: provide_result_document(r: build), identity: identity)
+    // The dependency build did not serve: its ending IS the work's answer, identity aside.
+    _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
   }
 }
 
