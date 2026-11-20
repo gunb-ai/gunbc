@@ -69,6 +69,7 @@ fn would_dial(st: ApprovalOriginStanding) -> List<String> {
     ApprovalOriginUnresolved { cause: _ } => []
     ApprovalExecutorNotTheOriginHost { origin_host: _, executor_host: _ } => []
     ApprovalExecutorHostUnobserved { reason: _ } => []
+    ApprovalOriginHostUnresolved { origin_host: _, reason: _ } => []
   }
 }
 

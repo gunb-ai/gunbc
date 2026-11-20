@@ -1,10 +1,10 @@
 module gunbc.emitted_subject_build_gate
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, Int }
 import std.algebra { list_append, list_map }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.realization_width { byte_size_saturating_sub }
-import extdeps.bazel.label { Label, render_label }
+import extdeps.bazel.label { Label, render_label, label_structural_eq }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import gunbc.instrument_targets { self_host_label, v2_native_cli_label }
@@ -86,13 +86,40 @@ type EmittedSubjectBuildRow {
 // neither of which an id admits -- so deriving one from the other means authoring a mangling rule
 // whose only consumer is this list. Two rows say the same thing with no rule to maintain, and the
 // pairing stays visible at the one place a subject is added.
+data emitted_subject_self_host_step_id: String = "emit_build_self_host"
 data emitted_subject_v2_native_cli_step_id: String = "emit_build_v2_native_cli"
 
 fn emitted_subject_build_rows() -> List<EmittedSubjectBuildRow> {
   [
-    EmittedSubjectBuildRow { label: self_host_label(), step_id: "emit_build_self_host" },
+    EmittedSubjectBuildRow { label: self_host_label(), step_id: emitted_subject_self_host_step_id },
     EmittedSubjectBuildRow { label: v2_native_cli_label(), step_id: emitted_subject_v2_native_cli_step_id },
   ]
+}
+
+// WHICH ROW CARRIES THIS LABEL, ANSWERED BY THE ROWS THEMSELVES. Every door that turns a label someone
+// typed into a gate subject has to ask this question, so it is answered ONCE here, next to the rows: the
+// label the caller parsed is compared to each row's own Label with extdeps.bazel.label's structural
+// equality -- the module that owns the grammar owns the comparison, and string equality on renderings
+// would let two spellings of one label mean two things. Absence is not a defect of the label: it is a
+// well-formed label for something the required gate does not have, and the caller refuses with that
+// fact rather than substituting a nearby row.
+type EmittedSubjectRowLookup
+  = EmittedSubjectNoRow
+  | EmittedSubjectOneRow { row: EmittedSubjectBuildRow }
+  | EmittedSubjectDuplicateRows { count: Int }
+
+// A DUPLICATE IS A DEFECT OF THIS TABLE, AND IS ANSWERED AS ONE. Returning "no row" for a label the
+// table carries twice would hand the far end a FALSE FACT -- the requester's label is a row, twice --
+// and the defect in this module would be blamed on the input, which is the direction fail_closed
+// forbids: a wrong answer must be loud, typed and LOCATED. The count travels so the refusal is
+// countable at whoever surfaces it.
+fn emitted_subject_build_row_for_label(l: Label) -> EmittedSubjectRowLookup {
+  let matches = filter(emitted_subject_build_rows(), row => label_structural_eq(a: row.label, b: l))
+  match matches {
+    Empty {} => EmittedSubjectNoRow
+    Cons { head: row, tail: Empty {} } => EmittedSubjectOneRow { row: row }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => EmittedSubjectDuplicateRows { count: count(matches) }
+  }
 }
 
 // THE LABEL TEXT IS RENDERED FROM THE DECLARATION, never typed. `render_label` is the upstream

@@ -237,14 +237,13 @@ fn slot_of_instance(instance: String) -> RunnerSlotIdentity? {
 // a unit for srv1-13 started on any other machine refuses before reading anything else.
 fn bind_slot_host(slot: RunnerSlotIdentity) -> MicrovmHostBinding {
   match hostname_short_read(transport: LocalShell) {
+    // A failed probe is this site's fact and stays its own refusal. An EMPTY answer is not: it goes to the
+    // rule as the string it is, so "the machine named nothing" is said once, in gunbc.hostname_allocation,
+    // rather than re-tested here with a locally-invented reason next to the rule's own.
     HostnameShortCaptureRefused { reason: r } =>
       MicrovmHostBindingRefused { cause: HostObservationFailed { reason: r } }
     HostnameShortCaptured { value: v } =>
-      if trim(s: v) == "" {
-        MicrovmHostBindingRefused { cause: HostObservationFailed { reason: "hostname -s returned empty output" } }
-      } else {
-        microvm_host_binding_of(expected: slot.host as NonEmptyStr, observed: trim(s: v) as NonEmptyStr)
-      }
+      microvm_host_binding_of(expected: slot.host as String, observed: trim(s: v))
   }
 }
 
@@ -775,7 +774,7 @@ fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir
         Present { value: slot } => if slot != provenance.slot {
           workspace_commissioning_slot_refused(reason: "credential names a different slot from its unit")
         } else { match bind_slot_host(slot: slot) {
-          MicrovmHostBindingRefused { cause } => workspace_commissioning_slot_refused(reason: cause)
+          MicrovmHostBindingRefused { cause } => workspace_commissioning_slot_refused(reason: microvm_host_binding_refusal_text(c: cause))
           MicrovmHostBound { spec, host: _ } => match resolve_network_subject(slot: slot) {
             NetworkSubjectRefused { refusal } => workspace_commissioning_slot_refused(reason: refusal_text(r: refusal))
             NetworkSubjectResolved { subject } => match workspace_observe_commissioning_admission(

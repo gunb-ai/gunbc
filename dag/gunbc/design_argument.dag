@@ -395,8 +395,7 @@ data conformance_domains: List<ConformanceDomain> = [
       "a status, count, duration or refusal cause built into an ad hoc formatted message instead of a typed event field the renderer projects",
       "presentation assignment (glyph, attention, grouping, human units) rebuilt at the emit site rather than read from ObservationPresentation and the renderer",
       "a reader that parses human prose as an undeclared wire contract, or a producer cut over while its reader still expects the old shape",
-      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause",
-      "a site recorded as migrated in gunbc.observation_emit_census while the active producer bypasses the projection the row names"
+      "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause"
     ],
     owns: "Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.",
     boundaries: [
@@ -496,6 +495,37 @@ data conformance_domains: List<ConformanceDomain> = [
           },
         },
       ],
+    },
+  },
+  ConformanceDomain {
+    key: "conformance-phase-admission",
+    label: "Phase admission",
+    question: "Does the change hand a later stage a carrier that only the earlier stage's own function can construct -- or can a bare representation (a Node, a map, a list of facts) be presented as if a phase had established it?",
+    tells: [
+      "a stage's input type is an alias of a raw representation (a Node, a facts table) rather than a sealed carrier",
+      "a second constructor for a phase carrier outside the function that establishes the phase",
+      "a partial analysis (a not-derived grounding, an unresolved provider, a deferred obligation) reaching evaluation or emission because no checked carrier stands between them",
+      "a roster of tolerated unknowns standing where a carrier with no constructor for the unknown was available"
+    ],
+    owns: "The admission of each compiler phase: a phase is a carrier type whose only constructor is the function that establishes it (the sole_constructor modifier), so the states are types and the transitions are the only constructors (gunbc.design_ruling::phase_admission_is_a_conformance_pattern, operator 2026-11-17). Evaluation and emission consume only the checked carrier.",
+    boundaries: [
+      "What a phase establishes (its judgments) belongs to the phase's own module; this domain owns only that nothing bypasses its admission.",
+      "Tooling may read partial analyses; a build may not.",
+    ],
+    home_groups: FreeSemigroup {
+      head: ConformanceHomeGroup {
+        label: "Sealed phase carriers",
+        purpose: "the existing carriers with one constructor each",
+        homes: FreeSemigroup {
+          head: decl_ref(module_path: "v2.compiler.normalized_tree", decl_name: "NormalizedTree"),
+          tail: [
+            decl_ref(module_path: "v2.compiler.normalized_tree", decl_name: "CensusTree"),
+            decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "BodyLoweredTree"),
+            decl_ref(module_path: "v2.compiler.module_acquisition", decl_name: "HeldSourceRead"),
+          ],
+        },
+      },
+      tail: [],
     },
   },
 ]
@@ -860,6 +890,22 @@ data continuous_generalization: DesignRow = design_row(
   review: NotReviewableOnChange { reason: "judged as the converse half of the root-generalization question" },
 )
 
+data planning_has_one_home: DesignRow = design_row(
+  name: "planning_has_one_home",
+  title: "Planning has one home",
+  statement: "A plan is a typed fact with one home: its `.dag` carrier in this repository is the only planning authority, every surface that shows a plan must render it rather than keep a copy, no build or generated output may depend on it, and a plan or planning store with no live consumer is deleted rather than kept.",
+  premises: ["single_authority", "minimize_redundancy", "consumption", "how_to_work"],
+  review: NotReviewableOnChange { reason: "a second planning home is judged by single-authority (a fork of what is planned), a plan nothing reads by consumption, and plan data on a build path by how-to-work (cost spent on every change for no consumer)" },
+)
+
+data plans_are_intentions: DesignRow = design_row(
+  name: "plans_are_intentions",
+  title: "Plans are intentions",
+  statement: "A plan is an intention -- the direction the repository should take, why, and what will be true of it when that is achieved -- and formal work opts into it by naming the intention it serves and the work items it owns, a work item being done only when its acceptance is recorded by the manager of the owning session (or, with no manager, by escalation to the operator), while how the intention is realized is downstream and replaceable and ad hoc work is admitted outside the process.",
+  premises: ["planning_has_one_home", "selection_precedes_convergence", "consumption", "epistemic_humility"],
+  review: NotReviewableOnChange { reason: "a plan that carries its own realization or status is judged by single-authority, and a done-when stated as fact that is only a judgement by epistemic-humility; whether a formal change names its intention is read from its brief and PR" },
+)
+
 // ── Self-hosting ────────────────────────────────────────────────────────────────────────────────
 
 data self_hosting: DesignRow = design_row(
@@ -900,6 +946,8 @@ data design_body_rows: List<DesignRow> = [
   earliest_unjustified_boundary,
   root_generalization,
   continuous_generalization,
+  planning_has_one_home,
+  plans_are_intentions,
   self_hosting,
 ]
 

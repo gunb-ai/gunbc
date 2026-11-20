@@ -19,6 +19,7 @@ import gunbc.systemctl_show_read {
 import gunbc.host.host_effect { LocalShell }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
 }
@@ -352,26 +353,28 @@ fn host_memory_envelope_observe_ci_wet() -> ProcessExit
     ))
   } else {
     let kernel = local_kernel_hostname()
-    if kernel != dispatched {
-      exit_failure(reason: join([
-        "host_memory_envelope_observe: dispatch host ",
-        dispatched,
-        " is not this kernel hostname ",
-        kernel,
+    // THE KERNEL'S ANSWER IS A NAME, NOT THE IDENTITY: it resolves through the allocation's selector
+    // (gunbc.hostname_allocation::observed_host_selector_join), and the observation runs under the
+    // RESOLVED identity. srv14 answers "butch" and is still srv14; the old string comparison refused
+    // exactly that host, and a rename would refuse whichever host the name moves to next.
+    match observed_host_selector_join(expected: dispatched, observed: kernel) {
+      ObservedHostSelectorJoinRefused { cause: c } => exit_failure(reason: join([
+        "host_memory_envelope_observe: ",
+        observed_host_join_refusal_text(cause: c),
       ], ""))
-    } else {
-      match host_memory_envelope_observe_local(host: dispatched as HostIdentity) {
-        HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
-        HostMemoryEnvelopeObserved { observation: obs } => {
-          let text = host_memory_envelope_receipt_text(obs: obs)
-          let w = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)
-          if w.success == false {
-            exit_failure(reason: join(["host_memory_envelope_observe: receipt write failed: ", w.error, "\n", text], ""))
-          } else {
-            ExitSuccess
+      ObservedHostSelectorAgreed { host: identity } =>
+        match host_memory_envelope_observe_local(host: identity) {
+          HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
+          HostMemoryEnvelopeObserved { observation: obs } => {
+            let text = host_memory_envelope_receipt_text(obs: obs)
+            let w = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)
+            if w.success == false {
+              exit_failure(reason: join(["host_memory_envelope_observe: receipt write failed: ", w.error, "\n", text], ""))
+            } else {
+              ExitSuccess
+            }
           }
         }
-      }
     }
   }
 }

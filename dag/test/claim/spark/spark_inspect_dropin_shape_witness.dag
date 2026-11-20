@@ -1,5 +1,6 @@
 module test.claim.spark.spark_inspect_dropin_shape_witness
 
+import gunbc.spark.spark_ci_step { gunbc_ci_spark_grants_observe_invoke }
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import std.algebra { length }
@@ -17,6 +18,7 @@ import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
 import gunbc.fleet.fleet_converge_workflow {
   SparkGrantsObserve, FleetSshKeyConsumed, FleetSshKeyNotConsumed,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
+  fleet_converge_spark_target_options, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes,
   fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
 }
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, SparkGrantOutcome, GrantEnumerated, GrantProbeRefused, spark_managed_grant_sudoers_command }
@@ -28,7 +30,8 @@ import gunbc.spark.grant_privileged_operation {
 }
 import gunbc.remote_operation { RemoteStepUnattempted }
 import gunbc.spark.bootstrap_credential { CredentialMaterializationPending }
-import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
+import gunbc.instruments.ci_run_step_roster { gunbc_run_step_targets }
+import std.decl_ref { decl_ref, declaration_ref_eq }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
 // alone; a host converged by the #13040 installer carries per-container files and no shared one.
@@ -115,17 +118,39 @@ test fn w_group_b_listing_shape_reads_shared_alone() -> Bool {
 // ── the convergence route ─────────────────────────────────────────────────────────────────────
 //
 // The operator's condition (2026-10-05): every Spark's grant listing is read by convergence. These
-// pin the route: the mode is a dispatch option, its step runs exactly the probe entry over the
+// pin the route: the mode is rostered and reaches the dispatch menu whenever the fleet has a Spark in
+// it, its step runs exactly the probe entry over the
 // registered run target, the step is gated on that mode alone, and the mode consumes the fleet key
 // (it reads over ssh) while declaring no host scope (it reads every procured Spark).
 
+// THE MODE IS ON THE ROSTER, AND ITS DISPATCH OPTION IS PRECISELY AS PRESENT AS THE FLEET HAS SPARKS.
+//
+// The row read `any(fleet_converge_mode_options, o => o == "spark_grants_observe")` -- membership with
+// no condition on it -- and that cannot hold while the fleet has no Spark in it:
+// fleet_converge_dispatchable_modes withholds EVERY spark-target mode while
+// gunbc.spark.credential_workflow.spark_administrator_credential_roster is empty, which is the
+// sold-out fleet (its own comment: "srv5-srv12 (every Spark) are sold"). The withholding is deliberate
+// and is walled from the other side by
+// test.claim.workflow_dispatch_input_witness.empty_spark_roster_does_not_emit_an_empty_choice_or_spark_dispatch_modes,
+// which asserts spark modes are ABSENT from those same options. Both rows cannot be green at once, so
+// the unconditional row was the stale one: it recorded the operator's condition above -- every Spark's
+// grant listing is read by convergence -- as a property of the mode, when it is a property of a fleet
+// that has Sparks in it.
+//
+// What the route actually owes, and what is pinned here: the mode is an arm of the closed roster with
+// the wire string dispatchers pass; and that wire is on the menu exactly when at least one Spark is
+// enrolled. The biconditional is the point -- red if a Spark returns to the roster and the mode still
+// fails to appear, red if the mode appears while no Spark can be reached, and it goes green on its own
+// the day a Spark is enrolled, with no edit and no remembered follow-up.
 test fn w_grants_observe_is_a_dispatch_mode() -> Bool {
-  any(fleet_converge_mode_options, m => m == "spark_grants_observe")
+  let wire = "spark_grants_observe"
+  any(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == wire)
+    && (any(fleet_converge_mode_options, o => o == wire) == (length(fleet_converge_spark_target_options) > 0))
 }
 
 test fn w_grants_observe_runs_the_probe_entry() -> Bool {
   length(filter(gunbc_run_step_targets(), t =>
-    t.entry == "dag/gunbc/fleet/fleet_multi_principal_probe.dag" && t.function == "spark_exact_grant_probe_ci_wet")) == 1
+    declaration_ref_eq(a: t.declaration, b: decl_ref(module_path: "gunbc.fleet.fleet_multi_principal_probe", decl_name: "spark_exact_grant_probe_ci_wet")))) == 1
     && contains(gunbc_ci_spark_grants_observe_invoke(), "spark_exact_grant_probe_ci_wet")
     && contains(gunbc_ci_spark_grants_observe_invoke(), "target/spark-exact-grant-probe-receipt.txt")
 }

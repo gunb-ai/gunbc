@@ -1,7 +1,9 @@
 module gunbc.host.host_layout
 
 import std.types { String, NonEmptyStr, FilePath }
+import std.optional { Absent, Present }
 import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import gunbc.managed_directory { ManagedDirectory, attempt_state_directory_at }
 import gunbc.provider_account {
   codex_account_state_root,
@@ -86,6 +88,22 @@ data srv1_dispatch_worktree_root: FilePath = "/opt/gunbc/dispatch-worktrees" as 
 data operator_home_root: FilePath = "/home/briansrls" as FilePath
 
 data srv1_dispatch_attempt_state_root: FilePath = "/opt/gunbc/attempt-state" as FilePath
+
+// THE TRACKER-WEB OIDC SERVE CONFIG DOCUMENTS ARE PROJECTED FROM HERE, like every path the deploy
+// writes (the rule this file states above: a host path the belt writes is a deployment member,
+// projected from here -- never spelled at its point of use). The document is a composed deploy member
+// (gunbc.live_deploy ComposeOwned OidcConfigArtifact), a world-readable NON-credential: the composed
+// text names the client id, the instance's redirect URI, the admitted audience set, the expected hosted
+// domain, the lifetimes, and the PATH of its client secret -- never the secret bytes. Its client secret
+// stays custody's, in the operator-only /etc/gunbc-oidc (dir_ownership custody_operator_only, dir_mode
+// DirectoryOwnerOnly) per gunbc.fleet.host_credential_custody_roster. The document was MOVED OUT of
+// that operator-only directory because a deployment member cannot live in a directory another authority
+// owns 0700: the deploy's host-arm observation reads the member as the runner principal, so its parent
+// must be world-traversable and the file world-readable -- exactly this root's `install -d` shared /
+// `install` file shared posture, never the operator's owner-only one. Placing it inside the operator dir
+// both refused observation (ghrunner cannot enter a 0700 briansrls dir) and, via the deploy's
+// `install -d -m 0755` directory leg, would have LOOSENED that operator-only directory.
+data srv1_gunbc_oidc_config_root: FilePath = "/opt/gunbc/oidc" as FilePath
 
 // SRV1'S PLACEMENT OF THE ATTEMPT-STATE DIRECTORY ROW: what the directory requires is stated once,
 // in gunbc.managed_directory attempt_state_directory_at; only its location is srv1's, and that is
@@ -297,6 +315,28 @@ data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as Non
 // two-consumers-across-a-boundary reason: gunbc.fleet.fleet_converge_cli publishes under it;
 // gunbc.fleet.fleet_receipt_collector reads back. Homing the path in either consumer would drag
 // the other's closure behind an import cycle.
+// THE PER-HOST BMC PATHS, DERIVED FROM THE MACHINE'S NAME IN THE REGISTRY. `/etc/gunbc/bmc-known-hosts/<name>`
+// and `/etc/gunbc/bmc-identities/<name>-machine-id` are files on a MACHINE, so they are named from that
+// machine's human name read out of gunbc.hostname_allocation.fleet_machine_registry -- never from the
+// handle cast (gunbc.plans.fleet_machine_authority 2.3, D12: a handle is opaque; only the registry row's
+// name may be shown). Renaming a fleet machine in the registry must move these paths and nothing may
+// keep an old form. A machine with no registry row returns Absent; the caller refuses with its own cause
+// rather than substituting a path (gunbc.design_argument::fail_closed). These are the ONE derivation site
+// for these two kinds; the bmc fan-converge targets and any other consumer call through them.
+fn bmc_known_hosts_path(machine: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
+    Absent => Absent
+    Present { value: name } => Present { value: concat("/etc/gunbc/bmc-known-hosts/", name as String) as NonEmptyStr }
+  }
+}
+
+fn bmc_identity_path(machine: HostIdentity) -> NonEmptyStr? {
+  match canonical_hostname_for_fleet_slot(fleet_slot: machine) {
+    Absent => Absent
+    Present { value: name } => Present { value: concat("/etc/gunbc/bmc-identities/", name as String, "-machine-id") as NonEmptyStr }
+  }
+}
+
 data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 
 // THE PER-INSTANCE RECEIPTS DIRECTORY, derived from an instance root rather than spelled.
@@ -312,8 +352,8 @@ data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 // became a parameter and the directory holding it stayed a literal. That fork is PRE-EXISTING
 // and is not created here — gunbc.fleet.fleet_converge_cli is parameterized by host, not by
 // instance, so de-forking it needs an instance on that path and is not this change's scope.
-fn instance_receipts_dir(instance_root: String) -> String {
-  join([instance_root, "/receipts"], "")
+fn instance_receipts_dir(instance_root: String) -> NonEmptyStr {
+  join([instance_root, "/receipts"], "") as NonEmptyStr
 }
 
 // THE ATTEMPT-EXIT SPOOL, homed here for the publication spool's reason: it has consumers on both
@@ -333,8 +373,8 @@ fn instance_receipts_dir(instance_root: String) -> String {
 //
 // Derived from the instance root, for instance_receipts_dir's reason: two instances on one host must
 // not read each other's exits.
-fn attempt_exit_spool_root(instance_root: String) -> String {
-  join([instance_root, "/attempt-exit-spool"], "")
+fn attempt_exit_spool_root(instance_root: String) -> NonEmptyStr {
+  join([instance_root, "/attempt-exit-spool"], "") as NonEmptyStr
 }
 
 // `running` holds the entries a live obligation run has CLAIMED (queued -> running is the claim, taken
@@ -364,22 +404,22 @@ fn attempt_exit_stall_record_path(instance_root: String) -> String {
 // (gunbc.roadmap.roadmap_dispatch_spool / publication_spool_* here); claim-by-rename of a directory
 // entry into a requester-unwritable stage, the exit spool's queued -> running move
 // (`mv -T` / shell.Move.NoReplaceDirectory — dest that already exists as a directory refuses).
-fn attempt_unit_spool_root(instance_root: String) -> String {
-  join([instance_root, "/attempt-unit-spool"], "")
+fn attempt_unit_spool_root(instance_root: String) -> NonEmptyStr {
+  join([instance_root, "/attempt-unit-spool"], "") as NonEmptyStr
 }
 
-fn attempt_unit_spool_staging_dir(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/requests-staging"], "")
+fn attempt_unit_spool_staging_dir(instance_root: String) -> NonEmptyStr {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/requests-staging"], "") as NonEmptyStr
 }
 
-fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
+fn attempt_unit_spool_answer_dir(instance_root: String) -> NonEmptyStr {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "") as NonEmptyStr
 }
 
 // `stalled` holds the attempt-unit drain's stall record, the same line stop as the exit spool's
 // (gunbc.roadmap.spool_stall): the drain service is skipped by ConditionDirectoryNotEmpty=!<stalled> while it exists.
-fn attempt_unit_spool_stalled_dir(instance_root: String) -> String {
-  join([attempt_unit_spool_root(instance_root: instance_root), "/stalled"], "")
+fn attempt_unit_spool_stalled_dir(instance_root: String) -> NonEmptyStr {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/stalled"], "") as NonEmptyStr
 }
 
 fn attempt_unit_spool_stall_record_path(instance_root: String) -> String {
@@ -406,12 +446,12 @@ fn attempt_unit_spool_stall_record_path(instance_root: String) -> String {
 // forge an answer -- a publication receipt the belt would then copy to the attempt's own address as
 // though GitHub had been asked. The split is what makes that forgery unwritable rather than merely
 // unlikely.
-fn publication_spool_root(instance_root: String) -> String {
-  join([instance_root, "/publication-spool"], "")
+fn publication_spool_root(instance_root: String) -> NonEmptyStr {
+  join([instance_root, "/publication-spool"], "") as NonEmptyStr
 }
 
-fn publication_answer_dir(instance_root: String) -> String {
-  join([publication_spool_root(instance_root: instance_root), "/answers"], "")
+fn publication_answer_dir(instance_root: String) -> NonEmptyStr {
+  join([publication_spool_root(instance_root: instance_root), "/answers"], "") as NonEmptyStr
 }
 
 // A THIRD DIRECTORY BECAUSE A REQUEST THE HELPER CANNOT DECODE IS NEITHER PENDING NOR ANSWERED.

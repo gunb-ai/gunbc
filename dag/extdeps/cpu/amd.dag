@@ -1,7 +1,7 @@
 module extdeps.cpu.amd
 
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited }
-import std.decl_ref { decl_field_ref }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { decl_field_ref, DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types {
   cpu_tdp_unread_standing,
@@ -19,6 +19,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.amd.com/en/products/processors/desktops/ryzen.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.amd",
+      decl_name: "amd_zen2_l1_cache_geometry",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data amd_ryzen_5_3600_authority: ExternalAuthority = ExternalAuthority {

@@ -5,10 +5,11 @@ import std.optional { Absent, Present }
 import std.measure { Watt, watt, watt_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_11, gpu_board_12, gpu_board_13 }
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
+  NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap,
   current_gpu_device_observations_of,
 }
 
@@ -34,11 +35,34 @@ import gunbc.fleet.gpu_device_observation {
 // An infeasible cap REFUSES: it is never clamped into range, because a clamp would silently change the
 // decision it was asked to realize.
 type GpuPowerCapSelection
-  = OperatorDeclaredCap { cap: Watt, decided_on: NonEmptyStr, said: NonEmptyStr }
+  = OperatorDeclaredCap { cap: Watt, bounds: CappedPowerQuantity, decided_on: NonEmptyStr, said: NonEmptyStr }
+
+// WHAT A CAP BOUNDS: SUSTAINED DRAW, NEVER PEAK DRAW. The operator's ruling of 2026-11-12, on the R9700's
+// 210 W: "we also need to be particular that it's not a peak cap, its a sustained cap". There is deliberately
+// NO peak arm. No driver control in the fleet is documented to bound instantaneous draw -- the amdgpu page
+// documents power1_cap only as "selected power cap" (extdeps.linux.amdgpu_hwmon PowerCapSettingWindowUnstated)
+// -- and on host-6ce85c, under a 210 W power1_cap, 43 of 224 two-second power1_average samples read above
+// 210 W, up to 234 W, while the busy mean was 204 W (gunbc.serving.h11_r9700_strata_bench_receipt). So a
+// cap is not a bound on what the card can draw from its supply in any instant, and a PSU, cable or connector
+// budget reads the board's rated ceiling (extdeps.gpu.types gpu_board_power_ceiling), never a cap.
+//
+// CappedQuantityUnstated is the honest arm for decisions made before the distinction existed: srv1's
+// operators said a number and nothing about its timescale, and that is not rewritten after the fact. (The
+// retired srv14/butch A2 decision was of this same shape; its wording is kept in the retirement note in
+// gunbc.fleet.fleet_physical_inventory, not as a live selection here.)
+type CappedPowerQuantity
+  = SustainedPowerDraw
+  | CappedQuantityUnstated
 
 fn gpu_power_cap_selected(s: GpuPowerCapSelection) -> Watt {
   match s {
-    OperatorDeclaredCap { cap: c, decided_on: _, said: _ } => c
+    OperatorDeclaredCap { cap: c, bounds: _, decided_on: _, said: _ } => c
+  }
+}
+
+fn gpu_power_cap_bounds(s: GpuPowerCapSelection) -> CappedPowerQuantity {
+  match s {
+    OperatorDeclaredCap { cap: _, bounds: b, decided_on: _, said: _ } => b
   }
 }
 
@@ -65,16 +89,26 @@ fn admit_gpu_cap_against(intent: InstalledGpuCapIntent, observation: GpuDeviceOb
         board: intent.board, cap: cap,
         read_obligation: join(["the board does not enumerate (", c as String, "); once it does, read its GPU UUID and power-limit range"], "") as NonEmptyStr,
       }
-      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, power_limit_default: _, read_on: _ } =>
+      GpuDeviceEnumerated { host: _, board: _, gpu_uuid: u, pci_address: _, power_limit_minimum: lo, power_limit_maximum: hi, power_limit_current: _, power_limit_default: _, power_limit_control: k, read_on: _ } =>
         if watt_count(w: cap) < watt_count(w: lo) || watt_count(w: cap) > watt_count(w: hi) {
           GpuCapOutsideDeviceRange { board: intent.board, cap: cap, minimum: lo, maximum: hi }
         } else {
-          match u {
-            Absent => GpuCapDevicePending {
+          match k {
+            // THE ONE MODELED REALIZATION IS nvidia-smi (gunbc.fleet.gpu_power_cap_converge). An amdgpu device's
+            // cap is inside its range and still not admitted: GpuCapAdmitted is what the converge applies and reads
+            // back by UUID, and no converge writes power1_cap. It stays pending with that cause rather than being
+            // admitted into a realization that would refuse it.
+            AmdgpuHwmonPowerCap { attribute: _ } => GpuCapDevicePending {
               board: intent.board, cap: cap,
-              read_obligation: "the device enumerates but its GPU UUID was not read; a cap is addressed by UUID, never by an index or slot that can change" as NonEmptyStr,
+              read_obligation: "the device's limit is the amdgpu hwmon power1_cap and no modeled converge writes it (gunbc.fleet.gpu_power_cap_converge drives nvidia-smi only); a cap written by hand to power1_cap does not survive a driver reload or a reboot" as NonEmptyStr,
             }
-            Present { value: uuid } => GpuCapAdmitted { host: intent.host, board: intent.board, gpu_uuid: uuid, cap: cap }
+            NvidiaSmiPowerLimit => match u {
+              Absent => GpuCapDevicePending {
+                board: intent.board, cap: cap,
+                read_obligation: "the device enumerates but its GPU UUID was not read; a cap is addressed by UUID, never by an index or slot that can change" as NonEmptyStr,
+              }
+              Present { value: uuid } => GpuCapAdmitted { host: intent.host, board: intent.board, gpu_uuid: uuid, cap: cap }
+            }
           }
         }
     }
@@ -108,13 +142,82 @@ fn gpu_cap_admitted(a: GpuCapAdmission) -> Bool {
 
 data srv1_pro_6000_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
   cap: watt(count: 300),
+  bounds: CappedQuantityUnstated,
   decided_on: "2026-11-07" as NonEmptyStr,
   said: "operator: i would just set them both to 300w, the psu is 1600w, we need more sophisticated modeling, but fo rnow i'll just be deciding that manually" as NonEmptyStr,
+}
+
+// srv14/butch's A2 cap decision was retired on 2026-11-17 with the cards themselves. It is NOT restated here as
+// a GpuPowerCapSelection, because a cap with no card and no serving shape asserts a state of affairs that no
+// longer holds, and a declaration nothing consumes is exactly what gunbc.design_argument::consumption refuses.
+// What a retired decision still owes is its provenance, and that is what this note is -- RATIONALE, not a
+// machine claim: nothing in the corpus reads this text, and no verdict depends on it (gunbc.design_argument::
+// source_annotations permits an annotation to hold irreducible rationale for a construction's shape, which is
+// all this is). There is no longer a declaration for a marked reference to resolve against, so the operator's words
+// are recorded here once, as the citation that made the retirement a fact rather than a guess. Decision of
+// 2026-11-10, recorded as OperatorDeclaredCap at 35 W with CappedQuantityUnstated bounds -- the operator said:
+// "operator: 2x2 at 35 W per card; two Strata engines each layer-split across two A2s". 35 W was the driver's lowest SETTABLE power
+// limit (the 2026-11-10 readings report min 35 / default 60 / max 60 W), kept deliberately distinct from the
+// product page's 40-60 W TDP envelope; see the reconciling note above nvidia_a2_board_facts in
+// extdeps.gpu.nvidia_a2, which still carries that range independently of the sold cards. The readings themselves
+// are typed, not quoted: #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations. The removal
+// and the pending sale are typed too:
+// #gunbc.fleet.fleet_physical_inventory::butch_a2s_removed_pending_sale.
+
+// host-6ce85c (h11-a16): the operator's 2026-11-12 decision for its Radeon AI PRO R9700s, a SUSTAINED cap at
+// 210 W -- the lowest the device's power1_cap accepts (its range reads 210-300 W). The operator wants it lower;
+// 210 W is the device's floor, not the operator's target.
+data h11_r9700_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 210),
+  bounds: SustainedPowerDraw,
+  decided_on: "2026-11-12" as NonEmptyStr,
+  said: "operator: i'd want 210 but we also need to be particular that it's not a peak cap, its a sustained cap - i actually want to lower it more but 210 is fine for now" as NonEmptyStr,
+}
+
+// ken (host-e2d4b7): the 100 W number is the OPERATOR'S, relayed to this project on 2026-11-17 ("ken has two
+// GPUs, idle at 43-44 C, with a 100 W power cap applied at boot"). The machine corroborates the number: each
+// of the three functions read on the cards 2026-11-18 sits at Current Power Limit 100.00 W against a 150.00 W
+// default and a 100.00-150.00 W settable range (artifacts/host-observations/ken-gpu-read-2026-11-18/,
+// unit_read3.txt and gpu_identity_query.txt, pinned by SHA256SUMS). What was never said is the TIMESCALE --
+// whether 100 W bounds sustained draw or only what the boot script pushes -- and the question was put to the
+// operator on 2026-11-17 and unanswered at the head of this change. So the bounds arm is
+// CappedQuantityUnstated, the arm this sum provides for a number said without a timescale (see the note above
+// CappedPowerQuantity), and it is NOT rewritten to SustainedPowerDraw after the fact. The machine enforces
+// the number today with a hand-written unit and script that the converge does not own; that gap is register
+// row gunbc.integration_concern::h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express, not a
+// reason to leave the operator's cap out of the model.
+data ken_t10_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 100),
+  bounds: CappedQuantityUnstated,
+  decided_on: "2026-11-17" as NonEmptyStr,
+  said: "two statements agreeing on the number, one relayed and one found on the machine: the operator report relayed by smart-crane-730 on 2026-11-17 ('ken has two GPUs, idle at 43-44 C, with a 100 W power cap applied at boot'), and the header of /usr/local/sbin/t10-power-cap.sh on the unit, which credits the instruction to the operator on 2026-11-15 ('lower their power as low as possible') and implements it as each card's OWN minimum limit -- 100.00 W on all three read functions. The script's authorship is unread: the file does not say who wrote it." as NonEmptyStr,
 }
 
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
+  // srv14/butch had four InstalledGpuCapIntent rows here, each citing one srv14_a2_cap_decision at 35 W. They
+  // are GONE: the operator's 2026-11-17 report says all four A2s were physically removed from butch to be sold
+  // and that butch is CI only, no serving, so there is no serving shape left to cap and no card to cap. The live
+  // a2-power-cap.service that enforced them reads FAILED and is residue for the converge dispatch named in this
+  // PR's follow-up (routed through the butch CI runner lane) -- not a reason to keep an intent row that nothing
+  // can satisfy. Where the two retired records actually live, since neither is restated here: the operator's
+  // decision is quoted below this list at its own retirement note, and the 2026-11-10 device readings that
+  // admitted it are held TYPED -- unchanged, field for field -- in
+  // #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations, which no current-state consumer
+  // folds. They are NOT in current_gpu_device_observations: that list is read as present fact by
+  // admit_gpu_cap_against and by the converge and boot-state paths, and butch enumerates no A2s today.
+  // host-6ce85c: one decision for both R9700s. gpu_board_02 is inside its device's range and PENDING because no
+  // converge writes an amdgpu power1_cap (see admit_gpu_cap_against); it was written by hand on 2026-11-12 and is
+  // lost at the next reboot. gpu_board_03 does not enumerate, so its cap is pending on the device itself.
+  InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_02, selection: h11_r9700_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_6ce85c, board: gpu_board_03, selection: h11_r9700_cap_decision },
+  // ken: the operator's cap over all three read functions. Each admits through the driver's own power-limit
+  // control (NvidiaSmiPowerLimit, addressed by the GPU UUID the read returned), the same route srv1's Max-Q
+  // boards use; the cap sits at the device's own floor, so it is in range on every one of them.
+  InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_11, selection: ken_t10_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_12, selection: ken_t10_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_13, selection: ken_t10_cap_decision },
 ]
 
 fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {

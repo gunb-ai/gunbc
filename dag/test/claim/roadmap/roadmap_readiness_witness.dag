@@ -18,7 +18,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   launch_admission, launch_graph_of_document,
 }
 import gunbc.roadmap.roadmap_presentation {
-  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingSuperseded, work_scheduling,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, work_scheduling,
 }
 import test.claim.roadmap.roadmap_launch_canary_witness { canary_doc }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
@@ -102,7 +102,7 @@ fn admit(id: String) -> LaunchAdmission {
   launch_admission(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
-    graph: launch_graph_of_document(doc: canary_doc(nodes: rw_nodes(), edges: [])),
+    graph: launch_graph_of_document(doc: canary_doc(nodes: rw_nodes(), edges: []), accepted: [], withheld: []),
     merged: [],
     node_id: id,
     reserved: 0,
@@ -110,7 +110,7 @@ fn admit(id: String) -> LaunchAdmission {
 }
 
 fn page(id: String) -> WorkScheduling {
-  work_scheduling(rn: rw_node(id: id), nodes: rw_nodes(), edges: [])
+  work_scheduling(rn: rw_node(id: id), nodes: rw_nodes(), edges: [], accepted: [], withheld: [])
 }
 
 fn labels(missing: List<ReadinessGap>) -> List<String> {
@@ -133,7 +133,6 @@ fn page_missing_exactly(id: String, gap: String) -> Bool {
       labels(missing: missing) == [gap]
         && readiness_text(r: NotReady { missing: missing }) == concat("not ready: missing ", gap)
     SchedulingReady => false
-    SchedulingSuperseded => false
   }
 }
 
@@ -146,8 +145,7 @@ test fn a_node_with_every_fact_is_dispatchable_at_admission_and_on_the_page() ->
     && (match page(id: "rw-ready") {
       SchedulingReady => true
       SchedulingNotReady { missing: _ } => false
-      SchedulingSuperseded => false
-    })
+      })
 }
 
 // (2) Each absent fact is named, by the same value, at both surfaces.
@@ -177,7 +175,6 @@ test fn a_stubbed_project_is_not_ready_on_three_facts() -> Bool {
   match page(id: "rw-project") {
     SchedulingNotReady { missing } => labels(missing: missing) == ["centering", "dispatch binding", "contract"]
     SchedulingReady => false
-    SchedulingSuperseded => false
   }
 }
 
@@ -213,4 +210,16 @@ test fn an_unmet_prerequisite_keeps_the_closing_check_task_unminted() -> Bool {
   let edges = [RoadmapEdge { child: "rw-only-contract" as NonEmptyStr as RoadmapNodeId, parent: "rw-ready" as NonEmptyStr as RoadmapNodeId }]
   count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: [], withheld: [])) == 0
     && count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: ["rw-ready" as NonEmptyStr as RoadmapNodeId], withheld: [])) == 1
+}
+
+// THE SAME EDGE, THE PARENT HELD OFF THE FRONTIER. A parent the log retired has left the plan, and the
+// frontier says so by putting it in withheld (roadmap_model node_ids_held_off_active_frontier unions the
+// log's retired ids); roadmap_spawner node_closes_dependency states what follows for a child: with its
+// edge gone it stops being a parent the child must wait on. So the claim above's edge, with the parent
+// withheld, MUST mint: the child's only remaining gap is its contract. Before the parent index was built
+// over the graph the plan shows, this read 0 -- the node whose parent was retired never got its closing
+// check while the board showed it as startable, which is one question answered two ways.
+test fn a_parent_held_off_the_frontier_still_mints_the_closing_check_task() -> Bool {
+  let edges = [RoadmapEdge { child: "rw-only-contract" as NonEmptyStr as RoadmapNodeId, parent: "rw-ready" as NonEmptyStr as RoadmapNodeId }]
+  count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: [], withheld: ["rw-ready" as NonEmptyStr as RoadmapNodeId])) == 1
 }

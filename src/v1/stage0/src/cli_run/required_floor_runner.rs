@@ -882,8 +882,8 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
         // changed witness regardless of any exclusion (cause=ChangedWitnessOutsidePreparedSubject),
         // which is what stops this list being an escape hatch a witness can opt into on the commit
         // that introduces it. A corpus-priced assertion therefore is not authored as a witness at
-        // all; v2.lens.complexity_accumulator_copy.corpus_census is the worked example, and it
-        // carries its own next-rung trigger.
+        // all; v2.lens.complexity_accumulator_copy.corpus_census was the worked example (it was
+        // retired on 2026-11-10 with the census machinery).
     ]
 }
 

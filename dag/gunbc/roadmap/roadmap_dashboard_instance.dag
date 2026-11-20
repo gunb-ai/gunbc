@@ -320,6 +320,25 @@ type HostDashboardInstance {
   // worker cap carried before the split, so builds and the build pool are unchanged. Not yet host-scoped:
   // that redesign is the remote-build program's PR 4.
   compute_build_memory_ceiling: ByteSize
+  // THE BELT OBLIGATION UNIT'S MEMORY BUDGET, A SEPARATE FACT from the worker-session cap above.
+  // The obligation unit runs `gunbc run` entry points (compile, test, publish) inside its own cgroup;
+  // it is NOT a worker session and its budget is not governed by the worker-session policy figure.
+  // Measured peak on srv1-lab: 9.4-9.7 GiB (2026-11-08, 11-09). The default (22 GiB) gives ~127%
+  // headroom over the peak and is the pre-#15830 value every instance already used for obligations.
+  // The headroom figure is a policy choice; the operator may rule on a tighter bound.
+  belt_obligation_memory_max: ByteSize
+  // THE REVIEW-ROLE UNIT'S MEMORY BUDGET (reviewer AND auditor), A SEPARATE FACT from the worker-session
+  // cap above, declared beside the obligation budget (#16361 gave obligation units their own). A reviewer
+  // runs the gunbc compiler (`gunbc run` under the harness -- dispatch_review_unit_command), NOT a worker
+  // session, so the worker figure was never honest for it -- and admission arithmetic is only as honest as
+  // the figure it reserves. Measured on the srv1 lab 2026-11-12 (kernel journal 18:50-19:15Z, the
+  // slice-level OOM sweep): reviewer `gunbc` processes reached ~9-10 GiB anon RSS each, ~10 GB at each of
+  // the 37 kills. The default (12 GiB) sits above that observed peak with headroom so a reviewer is killed
+  // by its OWN unit's cap loudly, never by the slice memcg taking out the cohort. This figure is BOTH the
+  // enforced unit MemoryMax (roadmap_dispatch_actuator dispatch_review_unit_properties) AND the per-unit
+  // figure admission reserves against the slice (roadmap_belt_actuate belt_review_cohort_admission) -- one
+  // number, so reserved room always covers what the kernel may actually charge.
+  belt_reviewer_memory_max: ByteSize
   // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (gunbc.design_argument::single_authority). It was
   // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
   // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
@@ -773,6 +792,25 @@ data dispatch_worker_memory_ceiling: ByteSize = byte_size(23622320128)
 // conflated field gave compute before the split; its own row so a worker-cap ruling cannot move it.
 data compute_build_memory_ceiling_default: ByteSize = byte_size(23622320128)
 
+// THE BELT OBLIGATION UNIT'S MEMORY BUDGET, authored apart from the worker cap and the build ceiling.
+// The obligation unit runs `gunbc run` entry points (compile, test, publish) in its own cgroup. Measured
+// peak on srv1-lab: 9.4-9.7 GiB (2026-11-08, 11-09). 22 GiB gives ~127% headroom over the peak and is the
+// pre-#15830 value every instance already used for obligations. The headroom figure is a policy choice;
+// the operator may rule on a tighter bound. DISSOLVE-ON: an obligation OOM-killed at this cap surfaces
+// loudly (kernel OOM in journal) and the operator re-raises it.
+data belt_obligation_memory_max_default: ByteSize = byte_size(23622320128)
+
+// THE REVIEW-ROLE UNIT'S MEMORY BUDGET, authored beside the obligation budget for the same reason: the
+// reviewer and auditor run the gunbc compiler (`gunbc run` under the harness), not a worker session, and the
+// worker-session cap (srv1 lab 8 GiB) sits BELOW what the workload actually charges. Measured on srv1
+// 2026-11-12: reviewer `gunbc` processes reached ~9-10 GiB anon RSS each; the kernel journal 18:50-19:15Z
+// records 37 slice-level OOM kills at ~10 GB each when 34 reviewers were launched unadmitted at once.
+// 12 GiB = 12884901888 sits above that peak with headroom; it is enforced as the unit's MemoryMax AND
+// reserved per unit at slice admission (roadmap_belt_actuate belt_review_cohort_admission), so the two can
+// never disagree. Policy figure; the operator may rule on a different one. DISSOLVE-ON: a reviewer OOM-killed
+// at this cap surfaces loudly (kernel OOM in journal, review refused) and the operator re-raises it.
+data belt_reviewer_memory_max_default: ByteSize = byte_size(12884901888)
+
 // THE SRV1 LAB'S WORKER-SESSION CAP, a stated policy figure and not the CI runner slot: a worker's builds and
 // tests belong in the compute pool, not its own cgroup. Operator 2026-11-04 ("lets try it and fix it if it
 // breaks something"), anchored at gunbc.design_ruling worker_session_memory_is_a_per_instance_policy_figure.
@@ -1219,6 +1257,8 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: macbook_local_directory_owner,
     worker: WorkerIsServiceUser,
@@ -1325,10 +1365,68 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
     materialization_store_root: Present { value: DurableHostVolume },
+  }
+}
+
+// THE ONE SPELLING OF THE HOST CAPACITY HOME ROOT. Every consumer that asks "is this instance the host
+// home?" compares against THIS, not a re-typed literal: gunbc.compute.host_capacity's
+// compute_ledger_sharing (which decides whether a ledger area is grouped to gunbc-compute) and
+// host_capacity_home (which mints the carrier rooted there) both read it. A second literal could drift
+// and silently un-share a home. gunbc.design_argument::single_authority.
+data host_capacity_home_root: FilePath = "/opt/gunbc"
+
+// THE HOST-SCOPED CAPACITY HOME (remote-build PR 4, operator 2026-11-15 "can we just standardize it
+// now?"). ONE ledger per HOST, at /opt/gunbc/compute/capacity, found by HOST and not through any
+// dashboard instance. srv1's dashboard instance already lives at /opt/gunbc, so srv1's home is the
+// SAME root and the SAME ownership it has today -- srv1 does not migrate. srv2's dashboard instances
+// live under /home/briansrls/.local/share, which the gunbc-build account cannot traverse; its ledger
+// moves to this host home so every instance on srv2 reserves in one reachable ledger. srv3/srv4 resolve
+// no dashboard instance and so had no ledger at all; this is their ONLY ledger.
+//
+// THE LEDGER HOME IS NOT A DASHBOARD INSTANCE. The capacity ledger sits at one host-scoped root and is
+// owned by one group; those are the only facts the ledger ever reads about where it lives. Minting a
+// HostDashboardInstance to carry them fabricated a serve_function no function implements, a port nothing
+// binds, and a provider/tmux/dispatch binding for a host that runs no dashboard -- a fabricated default,
+// which gunbc.design_argument::fail_closed rejects outright, and live for every rostered host through
+// host_capacity_home_for_host. This is the narrow carrier: exactly the fields the ledger reads, and nothing
+// a consumer could mistake for a real serving instance.
+type HostCapacityHome sole_constructor {
+  host_identity: NonEmptyStr
+  directory_owner: PosixOwnerNames
+  instance_root: FilePath
+  compute_build_memory_ceiling: ByteSize
+  dispatch_worker_memory_max: ByteSize
+}
+
+// The host-scoped ledger home: the root and owner are the host's, the ceilings come from the carve. srv1
+// resolves to the same /opt/gunbc root and owner it resolved through its dashboard instance, so it is
+// byte-identical on every field the ledger reads -- the bar the ledger's compute-provider reader depends on.
+fn host_capacity_ledger_home(host: NonEmptyStr, build_seat: ByteSize) -> HostCapacityHome {
+  HostCapacityHome {
+    host_identity: host,
+    directory_owner: linux_service_directory_owner(),
+    instance_root: host_capacity_home_root,
+    compute_build_memory_ceiling: build_seat,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+  }
+}
+
+// THE PROJECTION. A host that does have a real dashboard instance yields the same carrier read off it, so a
+// single ledger code path consumes one carrier type whether the home was host-scoped (a rostered host) or
+// instance-resolved (an off-roster host such as macbook-local). Reads only the fields the ledger consumes.
+fn host_capacity_carrier_of(instance: HostDashboardInstance) -> HostCapacityHome {
+  HostCapacityHome {
+    host_identity: instance.host_identity,
+    directory_owner: instance.directory_owner,
+    instance_root: instance.instance_root,
+    compute_build_memory_ceiling: instance.compute_build_memory_ceiling,
+    dispatch_worker_memory_max: instance.dispatch_worker_memory_max,
   }
 }
 
@@ -1467,6 +1565,8 @@ fn isolated_dashboard_instance_admitting(
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_max,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
@@ -1666,6 +1766,8 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1807,6 +1909,8 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
     compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_obligation_memory_max: belt_obligation_memory_max_default,
+    belt_reviewer_memory_max: belt_reviewer_memory_max_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,

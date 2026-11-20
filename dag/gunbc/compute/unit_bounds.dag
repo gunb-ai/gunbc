@@ -1,14 +1,16 @@
 module gunbc.compute.unit_bounds
 
 import std.types { String, List, NonEmptyStr, Bool, Int }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnUserManager }
 import extdeps.linux.cgroup_v2_memory {
-  CgroupMemoryLevel, CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
+  CgroupMemoryLevel, CgroupMemoryLevelRead, CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable,
   CgroupHardMemoryLimit, CgroupHardLimitBinds, CgroupNoHardLimit, cgroup_tightest_hard_memory_limit,
 }
 import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import std.nat { Nat, nat_min }
 import std.measure { ByteSize, Kibibyte, kibibyte_to_byte_size, byte_size, byte_size_count, Millicore, millicore_count }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import extdeps.systemd { SystemdUnitProperty, InaccessiblePathsProperty, MemoryMax, MemoryHigh, MemorySwapMax, SliceProperty, WorkingDirectoryProperty, KillModeProperty, CPUQuota, TasksMax }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
@@ -20,8 +22,8 @@ import extdeps.systemd.systemd_run {
 import extdeps.systemd.unit_file { KillModeControlGroup, systemd_kill_mode_wire }
 import gunbc.live_deploy.slice_bounds {
   user_work_slice_unit_name, user_work_slice_memory_swap_max,
-  modeled_system_slice_memory_max,
 }
+import gunbc.live_deploy.spec { modeled_system_slice_memory_max }
 import gunbc.oomd_install { gunbc_oomd_sessions_slice }
 import gunbc.runner.runner_unit { runner_unit_prefix }
 
@@ -155,8 +157,11 @@ fn user_work_scope_wrap_prefix_argv() -> List<String> {
 // in a declared slot cgroup, not because the user manager is missing.
 // ExemptSystemUnit skips only when a cgroup path segment is a recognized slice
 // AND that slice's live memory.max is finite (live_modeled_slice_standing), carrying
-// the local bound. recognized_system_slice is a name census: sessions.slice plus
-// units whose declared memory_max is positive (modeled_system_slice_memory_max).
+// the local bound. recognized_system_slice is a name census: sessions.slice, or a unit the single
+// lookup gunbc.live_deploy.spec modeled_system_slice_memory_max resolves to a positive declared
+// memory_max. recognized DELEGATES to that lookup (matching Present/Absent) rather than re-writing the
+// positive-cap predicate, so "which system slices are capped, and by how much" is written in exactly one
+// place.
 // Those declared magnitudes are not the skip bound; skip vs UncappedSystemSlice
 // is only the live memory.max. Unreadable, unbounded, or zero live memory.max
 // refuses UncappedSystemSlice.
@@ -244,6 +249,116 @@ fn cgroup_bound_fallthrough_wire(bound: CgroupBound) -> String {
     CgroupBoundedBy { cgroup: _, memory_max: _ } => "chain-bounded"
     CgroupChainUnbounded => "chain-unbounded"
     CgroupChainNotObserved { detail: _ } => "chain-unread"
+  }
+}
+
+// Which control an uncapped slice failed on, carrying that control's own cgroup observation so the
+// deviation and the converge receipt name the leg AND the reason (unbounded, unparseable body, or a finite
+// value that differs from what the ceiling demands). The value type is the cgroup's own CgroupMemoryLimitValue
+// wrapped in the observation Attempt -- the reader's own observation, not a parallel type.
+type UserWorkSliceUncappedReason<Refusal>
+  = WhichMax { outcome: ObservationAttempt<CgroupMemoryLimitValue, Refusal> }
+  | WhichHigh { outcome: ObservationAttempt<CgroupMemoryLimitValue, Refusal> }
+  | WhichSwap { outcome: ObservationAttempt<CgroupMemoryLimitValue, Refusal> }
+
+// THE ADMISSION's verdict, one of three -- never a collapsed Bool:
+//   SliceCapped    -- the wrap would be admitted; the slice is settled, nothing to do.
+//   SliceUncapped  -- a control we DID read is not the ceiling: licenses the InstallUserWorkSlice, and
+//                     carries which control and its value, computed once here (the receipt derives from it).
+//   SliceUnknown   -- a control nobody could read (ssh/sudo refused, uid unknown): NEITHER capped NOR a
+//                     deviation. The caller folds it to an unknown and the host is indeterminate -- the
+//                     'UNKNOWNs WIN' contract: never write toward a slice whose cgroup nobody read.
+type UserWorkSliceAdmission<Refusal>
+  = SliceCapped
+  | SliceUncapped { reason: UserWorkSliceUncappedReason<Refusal> }
+  | SliceUnknown { control: String, cause: Refusal }
+
+// Is the user-work slice capped at exactly `ceiling`, its memory.high at the ceiling's derived high, and
+// its swap forbidden -- decided by the same observed_cgroup_bound fold that admits the --user wrap, over the
+// cap the remote-build serving converge observes: the slice's MemoryMax / MemoryHigh / MemorySwapMax as the
+// user manager reports them, read with `systemctl --user --machine=<uid>@ show <slice>`. This fold takes its
+// input from the caller, so the two callers answer two questions over the same fold: the converge settle
+// feeds it the manager's reported unit controls (what systemd will install into the cgroup when the first
+// member unit starts -- a started slice with no member has no memory.max file yet, so the manager's view is
+// what the converge can honestly settle on), while the --user wrap admit (user_work_scope_wrap_decision)
+// feeds it the MATERIALISED cgroup chain read live off the host. Those are complementary, not the same read:
+// the converge settles the unit's provisioned cap, and the live-cgroup check independently refuses work
+// placement under an unbounded materialised cgroup, so neither claim is forged by the other. A control whose
+// read REFUSED short-circuits to SliceUnknown before any
+// comparison, so an unread slice is never judged uncapped. Otherwise the declared max and swap go to
+// observed_cgroup_bound as a single-level chain -- the very fold that requires a positive hard limit AND a
+// forbidden swap -- and the declared memory.high (a throttle the fold ignores) is checked against the derived
+// high; a failure names its control via slice_cap_blame, computed in this same pass, so there is no second
+// judgment to drift from.
+fn user_work_slice_cgroup_admission<Refusal>(
+  max: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  high: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  swap: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  ceiling: ByteSize,
+  high_expected: ByteSize?,
+) -> UserWorkSliceAdmission<Refusal> {
+  match max {
+    ObservationRefused { cause: c } => SliceUnknown { control: "memory.max", cause: c }
+    ObservationEstablished { observed: m } => match high {
+      ObservationRefused { cause: c } => SliceUnknown { control: "memory.high", cause: c }
+      ObservationEstablished { observed: h } => match swap {
+        ObservationRefused { cause: c } => SliceUnknown { control: "memory.swap.max", cause: c }
+        ObservationEstablished { observed: w } => match observed_cgroup_bound(observation: CgroupChainRead {
+          levels: [ CgroupMemoryLevelRead { dir: user_work_slice_unit_name, max: m, high: h } ],
+          swap_max: [ w ],
+        }) {
+          CgroupBoundedBy { memory_max: bound } => if byte_size_count(b: bound) == byte_size_count(b: ceiling) && high_eq(h: h, expected: high_expected) { SliceCapped } else { SliceUncapped { reason: slice_cap_blame(max: max, high: high, swap: swap, ceiling: ceiling, high_expected: high_expected) } }
+          CgroupChainUnbounded => SliceUncapped { reason: slice_cap_blame(max: max, high: high, swap: swap, ceiling: ceiling, high_expected: high_expected) }
+          CgroupChainNotObserved { detail: _ } => SliceUncapped { reason: slice_cap_blame(max: max, high: high, swap: swap, ceiling: ceiling, high_expected: high_expected) }
+        }
+      }
+    }
+  }
+}
+
+// memory.high settles only on an established finite value equal to the ceiling's derived high.
+fn high_eq(h: CgroupMemoryLimitValue, expected: ByteSize?) -> Bool {
+  match h {
+    CgroupMemoryLimited { bytes: hb } => match expected {
+      Present { value: he } => byte_size_count(b: hb) == byte_size_count(b: he)
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+// An established control whose finite value equals `target`; unbounded, unparseable or refused is not a match.
+fn cap_eq_target<Refusal>(o: ObservationAttempt<CgroupMemoryLimitValue, Refusal>, target: ByteSize) -> Bool {
+  match o {
+    ObservationEstablished { observed: v } => match v {
+      CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == byte_size_count(b: target)
+      _ => false
+    }
+    ObservationRefused { cause: _ } => false
+  }
+}
+
+// Name the control to blame for an uncapped slice: the first of memory.max, memory.high, memory.swap.max
+// whose reading is not the finite value the ceiling demands. Runs only on the not-capped branch, so it
+// names -- never re-decides -- the outcome observed_cgroup_bound already reached.
+fn slice_cap_blame<Refusal>(
+  max: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  high: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  swap: ObservationAttempt<CgroupMemoryLimitValue, Refusal>,
+  ceiling: ByteSize,
+  high_expected: ByteSize?,
+) -> UserWorkSliceUncappedReason<Refusal> {
+  if cap_eq_target(o: max, target: ceiling) {
+    if high_ok_any(h: high, expected: high_expected) { WhichSwap { outcome: swap } } else { WhichHigh { outcome: high } }
+  } else {
+    WhichMax { outcome: max }
+  }
+}
+
+fn high_ok_any<Refusal>(h: ObservationAttempt<CgroupMemoryLimitValue, Refusal>, expected: ByteSize?) -> Bool {
+  match h {
+    ObservationEstablished { observed: v } => high_eq(h: v, expected: expected)
+    ObservationRefused { cause: _ } => false
   }
 }
 
@@ -683,6 +798,8 @@ fn user_work_wrap_ready_properties(slice: UserWorkSliceInstall, caller: CallerMe
       }
   }
 }
+
+data gunbc_user_work_manager_route: UnitLaunchManagerRoute = UnitRunOnUserManager
 
 fn gunbc_user_work_transient_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
   systemd_run_user_transient_command(unit: unit, properties: user_work_run_properties(rest: properties), setenv_bindings: setenv_bindings, command_argv: command_argv)

@@ -99,10 +99,8 @@ data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 // citation_is_outside_index) treats a root some .dag module declares as inside the index and refuses
 // an absent module under it, so a Rust namespace sharing a .dag root would make every Rust item
 // citation under it refuse. `v1_compiler` and `v1_compiled` sit outside the .dag index for that
-// reason. Before this row the four shim crates reaching v1_rt were consumers
-// gunbc.v1.v1_consumer_census could see and the exact cut vocabulary could not spell; removing it
-// returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness
-// executes as the falsifier.
+// reason. Before this row the four shim crates reaching v1_rt were consumers the (since retired)
+// v1 consumer census could see and the exact cut vocabulary could not spell.
 data rust_source_namespace_rows: List<RustSourceNamespaceRow> = [
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/bin/", namespace_prefix: "v1_compiler.bin." },
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/", namespace_prefix: "v1_compiler." },
@@ -1154,7 +1152,7 @@ fn observe_current_live_hand_rust() -> LiveHandRustObservation {
 // THE REFERENCE POPULATION: EVERY HAND-RUST ITEM WHOSE TEXT NAMES ONE OF THE SUPPLIED TOKENS, EACH
 // PROJECTED TO A DeclarationRef THROUGH THE SAME TABLE THE OTHER PRODUCERS USE.
 //
-// gunbc.v1.v1_consumer_census needs "who in Rust reaches v1_rt / v1_interpreter" at consumer x
+// The retired v1 consumer census needed "who in Rust reaches v1_rt / v1_interpreter" at consumer x
 // consumed-authority grain, and until this producer existed it answered with four hand-named crate
 // roots (v1_shim_items) -- a measurement copied from the tree, which gunbc.design_argument::fail_closed refuses as an
 // oracle. What was missing was not a new authority (the scan, the identity and the projection all

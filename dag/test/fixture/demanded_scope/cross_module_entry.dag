@@ -1,0 +1,12 @@
+module test.fixture.demanded_scope.cross_module_entry
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import test.fixture.demanded_scope.cross_module_lib { reached_seven, reached_but_broken }
+
+fn passes() -> ProcessExit {
+  if reached_seven() == 7 { ExitSuccess } else { ExitFailure { code: 1, reason: "reached_seven" } }
+}
+
+fn refuses() -> ProcessExit {
+  if reached_but_broken() == 7 { ExitSuccess } else { ExitFailure { code: 1, reason: "reached_but_broken" } }
+}

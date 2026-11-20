@@ -3,7 +3,6 @@ module gunbc.review_sheet_kind_roster
 import std.types { Bool, List, NonEmptyStr, String }
 import gunbc.review_sheet_kind { ReviewSheetKind }
 import gunbc.review_sheet_ci_prospect_kind { ci_prospect_review_sheet_kind }
-import gunbc.realization_census_sheet { realization_census_review_sheet_kind }
 
 // THE KINDS THE DRIVE-HALF CONVERGE CONVERGES, ONE ROW EACH. Adding a kind is adding a row here; the
 // converge holds no kind's name. The buyer review kind is declared in gunbc-private with this same
@@ -11,7 +10,6 @@ import gunbc.realization_census_sheet { realization_census_review_sheet_kind }
 fn review_sheet_kind_roster() -> List<ReviewSheetKind> {
   [
     ci_prospect_review_sheet_kind(),
-    realization_census_review_sheet_kind(),
   ]
 }
 

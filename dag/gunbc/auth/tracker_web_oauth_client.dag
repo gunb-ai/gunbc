@@ -34,6 +34,8 @@ import gunbc.auth.oidc_deployment_config {
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_dashboard_lab_id, srv1_dashboard_live_id }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.hostname_allocation { fleet_machine_srv1, fleet_machine_srv2, allocated_canonical_hostname }
+import gunbc.host.host_layout { srv1_gunbc_oidc_config_root }
 import gunbc.fleet.fleet_intent { srv1_host, srv2_host }
 import extdeps.languages.json.emit {
   json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -95,7 +97,7 @@ data approve_ios_oauth_client: NativeOauthClientRegistration = NativeOauthClient
 }
 
 // CREATED BY HAND IN THE CLOUD CONSOLE (operator, 2026-10-23): Auth Platform has no client write
-// API, so registration is a console act, recorded in gunbc.auth.privileged_effect_census.
+// API, so registration is a console act, recorded in gunbc.auth.privileged_effect_registry.
 data approve_ios_oauth_client_intervention_identity: String = "approve-ios-oauth-client-registration"
 
 fn approve_ios_oauth_client_intervention() -> HumanIntervention {
@@ -126,17 +128,17 @@ fn tracker_web_oauth_public_redirect_uri(host_identity: String, https_port: Port
 }
 
 data tracker_web_test_srv2_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
-  host_identity: srv2_host.identity as String,
+  host_identity: allocated_canonical_hostname(allocation: fleet_machine_srv2) as String,
   https_port: tracker_web_test_srv2_public_port,
 )
 
 data tracker_web_stage_srv1_live_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
-  host_identity: srv1_host.identity as String,
+  host_identity: allocated_canonical_hostname(allocation: fleet_machine_srv1) as String,
   https_port: https_scheme_default_port,
 )
 
 data tracker_web_test_lab_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
-  host_identity: srv1_host.identity as String,
+  host_identity: allocated_canonical_hostname(allocation: fleet_machine_srv1) as String,
   https_port: tracker_web_test_lab_https_port,
 )
 
@@ -341,7 +343,17 @@ data tracker_web_test_oauth_client_secret_ref: SecretRef = secret_ref_pin_versio
 // Host path as already placed. Same as the Secret Manager id: an upstream spelling, not a Dev arm.
 data tracker_web_test_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev-client-secret" as NonEmptyStr
 
-data tracker_web_test_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev.json" as NonEmptyStr
+// The composed OIDC serve CONFIG DOCUMENT is a deploy-placed member, not a credential: it is projected
+// from gunbc.host.host_layout srv1_gunbc_oidc_config_root (the one authority for the paths the deploy
+// writes) so its parent is world-traversable and the file world-readable for the host-arm observation
+// (the deploy reads it as the runner principal). It names its client secret by PATH; the secret itself
+// stays custody's in the operator-only /etc/gunbc-oidc. This is FORCED on the dev/test row too: the lab
+// instance (srv1_dashboard_lab_id, Test environment) is deployed through the same
+// gunbc.live_deploy.spec deployment_oidc_config_steps -> observe -> apply path, so leaving its document
+// in the operator dir would keep a deploy leg naming that directory and refuse observation exactly as
+// stage did. Only the document moves; the secret host paths above and below stay in custody's directory.
+data tracker_web_test_oidc_config_host_path: NonEmptyStr =
+  join([srv1_gunbc_oidc_config_root as String, "/tracker-web-dev.json"], "") as NonEmptyStr
 
 // Project 582015116396 (gunbai-secrets), version 1 enabled 2026-11-04T07:45:56Z (operator-confirmed).
 data tracker_web_stage_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
@@ -351,7 +363,13 @@ data tracker_web_stage_oauth_client_secret_ref: SecretRef = secret_ref_pin_versi
 
 data tracker_web_stage_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-stage-client-secret" as NonEmptyStr
 
-data tracker_web_stage_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-stage.json" as NonEmptyStr
+// The composed OIDC serve config document is a deploy-placed member projected from
+// gunbc.host.host_layout srv1_gunbc_oidc_config_root -- a world-readable NON-credential that names its
+// client secret by PATH; the secret itself stays custody's in the operator-only /etc/gunbc-oidc. See the
+// dev/test row above for why the document is placed on the deploy side (host-arm observation reads it as
+// the runner principal, so it cannot live in a 0700 directory another authority owns).
+data tracker_web_stage_oidc_config_host_path: NonEmptyStr =
+  join([srv1_gunbc_oidc_config_root as String, "/tracker-web-stage.json"], "") as NonEmptyStr
 
 type TrackerWebConsoleReadbackRow {
   observed_redirect_uris: List<NonEmptyStr>

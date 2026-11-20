@@ -17,7 +17,7 @@ import std.algebra { FreeSemigroup }
 import std.durable_compare_and_set { cas_generation_first }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import gunbc.host.managed_host_unit_hold { AdmittedUnitHoldSubject, UnitHoldProof }
-import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_under_live_unit_hold, mtcollins1_boot_actuate, mtcollins1_boot_handoff_when_media_ready, mtcollins1_boot_param5_under_hold, mtcollins1_boot_power_after_poll }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_under_live_unit_hold, mtcollins1_boot_effects_real, mtcollins1_boot_handoff_when_media_ready, mtcollins1_boot_param5_under_hold, mtcollins1_boot_power_after_poll }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_chassis_power, megarac_boot_param5,
 }
@@ -28,6 +28,12 @@ import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_attach_boot_image, MegaRacIpmiReadBound }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host.managed_host_boot { AdmittedBootSubject }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_held, mtcollins1_bmc_cold_reset_send, mtcollins1_bmc_cold_reset_wet_admitted }
+import gunbc.ci.ci_budget_raise { BudgetAdmitted, CoveredByIntroduction, BudgetIntroduction, BudgetRaiseGrant }
+import gunbc.design_ruling { serve_entry_verdict_step_raised_to_45_minutes }
+import std.measure { minute }
+import std.decl_ref { decl_ref }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.boot_medium { BootMedium }
 import gunbc.runner.runner_browser_toolchain { RunnerBrowserToolchainResolution, BrowserToolchainUnresolved }
 
@@ -109,7 +115,7 @@ fn bundle_chassis_read_from_outside_the_hold() -> String {
 // THE GATED HANDOFF IS SEALED TO THE ACTUATION: an outside caller cannot reach the boot-device and
 // power handoff even with a media record in hand.
 fn observe_presentation_from_outside(s: AdmittedUnitHoldSubject) -> String {
-  let _x = megarac_observe_boot_presentation(proof: forged_proof(s: s), image_name: "x.iso", share: mtcollins1_media_share, password_file: "/tmp/pw", attempt: "forged", look: "outside")
+  let _x = megarac_observe_boot_presentation(proof: forged_proof(s: s), image_name: "x.iso", share: mtcollins1_media_share, password_file: "/tmp/pw", attempt: "forged", look: "outside", admitted_route: none)
   ""
 }
 
@@ -142,11 +148,45 @@ fn boot_an_arbitrary_medium_from_outside(m: BootMedium) -> String {
 }
 
 fn actuate_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject, b: AdmittedBootSubject) -> String {
-  let _x = mtcollins1_boot_actuate(proof: forged_proof(s: s), subject: b, password_file: "/tmp/pw", attempt: "forged", sol_pid_path: "/tmp/pid", sol_capture_path: "/tmp/cap", resolve_toolchain: fn() { forged_toolchain() })
+  let _x = mtcollins1_boot_effects_real(proof: forged_proof(s: s))
   ""
 }
 
 fn acquire_the_unit_hold_from_outside_its_roots(s: AdmittedUnitHoldSubject) -> String {
   let _x = unit_hold_acquire(subject: s, owner: "forger" as DurableHoldOwnerRef, tree: host_state_tree())
+  ""
+}
+
+// THE CONTROLLER COLD RESET IS REACHABLE ONLY THROUGH ITS HOLD-ACQUIRING ENTRY (side chat on gunbc#16529, F3).
+// The held sequence is sealed to mtcollins1_bmc_cold_reset_wet_admitted, which acquires the hold, and the one write is
+// sealed to the held sequence. Each call below reaches McResetCold without acquiring the hold, and each is
+// refused at compile time, before any controller is touched.
+fn cold_reset_the_held_sequence_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject) -> String {
+  let _x = mtcollins1_bmc_cold_reset_held(proof: forged_proof(s: s), host: operator_host_mtcollins1, bmc_host: "10.0.0.1" as NonEmptyStr, username: "forger" as NonEmptyStr, password_file: "/tmp/pw" as NonEmptyStr, cipher_suite: none)
+  ""
+}
+
+// THE ROUTE UNDER A SUPPLIED BUDGET IS NOT A SECOND ENTRY (merry-fox-82 msg_25b8afcf on gunb-ai/gunbc#16668):
+// mtcollins1_bmc_cold_reset_wet_admitted takes its budget admission as an argument, so a caller handing it an
+// admitted budget would run the watch the production admission refuses. Its seal admits only the entry and the
+// acceptance matrix's runner; this call, from anywhere else, is refused at compile time.
+fn cold_reset_route_under_a_supplied_admitted_budget_from_outside() -> String {
+  let _x = mtcollins1_bmc_cold_reset_wet_admitted(budget: BudgetAdmitted { minutes: minute(count: 67), coverage: CoveredByIntroduction { introduced: BudgetIntroduction { minutes: minute(count: 67), carried_by: "forger" } } })
+  ""
+}
+
+// A SIGN-OFF CANNOT BE MINTED BY THE BUDGET THAT WANTS IT (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668, F1): a
+// grant is written only in gunbc.ci.ci_budget_raise, so this one -- an unrelated ruling dressed as a raise of the
+// cold-reset step past its signed 67, which would admit that larger budget -- is refused at the literal.
+fn forged_cold_reset_step_budget_grant() -> BudgetRaiseGrant {
+  BudgetRaiseGrant {
+    ruling: serve_entry_verdict_step_raised_to_45_minutes,
+    budget: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_step_timeout_minutes"),
+    raised_to: minute(count: 600),
+  }
+}
+
+fn cold_reset_send_from_outside() -> String {
+  let _x = mtcollins1_bmc_cold_reset_send(bmc_host: "10.0.0.1" as NonEmptyStr, username: "forger" as NonEmptyStr, password_file: "/tmp/pw" as NonEmptyStr, cipher_suite: none)
   ""
 }

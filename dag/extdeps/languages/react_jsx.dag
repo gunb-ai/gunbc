@@ -1,6 +1,6 @@
 module extdeps.languages.react_jsx
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.types { NonEmptyStr }
 import std.algebra { Empty, FreeSemigroup }
@@ -25,6 +25,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "react.dev/learn/writing-markup-with-jsx"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.react_jsx",
+      decl_name: "JsxEmitResult",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // KEEP with mark (#7272 A3; gpu/wgsl treatment). Live CI keystone

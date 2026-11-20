@@ -109,8 +109,7 @@ fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
 }
 
 // The ONE rendering of a refusal for callers whose own outcome carries its cause as text
-// (gunbc.instruments.emission_entry_instrument EmissionSubjectUnestablished, gunbc.instruments.opaque_realization_census
-// OpaqueCensusUnestablished). It names the bin, the path it was looked for at, and the arm, so a
+// (gunbc.instruments.emission_entry_instrument EmissionSubjectUnestablished). It names the bin, the path it was looked for at, and the arm, so a
 // reader of that cause can tell an unbuilt binary from a failed build from a zero-byte stub.
 
 fn witness_bin_refusal_reason_name(reason: WitnessBinRefusalReason) -> String {

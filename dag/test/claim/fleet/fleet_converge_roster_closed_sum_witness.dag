@@ -1,0 +1,440 @@
+module test.claim.fleet.fleet_converge_roster_closed_sum_witness
+
+// THE WALL THAT MAKES THE FLEET-CONVERGE MODE ROSTER'S MEMBERSHIP SINGLE-AUTHORITY
+// (gunbc.integration_concern::fleet_converge_roster_vs_closed_sum, opened 2026-11-12 by
+// fleet-converge-workflow-merge@main).
+//
+// THE HAZARD THE CONCERN NAMED, in its own words: gunbc.fleet.fleet_converge_workflow's
+// fleet_converge_workflow_modes is a hand-kept list that repeats every arm of the closed sum
+// FleetConvergeWorkflowMode, and the workflow's dispatch-input options are derived from THAT list.
+// So a new mode can be added to the closed sum and to the exhaustive facts match -- both of which
+// the compiler forces -- and simply be absent from the roster, and no check fails. New modes keep
+// landing, which is what makes this live rather than latent: #16529 (MtCollins1BmcColdReset), #16567,
+// #16583. The roster has since been kept honest only by attention.
+//
+// THE ROUTE THE CONCERN ASKED FOR FIRST, AND WHY IT IS ANSWERED RATHER THAN TAKEN. The concern asked for the roster
+// to be DERIVED from the closed sum if the language admits value-level enumeration of a sum's
+// variants. Searched: std has exactly one such capability, v2.std.node_reflection
+// .coproduct_nullary_inhabitants, and it is a host seam that answers by constructing a value of every
+// arm -- which it can only do for an arm with no payload. Its own contract refuses otherwise
+// ("payload arm is not nullary"), fail-closed on the same grain the arm-key reading refuses a forked
+// spelling (gunbc.design_argument::fail_closed). FleetConvergeWorkflowMode has exactly one
+// payload-bearing arm, Srv1RootMutation(Srv1RootMutationMode), so the sum is NOT value-enumerable and
+// the roster cannot be derived as values. That refusal is not taken on faith here:
+// witness_value_level_enumeration_refuses_the_fleet_converge_mode_sum below observes it from the
+// language, which is the evidence that settles the DERIVATION half of the concern. The membership half
+// stays owed until this module runs on a lane -- see ENROLLMENT below, and the Triaged row itself.
+//
+// SO THIS FILE TAKES THE CONCERN'S SECOND BRANCH: a witness over membership, asserting the roster
+// repeats every arm exactly once and holds nothing else. It does not rest on a TOTAL compared to a
+// hand-written number, which is the shape the concern rules out -- a bare count is satisfied by a
+// roster that drops one mode and invents another, and invites the next author to bump it. What it
+// actually does is read the arm keys out of the declaration index
+// (v2.std.node_reflection.coproduct_arm_keys) and compare them to what the roster actually holds,
+// arm by arm; the defect tally those comparisons produce is itself the subject of rows, never a
+// constant the wall is tuned to. The nested arm's expected multiplicity is itself derived -- the arm keys of
+// Srv1RootMutationMode, read from the same index -- rather than a number written down; and because the language
+// DOES enumerate that all-nullary sum, witness_value_level_enumeration_covers_the_all_nullary_nested_sum
+// below makes the two routes corroborate each other, the constructed inhabitants agreeing with the read
+// arm keys.
+//
+// WHY THE FLOOR HAS TO RUN THIS. A roster drift of the kind this wall catches changes the generated
+// .github/workflows/fleet-converge.yml, so the drift-wall at
+// gunbc.generated_artifact_registry + gunbc.instruments.generated_artifact_gate catches it too -- but
+// only for the modes that reach the YAML, and only after the artifact has already been regenerated
+// without the mode. This wall refuses at the source, in the mode vocabulary itself, with the name of
+// the arm at fault.
+//
+// WHAT THIS DOES NOT CLAIM. The wall is over MEMBERSHIP: it says nothing about a mode's facts row
+// (fleet_converge_mode_facts is an exhaustive match, so the compiler is that wall, not this one), and
+// nothing about whether a mode SHOULD be dispatchable -- fleet_converge_dispatchable_modes applies
+// policy on top of the roster, and the spark-target modes legitimately disappear from the options
+// while the Spark administrator roster is empty (gunbc.spark.credential_workflow
+// .spark_administrator_credential_roster, sold out 2026-10-10). Rows below that read the dispatch
+// options read what the roster grants, never what policy withholds.
+
+// ENROLLMENT, stated because a witness no lane executes is not a check
+// (gunbc.design_document::required_gate_rows_grow_by_operator_ruling; gunbc.design_argument::
+// guarantee_ladder wants the reported rung to equal the executed one). This module is authored, it has
+// been executed, and it is enrolled in NO lane -- so it judges whoever runs it and nothing on the required
+// path, and a mode dropped from the roster is still dispatchable in silence. Whether it ran is not
+// something to take from this comment: the executions are `witness_run_receipts` below, typed
+// RetainedExecutionResults carrying command, host, budget, window, revision and verdict, guarded by
+// witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran. That standing is what
+// gunbc.integration_concern fleet_converge_roster_vs_closed_sum is left Triaged on, with its trigger named
+// there as gunbc.rung_drop.v1_required_lanes_withdrawn, the withdrawn v1 required lanes whose population
+// the native compiler is to judge -- so this wall climbs with every other wall in the same standing rather
+// than by a row bought for itself at the operator's gate. Do not read the rows below as a standing gate
+// before that happens.
+
+import std.algebra { bag_eq }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { RetainedExecutionResult }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, Int, List, String }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol, symbol_eq, symbol_lexeme }
+import v2.std.node_reflection { coproduct_arm_keys, coproduct_nullary_inhabitants }
+import gunbc.fleet.fleet_converge_workflow {
+  FleetConvergeWorkflowMode,
+  fleet_converge_mode_options,
+  fleet_converge_workflow_mode_wire,
+  fleet_converge_workflow_modes
+}
+import gunbc.fleet.srv1_root_mutation_mode { Srv1RootMutationMode }
+import test.fixture.fleet_converge_roster_closed_sum.roster_fixture {
+  fixture_mode_discriminant,
+  fixture_roster_honest,
+  fixture_roster_missing_and_duplicated
+}
+
+// READS THE LIVE TREE: every row below consults the live declaration index through
+// coproduct_arm_keys. std.live_tree carries the fact that a SubstrateInputsOnly row over a live read
+// is re-checked by nothing, so an understated row here would be a lie no consumer catches.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SUM UNDER WALL, named once. A Symbol is a value, so the wall takes the type it is asked about
+// as an argument and the same code answers for the fixture.
+data fleet_converge_mode_type_name: Symbol = ^FleetConvergeWorkflowMode
+data srv1_root_mutation_arm_name: Symbol = ^Srv1RootMutation
+data srv1_root_mutation_mode_type_name: Symbol = ^Srv1RootMutationMode
+data fixture_mode_type_name: Symbol = ^FleetRosterWallFixtureMode
+data fixture_nested_arm_name: Symbol = ^FixtureNested
+data fixture_nested_mode_type_name: Symbol = ^FleetRosterWallFixtureNestedMode
+
+// THE ROOTS THE ARM-KEY REFLECTION CONSULTS. coproduct_arm_keys resolves a spelling over a named pool
+// and REFUSES a forked spelling rather than answering from one of two (gunbc#11291), so the roots are
+// part of the claim: naming the directory that carries the declaration is what makes a Rejected read
+// a refusal to be red about rather than an empty arm set that would let every row below pass by
+// vacuity. Both sums of each pair live in the one directory, and the fixture keeps to its own home,
+// so no row pays for a whole-tree keyed read.
+data fleet_converge_mode_pool_roots: List<String> = ["dag/gunbc/fleet"]
+data fixture_pool_roots: List<String> = ["dag/test/fixture/fleet_converge_roster_closed_sum"]
+
+// Discrimination is the LANGUAGE's (gunbc.design_argument::sum_types_are_discriminated): the arm a
+// roster entry belongs to is read off the value, so the wall cannot be satisfied by a roster whose
+// entries are labelled by hand.
+fn fleet_mode_discriminant(mode: FleetConvergeWorkflowMode) -> Symbol {
+  discriminant(v: mode)
+}
+
+fn srv1_nested_mode_discriminant(mode: Srv1RootMutationMode) -> Symbol {
+  discriminant(v: mode)
+}
+
+// THE REFLECTION, ANSWERING AN EMPTY ARM SET ON REFUSAL -- which is deliberately NOT a silent pass.
+// Every row that compares against these keys also pins the keys are many, so a Rejected read lands as
+// "the roster is missing 0 arms it must hold" plus a non-vacuity row going red, and the non-vacuity
+// rows are what make the empty set loud rather than comfortable.
+fn reflected_arm_keys_or_empty(pool_roots: List<String>, type_name: Symbol) -> List<Symbol> {
+  match coproduct_arm_keys(pool_roots: pool_roots, type_name: type_name) {
+    Accepted { value: arms, diagnostics: _ } => arms
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+// WHAT THE ROSTER OWES ITS SUM, as a count of defects, computed the same way for the real roster and
+// for the planted broken one. Two laws, added:
+//
+//   MULTIPLICITY -- every declared arm appears exactly once on the roster, except the arm named
+//     `nested_arm`, which carries a closed sum of its own and so appears once per arm of THAT sum.
+//     An arm that appears zero times is a mode with facts and no dispatch option; an arm that appears
+//     twice puts the same choice on the workflow's menu twice. Both are red here.
+//   NO STRANGER -- every roster entry's arm is a declared arm of the sum. The type system makes this
+//     hard to break by construction, which is exactly why it is still stated: the day the roster holds
+//     something the sum no longer declares, the failure must name the arm and not merely refuse to
+//     compile for a reason three modules away.
+//
+// The expected multiplicity of the nested arm is PASSED IN rather than written, because where the
+// language can enumerate (the nested sum is all-nullary) the caller derives it; a wall that hard-codes
+// 4 would need editing every time a root mutation mode lands, and a wall that needs editing is the
+// hand-kept roster again, one level up.
+fn roster_defect_count(
+  pool_roots: List<String>,
+  type_name: Symbol,
+  nested_arm: Symbol,
+  nested_entries: Int,
+  roster_arms: List<Symbol>
+) -> Int {
+  let arms = reflected_arm_keys_or_empty(pool_roots: pool_roots, type_name: type_name)
+  count(filter(arms, arm => {
+    let expected = if symbol_eq(a: arm, b: nested_arm) { nested_entries } else { 1 }
+    count(filter(roster_arms, held => symbol_eq(a: arm, b: held))) != expected
+  })) + count(filter(roster_arms, held => !any(arms, arm => symbol_eq(a: held, b: arm))))
+}
+
+// THE NESTED ARM'S SIZE, read from the declaration index rather than written. The expected
+// multiplicity of a payload arm is the number of arms of ITS sum, and the arms of an all-nullary sum
+// are exactly what the index reports for it -- so a root-mutation mode landing changes the expectation
+// without an edit here, which is the whole point: a wall that hard-codes 4 would need editing every
+// time one lands, and a wall that needs editing is the hand-kept roster again, one level up.
+fn srv1_nested_entry_count() -> Int {
+  count(reflected_arm_keys_or_empty(
+    pool_roots: fleet_converge_mode_pool_roots,
+    type_name: srv1_root_mutation_mode_type_name
+  ))
+}
+
+fn fixture_nested_entry_count() -> Int {
+  count(reflected_arm_keys_or_empty(
+    pool_roots: fixture_pool_roots,
+    type_name: fixture_nested_mode_type_name
+  ))
+}
+
+// --------------------------------------------------------------------------- THE WALL OVER THE REAL ROSTER
+
+// Every arm of FleetConvergeWorkflowMode is on fleet_converge_workflow_modes exactly once -- the
+// nested arm once per arm of its own sum -- and the roster holds nothing that is not an arm. Zero
+// defects is the whole claim; the shape of a non-zero answer is pinned by the fixture rows below, not
+// by a number written here.
+test fn witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once() -> Bool {
+  roster_defect_count(
+    pool_roots: fleet_converge_mode_pool_roots,
+    type_name: fleet_converge_mode_type_name,
+    nested_arm: srv1_root_mutation_arm_name,
+    nested_entries: srv1_nested_entry_count(),
+    roster_arms: map(fleet_converge_workflow_modes, m => fleet_mode_discriminant(mode: m))
+  ) == 0
+}
+
+// THE NON-VACUITY CONTROL THIS WALL WOULD OTHERWISE LACK. Without it, a wall whose reflection refuses
+// -- a renamed type, a moved module, a forked spelling -- reads zero defects and reports the roster
+// honest, which is the loudest failure a wall can have: it passes. So the arm keys must be many, and
+// the roster must be at least as many as they are.
+test fn witness_arm_key_reflection_is_non_vacuous_over_the_fleet_converge_mode_sum() -> Bool {
+  let arms = reflected_arm_keys_or_empty(
+    pool_roots: fleet_converge_mode_pool_roots,
+    type_name: fleet_converge_mode_type_name
+  )
+  count(arms) > 0
+    && count(arms) <= count(map(fleet_converge_workflow_modes, m => fleet_mode_discriminant(mode: m)))
+}
+
+// THE CONTROL FOR THE WALL'S OWN TOOLS, WHICH IS WHY THE WALL IS WORTH RUNNING.
+//
+// A witness is only as good as the primitives it is built from, and this one nearly was not: written
+// first on the two-argument count(xs, pred), it reported dozens of defects over a roster that was
+// correct, and the rows that looked like PASS were passing because the predicate was never consulted.
+// That was the state when this wall was authored (measured 2026-11-18 at base 93ab1bb19a35:
+// count([1,2,3], x => false) = 3 and count([1,2,3], x => x == 1) = 3, where count(filter(...)) = 1,
+// any(..., x => x == 9) = false and all(..., x => x == 1) = false). The class is
+// #gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored::builtin_predicate_actual_accepted_and_ignored,
+// and #16693 refuses the surplus positional actual at type check on main, so that form is no longer
+// silently wrong -- it does not compile. What was learned stands regardless: every 'how many satisfy P'
+// in this module is count(filter(xs, P)), std's own composition with no module-local re-implementation
+// of anything in it, because a builtin that can accept a predicate and ignore it is a defect shape and
+// the composition below is measured rather than trusted. What is left to doubt is the equality, and it is
+// refused here in both degenerate directions -- an equality true of everything would make the wall green
+// over a roster holding nothing, and one false of everything would make it a machine for demanding the
+// impossible. The pairwise-distinctness conjunct is the one that fails loudly if the comparison ever
+// stops discriminating; symbol_eq itself was measured correct on exactly these values, a literal against
+// a reflected discriminant, in both directions. The naming conjunct asks the lexeme directly because the
+// language has no blankness predicate over Symbols to import -- an arm key whose lexeme were the empty
+// string would make every comparison below answer the same question about every arm.
+test fn witness_symbol_comparison_used_by_this_wall_discriminates() -> Bool {
+  let arms = reflected_arm_keys_or_empty(
+    pool_roots: fleet_converge_mode_pool_roots,
+    type_name: fleet_converge_mode_type_name
+  )
+  symbol_eq(a: ^FullHostPlan, b: ^FullHostPlan)
+    && !symbol_eq(a: ^FullHostPlan, b: ^FleetApply)
+    && all(arms, arm => symbol_lexeme(sym: arm) != "")
+    && count(arms) > 1
+    && all(arms, arm => count(filter(arms, other => symbol_eq(a: arm, b: other))) == 1)
+}
+
+// THE CONTROL FOR THE COUNTING IDIOM ITSELF, which is what makes the paragraph above about
+// count(xs, P) prose rather than a dependency. A wall may not lean on a comment for its correctness
+// (gunbc.design_argument::source_annotations: "Nothing may depend on a comment for correctness"), and
+// every multiplicity below is count(filter(xs, P)). If `filter` ever stopped consulting its predicate
+// that composition would degrade into count(xs) -- every defect tally in this module would become a
+// length, and a length of a correct roster is exactly the number a roster with one mode dropped and
+// another invented also produces. So the composition is refused here in both degenerate directions, over
+// a literal domain with no reflection in the way and again at the real roster's scale. The two-argument
+// count(xs, P) is deliberately NOT asserted about from here: it has its row, with its rung, standing and
+// trigger, and its repair was landed by the lane that owns it rather than worked around here --
+// #gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored::builtin_predicate_actual_accepted_and_ignored,
+// repaired by #16693, with std's count_where the single authority for 'how many satisfy P'. Filing a
+// second row for one failure class, in a program whose subject is duplicated authority, would have been
+// the defect rather than the fix. This wall calls count only in its one-argument form, so no row here
+// depends on that refusal, and none depends on count_where either -- which is why the composition below
+// is discriminated rather than assumed.
+test fn witness_the_count_idiom_this_wall_relies_on_discriminates() -> Bool {
+  count(filter([1, 2, 3], x => false)) == 0
+    && count(filter([1, 2, 3], x => true)) == 3
+    && count(filter([1, 2, 3], x => x == 2)) == 1
+    && count(filter(
+      map(fleet_converge_workflow_modes, m => fleet_mode_discriminant(mode: m)),
+      a => symbol_lexeme(sym: a) == "FleetApply"
+    )) == 1
+    && count(fleet_converge_workflow_modes) > 1
+}
+
+// THE EXECUTION RECEIPTS, in a typed carrier rather than in prose. gunbc.design_argument::
+// source_annotations puts a receipt, a status and a count in a carrier a pass can read, and warns a
+// reader not to treat a comment as evidence that a machine claim holds. Until now the only record that
+// this wall had ever been executed was prose in the comment above gunbc.integration_concern
+// fleet_converge_roster_vs_closed_sum -- and review 96432 was right that a pass cannot read that. So
+// each execution is a RetainedExecutionResult, the register's own receipt type, naming the claim it
+// executed, the command, host, budget, window and revision it ran at, and the verdict it returned. The
+// concern row CITES this carrier rather than restating it. These are receipts of past runs at past
+// revisions, not a standing claim that the current head is green; the newest such receipt is the last one.
+data witness_run_receipts: List<RetainedExecutionResult> = [
+  RetainedExecutionResult {
+    control: decl_ref(
+      module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+      decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+    ),
+    run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 07:41:47Z to 08:19:33Z, base 93ab1bb19a35, claim bodies as landed in a7b273bc4e5d0f52439289cece33093ccf06a855",
+    conclusion: "claim route: 9 claims, 9 held, 0 did not hold, 0 unobserved, exit 0",
+  },
+  RetainedExecutionResult {
+    control: decl_ref(
+      module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+      decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+    ),
+    run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 10:03:50Z to 10:45:52Z, base 93ab1bb19a35, wall file sha256 569c7bab2066310d9f9c",
+    conclusion: "claim route: 10 claims, 10 held, 0 did not hold, 0 unobserved, exit 0",
+  },
+  RetainedExecutionResult {
+    control: decl_ref(
+      module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+      decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+    ),
+    run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 12:16:20Z to 12:53:57Z, head 7d7fe2e355033274612fb2be8de033bdb75c76fe",
+    conclusion: "claim route: 11 claims, 11 held, 0 did not hold, 0 unobserved, exit 0 -- the 11th is this carrier's own guard row, witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran",
+  },
+  RetainedExecutionResult {
+    control: decl_ref(
+      module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+      decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+    ),
+    run: "gunbc test //test/claim/fleet/fleet_converge_roster_closed_sum_witness:all, srv1, systemd-run user scope MemoryMax=40G, GUNBC_MEMORY_BUDGET_BYTES=34359738368, 2026-11-18 13:03:56Z to 13:41:13Z, head 0196e438f264c9bf1872dcaa4b6fc15c2c47da70 with main merged in (5cb9af6d8dfd), seed rebuilt at that revision by cargo build --release -p v1-compiler --bin gunbc --bin claim_batch in 7m22s finishing 13:03:46Z",
+    conclusion: "claim route: 11 claims, 11 held, 0 did not hold, 0 unobserved, exit 0",
+  },
+]
+
+// A receipt that points into somebody else's module, or an empty one dressed up as evidence, is not a
+// receipt -- so the carrier is guarded rather than merely present. This is the row that makes the carrier
+// a consumer of itself in the only sense that matters: copying this block into another wall, or letting a
+// field go blank, reddens here.
+test fn witness_the_run_receipt_carrier_records_this_wall_and_says_how_it_ran() -> Bool {
+  count(witness_run_receipts) > 0
+    && all(
+      witness_run_receipts,
+      r => r.control == decl_ref(
+        module_path: "test.claim.fleet.fleet_converge_roster_closed_sum_witness",
+        decl_name: "witness_fleet_converge_roster_holds_every_closed_sum_arm_exactly_once"
+      )
+    )
+    && all(witness_run_receipts, r => length(r.run) > 0 && length(r.conclusion) > 0)
+    && all(witness_run_receipts, r => length(r.conclusion) > length("exit 0"))
+}
+
+// THE NESTED GRAIN, held separately because the multiplicity law above takes the nested arm's size as
+// an input: if a root-mutation mode were added to Srv1RootMutationMode and its parent entry forgotten,
+// the expected count and the roster would both be wrong in the SAME way and the row above could not
+// see it. This row closes that by comparing the parent's nested entries, PROJECTED THROUGH THEIR
+// PAYLOAD, to the nested sum's own arms as a bag. (A parent entry's own `discriminant` is
+// `Srv1RootMutation` for all four of them -- comparing that to the nested arm names would be a bag of
+// one label against four, green only by accident, so the projection binds the payload the way
+// gunbc.fleet.fleet_converge_workflow's own facts row does.) The fallback symbol is the PARENT type's
+// name, which is not a label of the nested sum: an entry leaking through the fallback makes the bag
+// fail to add up rather than pass quietly.
+test fn witness_nested_arm_entries_are_the_nested_sum_arms() -> Bool {
+  let nested_arms = reflected_arm_keys_or_empty(
+    pool_roots: fleet_converge_mode_pool_roots,
+    type_name: srv1_root_mutation_mode_type_name
+  )
+  let nested_labels = map(fleet_converge_workflow_modes, m => match m {
+    Srv1RootMutation(inner) => srv1_nested_mode_discriminant(mode: inner)
+    _ => fleet_converge_mode_type_name
+  })
+  count(nested_arms) > 0
+    && bag_eq(
+      xs: filter(nested_labels, l => !symbol_eq(a: l, b: fleet_converge_mode_type_name)),
+      ys: nested_arms,
+      eq: symbol_eq
+    )
+}
+
+// THE CAPABILITY, SHOWN ALIVE WHERE ITS CONTRACT SAYS IT IS. The refusal row below would be a
+// one-sided story on its own: a seam that refused EVERYTHING would satisfy it, and then the claim that
+// the roster cannot be derived would be a claim about a broken seam rather than about a payload arm.
+// Srv1RootMutationMode is all-nullary, so here the same host arm must ACCEPT and hand back one value
+// per arm -- as many as the index says the sum has arms.
+test fn witness_value_level_enumeration_covers_the_all_nullary_nested_sum() -> Bool {
+  match coproduct_nullary_inhabitants(
+    type_name: srv1_root_mutation_mode_type_name,
+    discriminant_of: srv1_nested_mode_discriminant
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      count(inhabitants) == srv1_nested_entry_count() && count(inhabitants) > 0
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE MENU THE WORKFLOW ACTUALLY SHIPS. The concern named the dispatch-input options as well as the
+// roster, and this is the row that reaches them: the options are the roster's wires with no
+// repetition, and nothing on the menu is a string no roster entry spells. The multiplicity law above
+// already refuses a duplicated arm, so what this row adds is the case the arm grain cannot see -- two
+// DISTINCT arms projecting to the SAME wire string, which puts one choice on the menu twice while
+// every arm still appears once. Reading options (not the roster) is what ties the wall to the
+// generated workflow's dispatch input.
+test fn witness_dispatch_mode_options_are_roster_wires_without_repetition() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  let options = fleet_converge_mode_options
+  count(options) > 0
+    && count(filter(options, o => count(filter(options, p => p == o)) == 1)) == count(options)
+    && all(options, o => any(wires, w => w == o))
+}
+
+// ---------------------------------------------------------------- THE DERIVATION ROUTE, CLOSED IN EVIDENCE
+
+// THE CONCERN'S FIRST BRANCH, ANSWERED BY OBSERVATION AND NOT BY ASSERTION. If this row ever turns
+// green -- if coproduct_nullary_inhabitants starts handing back a value for every arm of the fleet
+// converge mode sum -- then the language has grown the capability and the RIGHT response is to delete
+// the hand-kept roster and derive it, not to leave this wall as a comfort. The row is written so that
+// outcome is visible rather than gradual: a roster derived from reflection would make this row red
+// while the roster is still a hand-kept list, and nobody could land that silently.
+test fn witness_value_level_enumeration_refuses_the_fleet_converge_mode_sum() -> Bool {
+  match coproduct_nullary_inhabitants(
+    type_name: fleet_converge_mode_type_name,
+    discriminant_of: fleet_mode_discriminant
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// ------------------------------------------------------- THE DISCRIMINATING RED, PROVEN ON A PLANTED ROSTER
+
+// THE WALL BITES: a roster with one arm MISSING (FixtureGamma) and one arm DUPLICATED (FixtureBeta)
+// is refused, with exactly one defect per wrong multiplicity -- 2, not 1 (the two arms are two
+// findings) and not 3 (the duplicate is a declared arm, so the stranger law does not also fire). The
+// exact count is what makes this a discriminating red rather than a redness that would also be
+// satisfied by a wall that answers "everything is broken" to any input.
+test fn witness_the_wall_refuses_a_planted_roster_missing_and_duplicating_arms() -> Bool {
+  roster_defect_count(
+    pool_roots: fixture_pool_roots,
+    type_name: fixture_mode_type_name,
+    nested_arm: fixture_nested_arm_name,
+    nested_entries: fixture_nested_entry_count(),
+    roster_arms: map(fixture_roster_missing_and_duplicated(), m => fixture_mode_discriminant(mode: m))
+  ) == 2
+}
+
+// AND ONLY THAT: the honest roster of the same fixture, over the same reflection and the same wall,
+// reports zero defects. Without this row the row above would be equally satisfied by a wall that
+// refuses every roster -- the pair is what shows the wall distinguishes the two.
+test fn witness_the_wall_passes_the_planted_honest_roster() -> Bool {
+  fixture_nested_entry_count() == 2
+    && roster_defect_count(
+      pool_roots: fixture_pool_roots,
+      type_name: fixture_mode_type_name,
+      nested_arm: fixture_nested_arm_name,
+      nested_entries: fixture_nested_entry_count(),
+      roster_arms: map(fixture_roster_honest(), m => fixture_mode_discriminant(mode: m))
+    ) == 0
+}

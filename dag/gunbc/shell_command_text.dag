@@ -26,7 +26,7 @@ data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a 
 // ::refusal_poison_never_reaches_a_build_step_body -- goes through that derivation and fails closed
 // (refuses) when it yields nothing. The token is
 // not yet spelled only here: four other constants repeat it in their own prose --
-// ci_floor_build_verify_refused_poison in gunbc.ci.ci_spec,
+// ci_floor_build_verify_refused_poison in gunbc.ci.ci_release_build,
 // fleet_converge_locked_apply_emit_refused_poison in gunbc.fleet.fleet_converge_plan,
 // bash_emit_program_sequence_refused_poison in v2.workflow.bash_emit, and ci_release_build_refused_poison
 // in v2.workflow.ci_release_build_emit -- so each is a second spelling of a fact this line owns (

@@ -60,8 +60,6 @@ type DeclRefDisposition {
 
 data decl_ref_disposition_roster: List<DeclRefDisposition> = [
   DeclRefDisposition { subject: ComputedDeclName { file: "src/v2/compiler/fold_lowering.dag", module_path: "std.algebra" }, reason: DeclNameIsAParameter },
-  DeclRefDisposition { subject: ComputedDeclName { file: "dag/gunbc/observation_emit_census.dag", module_path: "v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
-  DeclRefDisposition { subject: ComputedDeclName { file: "dag/test/claim/observation_emit_census_producer_witness.dag", module_path: "v1_compiler.cli_run" }, reason: DeclNameIsAParameter },
   DeclRefDisposition { subject: ComputedDeclName { file: "dag/test/claim/capability_binding_witness.dag", module_path: "gunbc.capability_binding" }, reason: DeclNameIsAParameter },
   DeclRefDisposition { subject: ComputedDeclName { file: "dag/gunbc/machine_intake/mtcollins1_memory_census_observation.dag", module_path: "gunbc.machine_intake.mtcollins1_memory_census_observation" }, reason: DeclNameIsAParameter },
   DeclRefDisposition { subject: CitedDeclaration { reference: DeclarationRef { module_path: "v2.test.workflow.claim_witness_corpus_ci_runner" as NonEmptyStr, decl_name: "ClaimWitnessCorpusClaimRunRow" as NonEmptyStr, field: WholeDeclaration } }, reason: BindTargetDeleted },

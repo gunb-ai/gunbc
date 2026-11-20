@@ -1,0 +1,13 @@
+module gunbc.run_step_target_absent_module_step
+
+import std.types { Int }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target }
+
+// THE MISSING-MODULE RED: a run-step target whose MODULE half names a module that is not in the target universe
+// (it is not declared anywhere in this root). The callee is the real constructor and both arguments are literals,
+// but the named module is not a run-time entry at all, so this refuses (the module half, though normally checked
+// at emit by gunbc.source_layout, is here caught because the named module never resolves).
+data run_step_target_absent_module: Int = gunbc_run_step_target(
+  module: "gunbc.run_step_target_never_declared",
+  function: "run_step_target_fixture_entry",
+)

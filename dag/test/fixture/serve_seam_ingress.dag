@@ -1,16 +1,40 @@
 module test.fixture.serve_seam_ingress
 
-import std.types { String, Int }
-import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import std.types { String, Int, List }
+import gunbc.http_ingress {
+  HttpIngressAdmission, http_ingress_binding, http_ingress_serves_declared_handler,
+  http_ingress_undeclared_handler_reason,
+}
 import test.fixture.serve_seam_probe { serve_seam_probe, serve_budget_breach_probe }
 
-// THE PROBE HANDLERS' DEPLOYMENT BINDING. The import above is what puts the handlers in the run's
-// closure; `handler` picks which one this process serves. `gunbc run --entry
-// dag/test/fixture/serve_seam_ingress.dag --function serve_seam_ingress --arg handler=... --arg
-// listener=tcp:127.0.0.1:0 ...` realizes it.
+// THE PROBE HANDLERS THIS BINDING MAY SERVE. `handler` arrives from `gunbc run --arg`, so it is runtime
+// data: importing the probe module does NOT put a handler in the run -- under the demanded-scope run an
+// imported-but-uncalled declaration is not realized (#16069,
+// gunbc.design_ruling::run_realizes_only_demanded_declarations) -- and the run host refuses a binding
+// whose handler its loaded index does not hold rather than bind a listener whose first request dies on a
+// declaration it never loaded. Measured on this seed before the row existed:
+// `REFUSED: ingress binding: runtime-keyed reads not realized by this execution's loaded index:
+// test.fixture.serve_seam_probe.serve_seam_probe`. The two names are the probes of
+// test.fixture.serve_seam_probe, and they are what the hosts that launch this entry pass:
+// src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs (BREACH_FUNCTION, as
+// `--arg handler=serve_budget_breach_probe`) and the evaluation-budget instrument through
+// dag/test/claim/http_ingress_witness.dag. The row is seeded into the realization by the runtime-key
+// registry (src/v1/04_infer.dag runtime_key_readers, instance loaded_index_runtime_named_handler_serve_seam); the
+// admission rule and the refusal are gunbc.http_ingress's, spelled once for every entry that serves a
+// runtime-named handler -- this fixture is that class's smallest specimen, which is why it carries the
+// same guard as the production entries.
+data serve_seam_ingress_served_handlers: List<String> = [
+  "serve_seam_probe",
+  "serve_budget_breach_probe",
+]
+
 fn serve_seam_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
-  http_ingress_binding(
-    handler_module: "test.fixture.serve_seam_probe", handler: handler, listener: listener,
-    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
-  )
+  if !http_ingress_serves_declared_handler(served_handlers: serve_seam_ingress_served_handlers, handler: handler) {
+    HttpIngressRefused { reason: http_ingress_undeclared_handler_reason(entry: "serve_seam_ingress", row: "serve_seam_ingress_served_handlers", handler: handler) }
+  } else {
+    http_ingress_binding(
+      handler_module: "test.fixture.serve_seam_probe", handler: handler, listener: listener,
+      release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+    )
+  }
 }

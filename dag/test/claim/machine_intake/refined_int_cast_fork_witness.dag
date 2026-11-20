@@ -1,0 +1,138 @@
+module test.claim.machine_intake.refined_int_cast_fork_witness
+
+// Claim witness for the checker-vs-evaluator fork on casts into range-refined Int carriers
+// (class row gunbc.recurring_failure_mode.the_checker_admits_a_cast_the_evaluator_refuses).
+//
+// Before the fix (PR #16224's validate_cast arm in src/v1/04_infer.dag), the checker ADMITTED a cast of
+// an Int-kernel value into a DIFFERENT range-refined Int carrier while eval_cast refused it: a located
+// runtime TypeError. The arm refuses that shape at check time as a blocking RefinementCastRefused; eval_cast is
+// untouched and still refuses it, so the two authorities now agree on the shape.
+//
+// Every probe shares one header, so all counts are read as DIFFERENTIALS against a base carrying only a
+// call source: the census row set is the WHOLE COMPILE'S (imports included), so the differential cancels
+// the shared closure and isolates what the added cast contributes. The cross-refinement cast must ADD a
+// blocking row of the arm's class; an identity cast onto its own carrier and an Int-kernel widening must
+// add none -- those are the negative controls, because an identity cast and an Int-kernel widening are
+// legitimate and eval_cast admits them too. If the target ever stopped being refined the arm would stop
+// firing and the cross-refinement row would go red, which is what keeps this from passing vacuously.
+import std.types { Bool, Int, String }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_blocking_rows_of_class,
+  census_total_count
+}
+
+data probe_header: String =
+  "module p\nimport extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId }\n"
+
+// base: the header plus one call source, nothing more. The census over this is the differential baseline.
+data probe_base_source: String = concat(
+  probe_header,
+  "fn probe_chan() -> IpmiChannelNumber { 1 }\n"
+)
+
+// the cross-refinement cast: a call source on one refined carrier cast into a DIFFERENT refined carrier.
+data probe_crossref_source: String = concat(
+  probe_base_source,
+  "fn probe_user() -> IpmiUserId { probe_chan() as IpmiUserId }\n"
+)
+
+// negative control 1: an identity cast of a call source onto its OWN carrier.
+data probe_identity_call_source: String = concat(
+  probe_base_source,
+  "fn probe_identity() -> IpmiChannelNumber { probe_chan() as IpmiChannelNumber }\n"
+)
+
+// negative control 2: widening the refined value back to the Int kernel.
+data probe_as_int_source: String = concat(
+  probe_base_source,
+  "fn probe_widen() -> Int { probe_chan() as Int }\n"
+)
+
+// The declaration-keyed identity probe (closes review 92887 / 92877(a)): two range-refined Int carriers
+// that share a LEAF name (`Port`) but are DIFFERENT declarations in different fixture modules. The operand
+// reaches the cast through ...fork_a's foreign constructor `make_a` (so its type is fork_a's Port by
+// declaration, not by a name this module imports); the target `Port` is fork_b's Port. Old leaf-name
+// identity compared the two "Port" strings equal and the checker stayed silent while eval_cast refused --
+// the fork. Declaration-keyed identity does NOT compare equal, so the arm fires. Its own base shares the
+// same imports and one dead fn, so the count is a clean differential of just the added cast.
+data probe_same_leaf_base_source: String = concat(
+  concat(
+    concat(
+      "module p\nimport std.types { Int }\n",
+      "import test.fixture.refined_int_cast_fork_a { make_a }\n"
+    ),
+    "import test.fixture.refined_int_cast_fork_b { Port }\n"
+  ),
+  "fn probe_keep() -> Int { 0 }\n"
+)
+
+data probe_same_leaf_source: String = concat(
+  probe_same_leaf_base_source,
+  "fn probe_same_leaf() -> Port { make_a() as Port }\n"
+)
+
+// The class the arm reports its refusal under -- the typed CompilerDiagnostic variant this arm emits,
+// asserted BY NAME (not "any blocking row"): a RefinementCastRefused, NOT InternalError (that variant is
+// reserved for a compiler fault; a refusal of user source names its own reason -- DESIGN fail_closed). It
+// is a fourth refusal mechanism, distinct from TypeMismatch (the refinement wall on out-of-range
+// literals), CastRealizationRefused (cross-kernel) and WhereRefinementUnenforced (the non-literal
+// advisory). The class string is what compile_clean.rs's class match reports for the variant.
+data arm_refusal_class: String = "RefinementCastRefused"
+
+fn total_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn arm_blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: arm_refusal_class))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// The class close: a cast of a call source into a DIFFERENT refined Int carrier adds a blocking row, and
+// that row is the arm's class. Red at base (the checker was silent; only eval_cast refused), green at head.
+test fn cross_refinement_cast_into_a_refined_int_carrier_is_refused_by_the_checker() -> Bool {
+  let base_total = total_blocking_count(source: probe_base_source)
+  let cross_total = total_blocking_count(source: probe_crossref_source)
+  let base_arm = arm_blocking_count(source: probe_base_source)
+  let cross_arm = arm_blocking_count(source: probe_crossref_source)
+  (cross_total - base_total) >= 1 && (cross_arm - base_arm) >= 1
+}
+
+// Negative control: an identity cast of a call source onto its own refined carrier adds no blocking row.
+test fn call_expression_identity_cast_onto_its_own_carrier_is_not_refused() -> Bool {
+  let base_total = total_blocking_count(source: probe_base_source)
+  let ident_total = total_blocking_count(source: probe_identity_call_source)
+  let base_arm = arm_blocking_count(source: probe_base_source)
+  let ident_arm = arm_blocking_count(source: probe_identity_call_source)
+  (ident_total - base_total) == 0 && (ident_arm - base_arm) == 0
+}
+
+// Negative control: widening the refined value back to the Int kernel adds no blocking row.
+test fn widening_a_refined_int_value_back_to_int_is_not_refused() -> Bool {
+  let base_total = total_blocking_count(source: probe_base_source)
+  let int_total = total_blocking_count(source: probe_as_int_source)
+  (int_total - base_total) == 0
+}
+
+// The declaration-keyed identity close: a cast whose operand and target share a LEAF name but resolve to
+// DIFFERENT range-refined Int declarations (fork_a.Port -> fork_b.Port) adds a blocking row of the arm's
+// class. Red at base (the checker's leaf-name identity admit `source_name == target_name` treated the two
+// `Port`s as the same carrier and stayed silent while eval_cast refused, the fork), green at head (the
+// arm now keys identity on declaration_ref_eq, which does not hold). Distinct from the cross-refinement
+// row: there the names already differ, so only the leaf-name-identical population separates the fix from
+// the pre-fix behaviour -- this is the row that locks review 92887's finding, not a restatement.
+test fn same_leaf_name_different_declaration_cast_is_refused_by_the_checker() -> Bool {
+  let base_total = total_blocking_count(source: probe_same_leaf_base_source)
+  let leaf_total = total_blocking_count(source: probe_same_leaf_source)
+  let base_arm = arm_blocking_count(source: probe_same_leaf_base_source)
+  let leaf_arm = arm_blocking_count(source: probe_same_leaf_source)
+  (leaf_total - base_total) >= 1 && (leaf_arm - base_arm) >= 1
+}

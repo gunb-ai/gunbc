@@ -21,7 +21,7 @@ import std.algebra {
   all_algebra_template_names,
 }
 import std.induction { CostBound, cost_constant, cost_linear, cost_log }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.rust.emit { RuntimeFunction, rt_function_registry }
@@ -33,6 +33,7 @@ import std.primitive_projection {
   primitive_projection_roster, primitive_projection_row_for_declaration,
   primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_get, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
+  primitive_extdeps_subject_ref_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
@@ -1252,6 +1253,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "decl_facts_at",
   "export_signature_facts",
   "data_decl_type_facts",
+  "extdeps_subject_ref_facts",
   "concept_decl_facts",
   "concept_decl_facts_live",
   "symbol_lexeme",
@@ -1601,6 +1603,7 @@ data primitive_decl_facts_at_traversal: PrimitiveTraversalOrderFact = PrimitiveT
 data primitive_export_signature_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_export_signature_facts, order: CanonicalOrder }
 
 data primitive_data_decl_type_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_decl_type_facts, order: CanonicalOrder }
+data primitive_extdeps_subject_ref_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_extdeps_subject_ref_facts, order: CanonicalOrder }
 
 data primitive_concept_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_concept_decl_facts, order: CanonicalOrder }
 
@@ -1695,6 +1698,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_decl_facts_at_traversal,
   primitive_export_signature_facts_traversal,
   primitive_data_decl_type_facts_traversal,
+  primitive_extdeps_subject_ref_facts_traversal,
   primitive_concept_decl_facts_traversal,
   primitive_concept_decl_facts_live_traversal,
   primitive_symbol_lexeme_traversal,

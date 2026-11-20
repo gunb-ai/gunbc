@@ -113,7 +113,7 @@ data h11ssl_x86_bringup_adoption_gap_subject: DeclarationRef = decl_ref(module_p
 data h11ssl_x86_bringup_primary_network_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "host_lan_address")
 data h11ssl_x86_bringup_seed_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "admit_provisioning_target")
 data h11ssl_x86_bringup_pxe_edge_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "uefi_pxe_admitted_architectures")
-data h11ssl_x86_bringup_install_route_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.srv3.srv3_os_install_actuate", decl_name: "srv3_os_install_actuator_plan_refuses_on_unestablished_path")
+data h11ssl_x86_bringup_install_route_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan_standing_for")
 
 // ---- G4a (BMC firmware family) is FILLED and its row deleted (roster_frontier contract): extdeps.bmc.endpoint
 // BmcFirmwareFamily admits SupermicroAten with its authority extdeps.bmc.supermicro; extdeps.boards.supermicro_h11ssl

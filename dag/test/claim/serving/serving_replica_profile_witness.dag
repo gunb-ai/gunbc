@@ -22,7 +22,7 @@ import gunbc.serving.serving_capacity_anchor {
   LostWithProcess, RungInclusiveOfHotter, SwapByEngineEviction, SwapByRouterSlotFile, SwapTierDisk,
   SwapTierHostRam, SurvivesProcessRestart, WarmSwapRestores,
 }
-import gunbc.serving.serving_layout { serving_artifact_charged_host_ram, srv3_routed_expert_artifact, ArtifactHeldEvictable, ArtifactHeldPinned, ServingMemoryRead }
+import gunbc.serving.serving_layout { serving_artifact_charged_host_ram, srv3_routed_expert_artifact, ArtifactHeldEvictable, ArtifactHeldPinned, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread }
 import gunbc.serving.serving_replica_configuration { configuration_host_charges, srv4_batch1_slotfile_configuration, srv4_batch8_ram_only_configuration }
 import gunbc.serving.serving_replica_profile {
   ReplicaRunIdentityMatch, ReplicaExpertRung, ExpertInHostRam, ExpertOnDevice, ExpertOnDisk,
@@ -275,20 +275,53 @@ test fn srv4_experts_are_capped_and_disk_backed() -> Bool {
     && rungs.any(r => match r { ExpertOnDisk { bytes: _, mechanism: _ } => true _ => false })
 }
 
-// srv3's experts sit in its own private anonymous arena: a host-RAM rung the layout says nothing maps, so
-// nothing can reclaim it. It is charged, and it is charged WHOLE.
+// srv3's experts now sit the way srv4's do (--mmap-experts, 2026-11-09): a host-RAM rung the engine cgroup maps
+// under its cap, evictable to a floor. DIRECT SOURCE: the artifact row. Its size is UNREAD (the only expert figure is
+// the unattributed cgroup file counter, which exceeds the shard it caches), so the rung states no fabricated resident
+// figure -- it carries the attribution obligation instead. The budget reserves only the FLOOR, a Stated bet; a rung
+// must never state a resident figure it has not attributed, nor promote its floor to the tier's whole size.
 test fn srv3_has_a_host_ram_expert_rung() -> Bool {
-  replica_expert_rungs(p: srv3_strata_profile).any(r => match r {
-      ExpertInHostRam { bytes: bytes, holds: _, mechanism: _ } => byte_size_count(b: bytes) > 0
+  match srv3_routed_expert_artifact.host_ram {
+    Present { value: r } => match r.holds {
+      ArtifactHeldEvictable { bound_by: _, floor: f } =>
+        match f {
+          ServingMemoryAssumed { bytes: fb, reason: _ } =>
+            match r.bytes {
+              ServingMemoryUnread { reason: _ } => byte_size_count(b: fb) > 0
+              _ => false
+            }
+          _ => false
+        }
       _ => false
-    })
-}
-
-test fn srv3_expert_ram_charge_is_the_whole_arena() -> Bool {
-  match replica_expert_ram_charge(p: srv3_strata_profile) {
-    Present { value: bytes } => byte_size_count(b: bytes) > 0
+    }
     Absent => false
   }
+}
+
+test fn srv3_expert_host_ram_charge_fails_closed_as_an_obligation_not_a_zero() -> Bool {
+  match replica_expert_ram_charge(p: srv3_strata_profile) {
+    Absent => match serving_artifact_charged_host_ram(a: srv3_routed_expert_artifact) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+// CONSUMER PATH (review 2b233d29 P2): what the selector actually consumes. srv3's expert host-RAM amount is UNREAD,
+// so on the way through replica_expert_rungs the fail-closed rung helper must DROP it -- not place a guess -- and the
+// expert RAM charge must be Absent (an obligation), never a Present(0) the selector would bill as free. The missing
+// evidence must surface as an obligation on the host charge, not a silent pass.
+test fn srv3_unknown_expert_amount_is_no_placement_and_no_zero_charge() -> Bool {
+  !(replica_expert_rungs(p: srv3_strata_profile).any(r => match r {
+      ExpertInHostRam { bytes: _, holds: _, mechanism: _ } => true
+      _ => false
+    }))
+    && match replica_expert_ram_charge(p: srv3_strata_profile) {
+         Absent => true
+         Present { value: v } => byte_size_count(b: v) > 0
+       }
+    && replica_host_charges(p: srv3_strata_profile).obligations.length() > 0
 }
 
 // srv1 has no artifact row for its weights: the charge is unread AND the obligation says what to read. A
@@ -304,8 +337,9 @@ test fn srv1_expert_placement_is_an_obligation_not_a_zero() -> Bool {
 }
 
 // The charge the selector's host-RAM axis consumes, failing closed component by component. srv4 reads: its
-// cache, its expert floor and its base are all read rows, so the sum stands. srv3 refuses because its base is
-// an ASSUMPTION, h11 because its base was never read, srv1 because its base was never measured with the cache
+// cache, its expert floor and its base are all read rows, so the sum stands. srv3 refuses because its expert
+// working-set FLOOR (and its active-slot RAM, park floor and shard size) are still assumptions, h11 because its
+// base was never read, srv1 because its base was never measured with the cache
 // empty -- each naming why. No host gets a partial total (the sum of an unknown is unknown).
 test fn srv4_ram_charges_its_engine_rungs() -> Bool {
   match replica_host_charges(p: srv4_strata_profile).ram {
@@ -329,9 +363,13 @@ test fn srv1_ram_refuses_on_at_least_two_components() -> Bool {
   match p.ram { Absent => p.obligations.length() >= 2 Present { value: _ } => false }
 }
 
+// srv3's expert host-RAM rung is the charged reading the budget bills for the tier. Under --mmap-experts it is the
+// EVICTABLE rung's FLOOR (the 22 GiB working set), which is a Stated Assumption -- so assert the ServingMemoryAssumed
+// arm specifically (present, positive, with a reason naming it a bet), not merely a positive byte count. The derived
+// resident estimate is not what the budget bills; only the assumed floor is.
 test fn srv3_artifact_bills_its_host_ram_rung_directly() -> Bool {
   match serving_artifact_charged_host_ram(a: srv3_routed_expert_artifact) {
-    Present { value: ServingMemoryRead { bytes: b, provenance: _ } } => byte_size_count(b: b) > 0
+    Present { value: ServingMemoryAssumed { bytes: b, reason: _ } } => byte_size_count(b: b) > 0
     _ => false
   }
 }

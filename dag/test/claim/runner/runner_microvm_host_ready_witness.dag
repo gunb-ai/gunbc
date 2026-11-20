@@ -3,6 +3,7 @@ module test.claim.runner.runner_microvm_host_ready_witness
 import gunbc.executor_privileged_operation { EnsureSupplementaryGroupMembership, executor_privileged_operation_argv, executor_privileged_operation_sudoers_line }
 import gunbc.runner.runner_host_grants { runner_host_privileged_operations }
 import gunbc.runner.runner_host_deploy { fleet_runner_host_deploys }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_runner_listener_login, fleet_posix_ci_runner_user }
 import std.types { String, Bool, List }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.virtualization.firecracker {
@@ -17,7 +18,8 @@ import gunbc.runner.runner_microvm_host_ready {
   KvmGroupEnrolment, KvmGroupEnrolled, KvmGroupNotEnrolled, KvmGroupEnrolmentUnreadable,
   KvmDeviceDelegation, KvmDeviceDelegated, KvmDeviceDelegationContradicted, KvmDeviceDelegationUnreadable,
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
-  MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered,
+  MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered, HostNameUnresolved,
+  ExpectedHostAbsent, HostObservationFailed,
   microvm_host_binding_of, microvm_host_binding_refusal_text,
   kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
   group_names_contain, firecracker_host_standing_text,
@@ -182,27 +184,90 @@ test fn enrolment_does_not_carry_a_device_this_host_does_not_delegate_to_that_gr
 // zero install operations -- which holds by construction instead: microvm_host_binding_wet is matched
 // first in both wet entries, outside the arm that reaches HOME, the fetch, the install and the
 // receipt write.
+//
+// THESE DISPOSITIONS ARE CLAIMED ONE PER TEST. They were one conjunction, and the conjunction is
+// what made this entry's red unreadable: claim_batch prints the failing entry's name and no conjunct,
+// so when the srv14 fixture went stale (below, at a_machine_answering_its_drawn_name_binds_its_own_row)
+// the failure named the test and not the law. Each disposition sends an operator to a different place,
+// so each gets its own name and its own red.
 test fn a_host_that_is_not_the_dispatched_one_refuses_and_names_both() -> Bool {
-  let mismatch = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv3" as NonEmptyStr)
-  let agreed = microvm_host_binding_of(expected: "srv1" as NonEmptyStr, observed: "srv1" as NonEmptyStr)
-  let unrostered = microvm_host_binding_of(expected: "srv-nope" as NonEmptyStr, observed: "srv-nope" as NonEmptyStr)
-  (match mismatch {
+  match microvm_host_binding_of(expected: "srv1", observed: "srv3") {
     MicrovmHostBindingRefused { cause: c } =>
       (match c {
-        HostBindingRefused { expected: e, observed: o } => (e as String) == "srv1" && (o as String) == "srv3"
+        HostBindingRefused { cause: _ } =>
+          string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "srv1")
+            && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "srv3")
         _ => false
       })
         && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "NOTHING has been fetched, installed or written")
     MicrovmHostBound { spec: _, host: _ } => false
-  })
-    && (match agreed {
-      MicrovmHostBound { spec: sp, host: h } => (h as String) == "srv1" && (sp.job_user as String) == "ghrunner"
-      MicrovmHostBindingRefused { cause: _ } => false
-    })
-    && (match unrostered {
-      MicrovmHostBindingRefused { cause: c } => match c { HostNotRostered { host: _ } => true  _ => false }
-      MicrovmHostBound { spec: _, host: _ } => false
-    })
+  }
+}
+
+// AGREEMENT BINDS, AND BINDS THE ROW THE DISPATCH WAS MADE FOR: srv1's own row, which carries the
+// legacy root listener's CI job account. A bound arm reading any other row is the neighbour-borrowing
+// this interface exists to refuse.
+test fn the_dispatched_host_binds_the_row_it_was_dispatched_for() -> Bool {
+  match microvm_host_binding_of(expected: "srv1", observed: "srv1") {
+    MicrovmHostBound { spec: sp, host: h } => (h as String) == "srv1" && (sp.job_user as String) == "ghrunner"
+    MicrovmHostBindingRefused { cause: _ } => false
+  }
+}
+
+// A NAME NO ROSTER ANSWERS TO IS REFUSED AS AN UNRESOLVED NAME, before any spec is looked up:
+// "no runner host spec" would send an operator to the roster's runner rows for a problem that is the
+// dispatch's or the machine's spelling.
+test fn a_spelling_no_roster_answers_to_refuses_as_an_unresolved_name() -> Bool {
+  match microvm_host_binding_of(expected: "srv-nope", observed: "srv-nope") {
+    MicrovmHostBindingRefused { cause: c } => match c { HostNameUnresolved { cause: _ } => true  _ => false }
+    MicrovmHostBound { spec: _, host: _ } => false
+  }
+}
+
+// THE SHAPE THE OLD JOIN REFUSED OUTRIGHT: two spellings of ONE machine, and the roster's own gap
+// underneath. The dispatch selects mtjade1 and the machine answers "eric" -- slot and drawn name, one
+// machine -- and no runner host spec is written for it: the rows are srv1-srv4 plus the derived srv14.
+// The fixture is chosen where the fleet itself says the gap is durable: gunbc.fleet.fleet_host_identity
+// ::operator_host_mtjade1 carries "NAMING IS NOT ENROLLMENT ... This unit is not an executor fleet
+// host", and the CI participation roster (gunbc.fleet.fleet_enrollment::HostEnrollmentIntent) lists
+// srv1-srv4, srv14, ken and mtcollins1 -- not this unit. So the join AGREES and the only refusal left
+// is the gap, which has to be named as the gap rather than as a mis-dispatch: a runner fleet dispatch
+// must not stand up a half-configured worker by borrowing a neighbour's row. THIS ARM AND THE srv14
+// CASE BELOW BOTH REST ON FLEET FACTS, so either can go red with the world having moved under it --
+// and the repair then is the same one srv14 got: move the arm to a machine the participation roster
+// does not list, rather than bend the law to the answer of the day.
+test fn a_rostered_machine_with_no_runner_row_refuses_as_not_rostered() -> Bool {
+  match microvm_host_binding_of(expected: "mtjade1", observed: "eric") {
+    MicrovmHostBindingRefused { cause: c } =>
+      match c {
+        HostNotRostered { host: h } => (h as String) == "mtjade1"
+        HostBindingRefused { cause: _ } => false
+        HostNameUnresolved { cause: _ } => false
+        ExpectedHostAbsent { detail: _ } => false
+        HostObservationFailed { reason: _ } => false
+      }
+    MicrovmHostBound { spec: _, host: _ } => false
+  }
+}
+
+// THE SAME JOIN, THE MACHINE THAT HAS SINCE BEEN GIVEN ITS OWN ROW. This is where the arm above used
+// to sit: when 4b67f390b02 (#16282) wrote this witness, a dispatch for srv14 answered by "butch"
+// agreed on the machine and then refused HostNotRostered, because srv14 carried no runner host spec.
+// The same day 4783486dab6 (#16302) gave butch a DERIVED row -- one authority, its LAN endpoint -- so
+// the dispatch now BINDS, and the witness moved with the law it reads rather than pinning the answer
+// of a world that had already changed. What still has to be witnessed at this interface is WHICH row:
+// a binding that handed back srv1's row would certify a CI runner onto another machine's listener, so
+// the read is on the account the row binds its unit under. Butch's is the fleet's runner-listener
+// account -- the single authority, referenced rather than re-spelled -- where srv1's hand-written row
+// still carries the root listener until its B3d cutover; a borrowed row cannot satisfy both reads.
+test fn a_machine_answering_its_drawn_name_binds_its_own_row() -> Bool {
+  match microvm_host_binding_of(expected: "srv14", observed: "butch") {
+    MicrovmHostBound { spec: sp, host: h } =>
+      (h as String) == "srv14"
+        && sp.unit_user == fleet_posix_runner_listener_login
+        && sp.job_user == fleet_posix_ci_runner_user.name
+    MicrovmHostBindingRefused { cause: _ } => false
+  }
 }
 
 // THE POSITIVE ARMS CARRY A LOGIN AND A GROUP AND READINESS MUST READ THEM. Matching those arms for
@@ -402,4 +467,34 @@ test fn the_standing_text_reports_the_instruments() -> Bool {
   string_contains(s: text, pattern: "gnu-time-max-rss=present")
     && string_contains(s: text, pattern: "cgroup-memory-peak=absent")
     && string_contains(s: text, pattern: "systemd-memory-peak=unreadable(")
+}
+
+// AN EMPTY NAME FROM EITHER SIDE IS THE RULE'S REFUSAL, NOT A LOCALLY-WRITTEN ONE. Both binding sites used
+// to test emptiness themselves and emit their own reason ("hostname -s returned empty output"), which kept a
+// second answer to "what does an empty name mean" beside the rule's. Now both names reach the join as the
+// strings they are, and the join says WHICH SIDE named nothing -- the dispatch's word or the machine's -- in
+// the sentence gunbc.hostname_allocation owns.
+test fn an_empty_name_from_either_side_refuses_through_the_rule() -> Bool {
+  let no_selection = microvm_host_binding_of(expected: "", observed: "srv1")
+  let no_answer = microvm_host_binding_of(expected: "srv1", observed: "")
+  (match no_selection {
+    MicrovmHostBindingRefused { cause: c } =>
+      match c {
+        HostNameUnresolved { cause: _ } =>
+          string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "named nothing")
+            && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "caller selected")
+        _ => false
+      }
+    MicrovmHostBound { spec: _, host: _ } => false
+  })
+    && (match no_answer {
+      MicrovmHostBindingRefused { cause: c } =>
+        match c {
+          HostNameUnresolved { cause: _ } =>
+            string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "named nothing")
+              && string_contains(s: microvm_host_binding_refusal_text(c: c), pattern: "own answer")
+          _ => false
+        }
+      MicrovmHostBound { spec: _, host: _ } => false
+    })
 }

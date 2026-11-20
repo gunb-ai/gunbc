@@ -53,6 +53,6 @@ data a_required_build_step_that_hides_the_compiler_diagnostics: RecurringFailure
   evidence: [
     decl_ref(module_path: "gunbc.repo.repo_self_emitted_build", decl_name: "repo_self_emitted_cargo_build_flags"),
     decl_ref(module_path: "gunbc.repo.repo_self_emitted_build", decl_name: "repo_self_emitted_crate_build_command"),
-    decl_ref(module_path: "gunbc.ci.ci_spec", decl_name: "ci_emitted_release_build_line"),
+    decl_ref(module_path: "gunbc.ci.ci_release_build", decl_name: "ci_emitted_release_build_line"),
   ],
 }

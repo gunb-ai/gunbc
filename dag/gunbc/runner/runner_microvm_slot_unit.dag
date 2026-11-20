@@ -447,6 +447,8 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ServiceResourceControl { directive: _ } => false
         TimeoutStopSec { duration: _ } => false
         ServiceUMask { mask: _ } => false
+        ServiceCapabilityBoundingSet { capabilities: _ } => false
+        ServiceAmbientCapabilities { capabilities: _ } => false
       })
     TimerUnitFile { unit: _, timer: _, install: _ } => false
     SliceUnitFile { unit: _, slice: _, install: _ } => false

@@ -15,6 +15,7 @@ import gunbc.fleet.fleet_intent {
   srv3_host,
   srv4_host,
   fleet_host_memory_nominal_vs_usable_note,
+  supermicro_h11ssl_unit3_host,
 }
 import gunbc.fleet.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog, altra_q8030_catalog }
@@ -203,7 +204,63 @@ data mtcollins1_offer: ComputeOffer = ComputeOffer {
   cost_quote: none,
 }
 
-data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer]
+// BUTCH'S OFFER IS THE MTCOLLINS1 SHAPE, NOT A HAND-CAPPED ONE: max_slots is none because butch's
+// width is DERIVED — the B3a fold through gunbc.runner.runner_slot_allocation gunbc_runner_committed_width
+// spends butch's own memory rows (usable RAM from its MemTotal read, fixed overhead excluding its two
+// Strata engines, whose ceiling the B4a serving reservation charges separately) and the CPU axis from
+// srv14_host.cpu. B1's srv14_host.runner_slots carries 8 as inventory context only; nothing on the
+// width path reads it (the fold reads the offer's max_slots, which is none).
+data srv14_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-srv14",
+  supply: ComputeSupplyFacts {
+    physical: srv14_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+// THE HAND-INSTALLED H11SSL-i (host-e2d4b7) OFFERS ITSELF TO CI ON WHAT IS ACTUALLY KNOWN ABOUT IT.
+// Its supply facts are the fleet-intent row above: board family stated, BMC endpoint at the family's protocol
+// floor, and NO processor, memory or storage census, because the hand install captured none and the box has no
+// fleet SSH roster yet to read them. That is the honest shape of a machine that has been installed but never
+// surveyed -- the offer is what makes it a fleet member; the census is what makes it a sized one, and the second
+// has not happened.
+//
+// THE REFUSAL IS IN THE DERIVATION, NOT IN THIS COMMENT. compute_host_cpu_admitted_width
+// (gunbc.runner.runner_slot_allocation) asks whether a census exists before it does any arithmetic, so an offer
+// that lists no processors puts the cores axis at AxisUnmeasured and the width at RunnerWidthUnresolved with cause
+// WidthCpuCensusAbsent -- the same "states no width, and that is not a width of zero" shape as the no-offer case,
+// with its own sentence. Witnessed in dag/test/claim/runner/runner_slot_allocation_witness.dag, not asserted here.
+//
+// WHAT THIS DOES NOT CLAIM. The unit is not yet a member of the fleet's build substrate -- that is the separate
+// serving decision, and no build-pool slot is held for it today: the carve is granted in ONE place,
+// gunbc.runner.runner_slot_desired::host_build_pool_reservation, from host facts (on the serving roster, and
+// resolving no dashboard instance), and this unit is on neither footing -- so the capacity plan converts zero carve
+// into zero held slots. His pending join lives on the open register row, not in the plan. And the OTHER empty lists
+// on this row are safe to carry BECAUSE THEY ARE NOW READ AS AN ABSENCE:
+// gunbc.fleet.fleet_intent::host_hardware_census_of answers each axis -- processors, memory, storage -- as read or
+// unread, and all four reads of these lists (primary CPU, thread fold, RAM total, admitted CPU width) derive their
+// refusal from their own axis, so no fold reaches a consumer with a zero nobody measured (review 96379; the controls
+// are test.claim.fleet.fleet_intent_memory_witness::unsurveyed_census_refuses_the_host_ram_read and
+// ::unsurveyed_census_refuses_threads_and_primary_cpu). What stays open is the READ itself, on
+// gunbc.integration_concern::h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing: the in-band SMBIOS reads
+// this unit's intake rows name, after which each axis carries real rows.
+data supermicro_h11ssl_unit3_offer: ComputeOffer = ComputeOffer {
+  provider: "gunbc-operator-host-e2d4b7",
+  supply: ComputeSupplyFacts {
+    physical: supermicro_h11ssl_unit3_host,
+    execution: fleet_intent_execution_surface(),
+    cost: Present { value: operator_owned_cost() },
+    observed_performance: [],
+  },
+  available_window: AvailabilityWindow { open: "always-open", close: none },
+  cost_quote: none,
+}
+
+data fleet_owned_compute_offer_catalog: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer, srv4_offer, mtcollins1_offer, srv14_offer, supermicro_h11ssl_unit3_offer]
 
 data fleet_intent_offers: List<ComputeOffer> = filter(
   fleet_owned_compute_offer_catalog,

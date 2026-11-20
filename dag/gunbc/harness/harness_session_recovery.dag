@@ -1,7 +1,7 @@
 module gunbc.harness.harness_session_recovery
 
 import std.types { String, Bool, Int, List, HttpStatus, NonEmptyStr, EpochSecs }
-import std.algebra { trim, length }
+import std.algebra { trim, length, string_contains }
 import std.optional { Present, Absent }
 import std.content_hash { content_hash_atom }
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status, http_header_dump_field }
@@ -365,6 +365,29 @@ fn request_pending_cause_of_wire(wire: String) -> RequestPendingCause? {
   else { none }
 }
 
+// THE LEGACY CAUSE DERIVATION. The old builds (5592b17b/4e63be8e) wrote turn.request_pending events
+// with a free-text `cause` string and NO typed `cause_class` member, and their wording drifts across
+// builds ("the pool front answered 429 (every compatible upstream busy)" in 5592b17b, "the operator
+// route answered 429 (...)" in 4e63be8e), so no single canonical phrase matches. What is stable across
+// every build is the anchor that the capacity status is written as "answered <status>": a worker never
+// writes a round number after "answered" (a round is the "round N:" prefix), so matching the whole
+// "answered <status>" phrase cannot collide with the round. A text carrying none of these anchors is
+// none -- the caller refuses it as malformed. There is NO catch-all default: fabricating PendingNoResponse
+// for an unrecognized text would be a silent widen over a value the record never carried.
+fn request_pending_cause_of_legacy_text(text: String) -> RequestPendingCause? {
+  if string_contains(s: text, pattern: "answered 429") {
+    Present { value: PendingUpstreamBusy }
+  } else if string_contains(s: text, pattern: "answered 503") {
+    Present { value: PendingNoCardServing }
+  } else if string_contains(s: text, pattern: "answered 502") {
+    Present { value: PendingCardUnanswered }
+  } else if string_contains(s: text, pattern: "drew no response at all") {
+    Present { value: PendingNoResponse }
+  } else {
+    none
+  }
+}
+
 fn request_pending_cause_text(c: RequestPendingCause) -> String {
   match c {
     PendingNoCardServing => "the front answered 503 (no card serving)"
@@ -441,6 +464,7 @@ type SessionRecovery
   // and stream all hand each other; then these fields become it and session_epoch_member deletes.
   | SessionRecoveryRequestPending { cause: RequestPendingCause, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
+  | SessionRecoveryUnreadable { detail: String }
 
 // THE TYPED RESUMABILITY READING (review 88393: a Bool flattened not-pending, malformed and interrupted into one
 // false). Each case the restore must tell apart is its own arm, so no consumer re-reads the recovery to recover them.
@@ -449,6 +473,7 @@ type SessionResumability
   | ResumabilityRequestPendingNotResumable
   | ResumabilityRequestPendingInterrupted { interrupted_calls: List<String> }
   | ResumabilityMalformed { mismatch: String }
+  | ResumabilityUnreadable { detail: String }
   | ResumabilityNotRequestPending
 
 // THE CANONICAL 'THIS RECOVERY IS A REQUEST-PENDING LINEAGE THAT CAN BE RESUMED', projected from the ONE
@@ -472,6 +497,7 @@ fn session_recovery_resumability(recovery: SessionRecovery) -> SessionResumabili
         ResumabilityResumable
       }
     SessionRecoveryMalformed { mismatch: mismatch } => ResumabilityMalformed { mismatch: mismatch }
+    SessionRecoveryUnreadable { detail } => ResumabilityUnreadable { detail: detail }
     SessionRecoveryNone => ResumabilityNotRequestPending
     SessionRecoveryPending { causes: _, resumes_made: _, wakes_made: _, interrupted_calls: _, resume_round: _ } => ResumabilityNotRequestPending
   }
@@ -617,7 +643,19 @@ fn session_request_pending_event_of(doc: JsonValue) -> SessionRecoveryEvent {
             SessionBoolMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
             SessionBoolFound { value: resumable } =>
               match json_field_string(obj: doc, key: "cause_class") {
-                FieldAbsent => RecoveryEventMalformed { mismatch: "turn.request_pending: member cause_class is absent" }
+                FieldAbsent =>
+                  // LEGACY READER: the old build wrote `cause` as free text with no `cause_class`.
+                  // Derive the cause from the legacy text's "answered <status>" anchor; a text with
+                  // no recognized anchor is malformed -- there is no catch-all cause.
+                  match json_field_string(obj: doc, key: "cause") {
+                    FieldAbsent => RecoveryEventMalformed { mismatch: "turn.request_pending: member cause_class is absent and no legacy cause text to derive it from" }
+                    FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending legacy cause text: ", m], "") }
+                    FieldRead { value: cause_text } =>
+                      match request_pending_cause_of_legacy_text(text: cause_text) {
+                        Absent => RecoveryEventMalformed { mismatch: join(["turn.request_pending: the legacy cause text carries no recognized cause anchor (no \"answered 503/502/429\", no \"drew no response at all\"): ", cause_text], "") }
+                        Present { value: derived } => RecoveryEventRequestPending { cause: derived, round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable }
+                      }
+                  }
                 FieldMalformed { cause: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
                 FieldRead { value: wire } =>
                   match request_pending_cause_of_wire(wire: wire) {

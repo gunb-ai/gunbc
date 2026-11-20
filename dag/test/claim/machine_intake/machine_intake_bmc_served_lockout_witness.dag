@@ -37,7 +37,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
 import std.algebra { list_head }
 import std.scoped_authorization { AttemptIdentity }
-import gunbc.clock_read { ObserverClockInstant }
+import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch }
 import gunbc.bmc_model { BmcWorld }
@@ -52,7 +52,7 @@ import gunbc.machine_intake.bmc_secure {
   BmcAccountStateObservation, BmcSecureGoal, ManagedCredentialReference,
   BmcAccountPlanOutcome, BmcAccountPlanned, BmcAccountPlanRefused,
   PublishedWriteInput, PublishedAccountIsTheManagedAccount,
-  bmc_secure_convergence_approval,
+  bmc_secure_convergence_approval, bmc_failed_attempt_window,
   BmcControllerLockoutReading, BmcFailedLoginSurface, BmcFailedLoginBudgetKey,
   BmcPlanFailedLoginRoster, BmcPlanFailedLoginSpend, BmcCountedFailedLogin,
   BmcFailedLoginBudgetVerdict, BmcFailedLoginBudgetBlockReading, FailedLoginBudgetAdmitted, FailedLoginBudgetRefused,

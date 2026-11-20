@@ -1,0 +1,167 @@
+module test.claim.fleet.owned_provisioning_pair_witness
+
+import std.types { Bool, String }
+import std.algebra { count_where }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, blocking_class_census, census_verdict, census_exit }
+import gunbc.fleet.fleet_host_backing {
+  OwnedControlRoute,
+  OwnedOsDelivery,
+  OwnedProvisioning,
+  Bmc,
+  NoOutOfBand,
+  InstalledViaVirtualMedia,
+  InstalledViaNetworkBoot,
+  ApplianceImage,
+  RamImageBoot,
+  provisioning_over_bmc_via_virtual_media,
+  provisioning_over_bmc_via_ram_image,
+  provisioning_over_bmc_via_network_boot,
+  provisioning_self_installed_from_appliance_image,
+  provisioning_self_booted_ram_image,
+  owned_provisioning_control,
+  owned_provisioning_delivery,
+}
+
+// THE PAIR IS NOT WRITABLE, AND THE INTERFACE THAT DOES WRITE IT IS ONE.
+// gunbc.fleet.fleet_host_backing pairs a host's control route with its OS delivery in
+// OwnedProvisioning, and one pairing of those two facts names a machine that cannot exist: an OS
+// delivered over BMC virtual media on a route with no out-of-band control, which has no route able to
+// run the install it claims. That pairing used to be written freely and refused at the enrollment call
+// site (gunbc.rung_drop::owned_provisioning_impossible_pair_admitted_at_enrolment, which stood at
+// MechanicallyPreventable with the ceiling StructurallyImpossible). It is now StructurallyImpossible:
+// the type is sealed to its own module and the pairs the fleet can have are the exported route
+// constructors, so the impossible pairing has no name to call and no literal to write. This witness is
+// the ladder's obligation on that climb: the RED is fixture SOURCE that tries to write the pairing and
+// is refused by the compiler on the real acceptance path, and the positive control writes a real pairing
+// through the interface that does exist -- so the seal cannot be satisfied by sealing away everything.
+
+// RED: the exact pairing, spelled by a module that is not its home. Exactly one located refusal.
+data impossible_pair_source: String = "module probe_impossible_pair\nimport gunbc.fleet.fleet_host_backing { OwnedProvisioning, NoOutOfBand, InstalledViaVirtualMedia }\nfn impossible_pair() -> OwnedProvisioning {\n  OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia }\n}\n"
+
+test fn the_impossible_pairing_is_refused_where_it_is_written() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: impossible_pair_source, wanted_class: "SoleConstructorViolation", wanted_subject: "OwnedProvisioning"), holds: fn(n) { n == 1 }))
+}
+
+// THE RED DISCRIMINATES ON THE PAIR, NOT ON THIS LITERAL: assembling a pair from a control route and a
+// delivery handed over as parameters -- any pair, including a legal one -- is refused just the same. The
+// refusal is on the type, so no amount of argument juggling at the call site reaches it.
+data pair_from_facts_source: String = "module probe_pair_from_facts\nimport gunbc.fleet.fleet_host_backing { OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery }\nfn any_pair(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> OwnedProvisioning {\n  OwnedProvisioning { control: control, delivery: delivery }\n}\n"
+
+test fn the_pairing_is_refused_wherever_it_is_written() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: pair_from_facts_source, wanted_class: "SoleConstructorViolation", wanted_subject: "OwnedProvisioning"), holds: fn(n) { n == 1 }))
+}
+
+// THE CAPABILITY IS THE CONSTRUCTOR TABLE, SO A MISSING MEDIUM IS A MISSING NAME: the route with no
+// out-of-band control has constructors for what a host can do to its own OS and NONE for a medium that
+// needs a hand on the machine. Asking for one is a refusal on the name, which is what makes the pairing
+// unrepresentable rather than merely checked.
+data self_route_virtual_media_source: String = "module probe_self_route_virtual_media\nimport gunbc.fleet.fleet_host_backing { OwnedProvisioning, provisioning_self_installed_from_virtual_media }\nfn impossible_pair() -> OwnedProvisioning {\n  provisioning_self_installed_from_virtual_media()\n}\n"
+
+test fn the_route_without_out_of_band_control_has_no_virtual_media_constructor() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: self_route_virtual_media_source, wanted_class: "MissingExport", wanted_subject: "provisioning_self_installed_from_virtual_media"), holds: fn(n) { n == 1 }))
+}
+
+// POSITIVE CONTROL, WITNESSING THE INTERFACE: a pairing the fleet really runs -- the BMC's virtual-media
+// install -- written from a foreign module through the constructor, compiles with no refusal of either
+// class. Delete the constructor and this goes red; seal the type and leave no constructor, and it goes red.
+data canonical_pair_source: String = "module probe_canonical_pair\nimport gunbc.fleet.fleet_host_backing { OwnedProvisioning, provisioning_over_bmc_via_virtual_media }\nfn written_through_the_route() -> OwnedProvisioning {\n  provisioning_over_bmc_via_virtual_media()\n}\n"
+
+test fn a_pairing_the_fleet_runs_is_writable_through_the_constructor() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: canonical_pair_source, wanted_class: "SoleConstructorViolation", wanted_subject: "OwnedProvisioning"), holds: fn(n) { n == 0 }))
+}
+
+test fn the_constructor_route_takes_the_pairing_without_a_refusal() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: canonical_pair_source, wanted_class: "ConstructorCallAdmissionRefused"), holds: fn(n) { n == 0 }))
+}
+
+// THE TABLE ITSELF, EVALUATED. A constructor's pairing is read back through the pair's own accessors, so
+// the claim below is about what the constructors actually carry, not about their names.
+type PairingRow { control_label: String, delivery_label: String }
+
+fn control_label(control: OwnedControlRoute) -> String {
+  match control {
+    Bmc => "bmc"
+    NoOutOfBand => "no-out-of-band"
+  }
+}
+
+fn delivery_label(delivery: OwnedOsDelivery) -> String {
+  match delivery {
+    InstalledViaVirtualMedia => "virtual-media"
+    ApplianceImage => "appliance-image"
+    RamImageBoot => "ram-image"
+    // The medium PXE 2c installs through: ordered over the controller, so it is only ever paired with `bmc`.
+    InstalledViaNetworkBoot => "network-boot"
+  }
+}
+
+fn pair_row(provisioning: OwnedProvisioning) -> PairingRow {
+  PairingRow {
+    control_label: control_label(control: owned_provisioning_control(provisioning: provisioning)),
+    delivery_label: delivery_label(delivery: owned_provisioning_delivery(provisioning: provisioning)),
+  }
+}
+
+fn pair_table() -> List<PairingRow> {
+  [
+    pair_row(provisioning: provisioning_over_bmc_via_virtual_media()),
+    pair_row(provisioning: provisioning_over_bmc_via_ram_image()),
+    pair_row(provisioning: provisioning_over_bmc_via_network_boot()),
+    pair_row(provisioning: provisioning_self_installed_from_appliance_image()),
+    pair_row(provisioning: provisioning_self_booted_ram_image()),
+  ]
+}
+
+fn row_label(row: PairingRow) -> String {
+  concat(row.control_label, ":", row.delivery_label)
+}
+
+// WHAT THE TABLE HOLDS, EXACTLY: each constructor carries the control route its name promises, and the
+// delivery it names is a medium that route can run. The labels come from matches that are exhaustive over
+// OwnedControlRoute and OwnedOsDelivery, so the day a delivery is added without its route -- PXE's network
+// boot, say -- this witness does not compile until the new pairing is placed, which is the same totality
+// the constructors themselves are held to.
+fn allowed_pairing(label: String) -> Bool {
+  label == "bmc:virtual-media"
+    || label == "bmc:ram-image"
+    || label == "no-out-of-band:appliance-image"
+    || label == "no-out-of-band:ram-image"
+    || label == "bmc:network-boot"
+}
+
+test fn every_constructor_carries_a_pairing_its_route_can_run() -> Bool {
+  all(map(pair_table(), row => row_label(row)), predicate: fn(label) { allowed_pairing(label: label) })
+}
+
+// The pairing the ladder is about is absent by NAME: no constructor yields it.
+test fn no_constructor_yields_the_pairing_that_names_no_route() -> Bool {
+  !any(pair_table(), row => row_label(row) == "no-out-of-band:virtual-media")
+}
+
+// Two constructors for one pairing would mean the table is not the table.
+test fn no_pairing_is_written_twice() -> Bool {
+  let labels = map(pair_table(), row => row_label(row))
+  length(labels) == 5
+    && all(labels, predicate: fn(a) { count_where(xs: labels, predicate: fn(b) { b == a }) == 1 })
+}
+
+// The accessors answer for what a constructor put in: the pair's two facts survive the seal.
+test fn the_accessors_answer_for_a_written_pair() -> Bool {
+  let bmc_media = pair_row(provisioning: provisioning_over_bmc_via_virtual_media())
+  let self_appliance = pair_row(provisioning: provisioning_self_installed_from_appliance_image())
+  bmc_media.control_label == "bmc"
+    && bmc_media.delivery_label == "virtual-media"
+    && self_appliance.control_label == "no-out-of-band"
+    && self_appliance.delivery_label == "appliance-image"
+}
+
+// THE NETWORK-BOOT PAIRING ANSWERS FOR ITSELF: the constructor the network install runs through carries the
+// route its name promises and the medium its name promises -- and there is no self-installed twin to pair it
+// with, which is the same absence that keeps {no-out-of-band, network-boot} out of the table above.
+test fn the_network_boot_pairing_carries_the_route_its_name_promises() -> Bool {
+  let bmc_netboot = pair_row(provisioning: provisioning_over_bmc_via_network_boot())
+  bmc_netboot.control_label == "bmc"
+    && bmc_netboot.delivery_label == "network-boot"
+    && !any(pair_table(), row => row_label(row) == "no-out-of-band:network-boot")
+}

@@ -34,9 +34,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // so every predicate that reaches the ingest reports
 // interrupted_before_verdict and BLOCKS rather than running (measured on this branch: seven of
 // them at once, run 34022136976). Those predicates are therefore plain fns -- they pass by
-// execution under claim_batch and are enrolled in nothing, which is the same standing as the
-// corpus-grain forms in v2.lens.complexity_accumulator_copy.corpus_census and dissolves on the
-// same trigger.
+// execution under claim_batch and are enrolled in nothing, which is the standing the
+// corpus-grain forms in v2.lens.complexity_accumulator_copy.corpus_census had before that module was
+// retired on 2026-11-10.
 //
 // The witnesses that remain touch no ingest and measure 0-1ms: the coverage join, whose subject is
 // the join and whose inputs are rows, and the population floor. They are not a cheaper proxy for

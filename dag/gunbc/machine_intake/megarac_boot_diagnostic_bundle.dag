@@ -1,6 +1,5 @@
 module gunbc.machine_intake.megarac_boot_diagnostic_bundle
 
-import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
 import gunbc.host.bmc_release_capability_catalog {
   MegaRacVersionEstablishment, MegaRacReleaseEstablishedByRead, MegaRacReleaseEstablishedByAttestation,
   MegaRacReleaseEstablishmentRefused, MegaRacVersionFromFirmwareRead, megarac_version_establishment,
@@ -10,20 +9,22 @@ import gunbc.host.host_boot_attempt_admission {
   PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
 }
 import std.decl_ref { decl_ref }
+import gunbc.host.pxe_boot_delivery { PxeDeliveryRunRecord, PxeDeliveryNotObservableBeforePowerOn, pxe_delivery_run_record_text, pxe_run_admits_success }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.algebra { FreeSemigroup, non_empty_to_list, trim }
+import std.algebra { FreeSemigroup, non_empty_to_list, non_empty_singleton, non_empty_append, trim }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { Second, second, second_count, ByteSize, byte_size, byte_size_count }
-import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
-import std.optional { Present }
+import std.optional { Absent, Present }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
+import extdeps.bmc.ipmi_session { ipmi_session_failure, IpmiSessionFailure, IpmiSessionAuthRefused, IpmiSessionUnestablished, IpmiCommandNotServed, ipmitool_read_failure, IpmitoolReadDeadlineExpired, IpmitoolReadSessionFailed, IpmitoolReadFailedOtherwise, ipmitool_verbosity_argv, IpmitoolDefaultVerbosity }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection, IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get,
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
@@ -99,6 +100,7 @@ import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_
 import gunbc.machine_intake.megarac_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake.mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake.megarac_media_attach {
+  megarac_secret_file_left, megarac_secret_file_text, SecretFileResidueRemains,
   AttachReadiness,
   MegaRacAttachOutcome,
   MegaRacAttachResult,
@@ -118,6 +120,7 @@ import gunbc.machine_intake.megarac_media_attach {
   SessionRelease,
   SessionReleased,
   SessionReleaseNotAttempted,
+  SessionCloseNeverRan,
   SessionReleaseRefused,
   MegaRacPresentationReady,
   MegaRacReadinessTimedOut,
@@ -129,6 +132,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacPresentationObserved,
   PresentationStillReady,
   PresentationNoLongerReady,
+  PresentationServingConditionUnsatisfied,
   PresentationStillServed,
   presentation_still_served,
   ShareBound,
@@ -142,14 +146,19 @@ import gunbc.machine_intake.megarac_media_attach {
   megarac_share_type_wire,
   MegaRacSessionRefused,
   MegaRacSessionTokenUnreadable,
+  MegaRacSecretFileNotEntered,
   MegaRacImagesUnreadable,
   MegaRacImageListingEmpty,
   MegaRacImageListingUnparseable,
   MegaRacImageNotEnumerated,
+  MegaRacShareCycleNotPresented,
+  MegaRacShareCycleNotAdmitted,
+  MegaRacShareCycleAmbiguous,
   MegaRacImageOfferedAmbiguously,
   MegaRacForeignImagePresented,
   MegaRacSeveralImagesPresented,
   MegaRacStaleDetachNotAdmitted,
+  MegaRacPresentedRowNotServing,
   MegaRacStaleDetachUnconfirmed,
   MegaRacRedirectionUncatalogued,
   redirection_unread_text, unread_row_stop_refusal_text,
@@ -160,6 +169,7 @@ import gunbc.machine_intake.megarac_media_attach {
   MegaRacMediaStateUnestablishedBeforeWrite,
   MegaRacReadinessClockIncoherent,
   PresentationReadyButSessionHeld,
+  PresentationReadyButSecretFileLeft,
   PresentationUnobserved,
   MegaRacNotEnumeratedAfterRefresh,
   MegaRacOwnSessionEnded,
@@ -191,9 +201,10 @@ import gunbc.host.boot_attempt {
   HostPowerState, PowerOn, PowerOff, PowerUnread, host_power_text,
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
   StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused,
-  StalePowerOffNotObserved, MediaAttachRecord, MediaAttachNotAttempted, MediaAttachAttempted,
+  MediumPowerOffPurpose, medium_power_off_purpose_text,
+  StalePowerOffNotObserved, MediaAttachRecord, MediaAttachNotAttempted, MediaAttachAttempted, MediaAttachWithheld,
   media_attach_text, HandoffCallResult, HandoffConfirmed, HandoffAttemptedUnconfirmed,
-  HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted,
+  HandoffMedia, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffNetworkAttempted,
   handoff_media_text, EndMedia, EndMediaNotTaken, EndMediaObserved, end_media_text,
   PowerAfterAttempt, PoweredOffAfterTerminal, PoweredOffWithoutTerminal, PoweredOnAfterAttempt,
   PowerAfterUnobserved, PowerAfterNotTaken, power_after_text, power_after_attempt,
@@ -216,6 +227,8 @@ import gunbc.host.boot_attempt {
   // Importing it here and never calling it would suggest the adapter produced the findings.
 
 }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
+import gunbc.machine_intake.bmc_firmware_hpm_read { bmc_hpm_check_transport, HpmCheckTransportOk, HpmCheckTransportFailed, HpmCheckRetentionFailed }
 
 // THE DIAGNOSTIC BUNDLE OF ONE mtcollins1 BOOT ATTEMPT: what the BMC and the pre-OS console
 // said about the machine around the attempt, recorded on every terminal arm so that a remote
@@ -354,32 +367,44 @@ fn bmc_curl_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, s
   }
 }
 
-// ipmitool's lanplus renderings, as its source prints them: "RAKP 2 HMAC is invalid" and
-// "Unauthorized name" come from the RAKP exchange rejecting the credential, and "Insufficient
-// privilege level" is completion code D4h. Anything that failed to set up a session without one
-// of those is BmcSessionUnestablished.
+// The session/auth half of this reading is classified ONCE in extdeps.bmc.ipmi_session
+// ipmi_session_failure -- a credential refusal vs. a session that never came up -- and this maps that
+// verdict to the read-cause types and adds the timeout case. The vendor lines themselves ("RAKP 2 HMAC is
+// invalid" / "Unauthorized name" rejecting the credential, "Insufficient privilege level" completion code
+// D4h, and "Unable to establish IPMI v2" for a session that never came up) are declared there, not here.
 fn bmc_ipmitool_read_cause(endpoint: NonEmptyStr, at: NonEmptyStr, exit_code: Int, stderr: String) -> BmcReadCause {
   let detail = first_line(s: stderr)
-  if exit_code == coreutils_timeout_expired_exit_code {
-    BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
-  } else {
-    match bmc_ipmitool_session_cause(endpoint: endpoint, at: at, stderr: stderr) {
+  match ipmitool_read_failure(exit_code: exit_code, stderr: stderr) {
+    IpmitoolReadDeadlineExpired =>
+      BmcTimeout { endpoint: endpoint, at: at, detail: concat("no answer within the diagnostics deadline (coreutils timeout exit 124)", if detail == "" { "" } else { concat("; ", detail) }) }
+    IpmitoolReadSessionFailed { failure: f } => match bmc_ipmi_session_failure_cause(endpoint: endpoint, at: at, failure: f, detail: detail) {
       Present { value: c } => c
       Absent => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
     }
+    IpmitoolReadFailedOtherwise => BmcReadFailed { endpoint: endpoint, at: at, exit_code: exit_code, detail: detail }
   }
 }
 
 // The session-setup half of that reading, which needs no exit code: a backgrounded collector
 // (gunbc.machine_intake.sol_hold) has no exit status the workflow can read, only the lines it wrote.
 fn bmc_ipmitool_session_cause(endpoint: NonEmptyStr, at: NonEmptyStr, stderr: String) -> BmcReadCause? {
-  let detail = first_line(s: stderr)
-  if string_contains(s: stderr, pattern: "RAKP 2 HMAC is invalid") || string_contains(s: stderr, pattern: "Unauthorized name") || string_contains(s: stderr, pattern: "Insufficient privilege level") {
-    Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
-  } else if string_contains(s: stderr, pattern: "Unable to establish IPMI v2") {
-    Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
-  } else {
-    none
+  match ipmi_session_failure(output: stderr) {
+    Present { value: f } => bmc_ipmi_session_failure_cause(endpoint: endpoint, at: at, failure: f, detail: first_line(s: stderr))
+    Absent => none
+  }
+}
+
+// THE ONE MAPPING from the session-failure classification to a read cause, exhaustive over
+// IpmiSessionFailure (no wildcard: a fourth kind of failure must be placed here before anything compiles).
+// IpmiCommandNotServed maps to NO session cause, as #16357 mapped it: the session came up and the
+// credential was accepted, so there is nothing about the session to attribute; a read that failed that
+// way is BmcReadFailed with its exit code (bmc_ipmitool_read_cause), and a backgrounded collector
+// records no session cause (bmc_ipmitool_session_cause).
+fn bmc_ipmi_session_failure_cause(endpoint: NonEmptyStr, at: NonEmptyStr, failure: IpmiSessionFailure, detail: String) -> BmcReadCause? {
+  match failure {
+    IpmiSessionAuthRefused => Present { value: BmcAuthRefused { endpoint: endpoint, at: at, detail: detail } }
+    IpmiSessionUnestablished => Present { value: BmcSessionUnestablished { endpoint: endpoint, at: at, detail: detail } }
+    IpmiCommandNotServed => none
   }
 }
 
@@ -523,6 +548,7 @@ fn megarac_presentation(r: MegaRacAttachResult) -> BootPresentation {
       SessionReleased => Presented
       SessionReleaseRefused { detail: d } => PresentationSessionHeld { detail: d as NonEmptyStr }
       SessionReleaseNotAttempted => PresentationSessionHeld { detail: "the attach session was never released" }
+      SessionCloseNeverRan { detail: d } => PresentationSessionHeld { detail: d }
     }
     Present { value: why } => PresentationNotServed { reason: why as NonEmptyStr }
   }
@@ -538,7 +564,12 @@ fn megarac_look_presentation(r: MegaRacAttachResult) -> BootPresentation {
     PresentationStillReady => Presented
     PresentationReadyButSessionHeld { held: h } =>
       PresentationSessionHeld { detail: session_release_text(standing: h) as NonEmptyStr }
+    // The presentation was served; the residue is a separate fact, reported by csrf_header_file_harness.
+    PresentationReadyButSecretFileLeft => Presented
     PresentationNoLongerReady { reason: why } => PresentationNotServed { reason: why as NonEmptyStr }
+    // The controller answered, and under the serving law its answer is not a served presentation; the
+    // reason says the condition failed and names the code, never that the medium was withdrawn.
+    PresentationServingConditionUnsatisfied { cd_error: cd } => PresentationNotServed { reason: serving_condition_text(cd: cd) as NonEmptyStr }
     PresentationUnobserved { reason: why } => PresentationUnread { reason: why as NonEmptyStr }
   }
 }
@@ -546,13 +577,13 @@ fn megarac_look_presentation(r: MegaRacAttachResult) -> BootPresentation {
 fn megarac_stale_power_off_record(r: MegaRacStalePowerOff) -> StaleMediumPowerOff {
   match r {
     MegaRacStalePowerOffNotNeeded { reason: reason } => StalePowerOffNotNeeded { reason: reason }
-    MegaRacStalePowerOffObserved { stale_image: i, before: b } =>
-      StalePowerOffObserved { stale_image: i, before: megarac_host_power(o: b) }
-    MegaRacStalePowerOffCommandRefused { stale_image: i, before: b } =>
-      StalePowerOffCommandRefused { stale_image: i, before: megarac_host_power(o: b) }
-    MegaRacStalePowerOffNotObserved { stale_image: i, before: b, last: l } =>
+    MegaRacStalePowerOffObserved { purpose: p, before: b } =>
+      StalePowerOffObserved { purpose: p, before: megarac_host_power(o: b) }
+    MegaRacStalePowerOffCommandRefused { purpose: p, before: b } =>
+      StalePowerOffCommandRefused { purpose: p, before: megarac_host_power(o: b) }
+    MegaRacStalePowerOffNotObserved { purpose: p, before: b, last: l } =>
       StalePowerOffNotObserved {
-        stale_image: i,
+        purpose: p,
         before: megarac_host_power(o: b),
         last: megarac_host_power(o: l),
       }
@@ -562,6 +593,8 @@ fn megarac_stale_power_off_record(r: MegaRacStalePowerOff) -> StaleMediumPowerOf
 fn megarac_media_attach_record(r: MegaRacMediaAttach) -> MediaAttachRecord {
   match r {
     MegaRacMediaAttachNotAttempted { reason: reason } => MediaAttachNotAttempted { reason: reason }
+    MegaRacMediaAttachWithheld { attempt: _, medium_image_name: n, medium_image_sha256: s, power: p, cause: c, look: _ } =>
+      MediaAttachWithheld { medium_image_name: n, medium_image_sha256: s, power: megarac_host_power(o: p), reason: stale_power_off_withheld_cause_text(cause: c) as NonEmptyStr }
     MegaRacMediaAttachAttempted {
       attempt: _, medium_image_name: n, medium_image_sha256: s, power: p, stale_power_off: sp, result: res,
     } =>
@@ -595,6 +628,7 @@ fn megarac_handoff_media_record(h: MegaRacHandoff) -> HandoffMedia {
       HandoffMediaWithheldAtRecheck { reason: "the pre-handoff re-check withheld the handoff" }
     MegaRacHandoffAttempted { before: _, handoff: call, after: a } =>
       HandoffMediaAttempted { handoff: megarac_handoff_call_result(h: call), after: megarac_look_presentation(r: a) }
+    MegaRacHandoffNetworkAttempted { handoff: call } => HandoffNetworkAttempted { handoff: megarac_handoff_call_result(h: call) }
   }
 }
 
@@ -631,6 +665,7 @@ fn megarac_standing_findings(raw: List<HarnessFinding>) -> List<StandingFinding>
     MegaRacEveryReadFailed { failed: ch } => [EveryReadFailed {
       channels: non_empty_failed_names(failed: ch) }]
     MegaRacCredentialMayRemain => [CredentialMayRemain]
+    MegaRacCsrfHeaderFileLeft { sessions: _ } => [CredentialMayRemain]
     MegaRacMediaAttachNotReady { record: _ } => []
     MegaRacMediaAttachSessionHeld { record: _ } => []
     MegaRacHandoffWithheld { handoff: _ } => []
@@ -765,8 +800,22 @@ type BootParamReading
 // looks — reaches the actuation, the attempt and this bundle as a value, including the refusal and
 // timeout arms, never as a bare exit. The power reading the detach admission was taken from is kept
 // beside it.
+// WITHHELD BEFORE THE ATTACH: the read-only look taken to decide a stale power-off failed its own cleanup, so
+// the attempt stops there -- no second session is opened and no media write is made, because a gate after
+// the attach cannot revoke a StartMedia it already sent (side chat on gunbc#16247). The record keeps the
+// decision and its evidence: the power reading that made the look owed, the cause, and the look itself.
+// An attach that ran under a withheld power-off has no constructor: the Attempted arm's stale power-off is
+// a MegaRacStalePowerOff, which has no withheld arm.
 type MegaRacMediaAttach
   = MegaRacMediaAttachNotAttempted { reason: NonEmptyStr }
+  | MegaRacMediaAttachWithheld {
+      attempt: String,
+      medium_image_name: NonEmptyStr,
+      medium_image_sha256: NonEmptyStr,
+      power: ChassisPowerObservation,
+      cause: StalePowerOffWithheldCause,
+      look: MegaRacAttachResult
+    }
   | MegaRacMediaAttachAttempted {
       attempt: String,
       medium_image_name: NonEmptyStr,
@@ -781,18 +830,34 @@ type MegaRacMediaAttach
 // admission correctly refused). `power` above is then the FRESH reading taken after this power-off,
 // the one the admission was given; the reading before it is `before` here. Not needed carries why,
 // so an attempt that did not power off says which fact made it unnecessary.
+// WHY A STALE POWER-OFF WAS WITHHELD rather than found unneeded: the read-only look failed its own
+// cleanup, which says nothing about whether the medium is stale, so the line stops instead of
+// guessing (side chat on gunbc#16247). A session the look never opened is not here: nothing was owed.
+// The cause is the PRIMARY reason only; whether the look also left its CSRF header file is read off the
+// look itself, which the withheld record carries, so a leaked session never hides a residue.
+type StalePowerOffWithheldCause
+  = LookSessionNotReleased { detail: String }
+  | LookSecretFileLeft
+
+fn stale_power_off_withheld_cause_text(cause: StalePowerOffWithheldCause) -> String {
+  match cause {
+    LookSessionNotReleased { detail: d } => concat("the read-only look's session was NOT released, still allocated on the controller: ", d)
+    LookSecretFileLeft => "the read-only look's CSRF header file was LEFT ON THE RUNNER (its removal did not complete; the session token may remain on disk)"
+  }
+}
+
 type MegaRacStalePowerOff
   = MegaRacStalePowerOffNotNeeded { reason: NonEmptyStr }
-  | MegaRacStalePowerOffObserved { stale_image: String, before: ChassisPowerObservation }
-  | MegaRacStalePowerOffCommandRefused { stale_image: String, before: ChassisPowerObservation }
-  | MegaRacStalePowerOffNotObserved { stale_image: String, before: ChassisPowerObservation, last: ChassisPowerObservation }
+  | MegaRacStalePowerOffObserved { purpose: MediumPowerOffPurpose, before: ChassisPowerObservation }
+  | MegaRacStalePowerOffCommandRefused { purpose: MediumPowerOffPurpose, before: ChassisPowerObservation }
+  | MegaRacStalePowerOffNotObserved { purpose: MediumPowerOffPurpose, before: ChassisPowerObservation, last: ChassisPowerObservation }
 
 fn megarac_stale_power_off_text(record: MegaRacStalePowerOff) -> String {
   match record {
     MegaRacStalePowerOffNotNeeded { reason: r } => concat("no power-off: ", r as String)
-    MegaRacStalePowerOffObserved { stale_image: i, before: b } => join(["powered off (was ", chassis_observation_text(observation: b) as String, ") to replace stale '", i, "', observed off"], "")
-    MegaRacStalePowerOffCommandRefused { stale_image: i, before: _ } => join(["chassis power off for stale '", i, "' was refused by ipmitool"], "")
-    MegaRacStalePowerOffNotObserved { stale_image: i, before: _, last: l } => join(["chassis power off for stale '", i, "' was sent but never observed off; last read ", chassis_observation_text(observation: l) as String], "")
+    MegaRacStalePowerOffObserved { purpose: p, before: b } => join(["powered off (was ", chassis_observation_text(observation: b) as String, ") ", medium_power_off_purpose_text(purpose: p), ", observed off"], "")
+    MegaRacStalePowerOffCommandRefused { purpose: p, before: _ } => join(["chassis power off ", medium_power_off_purpose_text(purpose: p), " was refused by ipmitool"], "")
+    MegaRacStalePowerOffNotObserved { purpose: p, before: _, last: l } => join(["chassis power off ", medium_power_off_purpose_text(purpose: p), " was sent but never observed off; last read ", chassis_observation_text(observation: l) as String], "")
   }
 }
 
@@ -839,8 +904,24 @@ fn attach_route_text(route: MegaRacAttachRoute) -> String {
   }
 }
 
+// The stopped row's provenance: a row this attempt presented itself to re-enumerate the share, or a row it found.
+fn detach_stopped_row_text(detach: MegaRacDetachEvidence) -> String {
+  match detach.share_cycle_start {
+    Present { value: st } => join(["presented '", detach.stale_image, "' to re-enumerate the share (start-media ", write_answer_text(a: st), "), then "], "")
+    Absent => ""
+  }
+}
+
+fn detach_stopped_row_name(detach: MegaRacDetachEvidence) -> String {
+  match detach.share_cycle_start {
+    Present { value: _ } => concat("the image cycled to re-enumerate the share, ", detach.stale_image)
+    Absent => "the stale image"
+  }
+}
+
 fn detach_evidence_text(detach: MegaRacDetachEvidence) -> String {
   join([
+    detach_stopped_row_text(detach: detach),
     "stopped '", detach.stale_image, "' on media index ", detach.media_index,
     "; stop-media ", write_answer_text(a: detach.command),
     "; configurations read-back ", if detach.readback_read { "read" } else { "UNREAD" }, ": ", detach.readback,
@@ -906,42 +987,51 @@ fn media_attach_outcome_reason(outcome: MegaRacAttachOutcome) -> String? {
         e.server_address as String, ":", e.source_path as String, " over ", megarac_share_type_wire(t: e.share_type), " with mount_cd 1, observed ",
         o.server_address, ":", o.source_path, " over ", o.share_type, " with mount_cd ", o.mount_cd,
       ], "") }
-    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _, general: _, configurations: _ } =>
+    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _, general: _, configurations: _, listing: _, admitted_route: _ } =>
       Present { value: "a read-only presentation observation reached an attach decision; observations never attach and never open the handoff" }
     MegaRacShareUnreadable { detail: d } =>
       Present { value: concat("the controller's remote-media share settings could not be read, so which share image names resolve in is UNKNOWN; nothing was written: ", d) }
     MegaRacSessionRefused { detail: d } => Present { value: concat("session refused: ", d) }
     MegaRacSessionTokenUnreadable { detail: d } => Present { value: concat("session succeeded but no CSRFToken could be read from its document: ", d) }
+    MegaRacSecretFileNotEntered { detail: d } => Present { value: concat("the CSRF header file could not be staged, so the session was refused rather than opened with the token on argv: ", d as String) }
     MegaRacImagesUnreadable { detail: d } => Present { value: concat("images listing unreadable: ", d) }
     MegaRacImageListingEmpty =>
       Present { value: "the image is not presented AND the controller offers no image available to attach, and nothing is presented to stop (stopping is what re-enumerates the share); check that the export is reachable from the controller and holds the file" }
     MegaRacImageListingUnparseable { detail: d } => Present { value: concat("the images listing was not valid JSON: ", d) }
     MegaRacImageOfferedAmbiguously { image_name: n, image_indices: ids } =>
       Present { value: join(["the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing was written"], "") }
-    MegaRacImageNotEnumerated { image_name: n } =>
-      Present { value: concat("the image is not presented, and the controller offers other images but not '", concat(n as String, "'; nothing is presented to stop, and stopping is what re-enumerates the share, so check that the export holds exactly that file")) }
+    MegaRacImageNotEnumerated { image_name: n, offered: names } =>
+      Present { value: join(["the image is not presented, and the controller offers other images but not '", n as String, "' (offered: ", join(names, ", "), "); none of them is this lane's to present and stop, and stopping is what re-enumerates the share, so the share was not re-enumerated and nothing was written; check that the export holds exactly that file"], "") }
+    MegaRacShareCycleNotPresented { image_name: n, cycled: c, start: st, reason: why, configurations: cfg } =>
+      Present { value: join(["to re-enumerate the share for '", n as String, "', start-media was sent for '", c, "' (", write_answer_text(a: st), ") and it was not established as presented: ", why as String, "; it was not stopped, and no boot-device or power handoff was made; configurations: ", cfg], "") }
+    MegaRacShareCycleNotAdmitted { image_name: n, cycled: c, reason: why, offered: names } =>
+      Present { value: join(["the image is not presented and the controller does not offer '", n as String, "' (offered: ", join(names, ", "), "); re-enumerating the share would present and stop '", c, "', and that stop was not admitted: ", why as String, "; neither start nor stop was sent"], "") }
+    MegaRacShareCycleAmbiguous { image_name: n, cycled: c, image_indices: ids } =>
+      Present { value: join(["the controller does not offer '", n as String, "', and the image of this lane that would be cycled to re-enumerate the share, '", c, "', is offered more than once (image_index ", join(ids, ", "), "), so which file a start would present is the controller's enumeration order; nothing was written"], "") }
     MegaRacForeignImagePresented { image_name: n, configurations: c } =>
       Present { value: concat("the controller is presenting '", concat(n, concat("', which is not a census image of this lane; it is not this workflow's to stop, so nothing was written: ", c))) }
     MegaRacSeveralImagesPresented { configurations: c } =>
       Present { value: concat("more than one census image is presented at once, a state never observed on this single-CD unit; nothing was written: ", c) }
     MegaRacStaleDetachNotAdmitted { stale_image: n, reason: why } =>
       Present { value: concat("the stale census image '", concat(n, concat("' is presented and was NOT stopped: ", why as String))) }
+    MegaRacPresentedRowNotServing { image_name: n, configurations: c, cd_error: cd, not_replaced: why } =>
+      Present { value: join(["the row presenting '", n as String, "' is not evidence the medium is served: general settings read cd_error_code ", cd_reading_text(r: cd), ", and an already-presented row is admitted only on 0; it was NOT stopped and re-attached: ", why as String, ". No boot-device or power handoff was made; configurations: ", c], "") }
     MegaRacStaleDetachUnconfirmed { detach: d, reason: why } =>
-      Present { value: concat("the stale census image was not established as detached: ", concat(why as String, concat(" (", concat(detach_evidence_text(detach: d), ")")))) }
+      Present { value: join([detach_stopped_row_name(detach: d), " was not established as detached: ", why as String, " (", detach_evidence_text(detach: d), ")"], "") }
     MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: why, configurations: c } =>
       Present { value: join(["the row naming '", n, "' reports ", redirection_unread_text(unread: u), ", and it was not stopped: ", unread_row_stop_refusal_text(refusal: why), "; refusing before any write or power action: ", c], "") }
     MegaRacRefreshClockUnreadable { detail: d, detach: x } => Present { value: join(["the clock could not be read, so the re-enumeration window could not be declared or judged: ", d, " (the detach had been executed: ", detach_evidence_text(detach: x), ")"], "") }
-    MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
+    MegaRacListingUnparseableAfterDetach { detail: d, detach: x } => Present { value: join(["after ", detach_stopped_row_name(detach: x), " was stopped (", detach_evidence_text(detach: x), "), the images listing was not valid JSON: ", d], "") }
     MegaRacOfferedAmbiguouslyAfterDetach { image_name: n, image_indices: ids, detach: x } =>
-      Present { value: join(["after the stale image was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
+      Present { value: join(["after ", detach_stopped_row_name(detach: x), " was stopped (", detach_evidence_text(detach: x), "), the controller offers '", n as String, "' more than once (image_index ", join(ids, ", "), "), so which file would be attached is the controller's enumeration order; nothing further was written"], "") }
     MegaRacMediaStateUnestablished { image_name: n, route: r, look: l, looks: k, cd_before_any_write: cb, cd_at_ready: ca, general_at_ready: g } =>
       Present { value: join(["this attempt cannot establish the media state of '", n as String, "': the presentation read Started (", readiness_look_text(l: l), ", ", to_string(k), " looks, route: ", attach_route_text(route: r), ") but cd_error_code before any write was ", cd_reading_text(r: cb), " and at readiness ", cd_reading_text(r: ca), " (general settings ", raw_read_text(r: g), "). A code other than 0, or 16 on the build an executed receipt grounded it for, or an unread one, has no established meaning, so this is a knowledge refusal, not a controller verdict. No boot-device or power handoff was made"], "") }
     MegaRacMediaStateUnestablishedBeforeWrite { cd_before_any_write: cb, reason: why } =>
       Present { value: join(["this attempt cannot establish the media state, and nothing was written: cd_error_code before any write was ", cd_reading_text(r: cb), "; ", why as String], "") }
     MegaRacReadinessClockIncoherent { image_name: n, route: rt, opened_at: o, previous: p, look: l, looks: k } =>
       Present { value: join(["the clock cannot bound the readiness wait for '", n as String, "': window opened at ", to_string(o), ", previous look at ", match p { Present { value: v } => to_string(v)  Absent => "none" }, ", this look ", readiness_look_text(l: l), " after ", to_string(k), " looks (route: ", attach_route_text(route: rt), "). No boot-device or power handoff was made"], "") }
-    MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _ } =>
-      Present { value: join(["NotEnumeratedAfterRefresh: after the stale image was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window; check that the export on srv2 holds exactly that file"], "") }
+    MegaRacNotEnumeratedAfterRefresh { image_name: n, detach: d, standing: _, offered: names } =>
+      Present { value: join(["NotEnumeratedAfterRefresh: after ", detach_stopped_row_name(detach: d), " was stopped (", detach_evidence_text(detach: d), "), '", n as String, "' was still not offered within the declared window (last offered: ", join(names, ", "), "); check that the export on srv2 holds exactly that file"], "") }
     MegaRacOwnSessionEnded { end: e } =>
       Present { value: concat("an end-of-attempt release reached an attach decision; a release never attaches: ", own_session_end_text(end: e)) }
   }
@@ -960,6 +1050,7 @@ fn session_release_text(standing: SessionRelease) -> String {
   match standing {
     SessionReleased => "released"
     SessionReleaseNotAttempted => "never opened"
+    SessionCloseNeverRan { detail: d } => concat("NOT released, still allocated on the controller: ", d as String)
     SessionReleaseRefused { detail: d } => concat("NOT released, still allocated on the controller: ", d)
   }
 }
@@ -967,12 +1058,21 @@ fn session_release_text(standing: SessionRelease) -> String {
 fn megarac_media_attach_text(record: MegaRacMediaAttach) -> String {
   match record {
     MegaRacMediaAttachNotAttempted { reason: r } => concat("not attempted: ", r as String)
+    MegaRacMediaAttachWithheld { attempt: a, medium_image_name: n, medium_image_sha256: h, power: p, cause: c, look: l } =>
+      join([
+        "attempt ", a, " medium '", n as String, "' sha256 ", h as String,
+        "; WITHHELD before any attach session or media write: ", stale_power_off_withheld_cause_text(cause: c),
+        "; power before the session: ", chassis_observation_text(observation: p) as String,
+        "; the look's session ", session_release_text(standing: l.session_release),
+        "; the look's CSRF header file ", megarac_secret_file_text(standing: l.secret_file),
+      ], "")
     MegaRacMediaAttachAttempted { attempt: a, medium_image_name: n, medium_image_sha256: h, power: p, stale_power_off: off, result: res } =>
       join([
         "attempt ", a, " medium '", n as String, "' sha256 ", h as String,
         "; ", megarac_stale_power_off_text(record: off),
         "; power before the session: ", chassis_observation_text(observation: p) as String,
-        "; session ", session_release_text(standing: res.session_release), "; ",
+        "; session ", session_release_text(standing: res.session_release),
+        "; CSRF header file ", megarac_secret_file_text(standing: res.secret_file), "; ",
         match res.outcome {
           MegaRacPresentationReady { route: r, evidence: e } => concat("READY via ", concat(attach_route_text(route: r), concat(": ", presentation_evidence_text(e: e))))
           other => match media_attach_outcome_reason(outcome: other) {
@@ -1000,10 +1100,17 @@ type HarnessFinding
   | MegaRacHandoffUnconfirmed { handoff: MegaRacHandoff }
   | MegaRacPresentationAfterHandoff { look: MegaRacAttachResult }
   | MegaRacCredentialMayRemain
+  // THE CSRF HEADER FILE OF ONE OR MORE MEGARAC SESSIONS WAS LEFT ON THE RUNNER, named by the session that
+  // left it. The same standing as the netrc's (CredentialMayRemain): per-attempt bearer material that may
+  // still be on disk is a fact beside the attempt, not one its fields carry.
+  | MegaRacCsrfHeaderFileLeft { sessions: FreeSemigroup<NonEmptyStr> }
 
 fn media_attach_harness(record: MegaRacMediaAttach) -> List<HarnessFinding> {
   match record {
     MegaRacMediaAttachNotAttempted { reason: _ } => []
+    // No presentation was produced, and the reason is the withheld cause; a residue the look left is its
+    // own finding (csrf_header_file_harness), read off the same look.
+    MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: _, look: _ } => [MegaRacMediaAttachNotReady { record: record }]
     MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
       match media_attach_outcome_reason(outcome: res.outcome) {
         Present { value: _ } => [MegaRacMediaAttachNotReady { record: record }]
@@ -1012,6 +1119,7 @@ fn media_attach_harness(record: MegaRacMediaAttach) -> List<HarnessFinding> {
             SessionReleased => []
             SessionReleaseRefused { detail: _ } => [MegaRacMediaAttachSessionHeld { record: record }]
             SessionReleaseNotAttempted => [MegaRacMediaAttachSessionHeld { record: record }]
+            SessionCloseNeverRan { detail: _ } => [MegaRacMediaAttachSessionHeld { record: record }]
           }
       }
   }
@@ -1033,10 +1141,12 @@ type MegaRacHandoff
   = MegaRacHandoffNotReached { reason: NonEmptyStr }
   | MegaRacHandoffWithheldAtRecheck { before: MegaRacAttachResult }
   | MegaRacHandoffAttempted { before: MegaRacAttachResult, handoff: MegaRacHandoffCallResult, after: MegaRacAttachResult }
+  // THE NETWORK ARM: the writes drove the controller with no virtual medium presented, so there is no look before or after to carry.
+  | MegaRacHandoffNetworkAttempted { handoff: MegaRacHandoffCallResult }
 
 fn observation_text(r: MegaRacAttachResult) -> String {
   match r.outcome {
-    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd, general: g, configurations: c } =>
+    MegaRacPresentationObserved { share: sh, readiness: rd, cd_error: cd, general: g, configurations: c, listing: _, admitted_route: _ } =>
       join([
         "share ", match sh { ShareBound => "bound"  ShareMismatch { observed: o } => concat("MISMATCH ", concat(o.server_address, concat(":", o.source_path)))  ShareUnreadable { detail: d } => concat("UNREADABLE ", d) },
         "; row ", readiness_reading_text(r: rd),
@@ -1044,8 +1154,10 @@ fn observation_text(r: MegaRacAttachResult) -> String {
         "; general settings ", raw_read_text(r: g),
         "; configurations ", raw_read_text(r: c),
         "; session ", session_release_text(standing: r.session_release),
+        "; CSRF header file ", megarac_secret_file_text(standing: r.secret_file),
       ], "")
-    other => match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" }
+    other => concat(match media_attach_outcome_reason(outcome: other) { Present { value: w } => concat("UNOBSERVED: ", w)  Absent => "UNOBSERVED" },
+      if megarac_secret_file_left(result: r) { concat("; CSRF header file ", megarac_secret_file_text(standing: r.secret_file)) } else { "" })
   }
 }
 
@@ -1053,15 +1165,24 @@ fn megarac_handoff_media_text(h: MegaRacHandoff) -> String {
   match h {
     MegaRacHandoffNotReached { reason: r } => concat("not reached: ", r as String)
     MegaRacHandoffWithheldAtRecheck { before: b } => concat("WITHHELD at the pre-handoff recheck: ", observation_text(r: b))
+    MegaRacHandoffNetworkAttempted { handoff: hc } => concat("network arm, no medium presented | handoff: ", match hc { MegaRacHandoffConfirmed => "confirmed by chassis read-back"  MegaRacHandoffAttemptedUnconfirmed { reason: r } => concat("ATTEMPTED, NOT CONFIRMED: ", r) })
     MegaRacHandoffAttempted { before: b, handoff: hc, after: a } => join(["before handoff: ", observation_text(r: b), " | handoff: ", match hc { MegaRacHandoffConfirmed => "confirmed by chassis read-back"  MegaRacHandoffAttemptedUnconfirmed { reason: r } => concat("ATTEMPTED, NOT CONFIRMED: ", r) }, " | after handoff: ", observation_text(r: a)], "")
   }
+}
+
+// THE ONE WORDING of the serving law failing on a look: the row is still Started and bound, so this is
+// not a withdrawal; what failed is the condition an already-presented row was admitted under.
+fn serving_condition_text(cd: CdErrorReading) -> String {
+  concat("the serving condition is no longer satisfied: the presentation was admitted on the already-presented route, which holds it to cd_error_code 0, and general settings now read cd_error_code ", cd_reading_text(r: cd))
 }
 
 fn recheck_text(v: PresentationStillServed) -> String {
   match v {
     PresentationStillReady => "served"
     PresentationReadyButSessionHeld { held: r } => concat("served, but the look's own session was ", session_release_text(standing: r))
+    PresentationReadyButSecretFileLeft => concat("served, but the look's own CSRF header file was ", megarac_secret_file_text(standing: SecretFileResidueRemains))
     PresentationNoLongerReady { reason: why } => concat("AFFIRMED not served: ", why as String)
+    PresentationServingConditionUnsatisfied { cd_error: cd } => serving_condition_text(cd: cd)
     PresentationUnobserved { reason: why } => concat("UNOBSERVED (indeterminate, not a withdrawal): ", why as String)
   }
 }
@@ -1073,12 +1194,15 @@ fn handoff_media_harness(h: MegaRacHandoff) -> List<HarnessFinding> {
   match h {
     MegaRacHandoffNotReached { reason: _ } => []
     MegaRacHandoffWithheldAtRecheck { before: _ } => [MegaRacHandoffWithheld { handoff: h }]
+    MegaRacHandoffNetworkAttempted { handoff: hc } => match hc { MegaRacHandoffConfirmed => []  MegaRacHandoffAttemptedUnconfirmed { reason: _ } => [MegaRacHandoffUnconfirmed { handoff: h }] }
     MegaRacHandoffAttempted { before: _, handoff: hc, after: a } =>
       concat(match hc { MegaRacHandoffConfirmed => []  MegaRacHandoffAttemptedUnconfirmed { reason: _ } => [MegaRacHandoffUnconfirmed { handoff: h }] },
       match presentation_still_served(result: a) {
         PresentationStillReady => []
         PresentationReadyButSessionHeld { held: _ } => [MegaRacPresentationAfterHandoff { look: a }]
+        PresentationReadyButSecretFileLeft => []
         PresentationNoLongerReady { reason: _ } => [MegaRacPresentationAfterHandoff { look: a }]
+        PresentationServingConditionUnsatisfied { cd_error: _ } => [MegaRacPresentationAfterHandoff { look: a }]
         PresentationUnobserved { reason: _ } => [MegaRacPresentationAfterHandoff { look: a }]
       })
   }
@@ -1187,6 +1311,8 @@ fn end_media_is_owed(media: MegaRacMediaAttach) -> Bool {
   match media {
     MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: _ } => true
     MegaRacMediaAttachNotAttempted { reason: _ } => false
+    // Only the read-only look ran, and it released or failed on its own: nothing was started to observe.
+    MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: _, look: _ } => false
   }
 }
 
@@ -1245,6 +1371,8 @@ fn media_loss_after_handoff(handoff: MegaRacHandoff, end: MegaRacEndMedia) -> Me
     MegaRacHandoffAttempted { before: _, handoff: MegaRacHandoffAttemptedUnconfirmed { reason: _ }, after: _ } => MediaLossNotAffirmed
     MegaRacHandoffNotReached { reason: _ } => MediaLossNotAffirmed
         MegaRacHandoffWithheldAtRecheck { before: _ } => MediaLossNotAffirmed
+    // No medium was presented, so no loss of one can be affirmed.
+    MegaRacHandoffNetworkAttempted { handoff: _ } => MediaLossNotAffirmed
   }
 }
 
@@ -1287,6 +1415,8 @@ type MegaRacRunRecord {
   power_after: HostPowerReading
   timing: BootPhaseTiming
   fan_gate: PostPowerFanGateReading
+  // THE NETWORK-BOOT DELIVERY THE RUN HELD OR ENDED ON (gunbc.host.pxe_boot_delivery): decided by the one record fold from the actuation stage, never a second stage.
+  delivery: PxeDeliveryRunRecord
 }
 
 fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
@@ -1304,6 +1434,7 @@ fn megarac_run_record_not_taken(reason: NonEmptyStr) -> MegaRacRunRecord {
     power_after: HostPowerNotTaken { reason: reason },
     timing: boot_phase_timing_not_taken(reason: reason),
     fan_gate: PostPowerFanGateNotReached { reason: reason },
+    delivery: PxeDeliveryNotObservableBeforePowerOn { reason: reason },
   }
 }
 
@@ -1527,6 +1658,7 @@ fn megarac_handoff_issued_set(h: MegaRacHandoff) -> Bool {
     MegaRacHandoffNotReached { reason: _ } => false
     MegaRacHandoffWithheldAtRecheck { before: _ } => false
     MegaRacHandoffAttempted { before: _, handoff: _, after: _ } => true
+    MegaRacHandoffNetworkAttempted { handoff: _ } => true
   }
 }
 
@@ -1686,6 +1818,7 @@ fn megarac_run_record_text(row: MegaRacBootRow, r: MegaRacRunRecord) -> String {
     smpro_text(s: r.smpro_power_on),
     "-- smpro pass while the census ran --",
     smpro_text(s: r.smpro_census),
+    pxe_delivery_run_record_text(record: r.delivery),
   ], "\n")
 }
 
@@ -2097,6 +2230,10 @@ fn handoff_standing(h: MegaRacHandoff) -> PowerOnHandoff {
       MegaRacHandoffAttemptedUnconfirmed { reason: r } => HandoffNotConfirmed { reason: concat("the boot-device and power handoff was attempted and not confirmed: ", r) as NonEmptyStr }
     }
     MegaRacHandoffWithheldAtRecheck { before: _ } => HandoffNotConfirmed { reason: "the pre-handoff recheck withheld the power write" }
+    MegaRacHandoffNetworkAttempted { handoff: hc } => match hc {
+      MegaRacHandoffConfirmed => HandoffPoweredOn
+      MegaRacHandoffAttemptedUnconfirmed { reason: r } => HandoffNotConfirmed { reason: concat("the boot-device and power handoff was attempted and not confirmed: ", r) as NonEmptyStr }
+    }
     MegaRacHandoffNotReached { reason: r } => HandoffNotConfirmed { reason: r }
   }
 }
@@ -2215,6 +2352,7 @@ fn inventory_coverage(i: InventoryReading) -> CarrierStanding {
 fn media_coverage(m: MegaRacMediaAttach) -> CarrierStanding {
   match m {
     MegaRacMediaAttachNotAttempted { reason: r } => CarrierNotTaken { reason: r }
+    MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: _, look: _ } => CarrierRead
     MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: _ } => CarrierRead
   }
 }
@@ -2273,7 +2411,45 @@ fn megarac_boot_harness(row: MegaRacBootRow, bundle: BootDiagnosticBundle) -> Li
   concat(match failed { Absent => []  Present { value: xs } => [MegaRacEveryReadFailed { failed: xs }] },
     concat(media_attach_harness(record: bundle.run.media),
     concat(handoff_media_harness(h: bundle.run.handoff_media),
-      if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] })))
+    concat(csrf_header_file_harness(run: bundle.run),
+      if bundle.inventory.credential_removed { [] } else { [MegaRacCredentialMayRemain] }))))
+}
+
+// EVERY MEGARAC SESSION THE RUN RECORD KEEPS THAT LEFT ITS CSRF HEADER FILE, BY NAME. One finding naming
+// every such session, built only when there is one, so its list is nonempty by construction.
+fn csrf_left_by(name: NonEmptyStr, result: MegaRacAttachResult) -> List<NonEmptyStr> {
+  if megarac_secret_file_left(result: result) { [name] } else { [] }
+}
+
+fn megarac_run_csrf_left(run: MegaRacRunRecord) -> List<NonEmptyStr> {
+  concat(match run.media {
+      MegaRacMediaAttachNotAttempted { reason: _ } => []
+      // Read off the look whatever the withheld cause was: a leaked session does not hide a residue.
+      MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: _, look: l } => csrf_left_by(name: "the pre-power look", result: l)
+      MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } => csrf_left_by(name: "the media attach", result: res)
+    },
+    concat(match run.handoff_media {
+      MegaRacHandoffNotReached { reason: _ } => []
+      MegaRacHandoffWithheldAtRecheck { before: b } => csrf_left_by(name: "the pre-handoff look", result: b)
+      MegaRacHandoffAttempted { before: b, handoff: _, after: a } => concat(csrf_left_by(name: "the pre-handoff look", result: b), csrf_left_by(name: "the post-handoff look", result: a))
+      MegaRacHandoffNetworkAttempted { handoff: _ } => []
+    },
+    match run.end_media {
+      MegaRacEndMediaNotTaken { reason: _ } => []
+      MegaRacEndMediaObserved { look: l, end_release: er } => concat(csrf_left_by(name: "the end-of-attempt look", result: l),
+        match er { EndReleaseRan { result: r } => csrf_left_by(name: "the end-of-attempt release", result: r)  EndReleaseKeptHostOn => []  EndReleaseWithheld { reason: _ } => [] })
+    }))
+}
+
+fn csrf_header_file_harness(run: MegaRacRunRecord) -> List<HarnessFinding> {
+  let left = fold(megarac_run_csrf_left(run: run), init: Absent, f: (acc, n) => match acc {
+    Absent => Present { value: non_empty_singleton(item: n) }
+    Present { value: s } => Present { value: non_empty_append(left: s, right: non_empty_singleton(item: n)) }
+  })
+  match left {
+    Absent => []
+    Present { value: s } => [MegaRacCsrfHeaderFileLeft { sessions: s }]
+  }
 }
 
 fn megarac_boot_findings(row: MegaRacBootRow, bundle: BootDiagnosticBundle, account: MegaRacAccountReceipt) -> MegaRacBootFindings {
@@ -2297,16 +2473,21 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
         concat("media attach: ", match media_attach_outcome_reason(outcome: res.outcome) { Present { value: why } => why Absent => "not ready" })
       MegaRacMediaAttachNotAttempted { reason: why } => concat("media attach: not attempted: ", why as String)
+      MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+        concat("media attach: withheld before any attach session or media write: ", stale_power_off_withheld_cause_text(cause: c))
     }
     MegaRacMediaAttachSessionHeld { record: r } => match r {
       MegaRacMediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
         concat("media attach: the presentation is ready but the session was ", session_release_text(standing: res.session_release))
       MegaRacMediaAttachNotAttempted { reason: why } => concat("media attach: not attempted: ", why as String)
+      MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+        concat("media attach: withheld before any attach session or media write: ", stale_power_off_withheld_cause_text(cause: c))
     }
     MegaRacHandoffWithheld { handoff: h } => match h {
       MegaRacHandoffWithheldAtRecheck { before: b } => concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))
       MegaRacHandoffNotReached { reason: _ } => "the pre-handoff recheck withheld the handoff"
       MegaRacHandoffAttempted { before: _, handoff: _, after: _ } => "the pre-handoff recheck withheld the handoff"
+      MegaRacHandoffNetworkAttempted { handoff: _ } => "the network-arm handoff was issued"
     }
     MegaRacHandoffUnconfirmed { handoff: h } => match h {
       MegaRacHandoffAttempted { before: _, handoff: hc, after: _ } => match hc {
@@ -2315,14 +2496,21 @@ fn harness_finding_text(f: HarnessFinding) -> String {
       }
       MegaRacHandoffNotReached { reason: _ } => "the boot-device and power handoff was not attempted"
       MegaRacHandoffWithheldAtRecheck { before: _ } => "the boot-device and power handoff was not attempted"
+      MegaRacHandoffNetworkAttempted { handoff: hc } => match hc {
+        MegaRacHandoffAttemptedUnconfirmed { reason: r } => concat("the boot-device and power handoff was attempted and not confirmed: ", r)
+        MegaRacHandoffConfirmed => "the boot-device and power handoff was confirmed"
+      }
     }
     MegaRacPresentationAfterHandoff { look: a } => match presentation_still_served(result: a) {
       PresentationStillReady => "after the handoff the presentation was still served"
       PresentationNoLongerReady { reason: why } => concat("the presentation was LOST at or after the boot-device and power handoff (", why as String, "): ", observation_text(r: a))
+      PresentationServingConditionUnsatisfied { cd_error: cd } => concat("after the handoff the presentation was not affirmed lost, but ", serving_condition_text(cd: cd), ": ", observation_text(r: a))
       PresentationUnobserved { reason: why } => concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", why as String, "): ", observation_text(r: a))
       PresentationReadyButSessionHeld { held: r } => concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))
+      PresentationReadyButSecretFileLeft => "after the handoff the presentation was still served"
     }
     MegaRacCredentialMayRemain => "the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"
+    MegaRacCsrfHeaderFileLeft { sessions: s } => concat("the MegaRAC CSRF header file was left on the runner by: ", concat(join(non_empty_to_list(s), ", "), "; the session token may remain on disk"))
   }
 }
 
@@ -2503,7 +2691,7 @@ fn megarac_boot_sdr_cache(row: MegaRacBootRow, username: NonEmptyStr, password_f
     sdr_cache_file: path,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     SdrCacheDumped { path: path, at: at }
@@ -2537,7 +2725,7 @@ fn megarac_boot_sensors(row: MegaRacBootRow, password_file: NonEmptyStr, sdr: Sd
                 sdr_cache_file: p,
                 deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
                 kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-                cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+                retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
               )
               if r.success {
                 SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at, naming: naming }
@@ -2583,7 +2771,7 @@ fn megarac_boot_param5_clear(row: MegaRacBootRow, username: NonEmptyStr, passwor
     boot_flag_data_3: ipmi_boot_flag_data_3_clear as String,
     boot_flag_data_4: ipmi_boot_flag_data_4_clear as String,
     boot_flag_data_5: ipmi_boot_flag_data_5_clear as String,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   BootParam5ClearIssued {
     policy: policy,
@@ -2627,7 +2815,7 @@ fn megarac_boot_param(row: MegaRacBootRow, username: NonEmptyStr, password_file:
     parameter: parameter,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     BootParamRead { readback: r.stdout, at: at }
@@ -2649,7 +2837,7 @@ fn megarac_boot_chassis_power(row: MegaRacBootRow, username: NonEmptyStr, passwo
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   chassis_observation(success: r.success, stdout: r.stdout)
 }
@@ -2692,6 +2880,8 @@ fn megarac_boot_bmc_reachability(row: MegaRacBootRow, username: NonEmptyStr, pas
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    verbosity_argv: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()),
   )
   bmc_reachability_of_read(row: row, at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
@@ -2705,7 +2895,7 @@ fn sel_snapshot_of_read(row: MegaRacBootRow, at: NonEmptyStr, success: Bool, std
 }
 
 fn megarac_boot_sel_snapshot_uncached(row: MegaRacBootRow, at: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr) -> SelSnapshotReading {
-  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: row.controller.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
+  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: row.controller.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after, retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
   sel_snapshot_of_read(row: row, at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
 
@@ -2716,7 +2906,7 @@ fn megarac_boot_sel_snapshot(row: MegaRacBootRow, username: NonEmptyStr, passwor
   let kill_after = coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr
   match sdr {
     SdrCacheDumped { path: p, at: _ } => {
-      let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: row.controller.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
+      let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: row.controller.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after, retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
       sel_snapshot_of_read(row: row, at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
     }
     SdrCacheUnread { cause: _ } => megarac_boot_sel_snapshot_uncached(row: row, at: at, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
@@ -3136,7 +3326,13 @@ fn megarac_boot_write_bundle(row: MegaRacBootRow, bundle: BootDiagnosticBundle, 
 }
 
 fn megarac_boot_outcome_after_bundle(row: MegaRacBootRow, outcome: ProcessExit, bundle: BootDiagnosticBundle, write: BundleWrite, account: MegaRacAccountReceipt) -> ProcessExit {
-  let with_findings = megarac_boot_outcome_with_findings(row: row, outcome: outcome, findings: megarac_boot_findings(row: row, bundle: bundle, account: account))
+  let gated = match outcome {
+    ExitSuccess =>
+      if pxe_run_admits_success(record: bundle.run.delivery) { ExitSuccess }
+      else { ExitFailure { code: 1, reason: concat("the network-boot delivery was not established in this run, so the boot is not a success: ", pxe_delivery_run_record_text(record: bundle.run.delivery)) } }
+    ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: r }
+  }
+  let with_findings = megarac_boot_outcome_with_findings(row: row, outcome: gated, findings: megarac_boot_findings(row: row, bundle: bundle, account: account))
   match write {
     BundleWritten => with_findings
     BundleWriteFailed { error: e } =>
@@ -3151,22 +3347,50 @@ fn megarac_boot_outcome_after_bundle(row: MegaRacBootRow, outcome: ProcessExit, 
 // Taken by the boot run after admission and before actuation. hpm check's table is parsed by
 // extdeps.bmc.ipmitool_hpm_check; a failed read carries the controller's own cause.
 fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_file: NonEmptyStr, clearance: BootAttemptClearance, run_attempt: NonEmptyStr) -> PrePowerFirmware {
-  let at = clock_now_probed_at_or_unknown()
-  let retained_path = megarac_boot_hpm_check_path(row: row, run_attempt: run_attempt)
-  let r = diagnostic.ipmi.Tool.HpmCheck(
-    bmc_host: row.controller.host,
+  // THE READ IS THE SHARED UNIT-PARAMETERIZED FUNCTION (gunbc.machine_intake.bmc_firmware_hpm_read);
+  // this lane supplies its row's endpoint, wall bounds, cipher suite and artifact prefix, and renders
+  // the transport's own facts into this lane's carrier -- identical bytes and refusal text to the
+  // pre-lift implementation.
+  match bmc_hpm_check_transport(
+    controller_host: row.controller.host,
     username: username,
     password_file: password_file,
-    deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
-    kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
-  )
-  if r.success {
-    let retained = Filesystem.Write(path: retained_path, content: r.stdout)
-    pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: hpm_check_table_of(stdout: r.stdout), source: join(["ipmitool hpm check on ", row.controller.host as String, " at ", at as String], "") as NonEmptyStr)
-  } else {
-    PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: megarac_ipmi_endpoint(row: row), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
+    deadline: row.ipmi.deadline,
+    kill_after: row.ipmi.kill_after,
+    cipher_suite: row.ipmi_cipher_suite,
+    retained_path: megarac_boot_hpm_check_path(row: row, run_attempt: run_attempt),
+  ) {
+    HpmCheckTransportOk { table: table, retained_path: retained_path, at: at } =>
+      pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: table, source: megarac_boot_hpm_check_source(row: row, at: at))
+    HpmCheckTransportFailed { exit_code: exit_code, transport_stderr: transport_stderr, at: at } =>
+      PrePowerFirmwareUnread { reason: megarac_boot_hpm_check_refusal(row: row, at: at, exit_code: exit_code, transport_stderr: transport_stderr) }
+    // Review 96635: the controller answered; only the local retention failed. This is its own typed,
+    // located cause -- it never passes through the ipmitool cause classifier, so a full disk cannot be
+    // reported as a controller failure "exit 0". The boot is refused because the evidence chain needs
+    // the retained file; without it no build reading can be established.
+    HpmCheckRetentionFailed { retained_path: retained_path, write_error: write_error, at: at } =>
+      PrePowerFirmwareUnread { reason: megarac_boot_hpm_retention_refusal(at: at, retained_path: retained_path, write_error: write_error) }
   }
+}
+
+// The read's source line: what was run, against which controller, at which probed instant. Pure, so
+// the witness corpus asserts its shape without a live controller.
+fn megarac_boot_hpm_check_source(row: MegaRacBootRow, at: NonEmptyStr) -> NonEmptyStr {
+  join(["ipmitool hpm check on ", row.controller.host as String, " at ", at as String], "") as NonEmptyStr
+}
+
+// The read's refusal line: the lane prefix plus the transport cause rendered from the endpoint, the
+// instant and ipmitool's own exit facts. Pure, and it names NO credential: the password reached the
+// tool only as a file path, and that path appears nowhere in this text.
+fn megarac_boot_hpm_check_refusal(row: MegaRacBootRow, at: NonEmptyStr, exit_code: Int, transport_stderr: String) -> NonEmptyStr {
+  concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: megarac_ipmi_endpoint(row: row), at: at, exit_code: exit_code, stderr: transport_stderr))) as NonEmptyStr
+}
+
+// The boot lane's own wording for the retention arm (review 96635). Deliberately NOT run through the
+// ipmitool cause classifier: the controller answered, so the only fault to name is the local write;
+// no controller exit code is claimed and the endpoint is not blamed.
+fn megarac_boot_hpm_retention_refusal(at: NonEmptyStr, retained_path: NonEmptyStr, write_error: String) -> NonEmptyStr {
+  join(["hpm check answered but its evidence could not be retained at ", retained_path as String, " (", at as String, "): ", write_error, " -- the controller answered; the boot is refused until the evidence file can be written"], "") as NonEmptyStr
 }
 
 // THE BUILD READING, FROM THE RETAINED BYTES. The pre-power read above keeps the controller's own hpm check
@@ -3297,6 +3521,8 @@ fn mtcollins1_boot_mc_info_retain(row: MegaRacBootRow, username: NonEmptyStr, pa
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
     cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    verbosity_argv: ipmitool_verbosity_argv(verbosity: IpmitoolDefaultVerbosity),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()),
   )
   if r.success {
     let path = mtcollins1_boot_mc_info_path(row: row, run_attempt: run_attempt)
@@ -3320,7 +3546,7 @@ fn mtcollins1_boot_fru_print_retain(row: MegaRacBootRow, username: NonEmptyStr, 
     fru_id: "0",
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
-    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
+    retry_bound_retries: ipmi_retry_bound_retries_word(bound: bmc_ipmi_retry_bound()), retry_bound_timeout: ipmi_retry_bound_timeout_word(bound: bmc_ipmi_retry_bound()), cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let path = mtcollins1_boot_fru_print_path(row: row, run_attempt: run_attempt)

@@ -7,7 +7,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
 import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, operation_argv_cause_label, shell_materialize_operation_argv }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import std.env_binding { EnvBinding }
@@ -21,12 +21,25 @@ import gunbc.remote_shell_command {
   remote_exec_command_rendered,
   remote_exec_command_string,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man1/ssh.1.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.exec.command",
+      decl_name: "ArgvCommand",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE ARGV CONSTRUCTION WALL. ArgvCommand was a plain record, so every module could write
@@ -94,12 +107,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.util_linux_setsid", decl_name: "setsid_fork_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_main_head_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_release_bins_run_list_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_bounded_get_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_file_then_exec_command"),
     decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_stats_query_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_list_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_install_command"),
+    decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_init_install_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_export_from_stdin_then_exec_command"),
     decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_receipt_object_command"),
     decl_ref(module_path: "extdeps.llm.cursor_cli", decl_name: "cursor_sandbox_preflight_command"),
@@ -165,6 +183,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "sort_in_place_command"),
     decl_ref(module_path: "extdeps.tools.unzip", decl_name: "unzip_extract_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "realpath_canonical_command"),
     decl_ref(module_path: "extdeps.tools.ldd", decl_name: "ldd_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_extract_command"),
     decl_ref(module_path: "extdeps.tools.node", decl_name: "node_eval_command"),
@@ -186,6 +205,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_release_command"),
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_machine_command"),
     decl_ref(module_path: "extdeps.tools.uname", decl_name: "uname_nodename_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "date_utc_epoch_seconds_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_lsblk", decl_name: "lsblk_pairs_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_sfdisk", decl_name: "sfdisk_list_command"),
     decl_ref(module_path: "extdeps.tools.pciutils_setpci", decl_name: "setpci_link_control_read_command"),
     decl_ref(module_path: "extdeps.tools.pciutils_setpci", decl_name: "setpci_link_disable_set_command"),
     decl_ref(module_path: "extdeps.linux.ethtool_ioctl", decl_name: "linux_ethtool_channels_command"),
@@ -199,6 +221,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
+    decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_print_architecture_command"),
+    decl_ref(module_path: "extdeps.os_release", decl_name: "lsb_release_codename_command"),
     decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_get_install_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_clippy_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_build_release_bin_offline_command"),
@@ -257,6 +281,14 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // name with another member survives), because the account's absence is exactly the state that does
     // NOT prove the group is gone.
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_group_command"),
+    // getent ahostsv4 <name>: the fourth database of the same read-only lookup, admitted on the same terms
+    // as its siblings -- it names a database the utility resolves itself and names no path, no key file, and
+    // no account, and it writes nothing. Its caller is the srv1 read-back
+// (#gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution), which
+    // must ask whether the JOINED HOST'S TAILNET NAME resolves through NSS -- the resolver path the router's
+    // own upstream lookups take -- because `tailscale ping` resolves names from Tailscale's peer list instead
+    // and so cannot answer that question (#extdeps.posix.getent::getent_hosts_command).
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_hosts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
@@ -274,6 +306,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
+    // The group-name sibling of the user-name probe, admitted for the same reason: the ledger read
+    // compares owner.group against the declared group NAME, so it needs %G by name (%g's numeric gid
+    // never string-matches a group name). Same shape, same sealing.
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_group_name_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
     decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
     decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
@@ -336,6 +372,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_absolute_git_dir_premise_argv"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_shared_repository_group_config_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_clone_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_revision_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_detached_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_gc_auto_disabled_config_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_maintenance_auto_disabled_config_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_repack_quiet_command"),
@@ -388,6 +427,19 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.ls", decl_name: "ls_long_numeric_listing_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_status_json_command"),
     decl_ref(module_path: "extdeps.tailscale.serve", decl_name: "tailscale_serve_off_command"),
+    // The machine-name surfaces (extdeps.tailscale.machine_name): the read is what a fleet-converge mode
+    // runs before it decides, and the write is the rename step itself. Both name the same program row
+    // serve.dag carries, so the words that execute are the words that module cites.
+    decl_ref(module_path: "extdeps.tailscale.machine_name", decl_name: "tailscale_status_json_command"),
+    decl_ref(module_path: "extdeps.tailscale.machine_name", decl_name: "tailscale_set_hostname_command"),
+    // The join surfaces (extdeps.tailscale.join): `up` is the membership step itself and `ping` is the
+    // read-back that asks whether the new member ANSWERS, from the peer that has to reach it. Both name the
+    // same program row serve.dag carries, and neither can carry key material: `up`'s credential argument is
+    // built only through tailscale_auth_key_file_argument, the `file:` form (cmd/tailscale/cli/up.go), so
+    // what executes is a path and not the secret (gunbc.tailscale_fleet_auth_key states where the file is
+    // custody's; extdeps.tailscale.join's module header states why argv never holds the key).
+    decl_ref(module_path: "extdeps.tailscale.join", decl_name: "tailscale_up_join_command"),
+    decl_ref(module_path: "extdeps.tailscale.join", decl_name: "tailscale_ping_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
     decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_default_report_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_is_socket_command"),

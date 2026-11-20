@@ -1,0 +1,88 @@
+module test.claim.generated_artifact_closure_witness
+
+import std.types { Bool, String, List }
+import std.algebra { FreeMonoid, contains }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { string_eq }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  dependency_closure,
+  import_closure_live
+}
+import gunbc.generated_artifact {
+  generated_artifact_closure_excludes_forbidden,
+  generated_artifact_forbidden_closure_paths
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ONE INTERFACE, THREE VERDICTS (gunbc.design_argument::witness_one_interface): the exclusion is
+// judged on a closure of module paths in, a Bool out, at
+// gunbc.generated_artifact::generated_artifact_closure_excludes_forbidden. The forbidden state is
+// authorable as supplied fixture edges, because it is "an entry whose import chain reaches the
+// renderer" -- something the accepted corpus no longer contains by construction, so the RED cannot be
+// taken from the live tree. The live claim is the pairing obligation: it is the one that goes red when
+// somebody re-adds the import, and it is paired with two controls that keep it from passing vacuously
+// -- one that the walk does reach the modules the registry must reach, and one that the walk reaches
+// the forbidden side at all when it is really there.
+data fixture_nodes: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "fx.registry_rows", path: "fx/registry_rows.dag" },
+  ModuleDeclarationFact { module: "fx.registry_clean", path: "fx/registry_clean.dag" },
+  ModuleDeclarationFact { module: "fx.registry_via_renderer", path: "fx/registry_via_renderer.dag" },
+  ModuleDeclarationFact { module: "fx.measured_demands_gate", path: "fx/measured_demands_gate.dag" },
+  ModuleDeclarationFact { module: "gunbc.whole_corpus_compile_demand_projection", path: "dag/gunbc/whole_corpus_compile_demand_projection.dag" },
+  ModuleDeclarationFact { module: "gunbc.whole_corpus_compile_admission", path: "dag/gunbc/whole_corpus_compile_admission.dag" }
+]
+
+// The forbidden edge is one hop deep on purpose: a registry that reaches the renderer only through an
+// intermediate module pays the same closure bill as one that imports it directly, and a rule that
+// looked only at direct imports would pass this graph.
+data fixture_edges: List<ModuleDependencyEdge> = [
+  ModuleDependencyEdge { path: "fx/registry_clean.dag", target_module: "fx.registry_rows", target_declared: true },
+  ModuleDependencyEdge { path: "fx/registry_via_renderer.dag", target_module: "fx.measured_demands_gate", target_declared: true },
+  ModuleDependencyEdge { path: "fx/measured_demands_gate.dag", target_module: "gunbc.whole_corpus_compile_demand_projection", target_declared: true },
+  ModuleDependencyEdge { path: "fx/measured_demands_gate.dag", target_module: "gunbc.whole_corpus_compile_admission", target_declared: true }
+]
+
+fn fixture_closure(entry: String) -> FreeMonoid<String> {
+  dependency_closure(entry_path: entry, edges: fixture_edges, nodes: fixture_nodes)
+}
+
+// RED: an entry whose import chain reaches the renderer through an intermediate module is refused.
+test fn an_entry_whose_chain_reaches_the_projection_renderer_is_refused() -> Bool {
+  !generated_artifact_closure_excludes_forbidden(closure: fixture_closure(entry: "fx/registry_via_renderer.dag"))
+}
+
+// POSITIVE CONTROL: an entry that imports only the registry's own location rows is admitted, so the
+// refusal above is about the named heavy side and not about the walk denying everything.
+test fn an_entry_that_imports_only_the_registry_rows_is_admitted() -> Bool {
+  generated_artifact_closure_excludes_forbidden(closure: fixture_closure(entry: "fx/registry_clean.dag"))
+}
+
+// INHABITANCE: the real registry entry's live import closure excludes both named paths, AND reaches
+// the two modules it must reach -- the merge-driver script's own module (a location row reads its
+// constants) and gunbc.os_install (the host autoinstall the fleet-manifest row folds). A walk that
+// returned nothing, or that stopped at the entry, would pass the exclusion vacuously; these two
+// conjunctions are what stop it.
+test fn the_real_registry_closure_excludes_the_renderer_and_the_admission_chain() -> Bool {
+  let closure = import_closure_live(
+    entry_path: "dag/gunbc/generated_artifact.dag",
+    pool_roots: ["dag", "src/v2"]
+  )
+  generated_artifact_closure_excludes_forbidden(closure: closure)
+    && contains(xs: closure, item: "dag/gunbc/generated_artifact_merge_driver.dag", eq: string_eq)
+    && contains(xs: closure, item: "dag/gunbc/os_install.dag", eq: string_eq)
+}
+
+// THE WALK SEES THE FORBIDDEN SIDE WHEN IT IS REALLY THERE: the renderer's own closure does reach the
+// admission chain, so the exclusion in the claim above is a verdict about files the walk can name, not
+// an artifact of a walk that could never reach them. This is the arm that would also go red if the
+// roster named a path that does not exist.
+test fn the_projection_renderer_closure_does_reach_the_admission_chain() -> Bool {
+  let closure = import_closure_live(
+    entry_path: "dag/gunbc/whole_corpus_compile_demand_projection.dag",
+    pool_roots: ["dag", "src/v2"]
+  )
+  contains(xs: closure, item: "dag/gunbc/whole_corpus_compile_admission.dag", eq: string_eq)
+}

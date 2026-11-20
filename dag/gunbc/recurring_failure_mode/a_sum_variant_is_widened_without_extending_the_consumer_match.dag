@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.a_sum_variant_is_widened_without_extending_the_consumer_match
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data a_sum_variant_is_widened_without_extending_the_consumer_match: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_sum_variant_is_widened_without_extending_the_consumer_match" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "a sum variant is widened without extending the consumer match: a PR adds a variant to a closed sum, the PR's own witnesses pass because they cover the producing side, and every consumer that matches exhaustively over the sum (outside the PR's closure) becomes a non-exhaustive match that refuses at claim closure. The compiler refuses the consumer's whole claim at closure, so the failure surfaces only as red claims in a witness nobody dispatched, off the required CI path, days later.",
+
+    "SIGHTING, gunbc#16334 (merged 23b335bc62e1): the PR added InstalledViaNetworkBoot to gunbc.fleet.fleet_host_backing::OwnedOsDelivery, but gunbc.fleet.machine_lifecycle::reprovision_delivery_legs matched p.delivery with arms for RamImageBoot, InstalledViaVirtualMedia and ApplianceImage only. Result: 'non-exhaustive match: missing variant(s) InstalledViaNetworkBoot', and all 31 claims of test.claim.fleet.machine_lifecycle_witness failed at closure at main. The class is off the required CI path, so CI stayed green. Found by still-fox-404, confirmed by the manager at origin/main (msg_42054c3e-9234-403e-8a5f-f340a3064c1e); the fix PR added the InstalledViaNetworkBoot reprovision leg naming the managed_host_network_install route, with real_producer citations to the declarations that own it (the host_standup ResolvedInstallRoute arm is the mirrored sibling).",
+
+    "RUNG: mitigatable -- the compiler catches the class wherever a consumer's claim is actually dispatched, but a witness off the required path stays red in silence. ATTAINABLE CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, at capability grain: widening a sum in a PR refuses (or a check refuses) unless every match over that sum in the pool is extended in the same diff -- a producer-side census from the sum declaration to its consumer matches, not a grep.",
+  ],
+
+  evidence: [],
+}

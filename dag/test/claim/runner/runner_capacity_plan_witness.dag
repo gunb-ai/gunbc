@@ -1,10 +1,35 @@
 module test.claim.runner.runner_capacity_plan_witness
 
 import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
+import gunbc.fleet.fleet_enrollment { fleet_enrollments }
 
 import std.logic { Bool }
 import std.nat { Nat, nat_range_inclusive }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv3,
+  operator_host_srv4,
+  operator_host_e2d4b7,
+}
+import gunbc.runner.runner_capacity_plan {
+  admit_runner_capacity_width,
+  WidthAdmission,
+  WidthAdmitted,
+  WidthRefused,
+  BuildPoolWidthCeiling,
+  CeilingCleared,
+  ReservationExceedsCommittedWidth,
+  committed_width_after_reservation,
+  remote_build_pool_slot_reservation,
+}
+import std.measure { measure_fit_count_floor, byte_size }
+import gunbc.runner.runner_slot_desired {
+  build_pool_carve_is_due,
+  host_carries_own_ledger,
+  gunbc_runner_slot_memory_max,
+  host_build_pool_reservation,
+}
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_serving_hosts }
 import gunbc.runner.runner_capacity_plan {
   parse_positive_width,
   desired_github_identities,
@@ -25,7 +50,6 @@ import gunbc.runner.runner_slot_allocation {
 }
 import gunbc.runner.runner_capacity_plan {
   runner_capacity_plan,
-  runner_capacity_add_count,
   addition_actions,
   RunnerCapacityAction,
   RunnerSlotAdd,
@@ -58,6 +82,7 @@ import gunbc.runner.runner_capacity_plan {
   GitHubSlotPopulationDuplicateRegistration,
   GitHubSlotPopulationForeignRegistration,
 }
+import gunbc.integration_concern { concern_declarations, h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -144,17 +169,108 @@ fn first_width_above_the_fabric_carve() -> Int {
   last_fabric_member_index() + 1
 }
 
-test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
-  let plan = runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
-    srv3_width: committed_width_of(host: operator_host_srv3) + 1,
-    srv4_width: committed_width_of(host: operator_host_srv4) + 1,
-    roster: incident_2026_08_06_managed_roster_fixture()
+// THE BUILD-POOL RESERVATION IS DATA, AND THE ADMISSION READS IT. gunbc.design_ruling::
+// remote_build_ssh_dispatch_is_an_admitted_scaffold carves one runner slot per JOINING host out of that
+// host's CI width; a comment saying so would be commentary, so the claim asks the admission itself. The
+// arithmetic is shown against a committed width the model ACTUALLY derives (srv3's), because this unit's own
+// committed width is unresolved -- it has never had a memory census -- and inventing a number for it is what
+// the ceiling rule forbids. Same committed width, same request: admitted where nothing is held back, refused
+// where a slot is. And a held slot that does not FIT is its own typed outcome, never a negative ceiling: a
+// negative would reach the admission and refuse there for a reason that is not the true one.
+test fn the_build_pool_reservation_is_subtracted_where_width_is_admitted() -> Bool {
+  let derived_committed = committed_width_of(host: operator_host_srv3)
+  let one_slot_held = committed_width_after_reservation(
+    committed_slots: derived_committed,
+    reserved_slots: 1,
   )
-  match plan {
-    PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 0
-    PlanRefused { reason: _ } => false
+  match one_slot_held {
+    CeilingCleared { committed_slots: c, reserved_slots: r, spendable_ceiling: spendable } =>
+      c == derived_committed
+        && r == 1
+        && spendable == derived_committed - 1
+        && match admit_runner_capacity_width(committed: derived_committed, requested: derived_committed) {
+          WidthAdmitted { width: w } => (w as Int) == derived_committed
+          WidthRefused { requested: _, cause: _ } => false
+        }
+        && match admit_runner_capacity_width(committed: spendable, requested: derived_committed) {
+          WidthAdmitted { width: _ } => false
+          WidthRefused { requested: _, cause: _ } => true
+        }
+    ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } => false
+  }
+    && match committed_width_after_reservation(committed_slots: 0, reserved_slots: 1) {
+      // A host with no measured population and a held slot: refused as an outcome, and no negative anywhere.
+      ReservationExceedsCommittedWidth { committed_slots: c, reserved_slots: r } => c == 0 && r == 1
+      // A cleared ceiling below zero is the very defect this guards, so it is a failure, not a value.
+      CeilingCleared { committed_slots: _, reserved_slots: _, spendable_ceiling: _ } => false
+    }
+}
+
+// THE PLAN HOLDS BACK EXACTLY THE CARVE THE FLEET ALREADY GRANTS, AND NOTHING ELSE. There is no list of
+// build-slot holders here to keep in step: which host is carved is derived from host facts in
+// gunbc.runner.runner_slot_desired::host_build_pool_reservation (on the roster, and carrying no dashboard
+// instance of its own), and the capacity plan converts that carve into slots. Asserted over every ENROLLED host,
+// so the day a host joins the roster the plan and the memory envelope move together and nobody has to remember an
+// entry. Two halves: the plan holds back a slot exactly when the carve is due, and it never holds back more than
+// one -- the ruling's grain is one slot, and a reservation function that grew would be caught here.
+test fn the_plan_holds_back_exactly_the_carve_the_fleet_already_grants() -> Bool {
+  all(fleet_enrollments, e =>
+    (remote_build_pool_slot_reservation(host: e.host) > 0)
+      == build_pool_carve_is_due(
+        rostered: remote_build_host_is_serving(host: e.host),
+        carries_own_ledger: host_carries_own_ledger(host: e.host)))
+    && all(fleet_enrollments, e => remote_build_pool_slot_reservation(host: e.host) <= 1)
+}
+
+// THE UNROSTERED UNIT HOLDS BACK NOTHING, AND NEEDS NO ROW TO SAY SO. ken is enrolled for CI participation and
+// absent from the serving roster, so both the carve and its slot-unit reading are zero; his join decision lives
+// in the register, not in this plan.
+test fn the_unrostered_unit_holds_back_no_slot_and_owes_its_join_to_the_roster() -> Bool {
+  !remote_build_host_is_serving(host: operator_host_e2d4b7)
+    && remote_build_pool_slot_reservation(host: operator_host_e2d4b7) == 0
+    && host_build_pool_reservation(host: operator_host_e2d4b7) == byte_size(0)
+}
+
+// THE ONLY ROSTERED HOST TODAY CARRIES ITS OWN LEDGER, SO DERIVING THE RESERVATION MOVED NO MEASURED PLAN.
+// This is the fact that reversed the earlier reasoning: srv1 is on the roster, resolves dashboard instances, and
+// is therefore not carved -- its serving reservation reaches the envelope through host_memory_reserved instead.
+// Asserted, because a premise carried in prose is how the next reader re-decides it wrongly.
+test fn the_rostered_host_with_its_own_ledger_holds_nothing() -> Bool {
+  remote_build_host_is_serving(host: operator_host_srv1)
+    && host_carries_own_ledger(host: operator_host_srv1)
+    && remote_build_pool_slot_reservation(host: operator_host_srv1) == 0
+}
+
+// THE CARVE-OUT IS A HELD SLOT, NOT A SERVING MEMBERSHIP. Our host is reserved, enrolled for CI, and absent
+// from the remote-build serving roster that another lane owns -- and because it has never been measured, the
+// plan admits NO positive width for it. Both halves are asserted so the carve-out cannot drift into either a
+// roster entry or a phantom slot count on an unsurveyed machine.
+test fn the_reserved_host_is_not_a_serving_member_and_gets_no_unmeasured_width() -> Bool {
+  !any(remote_build_serving_hosts(), h => h == operator_host_e2d4b7)
+    && any(fleet_enrollments, e => e.host == operator_host_e2d4b7)
+    && match admit_runner_capacity_width(
+      committed: committed_width_of(host: operator_host_e2d4b7),
+      requested: 1,
+    ) {
+      WidthAdmitted { width: _ } => false
+      WidthRefused { requested: _, cause: _ } => true
+    }
+}
+
+test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
+  let outcome = plan_runner_capacity_host(
+    host: operator_host_srv3,
+    requested_width: committed_width_of(host: operator_host_srv3) + 1,
+    roster: incident_2026_08_06_managed_roster_fixture(),
+    receipt: ReceiptAbsent,
+  )
+  match outcome {
+    HostCapacityPlanReady { plan: p } =>
+      match p.admission {
+        WidthRefused { requested: _, cause: _ } => true
+        WidthAdmitted { width: _ } => false
+      }
+    HostCapacityPlanRefused { host: _, reason: _ } => false
   }
 }
 
@@ -255,12 +371,10 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
     // AND IT IS A PLAN, NOT A HELPER CALLED IN ISOLATION: the same widths the assertions above read must
     // be widths the apply boundary is willing to emit.
     && match runner_capacity_plan(
-      srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent,
-      srv3_width: committed_width_of(host: operator_host_srv3),
-      srv4_width: committed_width_of(host: operator_host_srv4),
-      roster: roster
+      roster: roster,
+      receipt_for: _ => ReceiptAbsent,
     ) {
-      PlanReady { hosts: _ } => true
+      PlanReady { hosts: hs, refusals: _ } => length(hs) > 0
       PlanRefused { reason: _ } => false
     }
 }
@@ -288,14 +402,15 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // then resolves and the row is re-derived by the change that re-establishes srv2, not by editing the
 // 2026-08-06 rows to fit the fleet of the day.
 test fn the_whole_org_corpus_is_refused_because_srv2_has_no_derivable_width() -> Bool {
-  match runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
-    PlanReady { hosts: _ } => false
-    PlanRefused { reason: r } =>
-      string_contains(s: r, pattern: "srv2-01")
-        && string_contains(s: r, pattern: "a host whose committed width does not resolve")
-        && string_contains(s: r, pattern: "is UNRESOLVED, not zero")
-        && string_contains(s: r, pattern: srv2_reservation_policy_cause_fragment)
-        && !string_contains(s: r, pattern: "resolves to no committed fleet slot")
+  match runner_capacity_plan(roster: incident_2026_08_06_roster_fixture(), receipt_for: _ => ReceiptAbsent) {
+    PlanReady { hosts: _, refusals: rs } =>
+      fold(rs, init: false, f: (acc, r) =>
+        acc || ((r.host as String) == "srv2"
+          && string_contains(s: r.reason, pattern: "committed width unresolved")
+          && string_contains(s: r.reason, pattern: "UNRESOLVED, not zero")
+          && string_contains(s: r.reason, pattern: srv2_reservation_policy_cause_fragment))
+      )
+    PlanRefused { reason: _ } => false
   }
 }
 
@@ -450,13 +565,9 @@ test fn the_two_managed_hosts_widen_alike_now_that_no_carve_sits_between_them() 
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
-  match runner_capacity_plan(srv3_receipt: ReceiptAbsent, srv4_receipt: ReceiptAbsent, 
-    srv3_width: 6,
-    srv4_width: 6,
-    roster: RosterReadUnavailable { reason: "503" }
-  ) {
-    PlanRefused { reason: _ } => true
-    PlanReady { hosts: _ } => false
+  match runner_capacity_plan(roster: RosterReadUnavailable { reason: "503" }, receipt_for: _ => ReceiptAbsent) {
+    PlanRefused { reason: r } => string_contains(s: r, pattern: "roster read unavailable")
+    PlanReady { hosts: _, refusals: _ } => false
   }
 }
 
@@ -652,7 +763,7 @@ fn roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
 
 fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRosterEvidence) -> Bool {
   match plan_runner_capacity_host(receipt: ReceiptAbsent, host: host, requested_width: width, roster: roster) {
-    HostCapacityPlanRefused { reason: _ } => true
+    HostCapacityPlanRefused { host: _, reason: _ } => true
     HostCapacityPlanReady { plan: _ } => false
   }
 }
@@ -762,4 +873,68 @@ test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
     width: 5,
     roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05"]),
   )
+}
+
+// THE FOLD COVERS EVERY ENROLLED HOST, NOT A HAND LIST. A fifth enrolled fixture host would
+// appear in the plan without any code change to the planner: the fold iterates
+// runner_executor_hosts(), and every host in that population gets either a plan entry or a
+// typed refusal. This witness proves the structural property by checking that the plan's
+// hosts + refusals cover the full runner-executor population.
+test fn plan_covers_all_runner_executor_hosts_not_just_a_fixed_pair() -> Bool {
+  match runner_capacity_plan(
+    roster: incident_2026_08_06_managed_roster_fixture(),
+    receipt_for: _ => ReceiptAbsent,
+  ) {
+    PlanReady { hosts: hs, refusals: rs } =>
+      fold(
+        runner_executor_hosts(),
+        init: true,
+        f: (acc, h) =>
+          acc && fold(
+            concat(
+              map(hs, p => p.host as String),
+              map(rs, r => r.host as String),
+            ),
+            init: false,
+            f: (found, name) => found || name == (h as String),
+          ),
+      )
+    PlanRefused { reason: _ } => false
+  }
+}
+
+// A DUE CARVE IS ONE HELD SLOT, AND IT CHANGES THE ADMISSION. The derived path is shown to BITE, not only to
+// return zero: a rostered host with no dashboard instance is due the carve; one slot's worth of memory -- the very
+// constant the carve is made of -- divides to exactly one held slot; and one held slot taken out of a committed
+// width of five changes what the width admission answers. A reservation reader that always returned zero could not
+// satisfy this claim.
+test fn a_due_carve_holds_exactly_one_slot_and_changes_the_admission() -> Bool {
+  build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
+    && measure_fit_count_floor(
+      capacity: gunbc_runner_slot_memory_max,
+      each: gunbc_runner_slot_memory_max) == 1
+    && match committed_width_after_reservation(committed_slots: 5, reserved_slots: 1) {
+      CeilingCleared { committed_slots: _, reserved_slots: _, spendable_ceiling: s } => s == 4
+      ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } => false
+    }
+    && match admit_runner_capacity_width(committed: 4, requested: 5) {
+      WidthAdmitted { width: _ } => false
+      WidthRefused { requested: _, cause: _ } => true
+    }
+}
+
+// THE PENDING JOIN IS A REGISTER ROW, NOT A PLAN ENTRY. Nothing in this plan names ken as a build-pool holder;
+// the only place his held join lives is the open concern, and that row must point at the ONE authority that would
+// carve him -- runner_slot_desired::host_build_pool_reservation -- rather than at a list that no longer exists.
+test fn the_pending_join_is_a_register_row_pointing_at_the_carve_authority() -> Bool {
+  match h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home.disposition {
+    Open => true
+    Triaged { home: _, preserve: _, next: _ } => true
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+    && any(concern_declarations(c: h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home), d =>
+      (d.module_path as String) == "gunbc.runner.runner_slot_desired"
+        && (d.decl_name as String) == "host_build_pool_reservation")
 }

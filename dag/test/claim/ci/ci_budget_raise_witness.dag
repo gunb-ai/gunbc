@@ -1,0 +1,130 @@
+module test.claim.ci.ci_budget_raise_witness
+
+import std.types { Bool, List, String }
+import std.nat { Nat }
+import std.optional { Present, Absent, Optional }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.measure { Minute, minute, minute_count, second_count, minute_to_second, measure_le }
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import gunbc.design_ruling { DesignRuling, serve_entry_verdict_step_raised_to_45_minutes, mtcollins1_bmc_cold_reset_step_raised_to_67_minutes }
+import gunbc.ci.ci_budget_raise {
+  BudgetRaiseGrant, serve_entry_verdict_step_raised_to_45_minutes_grant,
+  StepBudgetApprovals, BudgetIntroduction, BudgetCoverage, CoveredByIntroduction, CoveredByGrant,
+  BudgetAdmission, BudgetAdmitted, BudgetRaiseGrantForAnotherBudget, BudgetRaiseUnapproved,
+  budget_admission, budget_admitted_minutes,
+}
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset {
+  mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_step_timeout_minutes,
+  mtcollins1_bmc_cold_reset_step_budget_admission, mtcollins1_bmc_cold_reset_step_budget_approvals, mtcollins1_bmc_cold_reset_allowance,
+}
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_bmc_cold_reset_step }
+
+// THE CONTROLS FOR A CI BUDGET RAISE (gunbc.ci.ci_budget_raise; ruling gunbc.design_ruling
+// ci_job_budgets_closed_to_growth). The approvals are SUPPLIED in the first three claims, each deciding one shape of
+// the admission; the grants they cite are the ledger's own rows, since a grant cannot be authored here
+// (sole_constructor; the forged literal is refused in test.claim.machine_intake.mtcollins1_unit_hold_forged_probe_witness
+// a_forged_budget_raise_grant_is_refused_at_the_literal). The last claim reads the one production budget that needs a
+// raise, the cold-reset step's, through to the step the generated workflow emits. No claim reads a ruling's prose.
+
+fn m(n: Nat) -> Minute { minute(count: n) }
+
+fn minutes_equal(x: Minute, n: Nat) -> Bool { minute_count(m: x) == n }
+
+fn same_ref(a: DeclarationRef, b: DeclarationRef) -> Bool { declaration_ref_display_key(ref: a) == declaration_ref_display_key(ref: b) }
+
+fn names(r: DesignRuling, want: DesignRuling) -> Bool { same_ref(a: r.reference, b: want.reference) }
+
+fn fixture_budget_ref() -> DeclarationRef { decl_ref(module_path: "test.claim.ci.ci_budget_raise_witness", decl_name: "fixture_step_budget") }
+
+fn serve_entry_budget_ref() -> DeclarationRef { decl_ref(module_path: "gunbc.fleet.fleet_workflow_steps", decl_name: "gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes") }
+
+fn approvals(budget: DeclarationRef, introduced: Nat, raises: List<BudgetRaiseGrant>) -> StepBudgetApprovals {
+  StepBudgetApprovals { budget: budget, introduced: BudgetIntroduction { minutes: m(n: introduced), carried_by: "a fixture step" }, raises: raises }
+}
+
+fn runs_at(minutes: Nat, a: StepBudgetApprovals, n: Nat) -> Bool {
+  minutes_equal(x: budget_admitted_minutes(admission: budget_admission(minutes: m(n: minutes), approvals: a), approvals: a), n: n)
+}
+
+fn by_introduction(x: BudgetAdmission) -> Bool {
+  match x { BudgetAdmitted { minutes: _, coverage: c } => match c { CoveredByIntroduction { introduced: _ } => true  _ => false }  _ => false }
+}
+
+// THE DISCRIMINATING RED: a budget required above its introduction, with no grant behind the raise, is refused naming
+// the introduction, and runs at it, never the required value; at or under its introduction it is admitted by it.
+test fn a_raise_with_no_grant_behind_it_refuses() -> Bool {
+  let a = approvals(budget: fixture_budget_ref(), introduced: 35, raises: [])
+  match budget_admission(minutes: m(n: 67), approvals: a) {
+    BudgetRaiseUnapproved { minutes: x, highest_approved: h } => minutes_equal(x: x, n: 67) && minutes_equal(x: h, n: 35)
+    _ => false
+  }
+    && runs_at(minutes: 67, a: a, n: 35)
+    && by_introduction(x: budget_admission(minutes: m(n: 35), approvals: a))
+    && runs_at(minutes: 35, a: a, n: 35)
+    && by_introduction(x: budget_admission(minutes: m(n: 30), approvals: a))
+    && runs_at(minutes: 30, a: a, n: 30)
+}
+
+// THE REFUSAL, READ BY ITS ARM: a grant for another budget refuses as BudgetRaiseGrantForAnotherBudget naming that
+// grant's ruling, at the minutes asked -- not merely "not admitted", which an Unapproved arm would also satisfy.
+fn refused_naming_the_grant(x: BudgetAdmission, minutes: Nat, want: DesignRuling) -> Bool {
+  match x {
+    BudgetRaiseGrantForAnotherBudget { minutes: asked, grant: g } => minutes_equal(x: asked, n: minutes) && names(r: g.ruling, want: want)
+    _ => false
+  }
+}
+
+// AN UNRELATED RULING IS NOT COVERAGE (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668, F1): a real grant -- the
+// serve-entry step's raise to 45 -- cited by a different budget is refused naming that grant, at a value above the
+// introduction and at one inside it alike, and the budget runs at its introduction.
+test fn a_grant_for_another_budget_does_not_admit() -> Bool {
+  let a = approvals(budget: fixture_budget_ref(), introduced: 35, raises: [serve_entry_verdict_step_raised_to_45_minutes_grant])
+  refused_naming_the_grant(x: budget_admission(minutes: m(n: 40), approvals: a), minutes: 40, want: serve_entry_verdict_step_raised_to_45_minutes)
+    && runs_at(minutes: 40, a: a, n: 35)
+    && refused_naming_the_grant(x: budget_admission(minutes: m(n: 30), approvals: a), minutes: 30, want: serve_entry_verdict_step_raised_to_45_minutes)
+    && refused_naming_the_grant(x: budget_admission(minutes: m(n: 67), approvals: a), minutes: 67, want: serve_entry_verdict_step_raised_to_45_minutes)
+}
+
+// THE RIGHT BUDGET'S GRANT COVERS ONLY THE MINUTES SIGNED OFF: under the serve-entry step's own approvals, its grant
+// admits 45 (coverage derived from the grant, naming its ruling), and 67 -- above the signed 45 -- is refused naming
+// 45 and runs at 45; 30 is the introduction's.
+test fn a_grant_for_the_right_budget_covers_only_its_signed_minutes() -> Bool {
+  let a = approvals(budget: serve_entry_budget_ref(), introduced: 30, raises: [serve_entry_verdict_step_raised_to_45_minutes_grant])
+  match budget_admission(minutes: m(n: 45), approvals: a) {
+    BudgetAdmitted { minutes: x, coverage: c } =>
+      minutes_equal(x: x, n: 45) && match c { CoveredByGrant { grant: g } => minutes_equal(x: g.raised_to, n: 45) && names(r: g.ruling, want: serve_entry_verdict_step_raised_to_45_minutes)  _ => false }
+    _ => false
+  }
+    && runs_at(minutes: 45, a: a, n: 45)
+    && match budget_admission(minutes: m(n: 67), approvals: a) { BudgetRaiseUnapproved { minutes: _, highest_approved: h } => minutes_equal(x: h, n: 45)  _ => false }
+    && runs_at(minutes: 67, a: a, n: 45)
+    && by_introduction(x: budget_admission(minutes: m(n: 30), approvals: a))
+}
+
+// THE PRODUCTION BUDGET, TO THE EMITTED STEP: the cold-reset step is named by its own timeout declaration,
+// introduced at 35, with ONE raise -- the grant transcribing the operator's sign-off
+// (gunbc.design_ruling mtcollins1_bmc_cold_reset_step_raised_to_67_minutes) -- and requires 67 minutes (its
+// allowance, 4020 s). So its admission is BudgetAdmitted{67} covered by that grant, the step the generated workflow
+// emits carries 67, and 67 covers the allowance. A refusal at this budget is exercised under the same approvals with
+// the grant removed (test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
+// the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call).
+test fn the_cold_reset_step_is_admitted_and_emitted_at_67_under_its_signed_grant() -> Bool {
+  same_ref(a: mtcollins1_bmc_cold_reset_step_budget_approvals.budget, b: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_bmc_cold_reset", decl_name: "mtcollins1_bmc_cold_reset_step_timeout_minutes"))
+    && minutes_equal(x: mtcollins1_bmc_cold_reset_step_budget_approvals.introduced.minutes, n: 35)
+    && count(mtcollins1_bmc_cold_reset_step_budget_approvals.raises) == 1
+    && all(mtcollins1_bmc_cold_reset_step_budget_approvals.raises, g => names(r: g.ruling, want: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes) && minutes_equal(x: g.raised_to, n: 67) && same_ref(a: g.budget, b: mtcollins1_bmc_cold_reset_step_budget_approvals.budget))
+    && minutes_equal(x: mtcollins1_bmc_cold_reset_step_required_minutes(), n: 67)
+    && second_count(s: mtcollins1_bmc_cold_reset_allowance()) == 4020
+    && match mtcollins1_bmc_cold_reset_step_budget_admission() {
+         BudgetAdmitted { minutes: x, coverage: c } =>
+           minutes_equal(x: x, n: 67) && match c { CoveredByGrant { grant: g } => names(r: g.ruling, want: mtcollins1_bmc_cold_reset_step_raised_to_67_minutes)  _ => false }
+         _ => false
+       }
+    && minutes_equal(x: mtcollins1_bmc_cold_reset_step_timeout_minutes(), n: 67)
+    && measure_le(a: mtcollins1_bmc_cold_reset_allowance(), b: minute_to_second(m: mtcollins1_bmc_cold_reset_step_timeout_minutes()))
+    && match fleet_converge_mtcollins1_bmc_cold_reset_step() {
+         RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: t } =>
+           match t { Present { value: v } => v == 67  Absent => false }
+         _ => false
+       }
+}

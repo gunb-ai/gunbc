@@ -22,7 +22,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import gunbc.roadmap.roadmap_session_placement {
   SessionPlacementStores, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent,
   SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, session_placement_observe_at, session_release_settled,
-  session_attempt_name_of, session_unit_wire, session_unit_unnameable_detail, session_settle_one, session_worker_unit_lifecycle_for_instance,
+  session_attempt_name_of, session_unit_wire, session_unit_unnameable_detail, session_settle_one, session_worker_unit_lifecycle_for_instance, session_reference_ordinal,
   SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused,
   SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused,
   SessionSettlementRetiredUncharged,
@@ -89,6 +89,7 @@ fn activation_apply(plan: ActivationPlan) -> UpsertClassification<ActivationPlan
 fn session_activation_classify(
   node_id: String,
   attempt_key: String,
+  ordinal: Int,
   observation: SessionPlacementObservation,
   loaded: AttemptUnitObservation,
   lifecycle: UnitLifecycle,
@@ -106,8 +107,8 @@ fn session_activation_classify(
         AttemptUnitUnreadable { reason } => activation_refuse(verdict: Inaccessible, reason: join(["the manager could not be read (", reason, "); nothing is changed"], ""))
       }
     SessionPlacementObserved { slot: rec, grant: _, returned } =>
-      match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-        Absent => activation_refuse(verdict: UnknownRefused, reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key))
+      match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+        Absent => activation_refuse(verdict: UnknownRefused, reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal))
         Present { value: expected } =>
           if rec.unit != (expected as String) {
             activation_refuse(verdict: UnknownRefused, reason: join(["the slot names unit ", rec.unit, ", not this attempt's unit; it is never touched"], ""))
@@ -181,9 +182,10 @@ fn session_activation_settled(
   host: String,
   node_id: String,
   attempt_key: String,
+  ordinal: Int,
   loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
 ) -> Bool {
-  let unit_gone = match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
+  let unit_gone = match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     Absent => false
     Present { value: unit } =>
       match loaded_of(unit) {
@@ -193,7 +195,7 @@ fn session_activation_settled(
         AttemptUnitUnreadable { reason: _ } => false
       }
   }
-  let release_recorded = match session_placement_observe_at(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key) {
+  let release_recorded = match session_placement_observe_at(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
     SessionPlacementObserved { slot: _, grant: _, returned } => session_release_settled(r: returned)
     SessionPlacementAbsent { unit: _ } => false
     SessionPlacementUnreadable { unit: _, detail: _ } => false
@@ -208,16 +210,17 @@ fn session_activation_collect(
   host: String,
   node_id: String,
   attempt_key: String,
+  ordinal: Int,
   loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
   reset_failed: fn(NonEmptyStr) -> Bool,
   detail: String,
 ) -> ActivationOutcome {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) }
     Present { value: unit } =>
       if !reset_failed(unit) {
         ActivationRefused { unit: unit as String, reason: join(["the ended unit could not be reset (", detail, "); the release is recorded and the unit is kept"], "") }
-      } else if session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of) {
+      } else if session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal, loaded_of: loaded_of) {
         ActivationCollected { unit: unit as String, detail: detail }
       } else {
         ActivationRed { unit: unit as String, reason: join(["the unit was reset but the readback still finds it loaded or the release unrecorded (", detail, ")"], "") }
@@ -229,6 +232,7 @@ fn session_activation_apply(
   stores: SessionPlacementStores,
   host: String,
   plan: ActivationPlan,
+  ordinal: Int,
   lifecycle: UnitLifecycle,
   now: EpochSecs,
   loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
@@ -236,11 +240,11 @@ fn session_activation_apply(
 ) -> ActivationOutcome {
   match plan {
     ActivationRelease { node_id, attempt_key, reason } =>
-      match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-        Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+      match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+        Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) }
         Present { value: unit } => {
           let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now, charge: compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: unit))
-          if activation_released_wire(s: settled) && session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of) {
+          if activation_released_wire(s: settled) && session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal, loaded_of: loaded_of) {
             ActivationRolledBack { unit: unit as String, detail: reason }
           } else if activation_released_wire(s: settled) {
             ActivationRed { unit: unit as String, reason: join(["the door reported a release the readback does not find: ", session_settlement_wire(s: settled)], "") }
@@ -250,19 +254,19 @@ fn session_activation_apply(
         }
       }
     ActivationReleaseThenCollect { node_id, attempt_key, reason } =>
-      match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-        Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+      match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+        Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) }
         Present { value: unit } => {
           let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now, charge: compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: unit))
           if activation_released_wire(s: settled) {
-            session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
+            session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
           } else {
             ActivationRefused { unit: unit as String, reason: join(["the release was not recorded, so the unit is kept: ", session_settlement_wire(s: settled)], "") }
           }
         }
       }
     ActivationCollect { node_id, attempt_key, reason } =>
-      session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
+      session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
   }
 }
 
@@ -272,22 +276,23 @@ fn session_activation_ensure_one(
   host: String,
   node_id: String,
   attempt_key: String,
+  ordinal: Int,
   loaded_of: fn(NonEmptyStr) -> AttemptUnitObservation,
   lifecycle_of: fn(NonEmptyStr) -> UnitLifecycle,
   reset_failed: fn(NonEmptyStr) -> Bool,
   now: EpochSecs,
 ) -> ActivationOutcome {
-  match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
-    Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
+  match session_unit_wire(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) {
+    Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key, ordinal: ordinal) }
     Present { value: unit } => {
       let classified = session_activation_classify(
-        node_id: node_id, attempt_key: attempt_key,
-        observation: session_placement_observe_at(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key),
+        node_id: node_id, attempt_key: attempt_key, ordinal: ordinal,
+        observation: session_placement_observe_at(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, ordinal: ordinal),
         loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now)
       match classified.decision {
         Noop => ActivationNoop { unit: unit as String, why: "converged or the attempt is live or inside its launch deadline" }
         Refuse { reason } => ActivationRefused { unit: unit as String, reason: reason as String }
-        Apply { plan } => session_activation_apply(stores: stores, host: host, plan: plan, lifecycle: lifecycle_of(unit), now: now, loaded_of: loaded_of, reset_failed: reset_failed)
+        Apply { plan } => session_activation_apply(stores: stores, host: host, plan: plan, ordinal: ordinal, lifecycle: lifecycle_of(unit), now: now, loaded_of: loaded_of, reset_failed: reset_failed)
       }
     }
   }
@@ -310,7 +315,14 @@ fn session_activation_ensure_pass_at(
           match attempt_slot_read(store: stores.slots.slots, reference: k) {
             AttemptSlotHeld { record: rec, generation: _ } =>
               match session_attempt_name_of(identity: rec.identity) {
-                Present { value: n } => session_activation_ensure_one(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, loaded_of: loaded_of, lifecycle_of: lifecycle_of, reset_failed: reset_failed, now: now)
+                Present { value: n } =>
+                  match session_reference_ordinal(reference: rec.reference, node_id: n.node_id, attempt_key: n.attempt_key) {
+                    // Converge each held placement under ITS OWN ordinal -- a resumed worker's placement is
+                    // activated/collected on its resumed unit name, not the base one. A slot whose reference
+                    // is not this identity's own naming is foreign; keep it, touch nothing.
+                    Absent => ActivationRefused { unit: k as String, reason: "the slot's reference is not a unit this attempt's naming can produce; it is kept" }
+                    Present { value: ordinal } => session_activation_ensure_one(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, ordinal: ordinal, loaded_of: loaded_of, lifecycle_of: lifecycle_of, reset_failed: reset_failed, now: now)
+                  }
                 Absent => ActivationRefused { unit: k as String, reason: "the slot binds an identity that names no node and attempt; it is kept" }
               }
             AttemptSlotAbsent => ActivationNoop { unit: k as String, why: "no slot is held" }

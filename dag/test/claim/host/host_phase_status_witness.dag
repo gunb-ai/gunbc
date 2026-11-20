@@ -17,8 +17,18 @@ import gunbc.host.host_assimilation_program {
   step_in_program,
   step_serves_participation,
 }
-import gunbc.fleet.fleet_host_backing { HostBacking, OwnedMachine, OwnedProvisioning, OwnedControlRoute, OwnedOsDelivery, Bmc, NoOutOfBand, InstalledViaVirtualMedia, ApplianceImage, RamImageBoot }
-import gunbc.fleet.fleet_host_identity { operator_host_183527 }
+import gunbc.fleet.fleet_host_backing {
+  HostBacking, OwnedMachine, OwnedProvisioning,
+  provisioning_over_bmc_via_virtual_media, provisioning_over_bmc_via_ram_image,
+  provisioning_self_installed_from_appliance_image,
+}
+import gunbc.fleet.fleet_host_identity {
+  operator_host_183527,
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
 import gunbc.fleet.fleet_enrollment {
   enrollment_for_host,
   fleet_enrollments,
@@ -330,13 +340,15 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
 data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: inference_serving_enrollment_participation,
-  backing: OwnedMachine { provisioning: OwnedProvisioning { control: NoOutOfBand, delivery: ApplianceImage }, unit: Absent },
+  backing: OwnedMachine { provisioning: provisioning_self_installed_from_appliance_image(), unit: Absent },
+  apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: ci_runner_enrollment_participation,
-  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
+  backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: Absent },
+  apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
@@ -371,8 +383,24 @@ fn step_is_inference_serving_provision(s: HostStandupStep) -> Bool {
 // InferenceServingProvision is owed by inference-serving participation alone, so a CI-runner program is
 // the spine minus guest adoption AND minus that phase. The exclusion is stated here by phase, not
 // derived from step_in_program, so a CI program that wrongly gained the phase makes the claims below red.
+fn owned_bmc_full_program_steps() -> List<HostStandupStep> {
+  filter(host_standup_spine, s => !step_is_guest_adoption(s: s) && !step_is_inference_serving_provision(s: s))
+}
+
 fn owned_bmc_full_program_length() -> Int {
-  filter(host_standup_spine, s => !step_is_guest_adoption(s: s) && !step_is_inference_serving_provision(s: s)).length()
+  owned_bmc_full_program_steps().length()
+}
+
+// WHICH ENROLLMENTS OWE THE WHOLE OWNED-BMC PROGRAM IS ANSWERED BY STEP IDENTITY, NOT BY A COUNT. The filter
+// that used to select this population asked whether a program had the same NUMBER of steps as the full
+// program. The hand-installed H11SSL-i (host-e2d4b7) proved the two come apart: an enrollment carrying both
+// participations gains the inference-serving phase and drops session placement, so it counts the same while
+// owing a different SET. Membership is therefore asserted over the steps themselves, which also makes the
+// next enrollment's arrival a fact about its program rather than an edit in this file.
+fn program_owes_exactly_the_owned_bmc_full_program(intent: HostEnrollmentIntent) -> Bool {
+  let owed = assimilation_program_for(intent: intent).steps
+  let full = owned_bmc_full_program_steps()
+  all(owed, s => any(full, f => f.label == s.label)) && all(full, f => any(owed, s => s.label == f.label))
 }
 
 // The whole provisioning-plus-roles program is owed by a host that both runs CI and hosts interactive sessions -- srv1-srv4's
@@ -382,7 +410,8 @@ test fn witness_ci_program_selects_the_whole_spine() -> Bool {
   let both = HostEnrollmentIntent {
     host: synthetic_ci_enrollment.host,
     participation: ci_runner_and_session_enrollment_participation,
-    backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
+    backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: Absent },
+    apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
   }
   let ci_only = program_step_count(program: assimilation_program_for(intent: synthetic_ci_enrollment))
   program_step_count(program: assimilation_program_for(intent: both)) == owned_bmc_full_program_length()
@@ -397,19 +426,22 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
 data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [InferenceServingParticipation, CiRunnerParticipation],
-  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
+  backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: Absent },
+  apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
+  backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: Absent },
+  apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
-  backing: OwnedMachine { provisioning: OwnedProvisioning { control: Bmc, delivery: InstalledViaVirtualMedia }, unit: Absent },
+  backing: OwnedMachine { provisioning: provisioning_over_bmc_via_virtual_media(), unit: Absent },
+  apply_mode: ExistingHostQuiescentReload, reach_policy: HostKeyLoginAdmitted, run_scoped_federation: NoRunScopedFederation,
 }
 
 // Participation is a set wearing a list's carrier, so the three enrollments below must be one
@@ -508,12 +540,30 @@ test fn witness_every_spine_step_is_claimed_by_some_participation() -> Bool {
   spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
 }
 
-// The admission is keyed on the declared phase: the real spine has an unclaimed step ONLY for the
-// frontier-named phase, and the same spine with the frontier emptied is red.
+// The admission is keyed on the declared frontier phase, not on how many enrollments happen to exist.
+// THE FRONTIER HAS DISSOLVED (gunbc.host.host_assimilation_program::phases_awaiting_a_real_enrollment is
+// empty because a real enrollment now owes the phase it named), so the old first conjunct -- "the live spine
+// still has an unclaimed step" -- was asserting today's population size and is replaced by a guard against a
+// population this claim supplies, plus a receipt that the discharged phase really is owed now.
 test fn witness_unclaimed_step_is_admitted_only_by_a_declared_frontier_phase() -> Bool {
-  !spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: [])
-    && spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
+  // ONE: every unclaimed step of the real spine is admitted by the ledger's frontier-named phase set.
+  spine_steps_all_claimed(spine: host_standup_spine, enrollments: fleet_enrollments, awaiting: phases_awaiting_a_real_enrollment)
+    // TWO: TEETH, held against a supplied population. With no enrollment on offer an assimilation step is
+    // unclaimed, and the (now empty) frontier does not admit it -- a step cannot pass by being unmentioned.
     && !spine_steps_all_claimed(spine: host_standup_spine, enrollments: [], awaiting: phases_awaiting_a_real_enrollment)
+    // THREE: THE DISSOLUTION RECEIPT. A real enrollment owes the phase the frontier used to name. If none
+    // does, this goes red and the frontier must be re-opened rather than left quietly empty.
+    && any(
+      fleet_enrollments,
+      e => any(
+        filter(host_standup_spine, s => match s.phase {
+          Prefix { phase: _ } => false
+          Assimilation { phase: InferenceServingProvision } => true
+          Assimilation { phase: _ } => false
+        }),
+        s => step_in_program(step: s, intent: e),
+      ),
+    )
 }
 
 // A RENTED GUEST OWES ITS ADOPTION AND ITS ROLES, AND NO BMC OR INSTALL STEP. The CAX guest's program
@@ -547,16 +597,20 @@ test fn witness_program_scoping_preserves_the_runner_fleet_matrix() -> Bool {
   let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let runners = filter(
     fleet_enrollments,
-    e => {
-      let owed = program_step_count(program: assimilation_program_for(intent: e))
-      owed == owned_bmc_full_program_length()
-    },
+    e => program_owes_exactly_the_owned_bmc_full_program(intent: e),
   )
   let intact = filter(
     runners,
     e => filter(matrix, c => c.cell.host == e.host).length() == owned_bmc_full_program_length(),
   )
-  runners.length() == 4 && intact.length() == runners.length()
+  // THE POPULATION IS NAMED, NOT COUNTED. `runners.length() == 4` was a number copied off the tree, and this
+  // claim's own comment says the assertion must "stay true no matter how many non-runner hosts join the
+  // roster" -- a copied count cannot do that. The full-program runners are named by identity, in both
+  // directions; the substance (each carries its whole program in the matrix) is untouched.
+  let full_program_runner_hosts = [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+  all(full_program_runner_hosts, h => any(runners, e => (e.host as String) == (h as String)))
+    && all(runners, e => any(full_program_runner_hosts, h => (h as String) == (e.host as String)))
+    && intact.length() == runners.length()
 }
 
 test fn witness_fleet_matrix_has_no_duplicated_cells() -> Bool {
@@ -662,14 +716,17 @@ test fn witness_every_covered_cell_today_is_the_authored_one() -> Bool {
     && probe_deduced.length() == 2 * probed_target_count()
 }
 
-fn owned_backing(control: OwnedControlRoute, delivery: OwnedOsDelivery) -> HostBacking {
-  OwnedMachine { provisioning: OwnedProvisioning { control: control, delivery: delivery }, unit: Absent }
+// The backing is built over a pair that is already WRITTEN, through a route constructor of
+// gunbc.fleet.fleet_host_backing: this witness can no longer take a control route and a delivery as two
+// independent arguments and pair them, which is exactly the guarantee under restoration.
+fn owned_backing(provisioning: OwnedProvisioning) -> HostBacking {
+  OwnedMachine { provisioning: provisioning, unit: Absent }
 }
 
 // RED: A RAM IMAGE IS BOOTED, NOT INSTALLED. A RamImageBoot host owes no install mechanism, no actuation and no
 // converge policy; keyed on the control route (or the fused arm) it would owe them because it has a BMC.
 test fn ram_image_boot_owes_no_install_phases() -> Bool {
-  let b = owned_backing(control: Bmc, delivery: RamImageBoot)
+  let b = owned_backing(provisioning: provisioning_over_bmc_via_ram_image())
   !prefix_phase_applies(p: OsInstallMechanismResolved, backing: b)
     && !prefix_phase_applies(p: OsInstallActuated, backing: b)
     && !prefix_phase_applies(p: HostConvergePolicyDerived, backing: b)
@@ -677,12 +734,14 @@ test fn ram_image_boot_owes_no_install_phases() -> Bool {
 
 // The two facts are independent in both directions: the BMC credential is owed by the control route alone,
 // the install phases by the delivery alone. Control: a virtual-media install keeps all four, and an
-// appliance without a BMC owes neither the credential nor an install. The impossible pair never reaches here: it
-// is refused at the enrollment boundary (host_control_route_witness).
+// appliance without a BMC owes neither the credential nor an install. The impossible pair -- a route with no
+// out-of-band control carrying an OS delivered over virtual media -- cannot be built here at all: it has no
+// constructor (gunbc.fleet.fleet_host_backing), and the refusal of the source that tries is witnessed on the
+// compile path at test.claim.fleet.owned_provisioning_pair_witness.
 test fn bmc_credential_follows_control_and_install_follows_delivery() -> Bool {
-  let full = owned_backing(control: Bmc, delivery: InstalledViaVirtualMedia)
-  let appliance = owned_backing(control: NoOutOfBand, delivery: ApplianceImage)
-  let ram = owned_backing(control: Bmc, delivery: RamImageBoot)
+  let full = owned_backing(provisioning: provisioning_over_bmc_via_virtual_media())
+  let appliance = owned_backing(provisioning: provisioning_self_installed_from_appliance_image())
+  let ram = owned_backing(provisioning: provisioning_over_bmc_via_ram_image())
   prefix_phase_applies(p: BmcCredentialConverge, backing: ram)
     && prefix_phase_applies(p: BmcCredentialConverge, backing: full)
     && prefix_phase_applies(p: OsInstallMechanismResolved, backing: full)

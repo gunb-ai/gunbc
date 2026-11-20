@@ -42,6 +42,7 @@ import gunbc.instrument_targets {
   self_host_frontier_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
   known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
   roster_import_sweep_controls_label, roster_import_sweep_real_route_label, credential_acquisition_systemd_rows_label,
+  native_serve_roadmap_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
 import gunbc.instruments.serving_benchmark_run { serving_benchmark_run_plan }
@@ -49,10 +50,12 @@ import gunbc.runner.runner_registration_labels { gunbc_gpu_docker_label }
 import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_assign_lit, bash_build_assign_var, bash_build_or_else,
   bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_test_bracket, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
+  bash_build_test_bracket, bash_build_word_exit_status,
+  bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
   bash_build_with_redir, bash_build_word_cmdsubst, bash_build_pipe, bash_build_and_then, bash_build_assign,
   bash_build_exit, bash_build_if_from_stmts, bash_build_subshell_from_stmts,
 }
@@ -233,6 +236,10 @@ fn instrument_dispatch_labels() -> List<Label> {
     // The credential acquisition rows that start transient units through `systemd-run --user`: no session container or
     // remote build runner has a user manager, so they run on a fleet runner on purpose; a fixture run, no memory row.
     credential_acquisition_systemd_rows_label(),
+    // The roadmap dashboard served natively (roadmap node demand-serve-program-image, Route B) needs a
+    // fleet runner to emit+build the NativeIngressDriver program and drive it over real TCP, which no
+    // per-change lane does; dispatched on purpose on the change's head. A row, not a job.
+    native_serve_roadmap_label(),
   ]
 }
 
@@ -447,12 +454,12 @@ fn instrument_dispatch_cgroup_read(file: String) -> Node {
 }
 
 fn instrument_dispatch_below_required(var: String) -> Node {
-  bash_build_test_bracket(words: [bash_build_word_var(name: var), bash_build_word_lit(text: "-lt"), bash_build_word_var(name: "REQUIRED_MEMORY_BYTES")])
+  bash_build_test_bracket(words: [bash_build_word_var(name: var), bash_build_word_lit(text: "-lt"), bash_build_word_var(name: "REQUIRED_MEMORY_BYTES")], spelling: BracketQuoted)
 }
 
 fn instrument_dispatch_cgroup_bound_below_required(var: String) -> Node {
   bash_build_and_then(
-    left: bash_build_test_bracket(words: [bash_build_word_var(name: var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "max")]),
+    left: bash_build_test_bracket(words: [bash_build_word_var(name: var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "max")], spelling: BracketQuoted),
     right: instrument_dispatch_below_required(var: var),
   )
 }
@@ -633,11 +640,11 @@ fn instrument_dispatch_statements() -> List<Node> {
           redir: ^bash_production_fold_redir_stdout_to_stderr,
         ),
       ),
-      right: bash_build_assign_var(name: "status", var_name: "?"),
+      right: bash_build_assign(name: "status", value: bash_build_word_exit_status()),
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stdout.txt")]),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit="), bash_build_word_var(name: "status")], file: "exit.txt"),
-    bash_build_test_bracket(words: [bash_build_word_var(name: "status"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")]),
+    bash_build_test_bracket(words: [bash_build_word_var(name: "status"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")], spelling: BracketQuoted),
   ]
 }
 

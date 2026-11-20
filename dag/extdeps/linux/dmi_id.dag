@@ -32,13 +32,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the string and a newline.
 data dmi_id_directory: NonEmptyStr = "/sys/class/dmi/id"
 
+// THE OBSERVABLE ATTRIBUTES OF THIS ABI, as arms. A missing attribute is a downstream coverage obligation,
+// never an Unobserved property inside the upstream module. `board_serial` is the arm the fleet's in-band
+// hardware observation reads (gunbc.plans.fleet_machine_authority P3): the same ABI text lists it `(R-)root`,
+// so reading it takes privilege — which is why gunbc.fleet.fleet_host_smbios_observation names the privilege
+// on the invocation instead of letting the read fail quietly into an empty string.
 type DmiIdAttribute
   = DmiBoardName
+  | DmiBoardSerial
   | DmiBiosVersion
 
 fn dmi_id_attribute_path(attribute: DmiIdAttribute) -> String {
   concat(dmi_id_directory as String, match attribute {
     DmiBoardName => "/board_name"
+    DmiBoardSerial => "/board_serial"
     DmiBiosVersion => "/bios_version"
   })
 }

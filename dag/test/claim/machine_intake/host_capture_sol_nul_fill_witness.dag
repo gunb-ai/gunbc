@@ -2,6 +2,7 @@ module test.claim.machine_intake.host_capture_sol_nul_fill_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.render_repeat_string_bootstrap { repeat_string }
 import gunbc.machine_intake.host_capture_envelope {
   host_capture_bind, host_capture_section_reading, HostCaptureOpen, HostCaptureSectionReading, SectionComplete,
 }

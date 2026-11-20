@@ -18,7 +18,9 @@ import gunbc.host.managed_host {
   managed_hosts,
 }
 import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_access_observation }
+import gunbc.machine_intake.mtcollins1_access_observation {
+  mtcollins1_access_observation, mtcollins1_observed_at,
+}
 import extdeps.board_authority { BoardFruRead, BoardFruIdentity }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake.ampere_smpro_observation {
@@ -44,7 +46,7 @@ import extdeps.cpu.types { SoCFamily, soc_family_architecture, soc_family_eq }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.cpu.ampere { altra_q6430_catalog, ampere_altra_soc_family, ampere_altra_max_soc_family }
 import extdeps.cpu.amd { ryzen_9_7950x3d_catalog }
-import gunbc.hostname_allocation { gunbc_fleet_hostname_allocations }
+import gunbc.hostname_allocation { fleet_machine_registry }
 import gunbc.rung_drop.mtcollins1_bmc_secure_standing_predates_reflash {
   mtcollins1_bmc_secure_standing_predates_reflash,
 }
@@ -97,7 +99,10 @@ fn witness_evidence_reporting(h: ManagedHost, build: BmcFirmwareReleaseIdentity)
         label: "hypothetical roster-witness build reading (no artifact behind it)",
         digest: content_hash_of_value(value: "roster witness hypothetical build reading"),
       },
-      observed_at: o.observed_at,
+      // THE READING'S INSTANT IS THE PASS'S OWN CLOCK READING. The build reading keeps a point field
+      // because gunbc.host.megarac_operation_standing orders build readings with `<` and `>`; an access
+      // receipt's time is a captured band now and has no lawful way into a point field.
+      observed_at: mtcollins1_observed_at,
     )
     BmcAccessUnobserved { endpoint: _ } => megarac_operation_evidence_fixture_none()
   }
@@ -820,7 +825,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
       let carried = project_managed_host_admission(
         record: r,
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       let carried_is_a_member = match carried {
         Present { value: m } => match m {
@@ -845,7 +850,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       let not_carried_is_a_member = match not_carried {
         Present { value: m } => match m {
@@ -870,7 +875,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       let unknown = project_managed_host_admission(
         record: managed_host_admission(
@@ -881,7 +886,7 @@ test fn w_admission_admits_a_platform_that_carries_no_smpro_interface() -> Bool 
           covering_drop: r.covering_drop,
         ),
         current_subject: Present { value: r.binding.subject },
-        allocations: gunbc_fleet_hostname_allocations,
+        allocations: fleet_machine_registry,
       )
       // Two separate bindings, not one && of two matches: a match nested inside a boolean operand does
       // not parse in this language, and the named legs are the better evidence anyway.

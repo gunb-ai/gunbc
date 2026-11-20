@@ -78,9 +78,9 @@ import gunbc.compute.attempt_lifecycle {
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionCapability, GitWorkspaceCapability, CargoCapability, RustcCapability, AttemptStateDirectoryCapability,
+  dispatch_capability_program,
 }
 // The seat's stop observation reads the SAME exit record the roadmap belt writes, so the names it needs
 // come from the module that owns that record: the hook render (compute_attempt_exit_hook,
@@ -104,7 +104,15 @@ import gunbc.compute.work_class_grant {
   WorkClass, work_class_of, work_class_wire, WorkClassGrant, GrantAtCeiling, GrantSized, ClassRetryAfterGrantExceeded,
   work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_is_ceiling, work_class_grant_wire,
   work_class_peak_sample, work_class_peak_sample_wire, work_class_summary_peak_upper,
+  workload_profile_for, workload_profile_worst_case_kibibyte,
 }
+import gunbc.emitted_subject_build_gate {
+  NativeStepMemoryInput, native_step_memory_inputs, native_product_reuse_env_name, native_product_reuse_fresh_value,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
+import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
+import gunbc.cli_invoke { invocation_words_bare }
+import extdeps.bazel.label { render_label }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_reserve, compute_release, compute_reservation_wire, compute_memory_ceiling,
@@ -644,6 +652,25 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
          "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
         if hermetic { ["--hermetic"] } else { ["--wet"] },
       )
+    // THE GATE SUBJECT IS THE CI STEP, SHAPE FOR SHAPE: build the seed with cargo, then run
+    // `gunbc test <label>` on the binary that build produced. Those two CI STEPS are ONE cargo
+    // PROGRAM here (`cargo run`), and that is a fact about the guard, not a convenience. `gunbc test`'s
+    // first act measures THE BINARY IT IS RUNNING (src/v1/stage0/src/target_invocation_host.rs
+    // observe_binary_inputs: current_exe, the `gunbc.d` beside it, the fingerprint unit that anchors
+    // the build start) and REFUSES one whose dep-info names inputs outside the worktree it stands in.
+    // So the dependent route's answer -- the build's binary as a verified blob reading out of the
+    // materialization store -- is exactly the case that guard cannot judge, and this operation takes
+    // NO dependency: it builds the seed in its own checkout, which is why the required gate lane
+    // resolves the same program as a path RELATIVE to the checkout (gunbc.gunbc_cli_command
+    // gunbc_test_command) instead of restoring one. The spelling is the build arm's exactly -- the
+    // host's cargo, --target-dir and not CARGO_TARGET_DIR (sccache hashes every CARGO_* into the
+    // Rust key), -p v1-compiler --bin gunbc -- and the words of the CI test command itself.
+    TestGateSubject { label } =>
+      concat(
+        [compute_program(instance: instance, cap: CargoCapability), "run", "--target-dir", layout.target_dir, "--release",
+         "-p", "v1-compiler", "--bin", gunbc_binary_name(b: GunbcDriver) as String, "--"],
+        invocation_words_bare(words: gunbc_test_invocation_words(label: render_label(l: label))),
+      )
   }
 }
 
@@ -770,6 +797,30 @@ fn compute_operation_env(op: WorkOperation) -> List<SystemdSetenvBinding> {
         Present { value: w } => [SystemdSetenvBinding { name: gunbc_diff_window_path_env, value: w.path as String as NonEmptyStr }]
         Absent => []
       }
+    // THE MEMORY VERDICT IS THE CI STEP'S, NOT A SECOND ONE. The subject step of the required gate
+    // passes its envelope to the seed through native_step_memory_inputs, decided by the ONE fleet fact
+    // of who owns a bounded cgroup, and the seed (src/v1/stage0/src/target_invocation_host.rs) is what
+    // reads it, binds, measures and REFUSES: an unbounded run, an OOM kill, any swap. This arm passes
+    // those same names to the same seed; it states no threshold, reads no peak, and decides nothing --
+    // a second verdict here would be the gunbc.design_argument::single_authority fork with a second
+    // chance to disagree. The envelope the seed finds IS this unit's reservation, because the unit's
+    // MemoryMax is the granted amount (compute_grant_unit_properties) -- the ledger's number and the
+    // kernel's number are the same number by construction.
+    //
+    // GUNBC_NATIVE_PRODUCT_REUSE is fresh because the products are built in THIS unit's target dir, which
+    // is per identity and removed at settlement: nothing was restored. The CI step's fault-experiment
+    // variable is a GitHub-expression about which lane steps run and has no subject here, so it is not
+    // carried -- naming it would imply a lane this operation does not have.
+    TestGateSubject { label: _ } =>
+      list_append(
+        left: list_map(
+          xs: native_step_memory_inputs(ownership: gunbc_runner_slot_job_cgroup_ownership),
+          f: fn(env_input) {
+            SystemdSetenvBinding { name: env_input.env_name as NonEmptyStr, value: env_input.env_value as NonEmptyStr }
+          }
+        ),
+        right: [SystemdSetenvBinding { name: native_product_reuse_env_name as NonEmptyStr, value: native_product_reuse_fresh_value as NonEmptyStr }]
+      )
   }
 }
 
@@ -2008,7 +2059,7 @@ fn compute_run_opened(
     if !compute_release_landed(r: returned) {
       compute_run_and_settle(instance: instance, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, grant: grant, attempt: attempt, reference: reference, reservation: reservation)
     } else {
-      let ceiling = compute_memory_ceiling(instance: instance)
+      let ceiling = work_class_memory_ceiling(instance: instance, op: op)
       let retry_grant = GrantAtCeiling { class: work_class_of(op: op), amount: ceiling, reason: ClassRetryAfterGrantExceeded { exceeded: granted } }
       let retry_reference = compute_ceiling_retry_reference(reference: reference)
       let first_closed = compute_settle_attempt(
@@ -2684,6 +2735,7 @@ fn compute_binary_parts(layout: ComputeLayout, op: WorkOperation) -> List<LocalS
       })
     CompileEntry { entry: _ } => []
     RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
+    TestGateSubject { label: _ } => []
   }
 }
 
@@ -2957,6 +3009,23 @@ fn compute_provide_produce(
 // slot with no reservation -- which recovery settles from the slot alone -- never a held reservation
 // no slot names, which nothing in the corpus can find. A reservation refused after the slot opened
 // closes that slot, and a close that fails rides out as a host-record loss beside the refusal.
+// THE CEILING IS THE WORKLOAD'S, NOT THE SEAT'S. A class that carries a WorkloadProfile is admitted
+// up to that profile's published bound; every other class keeps the host's compute-build ceiling,
+// which is the build pool's seat arithmetic and is right for the work it was derived from. This is not
+// an oversubscription lever: a ceiling sizes only what may be REQUESTED, and gunbc.compute.host_capacity
+// adjudicates every request against the pool's appropriation and the host's live availability, refusing
+// typed (ComputeCapacityFull, ComputeHostBelowFloor) when it does not fit -- so naming a larger ceiling
+// cannot make two workloads share one KiB, it can only name an amount the seat arithmetic never could.
+// Generalizing the seat itself, every class priced from a profile rather than from reservation divided
+// by compute_pool_slots, is the follow-up node workload-profiles-replace-seats: the other classes carry
+// no profile, and inventing one for them would price a workload from a figure with no standing.
+fn work_class_memory_ceiling(instance: HostDashboardInstance, op: WorkOperation) -> Kibibyte {
+  match workload_profile_for(class: work_class_of(op: op)) {
+    Present { value: profile } => workload_profile_worst_case_kibibyte(p: profile)
+    Absent => compute_memory_ceiling(instance: instance)
+  }
+}
+
 fn compute_reserve_and_run(
   instance: HostDashboardInstance,
   owner: AttemptOwner,
@@ -2968,7 +3037,7 @@ fn compute_reserve_and_run(
   op: WorkOperation,
   dependency: ComputeDependency,
 ) -> ProvideResult {
-  let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+  let grant = work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: work_class_memory_ceiling(instance: instance, op: op))
   if !compute_ensure_seat_dir(instance: instance, seat: compute_seat_of(owner: owner)) {
     compute_refused_unreserved(instance: instance, identity: identity, subject: subject, op: op, layout: layout, cause: StoreUnavailable { detail: "the seat directory for the owning attempt could not be created, so nothing was reserved" })
   } else {
@@ -3439,6 +3508,14 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
                           compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
                         CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
                         RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                        // A LEAF, deliberately: the gate subject carries its own seed build inside its
+                        // argv (compute_operation_argv's arm), because the dependent route hands the
+                        // operation the build's binary as a store blob and `gunbc test` cannot judge one
+                        // it did not build in the checkout it stands in. It also never holds two
+                        // reservations at once, which the dependent route would: the build's charge plus
+                        // the gate profile's, and on a carved host those do not both fit.
+                        TestGateSubject { label: _ } =>
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
                       }
                   }
               }

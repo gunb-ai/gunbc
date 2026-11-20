@@ -16,12 +16,13 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
-import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural }
+import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural, lower_hex_16 }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
 import gunbc.roadmap.roadmap_event_log {
   roadmap_event_chain, roadmap_event_admitted_after,
   EventPrincipal, AttemptResultOutcome, RoadmapResultBinding, roadmap_result_returned_event,
   RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+  RoadmapEventKind, ResultReturned, Retired,
 }
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
@@ -41,8 +42,9 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv2_dashboard_preview_id, dashboard_instance_shared_directory, dashboard_instance_child }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_events_worktree_child, roadmap_event_carrier_directory }
-import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
-import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability, AttemptStateDirectoryCapability }
+import gunbc.roadmap.roadmap_execution_contract {
+  GitWorkspaceCapability, AttemptStateDirectoryCapability, dispatch_capability_program,
+}
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventEnvelope, RoadmapEventId, roadmap_event_envelope, roadmap_event_wire_text,
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
@@ -239,10 +241,58 @@ fn roadmap_event_snapshot_template(layout: RoadmapEventCarrierLayout) -> FilePat
   concat(roadmap_event_snapshot_namespace(layout: layout), roadmap_event_snapshot_placeholder) as FilePath
 }
 
+// WHICH PRIVATE SNAPSHOTS ONE LAYOUT OWNS. A path is this layout's own when it carries the private
+// snapshot shape at all AND begins with THIS layout's namespace (the stem plus the digest of the
+// layout's long-lived worktree). Composing on `roadmap_event_snapshot_path_is_private` keeps that shape
+// stated exactly once; the namespace prefix is the only per-layout addition. Used to close exactly the
+// layout's own snapshot and never a co-resident instance's.
 fn roadmap_event_snapshot_path_owned(namespace: String, path: String) -> Bool {
-  starts_with(s: path, prefix: namespace)
-    && string_length(s: path) == string_length(s: namespace) + string_length(s: roadmap_event_snapshot_placeholder)
-    && all((path |> chars).skip(n: string_length(s: namespace)), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
+  roadmap_event_snapshot_path_is_private(path: path)
+    && starts_with(s: path, prefix: namespace)
+}
+
+// THE SUFFIX mktemp APPENDS, derived from the single authority `roadmap_event_snapshot_placeholder` (its
+// width is the template's run of X's, its alphabet mktemp's), so this cannot drift from the template the
+// carrier hands `shell.Mktemp.DirWithTemplate`.
+fn is_snapshot_suffix_segment(segment: String) -> Bool {
+  string_length(s: segment) == string_length(s: roadmap_event_snapshot_placeholder)
+    && all((segment |> chars), cp => (cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122))
+}
+
+// THE SHAPE EVERY PRIVATE EVENT SNAPSHOT IS CREATED AT, WHATEVER INSTANCE CREATED IT. The stem, then the
+// namespace's lower-hex structural digest -- width and alphabet owned by `std.content_hash::lower_hex_16`,
+// the same predicate that walls `Fnv1a64Structural.digest` (this module states no width of its own) -- a
+// dot, then mktemp's placeholder-width alnum suffix. A path that merely BEGINS with the stem, or whose
+// digest or suffix is off, is not a serve snapshot. Convergence uses this to tell the transient worktrees
+// serve opens and closes continuously from the linked worktrees that hold someone's in-flight work
+// (roadmap node deploy-converge-serve-quiesced), so it is exported rather than kept local.
+//
+// STATED RESIDUAL: a path is exempted from the transition guard by this SHAPE ALONE, so a local principal
+// that already has git on the host could register a durable worktree at a snapshot-shaped path to keep it
+// out of the guard. Every actor able to do that can already drive git on these hosts, so this shape check
+// is a guard against serve's ordinary churn, not a security boundary against a hostile local principal.
+fn roadmap_event_snapshot_path_is_private(path: String) -> Bool {
+  if !starts_with(s: path, prefix: roadmap_event_snapshot_stem) {
+    false
+  } else {
+    let body = substring(
+      s: path,
+      start: string_length(s: roadmap_event_snapshot_stem),
+      end: string_length(s: path)
+    )
+    let segments = split(s: body, delimiter: ".")
+    match segments.get(2) {
+      Present { value: _ } => false
+      Absent => match segments.get(0) {
+        Absent => false
+        Present { value: digest } => match segments.get(1) {
+          Absent => false
+          Present { value: suffix } =>
+            lower_hex_16(value: digest) && is_snapshot_suffix_segment(segment: suffix)
+        }
+      }
+    }
+  }
 }
 
 type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }
@@ -348,10 +398,22 @@ fn roadmap_event_operation_path(event: RoadmapEvent, operation: String) -> Strin
   join(["operations/", event.node as String, "/", operation, ".json"], "")
 }
 
-// recorded_at belongs to the committed result, not the retry payload. Parent remains bound to
-// the original precondition; a key cannot be repurposed for a new command after a later event.
+// THE KEY BINDS THE COMMAND, NEVER THE PRECONDITION. A command is its node, its principal, and its
+// payload — and the payload IS the kind: every field of the fact rides inside the kind's own variant, so
+// kind equality is payload equality and a used key can never authorize a different fact.
+//
+// The parent is deliberately NOT part of the command's identity. A retry whose read of the world moved
+// on — the migration resuming after an interruption, where the head is now the event the first attempt
+// committed — is the SAME command and must answer with the first attempt's committed outcome. Binding the
+// key to the parent made that retry a fresh command and refused it `operation-conflict`, so a half-finished
+// migration could not be finished by replaying it. Witnessed by `issue_command_acceptance_wet`, in
+// test.manual.issue_command_wet, which commits an acceptance, lets an unrelated act move the head, and
+// requires the FIRST event's own id back from the replay; the pairing of that replay with
+// a_retried_acceptance_is_the_same_operation_and_the_same_command_because_the_guess_is_not_a_fact, in
+// test.claim.roadmap.roadmap_acceptance_evidence_witness, is what pins it. What a used key
+// still cannot do is carry another payload: that comparison is the one below, and it refuses.
 fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
-  a.node == b.node && a.author == b.author && a.parent == b.parent && a.kind == b.kind
+  a.node == b.node && a.author == b.author && a.kind == b.kind
 }
 
 // The operation receipt is observed, not read-and-kind-matched: the old flow branched on the
@@ -371,7 +433,17 @@ fn roadmap_event_append_after_no_operation_receipt(
     EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
     EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
       else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
-        EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+        // THE REFUSAL NAMES WHAT WAS REFUSED. One sentence for every kind the log will not admit would
+        // tell an operator migrating a retirement that a RESULT was refused (gunbc.design_argument::
+        // fail_closed: a failure arm refuses, and what it says is part of refusing).
+        match event.kind {
+          ResultReturned { attempt: _, claim: _, outcome: _ } =>
+            EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+          Retired { reason: _ } =>
+            EventAppendRefused { id: env.id, step: "not-admitted", reason: "the node is already terminal on this log, so a second retirement names no change; what the plan shows is the first retirement's reason" }
+          _ =>
+            EventAppendRefused { id: env.id, step: "not-admitted", reason: "this event kind is not admitted after what the node's history already holds" }
+        }
       } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
         EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
       } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: expected_commit) }
@@ -553,34 +625,84 @@ fn roadmap_standings_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapS
     CarrierReady =>
       match roadmap_event_carrier_sync(layout: layout) {
         CarrierEnsureRefused { step, reason } => StandingsUnobserved { reason: join(["sync/", step, ": ", reason], "") }
-        CarrierReady => {
-          let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
-          let listing = Filesystem.List(path: root)
-          if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
-            StandingsObserved { rows: [] }
-          } else {
-            let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
-            let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
-            match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
-              Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
-              Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
-              Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
-            }
-          }
-        }
+        CarrierReady => roadmap_standings_read_synced(layout: layout)
       }
   }
 }
 
+// The fold over every node directory of a worktree the caller already synced: one fold, read by
+// the standings above and by the standings at the log head below, so the two cannot disagree.
+fn roadmap_standings_read_synced(layout: RoadmapEventCarrierLayout) -> RoadmapStandings {
+  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+  let listing = Filesystem.List(path: root)
+  if !listing.success && listing.error_kind != "not_found" { StandingsUnobserved { reason: listing.error } } else if !listing.success {
+    StandingsObserved { rows: [] }
+  } else {
+    let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+    let reads = map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId))
+    match (filter(reads, r => match r { EventsReadRefused { node: _, step: _, reason: _ } => true  EventsRead { node: _, envelopes: _ } => false })).first() {
+      Present { value: EventsReadRefused { node, step, reason } } => StandingsUnobserved { reason: join(["node ", node as String, " ", step, ": ", reason], "") }
+      Present { value: EventsRead { node: _, envelopes: _ } } => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+      Absent => StandingsObserved { rows: roadmap_standing_rows_of_reads(reads: reads) }
+    }
+  }
+}
+
+// EVERY NODE'S STANDING, AND THE LOG COMMIT IT WAS FOLDED AT. A reader that caches the standings
+// (the ctrl session dashboard, through /standings.json) needs to know WHICH log the answer is
+// about, so the head is read inside the same synced snapshot the fold reads -- after the fetch and
+// the hard reset to the remote branch, before the fold -- and never from a second read that could
+// have moved. A head that cannot be read refuses, located; it is never reported as an empty log.
+type RoadmapStandingsAtHead
+  = StandingsAtHead { head: NonEmptyStr, rows: List<NodeStandingRow> }
+  | StandingsAtHeadUnobserved { step: String, reason: String }
+
+fn roadmap_standings_at_head_read_private(layout: RoadmapEventCarrierLayout) -> RoadmapStandingsAtHead {
+  match roadmap_event_carrier_ensure(layout: layout) {
+    CarrierEnsureRefused { step, reason } => StandingsAtHeadUnobserved { step: join(["ensure/", step], ""), reason: reason }
+    CarrierReady =>
+      match roadmap_event_carrier_sync(layout: layout) {
+        CarrierEnsureRefused { step, reason } => StandingsAtHeadUnobserved { step: join(["sync/", step], ""), reason: reason }
+        CarrierReady =>
+          match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rev-parse", "HEAD"]) {
+            CarrierExecFailed { exit_code, stderr } => StandingsAtHeadUnobserved { step: "head", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }
+            CarrierExecOk { stdout } =>
+              if trim(stdout) == "" { StandingsAtHeadUnobserved { step: "head", reason: "rev-parse HEAD answered nothing" } }
+              else {
+                match roadmap_standings_read_synced(layout: layout) {
+                  StandingsUnobserved { reason } => StandingsAtHeadUnobserved { step: "fold", reason: reason }
+                  StandingsObserved { rows } => StandingsAtHead { head: trim(stdout) as NonEmptyStr, rows: rows }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn roadmap_standings_at_head_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapStandingsAtHead> {
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => CarrierClosed { result: StandingsAtHeadUnobserved { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
+    CarrierSnapshotReady { layout: private } =>
+      CarrierClosed { result: roadmap_standings_at_head_read_private(layout: private), close: roadmap_event_snapshot_close(layout: private) }
+  }
+}
+
 // The per-node read without its own ensure and sync, for a caller that already synced.
-fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
-  let dir = roadmap_event_node_dir(layout: layout, node: node)
+// THE SHARED DIRECTORY READER for one node's events, over a directory the caller names. The private
+// (synced-worktree) read and the committed-fixture read are the SAME walk and the SAME decode here
+// (gunbc.design_argument::single_authority): one parser, one decode path, so a fixture cannot drift
+// from the live route it stands in for. `dir` is that node's own directory.
+fn roadmap_events_read_node_dir(dir: String, node: RoadmapNodeId) -> RoadmapEventsRead {
   let listing = Filesystem.List(path: dir)
   if !listing.success && listing.error_kind != "not_found" { EventsReadRefused { node: node, step: "list", reason: listing.error } } else if !listing.success {
     EventsRead { node: node, envelopes: [] }
   } else {
     roadmap_events_decode_all(node: node, dir: dir, names: filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != ""))
   }
+}
+
+fn roadmap_events_read_synced(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> RoadmapEventsRead {
+  roadmap_events_read_node_dir(dir: roadmap_event_node_dir(layout: layout, node: node), node: node)
 }
 
 // EVERY EVENT ACROSS EVERY NODE IN ONE SYNC — one fetch, then one read per node directory, the
@@ -611,15 +733,22 @@ fn roadmap_all_events_of_reads(reads: List<RoadmapEventsRead>) -> RoadmapAllEven
 
 // Every node's events from a worktree the caller already synced: the one walk both the all-events
 // read and the bound result append decide over.
-fn roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
-  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
-  let listing = Filesystem.List(path: root)
+// THE SHARED DIRECTORY READER over a whole events directory (the dir holding one `<node>/` per node).
+// The private synced-worktree read and the committed-fixture read both call THIS, so the one parse and
+// the one decode are shared by the live and committed routes (single_authority). `dir` is the events
+// directory itself (the carrier's worktree + "/events" on the live route).
+fn roadmap_events_read_dir(dir: String) -> RoadmapAllEventsRead {
+  let listing = Filesystem.List(path: dir)
   if !listing.success && listing.error_kind != "not_found" { AllEventsReadRefused { step: "list", reason: listing.error } } else if !listing.success {
     AllEventsRead { envelopes: [] }
   } else {
     let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
-    roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId)))
+    roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_node_dir(dir: join([dir, "/", trim(n)], ""), node: trim(n) as NonEmptyStr as RoadmapNodeId)))
   }
+}
+
+fn roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+  roadmap_events_read_dir(dir: join([layout.worktree as String, "/", roadmap_events_dir_segment], ""))
 }
 
 fn roadmap_events_read_all_private(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {

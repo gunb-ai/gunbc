@@ -1164,7 +1164,18 @@ fn run_verb(
     let resolve_started = std::time::Instant::now();
     // Demand-acquired layout closure is the only `gunbc run` resolve. Whole-tree
     // `resolve_entry_graph` stays the compile / floor consumer, not a run fallback.
-    let resolved = cli_run::resolve_entry_graph_demand_acquired(source_roots, entry_file);
+    // The typecheck owes bodies only for what the requested functions reach. A claim run with no
+    // --function runs every `test fn` of the entry module, which is discovered from the resolved
+    // graph itself, so it cannot be named before resolve and keeps the whole-closure typecheck.
+    let requested: Vec<String> = if !functions.is_empty() {
+        functions.to_vec()
+    } else if claim_run {
+        Vec::new()
+    } else {
+        vec!["main".to_string()]
+    };
+    let resolved =
+        cli_run::resolve_entry_graph_demand_acquired_scoped(source_roots, entry_file, &requested);
     report_pre_entry_phases(
         resolve_started.elapsed(),
         source_roots,
@@ -1450,6 +1461,14 @@ fn run_one_function(
                 None => {
                     let (status, message) =
                         exit_status_for(cli_run::classify_exit(&value, ctx), function);
+                    // A ProcessExit claim that succeeds (ExitClass::Success → status 0,
+                    // message None) must produce a visible PASS line under --claim-run,
+                    // symmetric with the Bool(true) path which carries Some("PASS …").
+                    let message = if claim_run && status == 0 && message.is_none() {
+                        Some(format!("PASS {function}"))
+                    } else {
+                        message
+                    };
                     Verdict { status, message }
                 }
             }

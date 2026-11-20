@@ -3,6 +3,8 @@ module product.printed_chassis.card_end_interface
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.measure { Micrometer, micrometer }
+import extdeps.climbing_holds.types { FastenerThread, MetricCoarseThread, ImperialUncThread, FastenerThreadUnread }
+import extdeps.iso.iso_273 { m2_5_thread, m3_thread }
 
 // ═══ WHAT A DUCT MEETS AT A CARD'S END: THE SHARED INTERFACE AND THE FEATURES ONLY SOME CARDS HAVE ═══
 //
@@ -26,9 +28,39 @@ fn feature_value<V>(f: EndFaceFeature<V>) -> V? {
   match f { FeaturePresent { value: v } => Present { value: v } FeatureAbsentObserved => Absent FeatureNotObserved { read_obligation: _ } => Absent }
 }
 
+// WHAT THREAD THE INSERTS TAKE, AND HOW THAT IS KNOWN. A thread is established by a screw that threads in;
+// short of that, trial screws that do not fit can bracket it, and the bracket is a narrower claim: it names
+// the one standard metric size between them, not a thread anyone has driven. A consumer that prints a
+// clearance hole may use either, and says which in what it hands the builder.
+type InsertThreadStanding
+  = BracketedByTrialScrews { too_small: FastenerThread, too_large: FastenerThread, observed: NonEmptyStr }
+  | ConfirmedByScrewThatThreads { observed: NonEmptyStr }
+
+type InsertThread {
+  thread: FastenerThread
+  standing: InsertThreadStanding
+}
+
+fn insert_thread_standing_note(t: InsertThread) -> String {
+  match t.standing {
+    BracketedByTrialScrews { too_small: s, too_large: l, observed: o } =>
+      join(["bracketed, not confirmed: ", thread_designation(t: s), " is too small and ", thread_designation(t: l), " too large (", o as String, "); no screw of this thread has been driven into it yet"], "")
+    ConfirmedByScrewThatThreads { observed: o } => join(["confirmed by a screw that threads in (", o as String, ")"], "")
+  }
+}
+
+fn thread_designation(t: FastenerThread) -> String {
+  match t {
+    MetricCoarseThread { designation: d } => d as String
+    ImperialUncThread { designation: d } => d as String
+    FastenerThreadUnread { obligation: _ } => "unread thread"
+  }
+}
+
 // Two threaded inserts in the end cap, each read to its NEAR edge: top edge of the upper hole from the top
 // end, bottom edge of the lower hole from the bottom end, nearest edge from the back face.
 type EndCapInserts {
+  thread: InsertThread
   spacing: Micrometer
   near_edge_from_back: Micrometer
   upper_near_edge_from_top: Micrometer
@@ -37,6 +69,16 @@ type EndCapInserts {
 
 // An auxiliary power header on the end face: its outer pin's distance from the top end.
 type FaceConnector { from_top: Micrometer }
+
+// A PLATE THAT RUNS PAST THE FACE'S ENDS: a strip parallel to the PCB (the T10's backplate) that stands proud of
+// the face's top and bottom ends, so anything that closes around the face's outline at its ends -- a sleeve --
+// strikes it. Read across from the back face to its near edge, its thickness, and how far it runs past each end.
+type EdgeOverhang {
+  near_edge_from_back: Micrometer
+  thickness: Micrometer
+  past_top: Micrometer
+  past_bottom: Micrometer
+}
 
 type CardEndInterface {
   source: NonEmptyStr
@@ -49,6 +91,7 @@ type CardEndInterface {
   fin_setback: Micrometer
   inserts: EndFaceFeature<EndCapInserts>
   connector: EndFaceFeature<FaceConnector>
+  overhang: EndFaceFeature<EdgeOverhang>
 }
 
 // The features a realization would need and this reading does not supply, each named with its state. A
@@ -64,7 +107,23 @@ fn missing_feature<V>(name: String, f: EndFaceFeature<V>) -> List<String> {
 // ═══ THE A16, READ 2026-10-23 ═══
 // Caliper readings by the operator on an A16 PG171 in hand. The window sides are pitched and the window was
 // read at its tightest point.
+// THE THREAD. Until 2026-11-10 the duct took the inserts as M3 x 4, credited to the operator on 2026-10-23
+// (#14924); no thread reading stands behind that, and the operator reports M3 does not go in. Their trial
+// screws bracket it: M2 is too small, M3 too large, so the inserts are read as M2.5, the one ISO metric
+// coarse size between. The 3.0 mm bore below is the caliper reading of the opening, not a thread size.
+data m2_trial_thread: FastenerThread = MetricCoarseThread { designation: "M2" }
+
+data a16_insert_thread: InsertThread = InsertThread {
+  thread: m2_5_thread,
+  standing: BracketedByTrialScrews {
+    too_small: m2_trial_thread,
+    too_large: m3_thread,
+    observed: "operator, 2026-11-10, trying an M2 and an M3 screw in a held A16's end-cap inserts",
+  },
+}
+
 data a16_end_cap_inserts: EndCapInserts = EndCapInserts {
+  thread: a16_insert_thread,
   spacing: micrometer(count: 27620),
   near_edge_from_back: micrometer(count: 8860),
   upper_near_edge_from_top: micrometer(count: 59720),
@@ -84,6 +143,7 @@ data a16_card_end: CardEndInterface = CardEndInterface {
   fin_setback: micrometer(count: 6000),
   inserts: FeaturePresent { value: a16_end_cap_inserts },
   connector: FeaturePresent { value: a16_face_connector },
+  overhang: FeatureNotObserved { read_obligation: "operator, on a held A16: whether any plate (the backplate, a shroud lip) runs past the end face's top or bottom end within the first 20 mm behind the face, and if so its near edge from the back face, its thickness and how far past each end" },
 }
 
 // ═══ THE A2, READ 2026-11-02 ═══
@@ -114,4 +174,51 @@ data a2_card_end: CardEndInterface = CardEndInterface {
   fin_setback: micrometer(count: 1000),
   inserts: FeatureAbsentObserved,
   connector: FeatureAbsentObserved,
+  // Nothing runs past the face's ends where a sleeve closes: the A2 row fit plate's sleeve went over all four
+  // ends at 0.1 mm per side (product.printed_chassis.fit_observations a2_row_fit_plate_second_fit, "the lip seems
+  // okay"), and the fourth plate's 20 mm sleeve held (operator, 2026-11-04).
+  overhang: FeatureAbsentObserved,
+}
+
+// ═══ THE TESLA T10, READ 2026-11-16 ═══
+// Operator readings on a held T10, intake end (opposite the bracket), relayed in conversation 2026-11-16; the
+// face's TOP end is the end away from the slot, its BACK face the backplate side. The face is 95.70 x 18.18 mm.
+// THE OPENING IS ROUGH, AND NOTHING SEALS ON IT. About half the thickness is open air channel and half is board
+// and chip; the open half is on the FRONT-PLATE side. Read: "effectively" the full length "minus a few mm at
+// the top and a few mm at the bottom", then "4 mm on top and bottom"; about 8 mm across ("the open space is
+// 8mm"), 1 mm in from the front face ("its 1mm IIUC"), so 18.18 - 1 - 8 = 9.18 mm from the back; wide steel
+// fins about 10 mm in ("its basically an empty hole - there are a few steel fins but they're wide - like 10mm
+// in"). The operator: "the port shape is very odd, without a real mechanical drawing it would be too hard to
+// capture", so the duct for this card is a SLEEVE around the outline and the opening only says where the
+// plate is open.
+// THE 8-PIN is on this face: it starts 10.2 mm below the top, in the backplate half, 4 mm in from the
+// backplate; the plugged head is 19 x 12 mm with its latch flush with the face, and the cable leaves straight
+// out. FaceConnector carries the near edge from the top (the A16's carries its outer pin there); the head's
+// footprint is not a field because the group keep-out is cut across the face's whole thickness.
+// THE BACKPLATE STRIP is 1.50 mm thick, 98.38 mm overall against the face's 95.70, "inset 2.40 mm from the back
+// side", and runs 1.35 mm past the top and 1.35 mm past the bottom (as read; they sum 2.70 against the 2.68 the
+// overall lengths give).
+// THE END-CAP SCREW HOLES are present and are not to be used (operator: a sleeve fit holds it instead); their
+// count, bore and positions were not read, so they are not given a placeholder.
+data t10_face_connector: FaceConnector = FaceConnector { from_top: micrometer(count: 10200) }
+
+data t10_backplate_overhang: EdgeOverhang = EdgeOverhang {
+  near_edge_from_back: micrometer(count: 2400),
+  thickness: micrometer(count: 1500),
+  past_top: micrometer(count: 1350),
+  past_bottom: micrometer(count: 1350),
+}
+
+data t10_card_end: CardEndInterface = CardEndInterface {
+  source: "Operator readings on a held Tesla T10, intake end, 2026-11-16 (face caliper-read; the opening, its 4 mm borders, the 1 mm front wall and the 10 mm fin depth are rough readings of an irregular port)",
+  face_length: micrometer(count: 95700),
+  face_thickness: micrometer(count: 18180),
+  window_length: micrometer(count: 87700),
+  window_depth: micrometer(count: 8000),
+  window_from_top: micrometer(count: 4000),
+  window_from_back: micrometer(count: 9180),
+  fin_setback: micrometer(count: 10000),
+  inserts: FeatureNotObserved { read_obligation: "operator, on a held T10: the end-cap screw holes are present but were not read (count, bore, spacing, near edges); no T10 duct fastens to them (operator, 2026-11-16: a sleeve fit holds it instead)" },
+  connector: FeaturePresent { value: t10_face_connector },
+  overhang: FeaturePresent { value: t10_backplate_overhang },
 }

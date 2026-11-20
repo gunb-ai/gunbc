@@ -2,6 +2,8 @@ module product.printed_chassis.duct_card_catalog
 
 import std.types { Bool, NonEmptyStr, String, List }
 import std.optional { Present, Absent }
+import std.nat { Nat }
+import extdeps.cited_field { row_field_value }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.gpu.passive_card_row { CardRow, row_unread_fields }
 import extdeps.gpu.nvidia_a16 { a16_card_row }
@@ -11,7 +13,7 @@ import extdeps.gpu.nvidia_a2 { a2_card_row }
 import extdeps.fans.noctua { noctua_nf_a9_pwm_mounting_pattern, noctua_nf_a9_pwm_frame_depth }
 import product.printed_chassis.duct_fit_policy { plug_and_flange_print_policy }
 import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, GpuDuctDesign, BlowerDuctDesign, card_envelope_of, duct_design, blower_duct_design_of, screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
-import product.printed_chassis.card_end_interface { CardEndInterface, a16_card_end, a2_card_end }
+import product.printed_chassis.card_end_interface { CardEndInterface, a16_card_end, a2_card_end, t10_card_end }
 
 // ═══ THE CARDS A DUCT IS PRINTED FOR: A VENDOR ROW JOINED TO WHAT THIS REPOSITORY HAS READ ON THE CARD ═══
 //
@@ -30,7 +32,21 @@ type EndFaceStanding
   = EndFaceRead { face: CardEndInterface }
   | EndFaceNeedsReading { read_obligation: NonEmptyStr }
 
-type DuctCard { row: CardRow, end_face: EndFaceStanding }
+// A SLOT COUNT READ ON A HELD CARD, where the vendor row has none (extdeps.gpu.nvidia_t10 t10_document_obligation
+// sends that reading here). It is consulted only while the vendor row's field is unread, so a published
+// figure, once cited, is what every consumer reads.
+type ObservedSlotCount { slots: Nat, observed: NonEmptyStr }
+
+type DuctCard { row: CardRow, end_face: EndFaceStanding, observed_slot_count: ObservedSlotCount? }
+
+// The slot count every installation and pitch reader takes: the vendor's when it is published, else the
+// count read on the operator's card, else none.
+fn duct_card_slot_count(card: DuctCard) -> Nat? {
+  match row_field_value(field: card.row.slot_count) {
+    Present { value: n } => Present { value: n }
+    Absent => match card.observed_slot_count { Present { value: o } => Present { value: o.slots } Absent => Absent }
+  }
+}
 
 fn end_face_obligation(card: NonEmptyStr) -> NonEmptyStr {
   join(["operator, on a physical ", card as String, ", with a caliper and recorded with the date: the OUTER FACE of the card's far end (opposite the I/O bracket) -- overall length and thickness to 0.02 mm; the cooler's FIN WINDOW on that face (its extent at the tightest point, its distance from the top end and the back face, and how far the fins sit behind it); any threaded inserts in the end cap (count, bore, spacing, and each near edge from the top, bottom and back faces); and, if the card has an auxiliary power header on that end, its outer pin's distance from the top end. The duct's plug, flange and keep-out are derived from THIS face; the A16 was read the same way (product.printed_chassis.gpu_duct a16_end_face)."], "") as NonEmptyStr
@@ -38,13 +54,15 @@ fn end_face_obligation(card: NonEmptyStr) -> NonEmptyStr {
 
 // The A16's face was read on 2026-10-23, and the fit ring printed from it seats on the card
 // (product.printed_chassis.fit_observations plug_fit_ring_fit).
-data a16_duct_card: DuctCard = DuctCard { row: a16_card_row, end_face: EndFaceRead { face: a16_card_end } }
-data t10_duct_card: DuctCard = DuctCard { row: t10_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA Tesla T10") } }
-data t4_duct_card: DuctCard = DuctCard { row: t4_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA T4") } }
+data a16_duct_card: DuctCard = DuctCard { row: a16_card_row, end_face: EndFaceRead { face: a16_card_end }, observed_slot_count: Absent }
+// The T10's intake end was read on 2026-11-16 (product.printed_chassis.card_end_interface t10_card_end), and the
+// operator states it is a single-slot card; its length is still unread.
+data t10_duct_card: DuctCard = DuctCard { row: t10_card_row, end_face: EndFaceRead { face: t10_card_end }, observed_slot_count: Present { value: ObservedSlotCount { slots: 1, observed: "operator, 2026-11-16: \"Single slot.\" (the T10s installed on the H11SSL-i)" } } }
+data t4_duct_card: DuctCard = DuctCard { row: t4_card_row, end_face: EndFaceNeedsReading { read_obligation: end_face_obligation(card: "NVIDIA T4") }, observed_slot_count: Absent }
 // The A2's intake end was read on 2026-11-02 (product.printed_chassis.card_end_interface a2_card_end). It has
 // no end-cap inserts and no end-face header, so the ducts that screw into inserts refuse it by name; a duct
 // that seats on the A2 is a different realization.
-data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceRead { face: a2_card_end } }
+data a2_duct_card: DuctCard = DuctCard { row: a2_card_row, end_face: EndFaceRead { face: a2_card_end }, observed_slot_count: Absent }
 
 data duct_cards: List<DuctCard> = [a16_duct_card, t10_duct_card, t4_duct_card, a2_duct_card]
 

@@ -847,3 +847,68 @@ test fn a_capture_for_a_commit_the_envelope_lacks_passes_through_to_the_integrat
       }
   }
 }
+
+// CLAIM V4-1 (#15822 row 4, legacy reader). A capture written by the OLD lab build (5592b17b/
+// 4e63be8e) carries schema roadmap-submission-capture/v4 with the extra `handin` member. The reader
+// accepts the schema, reads it like v3 (scm_root_locator required) and projects the record onto the
+// SubmissionCapture the continuation consumes; `handin` carries no consumer on this authority so it
+// is validated as a string and dropped, not stored. The shape below is copied from the real legacy
+// record at /opt/gunbc-lab/codex-provider-feedback-v0/attempt-state/
+// v1-rust-source-observation-a71ac07ca21af8e29/submissions/.
+test fn a_v4_capture_record_decodes_with_the_handin_dropped() -> Bool {
+  let v4_json = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"d1aa78e748288846efcc6cf75c32f16454038e49\",\"scm_repository\":\"/home/briansrls/.gunbc-lab/workspaces/v1-rust-source-observation\",\"scm_commit_ordinal\":5,\"scm_root_locator\":\"f2c00215a29e0c8f50449992b05d616e05365161\",\"digest\":\"b5f5780008095734\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"The observation is modeled, the emitter records it, and every witness claim is green.\",\"limitations\":\"none\"},\"handin\":\"THE HAND-IN (v1-interpreter)\"}"
+  match submission_capture_decode(text: v4_json) {
+    CaptureDecoded { capture } =>
+      capture.head_sha == "d1aa78e748288846efcc6cf75c32f16454038e49"
+        && capture.scm_commit_ordinal == 5
+        && capture.digest == "b5f5780008095734"
+        && (match capture.scm_root_locator { SubmissionCaptureRootBound { locator } => locator == "f2c00215a29e0c8f50449992b05d616e05365161" _ => false })
+    _ => false
+  }
+}
+
+// CLAIM V4-2 (v4 without handin is still valid; it reads like v3).
+test fn a_v4_capture_record_without_handin_decodes_as_v3() -> Bool {
+  let v4_no_handin = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"aabbccdd\",\"scm_repository\":\"/r.json\",\"scm_commit_ordinal\":2,\"scm_root_locator\":\"loc\",\"digest\":\"d\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"e\",\"limitations\":\"l\"}}"
+  match submission_capture_decode(text: v4_no_handin) {
+    CaptureDecoded { capture } => capture.head_sha == "aabbccdd"
+    _ => false
+  }
+}
+
+// CLAIM V4-3 (v4 without scm_root_locator is not decodable -- same rule as v3).
+test fn a_v4_capture_without_scm_root_locator_is_not_decodable() -> Bool {
+  let v4_no_root = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"aabbccdd\",\"scm_repository\":\"/r.json\",\"scm_commit_ordinal\":2,\"digest\":\"d\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"e\",\"limitations\":\"l\"}}"
+  match submission_capture_decode(text: v4_no_root) {
+    CaptureNotDecodable { reason: _ } => true
+    _ => false
+  }
+}
+
+// CLAIM V4-4 (a v4 record's submission survives the projection: the reader keeps the facts the
+// continuation classifies on -- readiness and the explanation -- while dropping only handin).
+test fn a_v4_capture_keeps_the_submission_the_continuation_reads() -> Bool {
+  let v4_json = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"deadbeef\",\"scm_repository\":\"/r.json\",\"scm_commit_ordinal\":1,\"scm_root_locator\":\"loc\",\"digest\":\"d\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"the candidate is here\",\"limitations\":\"none\"},\"handin\":\"prose nobody reads\"}"
+  match submission_capture_decode(text: v4_json) {
+    CaptureDecoded { capture } =>
+      capture.submission.explanation == "the candidate is here"
+    _ => false
+  }
+}
+
+// CLAIM V4-5 (fail-closed on the dropped member: a non-string handin is refused, not silently
+// ignored; an unreadable field is never read as absent).
+test fn a_v4_capture_with_a_non_string_handin_is_not_decodable() -> Bool {
+  let v4_bad_handin = "{\"schema\":\"roadmap-submission-capture/v4\",\"head_sha\":\"aabbccdd\",\"scm_repository\":\"/r.json\",\"scm_commit_ordinal\":2,\"scm_root_locator\":\"loc\",\"digest\":\"d\",\"submission\":{\"readiness\":\"ready\",\"explanation\":\"e\",\"limitations\":\"l\"},\"handin\":7}"
+  match submission_capture_decode(text: v4_bad_handin) {
+    CaptureNotDecodable { reason: _ } => true
+    _ => false
+  }
+}
+
+// CLAIM V4-6 (the v3 encoder never emits a handin and never names itself v4: main writes v3/v2,
+// v4 is a read-only historical schema).
+test fn the_encoder_writes_v3_never_v4() -> Bool {
+  let text = submission_capture_text(capture: capture_at(head: "deadbeef", submission: ready_submission()))
+  (!string_contains(s: text, pattern: "roadmap-submission-capture/v4")) && (string_contains(s: text, pattern: "roadmap-submission-capture/v3"))
+}

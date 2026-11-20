@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_host_budget
 
 import std.types { Int, List, String, Bool }
+import std.optional { Optional, Present, Absent }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   Memory, One,
@@ -27,7 +28,7 @@ import gunbc.live_deploy.served_slice_charge {
   ServedDeploymentClaimUnmeasured,
 }
 import gunbc.ci.ci_fleet { ComputeOffer }
-import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
+import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.fleet.fleet_container {
   FleetContainerType,
@@ -205,6 +206,15 @@ data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_
 // the verdict answered "this host conserves" for a machine on which that allowance had already been
 // written by gunbc.live_deploy. The approval-broker split adds a second served slice, so the moment
 // to charge them is the moment there are two (gunbc.live_deploy.served_slice_charge).
+// serving_pool IS A NAMED CHILD FOR THE SAME REASON, and closes the SAME HOLE one consumer later. A
+// Strata serving engine's MemoryMax (gunbc.serving.serving_reservation host_memory_reserved) is a
+// different resident from the deployment's slices -- a different producer (the roster, not the deploy)
+// and a different unit -- yet it holds host RAM just the same. The runner WIDTH already subtracts it
+// (runner_slot_allocation envelope_final); leaving it out of this tree let a host running an engine
+// answer "I conserve" while the engine held its MemoryMax, the exact gap served_deployment_pool closed
+// for the slice. The two terms are ADDITIVE, not one authority twice: a host carrying BOTH the prod
+// deployment AND a serving replica is charged for both (two residents), which is why they are separate
+// named children and not a merge. Absent (an unmeasured replica reservation) refuses, not zero.
 fn host_allocation_tree(
   host: ByteSize,
   overhead: ByteSize,
@@ -213,7 +223,9 @@ fn host_allocation_tree(
   session_pool: ByteSize,
   compile_pool: ByteSize,
   control_plane: ByteSize,
-  served_deployment: ByteSize
+  served_deployment: ByteSize,
+  serving: ByteSize,
+  build_pool: ByteSize
 ) -> BudgetNode {
   BudgetNode {
     name: "host_allocation",
@@ -225,6 +237,8 @@ fn host_allocation_tree(
       child_node(name: "compile_pool", b: compile_pool),
       child_node(name: "fabric_control_plane_pool", b: control_plane),
       child_node(name: "served_deployment_pool", b: served_deployment),
+      child_node(name: "serving_pool", b: serving),
+      child_node(name: "build_pool", b: build_pool),
       child_node(name: "headroom", b: headroom),
     ],
   }
@@ -254,7 +268,9 @@ fn host_allocation_verdict(
   session_pool: ByteSize,
   compile_pool: ByteSize,
   control_plane: HostFabricControlPlaneClaim,
-  served_deployment: HostServedDeploymentClaim
+  served_deployment: HostServedDeploymentClaim,
+  serving: Optional<ByteSize>,
+  build_pool: ByteSize
 ) -> HostAllocationVerdict {
   match control_plane {
     ControlPlaneClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
@@ -262,13 +278,13 @@ fn host_allocation_verdict(
       host_allocation_verdict_served(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: byte_size(0),
-        served_deployment: served_deployment
+        served_deployment: served_deployment, serving: serving, build_pool: build_pool
       )
     ControlPlaneClaimResolved { memory: m } =>
       host_allocation_verdict_served(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: m,
-        served_deployment: served_deployment
+        served_deployment: served_deployment, serving: serving, build_pool: build_pool
       )
   }
 }
@@ -285,7 +301,9 @@ fn host_allocation_verdict_served(
   session_pool: ByteSize,
   compile_pool: ByteSize,
   control_plane: ByteSize,
-  served_deployment: HostServedDeploymentClaim
+  served_deployment: HostServedDeploymentClaim,
+  serving: Optional<ByteSize>,
+  build_pool: ByteSize
 ) -> HostAllocationVerdict {
   match served_deployment {
     ServedDeploymentClaimUnmeasured { cause: c } => HostAllocationUnchargeable { cause: c }
@@ -293,13 +311,13 @@ fn host_allocation_verdict_served(
       host_allocation_verdict_charged(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
-        served_deployment: byte_size(0)
+        served_deployment: byte_size(0), serving: serving, build_pool: build_pool
       )
     ServedDeploymentClaimResolved { memory: m } =>
       host_allocation_verdict_charged(
         host: host, overhead: overhead, headroom: headroom, runner_pool: runner_pool,
         session_pool: session_pool, compile_pool: compile_pool, control_plane: control_plane,
-        served_deployment: m
+        served_deployment: m, serving: serving, build_pool: build_pool
       )
   }
 }
@@ -312,21 +330,35 @@ fn host_allocation_verdict_charged(
   session_pool: ByteSize,
   compile_pool: ByteSize,
   control_plane: ByteSize,
-  served_deployment: ByteSize
+  served_deployment: ByteSize,
+  serving: Optional<ByteSize>,
+  build_pool: ByteSize
 ) -> HostAllocationVerdict {
-  if node_conserves(node: host_allocation_tree(
-    host: host,
-    overhead: overhead,
-    headroom: headroom,
-    runner_pool: runner_pool,
-    session_pool: session_pool,
-    compile_pool: compile_pool,
-    control_plane: control_plane,
-    served_deployment: served_deployment
-  )) {
-    HostAllocationConserves
-  } else {
-    HostAllocationOversubscribed
+  // The serving engine's MemoryMax is charged as its own named child (serving_pool) and refuses in
+  // ITS OWN name when unmeasured: an Absent reservation means a resident that holds host RAM has no
+  // figure, so no sum can be formed. This is not folded into the served_deployment claim -- a host
+  // carrying BOTH is charged for BOTH (two residents, two producers), and zero would be the
+  // fabricated conservation the same fail_closed rule refuses on the width axis.
+  match serving {
+    Absent =>
+      HostAllocationUnchargeable { cause: "a serving replica's memory reservation on this host is unmeasured, so no allocation sum can be formed" }
+    Present { value: s } =>
+      if node_conserves(node: host_allocation_tree(
+        host: host,
+        overhead: overhead,
+        headroom: headroom,
+        runner_pool: runner_pool,
+        session_pool: session_pool,
+        compile_pool: compile_pool,
+        control_plane: control_plane,
+        served_deployment: served_deployment,
+        serving: s,
+        build_pool: build_pool
+      )) {
+        HostAllocationConserves
+      } else {
+        HostAllocationOversubscribed
+      }
   }
 }
 
@@ -463,9 +495,12 @@ fn fleet_host_plan_for_offer(
   oomd: OomdEnforcementEvidence
 ) -> FleetHostPlan {
   match compute_host_primary_cpu(host: offer.supply.physical) {
-    Absent =>
+    // The reason names WHICH kind of absence this is: an unread census is not a machine without a CPU (review 96379).
+    PrimaryCpuCensusUnread { host: _ } =>
+      FleetHostPlanUnsound { reason: "no hardware census has been read for this host: refuse to derive a host plan from a board nobody has surveyed (fail closed)" }
+    PrimaryCpuAbsentFromSurvey { host: _ } =>
       FleetHostPlanUnsound { reason: "compute offer has no primary CPU facts: refuse to derive a host plan without a measured core count (the CPU-core runner cap needs nproc; fail closed)" }
-    Present { value: cpu } =>
+    PrimaryCpuMeasured { cpu: cpu } =>
       fleet_host_plan_for(
         name: offer.supply.physical.identity,
         host: host_usable_ram_ceiling_bytes(host: offer.supply.physical.identity),

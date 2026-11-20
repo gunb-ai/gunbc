@@ -1,7 +1,7 @@
 module extdeps.cloud.gcp.gcp
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.optional { Present, Absent }
 import std.types { Bool, FilePath, Int, List, Map, NonEmptyStr, Secret, Unit, string_non_empty }
@@ -10,12 +10,25 @@ import std.measure { Second, second }
 import extdeps.ietf.http_semantics { POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cloud.google.com/apis/design"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.gcp.gcp",
+      decl_name: "gcloud.Auth",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE ONLY PROPAGATION FACT GOOGLE PUBLISHES (cloud.google.com/iam/docs/access-change-propagation): an
@@ -222,6 +235,21 @@ fn wif_provider_resource(project_number: String, provider: WifProvider) -> Strin
     concat(wif_pool_resource(project_number: project_number, pool_id: provider.pool), "/providers/"),
     provider.name
   )
+}
+
+// THE TWO AUDIENCE SPELLINGS A WORKLOAD-IDENTITY FEDERATION SENDS, derived once from a provider resource.
+// The pinned google-github-actions/auth client puts `https://iam.googleapis.com/<provider>` on the OIDC
+// assertion and `//iam.googleapis.com/<provider>` on the Cloud STS exchange (src/client/annotations.ts
+// default, src/client/workload_identity_federation.ts). Every federation in this repo -- heal's publisher
+// and the fleet's iam-bootstrap / iam-converge identities -- uses the same spelling, so the format is
+// decided HERE, beside the provider resource it is built from, and nowhere else: a caller hands in its
+// provider resource and cannot misspell either axis (gunbc.design_argument::single_authority).
+fn wif_assertion_audience(provider_resource: String) -> NonEmptyStr {
+  concat("https://iam.googleapis.com/", provider_resource) as NonEmptyStr
+}
+
+fn wif_exchange_audience(provider_resource: String) -> NonEmptyStr {
+  concat("//iam.googleapis.com/", provider_resource) as NonEmptyStr
 }
 
 fn wif_principal_set_for_repo(project_number: String, pool_id: String, repository: String) -> String {

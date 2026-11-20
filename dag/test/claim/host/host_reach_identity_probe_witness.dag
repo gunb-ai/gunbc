@@ -204,13 +204,27 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
     }
 }
 
-// Endpoint resolution (msg_1c4e0bce): the Sparks' probe target is the MODELED
-// reservation address — 'srv9'/'srv10' are not published names anywhere — while
-// name-resolvable hosts pass through unchanged. Identity stays the receipt key.
-test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv9") == "srv9"
+// The tailnet-name rule (operator: hosts pin to tailscale names, not IP addresses). An OWNED host that
+// has a hostname_allocation row resolves to its MagicDNS name -- uniformly: legacy-label hosts srv1..4
+// AND drawn-name hosts ken/butch/... alike. This is the change: on main every one of these resolved to
+// its bare identity handle (srv1 -> "srv1", ken -> "host-e2d4b7"), so each line is RED at the base and
+// GREEN here. A SOLD Group B unit (dgx_spark_disposed_units) is kept OUT of the allocation rule and
+// keeps its bare-id passthrough -- it is NOT handed the drawn MagicDNS name its (retained-as-fixture)
+// allocation row would otherwise give it (srv9 -> francis.tailecbe08.ts.net would be a live name a new
+// owner's device could answer). The guard's content is precisely that no tailnet name leaks to a sold
+// unit; the bare id is the same passthrough this total function already gave unmodeled spellings, not a
+// sentinel. Representing sold absence as a typed no-endpoint (rather than a bare handle) is the deferred
+// follow-up: gunbc.integration_concern::sold_units_keep_bare_passthrough_pending_typed_absence.
+test fn registry_hosts_resolve_to_tailnet_names_and_sold_units_keep_the_bare_handle() -> Bool {
+  // Uniform positive rule (RED on main, GREEN with this change).
+  fleet_probe_endpoint_for(host: "srv1") == "srv1.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "host-e2d4b7") == "ken.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "srv14") == "butch.tailecbe08.ts.net"
+    // Sold units: no drawn tailnet name leaks to a unit we no longer own.
+    && fleet_probe_endpoint_for(host: "srv9") == "srv9"
     && fleet_probe_endpoint_for(host: "srv10") == "srv10"
-    && fleet_probe_endpoint_for(host: "srv1") == "srv1"
+    && fleet_probe_endpoint_for(host: "srv9") != "francis.tailecbe08.ts.net"
+    && fleet_probe_endpoint_for(host: "srv10") != "emerson.tailecbe08.ts.net"
 }
 
 // The undecided slot exists only as a fixture: both production bindings are SlotAssigned, so this
@@ -220,6 +234,12 @@ test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
 // binding at all.
 data fixture_undecided_spark_slot: DgxSparkRouterBinding = SlotUnassigned { identity: operator_host_srv9 }
 
+// The OLD inline projection the 2026-08-23 duplicate-removal climb retired from the production fold;
+// it survives here as the endpoint-authority cut's tracked evidence declaration (the cut cites it by
+// name in dag/gunbc/endpoint_authority_replacement_cut.dag and endpoint_authority_replacement_cut_witness.dag).
+// Keeping it alive is required: deleting it would leave those witnesses citing a dead symbol. It wraps
+// the surviving projection spark_endpoint_for_binding, and the control below pins the two entry points
+// agree over one binding -- the duplicate-removal regression evidence (guarantee_ladder meta-obligation 4).
 fn spark_endpoint_or_empty(binding: DgxSparkRouterBinding) -> String {
   match spark_endpoint_for_binding(binding: binding) {
     Absent => ""
@@ -238,18 +258,26 @@ test fn undecided_spark_slot_projects_no_endpoint() -> Bool {
   }
 }
 
-// THE DISCRIMINATING CONTROL FOR THE 2026-08-23 DUPLICATE REMOVAL. fleet_probe_endpoint_for used
-// to re-derive the projection with its own inline render instead of calling
-// spark_endpoint_for_binding, so the two could silently drift. Each side of this comparison is
-// computed by a DIFFERENT entry point over the same binding, which is the whole content: a mutant
-// that restores the inline derivation and changes it — a different render, a dropped cast, a
-// stale address — TYPECHECKS and reds here. After the repair one implementation feeds both, so
-// this is a permanent regression control rather than a probe that retires: it stays enrolled as
-// the executing evidence that the two entry points have not forked again (gunbc.design_argument::guarantee_ladder meta-obligation 4 —
-// a climb deletes the redundant production machinery, never the evidence).
+// THE DUPLICATE-REMOVAL REGRESSION CONTROL (2026-08-23 climb). fleet_probe_endpoint_for once re-derived
+// the binding endpoint inline instead of calling spark_endpoint_for_binding; the two drifted-prone copies
+// were collapsed onto one projection. This control pins that the wrapper the probe fold consumes
+// (spark_endpoint_or_empty) and the projection it wraps (spark_endpoint_for_binding) AGREE over one
+// binding value: the left side is the wrapper, the right side an independent inline reading of the
+// projection. A mutant that forks the wrapper -- a different render, a dropped cast, the undecided
+// refusal mapped to a fabricated address rather than "" -- reds here while still typechecking.
+// dgx_spark_router_bindings is empty on main (all eight procured Sparks sold), so this exercises the two
+// entry points through the undecided fixture rather than through production; that is the reachability
+// occupancy the guard is allowed to have (DESIGN reachability-read-as-occupancy), and it is the evidence
+// the climb kept (guarantee_ladder meta-obligation 4: a climb deletes redundant PRODUCTION machinery,
+// never the evidence). The fold-init rule this change adds -- allocation name for an owned host, bare
+// handle for a sold unit -- is pinned by registry_hosts_resolve_to_tailnet_names_... above.
 test fn probe_endpoint_agrees_with_the_projection_it_consumes() -> Bool {
-  fleet_probe_endpoint_for(host: "srv9") == "srv9"
-    && fleet_probe_endpoint_for(host: "srv10") == "srv10"
+  spark_endpoint_or_empty(binding: fixture_undecided_spark_slot)
+    == (match spark_endpoint_for_binding(binding: fixture_undecided_spark_slot) {
+         Absent => ""
+         Present { value: endpoint } => endpoint
+       })
+    && spark_endpoint_or_empty(binding: fixture_undecided_spark_slot) == ""
 }
 
 // IDENTITY, ALLOCATED NAME AND KERNEL HOSTNAME ALL DIFFER, and the verdict reads the allocation.
@@ -263,9 +291,11 @@ test fn identity_verdict_reads_the_allocated_name_not_the_identity_spelling() ->
   as_provider_named == std.upsert_decision.Drifted && as_allocated == Converged && as_identity == std.upsert_decision.Drifted
 }
 
-// A slot with no allocated hostname cannot be judged on a hostname at all.
+// A slot with no allocated hostname cannot be judged on a hostname at all. The fixture handle is one no
+// registry row names (gunbc.hostname_allocation fleet_machine_registry); a real slot turns this red the
+// day it is allocated, as srv9 did.
 test fn unallocated_host_identity_verdict_refuses() -> Bool {
-  identity_verdict_from_outcome(host: "srv9" as HostIdentity, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "srv9", observed_principal: "gunbc-fleet" }) == UnknownRefused
+  identity_verdict_from_outcome(host: "fixture-unregistered" as HostIdentity, requested_principal: "gunbc-fleet", o: ProbeReachable { observed_short_hostname: "fixture-unregistered", observed_principal: "gunbc-fleet" }) == UnknownRefused
 }
 
 // THE HANDBACK CONTROL FOR THE HAND-ARGV DISSOLUTION (roadmap shell-dag-host-reach-identity-probe).

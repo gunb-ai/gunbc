@@ -8,10 +8,10 @@ data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_
 
 fn witness_operator_policy_row_counts() -> Bool {
   let policy = operator_tailscale_acl_policy
-  (length(policy.grants) == 5)
+  (length(policy.grants) == 6)
     && (length(policy.ssh) == 3)
     && (length(policy.node_attrs) == 1)
-    && (length(policy.tag_owners) == 2)
+    && (length(policy.tag_owners) == 3)
 }
 
 fn witness_tag_ci_quarantine_spine() -> Bool {

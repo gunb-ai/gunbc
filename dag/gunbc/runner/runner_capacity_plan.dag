@@ -1,10 +1,13 @@
 module gunbc.runner.runner_capacity_plan
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { list_push }
+import std.measure { measure_fit_count_floor }
+import gunbc.runner.runner_slot_desired { host_build_pool_reservation, gunbc_runner_slot_memory_max }
 import std.nat { Nat, nat_range_inclusive }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_enrollment { runner_executor_hosts }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence,
@@ -46,6 +49,8 @@ import gunbc.runner.runner_slot_allocation {
   RunnerSlotPurpose,
   SlotServesGitHubActions,
   SlotServesFabricExecution,
+  gunbc_runner_committed_width,
+  RunnerWidthDerived, RunnerWidthUnresolved,
 }
 
 // SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width,
@@ -84,8 +89,13 @@ type RunnerCapacityHostPlan {
   actions: List<RunnerCapacityAction>
 }
 
+type HostCapacityPlanRefusal {
+  host: HostIdentity
+  reason: String
+}
+
 type RunnerCapacityPlan
-  = PlanReady { hosts: List<RunnerCapacityHostPlan> }
+  = PlanReady { hosts: List<RunnerCapacityHostPlan>, refusals: List<HostCapacityPlanRefusal> }
   | PlanRefused { reason: String }
 
 // THE FIFTH BUCKET, AND THE ONE THAT MADE THE OTHER FOUR ACADEMIC. This recognized exactly "7",
@@ -418,6 +428,66 @@ fn addition_actions(
   )
 }
 
+// A BUILD-POOL RESERVATION IS COMMITTED WIDTH THAT NO GitHub Actions width may spend. The remote-build
+// scaffold (gunbc.compute.remote_build) runs its units on fleet hosts, and the ruling that admits it --
+// gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold -- carves that service out of each
+// joining host's CI runner width: ONE runner slot per joining host, held for the build pool. The carve-out is
+// applied HERE, at the point width is admitted, so the exception is a named quantity the plan reads rather than a
+// person remembering not to plan that slot.
+//
+// IT IS READ, NOT KEPT. The fleet already answers "which host holds a build slot, and how large is that slot" in
+// ONE place: gunbc.runner.runner_slot_desired::host_build_pool_reservation, which carves
+// gunbc_runner_slot_memory_max out of a host's CI memory envelope exactly when build_pool_carve_is_due -- the host
+// is on the serving roster (gunbc.compute.remote_build_hosts::remote_build_host_is_serving) AND resolves no
+// dashboard instance of its own (a host that carries its own instance already reaches that reservation through
+// gunbc.serving.serving_reservation::host_memory_reserved, which runner_slot_allocation feeds into its
+// envelope in #gunbc.runner.runner_slot_allocation::runner_memory_envelope_of and
+// #gunbc.runner.runner_slot_allocation::committed_width_of). The CI memory envelope and
+// compute.host_capacity::host_capacity_build_seat both read that one function. This file therefore converts THE
+// SAME CARVE into the unit it plans in -- runner slots -- and keeps no population of its own: a second, hand-kept
+// list of build-slot holders would be a fork of that rule (gunbc.design_argument::single_authority), which is what
+// review 96009 objected to before the rule existed here. Converting instead of re-deciding is also what stops the
+// two readers disagreeing about one host: if the carve is due both see it, and if it is not, neither does.
+//
+// ken (gunbc.fleet.fleet_host_identity::operator_host_e2d4b7) is not on that roster, so he derives zero slots today
+// and his spendable ceiling is exactly his committed population. His pending join is NOT recorded here as an entry:
+// it lives in gunbc.integration_concern::h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home, which is
+// where the decision that would put him inside the carve gets written down. The ruling's own dissolution -- the SSH
+// transport going away once work-exec-2's durable route serves the same requests -- takes the carve out with it.
+
+// SLOTS HELD FOR THE BUILD POOL = HOW MANY SLOT-SIZED CARVES THE HOST HAS. The divisor is not a magic number: it is
+// the same constant the carve is made of (runner_slot_desired::gunbc_runner_slot_memory_max), so a due carve is one
+// slot, an absent carve is zero, and if the ruling ever sets aside two slots' worth of memory the plan sees two
+// rather than one.
+fn remote_build_pool_slot_reservation(host: HostIdentity) -> Int {
+  measure_fit_count_floor(
+    capacity: host_build_pool_reservation(host: host),
+    each: gunbc_runner_slot_memory_max)
+}
+
+// A HELD SLOT CANNOT BE TAKEN OUT OF WIDTH THAT IS NOT THERE. `length(members) - reserved` as a bare
+// expression is the failure: on a host whose committed population is smaller than its reservation it yields a
+// negative ceiling, and the admission then refuses -- but refuses on "requested width exceeds the committed
+// width", which is a different fact and an untrue one. The subtraction is therefore an outcome, stated before
+// it reaches the admission, and the planner refuses at the point where the reservation does not fit, naming
+// the reservation and the committed population as the reason (gunbc.design_argument::fail_closed: a wrong
+// answer is a loud, typed, located error, never a plausible value).
+type BuildPoolWidthCeiling
+  = CeilingCleared { committed_slots: Int, reserved_slots: Int, spendable_ceiling: Int }
+  | ReservationExceedsCommittedWidth { committed_slots: Int, reserved_slots: Int }
+
+fn committed_width_after_reservation(committed_slots: Int, reserved_slots: Int) -> BuildPoolWidthCeiling {
+  if reserved_slots > committed_slots {
+    ReservationExceedsCommittedWidth { committed_slots: committed_slots, reserved_slots: reserved_slots }
+  } else {
+    CeilingCleared {
+      committed_slots: committed_slots,
+      reserved_slots: reserved_slots,
+      spendable_ceiling: committed_slots - reserved_slots,
+    }
+  }
+}
+
 fn admit_runner_capacity_width(committed: Int, requested: Int) -> WidthAdmission {
   if requested <= 0 {
     WidthRefused { requested: requested, cause: "requested width must be positive" }
@@ -526,7 +596,7 @@ fn validate_observed_github_slot_members(
 
 type HostCapacityPlanOutcome
   = HostCapacityPlanReady { plan: RunnerCapacityHostPlan }
-  | HostCapacityPlanRefused { reason: String }
+  | HostCapacityPlanRefused { host: HostIdentity, reason: String }
 
 // THE OUTCOME CARRIES ITS REASON RATHER THAN BEING OPTIONAL. This returned RunnerCapacityHostPlan?
 // and answered `none` for roster-unavailable, so every future refusal cause would have collapsed
@@ -548,6 +618,7 @@ fn plan_runner_capacity_host(
   match committed_slot_identities(host: host) {
     CommittedPopulationWidthUnresolved { host: _, cause: c } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["refusing to plan runner capacity for this host: ", runner_width_unresolved_cause_text(cause: c)], "")
       }
     CommittedPopulationDerived { members: members } =>
@@ -568,22 +639,34 @@ fn plan_runner_capacity_host_over_population(
   receipt: RunnerUserSessionReceiptInput,
   members: List<RunnerSlotIdentity>,
 ) -> HostCapacityPlanOutcome {
-  let admission = admit_runner_capacity_width(committed: length(members), requested: requested_width)
+  // The ceiling the plan admits is the committed population MINUS that host's build-pool reservation -- when
+  // the reservation fits. The reserved slot IS committed width on a host the build roster has admitted, and a
+  // plan that spent it would over-book the host against the ruling that set the build pool aside; a host with
+  // no admitted reservation is subtracted zero, and a host whose reservation does not fit its committed
+  // population is refused below rather than given a negative ceiling.
+  let ceiling = committed_width_after_reservation(
+    committed_slots: length(members),
+    reserved_slots: remote_build_pool_slot_reservation(host: host),
+  )
   match observed_github_slot_identities(host: host, roster: roster) {
     GitHubSlotPopulationUnreadable { reason: r } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["runner roster read unavailable, refusing to plan against an observation that could not be taken: ", r], "")
       }
     GitHubSlotPopulationDuplicateRegistration { slot: d } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["the organization holds more than one self-hosted runner registration decoding to slot ", runner_slot_instance_name(slot: d), ", so the observed population is not a set and its count would over-state the slots actually held"], "")
       }
     GitHubSlotPopulationForeignRegistration { registration_name: n } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join(["the organization holds a self-hosted runner registration that resolves to no committed fleet slot, so the observed population cannot be accounted for and planning would either add a slot GitHub already holds or silently under-count: ", n as String], "")
       }
     GitHubSlotPopulationHostWidthUnresolved { registration_name: n, host: uh, cause: c } =>
       HostCapacityPlanRefused {
+        host: host,
         reason: join([
           "the organization holds the self-hosted runner registration ", n as String,
           ", which belongs to ", uh as String,
@@ -592,15 +675,23 @@ fn plan_runner_capacity_host_over_population(
         ], "")
       }
     GitHubSlotPopulationObserved { identities: observed } =>
-      plan_runner_capacity_host_against_observation(
-        host: host,
-        requested_width: requested_width,
-        roster: roster,
-        receipt: receipt,
-        admission: admission,
-        members: members,
-        observed: observed,
-      )
+      match ceiling {
+        ReservationExceedsCommittedWidth { committed_slots: _, reserved_slots: _ } =>
+          HostCapacityPlanRefused {
+            host: host,
+            reason: "the host holds back one or more runner slots for the build pool while its capacity ledger commits fewer slots than that, so subtracting the held slot would hand the width admission a negative ceiling and it would refuse for a reason that is not the true one. Refusing here instead: the reservation (gunbc.runner.runner_slot_desired::host_build_pool_reservation, read in slot units by remote_build_pool_slot_reservation) does not fit the committed population (gunbc.runner.runner_slot_allocation::committed_slot_identities). Either the roster has admitted a host it has not measured, or the reservation row outlived the ruling that set it aside.",
+          }
+        CeilingCleared { committed_slots: _, reserved_slots: _, spendable_ceiling: spendable } =>
+          plan_runner_capacity_host_against_observation(
+            host: host,
+            requested_width: requested_width,
+            roster: roster,
+            receipt: receipt,
+            admission: admit_runner_capacity_width(committed: spendable, requested: requested_width),
+            members: members,
+            observed: observed,
+          )
+      }
   }
 }
 
@@ -628,15 +719,17 @@ fn plan_runner_capacity_host_against_observation(
     WidthAdmitted { width: admitted } =>
       match validate_observed_github_slot_members(host: host, observed: observed) {
         SlotPopulationRefused { reason: r } =>
-          HostCapacityPlanRefused { reason: r }
+          HostCapacityPlanRefused { host: host, reason: r }
         SlotPopulationReconciled =>
           match connectivity_actions_for_observed(roster: roster, receipt: receipt, observed: observed) {
             ConnectivityActionsRosterUnavailable { reason: _ } =>
               HostCapacityPlanRefused {
+                host: host,
                 reason: "runner roster read unavailable: refusing to plan destructive runner capacity actions against an observation that could not be taken"
               }
             ConnectivityActionsUnaccountedRegistration { slot: s } =>
               HostCapacityPlanRefused {
+                host: host,
                 reason: join(["GitHub holds a registration for slot ", runner_slot_instance_name(slot: s), " that has no local runner incarnation, so this host's population cannot be accounted for: planning against it would either ignore a live registration or propose adding a slot GitHub already holds"], "")
               }
             ConnectivityActionsPlanned { actions: repairs } =>
@@ -657,27 +750,59 @@ fn plan_runner_capacity_host_against_observation(
   }
 }
 
-fn runner_capacity_plan(
-  srv3_width: Int,
-  srv4_width: Int,
+type PlanFoldAccum {
+  ready: List<RunnerCapacityHostPlan>
+  refused: List<HostCapacityPlanRefusal>
+}
+
+fn runner_capacity_plan_for_host(
+  host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
-  srv3_receipt: RunnerUserSessionReceiptInput,
-  srv4_receipt: RunnerUserSessionReceiptInput,
-) -> RunnerCapacityPlan {
-  match plan_runner_capacity_host(host: operator_host_srv3, requested_width: srv3_width, roster: roster, receipt: srv3_receipt) {
-    HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
-    HostCapacityPlanReady { plan: srv3 } =>
-      match plan_runner_capacity_host(host: operator_host_srv4, requested_width: srv4_width, roster: roster, receipt: srv4_receipt) {
-        HostCapacityPlanRefused { reason: r } => PlanRefused { reason: r }
-        HostCapacityPlanReady { plan: srv4 } => PlanReady { hosts: [srv3, srv4] }
+  receipt: RunnerUserSessionReceiptInput,
+) -> HostCapacityPlanOutcome {
+  match gunbc_runner_committed_width(host: host) {
+    RunnerWidthUnresolved { cause: c } =>
+      HostCapacityPlanRefused {
+        host: host,
+        reason: join(["committed width unresolved: ", runner_width_unresolved_cause_text(cause: c)], ""),
       }
+    RunnerWidthDerived { slots: w } =>
+      plan_runner_capacity_host(host: host, requested_width: w, roster: roster, receipt: receipt)
+  }
+}
+
+fn runner_capacity_plan(
+  roster: OrganizationRunnerRosterEvidence,
+  receipt_for: fn(HostIdentity) -> RunnerUserSessionReceiptInput,
+) -> RunnerCapacityPlan {
+  match roster {
+    RosterReadUnavailable { reason: r } =>
+      PlanRefused { reason: join(["organization runner roster read unavailable, refusing to plan any host against an observation that could not be taken: ", r], "") }
+    _ => {
+      let hosts = runner_executor_hosts()
+      let accum = fold(
+        hosts,
+        init: PlanFoldAccum { ready: [], refused: [] },
+        f: (acc, h) =>
+          match runner_capacity_plan_for_host(host: h, roster: roster, receipt: receipt_for(h)) {
+            HostCapacityPlanReady { plan: p } =>
+              PlanFoldAccum { ready: list_push(acc.ready, p), refused: acc.refused }
+            HostCapacityPlanRefused { host: _, reason: r } =>
+              PlanFoldAccum {
+                ready: acc.ready,
+                refused: list_push(acc.refused, HostCapacityPlanRefusal { host: h, reason: r }),
+              }
+          }
+      )
+      PlanReady { hosts: accum.ready, refusals: accum.refused }
+    }
   }
 }
 
 fn runner_capacity_add_count(plan: RunnerCapacityPlan, host: HostIdentity) -> Int {
   match plan {
     PlanRefused { reason: _ } => 0
-    PlanReady { hosts: hs } =>
+    PlanReady { hosts: hs, refusals: _ } =>
       fold(
         hs,
         init: 0,

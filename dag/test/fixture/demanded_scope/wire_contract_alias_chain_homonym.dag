@@ -1,0 +1,14 @@
+module test.fixture.demanded_scope.wire_contract_alias_chain_homonym
+
+import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
+
+// THE HOMONYM TRAP (review 93386). This module is NOT imported by the wire_contract_alias_chain
+// fixture, yet it declares its own `alias_left`, with a VARIABLE body. The chain seed walks the host's
+// scope -- the defining module's own items, then its specific imports (v1.compiler.infer::realization_alias_chain_step)
+// -- so it must never enter this module's alias_left branch. It is NOT a refusal witness: the
+// realized set is keyed by BARE name and the demand wave expands every item sharing a realized name,
+// so `homonym_body_owner` is over-realized regardless of the walk (cost, not unsoundness). The
+// name-unique sidecar in the demanded fixture is the refusal negative.
+data alias_left: VariantEncoding = homonym_body_owner
+
+data homonym_body_owner: VariantEncoding = StringVariant { naming: AsAuthored }

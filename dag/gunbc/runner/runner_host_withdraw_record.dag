@@ -267,3 +267,37 @@ fn runner_host_withdraw_observe_line_for(host: String, target: SshTarget, contex
     _ => runner_host_withdraw_record_observe_line(record: record, masked_ok: host_slots_all_masked_and_inactive_over(target: target, context: context, units: units))
   }
 }
+
+// THE STANDING, AS A LEG THAT COULD OPEN A SLOT READS IT. Such a leg does not decide from the host's unit
+// states -- those are exactly what a withdraw has just closed, and a converge that reads them and then
+// unmasks, enables and starts has undone the withdrawal it is reporting. It decides from THIS record.
+// Absent is the only reading that admits: an unreadable document is not an absent one (the comment above
+// this module), and a reader that cannot read the record cannot prove the host is back in admission. A
+// foreign record is another run's withdrawal of the same host; this run does not open a host another run
+// holds either.
+type RunnerHostWithdrawalStanding
+  = HostNotWithdrawn
+  | HostWithdrawalHeld { at: String }
+  | HostWithdrawalUnreadable { cause: String }
+  | HostWithdrawalRecordForeign { key: String }
+
+fn runner_host_withdrawal_standing(host: String) -> RunnerHostWithdrawalStanding {
+  match read_withdrawn_record(host: host, expected_key: runner_host_withdraw_identity(host: host)) {
+    WithdrawnRecordAbsent => HostNotWithdrawn
+    WithdrawnRecordOurs { record: r } => HostWithdrawalHeld { at: r.at }
+    WithdrawnRecordUnreadable { cause: c } => HostWithdrawalUnreadable { cause: c }
+    WithdrawnRecordForeign { key: k } => HostWithdrawalRecordForeign { key: k }
+  }
+}
+
+// WHY A LEG HOLDS, as the receipt carries it; Absent says the leg may open the slot. The cause is named at
+// the decision and rendered by whoever holds the outcome, never re-derived there (DESIGN.md, Source: a fact
+// that must survive belongs in a typed carrier).
+fn activation_held_by_withdrawal(standing: RunnerHostWithdrawalStanding) -> NonEmptyStr? {
+  match standing {
+    HostNotWithdrawn => Absent
+    HostWithdrawalHeld { at: t } => Present { value: join(["the withdrawn record stands, written at ", t], "") as NonEmptyStr }
+    HostWithdrawalUnreadable { cause: c } => Present { value: join(["the withdrawn record could not be read: ", c], "") as NonEmptyStr }
+    HostWithdrawalRecordForeign { key: k } => Present { value: join(["another identity's withdrawn record stands: ", k], "") as NonEmptyStr }
+  }
+}

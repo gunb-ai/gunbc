@@ -1,0 +1,126 @@
+module test.claim.hosted_runner_shadow_gate_workflow_witness
+
+// THE CLAIMS OVER THE HOSTED-RUNNER SHADOW GATE EMITTER.
+//
+// The shadow gate is a NON-required job admitted by the 2026-11-19 operator ruling (@ref
+// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign) and
+// recorded as the roadmap node hosted-runner-shadow-gate. It is a scaffold in two ways, and each has a
+// dissolution condition that belongs on the carrier (gunbc.design_argument::source_annotations: "a
+// dissolution condition belongs in a typed carrier"), not only in a comment:
+//   1. the run: steps assemble shell as strings -- the ctrl HAND-SHELL GATE -- pending the
+//      orchestration-to-shell capability v2.workflow.bash_emit / bash_emit_stmts (#5828);
+//   2. the whole job dissolves at remote-build cutover, when the fleet runs the remote build natively
+//      and the v2-bootstrap required context retires.
+// The precedent for naming the bash-emit capability on the artifact is
+// gunbc.test.claim.runner.runner_host_medium_fleet_keys_witness
+// the_boot_command_carries_its_dissolution_trigger_naming_bash_emit. These claims fail if the emitted
+// YAML loses either marker, so a regeneration that silently drops them is caught.
+
+import std.types { Bool, Int, String }
+import test.fixture.text_scan { occurrences }
+import gunbc.witness.hosted_runner_shadow_gate_workflow {
+  expected_hosted_runner_shadow_gate_yml,
+  ShadowGateWorkflowGenerationOutcome,
+  ShadowGateWorkflowGenerated,
+  ShadowGateWorkflowGenerationRefused,
+}
+
+// Present-or-not over a String, built on the claim-safe occurrences counter (same helper the
+// runner_host_medium precedent witness uses).
+fn contains(haystack: String, needle: String) -> Bool {
+  occurrences(s: haystack, pattern: needle) > 0
+}
+
+// The emitted YAML, or false when the emitter refuses (a refusal is claimed elsewhere: the emitted
+// artifact must exist for this gate to ship, and the drift watch enforces the bytes).
+fn emitted_yaml_or_empty() -> String {
+  match expected_hosted_runner_shadow_gate_yml() {
+    ShadowGateWorkflowGenerated { content } => content
+    ShadowGateWorkflowGenerationRefused { reason } => ""
+  }
+}
+
+// THE HAND-SHELL GATE MARKER ON THE EMITTED CARRIER, naming the capability that replaces the strings.
+test fn the_emitted_workflow_carries_its_dissolution_trigger_naming_bash_emit() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "HAND-SHELL GATE")
+    && contains(haystack: rendered, needle: "DISSOLVES WHEN")
+    && contains(haystack: rendered, needle: "v2.workflow.bash_emit")
+    && contains(haystack: rendered, needle: "bash_emit_stmts")
+    && contains(haystack: rendered, needle: "#5828")
+}
+
+// THE CUTOVER DISSOLUTION ON THE EMITTED CARRIER: the job dissolves when the fleet runs the remote
+// build natively; the string carries the condition, not a comment outside the artifact.
+test fn the_emitted_workflow_names_its_cutover_dissolution() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "remote-build cutover")
+    && contains(haystack: rendered, needle: "shadow-gate-config")
+    && contains(haystack: rendered, needle: "configured")
+}
+
+// THE FORK GUARD AND THE NOT-CONFIGURED NOTICE are the two fail-closed arms the manager's ruling
+// (msg_e96aaa9e) requires: forks never see secrets, and an unconfigured run is visibly skipped with a
+// typed notice, never green-as-passed. Lock them on the artifact.
+test fn the_emitted_workflow_gates_forks_and_types_the_not_configured_notice() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "pull_request")
+    && contains(haystack: rendered, needle: "merge_group")
+    && contains(haystack: rendered, needle: "workflow_dispatch")
+    && contains(haystack: rendered, needle: "::notice::not configured")
+}
+
+// THE MERGE-GROUP FAIL-CLOSED ARM (review 96834): repository secrets MUST exist on merge_group,
+// so their absence there is an incident, not a skip — the emitted bytes must carry the typed
+// '::error::' and exit 1 under the $GITHUB_EVENT_NAME = merge_group test. Without this arm a
+// rotated or deleted secret turns the shadow gate into a permanent silent pass.
+test fn the_emitted_workflow_fails_closed_on_merge_group_when_secrets_are_absent() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "$GITHUB_EVENT_NAME")
+    && contains(haystack: rendered, needle: "merge_group\" ]")
+    && contains(haystack: rendered, needle: "workflow_dispatch\" ]")
+    && contains(haystack: rendered, needle: "::error::not configured")
+    && contains(haystack: rendered, needle: "exit 1")
+}
+
+// THE EVIDENCE RE-RUN ARM. The operator ruling's evidence (receipt per run, wall time, red control)
+// is captured by dispatching this workflow on demand. The emitted bytes must carry the dispatch
+// trigger, its optional pattern input, and the step defaulting to the MODELLED plumbing-proof pattern
+// (single authority: the default is the model's row, not a second literal).
+test fn the_emitted_workflow_carries_the_dispatch_evidence_input_defaulting_to_the_model_pattern() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "workflow_dispatch:")
+    && contains(haystack: rendered, needle: "pattern:")
+    && contains(haystack: rendered, needle: "GUNBC_GATE_PATTERN: ${{ inputs.pattern }}")
+    && contains(haystack: rendered, needle: "--arg pattern=\"")
+    && contains(haystack: rendered, needle: "GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}\"")
+}
+
+// THE PER-ROW GATE STEPS (shape agreed with gunbc.compute.remote_build_client's remote_gate_cli):
+// one step per emitted_subject_build_rows row, named after the row's label, invoking remote_gate_cli
+// with worktree/label/receipt_path, cat-ing the receipt on EVERY outcome, and rendering the
+// instrument-law exits per the manager ruling: 1/2/3 red (with the typed 'no host admitted' text
+// for 3), 4 a countable cleanup warning without failing the code verdict.
+test fn the_emitted_workflow_runs_every_gate_row_with_the_agreed_exit_rendering() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:self-host")
+    && contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:v2-native-cli")
+    && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host'")
+    && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli'")
+    && contains(haystack: rendered, needle: "gate-emit_build_self_host.json")
+    && contains(haystack: rendered, needle: "gate-emit_build_v2_native_cli.json")
+    && contains(haystack: rendered, needle: "no host admitted the reservation (capacity/infra)'; exit 1")
+    && contains(haystack: rendered, needle: "typed local refusal - nothing was sent to any host'; exit 1")
+    && contains(haystack: rendered, needle: "an origin ref was left behind (cleanup fact; count these)'; exit 0")
+}
+
+// ONE PROVENANCE SOURCE (smart-crane-730's drift report on #16766): the "# Generated by"/
+// "# Authority" lines are projected from gunbc.generated_workflow_provenance and prepended by
+// gunbc.generated_artifact_emit artifact_generate at one bytes boundary. Inlining them in the
+// emitted content duplicated them when main_wet regenerated — the emitted content must NOT carry
+// them. Discriminating: add an inline provenance line and this claim goes red.
+test fn the_emitted_content_does_not_inline_the_projected_provenance_lines() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  !(contains(haystack: rendered, needle: "Generated by gunbc"))
+    && !(contains(haystack: rendered, needle: "# Authority: gunbc"))
+}

@@ -1,0 +1,22 @@
+module test.fixture.demanded_scope.dispatch_and_desugar
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+fn operator_entry() -> ProcessExit {
+  let a: Int = 20
+  let b: Int = 22
+  if a + b == 42 { ExitSuccess } else { ExitFailure { code: 1, reason: "operator_entry: wrong sum" } }
+}
+
+fn pipe_entry() -> ProcessExit {
+  let kept = [1, 2, 3] |> filter(r => keep(x: r))
+  if length(kept) == 2 { ExitSuccess } else { ExitFailure { code: 1, reason: "pipe_entry: wrong value" } }
+}
+
+fn keep(x: Int) -> Bool {
+  x > 1
+}
+
+fn unreached_after_dispatch() -> Int {
+  "unreached"
+}

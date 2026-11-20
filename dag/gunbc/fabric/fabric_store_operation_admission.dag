@@ -37,7 +37,7 @@ import gunbc.auth.approval_store_receipt { verify_store_receipt, StoreReceiptAut
 // object it moves to; the object is already stored, so the door decodes it and the operation is what
 // the object IS. A writer cannot claim a cheaper operation than the one it writes.
 //
-// THE CREDENTIAL IS THE ONE THE WRITER'S SELECTION NAMES (gunbc.auth.privileged_effect_census, the
+// THE CREDENTIAL IS THE ONE THE WRITER'S SELECTION NAMES (gunbc.auth.privileged_effect_registry, the
 // fabric store rows): the recurring host-effect lanes select their workload identity, so a normal
 // host-effect admit or release is admitted under the presenting principal's std.effect_grant Grant;
 // every other protected operation selects operator approval, so it is admitted only under a broker
@@ -136,7 +136,7 @@ type OperationRequirement
 // 2026-10-07; the units were sold). So every operation it approved now refuses as
 // NoApprovalFlowForOperation until a flow for another group is ruled and lands. EstablishAuthority and RecoverHostEffect have
 // NO admissible scope yet: the operator entries that perform them (pair_serving_authority_establish_wet,
-// host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_census). The
+// host_effect_recover_wet) select operator approval (gunbc.auth.privileged_effect_registry). The
 // recover, finalize and abort flows are an unmodeled capability the enforcing door depends on, so
 // no enforcing door runs without the manual repair path (proud-deer-538, 2026-09-28); their scopes
 // join RecoverHostEffect's, FinalizePlacement's and AbortPlacement's lists. Establish's flow is a

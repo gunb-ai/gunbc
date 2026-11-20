@@ -6,6 +6,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
+import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused, observed_host_identity_refusal_text }
 import gunbc.clock_read { clock_now_probed_at }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
@@ -27,20 +28,37 @@ import gunbc.workspace_offer_producer { WorkspaceHostOfferRead, WorkspaceHostOff
 import gunbc.workspace_allocation_policy { workspace_enrolled_ssh_access }
 import gunbc.workspace_ssh_access { WorkspaceSshFromHost, WorkspaceSshThroughGateway, WorkspaceHostAccessObserved, WorkspaceGatewayAccessObserved }
 
+// THE KERNEL'S ANSWER IS A NAME, AND THIS OBSERVER HAS NO AUTHORITY TO MAKE IT AN IDENTITY. The
+// observation resolves the spelling through the allocation's selector
+// (gunbc.hostname_allocation::observed_host_identity) and offers only for the RESOLVED identity; a
+// spelling no roster answers to, or one that answers to two hosts, refuses through
+// WorkspaceHostOfferNameRefused naming that spelling. Nothing here falls back to the raw string: an
+// offer keyed on a name nobody resolved would let a machine with a human name -- srv14 answering
+// "butch" -- report that it has no workspace slots at all, which is what the old cast did.
+type WorkspaceHostOfferObservation
+  = WorkspaceHostOffersObserved { reads: List<WorkspaceHostOfferRead> }
+  | WorkspaceHostOfferNameRefused { reason: NonEmptyStr }
+
 // RUNS ON THE CANDIDATE HOST, inside its installed controller release, and only reads. Every
 // existing host-local observer is reused unchanged; this fold composes them per designated slot.
 // A host with no designated slot answers that fact rather than nothing, so silence never reads
 // as "no supply" at the coordinator.
-fn workspace_observe_host_offers(request: WorkspaceRequest) -> List<WorkspaceHostOfferRead> {
+fn workspace_observe_host_offers(request: WorkspaceRequest) -> WorkspaceHostOfferObservation {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
-    ProcessOutputAbsent => []
-    ProcessRefused { exit_code: _, stderr: _ } => []
-    ProcessOutputPresent { text: raw } => {
-      let host = trim(s: raw) as HostIdentity
-      let slots = filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (host as String))
-      if slots.count() == 0 { [WorkspaceHostOfferUnmet { host: host, reason: "host has no slot designated for workspace use" }] }
-      else { map(slots, slot => workspace_observe_slot_offer(request: request, host: host, slot: slot)) }
-    }
+    ProcessOutputAbsent => WorkspaceHostOfferNameRefused { reason: "the kernel hostname could not be read (no output)" as NonEmptyStr }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostOfferNameRefused { reason: "the kernel hostname could not be read (the command was refused)" as NonEmptyStr }
+    ProcessOutputPresent { text: raw } =>
+      match observed_host_identity(observed: raw) {
+        ObservedHostIdentityRefused { refusal: r } =>
+          WorkspaceHostOfferNameRefused { reason: observed_host_identity_refusal_text(refusal: r) as NonEmptyStr }
+        ObservedHostIdentityResolved { host: host } => {
+          let slots = filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (host as String))
+          if slots.count() == 0 {
+            WorkspaceHostOffersObserved { reads: [WorkspaceHostOfferUnmet { host: host, reason: "host has no slot designated for workspace use" }] }
+          }
+          else { WorkspaceHostOffersObserved { reads: map(slots, slot => workspace_observe_slot_offer(request: request, host: host, slot: slot)) } }
+        }
+      }
   }
 }
 

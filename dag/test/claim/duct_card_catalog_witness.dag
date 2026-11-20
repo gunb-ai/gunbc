@@ -129,13 +129,13 @@ fn millilitre_per_second_fixture() -> MillilitrePerSecond { millilitre_per_secon
 
 // ═══ THE CATALOG: VENDOR ROW + THIS REPOSITORY'S READING OF THE FACE ═══
 
-// Only the A16's face has been read; the other three cards' faces are bench obligations, and the bench
+// The A16's, the A2's and the T10's faces have been read; the T4's is a bench obligation, and the bench
 // list carries a heading per card plus every unread line -- so a fourth card shows up where the operator
 // reads it, with no other change.
 test fn w_the_catalog_joins_rows_to_read_faces() -> Bool {
   length(list: duct_cards) == 4
-    && end_face_is_read(card: a16_duct_card) && end_face_is_read(card: a2_duct_card) && !end_face_is_read(card: t10_duct_card)
-    && length(list: filter(duct_cards, c => end_face_is_read(card: c))) == 2
+    && end_face_is_read(card: a16_duct_card) && end_face_is_read(card: a2_duct_card) && end_face_is_read(card: t10_duct_card)
+    && length(list: filter(duct_cards, c => end_face_is_read(card: c))) == 3
     && length(list: duct_card_bench_list()) == 4 + 2 + (9 + 1) + (1 + 1) + (1 + 2)
     && match duct_card(id: "t4") { Present { value: c } => c.row.id == "t4" Absent => false }
     && match duct_card(id: "a100") { Present { value: _ } => false Absent => true }

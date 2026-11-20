@@ -11,6 +11,9 @@ import gunbc.remote_shell_command {
   RemoteExecCommandRefused,
   PosixShellInterpreted,
   Unknown,
+  ShellSimpleCommand,
+  ShellCommandInDirectory,
+  emit_remote_shell_in_directory,
 }
 
 // Hermetic proof that emit_remote_shell matches the cited IEEE 1003.1-2017 section 2.2.2
@@ -84,3 +87,30 @@ test fn witness_remote_exec_command_string_builds_under_posix_shell_interpretati
       remote_exec_command_rendered(command: c) as String == "'jq' '.status'"
   }
 }
+
+// ── a simple command run from a named directory ─────────────────────────────────────────────────────
+// Exact strings, as above: the directory is quoted by the same rule as every word, so a space or a
+// metacharacter in it stays inside one single-quoted operand, and the only unquoted bytes are the
+// fixed `cd -- `, ` && exec `.
+
+fn in_directory(directory: NonEmptyStr, words: List<NonEmptyStr>) -> String {
+  emit_remote_shell_in_directory(c: ShellCommandInDirectory { directory: directory, command: ShellSimpleCommand { words: words, redirections: [] } }) as String
+}
+
+test fn witness_in_directory_plain_holds() -> Bool {
+  in_directory(directory: "/home/u/repo", words: ["/bin/tool", "run"]) == "cd -- '/home/u/repo' && exec '/bin/tool' 'run'"
+}
+
+test fn witness_in_directory_metacharacters_stay_quoted_holds() -> Bool {
+  in_directory(directory: "/srv/a b;$(rm -rf x)&&*", words: ["t"]) == "cd -- '/srv/a b;$(rm -rf x)&&*' && exec 't'"
+}
+
+// `--` ends cd's options, so a directory spelled with a leading '-' is an operand, not an option.
+test fn witness_in_directory_leading_dash_is_an_operand_holds() -> Bool {
+  in_directory(directory: "-P", words: ["t"]) == "cd -- '-P' && exec 't'"
+}
+
+test fn witness_in_directory_single_quote_escapes_holds() -> Bool {
+  in_directory(directory: "/it's", words: ["t"]) == "cd -- '/it'\\''s' && exec 't'"
+}
+

@@ -29,6 +29,7 @@ use super::{
     MultiEntryIndex,
 };
 use crate::v1_compiler_compile;
+use crate::v1_compiler_infer;
 use crate::v1_std_core::{
     is_error_diagnostic, is_interpreter_blocking_diagnostic, ErrorNode, NewlineIndex,
 };
@@ -38,7 +39,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 // THE READ-SET RECEIPT: the one seed addition the operator admitted for the planning fast lane
-// (@ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)). Every filesystem fact demand acquisition
+// (#gunbc.design_ruling::seed_read_set_receipt_is_admitted). Every filesystem fact demand acquisition
 // consumes is recorded: a file it read, a path it probed and found absent (or could not admit), and a
 // directory it enumerated. A change to any recorded path -- or under any recorded directory -- can change
 // what this process acquires; a change to no recorded path cannot. When `GUNBC_READ_SET_OUT` names a file,
@@ -105,11 +106,37 @@ pub fn resolve_entry_graph_demand_acquired(
     ),
     String,
 > {
+    resolve_entry_graph_demand_acquired_scoped(source_roots, entry_file, &[])
+}
+
+/// The same settle, owing bodies only for what `requested` functions transitively demand
+/// (`DeclarationScope::ReachableFrom`); an empty `requested` is `EveryDeclaration`, the whole-closure
+/// typecheck. Signatures of every function still resolve, so imports and names refuse as before;
+/// only the bodies of declarations no requested function can reach go uninferred.
+///
+#[allow(clippy::type_complexity)]
+pub fn resolve_entry_graph_demand_acquired_scoped(
+    source_roots: &[String],
+    entry_file: &str,
+    requested: &[String],
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
     let (_sources, resolved) = demand_acquired_entry_resolved(
         source_roots,
         entry_file,
         CustomRootDuplicate::Refuse,
-        v1_compiler_compile::run_settle_compile_options(),
+        v1_compiler_compile::run_settle_compile_options(Rc::new(if requested.is_empty() {
+            v1_compiler_infer::DeclarationScope::EveryDeclaration
+        } else {
+            v1_compiler_infer::DeclarationScope::ReachableFrom {
+                requested: Rc::new(requested.iter().cloned().collect()),
+            }
+        })),
     )?;
 
     let graph = match resolved.graph.clone() {
@@ -180,7 +207,7 @@ pub(crate) fn demand_acquired_entry_resolved(
     source_roots: &[String],
     entry_file: &str,
     duplicates: CustomRootDuplicate,
-    options: v1_compiler_compile::CompilePipelineOptions,
+    options: Rc<v1_compiler_compile::CompilePipelineOptions>,
 ) -> Result<
     (
         Vec<Rc<v1_compiler_compile::SourceFile>>,

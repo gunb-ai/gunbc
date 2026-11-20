@@ -1,0 +1,13 @@
+module test.fixture.demanded_scope.cross_module_lib
+
+fn reached_seven() -> Int {
+  3 + 4
+}
+
+fn reached_but_broken() -> Int {
+  "not an int"
+}
+
+fn unreached_broken_in_lib() -> Int {
+  "not an int"
+}

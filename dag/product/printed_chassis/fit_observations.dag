@@ -23,6 +23,9 @@ fn fan_fit_display() -> String {
 // caliper record every duct dimension is derived from -- is a usable datum on a real card, because a ring
 // machined from it seats on the card. What it does NOT establish: any length, the duct's route, the
 // blower's fit, or clearance to anything in the chassis. It is one part on one card, reported by hand.
+// Nor the screws: the ring was printed with 3.4 mm holes for M3, and on 2026-11-10 the operator found M3
+// does not go into the inserts (product.printed_chassis.card_end_interface a16_insert_thread); the seating
+// surfaces this fact is about are unchanged by the move to M2.5 holes.
 type PlugFitRingProposition { ring_seats_on_a16: Bool }
 data plug_fit_ring_fit: RecordedFact<PlugFitRingProposition> = RecordedFact {
  id:"a16-plug-fit-ring-fit-2026-10-26",value:PlugFitRingProposition {ring_seats_on_a16:true},
@@ -83,6 +86,47 @@ fn a2_row_fit_plate_fit_display() -> String {
   if w.band_tabs_clear_fins {""} else {" Its band tabs, each the band's whole section to within 0.3 mm of the first fin, struck the fins at one end, so the tabs were cut to grip only the start of the slope."},
   if x.fits_row {" The third plate fits the row (4 November 2026)"} else {" The third plate does not fit the row"},
   if x.rests_flat {"."} else {" but does not rest flat on the faces, so the tabs are removed and a deeper sleeve holds the plate."}],"")
+}
+
+// THE FIRST T10 SLEEVE COUPON, printed 2026-11-16 on printer-02 (run 43894571846, 3MF sha256
+// 8f6818dac73eec9f8c98fe94b348facae146b52578337def973326cbea6569b8) with a 16 mm sleeve at 0.1 mm per side.
+// Operator, 2026-11-16: "its pretty good minus a few issues: the orientation of the coupon is wrong - the power
+// plug is assumed to be on the bottom of the card in this orientation, but its on the top in reality - the
+// cutout for the pcb is good but is misaligned because of the power cable location (basically, right now, the
+// power cable is covered up, everything else is generally fine)", and "the coupon is slightly too narrow width
+// wise - it bows out - i would increase its width margin a bit". The reading is "on the top in reality", and
+// the backplate strip's slots, the one feature that is not symmetric across the face, fitted, so the plate
+// could only go on one way: the 8-pin's window was at the wrong end because the plate was mirrored along the
+// face's length (product.printed_chassis.group_duct, the part frame), not because the reading was off.
+// "Width" is read as across the face (the sleeve's two long walls bowed), not along it.
+type T10SleeveCouponProposition { power_window_at_the_plug_end: Bool, strip_slots_fit: Bool, sleeve_too_narrow_across: Bool }
+data t10_sleeve_coupon_fit: RecordedFact<T10SleeveCouponProposition> = RecordedFact {
+ id:"t10-sleeve-coupon-fit-2026-11-16",value:T10SleeveCouponProposition {power_window_at_the_plug_end:false,strip_slots_fit:true,sleeve_too_narrow_across:true},
+}
+data t10_sleeve_coupon_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/t10-sleeve-coupon-fit-2026-11-16",activity:"workflow-print-and-hand-fit",agent:"operator",
+}
+fn t10_sleeve_coupon_fit_display() -> String {
+ let v=t10_sleeve_coupon_fit.value
+ let w=t10_sleeve_coupon_second_fit.value
+ join(["The first T10 sleeve coupon (16 November 2026)",
+  if v.strip_slots_fit {" fitted its backplate-strip slots"} else {" did not fit its backplate-strip slots"},
+  if v.power_window_at_the_plug_end {" and cleared the 8-pin."} else {" but covered the 8-pin: its window was at the bottom end because the fit plate was mirrored along the face, so the plate's frame now puts the top end where the card has it."},
+  if v.sleeve_too_narrow_across {" Its 0.1 mm sleeve was too narrow across the face and bowed out, so the second is 0.3 mm per side across."} else {""},
+  if w.fits {" The second coupon, with the plate's top end corrected and 0.3 mm across, fits (17 November 2026)."} else {" The second coupon does not fit."}],"")
+}
+// THE SECOND T10 SLEEVE COUPON, printed 2026-11-16 on printer-02 (run 43968177413, 3MF sha256
+// 09f50e12ef737aed011aa3a507469c3af3ea84819a525b5b266a2e41a9f2d173): the fit plate no longer mirrored along
+// the face, its sleeve 0.3 mm per side across the face and 0.1 mm along it, 16 mm deep. Operator, 2026-11-17:
+// "the coupon looks good". Read as a fit of the whole interface (the 8-pin clear, the sleeve holding without
+// bowing, the plate on the face); the operator named no part that was off. One coupon on one card: the
+// figures hold on this card, not as a qualified tolerance.
+type T10SleeveCouponSecondProposition { fits: Bool }
+data t10_sleeve_coupon_second_fit: RecordedFact<T10SleeveCouponSecondProposition> = RecordedFact {
+ id:"t10-sleeve-coupon-fit-2026-11-17",value:T10SleeveCouponSecondProposition {fits:true},
+}
+data t10_sleeve_coupon_second_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/t10-sleeve-coupon-fit-2026-11-17",activity:"workflow-print-and-hand-fit",agent:"operator",
 }
 
 // THE RECEIVED DELTA BFB1012M, read by the operator on 2026-11-04 with four units in hand. The intake is on one

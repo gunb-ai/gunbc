@@ -1,0 +1,218 @@
+module extdeps.storage.device_identification
+
+// WHAT A DEVICE REPORTS AS ITS OWN. `ID_SERIAL` and `ID_MODEL` are the two udev properties the Subiquity
+// autoinstall reference matches a storage layout against (
+// https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html#storage:
+// "serial: CT* ... Matches the device's serial number (ID_SERIAL). This supports glob-style matching (as
+// implemented by fnmatch)" and "model: ... Matches the device's ID_MODEL"). systemd's udev(7) documents the
+// properties themselves: ID_MODEL is "the model string" and ID_SERIAL "the serial number (if available) of
+// the device" — both are text the DEVICE supplies, which is why this module owns their shape rather than
+// trusting a caller's string: what arrives from lsblk --output=SERIAL,MODEL, from `nvme list` / NVMe's
+// Identify Controller MN and SN fields (NVM Express Base Spec 2.0e, 5.24.1.2), or from a Redfish Storage
+// drive's MemberId/Model/SerialNumber (DMTF Redfish Spec DSP0266 2023.1, Storage > Drives) is free-running
+// device text, and a pin is only as good as the token it pins.
+//
+// WHY A SHAPE AT ALL, FOR TEXT THE DEVICE WRITES. The value this token holds is rendered into a YAML
+// document that a destructive installer reads, and the reference matches it with fnmatch. Three things
+// follow, and they are the whole rule: (1) a token holding a glob metacharacter is a match spec naming a
+// CLASS of disks — upstream's own example is `serial: CT*` — which is precisely what an install
+// authorization must not be, so `* ? [ ] \` are outside the repertoire; (2) udev strips the padding a
+// device pads its identification fields with, so a token with leading or trailing whitespace can never
+// equal what the installer reads, and refusing it beats rendering a pin that silently matches nothing
+// (gunbc.design_argument::fail_closed); (3) the rest of the repertoire is the printable set these fields
+// actually carry in this fleet's own captures — "WD Green SN350 1TB 2G0C" and "25466Q801557"
+// (artifacts/bmc/srv15-inband-recovery-2026-10-29/host_identity.txt), "SAMSUNG MZVPV512HDGL-000H1"
+// (artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/03_host_identity.txt) — and nothing that is a
+// YAML indicator, so the emitted document cannot be steered by its own value.
+// THE MODELED REVISION: udev(7) as shipped by systemd (man page retrieved 2026-11-10), NVMe Base Spec
+// 2.0e, Redfish DSP0266 2023.1. No length ceiling is invented here: the upstream field widths (NVMe SN 20
+// bytes and MN 40 bytes; SCSI INQUIRY VPD 0x80 is length-prefixed) are all narrower than any ceiling this
+// repository would choose, so a ceiling would refuse a real disk to no purpose.
+
+import std.types { String, NonEmptyStr, Bool, Char }
+import std.optional { Optional, Present, Absent }
+import std.algebra { Cons, Empty, FreeMonoid, contains, for_all, list_last }
+import std.coercion { unicode_scalar_unfold }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/udev.7.html"
+  }
+}
+
+// THE MODULE'S ONE SUBJECT, stated rather than implied (gunbc.design_argument::external_upstreams 'External
+// upstream decomposition'; operator verdicts on gunbc#7556 and gunbc#7571): one independently governed
+// upstream gets one module authority, written as ONE subject plus one-or-more citations, and the subject is a
+// SYMBOL — a DeclarationRef into this module's own one declaration of it — never a name string restating it.
+// The subject here is the identification a storage device reports about itself, which is what
+// DeviceIdentificationToken below is; the citation is the document that defines those properties, udev(7).
+//
+// WHY NVMe AND REDFISH ARE NOT CITATIONS HERE, THOUGH THE MODULE NOTE NAMES THEM: they are the transports
+// that carry a device's own text into this fleet's captures, not the authority that defines ID_SERIAL/ID_MODEL,
+// and a locator written without being read is a fabricated citation — worse than a named spec the reader can
+// go and check. They are named in the module note above with their section numbers for exactly that reason.
+data device_identification_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.storage.device_identification",
+      decl_name: "DeviceIdentificationToken",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = device_identification_model_scope
+
+// THE REPertoire, spelled out rather than described: every character a device identification token may
+// hold. Letters, digits, the space that separates a model's words, and the punctuation these fields carry
+// (dash, underscore, dot, plus, colon, comma, parentheses, slash, hash). fnmatch's metacharacters are NOT
+// in it, by the reason in the module note, and neither is any YAML indicator.
+data device_identification_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.+:,()/#"
+
+data device_identification_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: device_identification_alphabet)
+
+// The space is in the repertoire but not at either edge, so it is unfolded separately rather than tested
+// by a character literal (the one declared Unicode-scalar unfold is taken here, as in
+// extdeps.posix.shell_command_language).
+data device_identification_space_chars: FreeMonoid<Char> = unicode_scalar_unfold(s: " ")
+
+fn device_identification_char_in(alphabet: FreeMonoid<Char>, c: Char) -> Bool {
+  contains(xs: alphabet, item: c, eq: fn(a, b) { a == b })
+}
+
+fn device_identification_is_space(c: Char) -> Bool {
+  device_identification_char_in(alphabet: device_identification_space_chars, c: c)
+}
+
+// IS THIS CHARACTER ONE THESE FIELDS CAN CARRY? The alphabet plus the space: a model name is words
+// ("WD Green SN350 1TB 2G0C" is what lsblk printed for srv15's NVMe), so the space is in the repertoire —
+// it is only kept away from either EDGE, which is the check above. Test the alphabet alone and every real
+// model name is refused, which is how a rule meant to keep wildcards out ends up keeping disks out.
+fn device_identification_char_admissible(c: Char) -> Bool {
+  if device_identification_char_in(alphabet: device_identification_chars, c: c) {
+    true
+  } else {
+    device_identification_is_space(c: c)
+  }
+}
+
+// A TOKEN IS A CARRIER, NOT A STRING THAT HAPPENS TO PASS. `DeviceIdentificationToken` is minted only by
+// admit_device_identification_token below, so a consumer that takes it has taken a value that cannot be a
+// glob, cannot be padded, and cannot steer the document it is rendered into.
+type DeviceIdentificationToken sole_constructor { text: NonEmptyStr }
+
+type DeviceIdentificationRefusal
+  = DeviceIdentificationEmpty
+  // NEITHER HALF WAS REPORTED — a different fact from DeviceIdentificationEmpty. Empty is a field the reader
+  // claims to report whose value is nothing; this is a capture whose columns did not contain either field,
+  // which is what the 2026-10-16 srv14 capture would produce if it asked for a SERIAL it never printed.
+  // Collapsing the two loses the operator's distinction between "the disk has no serial to read" and "nobody
+  // read for one".
+  | DeviceIdentificationNothingReported
+  | DeviceIdentificationCharacterOutsideTheRepertoire
+  | DeviceIdentificationEdgeWhitespace
+
+type DeviceIdentificationAdmission
+  = DeviceIdentificationAdmitted { token: DeviceIdentificationToken }
+  | DeviceIdentificationRefused { spelling: String, cause: DeviceIdentificationRefusal }
+
+fn device_identification_token_text(token: DeviceIdentificationToken) -> NonEmptyStr {
+  token.text
+}
+
+fn admit_device_identification_token(spelling: String) -> DeviceIdentificationAdmission {
+  match unicode_scalar_unfold(s: spelling) {
+    Empty => DeviceIdentificationRefused { spelling: spelling, cause: DeviceIdentificationEmpty }
+    Cons { head: first, tail: rest } =>
+      if device_identification_is_space(c: first) {
+        DeviceIdentificationRefused { spelling: spelling, cause: DeviceIdentificationEdgeWhitespace }
+      } else if device_identification_last_is_space(rest: rest) {
+        DeviceIdentificationRefused { spelling: spelling, cause: DeviceIdentificationEdgeWhitespace }
+      } else if for_all(xs: unicode_scalar_unfold(s: spelling), predicate: fn(c) {
+        device_identification_char_admissible(c: c)
+      }) {
+        DeviceIdentificationAdmitted { token: DeviceIdentificationToken { text: spelling as NonEmptyStr } }
+      } else {
+        DeviceIdentificationRefused { spelling: spelling, cause: DeviceIdentificationCharacterOutsideTheRepertoire }
+      }
+  }
+}
+
+fn device_identification_last_is_space(rest: FreeMonoid<Char>) -> Bool {
+  match list_last(xs: rest) {
+    Present { value: last } => device_identification_is_space(c: last)
+    Absent => false
+  }
+}
+
+// THE PAIR THE INSTALLER'S MATCH SPEC IS BUILT FROM. A reading hands the shape above the text its tool
+// printed; this is the serial and the model that gunbc.provisioning.install_target_disk admits before a
+// destructive install is authorized. EITHER half may be absent, because a capture really can report one and
+// not the other: the 2026-10-16 srv14 capture ran `lsblk --output=NAME,SIZE,MODEL,TRAN,TYPE` and so reported
+// models and no serials at all. THIS SHAPE CARRIES NO POLICY ABOUT WHICH COMBINATIONS ARE ENOUGH to pin an
+// erasure to one disk — that is the consumer's rule, held by a type rather than a predicate
+// (gunbc.provisioning.install_target_disk's install_target_disk_pinned_match answers no pin at all unless a
+// serial was reported, because extdeps.os.ubuntu_autoinstall's AutoinstallDiskPin cannot be built without one,
+// and that is upstream's semantics rather than a taste: a match key binds one device only when it names the
+// device, so a model-only pair narrows a class and authorizes nothing). An all-absent pair is still refused
+// below, because a record that reports neither field is not a record of an identity.
+type ReportedDeviceIdentity sole_constructor {
+  serial: Optional<DeviceIdentificationToken>
+  model: Optional<DeviceIdentificationToken>
+}
+
+type ReportedDeviceIdentityAdmission
+  = ReportedDeviceIdentityAdmitted { identity: ReportedDeviceIdentity }
+  | ReportedDeviceIdentityRefused { cause: DeviceIdentificationRefusal }
+
+fn reported_device_identity_serial(identity: ReportedDeviceIdentity) -> Optional<DeviceIdentificationToken> {
+  identity.serial
+}
+
+fn reported_device_identity_model(identity: ReportedDeviceIdentity) -> Optional<DeviceIdentificationToken> {
+  identity.model
+}
+
+// BOTH HALVES OR THE ONE THE CAPTURE ACTUALLY REPORTED. A half-admitted identity is the state where one field
+// was checked and the other was not, which is the state that ships a pin whose unchecked half can steer the
+// document; so every reported half goes through the same admitter, and the first refusal is carried rather
+// than being flattened into the rest. Neither half reported is refused with its own cause: nothing was read.
+fn admit_reported_device_identity(
+  serial: Optional<String>,
+  model: Optional<String>,
+) -> ReportedDeviceIdentityAdmission {
+  match serial {
+    Present { value: serial_text } => match admit_device_identification_token(spelling: serial_text) {
+      DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
+      DeviceIdentificationAdmitted { token: serial_token } => match model {
+        Absent => ReportedDeviceIdentityAdmitted {
+          identity: ReportedDeviceIdentity { serial: Present { value: serial_token }, model: Absent },
+        }
+        Present { value: model_text } => match admit_device_identification_token(spelling: model_text) {
+          DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
+          DeviceIdentificationAdmitted { token: model_token } => ReportedDeviceIdentityAdmitted {
+            identity: ReportedDeviceIdentity {
+              serial: Present { value: serial_token },
+              model: Present { value: model_token },
+            },
+          }
+        }
+      }
+    }
+    Absent => match model {
+      Absent => ReportedDeviceIdentityRefused { cause: DeviceIdentificationNothingReported }
+      Present { value: model_text } => match admit_device_identification_token(spelling: model_text) {
+        DeviceIdentificationRefused { spelling: _, cause: cause } => ReportedDeviceIdentityRefused { cause: cause }
+        DeviceIdentificationAdmitted { token: model_token } => ReportedDeviceIdentityAdmitted {
+          identity: ReportedDeviceIdentity { serial: Absent, model: Present { value: model_token } },
+        }
+      }
+    }
+  }
+}

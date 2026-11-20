@@ -1,5 +1,7 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix
 
+import gunbc.host.pxe_boot_delivery { PxeDeliveryNotApplicable }
+import gunbc.machine_intake.mtcollins1_boot_actuation_stage { ActuationCensusEnded }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { exit_failure }
@@ -15,7 +17,21 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_dry_realization { bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault }
+import gunbc.bmc_dry_realization { bmc_mc_info_reply, bmc_boot_options_clear_reply, BmcReplied, BmcRefused, BmcReplyFault, BmcReply, bmc_lift, bmc_ipmi_operation, bmc_dry_cold_reset_drop_after, bmc_dry_cold_reset_back_after, bmc_mc_info_answer, bmc_call_lanplus_clock, bmc_controller_silent, bmc_controller_unanswered, bmc_call_verbose }
+import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_set_privilege_prefix, ipmitool_lanplus_set_privilege_bare_suffix, ipmitool_lanplus_session_unestablished_line }
+import std.measure { measure_le }
+import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost, BmcControllerResetBegan, BmcControllerResetEnded }
+import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
+import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
+import gunbc.ci.ci_budget_raise { BudgetAdmission, StepBudgetApprovals, budget_admission }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_wet_admitted, mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_step_budget_approvals, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds, mtcollins1_bmc_cold_reset_sustain_window, mtcollins1_bmc_cold_reset_poll_interval, mtcollins1_bmc_cold_reset_read_ceiling, mtcollins1_bmc_cold_reset_window_allowance }
+import std.measure { second_count }
+import gunbc.bmc_dry_realization { sleep_delay_seconds_operation }
+import v2.std.operation_realization { virtual_delay_binding, FileObserved }
+import extdeps.transports.file { FileOperationSucceeded }
+import gunbc.filesystem_model { content_bytes }
+import gunbc.machine_intake.mtcollins1_boot_dry_realization { linux_procfs_read_uptime_operation }
 import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_with_mc_info, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
@@ -24,28 +40,25 @@ import gunbc.process_environment_model { ModeledVariable }
 import extdeps.access.posix { FileMode, PermissionBits }
 import extdeps.bmc.ipmi_sdr { SdrTypeLine }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_mc_info_mt_collins_transcribed_fields }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, IpmiMcInfoFirmwareRevision }
 import gunbc.remote_host_model { ModeledRemoteHost, ModeledRemoteFile }
 import gunbc.wall_clock_model { ModeledWallClock, ModeledClockStep }
+import gunbc.machine_intake.megarac_media_row_reading { boot_run_43040335415_presented_row, boot_run_43040335415_general_before_handoff }
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd_at_the_current_build }
 import gunbc.machine_intake.mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
-  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
+  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs, with_worker,
   worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
-  DispatchWorkerKilled, ShellObserved, ShellProcessExited, operation_input_text,
+  DispatchWorkerKilled, ShellObserved, ShellProcessExited, operation_input_text, DispatchObserved,
 }
 import std.process { ProcessExit, ExitSuccess }
 import gunbc.host.host_reset_return_run { host_reset_return_wet }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
-import gunbc.machine_intake.mtcollins1_boot_run {
-  MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason,
-  ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded,
-  SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission,
-  mtcollins1_boot_run_record,
-}
+import gunbc.machine_intake.mtcollins1_boot_run { MtCollins1BootAttempt, mtcollins1_boot_on_srv1_resolving_toolchain, mtcollins1_boot_exit_reason, SolSupervision, SolHeldAt, SolLostAt, SolHandoffAdmission, SolHandoffAdmitted, SolHandoffRefused, sol_handoff_admission, mtcollins1_boot_run_record }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image, CensusImageDerived, mtcollins1_census_boot_medium, census_record_path }
 import gunbc.host.boot_medium_served_readback { boot_medium_served_path }
 import gunbc.durable_exclusive_hold_file_store { file_hold_acquire }
@@ -59,7 +72,7 @@ import gunbc.runner.runner_browser_toolchain {
 import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
 import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord, MegaRacMediaAttachWithheld, LookSessionNotReleased, LookSecretFileLeft }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused }
@@ -97,6 +110,10 @@ fn matrix_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
 data matrix_services: List<String> = [
   "diagnostic.ipmi.Tool", "megarac.Media", "Filesystem", "shell.Env", "sleep.Delay",
   "gunbc.machine_intake.sol_hold", "shell.Exec", "ssh.Session", "Clock", "linux.Procfs", "shell.Move", "os.Hostname", "shell.Mkdir", "shell.Path", "shell.Stat",
+  // The media attach carries its CSRF token through gunbc.auth.private_secret_file's bracket, whose
+  // demand reaches the modeled mktemp and remove services (their handlers live in
+  // gunbc.filesystem_model private_secret_file_bindings, beside the filesystem handlers).
+  "shell.Mktemp", "shell.Remove",
 ]
 
 fn matrix_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
@@ -148,7 +165,7 @@ fn ready_toolchain() -> RunnerBrowserToolchainResolution {
 }
 
 fn boot_with_toolchain(toolchain: RunnerBrowserToolchainResolution) -> MtCollins1BootAttempt {
-  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, resolve_toolchain: fn() { toolchain })
+  mtcollins1_boot_on_srv1_resolving_toolchain(medium: mtcollins1_census_boot_medium, resolve_toolchain: fn() { toolchain }, pxe_target: none, cited: none)
 }
 
 fn run_attempt(world: MtCollins1BootWorld) -> WitnessEvaluation<MtCollins1BootAttempt, MtCollins1BootWorld> {
@@ -213,7 +230,7 @@ fn world_for_reset_route(observer_label: String, run_id: String) -> MtCollins1Bo
     agent: base.agent,
     remote_hosts: base.remote_hosts,
     worker: base.worker,
-    console: base.console,
+    console: base.console, mktemp_refused: base.mktemp_refused
   }
 }
 
@@ -450,7 +467,7 @@ fn healthy_media() -> MegaRacMediaWorld {
     withdraw_at: none,
     withdraw_after_ready: none,
     error_after_ready: none,
-    error_clears_on_stop: false, stop_at_ready: none,
+    error_clears_on_stop: false, stop_at_ready: none, close_releases: true,
   }
 }
 
@@ -495,7 +512,7 @@ fn world_with_console(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
     clock: ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] },
     worker: ModeledWorker { next_pid: 4000, processes: [], uptime_at_origin: 86400, principal: runner_principal },
     console: ModeledHostConsole { lines: lines, emitted: 0, boot: none },
-    media: healthy_media(),
+    media: healthy_media(), mktemp_refused: false
   })
 }
 
@@ -564,6 +581,29 @@ fn first_ordinal(route: List<DispatchRecord>, name: String) -> Int {
   match ordinals_where(route: route, keep: fn(r) { operation_name(r: r) == name }).first() { Present { value: o } => o Absent => 0 - 1 }
 }
 
+// AN ORDERING CLAIM HOLDS ONLY OVER TWO OPERATIONS THAT BOTH RAN. first_ordinal answers -1 for an operation
+// the route never dispatched, so a bare `first_ordinal(a) < first_ordinal(b)` was satisfied by `a` never
+// running at all -- an ordering claim that could not tell "a before b" from "no a" (side chat on gunbc#16247).
+// Every ordering claim in this matrix goes through this one predicate.
+fn precedes(route: List<DispatchRecord>, earlier: String, later: String) -> Bool {
+  let a = first_ordinal(route: route, name: earlier)
+  let b = first_ordinal(route: route, name: later)
+  a >= 0 && b >= 0 && a < b
+}
+
+// THE GUARD ITSELF: an ordering over a route that never dispatched either operation, or only one of them, is
+// false; the route a real attempt dispatched still orders (the healthy census claims above use it).
+test fn an_ordering_claim_is_false_when_either_operation_never_ran() -> Bool {
+  match run_attempt(world: healthy_census_world()) {
+    WitnessReturned { value: _, route } =>
+      precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && !precedes(route: route, earlier: "a.never.Dispatched", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && !precedes(route: route, earlier: "megarac.Media.StartMedia", later: "a.never.Dispatched")
+        && !precedes(route: [], earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+    _ => false
+  }
+}
+
 fn outcome_reason(a: MtCollins1BootAttempt) -> String {
   mtcollins1_boot_exit_reason(outcome: a.outcome)
 }
@@ -588,9 +628,9 @@ test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool {
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
         && count_named(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") == 1
-        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "gunbc.machine_intake.sol_hold.ActivateHeld", later: "megarac.Media.StartMedia")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -608,8 +648,8 @@ test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
       census_ended(a: value)
         && outcome_reason(a: value) == "ok"
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld")
-        && first_ordinal(route: route, name: "gunbc.machine_intake.sol_hold.ReleaseHeld") < first_ordinal(route: route, name: "Filesystem.Delete")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.SolDeactivate", later: "gunbc.machine_intake.sol_hold.ReleaseHeld")
+        && precedes(route: route, earlier: "gunbc.machine_intake.sol_hold.ReleaseHeld", later: "Filesystem.Delete")
         && count_named(route: route, name: "Filesystem.Delete") == 2
         && controller_writes_are_under_the_hold(route: route)
     _ => false
@@ -693,7 +733,7 @@ fn media_varied(media: MegaRacMediaWorld) -> MtCollins1BootWorld {
 fn media_with(images: List<MegaRacImage>, share: MegaRacShare, cd: MegaRacCdRow, ready_after: Int, withdraw_after_ready: Second?) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: [], next_session: 1, share: share, mount_cd: 1, cd_error_code: 0, images: images, cd: cd,
-    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false, stop_at_ready: none,
+    ready_after: second(count: ready_after), withdraw_at: none, withdraw_after_ready: withdraw_after_ready, error_after_ready: none, error_clears_on_stop: false, stop_at_ready: none, close_releases: true,
   }
 }
 
@@ -720,7 +760,7 @@ fn reached_no_power_action(route: List<DispatchRecord>) -> Bool {
 fn without_runner_temp(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: filter(w.environment, v => v.name != "RUNNER_TEMP"),
-    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -754,7 +794,7 @@ fn srv2_with_record(content: String?) -> ModeledRemoteHost {
 fn with_srv2(w: MtCollins1BootWorld, srv2: ModeledRemoteHost) -> MtCollins1BootWorld {
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment,
-    agent: w.agent, remote_hosts: [srv2], clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+    agent: w.agent, remote_hosts: [srv2], clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -832,16 +872,118 @@ test fn a_controller_that_models_no_record_surface_refuses_at_the_mc_info_read_b
   }
 }
 
-// THE IMAGE IS ALREADY PRESENTED AND READY. Convergence has nothing to do: no stop, no start, and the
-// attempt proceeds to the boot exactly as from a fresh attach.
-test fn an_already_presented_image_is_not_attached_again() -> Bool {
+// THE IMAGE IS ALREADY PRESENTED AND GENERAL SETTINGS READ cd_error_code 0: convergence has nothing to do -- no
+// stop, no start -- and the attempt proceeds to the boot exactly as from a fresh attach. The same row beside a
+// nonzero code is BOOT 11'S SHAPE (boot_11_media below) and is not admitted as presented: the attempt stops that
+// row, re-enumerates and attaches before the boot-device override or any power action
+// (megarac_media_attach presented_row_serving). The RED is that check removed: the boot-11 world then boots
+// with no stop and no start, which is what boot run 43040335415 did.
+test fn an_already_presented_image_is_not_attached_again_only_on_a_clean_code() -> Bool {
   let presented = MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
-  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: presented, ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
-    WitnessReturned { value, route } =>
+  (match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: presented, ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
+    WitnessReturned { value: _, route } =>
       count_named(route: route, name: "megarac.Media.StartMedia") == 0
         && count_named(route: route, name: "megarac.Media.StopMedia") == 0
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
         && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  })
+    && (match run_attempt(world: media_varied(media: boot_11_media(clears: true))) {
+      WitnessReturned { value: _, route } =>
+        count_named(route: route, name: "megarac.Media.StopMedia") == 1
+          && count_named(route: route, name: "megarac.Media.StartMedia") == 1
+          && precedes(route: route, earlier: "megarac.Media.StopMedia", later: "megarac.Media.StartMedia")
+          && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+          && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
+          && controller_writes_are_under_the_hold(route: route)
+      _ => false
+    })
+}
+
+// BOOT 11'S SHAPE FROM ITS RECEIPTS: the row's status and indices (boot_run_43040335415_presented_row) and the code
+// general settings read beside it (boot_run_43040335415_general_before_handoff). The row names this matrix's desired
+// medium where the receipt names the runner medium boot 11 was booting, so the route under test is the
+// already-presented one. Whether a stop clears the code is not observed on this firmware, so it is a parameter.
+fn boot_11_row() -> MegaRacCdRow {
+  MegaRacCdRow {
+    image_name: desired_image(),
+    redirection_status: boot_run_43040335415_presented_row.redirection_status,
+    media_index: boot_run_43040335415_presented_row.media_index,
+    session_index: boot_run_43040335415_presented_row.session_index,
+    ready_at: none,
+  }
+}
+
+fn boot_11_media(clears: Bool) -> MegaRacMediaWorld {
+  media_errored(code: boot_run_43040335415_general_before_handoff.cd_error_code, clears: clears, after_ready: no_error_after_ready(), cd: boot_11_row())
+}
+
+// THE RECHECK HOLDS AN ALREADY-PRESENTED ADMISSION TO cd_error_code 0 (merry-fox-82's review of #16339 at
+// f5885ada). The same presented row is admitted on code 0 in both runs; only the code the pre-handoff
+// recheck reads differs. The control boots. The coded run raises 16 at the instant the control's recheck
+// read general settings (the last GetMediaGeneral before the power write), so convergence and readiness
+// read 0 and admit the row exactly as in the control, and the recheck reads 16: no boot-device write, no
+// power write, and the cause says the serving condition is no longer satisfied, never that the medium was
+// lost. The host therefore ends off, so the one StopMedia is the end-of-attempt release of the lane's own
+// image (an_attempt_that_ends_with_the_host_off_stops_its_own_session), not a withdrawal by the recheck.
+// The RED is presentation_still_served ignoring the code on that route: the coded run then boots.
+fn presented_desired_row(ready_at: Second?) -> MegaRacCdRow {
+  MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: ready_at }
+}
+
+fn presented_world(ready_at: Second?, code_at: Int?) -> MegaRacMediaWorld {
+  media_errored(code: 0, clears: false, after_ready: code_at, cd: presented_desired_row(ready_at: ready_at))
+}
+
+fn recheck_general_read_at(route: List<DispatchRecord>) -> Second? {
+  let power = first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+  let unread: Second? = none
+  fold(route, init: unread, f: fn(acc, r) {
+    if operation_name(r: r) == "megarac.Media.GetMediaGeneral" && power >= 0 && r.ordinal < power { Present { value: r.dispatched_at } } else { acc }
+  })
+}
+
+test fn the_recheck_withholds_an_already_presented_admission_whose_code_turns_nonzero() -> Bool {
+  let never: Second? = none
+  match run_attempt(world: media_varied(media: presented_world(ready_at: never, code_at: no_error_after_ready()))) {
+    WitnessReturned { value: _, route: control } =>
+      count_named(route: control, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: control, name: "megarac.Media.StopMedia") == 0
+        && count_named(route: control, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") >= 1
+        && count_named(route: control, name: "diagnostic.ipmi.Tool.ChassisPowerControl") == 1
+        && (match recheck_general_read_at(route: control) {
+          Absent => false
+          Present { value: at } =>
+            match run_attempt(world: media_varied(media: presented_world(ready_at: Present { value: at }, code_at: Present { value: 16 }))) {
+              WitnessReturned { value, route } =>
+                string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
+                  && string_contains(s: outcome_reason(a: value), pattern: "the serving condition is no longer satisfied")
+                  && string_contains(s: outcome_reason(a: value), pattern: "general settings now read cd_error_code 16")
+                  && !string_contains(s: outcome_reason(a: value), pattern: "LOST")
+                  && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+                  && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+                  && end_release_stopped(end: value.end_media)
+                  && reached_no_power_action(route: route)
+              _ => false
+            }
+        })
+    _ => false
+  }
+}
+
+// BOOT 11'S SHAPE WITH THE HOST ON: the stop is not admitted (it would withdraw what a running host may read), the
+// stale power-off does not fire (the row names the desired image, not a stale one), so the attempt refuses with
+// the typed cause naming the row's image and the code, before any media write, override or power action.
+test fn boot_11_shape_with_the_host_on_refuses_naming_the_row_and_the_code() -> Bool {
+  let w = media_varied(media: boot_11_media(clears: true))
+  match run_attempt(world: with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "is not evidence the medium is served")
+        && string_contains(s: outcome_reason(a: value), pattern: "cd_error_code 16")
+        && string_contains(s: outcome_reason(a: value), pattern: desired_image())
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
     _ => false
   }
 }
@@ -1025,10 +1167,10 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
         && sdr_reads_after_power_on(route: route) == 0
         && fan_gate_abandoned(a: value)
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") == 1
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisPowerControl", later: "diagnostic.ipmi.Tool.SolDeactivate")
         && teardown_within(route: route, bound: 60)
         && end_release_stopped(end: value.end_media)
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "megarac.Media.StopMedia")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.SolDeactivate", later: "megarac.Media.StopMedia")
         && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "end_media=")
         && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "this attempt's own session stopped and read back as gone")
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
@@ -1038,7 +1180,7 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 
 // THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
 fn attempt_run_record(a: MtCollins1BootAttempt) -> MegaRacRunRecord {
-  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
+  mtcollins1_boot_run_record(pxe: a.pxe, media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
 // THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
@@ -1161,7 +1303,7 @@ fn as_another_run(w: MtCollins1BootWorld, run_id: String) -> MtCollins1BootWorld
 fn as_another_run_in(w: MtCollins1BootWorld, run_id: String, pid_namespace: String) -> MtCollins1BootWorld {
   let env = map(w.environment, v => if v.name == "GITHUB_RUN_ID" { ModeledVariable { name: v.name, value: run_id } } else { v })
   let fs = worker_process_started(fs: w.fs, boot_id: worker_boot_id, pid_namespace: pid_namespace, pid: first_worker_pid + 1, start_ticks: first_worker_start + 9000)
-  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media }
+  MtCollins1BootWorld { bmc: w.bmc, fs: fs, environment: env, agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused }
 }
 
 // THE NEXT ATTEMPT RECOVERS THE DEAD RUN'S HOLD (finding 2, repaired in #12555). The interrupted run
@@ -1242,7 +1384,7 @@ fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1Boo
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
     clock: ModeledWallClock { unix_at_origin: w.clock.unix_at_origin, step: w.clock.step, jumps: list_snoc_item(xs: w.clock.jumps, item: ModeledClockStep { at: at, by: std.measure.second_displacement(count: by) }) },
-    worker: w.worker, console: w.console, media: w.media,
+    worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -1287,7 +1429,7 @@ fn media_errored(code: Int, clears: Bool, after_ready: Int?, cd: MegaRacCdRow) -
     sessions: [], next_session: 1, share: real_share, mount_cd: 1, cd_error_code: code,
     images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], cd: cd,
     ready_after: second(count: 12), withdraw_at: none, withdraw_after_ready: none,
-    error_after_ready: after_ready, error_clears_on_stop: clears, stop_at_ready: none,
+    error_after_ready: after_ready, error_clears_on_stop: clears, stop_at_ready: none, close_releases: true,
   }
 }
 
@@ -1297,7 +1439,7 @@ fn media_stopping(code: Int) -> MegaRacMediaWorld {
   MegaRacMediaWorld {
     sessions: w.sessions, next_session: w.next_session, share: w.share, mount_cd: w.mount_cd, cd_error_code: w.cd_error_code,
     images: w.images, cd: w.cd, ready_after: w.ready_after, withdraw_at: w.withdraw_at, withdraw_after_ready: w.withdraw_after_ready,
-    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code },
+    error_after_ready: w.error_after_ready, error_clears_on_stop: w.error_clears_on_stop, stop_at_ready: Present { value: code }, close_releases: w.close_releases,
   }
 }
 
@@ -1332,8 +1474,8 @@ test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() 
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
-        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StopMedia", later: "megarac.Media.StartMedia")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -1351,18 +1493,22 @@ test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_reco
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "megarac.Media.StopMedia") == 0
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
 }
 
-// A CODE THAT APPEARS WITH READINESS: a Started row is ready whatever the code says.
-test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
+// A CODE THAT APPEARS WITH READINESS ON A FRESH ATTACH is recorded beside the Started row and the attempt boots:
+// the serving law (megarac_media_attach presented_row_serving) gates an ALREADY-PRESENTED row, and boot 11 met
+// one; it does not reach a presentation this attempt started. The already-presented arm of the same question --
+// a code appearing during the no-write wait -- refuses, and is witnessed through the pure fold in
+// megarac_media_convergence_witness a_code_appearing_at_readiness_refuses_an_already_presented_row_and_is_recorded_on_an_attach.
+test fn cd_error_appearing_with_readiness_on_a_fresh_attach_is_recorded_and_booted() -> Bool {
   match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd_at_the_current_build()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
   }
@@ -1374,9 +1520,85 @@ test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_b
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
-        && first_ordinal(route: route, name: "megarac.Media.StopMedia") < first_ordinal(route: route, name: "megarac.Media.StartMedia")
-        && first_ordinal(route: route, name: "megarac.Media.StartMedia") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
+        && precedes(route: route, earlier: "megarac.Media.StopMedia", later: "megarac.Media.StartMedia")
+        && precedes(route: route, earlier: "megarac.Media.StartMedia", later: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// THE HOST IS ON WITH A STALE IMAGE OF THIS LANE, so the attempt takes a read-only look to decide the power-off.
+// `close_releases` is the one fact varied: whether the controller frees the look's session on CloseSession.
+fn host_on_with_stale(close_releases: Bool) -> MtCollins1BootWorld {
+  let m = media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image))
+  let w = media_varied(media: MegaRacMediaWorld {
+    sessions: m.sessions, next_session: m.next_session, share: m.share, mount_cd: m.mount_cd, cd_error_code: m.cd_error_code,
+    images: m.images, cd: m.cd, ready_after: m.ready_after, withdraw_at: m.withdraw_at, withdraw_after_ready: m.withdraw_after_ready,
+    error_after_ready: m.error_after_ready, error_clears_on_stop: m.error_clears_on_stop, stop_at_ready: m.stop_at_ready,
+    close_releases: close_releases,
+  })
+  with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))
+}
+
+// A PRE-POWER LOOK WHOSE SESSION LEAKED STOPS THE ATTEMPT BEFORE ANY ATTACH SESSION OR MEDIA WRITE (side chat on
+// gunbc#16247): a gate after the attach cannot revoke a StartMedia already sent. On the real route the look is
+// the ONLY session opened, nothing is stopped or started, no power action is taken, and the attempt's media
+// record is the typed withheld arm naming the cause. The control is the identical world whose controller frees
+// sessions: there the look is clean, the host is powered off for the stale image, and the attach follows --
+// so the stop is the leak's doing, not the world's.
+test fn a_pre_power_look_whose_session_leaked_stops_before_any_attach_session_or_media_write() -> Bool {
+  (match run_attempt(world: host_on_with_stale(close_releases: false)) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "megarac.Media.OpenSession") == 1
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
+        && (match value.media {
+          MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+            match c { LookSessionNotReleased { detail: _ } => true  LookSecretFileLeft => false }
+          _ => false
+        })
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "WITHHELD before any attach session or media write")
+    _ => false
+  })
+    && (match run_attempt(world: host_on_with_stale(close_releases: true)) {
+      WitnessReturned { value: _, route } =>
+        count_named(route: route, name: "megarac.Media.OpenSession") >= 2
+          && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") >= 1
+          && count_named(route: route, name: "megarac.Media.StartMedia") >= 1
+          && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisPowerControl", later: "megarac.Media.StartMedia")
+      _ => false
+    })
+}
+
+fn with_mktemp_refused(w: MtCollins1BootWorld) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs, environment: w.environment, agent: w.agent, remote_hosts: w.remote_hosts,
+    clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: true,
+  }
+}
+
+// A PRE-POWER LOOK OPENED ITS SESSION AND COULD NOT STAGE THE CSRF HEADER FILE (side chat on gunbc#16247, P1a,
+// through the route). mktemp refuses on the worker, so the look's bracket never enters AFTER OpenSession
+// succeeded: the real attach path answers SessionCloseNeverRan, the stale power-off is withheld on it, and the
+// attempt stops with ONE OpenSession, no media write, no power action, and the typed record whose cause names
+// the close that never ran. The positive control is the same world with mktemp working, in the claim above.
+test fn a_pre_power_look_that_could_not_stage_its_header_file_is_withheld_as_a_session_left_open() -> Bool {
+  match run_attempt(world: with_mktemp_refused(w: host_on_with_stale(close_releases: true))) {
+    WitnessReturned { value, route } =>
+      count_named(route: route, name: "megarac.Media.OpenSession") == 1
+        && count_named(route: route, name: "megarac.Media.CloseSession") == 0
+        && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && count_named(route: route, name: "megarac.Media.StopMedia") == 0
+        && reached_no_power_action(route: route)
+        && (match value.media {
+          MegaRacMediaAttachWithheld { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, cause: c, look: _ } =>
+            match c {
+              LookSessionNotReleased { detail: d } => string_contains(s: d, pattern: "CloseSession never ran") && string_contains(s: d, pattern: "no private directory could be created")
+              LookSecretFileLeft => false
+            }
+          _ => false
+        })
     _ => false
   }
 }
@@ -1433,6 +1655,7 @@ test fn an_attempt_that_ends_with_the_host_off_stops_its_own_session() -> Bool {
         && string_contains(s: outcome_reason(a: value), pattern: "end-of-attempt") == false
         && end_release_stopped(end: value.end_media)
         && count_named(route: route, name: "megarac.Media.StopMedia") == 1
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl") >= 1
         && first_ordinal(route: route, name: "megarac.Media.StopMedia") > last_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisPowerControl")
         && controller_writes_are_under_the_hold(route: route)
     _ => false
@@ -1460,7 +1683,7 @@ fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> Mt
   MtCollins1BootWorld {
     bmc: w.bmc, fs: w.fs,
     environment: concat(w.environment, [ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_RECEIPT", value: path }, ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_NONCE", value: nonce }]),
-    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media,
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, mktemp_refused: w.mktemp_refused
   }
 }
 
@@ -1502,6 +1725,7 @@ fn controller_left_the_override_pending(w: MtCollins1BootWorld?) -> Bool {
     Present { value: world } => match world.bmc.boot_override {
       BootOverrideNone => false
       BootOverrideCdromEfiNextBoot => true
+      BootOverridePxeNextBoot => true
     }
   }
 }
@@ -1517,7 +1741,7 @@ test fn a_pending_override_is_cleared_before_this_attempt_sets_its_own() -> Bool
     WitnessReturned { value, route, state } =>
       count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") >= 2
         && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") >= 0
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisBootOptionsClear", later: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
         && override_stale_words(a: value) == "stale override cleared"
         && override_release_words(a: value) == "cleared"
         && !controller_left_the_override_pending(w: state)
@@ -1538,7 +1762,7 @@ test fn a_refused_attempt_releases_the_override_it_set() -> Bool {
     WitnessReturned { value, route, state } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
         && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear") == 1
-        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootOptionsClear")
+        && precedes(route: route, earlier: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions", later: "diagnostic.ipmi.Tool.ChassisBootOptionsClear")
         && override_release_words(a: value) == "cleared"
         && !controller_left_the_override_pending(w: state)
         && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_release=cleared")
@@ -1692,6 +1916,803 @@ test fn an_unreadable_parameter_five_read_sets_nothing() -> Bool {
         && string_contains(s: outcome_reason(a: value), pattern: "handoff withheld")
         && string_contains(s: override_stale_words(a: value), pattern: "unread")
         && starts_with(s: override_release_words(a: value), prefix: "not required: ")
+    _ => false
+  }
+}
+
+// ─── THE CONTROLLER COLD RESET ROUTE (side chat on gunbc#16529, F4) ─────────────────────────────
+// The PRODUCTION entry, gunbc.machine_intake.mtcollins1_bmc_cold_reset mtcollins1_bmc_cold_reset_wet, executed in
+// the boot's own world through the boot's own dry realization: every read and the one attempt are real dispatches
+// of extdeps.bmc.ipmi operations, answered by gunbc.bmc_dry_realization over gunbc.bmc_model (whose controller
+// stops answering after a cold reset and answers again later). Each claim reads the ROUTE -- the operations in the
+// order the entry issued them -- and the receipt the entry wrote. A route that read power before the attempt and
+// reused it as the after-reading, attempted twice, attempted before reading power, or polled past its bound makes
+// one of these red. No hardware is touched and no approved reset is spent.
+data matrix_cold_reset_mc_info: String = "diagnostic.ipmi.Tool.McInfo"
+data matrix_cold_reset_chassis_status: String = "diagnostic.ipmi.Tool.ChassisStatus"
+data matrix_cold_reset_attempt: String = "diagnostic.ipmi.Tool.McResetCold"
+
+// THE CONTROLLER'S COMPLETE `mc info` ANSWER, transcribed from this unit's own capture at firmware 0.45
+// (artifacts/bmc/mtcollins1-boot-run-41573858366/mtcollins1-boot-mc-info-41573858366.txt, the bytes
+// test.claim.host.bmc_cold_reset_witness parses). The boot's world models only the firmware row of this
+// controller (ipmitool_mc_info_mt_collins_transcribed_fields), which the cold-reset route reads as undecodable --
+// correctly, since an undecodable answer establishes no recovery -- so a route claim that needs the controller to
+// be seen available must model the whole answer.
+data matrix_cold_reset_mc_info_fields: IpmiMcInfoFields = IpmiMcInfoFields {
+  device_id: Present { value: 32 },
+  device_revision: Present { value: 1 },
+  firmware: Present { value: IpmiMcInfoFirmwareRevision { major: 0, minor: 45 } },
+  manufacturer_id: Present { value: 0 },
+  manufacturer_name: Present { value: "Unknown" },
+  product_id: Present { value: 516 },
+  product_name: Present { value: "Unknown (0x204)" },
+  device_available: Present { value: true },
+  provides_device_sdrs: Present { value: true },
+}
+
+// The boot's world with host power ON, the controller's complete mc info answer (above), the one directory the
+// receipt path lives in, and the controller events a scenario schedules. Everything else -- the credential path,
+// the run identity, the hold store -- is the boot's.
+fn matrix_cold_reset_world() -> MtCollins1BootWorld {
+  let base = world_with_console(lines: [])
+  with_fs(w: with_bmc(w: base, bmc: bmc_with_mc_info(world: bmc_with_power(world: base.bmc, power: BmcPowerOn), fields: Present { value: matrix_cold_reset_mc_info_fields })), fs: ModeledFilesystem {
+    files: base.fs.files,
+    directories: concat(xs: base.fs.directories, ys: ["target"]),
+    refused_reads: base.fs.refused_reads,
+    stats: base.fs.stats,
+  })
+}
+
+fn matrix_cold_reset_binding(operation: String, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> OperationBinding<MtCollins1BootWorld> {
+  OperationBinding { at: bmc_ipmi_operation(operation: operation), handler: bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: reply) }
+}
+
+// THE BOOT'S PRODUCTION REALIZATION, with a scenario's controller behaviors replacing the production answer for
+// the operations they name (two bindings for one operation is a refusal, so the production one is filtered out).
+fn matrix_cold_reset_run(overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+  matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: overrides, unapproved_fixture: false)
+}
+
+// THE WATCH CLAIMS RUN THE PRODUCTION ENTRY, mtcollins1_bmc_cold_reset_wet, under the production admission
+// (BudgetAdmitted{67} under the signed grant, gunbc.ci.ci_budget_raise mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant).
+// THE REFUSAL CLAIM RUNS THE ROUTE UNDER A SUPPLIED UNAPPROVED ADMISSION: the same step's approvals with no grant
+// (introduced 35, raises empty), admitted through the production fold, so it is BudgetRaiseUnapproved{67, 35} -- the
+// state production was in before the sign-off, and the one any required value above every grant reaches. It goes
+// through mtcollins1_bmc_cold_reset_wet_admitted, whose seal admits this runner.
+fn matrix_cold_reset_unapproved_budget() -> BudgetAdmission {
+  budget_admission(minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), approvals: StepBudgetApprovals {
+    budget: mtcollins1_bmc_cold_reset_step_budget_approvals.budget,
+    introduced: mtcollins1_bmc_cold_reset_step_budget_approvals.introduced,
+    raises: [],
+  })
+}
+
+fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<OperationBinding<MtCollins1BootWorld>>, unapproved_fixture: Bool) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  evaluate_in_witness_frame(
+    frame: matrix_frame_over(realization: OperationRealization {
+      identity: production.identity,
+      initial: production.initial,
+      epoch: production.epoch,
+      advance: production.advance,
+      bindings: concat(xs: filter(production.bindings, b => all(overrides, o => !(o.at.service == b.at.service && o.at.operation == b.at.operation))), ys: overrides),
+    }),
+    subject: fn(_scope) { if unapproved_fixture { mtcollins1_bmc_cold_reset_wet_admitted(budget: matrix_cold_reset_unapproved_budget()) } else { mtcollins1_bmc_cold_reset_wet() } },
+  )
+}
+
+fn matrix_cold_reset_receipt(state: MtCollins1BootWorld?) -> String {
+  match state {
+    Absent => ""
+    Present { value: w } => fold(w.fs.files, init: "", f: fn(acc, f) { if string_contains(s: f.path, pattern: mtcollins1_bmc_cold_reset_receipt_path) { f.content } else { acc } })
+  }
+}
+
+// WHAT THE ROUTE READ, as the receipt records it: the baseline mc info DECODED as available (this world's complete
+// answer, firmware 0.45), and -- where the scenario saw a loss -- that loss was a missing response on the first poll
+// after the attempt (the modeled controller stops answering 2 s after the request; the first poll is 15 s later).
+// A world whose answers do not decode (the boot's firmware-row-only record) cannot satisfy these, which is the
+// control the first version of these claims lacked.
+data matrix_cold_reset_baseline_available_line: String = "mc_before=available, firmware 0.45"
+data matrix_cold_reset_loss_by_no_response: String = "lost after 1 poll(s) (no response (no reply to Get Channel Authentication Capabilities (exit 1)"
+// The watch polls run at one -v, and the dry controller names the unanswered stage only when the call carried -v
+// (gunbc.bmc_dry_realization bmc_controller_unanswered), so this record in the receipt is also the evidence that the
+// polls ran at -v. The baseline read runs at the default verbosity.
+data matrix_cold_reset_verbose_unanswered_record: String = "poll=exit 1; stderr: Get Auth Capabilities error | Error issuing Get Channel Authentication Capabilities request | Error: Unable to establish IPMI v2 / RMCP+ session"
+data matrix_cold_reset_answered_record: String = "poll=exit 0; stderr: (none)"
+
+// The boot's own world (firmware-row-only mc info) with this scenario's power and receipt directory.
+fn matrix_cold_reset_world_firmware_row_only() -> MtCollins1BootWorld {
+  let w = matrix_cold_reset_world()
+  with_bmc(w: w, bmc: bmc_with_mc_info(world: w.bmc, fields: Present { value: ipmitool_mc_info_mt_collins_transcribed_fields }))
+}
+
+fn matrix_cold_reset_exited_success(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+fn matrix_cold_reset_count_after(route: List<DispatchRecord>, name: String, after: Int) -> Int {
+  count(filter(route, r => operation_name(r: r) == name && r.ordinal > after))
+}
+
+// SCENARIO CONTROLLERS, each a reply to the one attempt.
+// A controller that ignores the request: ipmitool reports sending, and nothing changes.
+fn matrix_cold_reset_ignored(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: world }
+}
+
+// A controller that goes away and does not come back within any bound this route declares.
+fn matrix_cold_reset_never_back(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: second(count: 100000)) }
+}
+
+// The request took effect, but ipmitool was killed at its deadline (coreutils timeout exits 124) before it printed.
+fn matrix_cold_reset_reply_lost(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcRefused { exit_code: 124, stderr: "", world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: bmc_dry_cold_reset_back_after) }
+}
+
+// The controller restarts as usual, and host power is lost inside the window (30 s after the request).
+fn matrix_cold_reset_power_lost_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  let reset = bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: bmc_dry_cold_reset_back_after)
+  BmcReplied {
+    stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"),
+    world: bmc_with_pending(world: reset, pending: concat(xs: reset.pending, ys: [BmcScheduledEvent { at: second(count: second_count(s: call.now) + 30), event: BmcAcPowerLost {} }]), fired: reset.fired),
+  }
+}
+
+// A controller that resets briefly (gone at +2 s, back at +20 s) while every mc info probe in that window fails
+// LOCALLY: the command cannot read its password file, so it exits 1 without reaching the controller (no session line,
+// no deadline). The first poll after the attempt falls in the window; the later ones answer available. The reset
+// happened, but nothing the route read evidences it, so the route may not report it.
+data matrix_cold_reset_local_failure_back_after: Second = second(count: 20)
+data matrix_cold_reset_local_failure_stderr: String = "Unable to read password from file /run/bmc/password\n"
+
+fn matrix_cold_reset_brief_reset(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: matrix_cold_reset_local_failure_back_after) }
+}
+
+fn matrix_cold_reset_mc_info_failing_locally_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    BmcRefused { exit_code: 1, stderr: matrix_cold_reset_local_failure_stderr, world: world }
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
+  }
+}
+
+// The same reset window, but every mc info inside it is killed at the read deadline (coreutils timeout exit 124,
+// nothing printed): the other no-answer form, the one this unit's capture shows
+// (artifacts/bmc/mtcollins1-boot-run-43040335415/mtcollins1-boot-diagnostics.txt, "exit=124 stdout=[] stderr=[]").
+fn matrix_cold_reset_mc_info_deadline_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    BmcRefused { exit_code: 124, stderr: "", world: world }
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
+  }
+}
+
+// RECOVERED THEN LOST (gunbc#16659). The controller resets as usual and comes back; the answer that shows it back is
+// the last one: a second reset begins a second after it and never ends. This is the shape run 44210890542 was
+// accepted on before the controller fell silent again. Only the first answer after the first reset ended schedules
+// the relapse, so the baseline read and the polls before it answer as the production controller does.
+fn matrix_cold_reset_resets_began(world: BmcWorld) -> Int {
+  let tally = fn(acc, e) { match e.event { BmcControllerResetBegan {} => acc + 1  _ => acc } }
+  fold(world.pending, init: fold(world.fired, init: 0, f: tally), f: tally)
+}
+
+fn matrix_cold_reset_reset_ended(world: BmcWorld) -> Bool {
+  any(world.fired, e => match e.event { BmcControllerResetEnded {} => true  _ => false })
+}
+
+fn matrix_cold_reset_mc_info_relapsing_after_one_answer(world: BmcWorld, call: OperationCall) -> BmcReply {
+  let reply = bmc_mc_info_reply(world: world, call: call)
+  if matrix_cold_reset_reset_ended(world: world) && !bmc_controller_resetting(world: world) && matrix_cold_reset_resets_began(world: world) == 1 {
+    match reply {
+      BmcReplied { stdout: out, world: w } =>
+        BmcReplied { stdout: out, world: bmc_with_pending(world: w, pending: concat(xs: w.pending, ys: [BmcScheduledEvent { at: second(count: second_count(s: call.now) + 1), event: BmcControllerResetBegan {} }]), fired: w.fired) }
+      _ => reply
+    }
+  } else {
+    reply
+  }
+}
+
+// Chassis status that never answers (the baseline read included).
+fn matrix_cold_reset_power_unreadable(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
+}
+
+// POSITIVE: mc info and chassis status read BEFORE the one attempt, all under the unit hold; the watch sees the
+// controller go and come back; host power is read AGAIN after the last mc info poll, and the attempt is accepted.
+test fn the_cold_reset_route_reads_power_before_attempts_once_and_reads_power_fresh_after_recovery() -> Bool {
+  match matrix_cold_reset_run(overrides: []) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let holds = ordinals_where(route: route, keep: is_hold_write)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && precedes(route: route, earlier: matrix_cold_reset_chassis_status, later: matrix_cold_reset_attempt)
+        && precedes(route: route, earlier: matrix_cold_reset_mc_info, later: matrix_cold_reset_attempt)
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 2
+        && last_ordinal(route: route, name: matrix_cold_reset_chassis_status) > last_ordinal(route: route, name: matrix_cold_reset_mc_info)
+        && last_ordinal(route: route, name: matrix_cold_reset_mc_info) > attempt
+        && count(holds) >= 2
+        && match holds.first() { Present { value: h } => h < attempt  Absent => false }
+        && match holds.last() { Present { value: h } => h > last_ordinal(route: route, name: matrix_cold_reset_chassis_status)  Absent => false }
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt and stayed available through the window: available before")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && string_contains(s: receipt, pattern: " poll(s) of the window over ")
+        && string_contains(s: receipt, pattern: " ms on the monotonic clock (firmware 0.45)")
+        && string_contains(s: receipt, pattern: "fan=unobserved")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_answered_record)
+    }
+    _ => false
+  }
+}
+
+// AN UNAPPROVED STEP BUDGET REFUSES AT THE ENTRY, and touches nothing (merry-fox-82 msg_887e605b, msg_a124a26d on
+// gunb-ai/gunbc#16668): under the step's approvals with no grant, the step requires 67 minutes and its budget admits 35,
+// so the route, run in the same world the watch claims use, ends at the typed pre-hold refusal derived from that
+// admission -- before any credential read, hold write or controller operation -- and its receipt names the unapproved
+// raise. Production now admits 67 under the signed grant (the watch claims run it); deleting the refusal reaches the
+// hold and the controller.
+test fn the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call() -> Bool {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: [], unapproved_fixture: true) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count(ordinals_where(route: route, keep: is_hold_write)) == 0
+        && count(filter(route, r => r.invocation.at.service == "Filesystem" && starts_with(s: record_path(r: r), prefix: unit_hold_store_path(tree: host_state_tree()) as String))) == 0
+        && count_named(route: route, name: matrix_cold_reset_mc_info) == 0
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 0
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 0
+        && string_contains(s: receipt, pattern: "hold=not-attempted")
+        && string_contains(s: receipt, pattern: "stage=pre-hold refused: the step requires 67 min")
+        && string_contains(s: receipt, pattern: "its budget admits 35 min: the raise is unapproved")
+        && string_contains(s: receipt, pattern: "controller=untouched")
+    }
+    _ => false
+  }
+}
+
+// THE AFTER-READING IS FRESH: host power is lost inside the reset window. The route reads it again after the
+// controller recovers and refuses on the difference. A route that reused its baseline reading would read on twice
+// and accept.
+test fn power_lost_inside_the_reset_window_is_read_fresh_and_refused() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_power_lost_in_window)]) {
+    WitnessReturned { value, route, state } =>
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 2
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "read differently at the two endpoints (on before, off after)")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+    _ => false
+  }
+}
+
+// NO ATTEMPT ON AN UNREAD BASELINE: chassis status does not answer, so the route attempts nothing.
+test fn an_unreadable_baseline_power_reading_attempts_nothing() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "ChassisStatus", reply: matrix_cold_reset_power_unreadable)]) {
+    WitnessReturned { value, route, state } =>
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 0
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "reset=not-attempted")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+    _ => false
+  }
+}
+
+// THE BOUND IS THE ROUTE'S: a controller that never comes back is polled once to see the loss and then exactly
+// answer_polls more times, attempted once, never read for power after, and refused.
+test fn a_controller_that_never_recovers_is_polled_exactly_to_the_bound_and_attempted_once() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_never_back)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == 1 + mtcollins1_bmc_cold_reset_bounds.answer_polls
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "not recovered within the bound")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_loss_by_no_response)
+    }
+    _ => false
+  }
+}
+
+// AN ATTEMPT IPMITOOL DID NOT REPORT IS STILL AN ATTEMPT: ipmitool is killed at its deadline after the request
+// took effect. The route never reads that as "not sent": it watches (read-only, no second attempt), records what it
+// saw, and refuses with the effect named uncertain.
+test fn an_attempt_whose_reply_was_lost_is_watched_and_reported_uncertain_never_unsent() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_reply_lost)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) >= 2
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 2
+        && string_contains(s: receipt, pattern: "reset=attempted once; ipmitool exited nonzero, effect unknown")
+        && string_contains(s: receipt, pattern: "UNCERTAIN")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && !string_contains(s: receipt, pattern: "not sent")
+    }
+    _ => false
+  }
+}
+
+// A CONTROLLER THAT IGNORES THE ATTEMPT IS NOT READ AS RESET: ipmitool reports sending, the controller keeps
+// answering, and after drop_polls polls the route refuses with no effect observed.
+test fn a_controller_that_ignores_the_attempt_is_not_read_as_reset() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "no loss of availability was observed")
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: matrix_cold_reset_receipt(state: state), pattern: "last: available, firmware 0.45")
+    }
+    _ => false
+  }
+}
+
+// A -v POLL KILLED AT ITS DEADLINE WITH NOTHING SAID IS NOT A LOSS (decision X on gunbc#16529, msg_4588a441; this claim
+// read the opposite before X). A reset window whose -v polls are killed at the read deadline with nothing printed is a
+// run of failed probes, not a loss: under the watch-poll row a silent controller ends inside the deadline on its stage
+// line, so a deadline with nothing said is a controller answering too slowly. The route polls to its loss bound and
+// refuses with no loss observed -- the safe direction: the worst case is an unaccepted reset, never a false one. The
+// captured exit-124 form is still a missing response at the default verbosity it was captured at
+// (test.claim.host.bmc_cold_reset_witness a_verbose_poll_killed_at_its_deadline_with_nothing_said_...).
+test fn a_reset_window_answered_only_by_the_read_deadline_at_one_v_is_never_read_as_a_loss() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_deadline_in_window)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: receipt, pattern: "poll=exit 124; stderr: (none)")
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && !string_contains(s: receipt, pattern: "recovered after the attempt")
+    }
+    _ => false
+  }
+}
+
+// ─── THE WATCH-POLL TIMING SCENARIOS (decision X on gunbc#16529, msg_4588a441) ──────────────────────────────────────
+// Each controller below answers at the pace ipmitool 1.8.19 would wait for it (extdeps.bmc.ipmitool_lanplus_timing),
+// read from the call's own materialized argv -- the coreutils deadline and the -R/-N words the watch-poll row rendered
+// (gunbc.bmc_dry_realization bmc_call_lanplus_clock) -- so a change to that row changes what these controllers answer.
+
+// A controller that never resets, inside a window. The attempt leaves the controller's IPMI service as it was;
+// bmc_controller_cold_reset is used here only to open the window (+2 s to +20 s, covering the first poll after the
+// attempt) that the McInfo behaviors below key on, and they answer from the world's mc info record inside it.
+fn matrix_cold_reset_ignored_in_a_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplied { stdout: concat(ipmitool_mc_reset_cold_sent_line, "\n"), world: bmc_controller_cold_reset(world: world, now: call.now, drop_after: bmc_dry_cold_reset_drop_after, back_after: matrix_cold_reset_local_failure_back_after) }
+}
+
+// Inside the window the call's Set Session Privilege Level datagram is lost: a request ipmitool sends ONCE, so -R
+// alone decides it (unlike Get Channel Authentication Capabilities, whose second request absorbs one lost datagram at
+// any -R; extdeps.bmc.ipmitool_lanplus_timing). With an attempt left after the loss, ipmitool's retransmit is answered
+// and the poll reads available; with none, ipmitool prints the bare privilege line that names that stage unanswered,
+// and the session is not established (ipmi_set_session_privlvl_cmd; the default privilege, ADMINISTRATOR).
+fn matrix_cold_reset_mc_info_dropping_one_datagram_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    match bmc_call_lanplus_clock(call: call) {
+      Absent => BmcReplyFault { reason: "an mc info poll whose argv carries no readable deadline or attempt count" as NonEmptyStr }
+      Present { value: clock } =>
+        if ipmitool_lanplus_request_survives_drops(invocation: clock.invocation, dropped: 1) { bmc_mc_info_answer(world: world) } else {
+          BmcRefused { exit_code: 1, stderr: join([ipmitool_lanplus_set_privilege_prefix, "ADMINISTRATOR", ipmitool_lanplus_set_privilege_bare_suffix, "\n", ipmitool_lanplus_session_unestablished_line, "\n"], ""), world: world }
+        }
+    }
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
+  }
+}
+
+// Inside the window the controller answers every request only at the end of ipmitool's last attempt, and its session
+// open on the first iteration (extdeps.bmc.ipmitool_lanplus_timing ipmitool_mc_info_slowest_answered_wait, a lower
+// bound). If that mc info would finish before the deadline it reads available; otherwise coreutils kills it with nothing
+// printed (exit 124).
+fn matrix_cold_reset_mc_info_slow_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    match bmc_call_lanplus_clock(call: call) {
+      Absent => BmcReplyFault { reason: "an mc info poll whose argv carries no readable deadline or attempt count" as NonEmptyStr }
+      Present { value: clock } =>
+        if !measure_le(a: clock.deadline, b: ipmitool_mc_info_slowest_answered_wait(invocation: clock.invocation)) { bmc_mc_info_answer(world: world) } else { BmcRefused { exit_code: 124, stderr: "", world: world } }
+    }
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
+  }
+}
+
+// A controller that really resets (the dry adapter's default window) and, while it is down, refuses every datagram
+// with an ICMP port-unreachable, which doubles ipmitool's wait per attempt.
+fn matrix_cold_reset_mc_info_refusing_in_window(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if bmc_controller_resetting(world: world) {
+    bmc_controller_silent(world: world, call: call, refused: true)
+  } else {
+    bmc_mc_info_reply(world: world, call: call)
+  }
+}
+
+// A SILENT CONTROLLER IS A MISSING RESPONSE INSIDE THE DEADLINE, EVEN WITH ICMP REFUSALS: under the watch-poll row the
+// two unanswered Get Channel Authentication Capabilities requests cost at most 12 s, so each poll in the window ends on
+// the stage line that names them, the loss is a missing response, and the route recovers, reads power fresh, and
+// accepts. Under ipmitool's default of four attempts the same controller costs 20 s without refusals (40 s with), the
+// deadline or past it, and no stage line is ever printed.
+test fn a_silent_controller_refusing_with_icmp_is_a_missing_response_inside_the_deadline() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_refusing_in_window)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
+        && !string_contains(s: receipt, pattern: "poll=exit 124")
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt and stayed available through the window: available before")
+    }
+    _ => false
+  }
+}
+
+// A SLOW CONTROLLER THAT NEVER RESET CANNOT REACH AN ACCEPTED RECOVERY: ipmitool reports sending, the controller keeps
+// its service, and the first poll after the attempt -- answered message by message at the end of each last attempt --
+// runs past the 20 s deadline (at least 24 s under the watch-poll row: the cipher-suite discovery a call without -C
+// makes, and a session open that succeeds on its first iteration) and is killed with nothing printed. That -v poll is a
+// failed probe, so the next poll answering available is no recovery: the route polls to its loss bound and refuses.
+// Read as a missing response (the rule before X), it would be a loss, the next answer a recovery, and with power
+// agreeing an accepted reset that never happened.
+test fn a_slow_controller_that_never_reset_hitting_the_deadline_is_a_failed_probe_and_never_accepted() -> Bool {
+  match matrix_cold_reset_run(overrides: [
+    matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored_in_a_window),
+    matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_slow_in_window),
+  ]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: receipt, pattern: "poll=exit 124; stderr: (none)")
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && string_contains(s: receipt, pattern: "last: available, firmware 0.45")
+        && !string_contains(s: receipt, pattern: "recovered after the attempt")
+    }
+    _ => false
+  }
+}
+
+// ONE DROPPED DATAGRAM IS NOT A LOSS: ipmitool reports sending, the controller keeps its service, and the first poll
+// after the attempt loses its Set Session Privilege Level datagram. The watch-poll row's second attempt is answered,
+// so every poll reads available and the route refuses with no loss observed. With one attempt (the authenticated-read
+// row) that poll names the privilege stage unanswered, a loss, and the next answer an accepted recovery.
+test fn one_dropped_datagram_from_a_controller_that_never_reset_is_not_a_loss() -> Bool {
+  match matrix_cold_reset_run(overrides: [
+    matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored_in_a_window),
+    matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_dropping_one_datagram_in_window),
+  ]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && string_contains(s: receipt, pattern: "last: available, firmware 0.45")
+        && !string_contains(s: receipt, pattern: "Set Session Privilege Level")
+        && !string_contains(s: receipt, pattern: "recovered after the attempt")
+    }
+    _ => false
+  }
+}
+
+// A FAILED COMMAND IS NOT A SILENT CONTROLLER (side chat on gunbc#16529 at 7d87d15b, F1 narrowed), through the
+// route: available before, the attempt reported sent, the first poll after it fails locally, the next answers
+// available, and power reads the same. That failed probe is not a loss -- even though the modeled controller did
+// reset -- so nothing after it is a recovery: the route refuses with no loss observed, polls to the loss bound, and
+// never reports a recovery.
+test fn a_local_probe_failure_then_an_available_answer_never_reaches_an_accepted_recovery() -> Bool {
+  match matrix_cold_reset_run(overrides: [
+    matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_brief_reset),
+    matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_failing_locally_in_window),
+  ]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) == mtcollins1_bmc_cold_reset_bounds.drop_polls
+        && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && string_contains(s: receipt, pattern: "last: available, firmware 0.45")
+        && !string_contains(s: receipt, pattern: "recovered after the attempt")
+    }
+    _ => false
+  }
+}
+
+// THE CONTROL THE FIRST VERSION LACKED: the same ignoring controller in the boot's own world, whose mc info answer
+// models only the firmware row. Every answer is UNDECODABLE, so the baseline is not available, no answer establishes a
+// loss or a recovery, and the route refuses naming the undecodable answers -- it is never read as available. The
+// claim above, run in this world, goes red; this one is what it would have read.
+test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_recovery() -> Bool {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world_firmware_row_only(), overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)], unapproved_fixture: false) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && string_contains(s: receipt, pattern: "mc_before=baseline availability was not established (undecodable")
+        && string_contains(s: receipt, pattern: "no loss of availability was observed")
+        && string_contains(s: receipt, pattern: "last: undecodable")
+        && !string_contains(s: receipt, pattern: "available, firmware")
+    }
+    _ => false
+  }
+}
+
+// ── THE SUSTAINED WINDOW ON THE ROUTE (gunbc#16659) ─────────────────────────────────────────────
+// THE DISCRIMINATING RED: the production route, its controller answering once after recovering and then silent. It
+// is refused as RECOVERED THEN LOST, the after power read is never taken, and nothing is sent again. Without the
+// window this exact route was the accepted one.
+test fn a_controller_that_answers_once_after_recovering_then_falls_silent_is_recovered_then_lost_and_never_accepted() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_relapsing_after_one_answer)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "RECOVERED THEN LOST")
+        && string_contains(s: receipt, pattern: "then lost again after 0 further answer(s) inside the window (no response")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+    }
+    _ => false
+  }
+}
+
+// THE WINDOW ENDS BY TIME, and its poll ceiling only refuses: it is one past the paced polls that span W, so a clock
+// that has not reached W by then advanced less than the route's sleeps did.
+test fn the_cold_reset_window_ceiling_is_one_past_the_paced_polls_that_span_w() -> Bool {
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  let n = mtcollins1_bmc_cold_reset_bounds.sustain_polls_at_most
+  w > 0 && (n - 1) * i >= w && (n - 2) * i < w
+}
+
+// ── THE WINDOW'S PACING AND CLOCK ON THE ROUTE (side chat on gunbc#16668) ───────────────────────
+// A scenario's failure begins 30 s after the first controller reset ended: by then the route has seen the recovering
+// answer (the polls are 16 s apart and the reset ends 60 s after the request), and the window still has most of W to run.
+fn matrix_cold_reset_window_open(world: BmcWorld, now: Second) -> Bool {
+  any(world.fired, e => match e.event { BmcControllerResetEnded {} => second_count(s: e.at) + 30 <= second_count(s: now)  _ => false })
+}
+
+fn matrix_cold_reset_sleep_failing_in_window() -> OperationBinding<MtCollins1BootWorld> {
+  let normal = virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds")
+  OperationBinding {
+    at: sleep_delay_seconds_operation,
+    handler: fn(state, call) {
+      if matrix_cold_reset_window_open(world: state.bmc, now: call.now) {
+        OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "sleep: interrupted\n" } }, state: state, elapsed: second(count: 0) }
+      } else {
+        normal.handler(state, call)
+      }
+    },
+  }
+}
+
+fn matrix_cold_reset_uptime_unreadable_in_window() -> OperationBinding<MtCollins1BootWorld> {
+  OperationBinding {
+    at: linux_procfs_read_uptime_operation,
+    handler: fn(state, call) {
+      let record = if matrix_cold_reset_window_open(world: state.bmc, now: call.now) { "garbage" } else {
+        let up = state.worker.uptime_at_origin + (second_count(s: call.now) as Int)
+        join([to_string(up), ".00 ", to_string(up), ".00\n"], "")
+      }
+      OperationObserved { observation: FileObserved { observation: FileOperationSucceeded { byte_count: content_bytes(s: record), content: record } }, state: state, elapsed: second(count: 0) }
+    },
+  }
+}
+
+// Every mc info read takes `seconds` of the controller's time (at most the read ceiling), answering as the production
+// controller does.
+fn matrix_cold_reset_mc_info_taking(seconds: Int) -> OperationBinding<MtCollins1BootWorld> {
+  let lifted = bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: bmc_mc_info_reply)
+  OperationBinding {
+    at: bmc_ipmi_operation(operation: "McInfo"),
+    handler: fn(state, call) {
+      match lifted(state, call) {
+        OperationObserved { observation: o, state: st, elapsed: _ } => OperationObserved { observation: o, state: st, elapsed: second(count: seconds) }
+        other => other
+      }
+    },
+  }
+}
+
+// F1: A PACING SLEEP FAILS INSIDE THE WINDOW while the controller keeps answering available. The route stops before any
+// further poll and refuses with the pacing cause; no after power read is taken. A route that discarded the sleep's
+// result would keep polling unpaced and refuse on another cause (its clock never reaches W), which this claim rejects.
+test fn a_pacing_sleep_failing_inside_the_window_refuses_on_the_pacing_and_polls_no_further() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_sleep_failing_in_window()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "a pacing sleep before a poll failed")
+        && string_contains(s: receipt, pattern: " answer(s) into the window)")
+        && string_contains(s: receipt, pattern: "poll=pacing sleep failed; no poll taken")
+        && !string_contains(s: receipt, pattern: "monotonic clock was not established")
+    }
+    _ => false
+  }
+}
+
+// THE CLOCK BECOMES UNREADABLE INSIDE THE WINDOW while the controller keeps answering: refused on the clock, never
+// accepted on a count of answers.
+test fn an_unreadable_clock_inside_the_window_refuses_and_never_accepts() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_uptime_unreadable_in_window()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "monotonic clock was not established (before a window poll, the monotonic clock could not be read")
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+    }
+    _ => false
+  }
+}
+
+// SLOW BUT ANSWERING: every mc info takes 20 s. The window ends when W has elapsed, so the route accepts after far
+// fewer window polls than W / interval, and the receipt's elapsed span is at least W. A route ending on a count of
+// polls would take every one of them and fail the count.
+test fn slow_answering_reads_end_the_routes_window_by_time_not_by_poll_count() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_taking(seconds: 20)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) < mtcollins1_bmc_cold_reset_bounds.sustain_polls_at_most - 1
+    }
+    _ => false
+  }
+}
+
+// ── THE STEP TIMEOUT BOUNDS EVERY WINDOW THE WATCH PERMITS (side chat on gunbc#16668, F2) ─────────
+// THE WINDOW'S WALL SPAN ON THE ROUTE: from the end of the recovering poll (the first mc info after the attempt that
+// exited 0; the window's clock starts at the reading taken right after it) to the end of the route's last mc info.
+fn matrix_cold_reset_answered(r: DispatchRecord) -> Bool {
+  match r.outcome {
+    DispatchObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: c, stdout: _, stderr: _ } } } => c == 0
+    _ => false
+  }
+}
+
+fn matrix_cold_reset_window_span(route: List<DispatchRecord>) -> Int {
+  let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+  let polls = filter(route, r => operation_name(r: r) == matrix_cold_reset_mc_info && r.ordinal > attempt)
+  match first_where(xs: polls, keep: fn(r) { matrix_cold_reset_answered(r: r) }) {
+    Absent => 0 - 1
+    Present { value: recovering } =>
+      match polls.last() {
+        Present { value: final } => (second_count(s: final.completed_at) as Int) - (second_count(s: recovering.completed_at) as Int)
+        Absent => 0 - 1
+      }
+  }
+}
+
+fn matrix_cold_reset_window_allowance_seconds() -> Int { second_count(s: mtcollins1_bmc_cold_reset_window_allowance()) as Int }
+
+// The instant the scenario's failure begins (matrix_cold_reset_window_open), in seconds of virtual time.
+fn matrix_cold_reset_window_opened_at(world: BmcWorld) -> Int {
+  fold(world.fired, init: 0 - 1, f: fn(acc, e) { match e.event { BmcControllerResetEnded {} => (second_count(s: e.at) as Int) + 30  _ => acc } })
+}
+
+// /proc/uptime STALLS inside the window: it keeps answering, readably, the instant the failure began.
+fn matrix_cold_reset_uptime_stalled_in_window() -> OperationBinding<MtCollins1BootWorld> {
+  OperationBinding {
+    at: linux_procfs_read_uptime_operation,
+    handler: fn(state, call) {
+      let at = if matrix_cold_reset_window_open(world: state.bmc, now: call.now) { matrix_cold_reset_window_opened_at(world: state.bmc) } else { second_count(s: call.now) as Int }
+      let up = state.worker.uptime_at_origin + at
+      let record = join([to_string(up), ".00 ", to_string(up), ".00\n"], "")
+      OperationObserved { observation: FileObserved { observation: FileOperationSucceeded { byte_count: content_bytes(s: record), content: record } }, state: state, elapsed: second(count: 0) }
+    },
+  }
+}
+
+// F2a: A READ THAT CROSSES W, THEN THE ACCEPTING POLL. Every mc info runs to the read ceiling, so the last window poll
+// that does not end the window is timed short of W and its read runs past W; the accepting poll comes one interval
+// later. The route accepts, and the window's wall span exceeds W + one interval + one read ceiling -- the window budget
+// before F2, which this execution overruns -- and stays within the window allowance the step timeout is derived from.
+test fn a_read_that_crosses_w_then_the_accepting_poll_stays_inside_the_window_allowance() -> Bool {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_taking(seconds: c)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+      let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && span > w + i + c
+        && span <= matrix_cold_reset_window_allowance_seconds()
+    }
+    _ => false
+  }
+}
+
+// F2b: A READABLE BUT STALLED CLOCK inside the window, while the controller keeps answering available. The first sample
+// that advanced less than the pacing interval refuses at that poll, naming it; the window's wall span stays within
+// the window allowance. A watch that let a stalled clock run its window polls out (the poll ceiling) would refuse on
+// another cause and overrun the allowance, which this claim rejects on both counts.
+test fn a_readable_but_stalled_clock_refuses_at_its_poll_inside_the_window_allowance() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_uptime_stalled_in_window()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "monotonic clock was not established (the monotonic clock advanced only ")
+        && string_contains(s: receipt, pattern: " across a pacing interval of 15000 ms")
+        && !string_contains(s: receipt, pattern: "paced window poll(s)")
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+        && span >= 0
+        && span <= matrix_cold_reset_window_allowance_seconds()
+    }
+    _ => false
+  }
+}
+
+// F2, THE SLOW CLOCK: every mc info runs to the read ceiling, and /proc/uptime does not count the reads -- each read
+// pulls the worker's uptime origin back by the time it took -- so each window sample advances exactly the pacing
+// interval while each poll takes the interval plus a full read. The pace guard admits it (it bounds the clock's
+// progress from below only), and the window ends only when this slow clock reaches W, after far more wall time than W.
+fn matrix_cold_reset_mc_info_unclocked_at_ceiling() -> OperationBinding<MtCollins1BootWorld> {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let lifted = bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: bmc_mc_info_reply)
+  OperationBinding {
+    at: bmc_ipmi_operation(operation: "McInfo"),
+    handler: fn(state, call) {
+      match lifted(state, call) {
+        OperationObserved { observation: o, state: st, elapsed: _ } =>
+          OperationObserved {
+            observation: o,
+            state: with_worker(w: st, worker: ModeledWorker { next_pid: st.worker.next_pid, processes: st.worker.processes, uptime_at_origin: st.worker.uptime_at_origin - c, principal: st.worker.principal }),
+            elapsed: second(count: c),
+          }
+        other => other
+      }
+    },
+  }
+}
+
+// The side chat's control: the slow clock ends inside the declared window allowance, accepting (it reaches W on the
+// last paced poll before the ceiling) after more wall time than W + 2 read ceilings + 1 interval, the bound 568a88f0
+// declared and this execution overruns.
+test fn a_clock_advancing_exactly_the_pace_while_reads_run_to_the_ceiling_ends_inside_the_window_allowance() -> Bool {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_unclocked_at_ceiling()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && span > w + 2 * c + i
+        && span <= matrix_cold_reset_window_allowance_seconds()
+    }
     _ => false
   }
 }

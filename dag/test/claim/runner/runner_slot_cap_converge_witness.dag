@@ -5,6 +5,7 @@ import extdeps.tools.grep { grep_files_with_fixed_strings_argv }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, non_empty_singleton, non_empty_to_list, FreeSemigroup }
 import std.measure { byte_size_count, hardware_thread_count }
+import product.host_identity { HostIdentity }
 import gunbc.runner.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
 import gunbc.runner.runner_slot_cap_converge {
@@ -212,8 +213,15 @@ test fn the_cgroup_row_is_keyed_by_the_slots_own_path() -> Bool {
 
 // The cap files this route writes ARE the one member list; it is the only writer of them since the
 // instance apply's memory-member copy left on 2026-10-30.
+//
+// #15950 (0e3a248b7d4f) made runner_host_cap_files take the host it renders for, because it now also
+// renders the transitional 70/71/72 drop-ins of that host's COMMITTED slots. So "the files ARE the one
+// member list" is a claim about a host carrying no transitional slot -- and this witness judges only
+// srv3's slots (every unit here is actions-runner@srv3-*, see `unit` and `retired_unit`), which is the
+// host `transitional_ci_slots` has no row for. Naming srv1 instead would make this false for a reason
+// the claim does not intend: srv1-01 is committed and adds three drop-ins.
 test fn the_cap_files_are_the_one_member_list() -> Bool {
-  let files = runner_host_cap_files()
+  let files = runner_host_cap_files(host: "srv3" as HostIdentity)
   let members = derived_runner_slot_cap_members()
   length(files) == length(members)
     && all(files, f => any(members, m => (m.dropin_path as String) == (f.path as String) && m.content == f.content))

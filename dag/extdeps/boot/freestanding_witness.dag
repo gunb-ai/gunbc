@@ -1,7 +1,7 @@
 module extdeps.boot.freestanding_witness
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.boot.emit { emit_freestanding_elf64, emit_pixel_writer_payload, witness_emitted_digest_non_empty, witness_emitted_file_size, witness_pixel_writer_code_uses_vga_base, witness_vga_base_matches_framebuffer_fact }
 import extdeps.boot.freestanding_payload { HollowPrebuiltInit, PrebuiltPayload }
@@ -11,11 +11,24 @@ import extdeps.formats.elf.segments { decode_elf64_phdr, elf64_phdr_to_load_segm
 import extdeps.formats.elf.types { ElfRejected, byte_at_in_bounds, decode_elf64_ehdr }
 import extdeps.exec_format { EntryPoint }
 import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boot.freestanding_witness",
+      decl_name: "int_lists_equal_at_offset",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 fn witness_emitted_ehdr_is_et_exec_x86_64() -> Bool {

@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import std.types { String, NonEmptyStr, List, Int, Bool, FilePath, Port }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
-import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count }
+import std.measure { PositiveMillisecond, positive_millisecond, positive_measure_count, ByteSize, byte_size_count }
 import std.os.types { OsPackageManager }
 import std.optional { Present, Absent }
 import extdeps.package_managers.apt {
@@ -43,6 +43,9 @@ import gunbc.live_deploy.slice_bounds {
   attempt_worker_slice_unit_name,
   repository_convergence_slice_unit_name,
   approval_broker_slice_unit_name,
+  DeclaredSliceMemoryMax,
+  declared_system_slice_memory_maxes,
+  live_deploy_slice_memory_max,
 }
 import gunbc.fleet.fleet_intent_network {
   srv1_tailscale_endpoint,
@@ -227,7 +230,10 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     ComposeOwned { kind: ck } => match ck {
       SystemdUnit => TeardownActs
       FleetConvergeTimerUnit => TeardownActs
-      FabricStorageServeUnit => TeardownActs
+      // Outside the deployment's ownership by the operator's ruling of 2026-11-10
+      // (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10): the fabric DB
+      // endpoint's unit stays the host's, so a retract that names it refuses rather than removing it.
+      FabricStorageServeUnit => TeardownRefuses { cause: TeardownOutsideOwnership }
       FabricStorageServeMapping => TeardownActs
       TailnetDoorServeUnit => TeardownActs
       AgentDoorServeUnit => TeardownActs
@@ -306,6 +312,7 @@ type DeploymentServiceConfig<Binary> {
   listen: HttpServerListenConfig
   serve_cpu_limit: EvaluationLimit
   serve_wall_limit: EvaluationLimit
+  pair_delivery: PairDelivery
 }
 
 // THE BOUND EXISTS BECAUSE ITS ABSENCE WAS MEASURED IN PRODUCTION, NOT BECAUSE A BOUND IS
@@ -419,10 +426,6 @@ data roadmap_ingress_function: NonEmptyStr = "roadmap_ingress"
 
 data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_ingress.dag"
 data approval_broker_ingress_function: NonEmptyStr = "approval_broker_ingress"
-
-data fabric_storage_ingress_entry_file: NonEmptyStr = "dag/gunbc/fabric/fabric_storage_ingress.dag"
-data fabric_storage_ingress_function: NonEmptyStr = "fabric_storage_ingress"
-data fabric_storage_handler_function: NonEmptyStr = "fabric_storage_serve_handle"
 
 // ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
 // Every other unit this deployment installs is named per deployment identity, so a lab twin gets
@@ -607,6 +610,7 @@ fn approval_broker_service_config(instance: HostDashboardInstance, port: Port) -
     },
     serve_cpu_limit: dashboard_serve_cpu_limit(),
     serve_wall_limit: dashboard_serve_wall_limit(),
+    pair_delivery: NotPairDelivered,
   }
 }
 
@@ -684,6 +688,50 @@ fn deployment_slice_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), ".slice"], "") as NonEmptyStr
 }
 
+// The deployment slice is capped at boot by gunbc.live_deploy.emit (MemoryMax= live_deploy_slice_memory_max,
+// MemoryHigh= / MemorySwapMax= alongside), exactly like a fleet system slice. So a named .service
+// under it -- a belt oneshot -- owes the same classification as a unit under any other capped system
+// slice: gunbc.compute.unit_bounds recognized_system_slice must admit it, or a belt unit refuses
+// UncappedSystemSlice at start despite a finite live memory.max (the srv1 daily-workspace belt refusal).
+// Its unit NAME is not a constant -- it is derived per deployment from the daily-workspace instance's
+// DeploymentNames by deployment_slice_unit_name above -- so the census must derive it, never hand-type
+// it. spec is the single home that can compose the row: it imports gunbc.live_deploy.slice_bounds for
+// the cap and gunbc.roadmap.roadmap_dashboard_instance for the instance, and owns the naming fold.
+// (slice_bounds stays a leaf and must NOT import spec -- spec imports slice_bounds -- the import cycle the
+// census cannot cross from its own side, so the deployment row is contributed here and read back by
+// gunbc.compute.unit_bounds.) This adds no memory budget: the cap is the value emit already writes.
+fn declared_deployment_system_slice_row() -> DeclaredSliceMemoryMax {
+  DeclaredSliceMemoryMax {
+    unit: deployment_slice_unit_name(names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance())),
+    memory_max: live_deploy_slice_memory_max,
+  }
+}
+
+// THE census: the single answer to "which system slices are capped, and by how much". It is read
+// through modeled_system_slice_memory_max below, which gunbc.compute.unit_bounds recognized_system_slice
+// delegates to -- so the positive-cap rule is written in exactly one place. It is the fleet-wide rows
+// slice_bounds declares, plus the derived deployment-slice row. A census that hand-typed the deployment
+// slice would drift the moment the deployment was renamed; composing it here keeps the name single-sourced.
+fn declared_system_slice_memory_maxes_including_deployment() -> List<DeclaredSliceMemoryMax> {
+  concat(declared_system_slice_memory_maxes(), [declared_deployment_system_slice_row()])
+}
+
+// THE one positive-cap rule, over THE census. This replaces the old slice_bounds-side lookup of the same
+// name, which read only the fleet roster and so answered Absent for the deployment slice -- a second,
+// disagreeing answer to "is this a capped system slice" (DESIGN single_authority). recognized_system_slice
+// DELEGATES to this lookup (matching Present/Absent) rather than re-writing the predicate, so there is one
+// rule, and production exercises the same lookup the witnesses do. It lives in spec, not in the
+// slice_bounds leaf, because the census needs spec's deployment naming and slice_bounds cannot import spec.
+fn modeled_system_slice_memory_max(unit: String) -> ByteSize? {
+  match (
+    declared_system_slice_memory_maxes_including_deployment()
+      |> filter(row => (row.unit as String) == unit && byte_size_count(b: row.memory_max) > 0)
+  ).first() {
+    Absent => none
+    Present { value: row } => Present { value: row.memory_max }
+  }
+}
+
 fn deployment_slice_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_slice_unit_name(names: names) as String], "") as NonEmptyStr
 }
@@ -693,17 +741,18 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
   service_unit.replace(from: ".service", to: "")
 }
 
-// THE FABRIC DB ENDPOINT'S UNIT, derived like the belt's: one per deployment identity, and emitted
-// only by the deployment whose instance holds the fabric DB placement (RoleSingletonHolding). It is
-// deployment state -- a retract removes the unit and the tailscale mapping -- while the store's files
-// are owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement fabric_storage_directory_demands).
-fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
-  join([deployment_belt_unit_stem(names: names), "-fabric-storage.service"], "") as NonEmptyStr
-}
-
-fn deployment_fabric_storage_unit_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/systemd/system/", deployment_fabric_storage_unit_name(names: names) as String], "") as NonEmptyStr
-}
+// THE FABRIC DB ENDPOINT'S OWN UNIT IS NOT DEPLOYMENT STATE. Its name and path were derived here, its text
+// emitted by gunbc.live_deploy.emit, staged and restarted by gunbc.live_deploy.apply_legs, torn down by
+// gunbc.live_deploy.retract_legs and required as a member by gunbc.live_deploy.role_singleton_convergence,
+// until the operator ruled on 2026-11-10 (gunbc.design_ruling::
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10): `gunbc-roadmap-fabric-storage.service` keeps the
+// unit and process it already has on srv1, and no modeled deploy may repoint, restart or remove it. The model
+// and the host had been two homes deciding one fragment, which is the fork
+// gunbc.design_argument::single_authority refuses, and the ruling names the model as the home that ends. What
+// the deployment still owns is declared below, because it is NOT the unit: the tailscale route to the
+// endpoint's door socket, and, as a dependency step, the store's ownership marker. The store's files remain
+// owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement
+// fabric_storage_directory_demands).
 
 // THE DOOR SOCKET OF THE HOLDER THIS SPEC CARRIES, built from the token's instance like every other
 // role singleton. A spec holding no role has no socket, and the emitter refuses rather than invent one.
@@ -831,6 +880,18 @@ fn deployment_belt_credential_recovery_unit_name(names: DeploymentNames) -> NonE
 
 fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt-credential-recovery.timer"], "") as NonEmptyStr
+}
+
+// THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; the operator ruling
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). Same stem discipline as the credential-recovery
+// backstop; the oneshot runs `belt_observe_once_cli` and the timer re-arms it every
+// belt_standings_refresh_backstop seconds.
+fn deployment_belt_standings_refresh_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-standings-refresh.service"], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-belt-standings-refresh.timer"], "") as NonEmptyStr
 }
 
 // THE PUBLICATION PRINCIPAL'S ALLOCATED NAME ON srv1, stated once and carried as a DeploymentNames
@@ -970,6 +1031,49 @@ fn deployment_belt_credential_recovery_unit_path(names: DeploymentNames) -> NonE
 fn deployment_belt_credential_recovery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_belt_credential_recovery_timer_unit_name(names: names) as String], "") as NonEmptyStr
 }
+
+fn deployment_belt_standings_refresh_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_standings_refresh_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_belt_standings_refresh_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_belt_standings_refresh_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE PAIR-DELIVERY unit pair (node://lab-converges-release-pair): the service runs the staged wet delivery from
+// its own unit (fetch, observed build-key verify, fold, place at the per-revision locus, restart) and the timer
+// re-arms it on its own cadence. #16669 deferred the INSTALL-SPECIFIC builders — the timer unit NAME (needed by
+// its enable leg) and the two unit-path builders (needed by the install legs) — together with the apply_legs
+// registration to this stacked PR; they reappear here verbatim with the source-side observation that makes the
+// guard check real work.
+fn deployment_pair_delivery_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.service"], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-pair-delivery.timer"], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_pair_delivery_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+fn deployment_pair_delivery_timer_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_pair_delivery_timer_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// WHETHER A DEPLOYMENT RUNS A RELEASE PAIR is the instance's own declaration, carried on its DesiredDeployment
+// row and realized onto the service config. #gunbc.design_argument::single_authority: the per-revision
+// release locus root the wet CLI places into and reads the served binding from is NOT derivable from
+// instance_root, and it used to sit in a single global `data` beside these names — a fork against the
+// per-deployment fact the comment living there claimed it to be. It now lives ONLY in PairDelivered; every
+// reader (the emitted unit's environment, the install-leg gate) takes base_root from the instance's
+// PairDelivered, so there is no global left to drift. The three env-var NAME rows below stay foundational and
+// cycle-free so the CLI that reads them and the unit file that sets them share one spelling.
+type PairDelivery = PairDelivered { base_root: NonEmptyStr } | NotPairDelivered
+data release_pair_deliver_base_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_BASE_ROOT"
+data release_pair_deliver_serve_unit_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_SERVE_UNIT"
+data release_pair_deliver_repo_root_env: NonEmptyStr = "GUNBC_PAIR_DELIVER_REPO_ROOT"
 
 // CONVERGE-0 loop member (operator directive 2026-08-09: 'timer in deployment membership').
 // The fleet-converge timer rides the belt-timer precedent EXACTLY — per-deployment names
@@ -1322,14 +1426,30 @@ fn deployment_approval_broker_front_door_steps(holding: RoleSingletonHolding) ->
   }
 }
 
-// The fabric DB endpoint's two owned members, after the dashboard's own: the unit (its ExecStart
-// references the binary and tree installed above) and then its tailscale route (routes to a live
-// service, the same reason the dashboard's mapping is last). Empty on every instance that does not
-// hold the placement.
+// THE ENDPOINT THAT OWNS A TAILSCALE SERVE MAPPING STEP. The roster above emits exactly ONE
+// TailscaleServeMapping member, and it spells its path with tailscale_serve_route_member_path of
+// the spec's declared serve endpoint -- the route key, without its scope node (the note above
+// deployment_owned_steps). The step itself carries only {kind, path}, so what its backend addresses
+// is decided by finding THIS endpoint through that route key, never by re-spelling a second
+// endpoint inventory: a mapping step whose path is the declared endpoint's route label is that
+// endpoint's mapping, and one that is not belongs to no endpoint this spec declares.
+fn deployment_declared_serve_mapping_endpoint(names: DeploymentNames, step: DeploymentArtifactStep) -> TailscaleServeEndpoint? {
+  let declared = names.tailscale_serve_endpoint
+  if tailscale_serve_route_member_path(endpoint: declared) == step.path {
+    Present { value: declared }
+  } else {
+    none
+  }
+}
+
+// The fabric DB endpoint's one owned member, after the dashboard's own: the tailscale route to the
+// endpoint's door socket (routes to a live service, the same reason the dashboard's mapping is last). The
+// endpoint's OWN unit is not a member at all since the operator's ruling of 2026-11-10 -- see the note above
+// deployment_fabric_storage_door_socket -- so no deploy stages or restarts it and no retract can tear it down.
+// Empty on every instance that does not hold the placement.
 fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match holding {
     HoldsProdRoleSingletons { holder } => [
-      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: deployment_fabric_storage_unit_path(names: names) },
       DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
     ]
     HoldsNoRoleSingleton => []
@@ -1505,6 +1625,7 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 fn deployment_service_config(
   instance: HostDashboardInstance,
   names: DeploymentNames,
+  pair_delivery: PairDelivery,
 ) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
@@ -1522,6 +1643,7 @@ fn deployment_service_config(
     },
     serve_cpu_limit: dashboard_serve_cpu_limit(),
     serve_wall_limit: dashboard_serve_wall_limit(),
+    pair_delivery: pair_delivery,
   }
 }
 
@@ -1546,6 +1668,7 @@ fn deployment_spec_for(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
+  pair_delivery: PairDelivery,
 ) -> DeploymentSpec {
   let holding = role_singleton_holding_under(realization: realization, instance: instance)
   DeploymentSpec {
@@ -1555,6 +1678,7 @@ fn deployment_spec_for(
     service: deployment_service_config(
       instance: instance,
       names: names,
+      pair_delivery: pair_delivery,
     ),
     approval_broker: approval_broker_service_config(
       instance: instance,

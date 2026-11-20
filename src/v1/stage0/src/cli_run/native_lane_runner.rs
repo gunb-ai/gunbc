@@ -3505,7 +3505,8 @@ const REFERENCE_CHECK_HOLDS_HEAD: &str = "references resolve:";
 const REFERENCE_CHECK_REFUSED_HEAD: &str = "references refused:";
 
 /// THE MARKED-REFERENCE CHECK, WALKED. `check-references` (`v2.cli.reference_check`) reads every module
-/// under the bound trees, extracts the `\@ref(...)` markers from their annotations and resolves each in
+/// under the bound trees, extracts the hashtag markers (`#module.path::decl`, the one grammar of
+/// `std.annotation_reference`) from their annotations and resolves each in
 /// the context built from the cited modules. The claims over that fold
 /// (`v2.test.claim.cli.reference_check`) run it on the interpreter; these walks are the inhabitance on
 /// the BUILT binary, and the first is the check itself:
@@ -3515,7 +3516,7 @@ const REFERENCE_CHECK_REFUSED_HEAD: &str = "references refused:";
 /// - over the holding fixture it holds with every marker resolved (a field, a function, a relay hop);
 /// - over the refusing fixture it refuses, and each marker's own finding is on stdout: no such
 ///   declaration, no such field, a cited module that does not read, a contested name, an unsupported
-///   type parameter, a malformed coordinate and an unterminated marker.
+///   type parameter and a malformed coordinate.
 ///
 /// SEED DELTA (ctrl hand-Rust receipt): one more inhabitance walk over the existing `run_cli_door`; no
 /// new production route. Accounted on `gunbc.source_root_eval_driver_seed_growth`
@@ -3578,13 +3579,12 @@ fn walk_reference_controls(binary: &Path, workspace: &Path) -> Result<(), String
     )?;
     let expected = [
         "6 marked reference(s), 1 resolved",
-        "@ref(gunbc.annotation_reference_home::NoSuchDeclaration): no such declaration",
-        "@ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field): the declaration has no such field",
-        "@ref(gunbc.annotation_reference_no_such_module::Anything): cited module not read:",
-        "@ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin): contested between",
-        "@ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>): UnsupportedTarget",
-        "@ref(gunbc.annotation_reference_home): malformed coordinate",
-        ": unterminated marker",
+        "#gunbc.annotation_reference_home::NoSuchDeclaration: no such declaration",
+        "#gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field: the declaration has no such field",
+        "#gunbc.annotation_reference_no_such_module::Anything: cited module not read:",
+        "#gunbc.annotation_reference_contested::AnnotationReferenceTwin: contested between",
+        "#gunbc.annotation_reference_home::AnnotationReferenceBox::<T>: UnsupportedTarget",
+        "#gunbc.annotation_reference_home: malformed coordinate",
     ];
     if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
         || !refused.stdout.starts_with(REFERENCE_CHECK_REFUSED_HEAD)
@@ -3627,8 +3627,9 @@ fn feed_identity_file(hasher: &mut sha2::Sha256, rel: &str, bytes: &[u8]) {
 
 /// Module `a.b.c` is stored at `<root(a)>/b/c.dag` (`gunbc.source_layout`: `v2` under `src/v2`,
 /// every other top-level namespace under `dag/`), so the name is read from the path, never from
-/// the file's text.
-fn dag_module_name_from_path(rel: &str) -> Option<String> {
+/// the file's text. Also read by `required_regen_host::edited_population_from_diff`, which names a
+/// departed module (no file left to read a module line from) by its path.
+pub(super) fn dag_module_name_from_path(rel: &str) -> Option<String> {
     let (prefix, rest) = match rel.strip_prefix("src/v2/") {
         Some(rest) => (Some("v2"), rest),
         None => (None, rel.strip_prefix("dag/")?),
