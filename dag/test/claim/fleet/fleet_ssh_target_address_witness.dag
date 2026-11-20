@@ -2,15 +2,19 @@ module test.claim.fleet.fleet_ssh_target_address_witness
 
 import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.optional { Present, Absent }
+import std.measure { second_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4, NetworkHostNameMalformed, NetworkHostIpv4Malformed }
 import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetRemoteLeg,
   ProbeLeg,
   SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTargetRefusal, TargetEndpointUnparseable,
   fleet_ssh_target_at_standard_port, ssh_target_wire, portable_remote_words,
   FleetBareWordLeg, shape_fleet_ssh_exec, shape_fleet_ssh_password_exec_trusting,
+  FleetLegKind, ProbeLeg, ActuationLeg, RepositoryConvergenceLeg, ProvisioningLeg,
+  fleet_remote_leg_wall_deadline,
 }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target, fleet_automation_principal_login }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
@@ -178,3 +182,36 @@ test fn the_key_and_password_argv_differ_for_every_enrolled_host() -> Bool {
     })
 }
 
+// THE CEILING IS READ OFF THE LEG (review 96976). A kind that is carried but never read is an inert
+// lens, and a sink whose ceiling defaults to Absent lets a caller forget it: both were true of the
+// fleet path. Now the leg's declared kind arms the deadline at gunbc.fleet.fleet_known_hosts_anchor
+// fleet_remote_leg_wall_deadline, every fleet path into a sink is built from an armed leg
+// (fleet_ssh_armed_key_leg / _on_fresh_connection / fleet_ssh_armed_password_leg), and the sinks
+// (extdeps.ssh.session ssh_session_exec_portable_words, ..._with_stdin and
+// extdeps.ssh.password_session password_file_ssh_exec_portable_words_with_stdin) have NO default --
+// a fleet leg that states no ceiling is a type error, not an unbounded ssh. This claim pins the
+// reading, for every kind, so a kind cannot quietly lose its ceiling.
+fn w_leg_ceiling_seconds(leg: FleetRemoteLeg) -> Int {
+  match fleet_remote_leg_wall_deadline(leg: leg) {
+    Absent => -1
+    Present { value: s } => second_count(s: s)
+  }
+}
+
+test fn the_ceiling_is_read_off_the_leg_for_every_kind() -> Bool {
+  match portable_remote_words(raws: ["hostname"]) {
+    Absent => false
+    Present { value: words } =>
+      w_leg_ceiling_seconds(leg: FleetBareWordLeg { target: w_rental(port: 22), words: words, kind: ProbeLeg })
+        == 15
+        && w_leg_ceiling_seconds(
+          leg: FleetBareWordLeg { target: w_rental(port: 22), words: words, kind: ActuationLeg },
+        ) == 60
+        && w_leg_ceiling_seconds(
+          leg: FleetBareWordLeg { target: w_rental(port: 22), words: words, kind: RepositoryConvergenceLeg },
+        ) == 300
+        && w_leg_ceiling_seconds(
+          leg: FleetBareWordLeg { target: w_rental(port: 22), words: words, kind: ProvisioningLeg },
+        ) == 900
+  }
+}
