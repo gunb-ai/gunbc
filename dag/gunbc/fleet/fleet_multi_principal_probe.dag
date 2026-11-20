@@ -36,6 +36,7 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
   FleetSshCredentialDerivationRefused,
+  FleetSshCredentialAdmissionEmpty,
   verify_fleet_ssh_agent_credential,
   materialize_agent_public_selector,
   AgentSelectorMaterialized,
@@ -745,6 +746,12 @@ fn spark_managed_access_standing_for_attempt(
       exit_failure(
         reason: fleet_ssh_credential_verification_refusal_reason(
           verification: FleetSshCredentialDerivationRefused { cause: cause },
+        ),
+      )
+    FleetSshCredentialAdmissionEmpty { observed_line: o } =>
+      exit_failure(
+        reason: fleet_ssh_credential_verification_refusal_reason(
+          verification: FleetSshCredentialAdmissionEmpty { observed_line: o },
         ),
       )
     FleetSshCredentialVerified { binding: binding } =>

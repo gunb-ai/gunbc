@@ -21,10 +21,17 @@ import gunbc.bmc_dry_realization { bmc_mc_info_reply, bmc_boot_options_clear_rep
 import extdeps.bmc.ipmitool_lanplus_timing { ipmitool_mc_info_slowest_answered_wait, ipmitool_lanplus_request_survives_drops }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_set_privilege_prefix, ipmitool_lanplus_set_privilege_bare_suffix, ipmitool_lanplus_session_unestablished_line }
 import std.measure { measure_le }
-import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost }
+import gunbc.bmc_model { bmc_with_pending, bmc_controller_cold_reset, bmc_controller_resetting, BmcScheduledEvent, BmcAcPowerLost, BmcControllerResetBegan, BmcControllerResetEnded }
 import extdeps.bmc.ipmitool_mc_reset { ipmitool_mc_reset_cold_sent_line }
 import extdeps.bmc.ipmi_session { ipmitool_lanplus_session_unestablished_line }
-import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds }
+import gunbc.ci.ci_budget_raise { BudgetAdmission, StepBudgetApprovals, budget_admission }
+import gunbc.machine_intake.mtcollins1_bmc_cold_reset { mtcollins1_bmc_cold_reset_wet, mtcollins1_bmc_cold_reset_wet_admitted, mtcollins1_bmc_cold_reset_step_required_minutes, mtcollins1_bmc_cold_reset_step_budget_approvals, mtcollins1_bmc_cold_reset_receipt_path, mtcollins1_bmc_cold_reset_bounds, mtcollins1_bmc_cold_reset_sustain_window, mtcollins1_bmc_cold_reset_poll_interval, mtcollins1_bmc_cold_reset_read_ceiling, mtcollins1_bmc_cold_reset_window_allowance }
+import std.measure { second_count }
+import gunbc.bmc_dry_realization { sleep_delay_seconds_operation }
+import v2.std.operation_realization { virtual_delay_binding, FileObserved }
+import extdeps.transports.file { FileOperationSucceeded }
+import gunbc.filesystem_model { content_bytes }
+import gunbc.machine_intake.mtcollins1_boot_dry_realization { linux_procfs_read_uptime_operation }
 import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_with_mc_info, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
@@ -40,12 +47,12 @@ import gunbc.machine_intake.megarac_media_row_reading { boot_run_43040335415_pre
 import gunbc.megarac_media_model { MegaRacMediaWorld, MegaRacShare, MegaRacImage, MegaRacCdRow, megarac_cleared_cd_at_the_current_build }
 import gunbc.machine_intake.mtcollins1_boot_dry_realization {
   MtCollins1BootWorld, ModeledSshAgent, ModeledWorker, ModeledHostConsole, TimedConsoleLine,
-  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs,
+  mtcollins1_boot_dry_realization, with_media, with_bmc, with_notice_watcher, with_fs, with_worker,
   worker_process_started, worker_process_killed, proc_stat_path, proc_stat_line, worker_process,
 }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, OperationObserved, OperationWorkerKilled,
-  DispatchWorkerKilled, ShellObserved, ShellProcessExited, operation_input_text,
+  DispatchWorkerKilled, ShellObserved, ShellProcessExited, operation_input_text, DispatchObserved,
 }
 import std.process { ProcessExit, ExitSuccess }
 import gunbc.host.host_reset_return_run { host_reset_return_wet }
@@ -1963,10 +1970,24 @@ fn matrix_cold_reset_binding(operation: String, reply: fn(BmcWorld, OperationCal
 // THE BOOT'S PRODUCTION REALIZATION, with a scenario's controller behaviors replacing the production answer for
 // the operations they name (two bindings for one operation is a refusal, so the production one is filtered out).
 fn matrix_cold_reset_run(overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
-  matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: overrides)
+  matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: overrides, unapproved_fixture: false)
 }
 
-fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<OperationBinding<MtCollins1BootWorld>>) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
+// THE WATCH CLAIMS RUN THE PRODUCTION ENTRY, mtcollins1_bmc_cold_reset_wet, under the production admission
+// (BudgetAdmitted{67} under the signed grant, gunbc.ci.ci_budget_raise mtcollins1_bmc_cold_reset_step_raised_to_67_minutes_grant).
+// THE REFUSAL CLAIM RUNS THE ROUTE UNDER A SUPPLIED UNAPPROVED ADMISSION: the same step's approvals with no grant
+// (introduced 35, raises empty), admitted through the production fold, so it is BudgetRaiseUnapproved{67, 35} -- the
+// state production was in before the sign-off, and the one any required value above every grant reaches. It goes
+// through mtcollins1_bmc_cold_reset_wet_admitted, whose seal admits this runner.
+fn matrix_cold_reset_unapproved_budget() -> BudgetAdmission {
+  budget_admission(minutes: mtcollins1_bmc_cold_reset_step_required_minutes(), approvals: StepBudgetApprovals {
+    budget: mtcollins1_bmc_cold_reset_step_budget_approvals.budget,
+    introduced: mtcollins1_bmc_cold_reset_step_budget_approvals.introduced,
+    raises: [],
+  })
+}
+
+fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<OperationBinding<MtCollins1BootWorld>>, unapproved_fixture: Bool) -> WitnessEvaluation<ProcessExit, MtCollins1BootWorld> {
   let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
   evaluate_in_witness_frame(
     frame: matrix_frame_over(realization: OperationRealization {
@@ -1976,7 +1997,7 @@ fn matrix_cold_reset_run_in(world: MtCollins1BootWorld, overrides: List<Operatio
       advance: production.advance,
       bindings: concat(xs: filter(production.bindings, b => all(overrides, o => !(o.at.service == b.at.service && o.at.operation == b.at.operation))), ys: overrides),
     }),
-    subject: fn(_scope) { mtcollins1_bmc_cold_reset_wet() },
+    subject: fn(_scope) { if unapproved_fixture { mtcollins1_bmc_cold_reset_wet_admitted(budget: matrix_cold_reset_unapproved_budget()) } else { mtcollins1_bmc_cold_reset_wet() } },
   )
 }
 
@@ -2072,6 +2093,32 @@ fn matrix_cold_reset_mc_info_deadline_in_window(world: BmcWorld, call: Operation
   }
 }
 
+// RECOVERED THEN LOST (gunbc#16659). The controller resets as usual and comes back; the answer that shows it back is
+// the last one: a second reset begins a second after it and never ends. This is the shape run 44210890542 was
+// accepted on before the controller fell silent again. Only the first answer after the first reset ended schedules
+// the relapse, so the baseline read and the polls before it answer as the production controller does.
+fn matrix_cold_reset_resets_began(world: BmcWorld) -> Int {
+  let tally = fn(acc, e) { match e.event { BmcControllerResetBegan {} => acc + 1  _ => acc } }
+  fold(world.pending, init: fold(world.fired, init: 0, f: tally), f: tally)
+}
+
+fn matrix_cold_reset_reset_ended(world: BmcWorld) -> Bool {
+  any(world.fired, e => match e.event { BmcControllerResetEnded {} => true  _ => false })
+}
+
+fn matrix_cold_reset_mc_info_relapsing_after_one_answer(world: BmcWorld, call: OperationCall) -> BmcReply {
+  let reply = bmc_mc_info_reply(world: world, call: call)
+  if matrix_cold_reset_reset_ended(world: world) && !bmc_controller_resetting(world: world) && matrix_cold_reset_resets_began(world: world) == 1 {
+    match reply {
+      BmcReplied { stdout: out, world: w } =>
+        BmcReplied { stdout: out, world: bmc_with_pending(world: w, pending: concat(xs: w.pending, ys: [BmcScheduledEvent { at: second(count: second_count(s: call.now) + 1), event: BmcControllerResetBegan {} }]), fired: w.fired) }
+      _ => reply
+    }
+  } else {
+    reply
+  }
+}
+
 // Chassis status that never answers (the baseline read included).
 fn matrix_cold_reset_power_unreadable(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcRefused { exit_code: 1, stderr: concat(ipmitool_lanplus_session_unestablished_line, "\n"), world: world }
@@ -2095,13 +2142,39 @@ test fn the_cold_reset_route_reads_power_before_attempts_once_and_reads_power_fr
         && count(holds) >= 2
         && match holds.first() { Present { value: h } => h < attempt  Absent => false }
         && match holds.last() { Present { value: h } => h > last_ordinal(route: route, name: matrix_cold_reset_chassis_status)  Absent => false }
-        && string_contains(s: receipt, pattern: "observed=recovered after the attempt: available before")
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt and stayed available through the window: available before")
         && string_contains(s: receipt, pattern: matrix_cold_reset_baseline_available_line)
         && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
-        && string_contains(s: receipt, pattern: "more (firmware 0.45)")
+        && string_contains(s: receipt, pattern: " poll(s) of the window over ")
+        && string_contains(s: receipt, pattern: " ms on the monotonic clock (firmware 0.45)")
         && string_contains(s: receipt, pattern: "fan=unobserved")
         && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
         && string_contains(s: receipt, pattern: matrix_cold_reset_answered_record)
+    }
+    _ => false
+  }
+}
+
+// AN UNAPPROVED STEP BUDGET REFUSES AT THE ENTRY, and touches nothing (merry-fox-82 msg_887e605b, msg_a124a26d on
+// gunb-ai/gunbc#16668): under the step's approvals with no grant, the step requires 67 minutes and its budget admits 35,
+// so the route, run in the same world the watch claims use, ends at the typed pre-hold refusal derived from that
+// admission -- before any credential read, hold write or controller operation -- and its receipt names the unapproved
+// raise. Production now admits 67 under the signed grant (the watch claims run it); deleting the refusal reaches the
+// hold and the controller.
+test fn the_cold_reset_entry_refuses_an_unapproved_step_budget_before_any_hold_or_controller_call() -> Bool {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world(), overrides: [], unapproved_fixture: true) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count(ordinals_where(route: route, keep: is_hold_write)) == 0
+        && count(filter(route, r => r.invocation.at.service == "Filesystem" && starts_with(s: record_path(r: r), prefix: unit_hold_store_path(tree: host_state_tree()) as String))) == 0
+        && count_named(route: route, name: matrix_cold_reset_mc_info) == 0
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 0
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 0
+        && string_contains(s: receipt, pattern: "hold=not-attempted")
+        && string_contains(s: receipt, pattern: "stage=pre-hold refused: the step requires 67 min")
+        && string_contains(s: receipt, pattern: "its budget admits 35 min: the raise is unapproved")
+        && string_contains(s: receipt, pattern: "controller=untouched")
     }
     _ => false
   }
@@ -2286,7 +2359,7 @@ test fn a_silent_controller_refusing_with_icmp_is_a_missing_response_inside_the_
         && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
         && string_contains(s: receipt, pattern: matrix_cold_reset_verbose_unanswered_record)
         && !string_contains(s: receipt, pattern: "poll=exit 124")
-        && string_contains(s: receipt, pattern: "observed=recovered after the attempt: available before")
+        && string_contains(s: receipt, pattern: "observed=recovered after the attempt and stayed available through the window: available before")
     }
     _ => false
   }
@@ -2373,7 +2446,7 @@ test fn a_local_probe_failure_then_an_available_answer_never_reaches_an_accepted
 // loss or a recovery, and the route refuses naming the undecodable answers -- it is never read as available. The
 // claim above, run in this world, goes red; this one is what it would have read.
 test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_recovery() -> Bool {
-  match matrix_cold_reset_run_in(world: matrix_cold_reset_world_firmware_row_only(), overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)]) {
+  match matrix_cold_reset_run_in(world: matrix_cold_reset_world_firmware_row_only(), overrides: [matrix_cold_reset_binding(operation: "McResetCold", reply: matrix_cold_reset_ignored)], unapproved_fixture: false) {
     WitnessReturned { value, route, state } => {
       let receipt = matrix_cold_reset_receipt(state: state)
       !matrix_cold_reset_exited_success(exit: value)
@@ -2382,6 +2455,263 @@ test fn answers_that_do_not_decode_are_never_read_as_available_and_reach_no_reco
         && string_contains(s: receipt, pattern: "no loss of availability was observed")
         && string_contains(s: receipt, pattern: "last: undecodable")
         && !string_contains(s: receipt, pattern: "available, firmware")
+    }
+    _ => false
+  }
+}
+
+// ── THE SUSTAINED WINDOW ON THE ROUTE (gunbc#16659) ─────────────────────────────────────────────
+// THE DISCRIMINATING RED: the production route, its controller answering once after recovering and then silent. It
+// is refused as RECOVERED THEN LOST, the after power read is never taken, and nothing is sent again. Without the
+// window this exact route was the accepted one.
+test fn a_controller_that_answers_once_after_recovering_then_falls_silent_is_recovered_then_lost_and_never_accepted() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_binding(operation: "McInfo", reply: matrix_cold_reset_mc_info_relapsing_after_one_answer)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "RECOVERED THEN LOST")
+        && string_contains(s: receipt, pattern: "then lost again after 0 further answer(s) inside the window (no response")
+        && string_contains(s: receipt, pattern: matrix_cold_reset_loss_by_no_response)
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+    }
+    _ => false
+  }
+}
+
+// THE WINDOW ENDS BY TIME, and its poll ceiling only refuses: it is one past the paced polls that span W, so a clock
+// that has not reached W by then advanced less than the route's sleeps did.
+test fn the_cold_reset_window_ceiling_is_one_past_the_paced_polls_that_span_w() -> Bool {
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  let n = mtcollins1_bmc_cold_reset_bounds.sustain_polls_at_most
+  w > 0 && (n - 1) * i >= w && (n - 2) * i < w
+}
+
+// ── THE WINDOW'S PACING AND CLOCK ON THE ROUTE (side chat on gunbc#16668) ───────────────────────
+// A scenario's failure begins 30 s after the first controller reset ended: by then the route has seen the recovering
+// answer (the polls are 16 s apart and the reset ends 60 s after the request), and the window still has most of W to run.
+fn matrix_cold_reset_window_open(world: BmcWorld, now: Second) -> Bool {
+  any(world.fired, e => match e.event { BmcControllerResetEnded {} => second_count(s: e.at) + 30 <= second_count(s: now)  _ => false })
+}
+
+fn matrix_cold_reset_sleep_failing_in_window() -> OperationBinding<MtCollins1BootWorld> {
+  let normal = virtual_delay_binding(at: sleep_delay_seconds_operation, seconds_input: "seconds")
+  OperationBinding {
+    at: sleep_delay_seconds_operation,
+    handler: fn(state, call) {
+      if matrix_cold_reset_window_open(world: state.bmc, now: call.now) {
+        OperationObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: 1, stdout: "", stderr: "sleep: interrupted\n" } }, state: state, elapsed: second(count: 0) }
+      } else {
+        normal.handler(state, call)
+      }
+    },
+  }
+}
+
+fn matrix_cold_reset_uptime_unreadable_in_window() -> OperationBinding<MtCollins1BootWorld> {
+  OperationBinding {
+    at: linux_procfs_read_uptime_operation,
+    handler: fn(state, call) {
+      let record = if matrix_cold_reset_window_open(world: state.bmc, now: call.now) { "garbage" } else {
+        let up = state.worker.uptime_at_origin + (second_count(s: call.now) as Int)
+        join([to_string(up), ".00 ", to_string(up), ".00\n"], "")
+      }
+      OperationObserved { observation: FileObserved { observation: FileOperationSucceeded { byte_count: content_bytes(s: record), content: record } }, state: state, elapsed: second(count: 0) }
+    },
+  }
+}
+
+// Every mc info read takes `seconds` of the controller's time (at most the read ceiling), answering as the production
+// controller does.
+fn matrix_cold_reset_mc_info_taking(seconds: Int) -> OperationBinding<MtCollins1BootWorld> {
+  let lifted = bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: bmc_mc_info_reply)
+  OperationBinding {
+    at: bmc_ipmi_operation(operation: "McInfo"),
+    handler: fn(state, call) {
+      match lifted(state, call) {
+        OperationObserved { observation: o, state: st, elapsed: _ } => OperationObserved { observation: o, state: st, elapsed: second(count: seconds) }
+        other => other
+      }
+    },
+  }
+}
+
+// F1: A PACING SLEEP FAILS INSIDE THE WINDOW while the controller keeps answering available. The route stops before any
+// further poll and refuses with the pacing cause; no after power read is taken. A route that discarded the sleep's
+// result would keep polling unpaced and refuse on another cause (its clock never reaches W), which this claim rejects.
+test fn a_pacing_sleep_failing_inside_the_window_refuses_on_the_pacing_and_polls_no_further() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_sleep_failing_in_window()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_attempt) == 1
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "a pacing sleep before a poll failed")
+        && string_contains(s: receipt, pattern: " answer(s) into the window)")
+        && string_contains(s: receipt, pattern: "poll=pacing sleep failed; no poll taken")
+        && !string_contains(s: receipt, pattern: "monotonic clock was not established")
+    }
+    _ => false
+  }
+}
+
+// THE CLOCK BECOMES UNREADABLE INSIDE THE WINDOW while the controller keeps answering: refused on the clock, never
+// accepted on a count of answers.
+test fn an_unreadable_clock_inside_the_window_refuses_and_never_accepts() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_uptime_unreadable_in_window()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "monotonic clock was not established (before a window poll, the monotonic clock could not be read")
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+    }
+    _ => false
+  }
+}
+
+// SLOW BUT ANSWERING: every mc info takes 20 s. The window ends when W has elapsed, so the route accepts after far
+// fewer window polls than W / interval, and the receipt's elapsed span is at least W. A route ending on a count of
+// polls would take every one of them and fail the count.
+test fn slow_answering_reads_end_the_routes_window_by_time_not_by_poll_count() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_taking(seconds: 20)]) {
+    WitnessReturned { value, route, state } => {
+      let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+      let receipt = matrix_cold_reset_receipt(state: state)
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && matrix_cold_reset_count_after(route: route, name: matrix_cold_reset_mc_info, after: attempt) < mtcollins1_bmc_cold_reset_bounds.sustain_polls_at_most - 1
+    }
+    _ => false
+  }
+}
+
+// ── THE STEP TIMEOUT BOUNDS EVERY WINDOW THE WATCH PERMITS (side chat on gunbc#16668, F2) ─────────
+// THE WINDOW'S WALL SPAN ON THE ROUTE: from the end of the recovering poll (the first mc info after the attempt that
+// exited 0; the window's clock starts at the reading taken right after it) to the end of the route's last mc info.
+fn matrix_cold_reset_answered(r: DispatchRecord) -> Bool {
+  match r.outcome {
+    DispatchObserved { observation: ShellObserved { observation: ShellProcessExited { exit_code: c, stdout: _, stderr: _ } } } => c == 0
+    _ => false
+  }
+}
+
+fn matrix_cold_reset_window_span(route: List<DispatchRecord>) -> Int {
+  let attempt = first_ordinal(route: route, name: matrix_cold_reset_attempt)
+  let polls = filter(route, r => operation_name(r: r) == matrix_cold_reset_mc_info && r.ordinal > attempt)
+  match first_where(xs: polls, keep: fn(r) { matrix_cold_reset_answered(r: r) }) {
+    Absent => 0 - 1
+    Present { value: recovering } =>
+      match polls.last() {
+        Present { value: final } => (second_count(s: final.completed_at) as Int) - (second_count(s: recovering.completed_at) as Int)
+        Absent => 0 - 1
+      }
+  }
+}
+
+fn matrix_cold_reset_window_allowance_seconds() -> Int { second_count(s: mtcollins1_bmc_cold_reset_window_allowance()) as Int }
+
+// The instant the scenario's failure begins (matrix_cold_reset_window_open), in seconds of virtual time.
+fn matrix_cold_reset_window_opened_at(world: BmcWorld) -> Int {
+  fold(world.fired, init: 0 - 1, f: fn(acc, e) { match e.event { BmcControllerResetEnded {} => (second_count(s: e.at) as Int) + 30  _ => acc } })
+}
+
+// /proc/uptime STALLS inside the window: it keeps answering, readably, the instant the failure began.
+fn matrix_cold_reset_uptime_stalled_in_window() -> OperationBinding<MtCollins1BootWorld> {
+  OperationBinding {
+    at: linux_procfs_read_uptime_operation,
+    handler: fn(state, call) {
+      let at = if matrix_cold_reset_window_open(world: state.bmc, now: call.now) { matrix_cold_reset_window_opened_at(world: state.bmc) } else { second_count(s: call.now) as Int }
+      let up = state.worker.uptime_at_origin + at
+      let record = join([to_string(up), ".00 ", to_string(up), ".00\n"], "")
+      OperationObserved { observation: FileObserved { observation: FileOperationSucceeded { byte_count: content_bytes(s: record), content: record } }, state: state, elapsed: second(count: 0) }
+    },
+  }
+}
+
+// F2a: A READ THAT CROSSES W, THEN THE ACCEPTING POLL. Every mc info runs to the read ceiling, so the last window poll
+// that does not end the window is timed short of W and its read runs past W; the accepting poll comes one interval
+// later. The route accepts, and the window's wall span exceeds W + one interval + one read ceiling -- the window budget
+// before F2, which this execution overruns -- and stays within the window allowance the step timeout is derived from.
+test fn a_read_that_crosses_w_then_the_accepting_poll_stays_inside_the_window_allowance() -> Bool {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_taking(seconds: c)]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+      let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && span > w + i + c
+        && span <= matrix_cold_reset_window_allowance_seconds()
+    }
+    _ => false
+  }
+}
+
+// F2b: A READABLE BUT STALLED CLOCK inside the window, while the controller keeps answering available. The first sample
+// that advanced less than the pacing interval refuses at that poll, naming it; the window's wall span stays within
+// the window allowance. A watch that let a stalled clock run its window polls out (the poll ceiling) would refuse on
+// another cause and overrun the allowance, which this claim rejects on both counts.
+test fn a_readable_but_stalled_clock_refuses_at_its_poll_inside_the_window_allowance() -> Bool {
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_uptime_stalled_in_window()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      !matrix_cold_reset_exited_success(exit: value)
+        && count_named(route: route, name: matrix_cold_reset_chassis_status) == 1
+        && string_contains(s: receipt, pattern: "monotonic clock was not established (the monotonic clock advanced only ")
+        && string_contains(s: receipt, pattern: " across a pacing interval of 15000 ms")
+        && !string_contains(s: receipt, pattern: "paced window poll(s)")
+        && !string_contains(s: receipt, pattern: "stayed available through the window")
+        && span >= 0
+        && span <= matrix_cold_reset_window_allowance_seconds()
+    }
+    _ => false
+  }
+}
+
+// F2, THE SLOW CLOCK: every mc info runs to the read ceiling, and /proc/uptime does not count the reads -- each read
+// pulls the worker's uptime origin back by the time it took -- so each window sample advances exactly the pacing
+// interval while each poll takes the interval plus a full read. The pace guard admits it (it bounds the clock's
+// progress from below only), and the window ends only when this slow clock reaches W, after far more wall time than W.
+fn matrix_cold_reset_mc_info_unclocked_at_ceiling() -> OperationBinding<MtCollins1BootWorld> {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let lifted = bmc_lift(get: fn(w) { w.bmc }, put: with_bmc, reply: bmc_mc_info_reply)
+  OperationBinding {
+    at: bmc_ipmi_operation(operation: "McInfo"),
+    handler: fn(state, call) {
+      match lifted(state, call) {
+        OperationObserved { observation: o, state: st, elapsed: _ } =>
+          OperationObserved {
+            observation: o,
+            state: with_worker(w: st, worker: ModeledWorker { next_pid: st.worker.next_pid, processes: st.worker.processes, uptime_at_origin: st.worker.uptime_at_origin - c, principal: st.worker.principal }),
+            elapsed: second(count: c),
+          }
+        other => other
+      }
+    },
+  }
+}
+
+// The side chat's control: the slow clock ends inside the declared window allowance, accepting (it reaches W on the
+// last paced poll before the ceiling) after more wall time than W + 2 read ceilings + 1 interval, the bound 568a88f0
+// declared and this execution overruns.
+test fn a_clock_advancing_exactly_the_pace_while_reads_run_to_the_ceiling_ends_inside_the_window_allowance() -> Bool {
+  let c = second_count(s: mtcollins1_bmc_cold_reset_read_ceiling()) as Int
+  let w = second_count(s: mtcollins1_bmc_cold_reset_sustain_window()) as Int
+  let i = second_count(s: mtcollins1_bmc_cold_reset_poll_interval) as Int
+  match matrix_cold_reset_run(overrides: [matrix_cold_reset_mc_info_unclocked_at_ceiling()]) {
+    WitnessReturned { value, route, state } => {
+      let receipt = matrix_cold_reset_receipt(state: state)
+      let span = matrix_cold_reset_window_span(route: route)
+      matrix_cold_reset_exited_success(exit: value)
+        && string_contains(s: receipt, pattern: "stayed available through the window")
+        && span > w + 2 * c + i
+        && span <= matrix_cold_reset_window_allowance_seconds()
     }
     _ => false
   }
