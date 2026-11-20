@@ -39,7 +39,7 @@ import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_is_active_argv, systemctl_reset_failed_argv }
 import extdeps.tools.mkdir { mkdir_parents_argv }
-import extdeps.tools.gnu_coreutils { coreutils_install_file_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_file_argv, coreutils_rm_force_argv }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.exec.command { argv_words }
 
@@ -214,11 +214,16 @@ fn host_unit_retirement_rows_cite_the_live_ruling() -> Bool {
   }
 }
 
-// The copy judgement, pure: a row's fragment is considered retained when the copy leg succeeded OR the
-// retained copy already exists readable (a sibling row retired a shared fragment). install_ok=false AND
-// no retained copy => false, so a row can never delete a fragment nothing retained.
-fn host_unit_retirement_copy_accepted(install_ok: Bool, retained_present: Bool) -> Bool {
-  install_ok || retained_present
+// The copy judgement, pure. A row may delete its fragment only when THIS run wrote the retained copy
+// (install_ok), or when there is nothing left to lose: the fragment is already ABSENT (a sibling row
+// retired a shared template, or a prior run completed) AND a readable retained copy stands where the
+// bytes must be. A PRESENT FRAGMENT ALONGSIDE AN UNVERIFIED RETAINED COPY IS NEVER ACCEPTED -- an old or
+// hand-placed retained file must not let a run delete the live fragment and still report Retired
+// (fail-closed: gunbc.design_argument::fail_closed, "no plausible output is fabricated"). The retained
+// file is trusted only under fragment absence, where no destruction follows; the readback then judges
+// not-found + inactive on its own independent facts.
+fn host_unit_retirement_copy_accepted(install_ok: Bool, fragment_present: Bool, retained_present: Bool) -> Bool {
+  install_ok || (!fragment_present && retained_present)
 }
 
 // THE ACTS, over the fleet-ssh exec channel as the administrator. Every leg that exits non-zero reads as
@@ -253,16 +258,21 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
     mkdir_parents_argv(path: host_unit_retirement_retained_dir),
     argv_words(command: test_regular_file_command(path: row.retained_path)),
     coreutils_install_file_argv(mode: "0444" as NonEmptyStr, source: row.fragment_path, dest: row.retained_path),
+    argv_words(command: test_regular_file_command(path: row.fragment_path)),
   ])
-  // The copy is satisfied when THIS row wrote the retained copy, or when it already exists readable --
-  // the two engine rows share ONE template fragment, so the second row's `install` finds no source (the
-  // first row deleted it) while the retained copy is already on disk from the first row. Never the case
-  // that neither holds: with no retained copy anywhere the row keeps its fragment and reads refused.
+  // The copy is satisfied when THIS row wrote the retained copy, or when the fragment is already gone and
+  // a readable retained copy stands in its place -- the two engine rows share ONE template fragment, so
+  // the second row's `install` finds no source (the first row deleted it) while the retained copy is
+  // already on disk from the first row. A present fragment next to an UNVERIFIED retained copy is NOT
+  // accepted (host_unit_retirement_copy_accepted): the row keeps its fragment and reads RetainedCopyAbsent.
   let retained_present = host_unit_retirement_ok(acts.at(3))
-  let copy_ok = host_unit_retirement_ok(acts.at(4)) || retained_present
+  let install_ok = host_unit_retirement_ok(acts.at(4))
+  let fragment_present = host_unit_retirement_ok(acts.at(5))
+  let copy_ok = host_unit_retirement_copy_accepted(install_ok: install_ok, fragment_present: fragment_present, retained_present: retained_present)
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
-  // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent.
-  let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ ["rm", "-f", row.fragment_path], systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
+  // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent. The
+  // argv goes through the extdeps constructor (gunbc.design_argument::interface_realization_policy).
+  let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ coreutils_rm_force_argv(paths: [row.fragment_path]), systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
   let back = host_unit_retirement_exec_all(target, context, [
     systemctl_show_load_state_argv(unit: row.unit),
     systemctl_is_active_argv(unit: row.unit),

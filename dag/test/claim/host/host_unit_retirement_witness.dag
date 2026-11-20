@@ -108,13 +108,22 @@ test fn host_unit_retirement_live_units_still_refuse_retired() -> Bool {
   !host_unit_retirement_all_retired([ a_state, b_state, cap_state ])
 }
 
-// THE SHARED FRAGMENT CANNOT STRAND THE SECOND ROW (review 96883, fix 1): both engine rows name ONE
-// template fragment; the row whose install finds no source is satisfied ONLY by a retained copy already
-// on disk, and can never delete a fragment nothing retained.
+// THE SHARED FRAGMENT CANNOT STRAND THE SECOND ROW (review 96883 fix 1, hardened by review 96889 fix 1):
+// both engine rows name ONE template fragment. The row whose install finds no source is satisfied ONLY
+// when the FRAGMENT IS ALREADY GONE and a retained copy stands on disk; with the fragment still present
+// the run's own copy must have written it.
 test fn host_unit_retirement_shared_fragment_copy_is_tolerant() -> Bool {
-  host_unit_retirement_copy_accepted(install_ok: true, retained_present: false)
-    && host_unit_retirement_copy_accepted(install_ok: false, retained_present: true)
-    && !host_unit_retirement_copy_accepted(install_ok: false, retained_present: false)
+  host_unit_retirement_copy_accepted(install_ok: true, fragment_present: true, retained_present: false)
+    && host_unit_retirement_copy_accepted(install_ok: false, fragment_present: false, retained_present: true)
+    && !host_unit_retirement_copy_accepted(install_ok: false, fragment_present: false, retained_present: false)
+}
+
+// A STALE RETAINED COPY CAN NEVER BUY THE DELETE (review 96889 fix 1): fragment still on disk plus a
+// retained file this run did not write is REFUSED -- the only ways an unverified retained file coexists
+// with a live fragment are a partial earlier run or a hand copy, and neither may end with the fragment
+// deleted and the row reading Retired.
+test fn host_unit_retirement_stale_retained_copy_refuses_the_delete() -> Bool {
+  !host_unit_retirement_copy_accepted(install_ok: false, fragment_present: true, retained_present: true)
 }
 
 // THE OBSERVED READBACK JUDGES THE RECEIPT'S OWN RETAINED PATH (review 96883, fix 2): an instance row's
