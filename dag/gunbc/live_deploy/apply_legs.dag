@@ -66,8 +66,13 @@ import gunbc.live_deploy.member_identity { plan_publishes_tree, plan_installs_ex
 import gunbc.live_deploy.emit {
   install_d_shared_mode, install_executable_shared_mode, release_executable_install_source, path_parent_dir,
   live_deploy_protocol, emit_slice_unit_doc, emit_repository_convergence_slice_unit_doc,
-  user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
+  user_work_slice_unit_file_for_host_ceiling, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused,
 }
+// The slice's single MemoryMax authority and the carve predicate live in compute/runner (acyclic: neither
+// reaches this module), and the srv1 recorded-peak admission lives in live_deploy itself.
+import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host }
+import gunbc.runner.runner_slot_desired { host_build_pool_is_carved }
+import gunbc.live_deploy.srv1_worker_slice_receipt { user_work_cgroup_peak_check, PeakBoundExceeded, PeakBoundHolds }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_path, gunbc_user_work_slice_unit_path, gunbc_repository_convergence_slice_unit_path,
   tree_sync_unit_path, gunbc_service_uid,
@@ -133,7 +138,6 @@ import gunbc.live_deploy.spec { deployment_oidc_config_steps, tailscale_default_
 import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
 import gunbc.live_deploy.member_identity { plan_writes_oidc_config }
-import gunbc.live_deploy.emit { install_file_owner_only_mode }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_oidc_serve_standing, tracker_web_oidc_serve_placement, tracker_web_oidc_config_document,
   TrackerWebOidcServeConfigured, TrackerWebOidcInstanceUnassigned, TrackerWebOidcEnvironmentUnbound,
@@ -688,11 +692,32 @@ fn apply_unit_text(file_text: String) -> String {
 // convergence unit, a reload, the restart whose failure carries the unit's status tail, and the
 // readback of the receipt through the INSTALLED binary. A user-work slice that cannot derive its
 // bounds refuses the plan with that cause.
+// The slice's MemoryMax has ONE authority (gunbc.compute.host_capacity user_work_slice_memory_max_for_host).
+// apply renders the unit for the host it is deploying to through the shared per-host renderer — the SAME code
+// the serve-converge leg renders and the srv1 receipt attests. The srv1 recorded-peak admission (fail_closed:
+// refuse, never cap below the observed user-work peak) is applied HERE, gated to the uncarved branch, because
+// that receipt is srv1's OWN observed peak and is the wrong bound for a carved host whose ceiling is its
+// reservation-derived appropriation (whose fail-closed guarantee is the serve-converge readback).
+fn deploy_apply_user_work_slice_unit_file(host: HostIdentity) -> UserWorkSliceUnitFile {
+  let ceiling = user_work_slice_memory_max_for_host(host: host)
+  if host_build_pool_is_carved(host: host) {
+    user_work_slice_unit_file_for_host_ceiling(memory_max: ceiling)
+  } else {
+    match user_work_cgroup_peak_check(bound: ceiling) {
+      PeakBoundExceeded { excess: _ } =>
+        UserWorkSliceUnitFileRefused {
+          cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+        }
+      PeakBoundHolds { margin: _ } => user_work_slice_unit_file_for_host_ceiling(memory_max: ceiling)
+    }
+  }
+}
+
 fn deploy_apply_tree_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, source_root: String) -> DeployApplyPlan {
   if !plan_publishes_tree(plan: plan) {
     ApplyPlanReady { legs: [] }
   } else {
-    match user_work_slice_unit_file() {
+    match deploy_apply_user_work_slice_unit_file(host: spec.target.host.identity) {
       UserWorkSliceUnitFileRefused { cause: c } =>
         ApplyPlanRefused { step: "user-work-slice", reason: join(["live-deploy apply refused: ", c, " (gunbc.design_argument::fail_closed: refuse, never widen)"], "") }
       UserWorkSliceUnitFileReady { file: f } =>
@@ -1311,9 +1336,17 @@ fn deploy_apply_oidc_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
                 ApplyPlanReady { legs: [] }
               } else {
                 ApplyPlanReady { legs: [
+                  // The config DOCUMENT is a world-readable NON-credential projected from
+                  // gunbc.host.host_layout srv1_gunbc_oidc_config_root (see that row). Its directory is
+                  // installed shared and the file installed SHARED (world-readable), NOT owner-only, for two
+                  // reasons: (1) the document embeds no secret -- it names the secret's PATH, and the secret
+                  // itself is custody's in the operator-only /etc/gunbc-oidc; and (2) the deploy's host-arm
+                  // observation reads this member as the runner principal, which can only read a world-readable
+                  // file under a world-traversable parent. An owner-only mode here would make
+                  // gunbc.live_deploy.member_observe observe_oidc_config_file refuse with MemberUnobservable.
                   apply_root_leg(step: "oidc-config-dir", argv: coreutils_install_directory_argv(mode: install_d_shared_mode, path: path_parent_dir(path: cfg.config_path as String))),
                   apply_install_file_leg(step: "oidc-config", dest: cfg.config_path as String,
-                    mode: install_file_owner_only_mode, owner: spec.service.service_user, group: spec.service.service_user,
+                    mode: install_file_shared_mode, owner: spec.service.service_user, group: spec.service.service_user,
                     source: Payload { bytes: tracker_web_oidc_config_document(cfg: cfg) }),
                 ] }
               }

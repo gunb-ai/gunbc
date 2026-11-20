@@ -36,7 +36,7 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop, belt_standings_refresh_staleness_horizon, belt_pair_delivery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
-  emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_belt_standings_refresh_unit_file, live_deploy_belt_standings_refresh_timer_unit_file, live_deploy_belt_pair_delivery_unit_file, live_deploy_belt_pair_delivery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
+  emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_belt_standings_refresh_unit_file, live_deploy_belt_standings_refresh_timer_unit_file, live_deploy_belt_pair_delivery_unit_file, live_deploy_belt_pair_delivery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file_for_host_ceiling, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path, approval_broker_unit_emission, BrokerUnitBound,
 }
 import gunbc.live_deploy.release_locus {
@@ -214,7 +214,9 @@ import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_d
 // trigger is declared here, because there is no event that would discharge it.
 //
 import gunbc.spool_queue { SpoolAttemptExit, SpoolAttemptUnit, SpoolPublication, SpoolRole, RolePending, RoleRefused, spool_open, spool_role_path, SpoolKind, spool_role_dirs, spool_watched_roles, spool_declared_roles }
-import gunbc.live_deploy.apply_legs { ApplyLegCommand, DeployApplyLeg, deploy_apply_attempt_spool_legs, deploy_apply_publication_legs, deploy_apply_belt_legs }
+import gunbc.live_deploy.apply_legs { ApplyLegCommand, DeployApplyLeg, deploy_apply_attempt_spool_legs, deploy_apply_publication_legs, deploy_apply_belt_legs, deploy_apply_user_work_slice_unit_file }
+import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.live_deploy.emit { live_deploy_publication_path_unit_file, live_deploy_attempt_unit_drain_path_unit_file }
 
 fn live_spec() -> DeploymentSpec {
@@ -489,7 +491,7 @@ test fn the_user_work_slice_carries_pool_derived_bounds_and_forbids_swap() -> Bo
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
-      match user_work_slice_unit_file() {
+      match user_work_slice_unit_file_for_host_ceiling(memory_max: max) {
         UserWorkSliceUnitFileRefused { cause: _ } => false
         UserWorkSliceUnitFileReady { file } =>
           match user_work_slice_memory_high_of(memory_max: max) {
@@ -500,6 +502,38 @@ test fn the_user_work_slice_carries_pool_derived_bounds_and_forbids_swap() -> Bo
                 && string_contains(s: serialize_systemd_unit_file(file: file), pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], ""))
           }
       }
+    }
+  }
+}
+
+// (b) the live-deploy apply plan renders the slice for the host IT applies to, through the ONE MemoryMax
+// authority (gunbc.compute.host_capacity user_work_slice_memory_max_for_host), so a live-deploy apply onto a
+// carved host writes its reservation-derived ceiling, NOT the srv1 pool value — the second-writer fork this
+// node removes. Witnessing the apply helper (not just the renderer) pins the carve gate + the value source.
+test fn the_apply_plan_renders_the_slice_for_a_carved_host_at_its_reservation() -> Bool {
+  let ceiling = user_work_slice_memory_max_for_host(host: operator_host_srv4)
+  byte_size_count(b: ceiling) > 0
+    && match deploy_apply_user_work_slice_unit_file(host: operator_host_srv4) {
+         UserWorkSliceUnitFileRefused { cause: _ } => false
+         UserWorkSliceUnitFileReady { file } =>
+           slice_has_bytes(file: file, target: ceiling, as_max: true)
+             && string_contains(s: serialize_systemd_unit_file(file: file), pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], ""))
+       }
+}
+
+// (b) an uncarved host (srv1 carries its own ledger) still renders its POOL value, not a hardcoded number:
+// the apply helper's ceiling equals the pool-derived value from the single authority.
+test fn the_apply_plan_renders_the_slice_for_an_uncarved_host_at_its_pool_value() -> Bool {
+  match user_work_pool_slots() {
+    UserWorkPoolSlotsDerived { slots } => {
+      let pool = user_work_slice_memory_max_of(slots: slots)
+      byte_size_count(b: user_work_slice_memory_max_for_host(host: operator_host_srv1)) == byte_size_count(b: pool)
+        && match deploy_apply_user_work_slice_unit_file(host: operator_host_srv1) {
+             UserWorkSliceUnitFileRefused { cause: _ } => false
+             UserWorkSliceUnitFileReady { file } =>
+               slice_has_bytes(file: file, target: pool, as_max: true)
+                 && string_contains(s: serialize_systemd_unit_file(file: file), pattern: join(["MemorySwapMax=", to_string(byte_size_count(b: user_work_slice_memory_swap_max))], ""))
+           }
     }
   }
 }
@@ -738,7 +772,7 @@ test fn the_recovery_backstop_timer_starts_the_recovery_unit() -> Bool {
 }
 
 // THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54; the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). The witness asserts the four things the design
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). The witness asserts the four things the design
 // rules out: (a) the timer starts the standings-refresh oneshot by its exact name at the operator's
 // 600s cadence and joins timers.target (so it survives without any belt tick); (b) the oneshot runs
 // `belt_observe_once_cli` — the observation fold ONLY, NOT the launch/frontier walk of the retired

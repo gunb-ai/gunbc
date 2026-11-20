@@ -10,6 +10,7 @@ import product.fabric.work { SourceManifestRef }
 import std.decl_ref { decl_ref }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_null_sha1_object_id }
 import gunbc.fabric.fabric_source_snapshot { SourceComposition, DeclaredRootsComposition }
+import extdeps.bazel.label { Label, render_label }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
 }
@@ -165,18 +166,27 @@ fn work_binary_declared_path(profile: CargoProfile, b: GunbcBinary) -> String {
   join([cargo_profile_wire(p: profile), "/", gunbc_binary_name(b: b) as String], "")
 }
 
-// The three operations a worker may ask for. Each declares its outputs; a run whose declared output
+// The operations a worker may ask for. Each declares its outputs; a run whose declared output
 // is absent is WorkOutputMismatch, not success (compute-artifact-return-and-materialization's red).
+//
+// THE GATE SUBJECT IS AN OPERATION, NOT A SIDE DOOR. The required CI gate's subject step runs
+// `gunbc test <label>` for one row of gunbc.emitted_subject_build_gate::emitted_subject_build_rows;
+// naming it as an arm is what puts it under the SAME identity, grant, reservation, unit bound and
+// receipt as every other operation. Which labels exist is NOT decided here -- the gate module is the
+// authority and the remote adapter refuses anything it does not carry -- so this arm carries a typed
+// Label rather than a String the provider would have to re-adjudicate.
 type WorkOperation
   = BuildGunbcBinaries { profile: CargoProfile, bins: List<GunbcBinary> }
   | CompileEntry { entry: FilePath }
   | RunClaims { entry: FilePath, functions: NonEmptyStr, hermetic: Bool, window: ClaimDiffWindow? }
+  | TestGateSubject { label: Label }
 
 fn work_operation_kind(op: WorkOperation) -> String {
   match op {
     BuildGunbcBinaries { profile: _, bins: _ } => "build"
     CompileEntry { entry: _ } => "compile"
     RunClaims { entry: _, functions: _, hermetic: _, window: _ } => "claims"
+    TestGateSubject { label: _ } => "gate"
   }
 }
 
@@ -200,6 +210,7 @@ fn work_operation_canonical(op: WorkOperation) -> String {
     RunClaims { entry, functions, hermetic, window } =>
       join(["claims:", entry as String, ":", functions as String, ":", if hermetic { "hermetic" } else { "wet" },
         match window { Present { value: w } => join([":window=", w.identity.digest as String], "")  Absent => "" }], "")
+    TestGateSubject { label } => join(["gate:", render_label(l: label)], "")
   }
 }
 
@@ -231,6 +242,10 @@ fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
       map(bins, b => DeclaredOutput { root: TargetRoot, path: work_binary_declared_path(profile: profile, b: b) })
     CompileEntry { entry: _ } => []
     RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
+    // The gate subject declares NO output: the verdict is the run's exit and its memory receipt, not
+    // a file. A declared output that does not exist is WorkOutputMismatch, and there is no file whose
+    // absence should ever fake a gate failure.
+    TestGateSubject { label: _ } => []
   }
 }
 

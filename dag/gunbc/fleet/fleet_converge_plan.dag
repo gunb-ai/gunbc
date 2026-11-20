@@ -1124,7 +1124,7 @@ fn timer_action_line(action: MemberAction<TimerRetirementMember, TimerRetirement
 
 // THE CAP AXIS RENDERS WHAT IT SEES, NEVER WHAT IT WILL DO. Converge does not write a runner-unit
 // drop-in: that write belongs to gunbc.runner.runner_host_file_converge under live_deploy's authority
-// @ref(gunbc.host.host_axis_caps::host_axis_caps_note), the MemoryMax SINGLE AUTHORITY note; the live_deploy
+// #gunbc.host.host_axis_caps::host_axis_caps_note, the MemoryMax SINGLE AUTHORITY note; the live_deploy
 // instance apply carried a second copy of it until 2026-10-30 -- see the fleet-converge-receipt-counts-owed-work row, whose
 // boundary records the srv1 run that proved converge never emits these rows). So these rows say
 // PLAN-ONLY and name the authority that does own the write, instead of opening with a mutation verb
@@ -1140,11 +1140,11 @@ fn timer_action_line(action: MemberAction<TimerRetirementMember, TimerRetirement
 // WHY THE VALUES ARE SPOKEN. The old line said "content drift", which named neither the directive nor
 // either value: an operator reading it could not tell a superseded ceiling from a typo, and the srv1
 // receipt made a real 22 GiB-vs-25 GiB gap look like noise. The wanted value comes from the same settings
-// list the desired members are built from, @ref(gunbc.host.host_axis_caps::derived_runner_slot_cap_settings),
+// list the desired members are built from, #gunbc.host.host_axis_caps::derived_runner_slot_cap_settings,
 // so a plan line can never name a number the writer would not write; the observed side is the bytes the
-// whole-file compare actually saw (@ref(gunbc.host.host_axis_caps::cap_member_value_eq) compares content),
+// whole-file compare actually saw (#gunbc.host.host_axis_caps::cap_member_value_eq compares content),
 // flattened for one line -- a rendering transform, not a parse, which is the reading
-// @ref(gunbc.host.host_axis_caps::desired_cap_member)'s note forbids.
+// #gunbc.host.host_axis_caps::desired_cap_member's note forbids.
 data fleet_converge_cap_plan_only_authority: String = "[plan-only: live_deploy authority]"
 
 // THE MODEL'S OWN WORD FOR A MANAGED DROP-IN, read from the settings list rather than from the file.

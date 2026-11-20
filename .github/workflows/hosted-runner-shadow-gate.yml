@@ -8,11 +8,17 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened]
   merge_group:
+  workflow_dispatch:
+    inputs:
+      pattern:
+        description: "evidence re-runs only: remote gate pattern override (e.g. a pattern the remote host fails, for the red control). Empty defaults to the modelled plumbing-proof pattern."
+        required: false
+        type: string
 jobs:
   shadow-gate-config:
     name: "Hosted-runner shadow gate: configuration"
     runs-on: ubuntu-24.04
-    if: github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     outputs:
       configured: ${{ steps.check.outputs.configured }}
     steps:
@@ -21,8 +27,8 @@ jobs:
         run: |
           if [ -z "${{ secrets.TS_OAUTH_CLIENT_ID }}" ] || [ -z "${{ secrets.TS_OAUTH_SECRET }}" ] || [ -z "${{ secrets.GUNBC_REMOTE_BUILD_CI_SSH_KEY }}" ]; then
             echo 'configured=false' >> $GITHUB_OUTPUT
-            if [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
-              echo '::error::not configured: required secret absent on merge_group; the shadow gate refuses to silently pass'
+            if [ "$GITHUB_EVENT_NAME" = "merge_group" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass"
               exit 1
             fi
             echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'
@@ -62,5 +68,39 @@ jobs:
         id: remote-build-plumbing-proof
         run: |
           set -euo pipefail && echo '--- remote gate step ---' && ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv1.tailecbe08.ts.net true
-          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=//dag/test/claim/compute/host_capacity_seal_witness.dag --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
+          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
+        shell: bash
+        env:
+          GUNBC_GATE_PATTERN: ${{ inputs.pattern }}
+      - name: "Remote gate: //gunbc/instruments:self-host"
+        id: gate-emit_build_self_host
+        run: |
+          set -uo pipefail
+          rc=0
+          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_self_host.json" || rc=$?
+          cat "$RUNNER_TEMP/gate-emit_build_self_host.json" || true
+          case "$rc" in
+            0) exit 0;;
+            1) echo '::error::gate //gunbc/instruments:self-host: code verdict - did not hold'; exit 1;;
+            2) echo '::error::gate //gunbc/instruments:self-host: typed local refusal - nothing was sent to any host'; exit 1;;
+            3) echo '::error::gate //gunbc/instruments:self-host: no host admitted the reservation (capacity/infra)'; exit 1;;
+            4) echo '::warning::gate //gunbc/instruments:self-host: held, but an origin ref was left behind (cleanup fact; count these)'; exit 0;;
+            *) echo "::error::gate //gunbc/instruments:self-host: unexpected exit code $rc"; exit 1;;
+          esac
+        shell: bash
+      - name: "Remote gate: //gunbc/instruments:v2-native-cli"
+        id: gate-emit_build_v2_native_cli
+        run: |
+          set -uo pipefail
+          rc=0
+          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || rc=$?
+          cat "$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || true
+          case "$rc" in
+            0) exit 0;;
+            1) echo '::error::gate //gunbc/instruments:v2-native-cli: code verdict - did not hold'; exit 1;;
+            2) echo '::error::gate //gunbc/instruments:v2-native-cli: typed local refusal - nothing was sent to any host'; exit 1;;
+            3) echo '::error::gate //gunbc/instruments:v2-native-cli: no host admitted the reservation (capacity/infra)'; exit 1;;
+            4) echo '::warning::gate //gunbc/instruments:v2-native-cli: held, but an origin ref was left behind (cleanup fact; count these)'; exit 0;;
+            *) echo "::error::gate //gunbc/instruments:v2-native-cli: unexpected exit code $rc"; exit 1;;
+          esac
         shell: bash

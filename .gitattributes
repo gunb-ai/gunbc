@@ -21,6 +21,7 @@
 .github/workflows/fleet-converge.yml merge=generated-artifact
 .github/workflows/heal-publish.yml merge=generated-artifact
 .github/workflows/heal.yml merge=generated-artifact
+.github/workflows/hosted-runner-shadow-gate.yml merge=generated-artifact
 .github/workflows/instrument-dispatch.yml merge=generated-artifact
 .github/workflows/microvm-shakedown.yml merge=generated-artifact
 .github/workflows/witnesses.yml merge=generated-artifact

@@ -231,7 +231,7 @@ fn tag_ci_dispatch_to_build_hosts_ssh_grant() -> TailscaleGrant {
   }
 }
 
-// @ref(gunbc.design_ruling::tailnet_serving_acl_admin_console_additions_2026_11_18)
+// #gunbc.design_ruling::tailnet_serving_acl_admin_console_additions_2026_11_18
 fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
   [
     member_baseline_grant(),
@@ -276,7 +276,7 @@ fn operator_tailscale_acl_node_attrs() -> List<TailscaleNodeAttr> {
   ]
 }
 
-// @ref(gunbc.design_ruling::tailnet_serving_acl_admin_console_additions_2026_11_18)
+// #gunbc.design_ruling::tailnet_serving_acl_admin_console_additions_2026_11_18
 fn operator_tailscale_acl_tag_owners() -> List<TailscaleTagOwnerRow> {
   [
     TailscaleTagOwnerRow { tag: tag_ci, owners: ["autogroup:admin" as NonEmptyStr] },

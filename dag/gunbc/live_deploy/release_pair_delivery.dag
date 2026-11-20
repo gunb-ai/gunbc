@@ -7,30 +7,30 @@ module gunbc.live_deploy.release_pair_delivery
 // observed (review 96044: the plan must not assume `verified` — verification happens AFTER the fetch, on the pack
 // the fetch actually produced, and its observed verdict is what feeds the fold).
 //
-// STAGE 1 @ref(gunbc.live_deploy.release_pair_delivery::release_pair_fetch_argv) emits the typed argv that fetches
-// the head's release-bins pack (reusing @ref(extdeps.tools.gh::gh_run_download_argv) — no hand-spelled gh command
-// line). Running it yields a PackFetch OBSERVATION (@ref(gunbc.live_deploy.release_pair_delivery::PackFetch)):
+// STAGE 1 #gunbc.live_deploy.release_pair_delivery::release_pair_fetch_argv emits the typed argv that fetches
+// the head's release-bins pack (reusing #extdeps.tools.gh::gh_run_download_argv — no hand-spelled gh command
+// line). Running it yields a PackFetch OBSERVATION (#gunbc.live_deploy.release_pair_delivery::PackFetch):
 // the pack is present — with its observed digest and the path of the file it produced — or absent (the head was
 // never built).
 //
-// STAGE 2 @ref(gunbc.live_deploy.release_pair_delivery::release_pair_verify_dispatch) is a function OF that
-// observation: it emits the consumer build-key verify dispatch (@ref(gunbc.fleet.fleet_release_bins_key::release_bins_consumer_key_check_script),
+// STAGE 2 #gunbc.live_deploy.release_pair_delivery::release_pair_verify_dispatch is a function OF that
+// observation: it emits the consumer build-key verify dispatch (#gunbc.fleet.fleet_release_bins_key::release_bins_consumer_key_check_script,
 // the same --verify-build-artifacts script the fleet consumer runs) ONLY for a pack observed present. For a pack
 // never fetched there is NO dispatch to run — you cannot verify what you did not fetch. Running the dispatch yields
-// a PackVerify OBSERVATION (@ref(gunbc.live_deploy.release_pair_delivery::PackVerify)) that NAMES the pack_dir it
+// a PackVerify OBSERVATION (#gunbc.live_deploy.release_pair_delivery::PackVerify) that NAMES the pack_dir it
 // was run on.
 //
-// STAGE 3 @ref(gunbc.live_deploy.release_pair_delivery::release_pair_install_plan) consumes BOTH observations and
-// the single delivery decision @ref(gunbc.live_deploy.release_locus::deliver_release_pair). By this point the fetch
+// STAGE 3 #gunbc.live_deploy.release_pair_delivery::release_pair_install_plan consumes BOTH observations and
+// the single delivery decision #gunbc.live_deploy.release_locus::deliver_release_pair. By this point the fetch
 // and verify EFFECTS have already run, so the plan carries ONLY the ordered INSTALL steps — the fetch argv and
 // verify dispatch are not re-emitted here (review 96059: re-emitting them let a second input decide the pack
 // directory). The digest and the placement SOURCE both come from the FETCH observation via the fold, and the fold's
 // `verified` is true ONLY when the verify observation names the SAME pack_dir the fetch observed. So a verdict for
 // a different or absent pack cannot install, and the placed file is provably the fetched file — the cross-stage and
 // placement bindings are typed facts, not conventions. A bound pair yields a PlanToInstall that copies the fetched
-// file into the bound-pair locus (reusing @ref(gunbc.live_deploy.release_locus::release_locus_member_path)), writes
-// the bound source receipt (reusing @ref(gunbc.live_deploy.release_locus::release_locus_tree_receipt_path)), and
-// restarts serve (reusing @ref(gunbc.live_deploy.operations::systemctl_restart_command), the single registered privileged restart authority); any refusal yields
+// file into the bound-pair locus (reusing #gunbc.live_deploy.release_locus::release_locus_member_path), writes
+// the bound source receipt (reusing #gunbc.live_deploy.release_locus::release_locus_tree_receipt_path), and
+// restarts serve (reusing #gunbc.live_deploy.operations::systemctl_restart_command, the single registered privileged restart authority); any refusal yields
 // PlanKeepsLastGood, so a mixed pair is never installed and the serve unit is never restarted.
 //
 // THE EXECUTING CONSUMER is now INSTALLED. The lab's delivery unit
@@ -197,7 +197,7 @@ fn release_pair_occupied_link_benign(link_read: ProcessOutcome, expected_source:
 data release_pair_incoming_pack_dir_name: NonEmptyStr = "incoming-release-bins"
 
 // THE ONE member of the fetched pack the pair places, as its OWN row so the placement source is not re-spelled at
-// each call site (single_authority). Consumed by @ref(gunbc.live_deploy.release_pair_delivery::release_pair_incoming_serve_source).
+// each call site (single_authority). Consumed by #gunbc.live_deploy.release_pair_delivery::release_pair_incoming_serve_source.
 data release_pair_incoming_serve_member_name: NonEmptyStr = "gunbc_serve"
 
 // The release-bins ARTIFACT name is NOT a row here: it comes from gunbc.fleet.fleet_workflow_steps::

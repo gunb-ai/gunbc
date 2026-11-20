@@ -39,7 +39,7 @@ module gunbc.roadmap.roadmap_leaf_realized_duration
 // iso8601_calendar's OWN day length and read the date back out of its day count, the way
 // gunbc.roadmap.roadmap_operator_acceptance::roadmap_operator_date_from_epoch_secs does.
 //
-// STANDING IS NOT SECOND-DECIDED HERE (@ref gunbc.design_argument::fail_closed). Whether a claim counted at all, and
+// STANDING IS NOT SECOND-DECIDED HERE (#gunbc.design_argument::fail_closed). Whether a claim counted at all, and
 // whether an acceptance still stands, are the standing fold's questions, so this unit ASKS them. It calls
 // gunbc.roadmap.roadmap_event_log::roadmap_node_standing -- the whole-history fold the issue state is built from,
 // fed ONE node's history, the same fold the belt and the in-flight read ask -- once per line it admits, on the item's
@@ -50,9 +50,9 @@ module gunbc.roadmap.roadmap_leaf_realized_duration
 // decided by the fold rather than by a rule spelled here. An earlier draft stepped the standing accumulator itself
 // and re-decided which revocations cleared an acceptance, and both answers had drifted from the authority by the
 // second revision: that is the failure this paragraph exists to prevent, and why every standing answer below comes
-// from roadmap_node_standing and none from a local restatement (@ref gunbc.design_argument::fail_closed -- the same
+// from roadmap_node_standing and none from a local restatement (#gunbc.design_argument::fail_closed -- the same
 // failure #16703's review caught in its own first revision).
-// FAIL CLOSED (@ref gunbc.design_argument::fail_closed). An accepted leaf with NO claim has NO realized duration:
+// FAIL CLOSED (#gunbc.design_argument::fail_closed). An accepted leaf with NO claim has NO realized duration:
 // its row is PriorNamedOutLoud naming AcceptedWithoutClaim -- it does not read as zero days, and it is not the
 // ordinary PriorFromCarrier arm, so no reader can take it for a silent fallback to the prior. A historical Pathless
 // claim names no leaf, so it yields no realized value AT ALL and is counted visibly in pathless_claims. A log that
@@ -62,7 +62,7 @@ module gunbc.roadmap.roadmap_leaf_realized_duration
 // a bar of zero length on the Gantt and call it a measurement. Every refusal names the line or event it refused and
 // why.
 //
-// COMPUTED ON READ, NEVER WRITTEN (@ref gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
+// COMPUTED ON READ, NEVER WRITTEN (#gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
 // The fold takes the log LINES and the carriers read on this read and answers; nothing here persists a realized
 // count and no carrier is rewritten with one. A cached answer stays derived and never authoritative between reads:
 // re-reading is realized_duration_fold over the same lines, and it recomputes every row.
@@ -273,8 +273,8 @@ fn fold_ordered(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item:
 // Each line is admitted only after the standing fold is asked about it: `seen` is the item's history up to and
 // including the line, and roadmap_node_standing -- the log's own fold, fed ONE node's history, the way
 // roadmap_retired_node_ids_of_events and the in-flight read feed it -- answers what the item's standing was. The
-// fold's answer decides whether the claim starts a clock; nothing here re-derives terminality or retirement (@ref
-// gunbc.design_argument::fail_closed).
+// fold's answer decides whether the claim starts a clock; nothing here re-derives terminality or retirement (see
+// #gunbc.design_argument::fail_closed).
 fn read_claims(ordered: List<RoadmapEventEnvelope>, seen: List<RoadmapEventEnvelope>, first: List<FirstClaim>, unreadable: List<UnreadableClaim>, pathless: Int, retired: Int) -> ClaimReading {
   match ordered.first() {
     Absent => ClaimsRead { first: first, unreadable: unreadable, pathless: pathless, retired: retired }
@@ -393,7 +393,7 @@ fn read_acceptance(mine: List<RoadmapEventEnvelope>) -> AcceptanceReading {
 // ONE scheduler; the rows are then read off that answer against the SAME list of first claims and the SAME
 // acceptance the pricing used. The report and the schedule cannot disagree because they share one reading AND one
 // span rule: `realized_span` is the only place that decides whether a (first claim, acceptance) pair makes a
-// duration and what it counts (@ref gunbc.design_argument::single_authority).
+// duration and what it counts (#gunbc.design_argument::single_authority).
 fn fold_priced(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, item: RoadmapNodeId, first: List<FirstClaim>, unreadable: List<UnreadableClaim>, pathless: Int, retired: Int, stamp: Iso8601CivilDate?) -> RealizedFold {
   match schedule_with_realized(d: d, e: e, workers: workers, realized: realized_input(first: first, stamp: stamp)) {
     NotScheduled { refusal: refusal } => Refused { refusal: ScheduleRefusedAtRealizedInput { refusal: refusal } }
@@ -435,8 +435,8 @@ fn build_rows(d: WorkDecomposition, first: List<FirstClaim>, unreadable: List<Un
 
 // THE ONE DECISION about whether a first claim and an acceptance make a realized span, and what that span counts.
 // BOTH readers -- the scheduler's duration input and the per-leaf row -- ask this and nothing else, so the count the
-// schedule was priced at and the count the row reports cannot drift apart. (@ref
-// gunbc.design_argument::single_authority; the drift this prevents is the one the header records happening twice
+// schedule was priced at and the count the row reports cannot drift apart. (see
+// #gunbc.design_argument::single_authority; the drift this prevents is the one the header records happening twice
 // already in this lineage, and review 38602 caught a second copy of this rule in the first revision here.)
 type RealizedSpan
   = RealizedSpanFromLog { duration: LeafDuration }

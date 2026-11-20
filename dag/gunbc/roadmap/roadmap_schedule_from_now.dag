@@ -7,8 +7,8 @@ module gunbc.roadmap.roadmap_schedule_from_now
 // that REMAIN, and schedules only the leaves that are not claimed, around them, under the same policy and the same
 // worker count.
 //
-// THERE IS ONE SCHEDULER, AND THIS UNIT WIDENED IT RATHER THAN COPYING IT (@ref
-// gunbc.design_argument::single_authority). The placement is gunbc.roadmap.roadmap_schedule::schedule_pinned, which
+// THERE IS ONE SCHEDULER, AND THIS UNIT WIDENED IT RATHER THAN COPYING IT (see
+// #gunbc.design_argument::single_authority). The placement is gunbc.roadmap.roadmap_schedule::schedule_pinned, which
 // #16695's `schedule` and #16709's `schedule_with_realized` already delegate to with no pins: the ranks, the lane
 // picking, the dependency gating, the horizon, the critical path and the completeness check are that one function's,
 // imported whole, and this unit calls it. It adds NO policy of its own -- no new ranking, no new lane rule, no
@@ -17,7 +17,7 @@ module gunbc.roadmap.roadmap_schedule_from_now
 // the one-scheduler rule exist to remove; that is why the pinned occupancy was added as an INPUT to the existing
 // policy (gunbc.roadmap.roadmap_schedule::PinnedLeaf) instead of being reproduced here.
 //
-// WHAT A PIN IS, AND WHERE EACH OF ITS PARTS COMES FROM (@ref gunbc.design_argument::single_authority -- this unit
+// WHAT A PIN IS, AND WHERE EACH OF ITS PARTS COMES FROM (#gunbc.design_argument::single_authority -- this unit
 // derives NOTHING that an upstream unit already answers; it imports every part):
 //   * WHICH LEAVES ARE IN FLIGHT: gunbc.roadmap.roadmap_event_log::roadmap_leaf_in_flight_set (#16703). The set is
 //     DERIVED from the log on this read and is never written down anywhere; this unit keeps it that way.
@@ -74,10 +74,10 @@ module gunbc.roadmap.roadmap_schedule_from_now
 // log (#16703), turned into elapsed working days by #16709's one span rule; that is the whole point of the row
 // ("the pin rests on a realized fact and not on a forecast"). Nothing here becomes a dependency or a gate, and no
 // schedule is stored: the answer is recomputed from the carrier and the log on every call, and #16695's cache form
-// stays derived and never authoritative (@ref gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
+// stays derived and never authoritative (#gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
 // What is decided from those dates is the next row's question -- what to start next, and what is holding the line.
 //
-// FAIL CLOSED (@ref gunbc.design_argument::fail_closed). A pin whose remaining days cannot be worked out is REFUSED
+// FAIL CLOSED (#gunbc.design_argument::fail_closed). A pin whose remaining days cannot be worked out is REFUSED
 // BY NAME, never pinned at zero: an unreadable claim stamp, a prior the carrier never declared, a claim recorded
 // after the read date, and -- the one a running item hits first -- a prior already exhausted by the elapsed days,
 // which says the leaf is overdue and cannot be shown as a bar of zero length or as work that has finished. Each
@@ -88,7 +88,7 @@ module gunbc.roadmap.roadmap_schedule_from_now
 // reserved for whole-read causes: a log the in-flight read refuses, or the scheduler's own refusal (a refused
 // expansion, an invalid cap, an unpriced leaf, a cycle) -- passed through as the scheduler's own arm, never reworded.
 //
-// COMPUTED ON READ, NEVER CACHED AS AUTHORITATIVE (@ref gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
+// COMPUTED ON READ, NEVER CACHED AS AUTHORITATIVE (#gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read).
 // `schedule_from_now` is pure: it takes the carriers, the read date and the log LINES, and computes the whole answer
 // every call. Nothing here persists a schedule, a pin or an in-flight set; a cached copy stays a copy, and the next
 // read recomputes from the lines. That is what makes a stale Gantt merely stale rather than wrong.

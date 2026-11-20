@@ -111,7 +111,7 @@ fn release_pair_main_head_api_path(slug: NonEmptyStr) -> String {
 // candidate source (and its worktree) is served from a fetch INTO THIS clone; the source head is then OBSERVED
 // from that placed tree. Placing straight from the runtime checkout is exactly the wrong-subject defect item-2
 // closes: /opt/gunbc/gunbc's own HEAD is not the delivered source and must never be what the source receipt names
-// (@ref(gunbc.design_argument::single_authority) — the delivery clone is the sole placement origin).
+// (#gunbc.design_argument::single_authority — the delivery clone is the sole placement origin).
 fn release_pair_delivery_repo_dir(base_root: String) -> String {
   join([base_root, "/delivery-repo"], "")
 }
@@ -263,7 +263,7 @@ fn release_pair_pack_fetch(
 // ArgvCommand (a program plus a fixed argv): the medium must be a shell. The restart was the case where systemctl
 // already modelled the effect as an argv and running it via sh was wrong; THIS is the reviewer's declared-scaffold
 // case — kept as a declared row (below), not a bare comment, so the debt is on the ledger with a dissolution trigger.
-// Admitted as declared scaffolding by operator ruling @ref(gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted) (RULED 2026-11-18).
+// Admitted as declared scaffolding by operator ruling #gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted (RULED 2026-11-18).
 data release_pair_verify_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -552,7 +552,7 @@ fn release_pair_source_head_verdict(observed: DeployedTreeObservation, requested
 // under the operator gate -- never bootstrapped here), a placed tree already at the requested head (reuse, no add), a
 // placed tree at some OTHER head (refuse), or an absent tree (add). 'unobservable' is reserved for the OBSERVE step
 // alone (release_pair_source_head_verdict) and is never reused as a placement condition.
-// @ref(gunbc.design_argument::single_authority)
+// #gunbc.design_argument::single_authority
 type PlacementDecision
   = PlacementCloneMissing { reason: NonEmptyStr }
   | PlacementReuse { revision: CommitSha }
@@ -714,7 +714,7 @@ fn release_pair_deliver_observe_and_deliver(base_root: String, serve_unit: Strin
 // adding a second ArgvCommand restart beside it would create an unregistered sudo restart. So both shell-as-medium
 // legs on this path (this restart and the consumer key-check verify) take the reviewer's declared-scaffold option,
 // each a declared row with a dissolution trigger, no new mint and no census change here — both shell-as-medium
-// STEPS here are admitted as declared scaffolding by operator ruling @ref(gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted) (RULED 2026-11-18).
+// STEPS here are admitted as declared scaffolding by operator ruling #gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted (RULED 2026-11-18).
 data release_pair_restart_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
