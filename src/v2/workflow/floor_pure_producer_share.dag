@@ -1342,7 +1342,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.match_binder.match_binder_typing",
     claims: [
       SingleClaimFillDebtClaim { claim: "mbt_a_binder_hiding_a_same_named_parameter_refuses_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "mbt_a_generic_constructor_match_has_its_expected_instantiation_holds", standing: RetiredFillDebt { disposition: BecameSharedByDemand } },
       SingleClaimFillDebtClaim { claim: "mbt_the_sevens_call_scrutinee_is_a_counted_frontier_holds", standing: RetiredFillDebt { disposition: BecameSharedByDemand } }
     ]
   },

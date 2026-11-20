@@ -1013,13 +1013,27 @@ test fn mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers
 data mbt_wrong_constructor_instantiation_src: String = mbt_decls
   + "fn g(h: Outcome<ParseArtifact>) -> Outcome<ParseTree> {\n  match h {\n    Rejected { diagnostics: r } => Rejected { diagnostics: r }\n    Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact, diagnostics: d }\n  }\n}\n"
 
-test fn mbt_a_constructor_at_the_wrong_instantiation_refuses_holds() -> Bool {
+// Read only diagnostics located inside g, after successful assembly. An unrelated refusal
+// elsewhere in the fixture, or a generic underived-grounding advisory, cannot satisfy the control.
+fn mbt_wrong_constructor_refusal_reasons_within_g() -> List<Symbol> {
   match mbp_assemble(src: mbt_wrong_constructor_instantiation_src) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => Empty
     Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: _ } => true
+      match mbp_declaration_named(n: resolved.root, name: ^g) {
+        Absent => Empty
+        Present { value: declaration } =>
+          match infer(tree: resolved) {
+            Accepted { value: _, diagnostics: _ } => Empty
+            Rejected { diagnostics: r } => mbp_reasons_within(d: Some { diagnostics: r }, declaration: declaration)
+          }
       }
   }
+}
+
+test fn mbt_a_constructor_at_the_wrong_instantiation_refuses_holds() -> Bool {
+  contains(
+    xs: mbt_wrong_constructor_refusal_reasons_within_g(),
+    item: ^record_field_value_does_not_inhabit,
+    eq: fn(a, b) { a == b }
+  )
 }
