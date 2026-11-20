@@ -18243,8 +18243,19 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
     }
 }
 
-/// When a whole-receipt wall deadline is armed, put the child in its own process
-/// group so a mid-wait kill reaps cargo→rustc descendants, not only the parent.
+/// Arm the process-group kill ONLY when some ceiling actually exists.
+///
+/// Two independent ceilings can need it: the OUTER whole-receipt witness budget
+/// (`ctx.witness_wall_deadline`) and the PER-LEG wall deadline a fleet ssh transport passes
+/// (`leg_deadline`, the `wall_deadline: Option<Second>` on the session dispatch). Either one
+/// armed means a group kill must be possible, so the child leads its own group. NEITHER armed
+/// means NO `process_group(0)`: the child then stays in the gunbc process's own foreground
+/// group, exactly as before the per-leg deadline existed, so Ctrl-C at a terminal still kills
+/// gunbc AND its ssh/sshpass children together. Putting every shell dispatch in its own group
+/// "in case" a ceiling is armed later would silently break that: an interactive Ctrl-C would
+/// leave a leg running on the remote host for up to its ceiling while the local gunbc died,
+/// which is not fail-closed. `dispatch_shell` decodes the ceiling from the request BEFORE it
+/// spawns, so the decision is always known at this point -- there is nothing to pre-arm.
 ///
 /// `process_group(0)`, NEVER a `pre_exec` closure. A `pre_exec` forces std off `posix_spawn`
 /// onto a real `fork()` of this whole process, and the kernel's page-table copy and the
@@ -18257,11 +18268,11 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
 fn configure_shell_process_group_for_wall_kill(
     cmd: &mut std::process::Command,
     ctx: &InterpContext,
+    leg_deadline: Option<std::time::Duration>,
 ) {
-    // ALWAYS put the child in its own process group, whether or not an outer witness budget
-    // is armed: the per-leg wall deadline must be able to kill ssh AND its descendants (the
-    // group), so the group has to exist before any deadline is known. The outer whole-receipt
-    // kill (kill_shell_process_group) benefits from the same guarantee.
+    if ctx.witness_wall_deadline.get().is_none() && leg_deadline.is_none() {
+        return;
+    }
     #[cfg(unix)]
     {
         let _ = ctx;
@@ -18270,7 +18281,7 @@ fn configure_shell_process_group_for_wall_kill(
     }
     #[cfg(not(unix))]
     {
-        let _ = (cmd, ctx);
+        let _ = (cmd, ctx, leg_deadline);
     }
 }
 
@@ -18623,7 +18634,7 @@ fn dispatch_shell(
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
+        configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
         let mut child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
 
         let stdin_writer = child
@@ -18663,7 +18674,7 @@ fn dispatch_shell(
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        configure_shell_process_group_for_wall_kill(&mut cmd, ctx);
+        configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
         let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
         let (capture_opt, overran) =
             wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
@@ -29152,7 +29163,7 @@ mod wall_deadline_kill_tests {
         armed.arm_wall_deadline(60_000);
         let mut cmd = Command::new("sleep");
         cmd.arg("5");
-        configure_shell_process_group_for_wall_kill(&mut cmd, &armed);
+        configure_shell_process_group_for_wall_kill(&mut cmd, &armed, None);
         let mut child = cmd.spawn().expect("spawn sleep");
         let pid = child.id();
         assert_eq!(
@@ -29166,7 +29177,7 @@ mod wall_deadline_kill_tests {
         let unarmed = wet_ctx();
         let mut cmd = Command::new("sleep");
         cmd.arg("5");
-        configure_shell_process_group_for_wall_kill(&mut cmd, &unarmed);
+        configure_shell_process_group_for_wall_kill(&mut cmd, &unarmed, None);
         let mut child = cmd.spawn().expect("spawn sleep");
         let pid = child.id();
         assert_eq!(
@@ -29175,6 +29186,69 @@ mod wall_deadline_kill_tests {
             "unarmed: the child stays in our group"
         );
         let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    /// Review 96950: the process group exists only where a ceiling exists. Two cases, one
+    /// regression each direction:
+    ///
+    ///   * NEITHER ceiling armed (no outer witness budget, no per-leg `wall_deadline`) -- the
+    ///     child stays in gunbc's own foreground group, byte-identical to main. A terminal
+    ///     Ctrl-C then still kills ssh/sshpass legs along with gunbc; reparenting them into
+    ///     their own group would leave a leg running on the remote host for up to its ceiling.
+    ///   * ONLY the per-leg ceiling armed -- the child leads its own group, which is what lets
+    ///     the per-leg kill reach ssh AND its descendants.
+    ///
+    /// Discriminates: with the guard dropped (the previous state of this branch) case (a) fails
+    /// because every dispatch was reparented; with the per-leg ceiling ignored, case (b) fails.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn group_is_armed_only_where_a_ceiling_exists() {
+        fn pgid_of(pid: u32) -> i32 {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).expect("stat");
+            let rest = &stat[stat.rfind(')').expect("comm") + 2..];
+            rest.split_whitespace()
+                .nth(2)
+                .expect("pgrp")
+                .parse()
+                .expect("int")
+        }
+        // (a) no ceiling at all: the child must remain in OUR group.
+        let bare = wet_ctx();
+        assert!(
+            bare.witness_wall_deadline.get().is_none(),
+            "precondition: the outer witness budget is unarmed"
+        );
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        configure_shell_process_group_for_wall_kill(&mut cmd, &bare, None);
+        let mut child = cmd.spawn().expect("spawn sleep");
+        let pid = child.id();
+        assert_eq!(
+            pgid_of(pid),
+            pgid_of(std::process::id()),
+            "no ceiling armed: the child must stay in our foreground group so Ctrl-C reaches it"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+
+        // (b) per-leg ceiling only: the child must lead its own group.
+        let leg_only = wet_ctx();
+        assert!(
+            leg_only.witness_wall_deadline.get().is_none(),
+            "precondition: the outer witness budget is still unarmed"
+        );
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        configure_shell_process_group_for_wall_kill(&mut cmd, &leg_only, Some(std::time::Duration::from_secs(2)));
+        let mut child = cmd.spawn().expect("spawn sleep");
+        let pid = child.id();
+        assert_eq!(
+            pgid_of(pid),
+            pid as i32,
+            "a per-leg ceiling alone must arm the group so the per-leg kill is total"
+        );
+        kill_shell_process_group(pid);
         let _ = child.wait();
     }
 
@@ -29214,7 +29288,7 @@ mod wall_deadline_kill_tests {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
+        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx, Some(std::time::Duration::from_secs(2)));
         let child = cmd.spawn().expect("spawn sleep 30");
         let started = Instant::now();
         let (output_opt, overran) = wait_child_honoring_wall_deadline(
@@ -29256,7 +29330,7 @@ mod wall_deadline_kill_tests {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
+        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx, Some(std::time::Duration::from_secs(2)));
         let child = cmd.spawn().expect("spawn echo");
         let (output_opt, overran) = wait_child_honoring_wall_deadline(
             child,
@@ -29294,7 +29368,7 @@ mod wall_deadline_kill_tests {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx);
+        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx, Some(std::time::Duration::from_secs(2)));
         let child = cmd.spawn().expect("spawn sh");
         let started = Instant::now();
         let result = wait_child_honoring_wall_deadline(

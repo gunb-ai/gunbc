@@ -19,6 +19,9 @@ import product.host_identity { HostIdentity }
 import gunbc.repository { gunbc_repository }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProvisioningLeg,
+  ProbeLeg,
+  FleetLegKind,
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
   portable_remote_words, shape_fleet_ssh_exec,
@@ -211,13 +214,13 @@ fn remote_build_client_target(host: HostIdentity) -> SshTargetResolution {
 
 // One SSH leg. The words cross as portable remote words, so the forced command's
 // SSH_ORIGINAL_COMMAND is exactly their space-joined text; a word outside that alphabet sends nothing.
-fn remote_build_client_leg(context: FleetSshExecutionContext, host: HostIdentity, words: List<String>) -> RemoteBuildLeg {
+fn remote_build_client_leg(kind: FleetLegKind, context: FleetSshExecutionContext, host: HostIdentity, words: List<String>) -> RemoteBuildLeg {
   match remote_build_client_target(host: host) {
     SshTargetRefused { endpoint, refusal } => RemoteBuildLegNotSent { detail: ssh_target_refusal_text(endpoint: endpoint, refusal: refusal) }
     SshTargetResolved { target } =>
       match portable_remote_words(raws: words) {
         Absent => RemoteBuildLegNotSent { detail: concat("a request word is not a portable remote word: ", join(words, " ")) }
-        Present { value: w } => RemoteBuildLegRan { target: ssh_target_wire(target: target) as String, result: ssh_session_exec_portable_words(client_args: shape_fleet_ssh_exec(context: context, target: target, words: w)) }
+        Present { value: w } => RemoteBuildLegRan { target: ssh_target_wire(target: target) as String, result: ssh_session_exec_portable_words(client_args: shape_fleet_ssh_exec(kind: kind, context: context, target: target, words: w)) }
       }
   }
 }
@@ -233,13 +236,13 @@ type RemoteBuildLeg
 // sent leaves the host unreachable; a request that could not be sent after a ready probe is the
 // request's own fault and is final, since every host would refuse the same words.
 fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuildRequest, candidate: RemoteBuildCandidate) -> RemoteBuildHostAnswer {
-  match remote_build_client_leg(context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
+  match remote_build_client_leg(kind: ProbeLeg, context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
     RemoteBuildLegNotSent { detail } => HostUnreachable { detail: detail }
     RemoteBuildLegRan { target: _, result: probe } =>
       match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: probe.exit_code, stdout: probe.stdout, stderr: probe.stderr)) {
         Present { value: moved_on } => moved_on
         Absent =>
-          match remote_build_client_leg(context: context, host: candidate.host, words: remote_build_request_words(r: request)) {
+          match remote_build_client_leg(kind: ProvisioningLeg, context: context, host: candidate.host, words: remote_build_request_words(r: request)) {
             RemoteBuildLegNotSent { detail } => HostRefusedRequest { detail: detail }
             RemoteBuildLegRan { target: _, result: sent } => remote_build_answer_from_exit(exit_code: sent.exit_code, stdout: sent.stdout, stderr: sent.stderr)
           }

@@ -146,6 +146,7 @@ fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredenti
         Absent => none
         Present { value: words } =>
           match exec_as_fleet_principal_with_stdin_observed(
+            kind: ProbeLeg,
             context: context,
             target: SshTarget { address: witness_bootstrap_target_address, principal: principal },
             words: words,
@@ -223,6 +224,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
         Absent => false
         Present { value: words } =>
           match exec_as_fleet_principal_with_stdin_observed(
+            kind: ProbeLeg,
             context: context,
             target: SshTarget {
               address: witness_bootstrap_target_address,

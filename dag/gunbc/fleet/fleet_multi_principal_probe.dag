@@ -11,6 +11,7 @@ import gunbc.typed_argv_exec {  typed_argv_probe_over_ssh, TypedArgvExecOutcome,
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProbeLeg,
   SshTargetResolved,
   SshTargetRefused,
   fleet_ssh_target_at_standard_port,
@@ -138,7 +139,7 @@ fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String,
         SshTargetResolved { target: target } =>
           ProbeLegRan {
             result: ssh_session_exec_portable_words(
-              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+              client_args: shape_fleet_ssh_exec(kind: ProbeLeg, context: context, target: target, words: words),
             ),
           }
       }
