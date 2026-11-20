@@ -31,8 +31,8 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
-import gunbc.generated_artifact { GeneratedArtifact, HostedRunnerShadowGateYamlArtifact }
-import gunbc.generated_workflow_provenance { generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeader, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
+import gunbc.generated_artifact { HostedRunnerShadowGateYamlArtifact }
+import gunbc.generated_workflow_provenance { generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
 import gunbc.tailscale_ci_oauth_client {
   ci_oauth_client_id_github_secret, ci_oauth_client_secret_github_secret, ci_oauth_client_tags,
 }
