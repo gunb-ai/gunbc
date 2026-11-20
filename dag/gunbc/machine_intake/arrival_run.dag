@@ -859,18 +859,30 @@ fn arrival_lan_members(row: ArrivalUnitCaptureRow, channel: IpmiChannelNumber) -
 }
 
 // The credential epoch the reference binds: the resolved secret version's own
-// number, the digits after the final slash of the projected version id. The
-// door does not invent an epoch; the version that was read IS the epoch.
-fn arrival_epoch_from_version(version: NonEmptyStr) -> Int {
+// number, the digits after the final slash of the projected version id. The door
+// does not invent an epoch; the version that was read IS the epoch.
+// The reading is typed, and its refusal is a value the caller surfaces. An `Int`
+// position is inhabited only by an `Int` (the declared-type wall, PR #16699), so a
+// refusal has no lawful exit through one -- the old body returned a ProcessExit
+// carrier there, which is what the compiler refused at this line. The refusal is
+// returned instead, and the door's wet skin, the position already declared to end a
+// process, surfaces it. It is also read BEFORE the secret brackets open, so a
+// version id with no version number places neither a netrc nor a password file.
+type ArrivalEpochReading
+  = ArrivalEpochRead { epoch: Int }
+  | ArrivalEpochVersionEmpty { version: NonEmptyStr }
+  | ArrivalEpochNoIntegerVersion { version: NonEmptyStr }
+
+fn arrival_epoch_from_version(version: NonEmptyStr) -> ArrivalEpochReading {
   let parts = split(s: version as String, delimiter: "/")
   let head = parts.skip(n: length(parts) - 1)
   match first(head) {
     Present { value: digits } =>
       match parse_int(s: digits) {
-        none => exit_failure(reason: "ARRIVAL WET EPOCH UNREADABLE: the resolved secret version id carries no integer version number, so the credential reference cannot bind an epoch")
-        Present { value: n } => n
+        none => ArrivalEpochNoIntegerVersion { version: version }
+        Present { value: n } => ArrivalEpochRead { epoch: n }
       }
-    Absent => exit_failure(reason: "ARRIVAL WET EPOCH UNREADABLE: the projected secret version id is empty")
+    Absent => ArrivalEpochVersionEmpty { version: version }
   }
 }
 
@@ -906,19 +918,22 @@ fn arrival_run_wet_after_hold(subject: ArrivalSubjectAdmitted, run_wire: NonEmpt
                   match fetch_secret_ref_credential(secret_ref: accessor, token_source: source) {
                     SecretCredentialReady { credential: credential, resolved_version: resolved_version } => {
                       match sm_resolved_version_id(identity: resolved_version) {
-                        SmVersionIdProjected { version: version } => {
-                          match with_private_netrc_binding(machine: host, login: row.managed_account, password: credential, use: fn(netrc) {
-                            match with_private_secret_file(file_name: "arrival-bmc-managed-password" as PathSegment, content: credential, use: fn(password_file) {
-                              arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: arrival_epoch_from_version(version), subject: subject, run_wire: run_wire, accessor: accessor)
+                        SmVersionIdProjected { version: version } =>
+                          match arrival_epoch_from_version(version) {
+                            ArrivalEpochVersionEmpty { version: v } => exit_failure(reason: concat("ARRIVAL WET EPOCH UNREADABLE: the projected secret version id is empty, so the credential reference has no epoch to bind: ", v as String))
+                            ArrivalEpochNoIntegerVersion { version: v } => exit_failure(reason: concat("ARRIVAL WET EPOCH UNREADABLE: the resolved secret version id carries no integer version number, so the credential reference cannot bind an epoch: ", v as String))
+                            ArrivalEpochRead { epoch: credential_epoch } => match with_private_netrc_binding(machine: host, login: row.managed_account, password: credential, use: fn(netrc) {
+                              match with_private_secret_file(file_name: "arrival-bmc-managed-password" as PathSegment, content: credential, use: fn(password_file) {
+                                arrival_run_wet_gated(row: row, binding: binding, host: host, netrc: netrc, password_file: password_file, credential_epoch: credential_epoch, subject: subject, run_wire: run_wire, accessor: accessor)
+                              }) {
+                                PrivateSecretFileCompleted { value: inner } => inner
+                                _ => exit_failure(reason: "ARRIVAL WET SECRET BRACKET: the managed password file was not cleanly removed after the run")
+                              }
                             }) {
                               PrivateSecretFileCompleted { value: inner } => inner
-                              _ => exit_failure(reason: "ARRIVAL WET SECRET BRACKET: the managed password file was not cleanly removed after the run")
+                              _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
                             }
-                          }) {
-                            PrivateSecretFileCompleted { value: inner } => inner
-                            _ => exit_failure(reason: "ARRIVAL WET NETRC BRACKET: the netrc binding did not open, or left residue after teardown")
                           }
-                        }
                         _ => exit_failure(reason: "ARRIVAL WET SECRET VERSION: the resolved accessor version is not a version resource")
                       }
                     }
