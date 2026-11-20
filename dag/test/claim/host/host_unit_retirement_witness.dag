@@ -12,6 +12,8 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mode_facts,
   fleet_converge_host_unit_retirement_step_if,
   FleetConvergeWorkflowMode,
+  FleetMutationDomain,
+  TargetHostDomain,
   HostUnitRetirement,
 }
 import gunbc.host.host_unit_retirement {
@@ -29,6 +31,7 @@ import gunbc.host.host_unit_retirement {
   host_unit_retirement_rows_cite_the_live_ruling,
   host_unit_retirement_committed_readbacks,
   host_unit_retirement_retained_dir,
+  host_unit_retirement_subject_input_name,
 }
 
 // THE PLAN IS THE RULING'S, VERBATIM IN SIZE AND IDENTITY.
@@ -61,10 +64,10 @@ test fn host_unit_retirement_readback_refuses_half_states() -> Bool {
   let active = host_unit_retirement_read_row(row, "not-found", "active", true)
   let unretained = host_unit_retirement_read_row(row, "not-found", "inactive", false)
   let gone = host_unit_retirement_read_row(row, "not-found", "inactive", true)
-  match loaded { UnitStillLoaded { unit: _, load_state: _ } => true _ => false }
-    && match active { UnitActive { unit: _, active_state: _ } => true _ => false }
-    && match unretained { RetainedCopyAbsent { unit: _, retained_path: _ } => true _ => false }
-    && match gone { Retired { unit: _, retained_path: _ } => true _ => false }
+  (match loaded { UnitStillLoaded { unit: _, load_state: _ } => true _ => false })
+    && (match active { UnitActive { unit: _, active_state: _ } => true _ => false })
+    && (match unretained { RetainedCopyAbsent { unit: _, retained_path: _ } => true _ => false })
+    && (match gone { Retired { unit: _, retained_path: _ } => true _ => false })
 }
 
 test fn host_unit_retirement_all_retired_needs_every_row() -> Bool {
@@ -78,6 +81,17 @@ test fn host_unit_retirement_mode_is_dispatchable_by_wire() -> Bool {
   length(filter(fleet_converge_workflow_modes, m => match m { HostUnitRetirement => true _ => false })) == 1
     && (fleet_converge_mode_facts(mode: HostUnitRetirement)).wire == "host_unit_retirement"
     && string_contains(s: fleet_converge_host_unit_retirement_step_if, pattern: "host_unit_retirement")
+}
+
+// THE GROUP KEYS ON THE SUBJECT, NOT THE EXECUTOR. The retirement acts on `subject_host`, so its host-mutation
+// queue must key on that input: an executor-keyed group would let this teardown run CONCURRENTLY with another
+// subject-targeted act (the serving converge's serve-binary install) on the same machine, which is the only
+// thing the host mutation group exists to prevent.
+test fn host_unit_retirement_group_keys_on_the_subject() -> Bool {
+  match (fleet_converge_mode_facts(mode: HostUnitRetirement)).mutation_domain {
+    TargetHostDomain { field: f } => f == host_unit_retirement_subject_input_name
+    _ => false
+  }
 }
 
 // THE UNITS ARE STILL STANDING (committed capture, runner_host_butch_capture_witness 2026-11-14: the two
@@ -98,6 +112,9 @@ test fn host_unit_retirement_live_units_still_refuse_retired() -> Bool {
 // fills host_unit_retirement_observed_readings from the receipt names the run id in the PR.
 test fn host_unit_retirement_units_are_retired() -> Bool {
   let readbacks = host_unit_retirement_committed_readbacks()
-  length(host_unit_retirement_rows_for(operator_host_srv14 as String)) == length(readbacks)
+  // EVERY ruled row must be covered, and the count is pinned to the plan's three: an empty or partial
+  // observation list can never pass this claim by vacuity -- 0 != 3 refuses until the receipt is committed.
+  length(host_unit_retirement_rows_for(operator_host_srv14 as String)) == 3
+    && length(readbacks) == 3
     && host_unit_retirement_all_retired(readbacks)
 }

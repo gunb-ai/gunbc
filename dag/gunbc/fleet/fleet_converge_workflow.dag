@@ -25,7 +25,7 @@ import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_invoke, gunbc
 import gunbc.roadmap.roadmap_launch_deployment_receipt_location { gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_artifact_name }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
-import gunbc.host.host_unit_retirement { gunbc_ci_host_unit_retirement_receipt_path }
+import gunbc.host.host_unit_retirement { gunbc_ci_host_unit_retirement_receipt_path, host_unit_retirement_subject_input_name }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
 import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_artifact_name, site_pxe_edge_live_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
@@ -548,10 +548,11 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     BoardFunctionConverge => FleetConvergeModeFacts { wire: "board_function_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerHostWithdraw => FleetConvergeModeFacts { wire: "runner_host_withdraw", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerHostRestore => FleetConvergeModeFacts { wire: "runner_host_restore", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    // The retirement apply rides the SAME executor lane as the host-file acts: every act performed ON butch
-    // runs as a srv1-executor dispatch (the split route), so the shared job's host-keyed mutation group
-    // already serializes it with runner_host_file_converge/withdraw/restore and the serving converge.
-    HostUnitRetirement => FleetConvergeModeFacts { wire: "host_unit_retirement", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    // The retirement mutates the SUBJECT, not the executor: the group keys on `subject_host` (a queue key,
+    // not a runner label -- the job still runs on the dispatch executor lane), so a teardown of butch
+    // queues behind every other subject-targeted act on butch regardless of which executor runs it,
+    // exactly like gunbc.host.host_hostname_converge keys on its target row.
+    HostUnitRetirement => FleetConvergeModeFacts { wire: "host_unit_retirement", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: host_unit_retirement_subject_input_name }, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     SitePxeEdgeObserve => FleetConvergeModeFacts { wire: "site_pxe_edge_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     SitePxeEdgeConverge => FleetConvergeModeFacts { wire: "site_pxe_edge_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerPasswordSessionToolConverge => FleetConvergeModeFacts { wire: "runner_password_session_tool_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, job_id: fleet_converge_shared_job_id, is_spark_target: false },

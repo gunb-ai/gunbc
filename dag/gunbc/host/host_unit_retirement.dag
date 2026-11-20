@@ -37,13 +37,20 @@ import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshCo
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
-import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_is_active_argv }
+import extdeps.systemd.systemctl { systemctl_stop_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_is_active_argv, systemctl_reset_failed_argv }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.gnu_coreutils { coreutils_install_file_argv }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.exec.command { argv_words }
 
 data srv14_host_name: String = operator_host_srv14 as String
+
+// The dispatch row that carries the SUBJECT's name: the machine this mode mutates is named by `subject_host`,
+// so the host-mutation concurrency group keys on it (a group is a queue key, not a runner label -- the job
+// still runs on the `host` executor's lane; fleet_converge_workflow's TargetHostDomain arm). Keying on the
+// executor instead would let a subject-targeted teardown run alongside another subject-targeted act on the
+// SAME machine, which is the only thing the host mutation group exists to prevent.
+data host_unit_retirement_subject_input_name: NonEmptyStr = "subject_host"
 
 // The retained-copy home: OUTSIDE every path systemd searches for unit fragments (/etc/systemd/system,
 // /run/systemd/system, /usr/lib/systemd/system), so a retained fragment cannot be re-loaded by accident.
@@ -75,20 +82,30 @@ fn host_unit_retirement_rows() -> List<HostUnitRetirementRow> {
     HostUnitRetirementRow {
       host: srv14_host_name,
       unit: "strata-pool@a.service" as NonEmptyStr,
-      fragment_path: "/etc/systemd/system/strata-pool@a.service",
-      retained_path: "/var/lib/gunbc/retired-units/strata-pool@a.service",
+      // READ from butch 2026-11-20T05:44Z over the lease address with the ENROLLED host key verified first
+      // (ssh-keyscan fingerprint == gunbc.fleet.fleet_host_key_enrollment #16276 SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc):
+      // LoadState=loaded UnitFileState=enabled FragmentPath=/etc/systemd/system/strata-pool@.service -- the
+      // two instances share ONE template fragment, so both engine rows name it and the retained copy is the
+      // fragment that actually gets deleted.
+      fragment_path: "/etc/systemd/system/strata-pool@.service",
+      retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
       no_consumer_reason: "no consumer: the operator ruling gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign retires butch's serving engines -- butch serves nothing and runs no CI jobs; the engine's MemoryMax charge (serving_host_memory butch_a_strata_engine_memory) is retired against the runner envelope by the post-frontier cut that cites this dispatch's receipt" as NonEmptyStr,
     },
     HostUnitRetirementRow {
       host: srv14_host_name,
       unit: "strata-pool@b.service" as NonEmptyStr,
-      fragment_path: "/etc/systemd/system/strata-pool@b.service",
-      retained_path: "/var/lib/gunbc/retired-units/strata-pool@b.service",
+      // Same template fragment and retained copy as the a-instance row (read above): the rm is idempotent
+      // and `install` re-copies atomically, so the two rows deleting one shared fragment stay safe in any
+      // order. The per-row readback below judges the INSTANCE, which is what the ruling retires.
+      fragment_path: "/etc/systemd/system/strata-pool@.service",
+      retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
       no_consumer_reason: "no consumer: same ruling retires the second engine; butch_b_strata_engine_memory's charge is retired by the post-frontier cut citing this dispatch's receipt" as NonEmptyStr,
     },
     HostUnitRetirementRow {
       host: srv14_host_name,
       unit: "a2-power-cap.service" as NonEmptyStr,
+      // READ from butch 2026-11-20T05:44Z (same verified session): FragmentPath=/etc/systemd/system/a2-power-cap.service,
+      // LoadState=loaded UnitFileState=enabled (ActiveState=failed at last capture; see no_consumer_reason).
       fragment_path: "/etc/systemd/system/a2-power-cap.service",
       retained_path: "/var/lib/gunbc/retired-units/a2-power-cap.service",
       no_consumer_reason: "no consumer: the four A2s it capped were physically removed from butch to be sold (operator report 2026-11-17, held at gunbc.serving.gpu_power_state_policy's retirement note, which names THIS dispatch as the unit's residue route); the unit reads FAILED and its intent rows are already retired" as NonEmptyStr,
@@ -145,14 +162,15 @@ type HostUnitRetirementReadback
   | RetainedCopyAbsent { unit: NonEmptyStr, retained_path: String }
 
 fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String, active_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
-  if load_state != "not-found" then
+  if load_state != "not-found" {
     UnitStillLoaded { unit: row.unit, load_state: load_state }
-  else if active_state != "inactive" then
+  } else if active_state != "inactive" {
     UnitActive { unit: row.unit, active_state: active_state }
-  else if !retained_readable then
+  } else if !retained_readable {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
-  else
+  } else {
     Retired { unit: row.unit, retained_path: row.retained_path }
+  }
 }
 
 fn host_unit_retirement_readback_line(readback: HostUnitRetirementReadback) -> String {
@@ -224,16 +242,17 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   let copy_ok = host_unit_retirement_ok(acts.at(3))
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
   // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent.
-  let deletes = if copy_ok then host_unit_retirement_exec_all(target, context, [ ["rm", "-f", row.fragment_path], systemctl_daemon_reload_argv() ]) else []
+  let deletes = if copy_ok { host_unit_retirement_exec_all(target, context, [ ["rm", "-f", row.fragment_path], systemctl_reset_failed_argv(unit: row.unit), systemctl_daemon_reload_argv() ]) } else { [] }
   let back = host_unit_retirement_exec_all(target, context, [
     systemctl_show_load_state_argv(unit: row.unit),
     systemctl_is_active_argv(unit: row.unit),
     argv_words(command: test_regular_file_command(path: row.retained_path)),
   ])
-  if !copy_ok then
+  if !copy_ok {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
-  else
+  } else {
     host_unit_retirement_read_row(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_ok(back.at(2)))
+  }
 }
 
 // THE WET ENTRY: dispatched by the fleet-converge job (host = executor, subject_host = the subject).
@@ -242,31 +261,43 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
 // in the receipt it writes on the executor.
 fn host_unit_retirement_ci_wet() -> ProcessExit {
   let split_pre = fleet_converge_split_read()
-  switch split_pre:
-    SplitRefused { reason } -> exit_failure(reason: concat("host_unit_retirement: the dispatch split is refused: ", fleet_converge_split_refusal_line(reason)))
-    SplitOk { executor_runner_name, subject_host } ->
-      let rows = host_unit_retirement_rows_for(subject_host)
-      switch rows:
-        Empty -> exit_failure(reason: concat("host_unit_retirement: no retirement rows are modeled for subject ", subject_host, "; the ruling retires units on srv14 only"))
-        Cons { head, tail } ->
-          switch runner_host_spec_for(operator_host_srv14):
-            RunnerHostSpecAbsent { host: _ } -> exit_failure(reason: concat("host_unit_retirement: ", subject_host, " has no RunnerHostSpec; there is nothing to dial"))
-            RunnerHostSpecFound { spec: _ } ->
-              switch administrator_ssh_target(host: operator_host_srv14):
-                SshTargetRefused { reason } -> exit_failure(reason: concat("host_unit_retirement: the administrator target for ", subject_host, " is refused: ", reason))
-                SshTargetResolved { target } ->
-                  switch prepare_fleet_ssh_agent_context(attempt_raw: host_unit_retirement_attempt_raw):
-                    FleetSshContextRefused { reason } -> exit_failure(reason: concat("host_unit_retirement: the fleet ssh context is refused: ", reason))
-                    FleetSshContextReady { context, receipt } ->
-                      let readbacks = fold(rows, init: [], f: fn(acc, r) { append(acc, items: [ host_unit_retirement_act_row(target, context, r) ]) })
-                      let header = [ concat("host_unit_retirement subject=", subject_host, " executor=", executor_runner_name, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String) ]
-                      let body = join(append(header, items: map(readbacks, rb => host_unit_retirement_readback_line(rb))), "\n")
-                      let w = Filesystem.Write(path: gunbc_ci_host_unit_retirement_receipt_path, content: body)
-                      if !w.success then
-                        exit_failure(reason: concat("host_unit_retirement: receipt write failed: ", w.error))
-                      else if host_unit_retirement_all_retired(readbacks) then
-                        ExitSuccess
-                      else
-                        exit_failure(reason: body)
-      end
+  match split_pre {
+    SplitRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the dispatch split is refused: ", fleet_converge_split_refusal_line(reason)))
+    SplitOk { executor_runner_name, subject_host } =>
+      match host_unit_retirement_rows_for(subject_host) {
+        Empty => exit_failure(reason: concat("host_unit_retirement: no retirement rows are modeled for subject ", subject_host, "; the ruling retires units on srv14 only"))
+        _ =>
+          match runner_host_spec_for(operator_host_srv14) {
+            RunnerHostSpecAbsent { host: _ } => exit_failure(reason: concat("host_unit_retirement: ", subject_host, " has no RunnerHostSpec; there is nothing to dial"))
+            RunnerHostSpecFound { spec: _ } =>
+              match administrator_ssh_target(host: operator_host_srv14) {
+                SshTargetRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the administrator target for ", subject_host, " is refused: ", reason))
+                SshTargetResolved { target } =>
+                  match prepare_fleet_ssh_agent_context(attempt_raw: host_unit_retirement_attempt_raw) {
+                    FleetSshContextRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the fleet ssh context is refused: ", reason))
+                    FleetSshContextReady { context, receipt } =>
+                      fold(rows_of(subject_host), init: [] as List<HostUnitRetirementReadback>, f: fn(acc, r) { append(acc, items: [ host_unit_retirement_act_row(target, context, r) ]) })
+                      |> judge_run(subject_host: subject_host, executor_runner_name: executor_runner_name)
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn rows_of(host: String) -> List<HostUnitRetirementRow> {
+  host_unit_retirement_rows_for(host)
+}
+
+fn judge_run(readbacks: List<HostUnitRetirementReadback>, subject_host: String, executor_runner_name: String) -> ProcessExit {
+  let header = [ concat("host_unit_retirement subject=", subject_host, " executor=", executor_runner_name, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String) ]
+  let body = join(append(header, items: map(readbacks, rb => host_unit_retirement_readback_line(rb))), "\n")
+  let w = Filesystem.Write(path: gunbc_ci_host_unit_retirement_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: concat("host_unit_retirement: receipt write failed: ", w.error))
+  } else if host_unit_retirement_all_retired(readbacks) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
 }
