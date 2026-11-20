@@ -1,0 +1,358 @@
+module test.claim.compute.remote_gate_subject_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.measure { kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, byte_size_count }
+import std.algebra { count_where, list_map }
+import std.optional { Present, Absent }
+import extdeps.bazel.label { render_label, label_structural_eq }
+import gunbc.instrument_targets { v2_native_cli_label }
+import gunbc.compute.work_request { TestGateSubject, BuildGunbcBinaries, CargoRelease, GunbcDriver }
+import gunbc.compute.host_capacity {
+  compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
+  compute_reserve_against, ComputeHostBelowFloor,
+}
+import gunbc.compute.work_class_grant {
+  work_class_of, compute_gate_workload_profile, workload_profile_for, workload_profile_worst_case_kibibyte,
+  WorkloadProfileStanding, QuotedFromFleetFact, MeasuredFromSamples,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max, gunbc_runner_slot_job_cgroup_ownership }
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_build_rows, emitted_subject_build_label_text, emitted_subject_build_row_for_label,
+  emitted_subject_v2_native_cli_step_id, EmittedSubjectBuildRow, EmittedSubjectRowLookup,
+  EmittedSubjectNoRow, EmittedSubjectOneRow, EmittedSubjectDuplicateRows, native_step_memory_inputs,
+}
+import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
+import gunbc.cli_invoke { invocation_words_bare }
+import gunbc.compute.remote_build {
+  RemoteBuildOperation, RemoteGateSubject, remote_build_decode_request,
+  RemoteBuildRequestDecoded, RemoteBuildRequestRefused, RemoteBuildRequestRefusal,
+  RequestGateLabelNotAGateRow, RequestGateLabelUnparsable, RequestGateTakesOneLabel,
+  RequestGateLabelAmbiguousRows, remote_build_gate_row_refusal,
+  remote_build_work_operation, remote_build_operation_words, remote_build_dependency_rule,
+  RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild,
+}
+import gunbc.compute.work_provider_local { work_class_memory_ceiling, compute_memory_ceiling, compute_operation_env }
+import gunbc.compute.remote_build_client {
+  RemoteGateOutcome, GateServedClean, GateVerdictOnCode, GateRequestRejected, GateNoHostAdmitted, GateRefLeftOnOrigin,
+  remote_gate_run_outcome, remote_gate_exit_code,
+  RemoteBuildRun, RemoteBuildRan, RemoteBuildRequestResult, RemoteBuildAnswered, RemoteBuildNoHostAvailable,
+  RemoteBuildRefCleanup, RemoteBuildRefLeft, RemoteBuildRefDeleted,
+}
+import gunbc.compute.remote_build {
+  RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostCapacityFull,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+
+// HERMETIC CONTROLS FOR THE GATE SUBJECT AS A REMOTE-BUILD OPERATION.
+//
+// What is under test is the seam the required CI gate will cross: a label typed on a command line, the
+// gate module's own rows deciding whether it is a subject at all, the workload profile deciding what may
+// be reserved for it, the ledger refusing what the host cannot back, and the client's exit code saying
+// WHICH KIND OF THING happened. None of these claims runs a host: they are the decode, the arithmetic
+// and the classification, and the live run that follows them is the serve receipt, not a claim here.
+//
+// They are one-at-a-time cheap by construction -- every claim is pure -- so the cost is the compiler
+// load, not the claim.
+
+data g_commit_hex: String = "0123456789abcdef0123456789abcdef01234567"
+
+// A gate request as the WIRE SPELLS IT, built from a row's own rendered label rather than typed here: a
+// claim that pasted the label by hand would keep passing if the row's spelling changed.
+fn g_request_text(label_text: String) -> String {
+  join(["remote-build-v1 ", g_commit_hex, " clever-raven-401.1 gate ", label_text], "")
+}
+
+fn g_decode(text: String) -> RemoteBuildOperation? {
+  match remote_build_decode_request(text: text) {
+    RemoteBuildRequestRefused { cause: _ } => none
+    RemoteBuildRequestDecoded { request } => Present { value: request.operation }
+  }
+}
+
+fn g_refusal(text: String) -> RemoteBuildRequestRefusal? {
+  match remote_build_decode_request(text: text) {
+    RemoteBuildRequestDecoded { request: _ } => none
+    RemoteBuildRequestRefused { cause } => Present { value: cause }
+  }
+}
+
+// ── INHABITANCE: the real decode route adopts every row the gate actually has ─────────────────────────
+//
+// THE REAL ROUTE, END TO END: remote_build_decode_request, the same entry the serving forced command
+// reaches, from the wire text to the operation the provider runs. Every row of
+// emitted_subject_build_rows must cross it, and come out named by the gate's own row. A decode that
+// special-cased one label, or that dropped the label on the way to the WorkOperation, reds here.
+test fn every_gate_row_decodes_through_the_real_request_route() -> Bool {
+  let rows = emitted_subject_build_rows()
+  count_where(list_map(xs: rows, f: fn(row) {
+      let text = emitted_subject_build_label_text(row: row)
+      match g_decode(text: g_request_text(label_text: text)) {
+        Absent => false
+        Present { value: op } =>
+          match op {
+            RemoteGateSubject { label } =>
+              match remote_build_work_operation(op: op) {
+                TestGateSubject { label: mapped } =>
+                  // The label survives the wire AND the mapping onto the operation the provider runs.
+                  count(remote_build_operation_words(op: op)) == 2 &&
+                    count_where(remote_build_operation_words(op: op), w => w == text) == 1 &&
+                    render_label(l: label) == render_label(l: mapped) &&
+                    render_label(l: mapped) == text
+                BuildGunbcBinaries { profile: _, bins: _ } => false
+                CompileEntry { entry: _ } => false
+                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => false
+              }
+            RemoteCompileEntry { entry: _ } => false
+            RemoteRunClaims { entry: _, functions: _ } => false
+          }
+      }
+    }), b => b) == count(rows) && count(rows) > 0
+}
+
+// THE DEPENDENCY RULE, ON THE SIDE THE SERVE READS IT. A gate request must NOT be sent down the
+// build-first path: that path holds the build's reservation before the gate's own, and hands the
+// operation a store-restored binary that `gunbc test`'s own guard cannot judge.
+test fn a_gate_request_carries_its_own_seed_build() -> Bool {
+  match g_decode(text: g_request_text(label_text: render_label(l: v2_native_cli_label()))) {
+    Absent => false
+    Present { value: op } =>
+      match remote_build_dependency_rule(op: op) {
+        RemoteBuildCarriesItsOwnSeedBuild => true
+        RemoteBuildBuildsTheSeedFirst => false
+      }
+  }
+}
+
+// ── RED CONTROLS: what a gate request must refuse, and with which cause ──────────────────────────────
+
+// A LABEL THAT IS NOT A ROW. `//gunbc/instruments:v2-native-frontier` is a real instrument target the
+// seed knows, which is what makes this control worth having: the gate's row set is NARROWER than the
+// instrument set, and the remote route must refuse the difference rather than run it. Refusing here is
+// the gate module's decision (emitted_subject_build_row_for_label), not this module's opinion.
+test fn a_label_that_is_not_a_gate_row_refuses_the_request() -> Bool {
+  match g_refusal(text: g_request_text(label_text: "//gunbc/instruments:v2-native-frontier")) {
+    Present { value: RequestGateLabelNotAGateRow { text } } => text == "//gunbc/instruments:v2-native-frontier"
+    _ => false
+  }
+}
+
+// A DUPLICATE IN THE GATE TABLE IS THIS REPOSITORY'S DEFECT, NOT THE REQUESTER'S. The lookup has three
+// answers, and the two refusals must not collapse: "your label is not a subject" said of a table that
+// names one subject twice is a FALSE FACT about the caller, in the direction fail_closed forbids. The
+// duplicate cannot be provoked from outside a closed table, so the control is over the mapping itself --
+// each lookup answer, and the cause it is allowed to produce.
+test fn a_duplicated_gate_row_refuses_as_a_defect_of_the_table_not_as_an_absent_row() -> Bool {
+  let label = v2_native_cli_label()
+  let one_row = EmittedSubjectOneRow { row: EmittedSubjectBuildRow { label: label, step_id: emitted_subject_v2_native_cli_step_id } }
+  match remote_build_gate_row_refusal(text: render_label(l: label), lookup: one_row) {
+    // one row => NO refusal at all: the refusal set is exactly the two failure answers.
+    Absent =>
+      match remote_build_gate_row_refusal(text: render_label(l: label), lookup: EmittedSubjectNoRow) {
+        Present { value: RequestGateLabelNotAGateRow { text } } =>
+          match remote_build_gate_row_refusal(text: render_label(l: label), lookup: EmittedSubjectDuplicateRows { count: 2 }) {
+            Present { value: RequestGateLabelAmbiguousRows { text: other, count } } =>
+              text == render_label(l: label) && other == text && count == 2
+            _ => false
+          }
+        _ => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// AND THE TABLE AS DECLARED CANNOT REACH THAT ARM TODAY: every row's label is distinct from every
+// other's, by the grammar's own structural comparison rather than by rendering. Without this, the
+// ambiguity refusal would be a door that could quietly be standing open.
+test fn the_declared_gate_rows_name_distinct_subjects() -> Bool {
+  let rows = emitted_subject_build_rows()
+  count_where(xs: rows, predicate: row =>
+    match emitted_subject_build_row_for_label(l: row.label) {
+      EmittedSubjectOneRow { row: found } => label_structural_eq(a: found.label, b: row.label)
+      EmittedSubjectNoRow => false
+      EmittedSubjectDuplicateRows { count: _ } => false
+    }) == count(rows) && count(rows) > 0
+}
+
+// THE SAME REFUSAL FOR A LABEL THAT POINTS NOWHERE, so the refusal cannot be an artifact of the
+// instrument registry: the rows are the authority, and a label outside that package is refused by the
+// same cause.
+test fn a_well_formed_label_outside_the_gate_refuses_with_the_same_cause() -> Bool {
+  match g_refusal(text: g_request_text(label_text: "//some/other/package:target")) {
+    Present { value: RequestGateLabelNotAGateRow { text } } => text == "//some/other/package:target"
+    _ => false
+  }
+}
+
+// AN OPERAND THAT IS NOT A LABEL AT ALL. The corpus entry rule must not be reused here as a proxy: a
+// `.dag` path is a well-formed ENTRY and an ill-formed LABEL, and the two refusals mean different things
+// to whoever typed the request.
+test fn an_operand_that_is_not_a_label_refuses_as_an_unparsable_label() -> Bool {
+  match g_refusal(text: g_request_text(label_text: "dag/gunbc/compute/remote_build.dag")) {
+    Present { value: RequestGateLabelUnparsable { text } } => text == "dag/gunbc/compute/remote_build.dag"
+    _ => false
+  }
+}
+
+// THE VERB TAKES EXACTLY ONE OPERAND. A second word is not a second label to try; it is a request whose
+// shape the protocol does not have, and accepting it would let a later arm quietly mean "and also".
+test fn a_gate_verb_with_two_operands_refuses() -> Bool {
+  match g_refusal(text: join([g_request_text(label_text: "//gunbc/instruments:v2-native-cli"), " extra"], "")) {
+    Present { value: RequestGateTakesOneLabel { word_count } } => word_count == 3
+    _ => false
+  }
+}
+
+// THE ENTRY RULE STILL GUARDS THE VERBS THAT TAKE AN ENTRY: re-ordering the decode to admit a label must
+// not have moved the corpus wall for compile and claims.
+test fn the_corpus_entry_wall_still_guards_compile() -> Bool {
+  match g_refusal(text: join(["remote-build-v1 ", g_commit_hex, " clever-raven-401.1 compile dag/../etc/x.dag"], "")) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ── THE WORKLOAD PROFILE, AND WHAT IT IS NOT SIZED BY ───────────────────────────────────────────────
+
+// THE CLASS IS THE GATE'S, AND THE CEILING COMES FROM THE PROFILE, NOT FROM THE SEAT. On srv1-lab the
+// build ceiling is the build pool's arithmetic; a gate-subject run must be admitted at its own profile's
+// bound instead, which is the CI job's slot. If the seat-sized ceiling and the profile bound happened to
+// be equal this control would prove nothing, so it also pins WHERE the bound comes from: the runner
+// slot's MemoryMax, quoted by the fleet fact rather than repeated here.
+test fn the_gate_class_is_admitted_at_its_profile_and_not_at_the_build_seat() -> Bool {
+  let instance = srv1_lab_dashboard_instance()
+  let gate_op = TestGateSubject { label: v2_native_cli_label() }
+  let build_op = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver] }
+  let bound = workload_profile_worst_case_kibibyte(p: compute_gate_workload_profile)
+  work_class_memory_ceiling(instance: instance, op: gate_op) == bound &&
+    work_class_memory_ceiling(instance: instance, op: build_op) == compute_memory_ceiling(instance: instance) &&
+    kibibyte_count(k: bound) == kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max)) &&
+    match workload_profile_for(class: work_class_of(op: gate_op)) {
+      Absent => false
+      Present { value: p } =>
+        kibibyte_count(k: workload_profile_worst_case_kibibyte(p: p)) ==
+          kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max)) &&
+        // THE STANDING TRAVELS WITH THE NUMBER, AS A BRANCH. A quoted bound must not be consumable as if
+        // it were a measurement, and the quote must name the fact it is quoted from.
+        match p.standing {
+          QuotedFromFleetFact { fact } =>
+            fact.module_path == ("gunbc.runner.runner_slot_desired" as NonEmptyStr) &&
+              fact.decl_name == ("gunbc_runner_slot_memory_max" as NonEmptyStr)
+          MeasuredFromSamples { samples: _ } => false
+        }
+    } &&
+    match workload_profile_for(class: work_class_of(op: build_op)) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+// A RESERVATION THE HOST CANNOT BACK IS REFUSED, NOT WAITED FOR, NOT PART-FITTED. The fixture supplies
+// its own observation (availability one KiB under the profile's bound), which is what the corpus's own
+// note demands: a fixture derived from the live reading is not a fixture. The refusal is the ledger's
+// existing typed cause; what is under test is that the GATE BOUND is what gets compared, and that the
+// comparison is the model's one fit rule.
+test fn a_gate_reservation_larger_than_live_availability_refuses_typed() -> Bool {
+  let instance = srv1_lab_dashboard_instance()
+  let bound = workload_profile_worst_case_kibibyte(p: compute_gate_workload_profile)
+  match compute_capacity_subject(instance: instance) {
+    ComputeSubjectHostUnresolved { host: _ } => false
+    ComputeSubjectResolved { subject, appropriation } =>
+      match compute_reserve_against(
+        subject: subject,
+        appropriation: appropriation,
+        request: bound,
+        reference: "gate-witness@1" as NonEmptyStr,
+        term_seconds: 3600,
+        total: kibibyte(count: kibibyte_count(k: bound) * 4),
+        available: kibibyte(count: kibibyte_count(k: bound) - 1),
+      ) {
+        ComputeHostBelowFloor { requested, available } =>
+          kibibyte_count(k: requested) == kibibyte_count(k: bound) &&
+            kibibyte_count(k: available) == kibibyte_count(k: bound) - 1
+        _ => false
+      }
+  }
+}
+
+// THE CGROUP BOUND IS THE RESERVATION, NOT A SECOND NUMBER. The unit's MemoryMax is the granted amount,
+// and the envelope the seed measures is that cgroup -- so the number the ledger promised and the number
+// the kernel enforces are the same by construction. This control is the arithmetic half of that claim:
+// the profile's bound in kibibytes is exactly the byte count the fleet fact states, with no rounding
+// loss (25 GiB divides exactly), and the conversion rounds UP for any bound that does not, so a profile
+// can never be under-reserved by the unit change.
+test fn the_profile_bound_rounds_up_and_never_down() -> Bool {
+  let exact = workload_profile_worst_case_kibibyte(p: compute_gate_workload_profile)
+  kibibyte_count(k: exact) * 1024 >= byte_size_count(b: compute_gate_workload_profile.worst_case) &&
+    kibibyte_count(k: exact) * 1024 - byte_size_count(b: compute_gate_workload_profile.worst_case) < 1024
+}
+
+// ── THE MEMORY VERDICT IS THE SEED'S: this side declares names, decides nothing ──────────────────────
+
+// THE SUBJECT STEP'S ENVELOPE ARRIVES AS THE CI STEP PASSES IT. What is checked is the shape of the
+// claim, not the threshold: the gate operation's unit carries the envelope names the required gate
+// carries, and NOTHING on this side compares a peak to a limit. The refusal, the receipt and the swap
+// rule are the seed's (gunbc.host.memory_envelope, gunbc.host.memory_stall_refusal), reached through the
+// same carrier the CI step uses (native_step_memory_inputs); a second verdict on this side is the failure
+// mode this control exists to keep out. The one addition is the product-reuse freshness the leaf route
+// needs -- the envelope set is covered, not redefined.
+test fn the_gate_operation_hands_the_envelope_to_the_seed_that_reads_it() -> Bool {
+  let gate_op = TestGateSubject { label: v2_native_cli_label() }
+  let env = compute_operation_env(op: gate_op)
+  let ci_env = native_step_memory_inputs(ownership: gunbc_runner_slot_job_cgroup_ownership)
+  let words = invocation_words_bare(gunbc_test_invocation_words(label: render_label(l: v2_native_cli_label())))
+  count(ci_env) > 0 &&
+    count(env) == count(ci_env) + 1 &&
+    count_where(xs: ci_env, predicate: i =>
+      count_where(xs: env, predicate: b => b.name == (i.env_name as NonEmptyStr)) == 1) == count(ci_env) &&
+    // AND the operation asks the seed to judge the code with the SAME words the required gate's step
+    // uses: `gunbc test <label>`, the label spelled by the row itself.
+    count(words) == 2 &&
+      count_where(xs: words, predicate: w => w == "test") == 1 &&
+      count_where(xs: words, predicate: w => w == render_label(l: v2_native_cli_label())) == 1
+}
+
+// ── THE EXIT CODE SAYS WHICH KIND OF THING HAPPENED ─────────────────────────────────────────────────
+
+fn g_ran(results: List<RemoteBuildRequestResult>, cleanup: RemoteBuildRefCleanup) -> RemoteBuildRun {
+  RemoteBuildRan { commit: g_commit_hex, source_ref: "clever-raven-401.1", results: results, cleanup: cleanup }
+}
+
+fn g_step(answer: RemoteBuildHostAnswer) -> RemoteBuildRequestResult {
+  RemoteBuildRequestResult { operation: RemoteGateSubject { label: v2_native_cli_label() }, step: RemoteBuildAnswered { host: "srv1", answer: answer } }
+}
+
+// A FULL POOL IS NOT A FAILED TEST. This is the whole reason the gate CLI has its own exit table: a
+// hosted-runner job that reads capacity-full as exit 1 marks the commit failed on a fact about the
+// fleet. The typed answer word is what decides, not the exit's mood.
+test fn capacity_full_exits_as_no_host_admitted_and_not_as_a_code_verdict() -> Bool {
+  let outcome = remote_gate_run_outcome(run: g_ran(results: [g_step(answer: HostCapacityFull { detail: "full" })], cleanup: RemoteBuildRefDeleted))
+  outcome == (GateNoHostAdmitted as RemoteGateOutcome) && remote_gate_exit_code(o: outcome) == 3 &&
+    remote_gate_exit_code(o: GateVerdictOnCode) == 1
+}
+
+// THE CODE VERDICT KEEPS ITS OWN CODE, and it outranks a leftover ref: a run that judged the code and
+// left a ref must not be reported as a cleanup problem.
+test fn a_work_failure_is_the_only_code_verdict_and_outranks_a_leftover_ref() -> Bool {
+  let outcome = remote_gate_run_outcome(run: g_ran(results: [g_step(answer: HostWorkFailed { receipt: "{}" })], cleanup: RemoteBuildRefLeft { detail: "ssh failed" }))
+  outcome == (GateVerdictOnCode as RemoteGateOutcome) && remote_gate_exit_code(o: outcome) == 1
+}
+
+// NOTHING WAS JUDGED WHEN NO HOST TOOK IT: the roster-empty case, where there was never an answer to
+// read, is the same class as a full pool.
+test fn no_host_available_is_the_same_class_as_a_full_pool() -> Bool {
+  let outcome = remote_gate_run_outcome(run: RemoteBuildRan {
+    commit: g_commit_hex, source_ref: "clever-raven-401.1",
+    results: [RemoteBuildRequestResult { operation: RemoteGateSubject { label: v2_native_cli_label() }, step: RemoteBuildNoHostAvailable { attempts: [] } }],
+    cleanup: RemoteBuildRefDeleted,
+  })
+  outcome == (GateNoHostAdmitted as RemoteGateOutcome) && remote_gate_exit_code(o: outcome) == 3
+}
+
+// A CLEAN SERVE IS 0, AND A SERVE THAT LEFT THE REF IS NOT: the cleanup fact is an unfinished piece of
+// this run's own bookkeeping, and reading it as a code failure would blame the commit for the client.
+test fn a_served_run_is_zero_and_a_leftover_ref_is_its_own_class() -> Bool {
+  let clean = remote_gate_run_outcome(run: g_ran(results: [g_step(answer: HostServed { receipt: "{}" })], cleanup: RemoteBuildRefDeleted))
+  let left = remote_gate_run_outcome(run: g_ran(results: [g_step(answer: HostServed { receipt: "{}" })], cleanup: RemoteBuildRefLeft { detail: "ssh failed" }))
+  clean == (GateServedClean as RemoteGateOutcome) && remote_gate_exit_code(o: clean) == 0 &&
+    left == (GateRefLeftOnOrigin as RemoteGateOutcome) && remote_gate_exit_code(o: left) == 4
+}

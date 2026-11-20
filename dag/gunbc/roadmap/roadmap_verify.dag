@@ -206,6 +206,10 @@ fn verification_exec(
           }
         TypedArgvExecRefused { reason } =>
           VerificationExecTransportRefused { reason: reason }
+        // The verification leg ran past its ceiling and answered nothing: recorded as not-answered,
+        // never as a verification that ran with empty output.
+        TypedArgvExecOverran { deadline: d } =>
+          VerificationExecTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "roadmap verification", deadline: d) }
       }
   }
 }

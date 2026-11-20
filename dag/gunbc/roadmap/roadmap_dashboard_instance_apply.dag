@@ -1639,6 +1639,9 @@ fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, a
     DashboardSshProvision { host } =>
       match typed_argv_exec_over_ssh(host: host, argv: concat([program as String], args)) {
         TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        // An overrun observer leg read nothing; the observer is reported as not having been answered,
+        // never as exited with some guessed status.
+        TypedArgvExecOverran { deadline: d } => ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "dashboard observer", deadline: d) } }
         TypedArgvExecConverged { result } =>
           if result.exit_code == 0 { ObserverReadOut { stdout: result.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: result.exit_code, stderr: result.stderr } } }

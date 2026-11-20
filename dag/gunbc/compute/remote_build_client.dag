@@ -48,12 +48,14 @@ import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, WitnessModuleSelected, WitnessModuleNotAWitness,
 }
 import gunbc.compute.remote_build {
-  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteBuildRequest, RemoteBuildSourceRef,
+  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildSourceRef,
   remote_build_source_ref, remote_build_source_ref_name, remote_build_request_words, remote_build_entry_admitted,
   RemoteBuildCandidate, remote_build_candidates, remote_build_admitted_public_keys,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
   HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
+  RemoteBuildOperationDecode, RemoteBuildOperationDecoded, RemoteBuildOperationRefused, remote_build_decode_gate_subject,
+  remote_build_gate_word, remote_build_request_refusal_text,
   remote_build_probe_text, remote_build_probe_from_exit, remote_build_probe_answer, remote_build_answer_from_exit,
 }
 
@@ -456,6 +458,8 @@ fn remote_build_operation_json(op: RemoteBuildOperation) -> JsonValue {
     RemoteCompileEntry { entry } => json_object(members: [json_kv(key: "compile", value: json_string(s: entry as String))])
     RemoteRunClaims { entry, functions } =>
       json_object(members: [json_kv(key: "claims", value: json_string(s: entry as String)), json_kv(key: "functions", value: json_array(elements: map(functions, f => json_string(s: f as String))))])
+  
+    RemoteGateSubject { label } => json_object(members: [json_kv(key: "gate", value: json_string(s: render_label(l: label)))])
   }
 }
 
@@ -523,6 +527,127 @@ fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, ide
       SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote compile: snapshot refused at ", step, ": ", detail], "") }
       SnapshotResolved { commit } =>
         remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }], identity_file: identity_file), declined: [], failed: [])
+    }
+  }
+}
+
+// ── THE GATE CLI ─────────────────────────────────────────────────────────────────────────────────────
+//
+// THE REQUIRED GATE'S SUBJECT STEP, RUN ON A SERVING HOST. This is the remote twin of what the
+// v2-bootstrap job does for one row of gunbc.emitted_subject_build_gate::emitted_subject_build_rows:
+// build the seed with cargo, then `gunbc test <label>` with the binary that build produced -- under a
+// reservation from that host's ledger and a cgroup bound equal to it, with the memory verdict the seed
+// itself gives (gunbc.host.memory_envelope, gunbc.host.memory_stall_refusal). Nothing here decides
+// which labels are gate rows: the label goes through remote_build_decode_gate_subject, the same decode
+// the serving side applies, so a non-row label is refused HERE, before a snapshot is taken or a host is
+// contacted, with the same typed cause.
+//
+//   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli \
+//     --arg worktree=$PWD --arg label=//gunbc/instruments:v2-native-cli \
+//     --arg receipt_path=$PWD/.gunbc-gate-receipt.json
+//
+// THE EXIT CODE SAYS WHICH KIND OF THING HAPPENED, and that distinction is the point of this CLI and
+// not a courtesy: a fleet with no free reservation must never exit like a failed test, or CI learns to
+// read a capacity shortage as a code defect.
+//   0  served, and clean
+//   1  the work RAN and its own verdict was unsuccessful -- a verdict on the code, and the only one
+//   2  the request never became a request: the label is not a gate row, the snapshot or the push was
+//      refused, or the receipt could not be written
+//   3  NO HOST ADMITTED THE WORK: every roster host answered capacity-full, cannot-serve, unreachable,
+//      work-in-flight, or the transport could not say what happened. Nothing in this run is a statement
+//      about the code, and CI must not mark the commit failed on it.
+//   4  the run was answered but the hidden ref was left on origin -- an unfinished cleanup, again not a
+//      verdict on the code
+// The typed attempts (host, answer word) are in the receipt for every one of these, and reading the
+// receipt is how a human finds out WHICH host said what; the code only says which class to route to.
+type RemoteGateOutcome
+  = GateServedClean
+  | GateVerdictOnCode
+  | GateRequestRejected
+  | GateNoHostAdmitted
+  | GateRefLeftOnOrigin
+
+// WHICH CLASS ONE SETTLED STEP BELONGS TO. A refusal the request itself caused is a request defect, not
+// a capacity fact; everything else that kept the work from running -- a full pool, a host that cannot
+// serve, an unreachable host, work already in flight elsewhere, a transport that cannot say -- is the
+// same class for CI's purposes: no host admitted it, and the code was never judged.
+fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
+  match s {
+    RemoteBuildAnswered { host: _, answer } =>
+      match answer {
+        HostServed { receipt: _ } => GateServedClean
+        HostWorkFailed { receipt: _ } => GateVerdictOnCode
+        HostRefusedRequest { detail: _ } => GateRequestRejected
+        HostWorkInFlight { receipt: _ } => GateNoHostAdmitted
+        HostCapacityFull { detail: _ } => GateNoHostAdmitted
+        HostCannotServe { detail: _ } => GateNoHostAdmitted
+        HostUnreachable { detail: _ } => GateNoHostAdmitted
+        HostOutcomeUnknown { detail: _ } => GateNoHostAdmitted
+      }
+    RemoteBuildNoHostAvailable { attempts: _ } => GateNoHostAdmitted
+    RemoteBuildTryHost { candidate: _ } => GateNoHostAdmitted
+  }
+}
+
+// THE RUN'S CLASS, by what the run could have said about the code. A run in which any step ran the work
+// and failed is a code verdict first: a leftover ref or a declined host must not bury it. Only when no
+// step ran the work does the "nothing was judged" class answer, and cleanup is last.
+fn remote_gate_run_outcome(run: RemoteBuildRun) -> RemoteGateOutcome {
+  match run {
+    RemoteBuildNotSent { step: _, detail: _ } => GateRequestRejected
+    RemoteBuildRan { commit: _, source_ref: _, results, cleanup } =>
+      let outcomes = map(results, r => remote_gate_step_outcome(s: r.step))
+      if any(outcomes, o => match o { GateVerdictOnCode => true  _ => false }) {
+        GateVerdictOnCode
+      } else if any(outcomes, o => match o { GateNoHostAdmitted => true  _ => false }) {
+        GateNoHostAdmitted
+      } else if any(outcomes, o => match o { GateRequestRejected => true  _ => false }) {
+        GateRequestRejected
+      } else if any(outcomes, o => match o { GateServedClean => true  _ => false }) &&
+              match cleanup { RemoteBuildRefLeft { detail: _ } => true  RemoteBuildRefDeleted => false } {
+        GateRefLeftOnOrigin
+      } else {
+        GateServedClean
+      }
+  }
+}
+
+fn remote_gate_exit_code(o: RemoteGateOutcome) -> Int {
+  match o {
+    GateServedClean => 0
+    GateVerdictOnCode => 1
+    GateRequestRejected => 2
+    GateNoHostAdmitted => 3
+    GateRefLeftOnOrigin => 4
+  }
+}
+
+fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String?) -> ProcessExit {
+  match remote_build_decode_gate_subject(words: [remote_build_gate_word as String, label], operand: label) {
+    RemoteBuildOperationRefused { cause } =>
+      ExitFailure { code: 2, reason: join(["gunbc remote gate: ", remote_build_request_refusal_text(cause: cause)], "") }
+    RemoteBuildOperationDecoded { operation } =>
+      match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
+        SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote gate: snapshot refused at ", step, ": ", detail], "") }
+        SnapshotResolved { commit } => remote_gate_run_and_exit(worktree: worktree, commit: commit, operation: operation, receipt_path: receipt_path, identity_file: identity_file)
+      }
+  }
+}
+
+// THE RUN, THE RECEIPT, THEN THE CODE. The receipt is written whether or not anything was served --
+// the attempts and their answer words are the record a human reads when the exit says "no host admitted
+// this" -- and the exit code is the class, never a re-derivation of it.
+fn remote_gate_run_and_exit(worktree: String, commit: String, operation: RemoteBuildOperation, receipt_path: String, identity_file: String?) -> ProcessExit {
+  let run = remote_build_run(worktree: worktree, commit_text: commit, operations: [operation], identity_file: identity_file)
+  let document = serialize_json(v: remote_build_run_json(r: run, declined: [], failed: []))
+  let receipt = Filesystem.Write(path: receipt_path, content: document)
+  if !receipt.success {
+    ExitFailure { code: 2, reason: join(["gunbc remote gate: receipt could not be written to ", receipt_path, ": ", receipt.error, "; report was ", document], "") }
+  } else {
+    let outcome = remote_gate_run_outcome(run: run)
+    match outcome {
+      GateServedClean => ExitSuccess
+      _ => ExitFailure { code: remote_gate_exit_code(o: outcome), reason: join(["gunbc remote gate: ", document], "") }
     }
   }
 }

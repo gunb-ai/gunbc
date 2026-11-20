@@ -3196,7 +3196,7 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
   identity: "h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_pinned_members"),
-    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry sat outside every family the fold claims, so the model could not say where it lived or that removing it was the converge's job. The ENTRY half is drawn in by the change this row now carries a sighting for: site_pxe_edge_owned_install_path takes the edge's staging/ subtree as a whole, derived from site_pxe_edge_served_root rather than from a second constant naming the same directory, and site_pxe_edge_empty_owned_install_dirs retires a directory the removal has emptied, inside the owned families only. That leaves the half quoted above -- a dnsmasq line with no line-level delta the model can read -- as what still stands unmodelled on this edge. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
+    requirement: "srv4's PXE edge carries artifacts that were staged by hand for this unit's install -- a seed, a dnsmasq line and an install entry -- and they must be retired by a converge run, not by a hand edit. The live observation of 2026-11-16 established the FILE half is already modelled: the converge computes a stale set (site_pxe_edge_stale_install_paths -- every file under the owned install roots that no model-rendered member produces) and an apply removes it one file at a time (site_pxe_edge_remove_stale), refusing at the first path that fails; srv4 put this unit's hand-staged seed in that set. The unmodelled half, which stands: state the edge carries that is NOT a file under an owned root has no representation at all. A hand-added dnsmasq line shows up only as file ... before=differs, with no line-level delta anyone can read from the model, and this unit's hand-staged install entry sat outside every family the fold claims, so the model could not say where it lived or that removing it was the converge's job. The ENTRY half is drawn in by the change this row now carries a sighting for: site_pxe_edge_owned_install_path takes the edge's staging/ subtree as a whole, derived from site_pxe_edge_served_root rather than from a second constant naming the same directory, and site_pxe_edge_empty_owned_install_dirs retires a directory the removal has emptied, inside the owned families only. That closes every artifact this requirement names by hand: the seed pair and srv15's install file were already in the fold's stale set and went there on 2026-11-18, the dnsmasq line went because the model RENDERS that whole config file and the same run reported before=differs outcome=written-and-read-back on it, and the install entry now sits inside the owned set. Two things are deliberately NOT recorded as this requirement standing unmet. The EFFECT on the host -- the staged file and the empty directories still have to be removed by an apply, which goes out only on a fleet-converge dispatch the operator authorizes -- is an execution owed, and it is carried as such by gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation::supermicro_h11ssl_unit3_edge_residue_2026_11_19 and its read obligation, not as a modelling gap here. And the reporting-granularity question raised above (a rendered file shows only before=differs, never which line changed) is a DIFFERENT capability: nothing about it leaves a hand-placed artifact out of the converge's reach, since the model owns the file, which is exactly why the line went away. It is stated here so the record keeps it, not as a half this requirement still fails. One constraint binds applies on this edge, and it is a lane instruction rather than a fact about the edge, so it is stated as what it is and claims no authority it does not have: smart-crane-730 held this lane's apply against srv4 on 2026-11-16, inside the site PXE edge bring-up plan that is his lane, until srv15's install binding is admitted on this edge. The fact underneath it comes from this repository, not from the operator -- gunbc.machine_intake.srv15_host_nic_observation records 9c:6b:00:e7:ca:63 as srv15's install NIC, and three of the five stale paths the observe listed are named for that MAC. gunbc.design_ruling carries dated OPERATOR rulings, so the hold is not entered there; the bring-up plan carrier carries it on its side."
     standing: RequirementEstablished {
       by: CitesArtifact {
         label: "artifacts/receipts/site-pxe-edge-observe-main-run-43789720870-2026-11-16/observe_wire_lines.txt (srv4's own answers: stale-install-files=found naming this unit's seed paths; dnsmasq config before=differs; nothing written)",
@@ -3295,7 +3295,42 @@ data h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model: In
       },
     ],
   },
-  disposition: Open,
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: edge_install_residue_fold_integrated_revision,
+      // Nothing is deleted to close this row: the fold grew, so no declaration was superseded. The pre-change state
+      // lives on in the row's fifth sighting, which records the residue as it stood when the fold could not reach it.
+      superseded: [],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_path"),
+        tail: [
+          decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_owned_install_roots"),
+          decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_served_root"),
+          decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_empty_owned_install_dirs"),
+          decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_stale_install_files"),
+        ],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult {
+          control: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_hand_staged_entry_under_the_edge_staging_subtree_is_stale"),
+          run: "green at ca0b9c46b3d1 (the landed pull request's head, an ancestor of 6f1e4de1eac8) inside test.claim.fleet.site_pxe_edge_converge_witness: 108 claims, 108 pass, 0 fail, clean tree, claim_batch sha256 b569513e8ffcb5ca884647e8de81df2fde2cecdfbdfa537068e75fc4b0453934 built from fb2127fc88f8; local serial, one claim_batch at a time. RED as a planted pair, each reverted in place: with the staging root removed from site_pxe_edge_owned_install_roots this claim fails (3 claims run: pass=1 fail=2).",
+          conclusion: "The hand-staged install entry under the edge's staging/ subtree is inside the set the fold claims, so the converge lists it as residue and can remove it. Drop that ownership arm and it is invisible to the fold -- which is exactly the half this row carried open.",
+        },
+        tail: [
+          RetainedExecutionResult {
+            control: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_directory_emptied_by_the_withdrawal_is_pruned_and_the_family_roots_stay"),
+            run: "same batch, same binary, same revision as the entry claim above. RED twice, each reverted in place: with the staging root dropped (pass=1 fail=2), and with site_pxe_edge_ancestor_directories returning no ancestors (pass=2 fail=1) -- the second plant is the one that shows the protection walk is load-bearing, since without it the seed directory this run renders into lands on the prune list.",
+            conclusion: "A directory a completed removal has emptied is retired, inside the owned families only, deepest first, while each family root and every directory the fold keeps or renders content into is protected.",
+          },
+          RetainedExecutionResult {
+            control: decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_refused_directory_removal_refuses_the_apply"),
+            run: "same batch, same binary, same revision; green, and it stays green under both plants, which is the correct shape -- it tests the apply's failure path, not which roots are owned.",
+            conclusion: "An apply that cannot remove an emptied directory fails rather than reporting success, so a partially pruned edge can never read as a clean one.",
+          },
+        ],
+      },
+    },
+  },
 }
 
 // THE HAND ROUTE DID NOT CARRY THE FLEET ROSTER.
@@ -4145,6 +4180,15 @@ data integration_concerns: List<IntegrationConcern> = [systemctl_user_show_omits
 // ::a_revision_citation_that_no_landing_contains files exactly that error: a citation must name a revision a reader can
 // stand on, and a pending change has none until it lands.
 data edge_residue_read_revision: CommitSha = "398136026b345e087968a9db4ba42ec551c5ca4c"
+// The landing that drew the edge's staging/ subtree into the fold that prunes install residue, and that retires the
+// directories a completed removal leaves empty. It is an ancestor of main (git merge-base --is-ancestor holds), and
+// AT THAT REVISION the declarations cited as the replacement below exist -- site_pxe_edge_served_root,
+// site_pxe_edge_owned_install_roots, site_pxe_edge_empty_owned_install_dirs -- which is what
+// gunbc.design_argument::continuous_generalization asks of integrated_at and what gunbc.recurring_failure_mode
+// ::a_revision_citation_that_no_landing_contains was filed to refuse. The execution results below name the revision
+// they were measured at, which is the pull request's head rather than this landing: the diff between them touches no
+// Rust and no module these claims read.
+data edge_install_residue_fold_integrated_revision: CommitSha = "6f1e4de1eac8ee3db1a307ec616980229fc74fd4"
 
 
 fn fork_rows_have_distinct_authorities() -> Bool {
@@ -5030,4 +5074,53 @@ data machine_width_uint8_int_crossing_has_no_declared_route: IntegrationConcern 
     ],
     next: climbs_when(capability: "std.integer lands the ruled intersection carrier -- a checked width mint with its target realization, and the declared total UInt<N> -> Int crossing of PR #16548, parked while its non-required heal job thrash-refuses near 22.5 GB on the 25.7 GB runner slot pending an operator decision on that budget -- so sole construction makes an unadmitted octet unwritable and auth_base64url_wire consumes the qualified carrier instead of casting o as Int"),
   },
+}
+
+// The revision at which the third-party-apt-repo fork was sighted: main, the head tailscale was modelled onto.
+data third_party_apt_repo_leaves_sighting_revision: CommitSha = "600e6a835afbcdccbf29c7cc1e44df9248cccf7b"
+
+// THREE LEAVES OF ONE RULE, NOT YET ONE SHAPE. A third-party apt repository -- URI, suite, components,
+// architecture, a signed-by keyring path, and a pinned signing-key fingerprint the fetched key must match or
+// the route refuses -- has three declarations today: extdeps.container.docker_ce::DockerCeAptRepo,
+// extdeps.container.nvidia_container_toolkit::NvidiaContainerToolkitAptRepo, and the general
+// extdeps.package_managers.apt::ThirdPartyAptRepo (with its one source-line renderer and one install route)
+// that tailscale was just modelled onto. The two container leaves were written first, each re-spelling the
+// sequence; the general shape is the Single-Authority home. This is NOT a claim they are wrong -- each has been
+// running on hosts -- it is that they and the general shape decide the same governed meaning in three places,
+// kept in agreement by nothing. The trigger to consolidate: the next edit to either container leaf moves it
+// onto ThirdPartyAptRepo rather than editing the leaf in place; a fix to the shared shape (fingerprint
+// handling, keyrings mode, the sudo/quote discipline) then lands once and reaches all three vendors.
+data integration_concern_third_party_apt_repo_leaves_unified: IntegrationConcern = IntegrationConcern {
+  identity: "third-party-apt-repo-shape-forked-across-vendor-leaves",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "DockerCeAptRepo"),
+      second: decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "NvidiaContainerToolkitAptRepo"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "DockerCeAptRepo"),
+    tail: [
+      decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "NvidiaContainerToolkitAptRepo"),
+      decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "ThirdPartyAptRepo"),
+      decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_plan"),
+    ],
+  },
+  question: "Which declaration decides the shape and provisioning sequence of a third-party apt repository -- the URI, suite, components and architecture, the signed-by keyring path, and the pinned fingerprint the fetched key must match or the route refuses -- so a vendor is a row and a fix to the shared discipline lands once?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: third_party_apt_repo_leaves_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "docker_ce_repo_install_script") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_container_toolkit_apt_source_line") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_plan") },
+        ],
+      },
+      account: "tailscale had to be onboarded onto its own apt repository (a fresh host cannot locate the tailscale package without it; the live srv4 join run 44686507960 failed at apt-get install exit=100 'Unable to locate package tailscale'). Its provisioning sequence -- keyrings dir, fetch the armored key, dearmor, verify the pinned fingerprint and refuse, write the deb line, apt-get update, install -- is word-for-word the sequence docker_ce_repo_install_script and the nvidia leaf already render, differing only in the cited values. Rather than add a third leaf, the sequence was lifted into extdeps.package_managers.apt::ThirdPartyAptRepo and tailscale became a row (extdeps.tailscale.apt_repo::tailscale_apt_repo_noble). The two container leaves were left in place -- migrating them is out of scope for the tailscale onboarding that motivated this, and would change live runner/GPU provisioning paths under an unrelated deadline. They are named here so the next edit to either carries it onto the general shape instead of editing the leaf.",
+    },
+    tail: [],
+  },
+  disposition: Open,
 }

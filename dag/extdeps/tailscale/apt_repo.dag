@@ -1,0 +1,74 @@
+module extdeps.tailscale.apt_repo
+
+// THE TAILSCALE PACKAGE'S APT REPOSITORY, AS A ROW IN THE ONE GENERAL SHAPE.
+//
+// tailscale is not in Ubuntu's main/universe; a fresh host that has never had tailscale cannot resolve the
+// package until tailscale's own apt repository is present. gunbc.tailscale_join_converge's install leg used
+// to run a bare `apt-get install -y tailscale` (extdeps.package_managers.apt::apt_get_install_command), which
+// on a fresh host exits 100 with "Unable to locate package tailscale" -- the live srv4 join run 44686507960
+// and srv3 join run 44688299124 both failed exactly there, after the dpkg-absent fix correctly decided to
+// install. This row is the repository that install leg was missing, declared in
+// extdeps.package_managers.apt::ThirdPartyAptRepo -- the general shape -- so tailscale is a ROW, not a
+// re-invented per-vendor leaf (Single Authority, gunbc.design_argument::single_authority). The Docker CE and
+// NVIDIA container-toolkit leaves are the two existing leaves of the same rule; unifying them onto this shape
+// is filed as gunbc.integration_concern.integration_concern_third_party_apt_repo_leaves_unified, not done here.
+//
+// WHY A ROW IN ITS OWN MODULE, LIKE docker_ce AND nvidia_container_toolkit. This is the upstream surface:
+// what tailscale's package repository is, cited to tailscale's own published channel. It names no host, no
+// tailnet, no auth key -- those are product facts elsewhere. The join converge reads this row and renders it
+// through the general route.
+
+import std.types { NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
+import extdeps.uri { Uri, Https }
+import extdeps.package_managers.apt { ThirdPartyAptRepo, PinnedAptKeyFingerprint, package_tailscale }
+
+// tailscale's own published apt channel is the authority for the repository URI, the noble suite and the
+// `main` component -- read from the dists/noble/Release it serves (Origin: Tailscale, Codename: noble,
+// Components: main).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pkgs.tailscale.com/stable/ubuntu/"
+  }
+}
+
+// THE FINGERPRINT, WITH ITS STATING STATED HONESTLY. The value 2596A99EAAB33821893C0A79458CA832957F5868 was
+// transcribed from https://pkgs.tailscale.com/stable/ubuntu/noble.gpg -- the SAME URL the install route
+// fetches. That proves only the key did not change since it was read; it does not authenticate the key, so
+// the standing is TranscribedUncited, NOT CitedToAuthority: tailscale's install docs publish `curl ... | sh`
+// and no independent fingerprint page was found to cite. The install route still refuses on a fingerprint
+// mismatch, so a substituted key stops the route -- but the PIN is not presented as authenticated. The read
+// that would upgrade it to CitedToAuthority is named in the obligation.
+data tailscale_apt_key_fingerprint_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Confirm 2596A99EAAB33821893C0A79458CA832957F5868 against a Tailscale-published signing-key fingerprint on a channel independent of the key file the route fetches (a Tailscale docs page, a signed announcement, or the key pinned by a third party such as a public OpenPGP keyserver looked up BY fingerprint) -- not the same https://pkgs.tailscale.com/stable/ubuntu/noble.gpg the install downloads. Until then the pin only proves the key is unchanged, not genuine.",
+}
+
+// THE PINNED SUITE. One value is the authority for both the deb line (below) and the host-codename guard
+// in gunbc.tailscale_join_converge::tailscale_join_install_leg: the tailscale channel is published only
+// for this Ubuntu suite (extdeps_external_authority_anchor), so the converge reads the host's OWN codename
+// and refuses when it differs -- the fleet is not assumed uniform (Single Authority).
+data tailscale_apt_repo_suite: NonEmptyStr = "noble"
+
+// THE ROW BUILDER. `arch` is a parameter, not a constant, because the fleet is mixed-arch (aarch64 and
+// x86_64 hosts both exist): the caller supplies the host's own dpkg architecture, read the way the serving
+// model reads host.arch (gunbc.compute.remote_build_serving_converge), never a pinned guess that would
+// silently bind the row to the one host it was written on. Everything else is tailscale's stable Ubuntu
+// noble channel as published (extdeps_external_authority_anchor).
+fn tailscale_apt_repo_noble(arch: NonEmptyStr) -> ThirdPartyAptRepo {
+  ThirdPartyAptRepo {
+    keyring_url: "https://pkgs.tailscale.com/stable/ubuntu/noble.gpg",
+    keyring_path: "/etc/apt/keyrings/tailscale.gpg",
+    keyring_fingerprint: PinnedAptKeyFingerprint {
+      value: "2596A99EAAB33821893C0A79458CA832957F5868",
+      standing: tailscale_apt_key_fingerprint_standing,
+    },
+    repo_base: "https://pkgs.tailscale.com/stable/ubuntu",
+    suite: tailscale_apt_repo_suite,
+    components: ["main"],
+    arch: arch,
+    sources_list_path: "/etc/apt/sources.list.d/tailscale.list",
+  }
+}
+
+data tailscale_packages: List<NonEmptyStr> = [package_tailscale]

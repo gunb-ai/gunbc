@@ -1,0 +1,348 @@
+module gunbc.fleet.apt_third_party_repo_converge
+
+// THE SHARED ROUTE BY WHICH A THIRD-PARTY apt REPOSITORY REACHES A FLEET HOST, WALKED AS TYPED ELEVATED LEGS.
+//
+// WHY THIS MODULE EXISTS (gunbc.design_argument::root_generalization, gunbc.design_argument::single_authority).
+// apt.dag owns the ONE ordered leg plan (gunbc.extdeps.package_managers.apt::apt_third_party_repo_install_plan)
+// and the pure keyring guard. A plan is only half the authority: someone must also RUN it -- resolve the staging
+// tokens, capture the per-run directory from Mktemp and the key listing from ShowKeys, enforce the Guard before
+// the key is ever dearmored and trusted, stop on the first refusal so a half-trusted keyring is never left
+// behind, and clean up. None of that enforcement depends on WHICH vendor the row is for. If it lived inside one
+// vendor's converge, the next vendor the integration concern moves onto this shape
+// (gunbc.integration_concern::integration_concern_third_party_apt_repo_leaves_unified -- Docker CE, the NVIDIA
+// container toolkit) would fork it. So the executor lives here, next to the plan, vendor-neutral, and a vendor
+// supplies only its ThirdPartyAptRepo row and its packages.
+//
+// IT REFUSES, AND EVERY REFUSAL IS TYPED (gunbc.design_argument::fail_closed): a leg that references the staging
+// directory before Mktemp produced it; a leg run_elevated_leg will not run; a leg that exits nonzero; a keyring
+// listing that is not the single pinned key. On the first such refusal the walk STOPS (no later leg runs) and
+// the staging directory is removed if it was ever created. The result is the fleet's String? refusal shape: none
+// is success, a Some names why, and every message names the repository keyring URL it was working on.
+//
+// THE HOST WORDS, ALSO SHARED. Any host installing from a third-party apt repository must answer for its own
+// dpkg architecture (apt keys its index by it) and its own Ubuntu codename (the row pins a suite), and neither
+// may be guessed. read_one_host_word is that single read -- one command over the modelled ssh route, Absent when
+// it is refused, fails, or prints nothing -- so a vendor reads both with two calls rather than writing the
+// read twice (gunbc.design_argument::minimize_redundancy).
+
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.package_managers.apt {
+  AptRepoArgvLiteral,
+  AptRepoArgvStagingDir,
+  AptRepoGuard,
+  AptRepoInstallArgvToken,
+  AptRepoInstallLegKind,
+  AptRepoInstallStep,
+  AptRepoLeg,
+  AptRepoLegMktemp,
+  AptRepoLegShowKeys,
+  PinnedAptKeyFingerprint,
+  ThirdPartyAptRepo,
+  apt_repo_install_leg_kind_name,
+  apt_third_party_keyring_colons_are_pinned,
+  apt_third_party_repo_install_plan,
+}
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_recursive_argv }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, ProbeLeg, SshTarget }
+import gunbc.fleet.host_credential_custody_converge {
+  CustodyHost,
+  ElevatedLeg,
+  ElevatedLegRan,
+  ElevatedLegRefused,
+  run_elevated_leg,
+}
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOverran, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
+import std.algebra { trim }
+import std.optional { Absent, Optional, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
+
+// ONE TRIMMED WORD READ FROM THE HOST OVER THE MODELLED ssh ROUTE. A vendor calls this for its dpkg architecture
+// (dpkg --print-architecture) and its Ubuntu codename (lsb_release --codename --short); the command is the only
+// thing that differs. Absent when the read is refused, fails, or prints empty, so a caller refuses rather than
+// render a deb line for an arch or suite nobody observed.
+fn read_one_host_word(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  command: ArgvCommand,
+) -> NonEmptyStr? {
+  match typed_argv_exec_over_fleet_ssh(
+    kind: ProbeLeg,
+    target: target,
+    context: context,
+    argv: argv_words(command: command),
+  ) {
+    TypedArgvExecRefused { reason: _ } => Absent
+    // An overrun answered nothing: Absent, the same as a refusal -- never a word guessed from the host.
+    TypedArgvExecOverran { deadline: _ } => Absent
+    TypedArgvExecConverged { result: r } =>
+      if !r.success || !string_non_empty(value: trim(s: r.stdout)) {
+        Absent
+      } else {
+        Present { value: trim(s: r.stdout) as NonEmptyStr }
+      }
+  }
+}
+
+// The walk's carried state: the per-run staging directory (from Mktemp), the keyring colon listing (from
+// ShowKeys), and the first refusal seen (which stops the walk). Vendor-neutral -- nothing here names tailscale.
+type AptRepoInstallState {
+  dir: String?
+  colons: String?
+  refusal: String?
+}
+
+// An elevated leg's outcome as a refusal, so cleanup reads the same way the legs do: Absent means the leg ran and
+// succeeded, Present carries why nothing was done or the thing done did not work.
+fn apt_repo_elevated_refusal(leg: ElevatedLeg, label: String) -> String? {
+  match leg {
+    ElevatedLegRan { exit_code: code, stdout: _, stderr: err } =>
+      if code == 0 {
+        Absent
+      } else {
+        Present {
+          value: concat(
+            concat(concat(label, " exit="), to_string(code)),
+            if string_non_empty(value: trim(s: err)) { concat(": ", trim(s: err)) } else { "" },
+          )
+        }
+      }
+    ElevatedLegRefused { reason: reason } =>
+      Present { value: concat(concat(label, " not run: "), reason) }
+  }
+}
+
+// Resolve an install leg's argv tokens against the staging directory known so far. A leg that references the
+// staging directory before Mktemp has produced it resolves to none -- the walk refuses rather than run a
+// command with an empty path. Every resolved word is portable, so the leg crosses the far-side shell re-parse
+// allowlist word by word (a command whose argv would need a space cannot be built as a token in the first place).
+fn apt_repo_install_argv(
+  tokens: List<AptRepoInstallArgvToken>,
+  dir: String?,
+) -> List<String>? {
+  let needs_dir = fold(
+    tokens,
+    init: false,
+    f: (acc, t) => match t {
+      AptRepoArgvStagingDir { suffix: _ } => true
+      AptRepoArgvLiteral { value: _ } => acc
+    },
+  )
+  match dir {
+    Present { value: d } =>
+      Present {
+        value: map(
+          tokens,
+          fn(t) {
+            match t {
+              AptRepoArgvLiteral { value: v } => v
+              AptRepoArgvStagingDir { suffix: s } => concat(d, s)
+            }
+          },
+        )
+      }
+    Absent =>
+      if needs_dir {
+        none
+      } else {
+        Present { value: map(tokens, fn(t) { match t { AptRepoArgvLiteral { value: v } => v  AptRepoArgvStagingDir { suffix: s } => s } }) }
+      }
+  }
+}
+
+// A leg's stdin payload crosses run_elevated_leg's transport as a plain String: Absent becomes the empty
+// payload (the leg reads no stdin), Present becomes the text. The Optional lives in the PLAN (where "no stdin"
+// must not be an empty-string sentinel); this is the one place it becomes a transport string.
+fn apt_repo_install_stdin(payload: String?) -> String {
+  match payload {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// Fold one leg's ElevatedLeg answer back into the walk state. A refused leg or a nonzero exit sets the refusal
+// (which stops the walk and, after it, triggers cleanup). Mktemp captures the TRIMMED staging directory and
+// refuses an empty one; ShowKeys captures the colon listing the Guard will read; every other leg only has to
+// succeed to advance the walk. `label` names the repository keyring URL so a refusal says which repo it was on.
+fn apt_repo_install_after_leg(
+  kind: AptRepoInstallLegKind,
+  leg: ElevatedLeg,
+  label: String,
+  state: AptRepoInstallState,
+) -> AptRepoInstallState {
+  match leg {
+    ElevatedLegRefused { reason: reason } =>
+      AptRepoInstallState {
+        dir: state.dir,
+        colons: state.colons,
+        refusal: Present {
+          value: concat("third-party apt repository install refused for ", label, ": ", apt_repo_install_leg_kind_name(kind: kind), " (", reason, ")"),
+        },
+      }
+    ElevatedLegRan { exit_code: exit_code, stdout: stdout, stderr: _ } =>
+      if exit_code != 0 {
+        AptRepoInstallState {
+          dir: state.dir,
+          colons: state.colons,
+          refusal: Present {
+            value: concat("third-party apt repository install failed for ", label, ": ", apt_repo_install_leg_kind_name(kind: kind), " exited nonzero"),
+          },
+        }
+      } else {
+        match kind {
+          AptRepoLegMktemp => {
+            let d = trim(s: stdout)
+            if string_non_empty(value: d) {
+              AptRepoInstallState { dir: Present { value: d }, colons: state.colons, refusal: state.refusal }
+            } else {
+              AptRepoInstallState {
+                dir: state.dir,
+                colons: state.colons,
+                refusal: Present { value: concat("third-party apt repository install refused for ", label, ": mktemp printed no staging directory") },
+              }
+            }
+          }
+          AptRepoLegShowKeys =>
+            AptRepoInstallState { dir: state.dir, colons: Present { value: stdout }, refusal: state.refusal }
+          _ => state
+        }
+      }
+  }
+}
+
+// The GUARD step, as data over the captured listing. With no listing (ShowKeys never ran) it refuses; with a
+// listing it asks apt.dag's pure fold whether the pin is the single genuine key, and refuses if not. The guard
+// lives in apt.dag as a fold the witnesses can exercise without a host -- here it is only invoked.
+fn apt_repo_install_guard(
+  pinned: PinnedAptKeyFingerprint,
+  label: String,
+  state: AptRepoInstallState,
+) -> AptRepoInstallState {
+  match state.colons {
+    Absent =>
+      AptRepoInstallState {
+        dir: state.dir,
+        colons: state.colons,
+        refusal: Present { value: concat("third-party apt repository install refused for ", label, ": the signing key was never listed, so its fingerprint cannot be checked") },
+      }
+    Present { value: colons } =>
+      if apt_third_party_keyring_colons_are_pinned(colons: colons, pinned: pinned) {
+        state
+      } else {
+        AptRepoInstallState {
+          dir: state.dir,
+          colons: state.colons,
+          refusal: Present {
+            value: concat(
+              "third-party apt repository install refused for ",
+              label,
+              ": the fetched signing key is not the single key pinned as ",
+              pinned.value as String,
+            ),
+          },
+        }
+      }
+  }
+}
+
+// Run one step: the Guard evaluates the fold; every other step resolves its argv against the staging directory
+// and runs it elevated. A step that needs the staging directory before it exists refuses without running.
+fn apt_repo_install_step(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  pinned: PinnedAptKeyFingerprint,
+  label: String,
+  step: AptRepoInstallStep,
+  state: AptRepoInstallState,
+) -> AptRepoInstallState {
+  match step {
+    AptRepoGuard => apt_repo_install_guard(pinned: pinned, label: label, state: state)
+    AptRepoLeg { kind: kind, argv: argv, stdin: stdin } =>
+      match apt_repo_install_argv(tokens: argv, dir: state.dir) {
+        Absent =>
+          AptRepoInstallState {
+            dir: state.dir,
+            colons: state.colons,
+            refusal: Present {
+              value: concat(
+                "third-party apt repository install refused for ",
+                label,
+                ": the ",
+                apt_repo_install_leg_kind_name(kind: kind),
+                " leg needed the staging directory before it existed",
+              ),
+            },
+          }
+        Present { value: words } =>
+          apt_repo_install_after_leg(
+            kind: kind,
+            leg: run_elevated_leg(
+              subject: subject,
+              context: context,
+              argv: words,
+              stdin_payload: apt_repo_install_stdin(payload: stdin),
+            ),
+            label: label,
+            state: state,
+          )
+      }
+  }
+}
+
+// Remove the private staging directory, if one was created. This runs on the refusal path AFTER the walk has
+// stopped, so a half-trusted keyring or a half-written sources line is never left on the host.
+fn apt_repo_install_cleanup(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  label: String,
+  dir: String?,
+) -> String? {
+  match dir {
+    Absent => none
+    Present { value: d } =>
+      apt_repo_elevated_refusal(
+        leg: run_elevated_leg(
+          subject: subject,
+          context: context,
+          argv: coreutils_rm_force_recursive_argv(path: d),
+          stdin_payload: "",
+        ),
+        label: concat("remove the third-party apt repository staging directory for ", label),
+      )
+  }
+}
+
+// THE SHARED INSTALL ROUTE. Walk apt_third_party_repo_install_plan -- the ONE ordered leg plan apt.dag owns --
+// running each leg through run_elevated_leg (which elevates internally, so the plan's raw argv is passed
+// untouched) and re-spelling none of its commands. It captures the per-run staging directory from Mktemp and the
+// key listing from ShowKeys, enforces the keyring Guard on that listing, and -- on the first refusal, nonzero
+// exit, or refused leg -- stops and removes the staging directory if it was ever created. The vendor supplies
+// only its row and packages; every refusal names the row's keyring URL. Returns the fleet String? refusal shape.
+fn apt_third_party_repo_install(
+  subject: CustodyHost,
+  context: FleetSshExecutionContext,
+  repo: ThirdPartyAptRepo,
+  packages: List<NonEmptyStr>,
+) -> String? {
+  let steps = apt_third_party_repo_install_plan(repo: repo, packages: packages)
+  let pinned = repo.keyring_fingerprint
+  let label = repo.keyring_url as String
+  let walked = fold(
+    steps,
+    init: AptRepoInstallState { dir: none, colons: none, refusal: none },
+    f: (state, step) => match state.refusal {
+      Present { value: _ } => state
+      Absent => apt_repo_install_step(subject: subject, context: context, pinned: pinned, label: label, step: step, state: state)
+    },
+  )
+  match walked.refusal {
+    Absent => none
+    Present { value: why } => {
+      let cleanup = apt_repo_install_cleanup(subject: subject, context: context, label: label, dir: walked.dir)
+      match cleanup {
+        Absent => Present { value: why }
+        Present { value: cleanup_why } =>
+          Present { value: concat(why, "; and the staging directory could not be removed: ", cleanup_why) }
+      }
+    }
+  }
+}

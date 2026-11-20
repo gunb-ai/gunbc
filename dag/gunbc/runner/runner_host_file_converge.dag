@@ -2,6 +2,7 @@ module gunbc.runner.runner_host_file_converge
 import std.algebra { length }
 import std.decl_ref { decl_ref }
 import std.optional { Absent, Optional, Present }
+import std.list { first_where }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
@@ -9,7 +10,7 @@ import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_si
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, systemd_unit_active_state_is_stopped, systemd_unit_active_state_wire_label, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, systemd_unit_active_state_is_stopped, systemd_unit_active_state_wire_label, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, TasksCurrent, DropInPathsProperty, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv, grep_fixed_word_quiet_argv, grep_exit_selected, grep_exit_not_selected }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_units_properties_command, systemctl_list_all_service_units_command, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
@@ -40,11 +41,12 @@ import gunbc.host.host_axis_caps {
   SurplusSlotsUnobserved,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
+
 import gunbc.runner.runner_host_cap_bracket {
   read_slot_drain_pass_over, SlotAdmissionState, SlotRunState, AdmissionOpen, AdmissionClosedByMask,
   RunStopped, RunStopping, RunWorkerLive, RunListenerIdle, RosterNotBusy, RosterBusy, RosterUnread,
   RosterDisagrees,
-  CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
+  CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, release_slot_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, read_slot_drain_pass_over }
 import gunbc.runner.runner_slot_cap_converge { slot_cap_desired_at_unit, SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsWriteInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for, runner_host_withdrawal_standing, activation_held_by_withdrawal, RunnerHostWithdrawalStanding }
@@ -169,7 +171,11 @@ import gunbc.runner.runner_slot_actuation {
   read_slot_over, SlotReadOutcome, SlotRead, SlotReadRefused,
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
+  slot_actuation_show_properties, slot_actuation_reading_of, SlotActuationReading, SlotReadingTyped,
+  SlotReadingUnknownWord, slot_task_count_of_show, SlotTasks, SlotCgroupAbsent, SlotTasksUnread,
+  run_slot_steps_over,
 }
+import gunbc.runner.runner_local_state { MainProcess, NoMainProcess, MainProcessUnread, MainProcessUngrounded }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, deploy_slot_identities, committed_slot_identities, CommittedPopulationDerived, host_transitional_ci_slot_identities, identity_in_list, gunbc_runner_slot_desired_for }
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
 import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
@@ -2861,6 +2867,189 @@ fn rebuild_runner_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
   }
 }
 
+// RELEASING AN ADMISSION ON A SLOT THE HOST MAY NEVER HAVE INSTANTIATED. The bracket's release leg
+// (gunbc.runner.runner_host_cap_bracket::release_slot_over) starts a unit the withdraw masked and reads
+// back loaded/enabled/active -- and NOTHING ASKS WHETHER THE SLOT'S RUNNER TREE IS THERE. A kept slot
+// can be a unit whose tree the host never built: srv3-06 and srv3-07 are exactly that (withdraw 44595938568
+// masked thirteen kept units; restore 44606128349 reported srv3-06/07 ACTIVATED with a live MainPID and no
+// cgroup, and the caps converge 44621007740 then read REFUSED step=slot-tree 'slot tree absent while active'
+// for both). The unit starts, the listener never comes up, and the cap phase stays unsettled forever --
+// gunbc.recurring_failure_mode::a_restore_reopens_a_slot_the_host_never_provisioned. So the release of a
+// KEPT unit goes through the tree first: a tree proved absent takes the host's OWN queued-first-install
+// path (rebuild_runner_slot_tree), and a unit that has a process while its tree is absent is an anomaly and
+// REFUSES -- it is never started again to find out. This is the intake the converge's tree leg already
+// applies to its slots (converge_runner_slot_tree); the release route was the one that bypassed it.
+fn runner_slot_release_intake_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome {
+  let tree = first_where(xs: subject.slot_trees, keep: t => t.unit == unit)
+  match tree {
+    Absent => SlotActuationRefused { unit: unit, step: "slot-tree", reason: "the model declares no slot tree for this unit, so releasing its admission cannot be grounded in a tree the host can run" }
+    Present { value: target } => match observe_runner_slot_tree_presence(subject: subject, context: context, target: target) {
+      TreePresent => release_slot_over(target: subject.target, context: context, unit: unit)
+      TreePresenceUnreadable { cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: join(["the slot-tree presence read was refused, so no release was decided: ", why], "") }
+      TreeAbsent => match runner_slot_instantiation(unit: unit, read: read_slot_over(target: subject.target, context: context, unit: unit), presence: TreeAbsent) {
+        SlotNotInstantiated => match rebuild_runner_slot_tree(subject: subject, context: context, target: target) {
+          RunnerSlotTreeRebuilt { unit: _ } => release_slot_over(target: subject.target, context: context, unit: unit)
+          RunnerSlotTreeRefused { unit: _, cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: join(["the slot tree is absent and the first install was refused, so the admission was not released: ", why], "") }
+          RunnerSlotTreeHeld { unit: _ } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: "the slot tree is absent and its install is held by the host, so the admission was not released" }
+          RunnerSlotTreeQueuedForFirstInstall { unit: _ } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: "the slot tree is absent and its first install is queued behind the host's file write, so the admission was not released yet" }
+          RunnerSlotTreePending { unit: _, cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree-install", reason: join(["the slot tree is absent and its install is pending: ", why], "") }
+        }
+        SlotInstantiated { unit: _ } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: "the slot tree is absent while the unit reports a process -- an anomalous pairing; the unit was not started or released" }
+        SlotInstantiationAnomalous { detail: why } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: join(["the slot tree is absent while the unit is instantiated: ", why], "") }
+        SlotInstantiationUnreadable { cause: why } => SlotActuationRefused { unit: unit, step: "slot-tree", reason: join(["the slot tree is absent and the unit behind it is unreadable: ", why], "") }
+      }
+    }
+  }
+}
+
+// EVERY KEPT UNIT'S RELEASE GOES THROUGH THAT INTAKE.
+fn runner_slot_release_intakes_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, units: List<NonEmptyStr>) -> List<SlotActuationOutcome> {
+  map(units, u => runner_slot_release_intake_over(subject: subject, context: context, unit: u))
+}
+
+// ── A KEPT SLOT THE HOST NEVER PROVISIONED: QUIET THE LOOP, THEN BUILD ─────────────────────────
+//
+// srv3-06 and srv3-07 have failed two converge runs the same way (44593179957, 44621007740): the unit
+// template loads, ExecStart has no working tree to run from, the process exits, Restart=always starts it
+// again, and every read says ActiveState=activating. The tree leg therefore refuses with "slot tree
+// absent while active", the actuation never settles, and because
+// runner_host_cpu_dropin_gate filters 60-fleet-cpu.conf out of the plan while ANY actuation on the host
+// is unsettled, all THIRTEEN kept srv3 slots read ALLOCATION-NOT-EFFECTIVE CPUQuotaPerSecUSec=5s
+// want=9000000us and the caps are withheld host-wide. Two units that were never provisioned hold the
+// whole host's ceiling. Waiting does not help: the loop cannot end on its own, and masking a unit the
+// model intends to keep would strand it and strip its drop-ins (recurring_failure_mode
+// a_running_unit_masked_loses_its_drop_ins_at_the_next_reload).
+//
+// SO THE LOOP IS QUIETED WITH A STOP -- but a stop is a mutation of a live systemd unit, so it is
+// admitted only by ONE observation that answers all three of the host's own facts about that unit, read
+// from a single `systemctl show` (the six words the slot reader requires PLUS ControlGroup and
+// TasksCurrent, which is the same argv pair gunbc.runner.runner_slot_actuation slot_actuation_argvs
+// already sends):
+//   * MainPID names no process (NoMainProcess: "0" -- an unparseable pid is unread, a pid that is there
+//     is a process that is there);
+//   * the unit cgroup is empty: TasksCurrent counts the cgroup and every descendant (slot_task_count_of_show,
+//     cgroup v2 pids controller), so zero means no Runner.Listener and no Runner.Worker anywhere under
+//     the unit, and a blank ControlGroup means there is no workload cgroup at all;
+//   * the registration the unit names is not held: the registration read returns no identity AND the
+//     listing that proved the tree absent proves the directory that registration file lives in is absent
+//     -- a failed `cat` on its own proves nothing, it is how every unread read in this domain looks.
+// ANY one of the three unanswered is UNKNOWN, and unknown refuses without dispatching anything: srv3-13
+// is the standing lesson that a count read beside the wrong moment can be wrong about a job, and a unit
+// holding a registration can be about to take one. The stop is then read back through the same reader and
+// must come back stopped (inactive or failed) before any install leg runs.
+//
+// ONLY A KEPT SLOT TAKES THIS LEG. A unit the desired roster does not name is being withdrawn: its tree
+// stays unbuilt and its activation stays held, exactly as before, because building a slot the fleet has
+// decided to retire would create work for the retirement to undo (manager condition, 2026-11-20).
+type RestartLoopStanding
+  = LoopQuiet { unit: NonEmptyStr, evidence: String }
+  | LoopLive { unit: NonEmptyStr, why: String }
+  | LoopUnread { unit: NonEmptyStr, why: String }
+
+// PURE, AND TESTED HERMETICALLY: the three facts as the host answered them, and nothing else.
+// THE TAIL THE TWO QUIET SHAPES SHARE. A reading can answer "the cgroup holds nothing" or "there is no
+// workload cgroup at all"; from there the admission decides one way, from one pair of facts. Spelled twice the
+// two copies drift -- which is gunbc.recurring_failure_mode.
+// a_restore_reopens_a_slot_the_host_never_provisioned arriving again inside one fold -- so it is spelled once
+// and the two arms differ only in the evidence they hand back.
+fn loop_quiet_or_refused(unit: NonEmptyStr, tree_absent_proven: Bool, registration_held: Bool, quiet_evidence: String) -> RestartLoopStanding {
+  if !tree_absent_proven {
+    LoopUnread { unit: unit, why: "the tree standing the admission was handed is not a proven absence, so the registration inside it is unproven too" }
+  } else if registration_held {
+    LoopLive { unit: unit, why: "the host still holds a registration for this slot, which could take a job the moment it is polled" }
+  } else {
+    LoopQuiet { unit: unit, evidence: quiet_evidence }
+  }
+}
+
+fn runner_slot_restart_loop_standing(unit: NonEmptyStr, show_stdout: String, registration_held: Bool, tree_absent_proven: Bool) -> RestartLoopStanding {
+  match slot_actuation_reading_of(unit: unit, show_stdout: show_stdout) {
+    Absent => LoopUnread { unit: unit, why: "systemctl show returned no complete block for the unit, so the stop has no facts to stand on" }
+    Present { value: res } =>
+      match res {
+        SlotReadingUnknownWord { property: p, raw: w } => LoopUnread { unit: unit, why: join(["systemctl show printed ", p, "=", w, ", a word outside the vocabulary this admission decides on"], "") }
+        SlotReadingTyped { reading: rd } =>
+          match rd.main_pid {
+            MainProcessUnread { cause: c } => LoopUnread { unit: unit, why: join(["MainPID is unread: ", c], "") }
+            MainProcessUngrounded { pid: pid, cause: _ } => LoopLive { unit: unit, why: join(["MainPID names a process (", to_string(pid), ")"], "") }
+            MainProcess { process: _, absolute_start: _ } => LoopLive { unit: unit, why: "MainPID names a grounded process" }
+            NoMainProcess =>
+              match slot_task_count_of_show(show_stdout: show_stdout) {
+                SlotTasksUnread { cause: c } => LoopUnread { unit: unit, why: join(["the unit cgroup's task count is unread: ", c], "") }
+                SlotTasks { count: n } =>
+                  if n == 0 {
+                    loop_quiet_or_refused(
+                      unit: unit,
+                      tree_absent_proven: tree_absent_proven,
+                      registration_held: registration_held,
+                      quiet_evidence: "MainPID=0, the unit cgroup holds no task, and no registration is held over a tree the listing proves absent",
+                    )
+                  } else {
+                    LoopLive { unit: unit, why: join(["the unit cgroup holds TasksCurrent=", to_string(n), ", so a process is running under it"], "") }
+                  }
+                SlotCgroupAbsent =>
+                  loop_quiet_or_refused(
+                    unit: unit,
+                    tree_absent_proven: tree_absent_proven,
+                    registration_held: registration_held,
+                    quiet_evidence: "MainPID=0, the unit has no workload cgroup at all, and no registration is held over a tree the listing proves absent",
+                  )
+              }
+          }
+      }
+  }
+}
+
+// THE LEG. Read once; admit or refuse on that read; stop; read back through the same reader.
+type LoopSettlement
+  = LoopStoppedForInstall { unit: NonEmptyStr, read: SlotActuationReading, evidence: String }
+  | LoopRefusedForInstall { unit: NonEmptyStr, step: NonEmptyStr, why: String }
+
+fn runner_slot_loop_settlement_is_due(instantiation: RunnerSlotInstantiation, presence: RunnerSlotTreePresence, kept: Bool) -> Bool {
+  kept
+    && (match presence { TreeAbsent => true  _ => false })
+    && (match instantiation { SlotInstantiationAnomalous { unit: _, detail: _ } => true  _ => false })
+}
+
+fn settle_unprovisioned_slot_loop_over(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, unit: NonEmptyStr, presence: RunnerSlotTreePresence) -> LoopSettlement {
+  let argv = systemctl_show_properties_argv(units: [unit], properties: concat(slot_actuation_show_properties, [ControlGroup, TasksCurrent]))
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: subject.target, context: context, argv: argv) {
+    TypedArgvExecRefused { reason: why } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: join(["the admission read was refused at the edge: ", why], "") }
+    // A read that ran past its ceiling admitted nothing: the stop is not attempted, and the install is
+    // refused rather than taken as proof the unit is quiet.
+    TypedArgvExecOverran { deadline: d } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: typed_argv_exec_overran_reason(leg_hint: "slot stop-admission read", deadline: d) }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        LoopRefusedForInstall { unit: unit, step: "stop-admission", why: join(["systemctl show exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+      } else {
+        let registration = slot_current_registration_over_unit(target: subject.target, context: context, unit: unit)
+        match runner_slot_restart_loop_standing(
+          unit: unit,
+          show_stdout: r.stdout,
+          registration_held: (match registration { UnitRegistrationRead { unit: _, instance: _, name: _ } => true  UnitRegistrationUnreadable { unit: _, cause: _ } => false }),
+          tree_absent_proven: (match presence { TreeAbsent => true  _ => false }),
+        ) {
+          LoopLive { why: w } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: w }
+          LoopUnread { why: w } => LoopRefusedForInstall { unit: unit, step: "stop-admission", why: w }
+          LoopQuiet { evidence: e } =>
+            match run_slot_steps_over(kind: ActuationLeg, target: subject.target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
+              Present { value: why } => LoopRefusedForInstall { unit: unit, step: "stop", why: join(["the stop itself failed: ", why], "") }
+              Absent =>
+                match read_slot_over(target: subject.target, context: context, unit: unit) {
+                  SlotReadRefused { reason: why } => LoopRefusedForInstall { unit: unit, step: "stop-readback", why: join(["the unit was stopped but the readback refused: ", why], "") }
+                  SlotRead { reading: rd } =>
+                    if systemd_unit_active_state_is_stopped(s: rd.active) {
+                      LoopStoppedForInstall { unit: unit, read: rd, evidence: join([e, "; stopped, read back ActiveState=", systemd_unit_active_state_wire_label(s: rd.active)], "") }
+                    } else {
+                      LoopRefusedForInstall { unit: unit, step: "stop-readback", why: join(["the unit still reads ActiveState=", systemd_unit_active_state_wire_label(s: rd.active), " after the stop; no tree is built under a unit the manager still considers live"], "") }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
 fn converge_runner_slot_tree(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -2880,7 +3069,20 @@ fn converge_runner_slot_tree(
     CiJobSlot => true
   }
   let presence = observe_runner_slot_tree_presence(subject: subject, context: context, target: target)
-  let unit_read = read_slot_over(target: subject.target, context: context, unit: unit)
+  let first_read = read_slot_over(target: subject.target, context: context, unit: unit)
+  let first_instantiation = runner_slot_instantiation(unit: unit, read: first_read, presence: presence)
+  // A KEPT slot the host never provisioned, whose unit is stuck in a failing restart loop, is quieted by
+  // a stop so its tree can be built at all; every other standing keeps the reading it had, and a unit the
+  // desired roster does not name is never stopped (see the fold above).
+  let settlement = if runner_slot_loop_settlement_is_due(instantiation: first_instantiation, presence: presence, kept: any(subject.desired_units, d => d == unit)) { Present { value: settle_unprovisioned_slot_loop_over(subject: subject, context: context, unit: unit, presence: presence) } } else { none }
+  let loop_refusal = match settlement {
+    Present { value: LoopRefusedForInstall { unit: _, step: st, why: w } } => Present { value: join([st, ": ", w], "") }
+    _ => none
+  }
+  let unit_read = match settlement {
+    Present { value: LoopStoppedForInstall { read: rd, evidence: _ } } => SlotRead { reading: rd }
+    _ => first_read
+  }
   let instantiation = runner_slot_instantiation(unit: unit, read: unit_read, presence: presence)
   // THE LIFECYCLE IS READ FIRST, so a tree that has never been built cannot be mistaken for an
   // unreadable one (converge run 43448221797, butch's first apply): existence and the manager's word
@@ -2893,7 +3095,11 @@ fn converge_runner_slot_tree(
     Absent => none
     Present { value: o } => if o { observe_runner_slot_tree_release(subject: subject, context: context, target: target, runner_release: runner_release) } else { none }
   }
-  match runner_slot_tree_step(target: target, runner_release: runner_release, account_held: account_held, instantiation: instantiation, owned: owned, release_current: release_current, mode: mode, privilege: privilege) {
+  // A loop this admission could not quiet is a typed refusal naming the step it died at; the tree is never
+  // built under a unit the manager still considers live, and nothing is retried to find out what happens.
+  match loop_refusal {
+    Present { value: why } => RunnerSlotTreeRefused { unit: unit, cause: join(["the restart loop was not settled: ", why], "") as NonEmptyStr }
+    Absent => match runner_slot_tree_step(target: target, runner_release: runner_release, account_held: account_held, instantiation: instantiation, owned: owned, release_current: release_current, mode: mode, privilege: privilege) {
     RunnerSlotTreeSettled { standing: st } => st
     RunnerSlotTreeDrainThenRebuild =>
       // NEVER MASK A RUNNING UNIT (gunbc.runner.runner_slot_actuation NeverMaskARunningUnit): an idle slot is
@@ -2939,6 +3145,7 @@ fn converge_runner_slot_tree(
             unit: unit,
             cause: join(["the drain answered a hand-capacity notice: ", notice, "; the tree is left as it is"], "") as NonEmptyStr,
           }
+      }
       }
   }
     }
@@ -4709,7 +4916,7 @@ fn write_reload_and_restart_admitted_over(
   let reload = runner_host_pre_actuation_reload(subject: subject, context: context, mode: mode, privilege: privilege, results: files, also_changed: false, pending_on_manager: false)
   let written = all(files, r => fleet_host_file_outcome_settled(outcome: r.outcome)) && runner_host_manager_reload_settled(r: reload)
   // RE-ADMISSION ON THE FAILED-WRITE PATH TOO: a slot left masked would stay out of service.
-  let readmitted = if written { [] } else { release_owned_slots_over(target: subject.target, context: context, units: owned) }
+  let readmitted = if written { [] } else { runner_slot_release_intakes_over(subject: subject, context: context, units: owned) }
   // ONLY AN OWNED UNIT IS ACTIVATED: a unit someone else masked is not unmasked here (activation would
   // lift their mask); its caps are not proven by this run, so it is reported unsettled by name.
   // AN ADMITTED IDLE LISTENER IS STOPPED ONLY AFTER ITS THREE READINGS ARE TAKEN AGAIN (stop_admitted_listener_over);
@@ -4780,7 +4987,7 @@ fn write_reload_and_restart_admitted_over(
 
 fn withheld_after_readmit(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, owned: List<NonEmptyStr>, head: String) -> RunnerHostCapPhase
 {
-  let restored = release_owned_slots_over(target: subject.target, context: context, units: owned)
+  let restored = runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
   let left = host_left_of_readmit(units: owned, outcomes: restored)
   let discharged = match left { HostAdmitting => write_bracket_obligation(host: subject.host as String, units: owned, discharged: true) HostLeftDrained { units: _ } => Present { value: "not admitting" } }
   CapPhaseWithheld { cause: join([head, "; ", host_left_wire(l: left), " restored=", join(map(restored, o => slot_actuation_outcome_wire(o: o)), " "), "; ", release_envelope_wire(policy: runner_host_cap_drain_policy), match discharged { Present { value: w } => concat(" obligation-discharge: ", w) Absent => "" }], "") }
@@ -5507,7 +5714,7 @@ fn runner_host_cap_release_for_host(raw_host: String) -> ProcessExit
             FleetSshContextReady { context: context, receipt: _ } => {
               let decision = release_decision_of(reading: read_bracket_obligation(host: subject.host as String))
               let outcomes = match decision {
-                ReleaseOwes { units: owned } => release_owned_slots_over(target: subject.target, context: context, units: owned)
+                ReleaseOwes { units: owned } => runner_slot_release_intakes_over(subject: subject, context: context, units: owned)
                 _ => []
               }
               finish_runner_host_cap_release(host: raw_host, decision: decision, outcomes: outcomes)
