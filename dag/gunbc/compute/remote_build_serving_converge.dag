@@ -22,7 +22,8 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_install_subject_read, fleet_converge_install_refusal_line, InstallSubjectOnNamedSubject, InstallSubjectOnExecutorsOwnMachine, InstallSubjectRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -41,7 +42,7 @@ import gunbc.compute.unit_bounds {
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
-import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup }
+import std.algebra { trim, string_contains, non_empty_to_list, FreeSemigroup, list_sort_by_key, int_total_order }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
 import std.list { first_where, list_member, distinct_by_key }
 import std.algebra { Cons, Empty }
@@ -54,6 +55,11 @@ import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_c
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
+// PR-1c: the identity sidecar leg reads the file through the ONE serve-side identity reader (single
+// format authority, so the converge writer and the serve reader cannot drift) and carries the result as
+// the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
+import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIdentityObserved }
+import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
 import extdeps.tools.uname { uname_machine_command }
@@ -179,6 +185,39 @@ fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFai
 }
 
 fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: argv_words(command: cat_command(path: path))) }
+
+// PR-1c: read the serve binary's IDENTITY SIDECAR (<path>, i.e. <serve_binary>.identity) the same way
+// the authorized_keys leg reads a file — elevated (the serve directory is group-restricted, so the
+// principal cannot cat it unaided; this is the same elevation the binary sha256 leg uses), with a
+// `test -f` first so the outcomes are typed, never conflated:
+//   - test -f exit 1  -> the file is CONFIRMED ABSENT: established the EMPTY string (IdentityMissing -> re-record).
+//   - test -f exit 0  -> cat, then run it through the ONE serve identity reader: a valid two-member
+//                        object establishes its sha256; anything that is not that object establishes
+//                        the shared malformed marker (a re-record, never a silent pass).
+//   - a present file whose cat fails, or an ssh refusal, -> ObservationRefused (an unknown): we never
+//                        rewrite a sidecar on a host whose file we could not read.
+// A refused sudo grant short-circuits the whole leg (review 95915: sudo's refusal shares test -f's exit 1).
+fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> {
+  match elevation {
+    ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
+      TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
+      TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
+        true => ObservationEstablished { observed: SidecarAbsent }
+        false => match t.exit_code == 0 {
+          false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
+          true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
+            ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
+              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: SidecarRecorded { sha256: s } }
+              _ => ObservationEstablished { observed: SidecarMalformed }
+            }
+            ObservationRefused { cause: c } => ObservationRefused { cause: c }
+          }
+        }
+      }
+    }
+  }
+}
 
 // The first whitespace-delimited field of a command's stdout, after trimming. `sha256sum` prints
 // "<hex>  <path>", `git rev-parse HEAD` a lone hash, `uname -m` a lone arch — this reads the value
@@ -539,6 +578,14 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: true } => Present { value: serving_leg_stat(item: "serve.binary.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.serve_binary)) }
     _ => Absent
   }
+  // PR-1c: the identity sidecar is read only under a CONFIRMED-PRESENT binary (an absent binary means
+  // InstallServeBinary + its paired RecordServeIdentity own the write). The leg decodes the file into the
+  // SidecarRead sum (Absent / Malformed / Recorded); a refused read stays an unknown. Under an absent or
+  // unread binary we pass Absent, so the sidecar says nothing and the host stays a no-op on identity.
+  let serve_identity_value = match serve_binary {
+    ObservationEstablished { observed: true } => Present { value: serving_leg_serve_identity(elevation: elevation, item: "serve.binary.identity", target: target, context: context, path: concat((d.serve_binary as String), ".identity")) }
+    _ => Absent
+  }
   // THE USER-WORK SLICE cap, read from the slice's unit controls as the serving user manager reports them
   // (serving_leg_slice_cap): the one place the cap is observed for the converge. The serving uid comes from
   // the passwd read; an unresolvable uid (fresh host / unreadable passwd) reads every control refused, which
@@ -581,6 +628,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     checkout_revision: checkout_revision_value,
     authorized_keys_mode: authorized_keys_mode_value,
     serve_binary_mode: serve_binary_mode_value,
+    serve_identity: serve_identity_value,
     user_work_slice_max: slice_cap.max,
     user_work_slice_high: slice_cap.high,
     user_work_slice_swap: slice_cap.swap,
@@ -611,7 +659,7 @@ fn serving_receipt_body(host_name: String, probed_at: String, context_receipt: S
 fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
   match host {
     Absent =>
-      exit_failure(reason: "remote_build_serving_observe: the host was not named; one host per run, named by the dispatch in FLEET_CONVERGE_EXPECTED_HOST")
+      exit_failure(reason: "remote_build_serving_observe: the served host was not named; one subject per run, named by the dispatch in FLEET_CONVERGE_SUBJECT_HOST (the executor that runs the job is named in FLEET_CONVERGE_EXPECTED_HOST and is never the machine being served)")
     Present { value: raw_host } => {
       let hi = raw_host as HostIdentity
       match administrator_ssh_target(host: hi) {
@@ -660,11 +708,44 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
   }
 }
 
+// The host this run SERVES is its SUBJECT, named in its own dispatch row, and it is read through the
+// ONE executor/subject mechanism the host-file modes use (gunbc.fleet.fleet_converge_executor_subject_split),
+// under the INSTALL rule that module attaches to these two modes: a serving mode may act on the machine
+// it stands on, because installing an account, a checkout and a binary drains nothing.
+// One mechanism, one rule table: the subject is read there, the refusals carry the same typed markers,
+// and the SAME workflow precondition step (fleet_converge_executor_subject_split_gate_step) applies the
+// rule before this entry is ever invoked. The served machine is not the EXECUTOR -- the host that runs
+// this job -- and a zero-CI host makes that structural: it has no runner lane of its own to execute
+// anything (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
+// and gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths for butch), so its serving setup is
+// necessarily driven from another host's lane, over ssh, at the address its anchor names.
+//
+// What does NOT refuse here is the pair the bracket modes must refuse: a serving mode acting on the
+// machine it stands on. That is not a hole in the gate, it is the gate reading the rule for this mode
+// (fleet_converge_split_rule_for_mode). The srv3-13 deadlock (refused run 40085967610) is a property of
+// a DRAIN, and these modes drain nothing -- they write an account, a ledger home, a checkout, a
+// toolchain and a binary. srv1, srv3 and srv4 were each set up from their own lane exactly this way
+// (runs 44656574939, 44660458690); refusing it would make a host with no second lane unconvergeable.
+// What stays refused is the part that was never about the deadlock: a run that names no machine at all,
+// and a process that cannot name the lane it is standing on.
 fn remote_build_serving_observe_ci_wet() -> ProcessExit {
-  remote_build_serving_observe_ci_wet_hosted(host: match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariablePresent { value: v } => Present { value: v }
-    ActionsVariableAbsent => none
-  })
+  // THE SUBJECT, BY THE INSTALL RULE -- the rule this mode's facts row declares (subject_rule:
+  // SubjectMayBeTheExecutorsOwnMachine, gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts).
+  // A zero-CI host like srv14 has no
+  // runner lane of its own, so its serving can only be converged from ANOTHER host's executor lane --
+  // the dispatch names the machine served in FLEET_CONVERGE_SUBJECT_HOST and the lane that runs the job
+  // in the executor identity. A host that DOES have lanes may still be served from its own lane, which
+  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690, 44658646391, each dispatched with
+  // host = the machine served): under this rule an unnamed
+  // subject means that machine, named by the executor's expected host. What is refused is a run that
+  // names no machine at all, or a process that names no lane -- never a pair that could not deadlock.
+  match fleet_converge_install_subject_read() {
+    InstallSubjectRefused { reason: why } => exit_failure(reason: fleet_converge_install_refusal_line(reason: why))
+    InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: subject } =>
+      remote_build_serving_observe_ci_wet_hosted(host: Present { value: subject as String })
+    InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: own } =>
+      remote_build_serving_observe_ci_wet_hosted(host: Present { value: own as String })
+  }
 }
 
 // ============================ converge decision model ============================
@@ -1020,17 +1101,11 @@ fn converge_dedupe(ws: List<ConvergeAction>) -> List<ConvergeAction> {
 }
 
 fn converge_order(ws: List<ConvergeAction>) -> List<ConvergeAction> {
-  let r0 = filter(ws, a => converge_kind_rank(a) == 0)
-  let r1 = filter(ws, a => converge_kind_rank(a) == 1)
-  let r2 = filter(ws, a => converge_kind_rank(a) == 2)
-  let r3 = filter(ws, a => converge_kind_rank(a) == 3)
-  let r4 = filter(ws, a => converge_kind_rank(a) == 4)
-  let r5 = filter(ws, a => converge_kind_rank(a) == 5)
-  let r6 = filter(ws, a => converge_kind_rank(a) == 6)
-  let r7 = filter(ws, a => converge_kind_rank(a) == 7)
-  let r8 = filter(ws, a => converge_kind_rank(a) == 8)
-  let r9 = filter(ws, a => converge_kind_rank(a) == 9)
-  concat(r0, concat(r1, concat(r2, concat(r3, concat(r4, concat(r5, concat(r6, concat(r7, concat(r8, r9)))))))))
+  // Ordered by converge_kind_rank with a STABLE sort, so a kind at ANY rank survives ordering. The
+  // previous implementation concatenated a FIXED list of rank buckets (r0..r9), which silently dropped
+  // every write whose rank had no bucket -- the identity write at rank 10, and any rank added later.
+  // Stability preserves the fold's input order within a rank.
+  list_sort_by_key(xs: ws, key: a => converge_kind_rank(a), order: int_total_order())
 }
 
 // B4 (side-chat review of 2026-11-16): an EXTRA member — observed but not declared anywhere in the
@@ -1137,6 +1212,10 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     UserManagerNotLingering { account_name: _ } => converge_ensure_user_manager_linger_plan(acc, d)
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
+    // PR-1c: a drifted identity sidecar on a host whose binary is already settled (the deviation is
+    // only minted when the binary is present and its sha read) records the identity on its OWN — it
+    // reuses the RecordServeIdentity write + its read-back route from PR-1b, without a reinstall.
+    ServeIdentityDrift { path: _, reason: _ } => converge_record_identity_standalone(acc, d, pin)
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
@@ -1482,6 +1561,15 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
 // as every other owner-written file (converge_install_content: stage, upload, sudo-install, read-back
 // equality), so a sidecar that did not land byte-for-byte is a failed write, and the executor's
 // stop-at-first-failure means it is never written for a binary that did not install.
+// PR-1c: plan the identity recording ALONE, for a host whose serve binary is already at the desired
+// sha but whose sidecar is missing / malformed / stale. It prepends the same RecordServeIdentity the
+// (re)install pairs with (revision = the dispatched revision, sha256 = the binary sha both agree on),
+// through the SAME write + read-back route. No InstallServeBinary — the binary needs no reinstall. If a
+// reinstall IS also planned, both add the SAME key ("identity:"+path) and converge's dedup collapses them.
+fn converge_record_identity_standalone(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput) -> ConvergeDraft {
+  ConvergeDraft { writes: concat([RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 }], acc.writes), unhandled: acc.unhandled }
+}
+
 // The canonical bytes of the serving binary's identity sidecar: one JSON object carrying string members
 // `revision` and `sha256`. This is the WRITER's one authority on the grammar; the reader in
 // gunbc.compute.remote_build_serve (PR-1a) parses exactly this shape. Kept as a pure function so a
@@ -1678,7 +1766,7 @@ fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: R
 fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
   match host {
     Absent =>
-      exit_failure(reason: "remote_build_serving_converge: the host was not named; one host per run, named by the dispatch in FLEET_CONVERGE_EXPECTED_HOST")
+      exit_failure(reason: "remote_build_serving_converge: the served host was not named; one subject per run, named by the dispatch in FLEET_CONVERGE_SUBJECT_HOST (the executor that runs the job is named in FLEET_CONVERGE_EXPECTED_HOST and is never the machine being mutated)")
     Present { value: raw_host } => {
       let hi = raw_host as HostIdentity
       match administrator_ssh_target(host: hi) {
@@ -1721,9 +1809,28 @@ fn remote_build_serving_converge_ci_wet_hosted(host: String?) -> ProcessExit {
   }
 }
 
+// Same split as the observe: the served machine is the dispatch's SUBJECT, read through the one mechanism.
+// What refuses, before a single write is planned, is a run that names no machine or names no lane. What does
+// NOT refuse is an executor standing on the machine it serves: this mode installs onto the host it runs from,
+// it drains no bracket, and its facts row says so (subject_rule: SubjectMayBeTheExecutorsOwnMachine,
+// gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts). Review 96977 finding 2 caught this sentence
+// saying the opposite of the code three lines below it.
 fn remote_build_serving_converge_ci_wet() -> ProcessExit {
-  remote_build_serving_converge_ci_wet_hosted(host: match actions_variable_read(name: fleet_converge_expected_host_env_name) {
-    ActionsVariablePresent { value: v } => Present { value: v }
-    ActionsVariableAbsent => none
-  })
+  // THE SUBJECT, BY THE INSTALL RULE -- the rule this mode's facts row declares (subject_rule:
+  // SubjectMayBeTheExecutorsOwnMachine, gunbc.fleet.fleet_converge_workflow fleet_converge_mode_facts).
+  // A zero-CI host like srv14 has no
+  // runner lane of its own, so its serving can only be converged from ANOTHER host's executor lane --
+  // the dispatch names the machine served in FLEET_CONVERGE_SUBJECT_HOST and the lane that runs the job
+  // in the executor identity. A host that DOES have lanes may still be served from its own lane, which
+  // is how srv1/srv3/srv4 were set up (runs 44656574939, 44660458690, 44658646391, each dispatched with
+  // host = the machine served): under this rule an unnamed
+  // subject means that machine, named by the executor's expected host. What is refused is a run that
+  // names no machine at all, or a process that names no lane -- never a pair that could not deadlock.
+  match fleet_converge_install_subject_read() {
+    InstallSubjectRefused { reason: why } => exit_failure(reason: fleet_converge_install_refusal_line(reason: why))
+    InstallSubjectOnNamedSubject { executor_runner_name: _, subject_host: subject } =>
+      remote_build_serving_converge_ci_wet_hosted(host: Present { value: subject as String })
+    InstallSubjectOnExecutorsOwnMachine { executor_runner_name: _, host: own } =>
+      remote_build_serving_converge_ci_wet_hosted(host: Present { value: own as String })
+  }
 }
