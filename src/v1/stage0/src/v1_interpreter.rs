@@ -7907,7 +7907,7 @@ impl InterpContext {
             .site_resolved_variant_arm_module(site_file, name)
     }
 
-    /// [`lookup_fn`], but a BARE name claimed by more than one module resolves through the
+    /// [`lookup_fn`], but a BARE name resolves through the
     /// referring file's own declarations, then its explicit imports, before the shared bare slot
     /// — the `local`-then-declared-source order the type layer applies in `lookup_resolved_sig`.
     /// The two layers DISAGREEING made this class silent: typecheck bound per module, execution
@@ -7919,9 +7919,8 @@ impl InterpContext {
     /// the `import-namespace-program` plan document carrying `v2-corpus-self-host`'s entire body,
     /// both plan carriers declaring `section_1` .. `section_9` and `status_block`.
     ///
-    /// THE TIER IS GATED ON `ambiguous_bare_function_names`: every name exactly one module
-    /// declares resolves byte-for-byte as before; only the colliding population moves, toward
-    /// the module that authored the reference.
+    /// The explicit tier also answers unique spellings, so the evaluator can distinguish an
+    /// authored binding from a name that merely occurs in the closure before ambient dispatch.
     ///
     /// WHY THE IMPORT TIER IS NOT OPTIONAL (established by a floor red, not reasoning):
     /// `test.claim.ilm4926_designation_witness` imports `extdeps_external_authority_anchor`
@@ -11243,9 +11242,10 @@ fn try_witness_evaluation_dispatch(
     env: &Rc<Env>,
 ) -> Option<InterpResult<Value>> {
     let is_authority = ctx
-        .item_registry
-        .get(&fn_node.name)
-        .is_some_and(|info| info.module_name == WITNESS_EVALUATION_MODULE);
+        .indexes
+        .file_module_paths
+        .get(fn_node.span.file.as_str())
+        .is_some_and(|owner| owner == WITNESS_EVALUATION_MODULE);
     if !is_authority {
         return None;
     }

@@ -45,15 +45,15 @@ fn chars(text: HostText) -> List<Char> {
 // HOST-REALIZED BY DECLARATION IDENTITY (operator ruling
 // gunbc.design_ruling::text_of_chars_is_a_whole_list_host_realization, superseding the 2026-10-25
 // NOT A SEAM decision). The primitive_projection row binds this whole-list contract to the linear
-// host writer through the Rust target's resolved_declaration_call_target. The seed keeps the
-// existing linear body below: its v1_bridge_dispatch admits by a closure-wide spelling registry,
-// not the resolved declaration (gunbc.recurring_failure_mode::host_seam_realization_is_keyed_by_primitive_spelling),
-// so adding a spelling bridge would not establish the promised identity. No interpreter arm is added.
-// This also keeps the base-mirror bootstrap executable before the new projection row is on main,
-// as the adjacent string_length and substring admission bodies do. Trigger for replacing this
-// body with text_of_chars(scalars: scalars): the projection is on main AND the seed evaluates this
-// call by its resolved declaration target, or the seed has been retired. The native target selects
-// the whole-list realization from the projection row, not from this windowed seed body.
+// host writer through resolved_declaration_call_target. The seed selects the declaration before
+// ambient dispatch; its bridge checks the selected node's owner, not the closure-wide spelling
+// registry (gunbc.recurring_failure_mode::host_seam_realization_is_keyed_by_primitive_spelling).
+// The existing body remains solely for base-mirror bootstrap: the generator built from main
+// predates this projection row, as in the adjacent string_length and substring admissions.
+// Trigger for replacing it with text_of_chars(scalars: scalars): the projection and resolved-target
+// evaluation are on main and bootstrap regeneration has converged. Keeping this admission body
+// does not itself remove the native resolver's chars_to_string dependency; the staged self-call
+// and a fresh native prepare execution are still owed after admission.
 // chars_to_string remains a DIFFERENT, arbitrary-window operation with clamping and Int inputs;
 // this row neither aliases it nor imports its window semantics. Every element here is a Char.
 // A .dag fold over from_code_point and concat would copy its accumulator and is not an admissible
