@@ -17,7 +17,7 @@ import std.scoped_authorization {
   AuthorizationRequest,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProvisioningLeg,FleetSshExecutionContext,
   SshTarget,
   SshTargetResolution,
   SshTargetResolved,
@@ -35,6 +35,7 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
+  FleetPrincipalLegOverran,
 }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_grant_reconcile {
@@ -624,6 +625,7 @@ fn run_privileged_step(
                 CredentialNotMaterialized { lease: effective_lease, cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
               SshTargetResolved { target: lease_target } =>
               match exec_as_fleet_principal_with_stdin(
+                kind: ProvisioningLeg,
                 context: context,
                 target: lease_target,
                 words: words,
@@ -632,6 +634,11 @@ fn run_privileged_step(
               ) {
                 FleetPrincipalLegRefused { cause: why } =>
                   CredentialNotMaterialized { lease: effective_lease, cause: why as String }
+                FleetPrincipalLegOverran { session: _, deadline: d } =>
+                  CredentialNotMaterialized {
+                    lease: effective_lease,
+                    cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
+                  }
                 FleetPrincipalLegRan { session: _, result: result } =>
                   if result.success {
                     PrivilegedCommandSucceeded { command: command }
