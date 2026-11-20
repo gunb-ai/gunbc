@@ -38,12 +38,11 @@ import std.types { NonEmptyStr, Bool }
 // real object, not the other way round.
 data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-github"
 
-// THE PREDECESSOR, RECORDED AS REVOKED (comment-only record, per the Consumption rule -- the tailnet
-// reconcile route reads ACL policy, not OAuth clients, so lifecycle facts of a client have no executing
-// consumer today and are NOT minted as data rows). An OAuth client for GitHub runners named
-// "githubcirunners" existed on the tailnet before gunbc-ci-github and was REPLACED, not grown beside;
-// the operator revoked it 2026-11-20. If a client read-back route is ever modeled, THIS fact becomes
-// that route's input and should move into a closed lifecycle type then.
+// THE PREDECESSOR, RECORDED AS REVOKED: the identity of this client and the revocation of its
+// predecessor (githubcirunners, 2026-11-20) are operator decisions carried at
+// gunbc.design_ruling@tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20, not here.
+// No model row states an OAuth client's lifecycle today; if a client read-back route is modeled,
+// the lifecycle becomes a closed type that route consumes.
 data ci_oauth_client_scope: NonEmptyStr = "auth_keys:write"
 data ci_oauth_client_tags: List<NonEmptyStr> = [tag_ci_dispatch]
 data ci_oauth_client_ephemeral: Bool = true
