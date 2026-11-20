@@ -16,7 +16,8 @@ import std.unicode.types { unicode_scalar_utf8_octet_count }
 // what makes intent decidable rather than a guess about which `a::b` spans were meant.
 //
 // THE GRAMMAR. The operator chose the hashtag form on 2026-11-19 ("yeah i'd like to use the
-// hashtag thanks"). A marker is `#` IMMEDIATELY FOLLOWED BY a COORDINATE:
+// hashtag thanks") -- the decision and its accepted cost are recorded in
+// #gunbc.design_ruling::reference_markers_are_hashtag_form. A marker is `#` IMMEDIATELY FOLLOWED BY a COORDINATE:
 //   module.path::decl              a whole declaration
 //   module.path::decl::field       a named field of decl
 //   module.path::decl::<T>         a type parameter of decl
