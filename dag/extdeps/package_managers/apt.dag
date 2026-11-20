@@ -14,7 +14,11 @@ import extdeps.exec.command {
 }
 import std.resources { Network }
 import std.algebra { list_head, skip }
-import extdeps.tools.gnu_coreutils { coreutils_install_directory_argv }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_directory_argv,
+  coreutils_rm_force_recursive_flags,
+  rm_program,
+}
 import extdeps.access.posix { FileMode, PermissionBits }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -416,7 +420,13 @@ fn apt_third_party_repo_install_plan(
     },
     AptRepoLeg {
       kind: AptRepoLegCleanup,
-      argv: concat([AptRepoArgvLiteral { value: "rm" }, AptRepoArgvLiteral { value: "-rf" }], [AptRepoArgvStagingDir { suffix: "" }]),
+      argv: concat(
+        [
+          AptRepoArgvLiteral { value: rm_program().invocation as String },
+          AptRepoArgvLiteral { value: coreutils_rm_force_recursive_flags as String },
+        ],
+        [AptRepoArgvStagingDir { suffix: "" }],
+      ),
       stdin: no_stdin,
     },
   ]

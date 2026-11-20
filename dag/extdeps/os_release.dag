@@ -10,7 +10,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/gunb-ai/gunbc/blob/main/dag/extdeps/os_release.dag"
+    locator: "refspecs.linuxfoundation.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/lsbrelease.html"
   }
 }
 
@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // THE HOST OS-CODENAME READ, at OS level. The host answers for its own Ubuntu codename via
 // `lsb_release --codename --short` (one binary, the sibling of dpkg --print-architecture for arch). gunbc
 // .tailscale_join_converge uses this to check the host's OS release against a third-party apt repository's
-// pinned suite before installing from it. `lsb_release` ships in distro-info-data, not dpkg, and the Ubuntu
+// pinned suite before installing from it. `lsb_release` ships in the `lsb-release` package, not dpkg, and the Ubuntu
 // release codename it prints is an OS fact, not dpkg's -- the suites an apt source line pins are chosen by the
 // OS release -- so the read lives here at OS level rather than under extdeps.package_managers.dpkg (review
 // 96916 finding B), and reading the release no longer routes through the dpkg module.

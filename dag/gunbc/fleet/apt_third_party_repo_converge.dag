@@ -42,7 +42,7 @@ import extdeps.package_managers.apt {
   apt_third_party_keyring_colons_are_pinned,
   apt_third_party_repo_install_plan,
 }
-import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
+import extdeps.tools.gnu_coreutils { coreutils_rm_force_recursive_argv }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet.host_credential_custody_converge {
   CustodyHost,
@@ -300,7 +300,7 @@ fn apt_repo_install_cleanup(
         leg: run_elevated_leg(
           subject: subject,
           context: context,
-          argv: coreutils_rm_force_argv(paths: [d]),
+          argv: coreutils_rm_force_recursive_argv(path: d),
           stdin_payload: "",
         ),
         label: concat("remove the third-party apt repository staging directory for ", label),
