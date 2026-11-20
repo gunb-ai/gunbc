@@ -1,0 +1,13 @@
+module probe.cli_bare_element
+import std.types { Int, String }
+import std.algebra { FreeMonoid, list_append }
+
+type R = Yes | No { n: Int }
+
+fn bare_at_right(xs: FreeMonoid<R>, r: R) -> FreeMonoid<R> {
+  list_append(left: xs, right: r)
+}
+
+fn bracketed_at_right(xs: FreeMonoid<R>, r: R) -> FreeMonoid<R> {
+  list_append(left: xs, right: [r])
+}

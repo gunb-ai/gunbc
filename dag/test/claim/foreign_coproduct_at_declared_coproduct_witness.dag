@@ -206,8 +206,8 @@ test fn a_bare_foreign_coproduct_at_freemonoid_refuses() -> Bool {
 }
 
 // RED control: a bare foreign coproduct (NOT a list literal) at the FreeMonoid<T> concat PARAMETER of
-// list_append -- the pre-fix firmware shape (firmware_network_boot_standing.dag:1944 was
-// list_append(left: acc, right: refusal) before #16767 landed the brackets). Same argument position the
+// list_append -- the pre-fix firmware shape in refusals_in_order, where list_append's right argument
+// carried a bare refusal until #16767 landed the brackets. Same argument position the
 // accepted list-literal controls check, so those controls cannot stay green with a wall weakened at
 // argument positions only (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed).
 test fn a_bare_element_at_a_freemonoid_parameter_refuses() -> Bool {

@@ -1,0 +1,6 @@
+module probe.cli_scalar_red
+import std.types { String, Int }
+type Outcome<T> = Accepted { value: T } | Rejected { reason: String }
+fn outcome_accepted<T>(value: T) -> Outcome<T> { Accepted { value: value } }
+fn takes(x: String) -> Int { 1 }
+fn probe() -> Int { takes(x: outcome_accepted(value: "x")) }
