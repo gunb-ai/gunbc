@@ -5,8 +5,9 @@ import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.board_authority { BoardFruObservation, BoardUnbound }
 import test.fixture.board_fru_observation { collins_fru_read, asrock_fru_read }
 import gunbc.board_authority_binding { board_authority_bindings }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.clock { captured_point }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
@@ -423,10 +424,16 @@ data probe_collection_with_https: RedfishVirtualMediaProbeReceipt = RedfishVirtu
   raw_response: content_hash_of_value(value: "virtualmedia-collection-https-fixture"),
 }
 
+// THE FIXTURE CLOCK, named once. The fixture's readings are one synthetic pass, so every reading carries the
+// same instant: the route observations take it as the point their field asks for, and the access observation
+// mints it through extdeps.clock::captured_point, the degenerate band that is how an instrument read enters
+// the carrier BmcAccessObservation now uses for an observation's time.
+data fixture_observed_at: EpochMs = 1788000000000
+
 // Boot-control route observations: which route answered the control probe.
-data control_over_redfish: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: redfish_route, raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"), observed_at: 1788000000000 }
-data control_over_megarac_rest: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }, raw_response: content_hash_of_value(value: "boot-control-megarac-rest-fixture"), observed_at: 1788000000000 }
-data control_over_ipmi: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: IpmiLanplusRoute { cipher_suite: Absent }, raw_response: content_hash_of_value(value: "boot-control-ipmi-fixture"), observed_at: 1788000000000 }
+data control_over_redfish: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: redfish_route, raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"), observed_at: fixture_observed_at }
+data control_over_megarac_rest: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }, raw_response: content_hash_of_value(value: "boot-control-megarac-rest-fixture"), observed_at: fixture_observed_at }
+data control_over_ipmi: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: IpmiLanplusRoute { cipher_suite: Absent }, raw_response: content_hash_of_value(value: "boot-control-ipmi-fixture"), observed_at: fixture_observed_at }
 
 fn observation_over(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?, control: List<BmcBootControlRouteObservation>) -> BmcAccessObservation {
   BmcAccessObservation {
@@ -438,7 +445,7 @@ fn observation_over(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurfa
     successful_read_surfaces: surfaces,
     successful_write_surfaces: [],
     raw_response: discovery_digest,
-    observed_at: 1788000000000,
+    observed_at: captured_point(at: fixture_observed_at),
   }
 }
 
@@ -458,7 +465,7 @@ fn observation_of(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface
     successful_read_surfaces: surfaces,
     successful_write_surfaces: [],
     raw_response: discovery_digest,
-    observed_at: 1788000000000,
+    observed_at: captured_point(at: fixture_observed_at),
   }
 }
 

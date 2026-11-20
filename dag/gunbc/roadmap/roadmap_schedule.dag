@@ -45,14 +45,24 @@ module gunbc.roadmap.roadmap_schedule
 // answer, and says how many cached leaves no longer match.
 
 import std.types { Bool, Int, List, String, Map }
-import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push, list_reverse }
+import std.algebra { empty_map, map_insert, map_lookup, map_contains_key, list_push }
 import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
-import std.list { first_where }
+import std.list { first_where, distinct_by_key }
 import gunbc.roadmap.roadmap_model { LeafPath }
 import gunbc.roadmap.roadmap_decomposition {
   Expansion, ExpansionRefusal, WorkDecomposition, Occurrence, OccurrenceEdge, OccurrenceCount,
   piece_member_days,
+}
+
+// THE SHARED PLACEMENT CORE. This unit and gunbc.roadmap.roadmap_item_gantt place work with the SAME pass: one
+// topological order, one longest-remaining-path rank, one lane scan, one list schedule. The functions that used to
+// live here are gone, not copied -- `place` is the only placement in the repo (single_authority). The two total
+// map reads ride along from the core rather than being restated here.
+import gunbc.roadmap.roadmap_placement {
+  PlacementRow, PlacementEdge, Placement, PlacementInput,
+  PlacementPlaced, PlacementRefused, PlacementCyclic, PlacementUnplaced,
+  place, look_or, look_key,
 }
 
 // ONE SCHEDULED LEAF OCCURRENCE: where it starts and finishes (abstract days), the worker lane it sits in, and its
@@ -119,6 +129,13 @@ type ScheduleRefusal
   | CyclicOccurrenceGraph
   | UnplacedOccurrences { paths: List<LeafPath> }
   | MemberIndexBeyondExpansion { paths: List<LeafPath> }
+  // A PIN THE CALLER HANDED IN NAMES NO OCCURRENCE OF THIS EXPANSION. A pin is a fact about work already running,
+  // so it cannot be skipped or dropped: it would hold a lane and gate starts for a leaf this expansion never
+  // emitted. The answer refuses, naming the pins (fail_closed: a failure arm refuses, it never widens).
+  | PinnedLeafNotAnOccurrence { paths: List<LeafPath> }
+  // A PIN WHOSE PLACEMENT NO READ CAN HOLD: a negative lane or start day, a bar that does not run
+  // (finish_day at or before start_day), or two pins claiming one lane. Same rule, named.
+  | PinnedPlacementInvalid { paths: List<LeafPath> }
 
 type Schedule
   = Scheduled { answer: ScheduleAnswer }
@@ -134,56 +151,9 @@ type SchedNode {
   source: OccurrenceCount
 }
 
-// THE BOOKKEEPING THE ORDERING PASS CARRIES. `ready` holds the occurrences whose internal predecessors have ALL
-// been emitted; `order` is the emitted sequence, one append per emit, so it is a FORWARD topological order --
-// every predecessor before its successor -- and the passes that need the other direction ask std.algebra's
-// `list_reverse` for it once rather than pretending an accumulator is backwards. (std.algebra:176 is explicit that
-// `list_push` is FreeMonoid's SNOC: a push accumulator reads forwards. Reading it as if it were a prepend was the
-// orientation bug this comment now forbids.) `indeg` counts the internal predecessors still unemitted;
-// `unemitted` counts the occurrences not yet emitted.
-type TopoState {
-  ready: List<SchedNode>
-  order: List<SchedNode>
-  indeg: Map<String, Int>
-  unemitted: Int
-}
 
-// WHAT THE ORDERING PASS ANSWERS: an emission order in which every predecessor precedes its successor, or the typed
-// fact that the occurrence graph has a cycle. There is no third arm and no partial order handed back as if it were
-// complete: a sort that comes out short IS a cycle on this graph, and that is the construction the refusal rests on
-// -- not a separate pass being trusted to agree with this one.
-type TopoOutcome
-  = Ordered { order: List<SchedNode> }
-  | Cyclic
 
-// THE BOOKKEEPING THE PLACEMENT PASS CARRIES: each lane's free day (a Map lane-index -> day; a lane with no entry
-// is free at day 0, the same default the lane scan reads, so the map is never pre-seeded and never rewritten by
-// index), each placed occurrence's finish day, the leaves in the order they were placed -- which IS the answer's
-// order, highest rank first, built with one append per placement -- the bucket of occurrences currently at the rank
-// being placed, and that rank.
-type PlaceState {
-  placed: List<ScheduledLeaf>
-  finish: Map<String, Int>
-  lanes: Map<Int, Int>
-  bucket: List<SchedNode>
-  rank_now: Int
-}
 
-// A total read over a String-keyed map: the stored value, or `dflt` when the key is absent.
-fn look_or<V>(m: Map<String, V>, key: String, dflt: V) -> V {
-  match map_lookup(m: m, key: key) {
-    Present { value: v } => v
-    Absent => dflt
-  }
-}
-
-// A total read over an Int-keyed map (the lane-free-day map and the rank-bucket map).
-fn look_key<V>(m: Map<Int, V>, key: Int, dflt: V) -> V {
-  match map_lookup(m: m, key: key) {
-    Present { value: v } => v
-    Absent => dflt
-  }
-}
 
 // The occurrence edge ENDPOINTS keyed by the same path_key the nodes are keyed by.
 fn edge_from_key(e: OccurrenceEdge) -> String {
@@ -216,247 +186,46 @@ fn path_key(p: LeafPath) -> String {
   join([p.item as String, "#", to_string(nat_to_int(n: p.stage)), "#", to_string(nat_to_int(n: p.piece)), "#", to_string(nat_to_int(n: p.member))], "")
 }
 
-// Add one occurrence to the successor / predecessor list stored at `key`. `list_push` is std.algebra's declared
-// home of the single-item append; the `concat(acc, [x])` form that stood here copied the whole accumulated list at
-// every edge, which is the copied-accumulator shape gunbc.design_argument::how_to_work fixes at the root.
-fn push_node(m: Map<String, List<SchedNode>>, key: String, n: SchedNode) -> Map<String, List<SchedNode>> {
-  let none_yet: List<SchedNode> = []
-  map_insert(m: m, key: key, value: list_push(xs: look_or(m: m, key: key, dflt: none_yet), item: n))
-}
 
-// The successor / predecessor adjacency over the scheduled occurrence keys, held as the neighbouring NODES so the
-// ordering, ranking and placement passes never look a key up again.
-type Adjacency {
-  succ: Map<String, List<SchedNode>>
-  pred: Map<String, List<SchedNode>>
-}
 
-// Build the successor and predecessor lists from the edges whose BOTH endpoints are scheduled occurrences. An edge
-// whose `from` is a parent occurrence (a waits_on aim reaching outside this decomposition) is DROPPED: that
-// predecessor is satisfied before this abstract schedule begins, so it is an already-done edge, not a day this
-// schedule pays for. This unit schedules ONE expansion's own occurrences; parents arrive from above. The `Absent`
-// arm below is unreachable by construction -- `internal` just filtered to edges whose endpoints are in `member` --
-// and it is kept as a typed no-op rather than a fabricated node, so the pass cannot invent a neighbour.
-fn adjacency(nodes: List<SchedNode>, edges: List<OccurrenceEdge>) -> Adjacency {
-  let member: Map<String, SchedNode> = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: n) })
-  let internal = filter(edges, e => map_contains_key(m: member, key: edge_from_key(e: e)) && map_contains_key(m: member, key: edge_to_key(e: e)))
-  let succ: Map<String, List<SchedNode>> = fold(internal, init: empty_map(), f: fn(acc, e) {
-    match map_lookup(m: member, key: edge_to_key(e: e)) {
-      Absent => acc
-      Present { value: n } => push_node(m: acc, key: edge_from_key(e: e), n: n)
-    }
-  })
-  let pred: Map<String, List<SchedNode>> = fold(internal, init: empty_map(), f: fn(acc, e) {
-    match map_lookup(m: member, key: edge_from_key(e: e)) {
-      Absent => acc
-      Present { value: n } => push_node(m: acc, key: edge_to_key(e: e), n: n)
-    }
-  })
-  Adjacency { succ: succ, pred: pred }
-}
 
-// THE OUTSTANDING-PREDECESSOR COUNT of each occurrence, read off the adjacency the expansion's own edges built
-// (external endpoints were dropped there, so a parent arriving from above imposes no wait -- see `adjacency`).
-fn indegrees(nodes: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<String, Int> {
-  let no_succs: List<SchedNode> = []
-  let seeded = fold(nodes, init: empty_map(), f: fn(acc, n) { map_insert(m: acc, key: n.key, value: 0) })
-  fold(nodes, init: seeded, f: fn(acc, n) {
-    fold(look_or(m: succ, key: n.key, dflt: no_succs), init: acc, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) + 1) })
-  })
-}
 
-// EMIT one ready occurrence: append it to the order, take one outstanding predecessor off each of its successors,
-// and put on the ready queue exactly those successors that just ran out of predecessors (the fold appends, so the
-// queue is FIFO; which ready node is emitted next cannot change the answer, because placement is driven by rank,
-// not by emission order). Each edge is touched once,
-// so the ordering pass costs one walk of the graph. What stood here was a Bellman-Ford relaxation that re-scanned
-// every node and every edge once PER NODE -- a proven quadratic shape, gunbc.design_argument::how_to_work: it is
-// fixed at the root whatever the realized n.
-fn topo_step(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoState {
-  match state.ready {
-    Empty => state
-    Cons { head: n, tail: rest } => {
-      let no_succs: List<SchedNode> = []
-      let succs = look_or(m: succ, key: n.key, dflt: no_succs)
-      let dec = fold(succs, init: state.indeg, g: fn(m, s) { map_insert(m: m, key: s.key, value: look_or(m: m, key: s.key, dflt: 0) - 1) })
-      let freed = fold(succs, init: rest, h: fn(acc, s) { if look_or(m: dec, key: s.key, dflt: 0) == 0 { list_push(xs: acc, item: s) } else { acc } })
-      TopoState { ready: freed, order: list_push(xs: state.order, item: n), indeg: dec, unemitted: state.unemitted - 1 }
-    }
-  }
-}
 
-// Run the ordering pass to exhaustion. `unemitted` is carried rather than recounted, and a sort that ends with
-// occurrences still unemitted IS a cycle on this graph: the same pass that would have produced the order reports it
-// short, so nothing here rests on a second pass agreeing with the first.
-fn topo_run(state: TopoState, succ: Map<String, List<SchedNode>>) -> TopoOutcome {
-  match state.ready {
-    Empty => if state.unemitted > 0 { Cyclic } else { Ordered { order: state.order } }
-    Cons { head: n, tail: rest } => topo_run(state: topo_step(state: state, succ: succ), succ: succ)
-  }
-}
 
-// ONE rank pass over the emission order read BACKWARDS -- the reversal taken once, from std.algebra's own
-// `list_reverse`. A successor is emitted only after every one of its predecessors has been, so the reversed order
-// puts every successor before its predecessor and rank(k) = days(k) + max rank over successors is already settled
-// for every successor by the time k is read. One walk of the graph; there is no fixed-point iteration left to
-// iterate. Walking the FORWARD order instead would read every successor as unset (rank 0) and collapse every rank
-// to the node's own days -- the chain would lose its length and a successor could be placed before its
-// predecessor -- so the direction here is the whole correctness of the pass.
-fn rank_pass(order_back: List<SchedNode>, succ: Map<String, List<SchedNode>>) -> Map<String, Int> {
-  let no_succs: List<SchedNode> = []
-  fold(order_back, init: empty_map(), f: fn(rank, n) {
-    let best = fold(look_or(m: succ, key: n.key, dflt: no_succs), init: 0, g: fn(m, s) {
-      let r = look_or(m: rank, key: s.key, dflt: 0)
-      if r > m { r } else { m }
-    })
-    map_insert(m: rank, key: n.key, value: n.days + best)
-  })
-}
 
-// The largest rank over the occurrences -- the critical length, the shortest span any schedule of these occurrences
-// under any worker count can cover.
-fn max_rank_of(order: List<SchedNode>, rank: Map<String, Int>) -> Int {
-  fold(order, init: 0, f: fn(m, n) {
-    let r = look_or(m: rank, key: n.key, dflt: 0)
-    if r > m { r } else { m }
-  })
-}
 
-// The occurrences grouped by rank. The groups are built by appending while walking the FORWARD topological order,
-// so each group is itself predecessor-first: equal ranks are placed deterministically, and a zero-day tie (where
-// rank stops strictly decreasing along an edge) still cannot place a successor before its predecessor.
-fn rank_buckets(order: List<SchedNode>, rank: Map<String, Int>) -> Map<Int, List<SchedNode>> {
-  let empty_bucket: List<SchedNode> = []
-  fold(order, init: empty_map(), f: fn(acc, n) {
-    let r = look_or(m: rank, key: n.key, dflt: 0)
-    map_insert(m: acc, key: r, value: list_push(xs: look_key(m: acc, key: r, dflt: empty_bucket), item: n))
-  })
-}
 
-// The occurrence with the largest rank, stable on ties (the first in the list wins); `none` on an empty list, so no
-// placeholder occurrence is ever emitted.
-fn argmax_node_rank(nodes: List<SchedNode>, rank: Map<String, Int>) -> SchedNode? {
-  let seed: SchedNode? = none
-  fold(nodes, init: seed, f: fn(best, n) {
-    match best {
-      Present { value: b } => if look_or(m: rank, key: n.key, dflt: 0) > look_or(m: rank, key: b.key, dflt: 0) { Present { value: n } } else { best }
-      Absent => Present { value: n }
-    }
-  })
-}
 
-// The critical path as a chain of LeafPaths: start at the maximum-rank occurrence and follow its maximum-rank
-// successor until it has none. rank(n) = days(n) + max rank over successors, so every step stays on a longest path.
-// The walk halts because the ordering pass refused every cycle before this could be called -- same graph, one pass
-// reporting to the next. The chain is appended as it is walked, which is the direction the answer reports it in.
-fn follow_critical(n: SchedNode, succ: Map<String, List<SchedNode>>, rank: Map<String, Int>, acc: List<LeafPath>) -> List<LeafPath> {
-  let no_succs: List<SchedNode> = []
-  let next = argmax_node_rank(nodes: look_or(m: succ, key: n.key, dflt: no_succs), rank: rank)
-  match next {
-    Absent => list_push(xs: acc, item: n.path)
-    Present { value: child } => follow_critical(n: child, succ: succ, rank: rank, acc: list_push(xs: acc, item: n.path))
-  }
-}
 
-// The lane whose free day is earliest; ties choose the lower lane index, so placement is deterministic. The scan
-// runs over `workers` -- the concurrency input, which is also the answer's own width -- and never over the
-// placements accumulated so far.
-fn pick_lane(lanes: Map<Int, Int>, workers: Int) -> Int {
-  scan_lanes(i: 0, workers: workers, lanes: lanes, best_lane: 0, best_free: look_key(m: lanes, key: 0, dflt: 0))
-}
 
-fn scan_lanes(i: Int, workers: Int, lanes: Map<Int, Int>, best_lane: Int, best_free: Int) -> Int {
-  if i >= workers {
-    best_lane
-  } else {
-    let f = look_key(m: lanes, key: i, dflt: 0)
-    if f < best_free { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: i, best_free: f) }
-    else { scan_lanes(i: i + 1, workers: workers, lanes: lanes, best_lane: best_lane, best_free: best_free) }
-  }
-}
 
-// The finish day of the latest already-placed predecessor of `n` (0 when it has none placed). A predecessor cannot
-// be placed after its successor: placement walks ranks downwards and every predecessor ranks above its successor.
-fn dep_finish(n: SchedNode, pred: Map<String, List<SchedNode>>, finish: Map<String, Int>) -> Int {
-  let no_preds: List<SchedNode> = []
-  fold(look_or(m: pred, key: n.key, dflt: no_preds), init: 0, g: fn(m, p) {
-    let f = look_or(m: finish, key: p.key, dflt: 0)
-    if f > m { f } else { m }
-  })
-}
 
-// THE LIST SCHEDULE: place occurrences by descending rank (longest remaining path first), each on the lane that
-// frees earliest, no earlier than all its placed predecessors have finished. Every occurrence the ordering pass
-// emitted lands in exactly one rank bucket, so walking the buckets from the top down covers the whole set; whether
-// it did is CHECKED by `unplaced_occurrences` in `schedule`, not assumed here. The leaf list is pushed and read
-// back once; the rank walk over empty buckets is bounded by the critical length, which the answer's own per-day
-// series already spans.
-fn place_all(state: PlaceState, pred: Map<String, List<SchedNode>>, buckets: Map<Int, List<SchedNode>>, workers: Int) -> PlaceState {
-  match state.bucket {
-    Cons { head: n, tail: rest } => {
-      let lane = pick_lane(lanes: state.lanes, workers: workers)
-      let lane_free = look_key(m: state.lanes, key: lane, dflt: 0)
-      let dep = dep_finish(n: n, pred: pred, finish: state.finish)
-      let start_day = if dep > lane_free { dep } else { lane_free }
-      let finish_day = start_day + n.days
-      let leaf = ScheduledLeaf { path: n.path, start_day: start_day, finish_day: finish_day, lane: lane, count_source: n.source }
-      place_all(
-        state: PlaceState {
-          placed: list_push(xs: state.placed, item: leaf),
-          finish: map_insert(m: state.finish, key: n.key, value: finish_day),
-          lanes: map_insert(m: state.lanes, key: lane, value: finish_day),
-          bucket: rest,
-          rank_now: state.rank_now,
-        },
-        pred: pred, buckets: buckets, workers: workers
-      )
-    }
-    Empty =>
-      if state.rank_now < 0 {
-        state
-      } else {
-        let empty_bucket: List<SchedNode> = []
-        place_all(
-          state: PlaceState { placed: state.placed, finish: state.finish, lanes: state.lanes, bucket: look_key(m: buckets, key: state.rank_now - 1, dflt: empty_bucket), rank_now: state.rank_now - 1 },
-          pred: pred, buckets: buckets, workers: workers
-        )
-      }
-  }
-}
 
-// THE COMPLETENESS CHECK, read off the placement's own finish map: the occurrences it did not place, located by
-// their carrier paths. A truncated schedule is never handed back as a complete one (fail_closed: a failure arm
-// refuses, it never widens), and the reachability of that arm is established by this pass rather than assumed of
-// two passes that were never compared.
-fn unplaced_occurrences(nodes: List<SchedNode>, finish: Map<String, Int>) -> List<LeafPath> {
-  map(filter(nodes, n => !map_contains_key(m: finish, key: n.key)), n => n.path)
-}
 
-// The maximum finish day over the placed leaves -- the horizon, the day the schedule empties.
-fn horizon_of(leaves: List<ScheduledLeaf>) -> Int {
-  fold(leaves, init: 0, g: fn(m, l) { if l.finish_day > m { l.finish_day } else { m } })
-}
 
-// How many leaves are in flight on each day, indexed from day 0 to horizon-1. ONE pass over the leaves turns each
-// interval [start, finish) into a +1 at its start day and a -1 at its finish day; ONE walk over the days, appending
-// the running count in day order, folds those deltas into the series. What stood here filtered every leaf once per day. A leaf spanning no day adds its
-// +1 and its -1 on the same day and is counted on none (the expansion emits no zero-day occurrence today -- a Join
-// carries none -- but the answer does not depend on that).
-fn in_flight(leaves: List<ScheduledLeaf>, horizon: Int) -> List<Int> {
-  let delta = fold(leaves, init: empty_map(), f: fn(m, l) {
-    let opened = map_insert(m: m, key: l.start_day, value: look_key(m: m, key: l.start_day, dflt: 0) + 1)
-    map_insert(m: opened, key: l.finish_day, value: look_key(m: opened, key: l.finish_day, dflt: 0) - 1)
-  })
-  count_days(d: 0, horizon: horizon, running: 0, delta: delta, acc: [])
-}
 
-fn count_days(d: Int, horizon: Int, running: Int, delta: Map<Int, Int>, acc: List<Int>) -> List<Int> {
-  if d >= horizon {
-    acc
-  } else {
-    let now = running + look_key(m: delta, key: d, dflt: 0)
-    count_days(d: d + 1, horizon: horizon, running: now, delta: delta, acc: list_push(xs: acc, item: now))
-  }
+
+// A LEAF ALREADY IN FLIGHT AT THE MOMENT OF THE READ (roadmap-schedule-from-now). A pin is a FACT the caller read
+// off the item's event log, never a placement this policy chose: the work is being done NOW, so from the read's day
+// 0 it holds lane `lane` over the half-open span [start_day, finish_day). What the scheduler does with a pin is
+// occupancy and gating, and nothing else:
+//   * it is placed BEFORE any unclaimed leaf, so the answer shows it where the log says it already stands;
+//   * it is dropped from the rank BUCKETS, so the policy never re-places it and no rank or lane rule is re-run over
+//     work already under way -- which is also why this stays ONE scheduler: the buckets are the only place a pin
+//     differs from an occurrence;
+//   * it stays in the node set and in the adjacency, so an unclaimed leaf that waits on a pinned leaf starts when
+//     that pin finishes, through the SAME `dep_finish` gate the policy already uses between its own placements;
+//   * its lane is seeded busy until `finish_day`, so no unclaimed leaf is placed on top of it;
+//   * when the pins alone fill or exceed the cap, unclaimed leaves wait for the first day the belt has room
+//     (`earliest_day_with_room` below), and the caller that derived the pins reports the excess by name.
+// The pin's remaining working days arrive through the SAME duration input as any realized count (`realized`, keyed
+// by `path_key`): a pin carries no day count of its own, so there is no second path a day number could reach the
+// scheduler by. Lanes must be distinct across pins; the from-now read assigns them in claim order, lowest first.
+type PinnedLeaf {
+  path: LeafPath
+  lane: Int
+  start_day: Int
+  finish_day: Int
 }
 
 // THE SCHEDULE, read from the carriers alone: every leaf is priced at its declared prior. This is
@@ -473,15 +242,50 @@ fn schedule(d: WorkDecomposition, e: Expansion, workers: BeltCapacity) -> Schedu
 // (leaf_working_days above), and every other leaf at its prior. Which value a leaf was priced at is reported by
 // gunbc.roadmap.roadmap_leaf_realized_duration::realized_duration_fold -- the fold that produced the map -- so the
 // schedule answers, per leaf, whether the realized value or the prior was used.
+//
+// It hands the pins and the held-out occurrences to the ONE placement below as empty, which is exactly what every
+// read before roadmap-schedule-from-now did: there is ONE path from an expansion to a schedule, and the from-now
+// link widened that path instead of adding a second scheduler beside it.
 fn schedule_with_realized(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, realized: RealizedDays) -> Schedule {
+  let no_pins: List<PinnedLeaf> = []
+  let nothing_held_out: List<LeafPath> = []
+  schedule_pinned(d: d, e: e, workers: workers, realized: realized, pinned: no_pins, unschedulable: nothing_held_out)
+}
+
+// THE SCHEDULE AT A DURATION INPUT AND A PINNED-OCCUPANCY INPUT (roadmap-schedule-from-now). The pins are leaves the
+// item's log says are being worked right now (see `PinnedLeaf` above): they stand in the answer where the log puts
+// them, they gate the starts of leaves that wait on them, and they are never re-placed by the policy.
+//
+// `unschedulable` names occurrences THIS READ refuses to place -- an in-flight leaf whose remaining days could not
+// be worked out is one, and a leaf standing behind such a leaf is another. They are left OUT of the node set
+// entirely, so the answer cannot show them, and the caller that named them reports each one by name in its own
+// answer: the scheduler never decides WHY a leaf is held out and never silently drops one either. Pricing is NOT
+// waived for them: the expansion's own integrity (a member index inside the member set, a day count every leaf
+// carries) is the carrier's business, not the caller's to waive, and a held-out occurrence with no day count is a
+// broken carrier that still refuses the whole read.
+fn schedule_pinned(d: WorkDecomposition, e: Expansion, workers: BeltCapacity, realized: RealizedDays, pinned: List<PinnedLeaf>, unschedulable: List<LeafPath>) -> Schedule {
   let worker_count: Int = workers.max_concurrent
   match e {
     ExpansionRejected { cause: cause } =>
       NotScheduled { refusal: OverRefusedExpansion { cause: cause } }
-    Expanded { occurrences: occs, edges: edges, omitted_composites: _ } => {
+    // unresolved_waits is NOT consumed here: a wait onto an occurrence-less milestone / project Join is cross-item
+    // ordering, which no lane schedules yet (out_of_scope of roadmap-schedule-barrier-through-empty-stages). It is
+    // reported on the Expansion, not silently dropped here -- the expansion says it, the scheduler simply has no lane
+    // for it yet. Its NAMED consumer is the frontier roadmap-schedule-surfaces-unresolved-waits (owner: planning;
+    // carriers: dag/gunbc/roadmap/roadmap_schedule.dag), which carries the report into the schedule answer without
+    // ordering it; until that frontier lands this field is consumed only by that declared frontier, not dangling, and
+    // inventing an order for it here would be fabricating an edge.
+    Expanded { occurrences: occs, edges: edges, omitted_composites: _, unresolved_waits: _ } => {
       if worker_count <= 0 {
         NotScheduled { refusal: ConcurrencyCapInvalid { cap: workers } }
       } else {
+        // THE PIN INPUT IS CHECKED BEFORE ANYTHING IS PLACED. A pin is a fact the answer will show and gate on, so a
+        // pin this expansion cannot name, or one whose days or lanes no read can hold, refuses the read by name --
+        // it is never skipped, and a skipped pin would silently free a lane and un-gate a start (fail_closed: a
+        // failure arm refuses, it never widens). ONE grouping pass over the occurrences builds the key set the pins
+        // are checked against, and the lane check rides `distinct_by_key`; neither re-filters per pin.
+        let unpinable = pins_not_occurrences(occs: occs, pinned: pinned)
+        let mispinned = pins_placed_badly(pinned: pinned)
         // EVERY occurrence's working-day prior is read back through its OWN carrier path. An occurrence whose path
         // is not on the decomposition being read against has NO day count, and one is never minted for it
         // (fail_closed: no plausible output is fabricated): the whole answer refuses, CARRYING the carrier paths that
@@ -498,6 +302,12 @@ fn schedule_with_realized(d: WorkDecomposition, e: Expansion, workers: BeltCapac
           filter(occs, o => nat_to_int(n: o.path.member) >= look_or(m: counts, key: occurrence_piece_key(p: o.path), dflt: 0)),
           o => o.path
         )
+        if count(unpinable) > 0 {
+          NotScheduled { refusal: PinnedLeafNotAnOccurrence { paths: unpinable } }
+        } else {
+        if count(mispinned) > 0 {
+          NotScheduled { refusal: PinnedPlacementInvalid { paths: mispinned } }
+        } else {
         if count(beyond) > 0 {
           NotScheduled { refusal: MemberIndexBeyondExpansion { paths: beyond } }
         } else {
@@ -508,53 +318,147 @@ fn schedule_with_realized(d: WorkDecomposition, e: Expansion, workers: BeltCapac
           if count(unpriced) > 0 {
             NotScheduled { refusal: NoWorkingDayPrior { paths: unpriced } }
           } else {
-          let empty_paths: List<LeafPath> = []
-          let empty_placed: List<ScheduledLeaf> = []
-          let nodes = flat_map(occs, o => priced_node(d: d, o: o, realized: realized))
-            let adj = adjacency(nodes: nodes, edges: edges)
-            let indeg = indegrees(nodes: nodes, succ: adj.succ)
-            let empty_nodes: List<SchedNode> = []
-            match topo_run(
-              state: TopoState { ready: filter(nodes, n => look_or(m: indeg, key: n.key, dflt: 0) == 0), order: empty_nodes, indeg: indeg, unemitted: count(nodes) },
-              succ: adj.succ
-            ) {
-              Cyclic => NotScheduled { refusal: CyclicOccurrenceGraph }
-              Ordered { order: order } => {
-                let rank = rank_pass(order_back: list_reverse(xs: order), succ: adj.succ)
-                let buckets = rank_buckets(order: order, rank: rank)
-                let top_rank = max_rank_of(order: order, rank: rank)
-                let empty_bucket: List<SchedNode> = []
-                let placed_state = place_all(
-                  state: PlaceState { placed: empty_placed, finish: empty_map(), lanes: empty_map(), bucket: look_key(m: buckets, key: top_rank, dflt: empty_bucket), rank_now: top_rank },
-                  pred: adj.pred, buckets: buckets, workers: worker_count
-                )
-                // The placement's OWN finish map decides whether the answer is complete; a placement that left an
-                // occurrence out refuses instead of being wrapped as `Scheduled`.
-                let unplaced = unplaced_occurrences(nodes: nodes, finish: placed_state.finish)
-                if count(unplaced) > 0 {
-                  NotScheduled { refusal: UnplacedOccurrences { paths: unplaced } }
-                } else {
-                  let placed = placed_state.placed
-                  let horizon = horizon_of(leaves: placed)
-                  let crit_start = argmax_node_rank(nodes: nodes, rank: rank)
-                  let critical_path = match crit_start {
-                    Absent => empty_paths
-                    Present { value: n } => follow_critical(n: n, succ: adj.succ, rank: rank, acc: empty_paths)
-                  }
-                  Scheduled { answer: ScheduleAnswer {
-                    workers: workers,
-                    leaves: placed,
-                    in_flight_per_day: in_flight(leaves: placed, horizon: horizon),
-                    horizon: horizon,
-                    critical_path: critical_path,
-                    critical_length: top_rank,
-                  } }
-                }
-              }
-            }
+          // OCCURRENCES THIS READ HOLDS OUT, keyed ONCE and asked once per occurrence -- never re-filtered per
+          // occurrence. A held-out occurrence joins no node set, so no answer can show it; the caller that named it
+          // reports it by name in its own answer.
+          let held_out = fold(unschedulable, init: empty_map(), f: fn(m, p) { map_insert(m: m, key: path_key(p: p), value: true) })
+          let nodes = flat_map(filter(occs, o => !map_contains_key(m: held_out, key: path_key(p: o.path))), o => priced_node(d: d, o: o, realized: realized))
+          // THE PINS, standing before the policy runs: their rows in the answer, the finish days an unclaimed leaf
+          // waiting on them gates through, and the lanes seeded busy. `pins_not_occurrences` refused any pin naming
+          // no node above, so every pin resolves to a priced node here.
+          // ONE PLACEMENT, SHARED WITH THE ITEM GRAIN. The occurrence graph is spelled in the core's own keyed
+          // shape -- a row per priced occurrence, one `to` waits-`on` `from` per internal edge -- and the pins arrive
+          // as PRE-PLACED rows, so a pin holding a lane, gating a successor's start and dropping out of the rank
+          // buckets is the very mechanism the item Gantt runs on, not a second copy of it. `earliest_start` stays
+          // CALLER-derived from the pins (roadmap_schedule_from_now's belt-room floor) and `held_out` is the
+          // unschedulable key list: the core filters it BEFORE building adjacency, so work this read refused to
+          // place lends no lane occupancy and no gating to the answer.
+          let by_key = fold(nodes, init: empty_map(), f: fn(m, n) { map_insert(m: m, key: n.key, value: n) })
+          let outcome = place(input: PlacementInput {
+            rows: map(nodes, n => PlacementRow { key: n.key, days: n.days }),
+            edges: map(edges, e => PlacementEdge { from: edge_from_key(e: e), to: edge_to_key(e: e) }),
+            workers: worker_count,
+            preplaced: map(pinned, p => Placement { key: path_key(p: p.path), start_day: p.start_day, finish_day: p.finish_day, lane: p.lane }),
+            earliest_start: earliest_day_with_room(pinned: pinned, workers: worker_count),
+            held_out: map(unschedulable, p => path_key(p: p)),
+          })
+          match outcome {
+            PlacementRefused { refusal: PlacementCyclic { keys: _ } } =>
+              NotScheduled { refusal: CyclicOccurrenceGraph }
+            PlacementRefused { refusal: PlacementUnplaced { keys: keys } } =>
+              // The placement's OWN result decides whether the answer is complete; a row the core could not place
+              // refuses the read, naming its carrier path, instead of being wrapped as `Scheduled`.
+              NotScheduled { refusal: UnplacedOccurrences { paths: paths_of(keys: keys, by_key: by_key) } }
+            PlacementPlaced { answer: a } =>
+              Scheduled { answer: ScheduleAnswer {
+                workers: workers,
+                leaves: leaves_of(rows: a.rows, by_key: by_key),
+                in_flight_per_day: a.in_flight,
+                horizon: a.horizon,
+                critical_path: paths_of(keys: a.critical, by_key: by_key),
+                // The critical length is the day count of the core's own critical chain, summed through the carrier
+                // that priced each row -- the same figure the rank of its first row carried when this unit owned the
+                // rank pass. It is read off the chain, not re-derived by a second longest-path pass.
+                critical_length: critical_days(keys: a.critical, by_key: by_key),
+              } }
+          }
           }
         }
+        }
+        }
       }
+    }
+  }
+}
+
+// THE PIN INPUT CHECKED BEFORE ANYTHING IS PLACED. A pin naming no occurrence of this expansion would hold a lane
+// and gate starts for a leaf the expansion never emitted, so the answer refuses it by name; a pin whose days do not
+// run, whose lane or start day is negative, or whose lane a second pin also claims is refused the same way. ONE
+// grouping pass builds the occurrence key set and the lane check rides `distinct_by_key` -- neither re-filters the
+// pins per pin.
+fn pins_not_occurrences(occs: List<Occurrence>, pinned: List<PinnedLeaf>) -> List<LeafPath> {
+  let occ_keys = fold(occs, init: empty_map(), f: fn(m, o) { map_insert(m: m, key: path_key(p: o.path), value: true) })
+  map(filter(pinned, p => !map_contains_key(m: occ_keys, key: path_key(p: p.path))), p => p.path)
+}
+
+fn pins_placed_badly(pinned: List<PinnedLeaf>) -> List<LeafPath> {
+  let lane_count = count(distinct_by_key(xs: pinned, key: p => to_string(p.lane)))
+  let malformed = filter(pinned, p => p.lane < 0 || p.start_day < 0 || p.finish_day <= p.start_day)
+  if count(pinned) != lane_count {
+    map(pinned, p => p.path)
+  } else {
+    map(malformed, p => p.path)
+  }
+}
+
+
+
+
+// THE ANSWER'S ROWS, rendered at LEAF GRAIN from the core's keyed placements. A row whose key is not a priced
+// occurrence of this read is skipped -- the same rule `pin_rows` applied to pins before the core owned pre-placed
+// rows, kept because a pin that is an occurrence of the expansion but is named `unschedulable` by the caller has a
+// row from the pins and no node to render it from. Dropping it is what the old code did; the read that named the
+// caller's hold-out reports it by name, so nothing is hidden here that the caller does not already know.
+fn leaves_of(rows: List<Placement>, by_key: Map<String, SchedNode>) -> List<ScheduledLeaf> {
+  fold(rows, init: [] as List<ScheduledLeaf>, f: fn(acc, r) {
+    match map_lookup(m: by_key, key: r.key) {
+      Absent => acc
+      Present { value: n } => list_push(xs: acc, item: ScheduledLeaf { path: n.path, start_day: r.start_day, finish_day: r.finish_day, lane: r.lane, count_source: n.source })
+    }
+  })
+}
+
+// THE CARRIER PATHS BEHIND CORE KEYS: the critical chain, or the rows the core could not place. Every key the core
+// names is a key of a row it was handed, so each resolves through `by_key`; a key that resolved to nothing would be
+// named by no path, and the read would still be a REFUSAL rather than a partial schedule (fail_closed: a failure arm
+// refuses, it never widens).
+fn paths_of(keys: List<String>, by_key: Map<String, SchedNode>) -> List<LeafPath> {
+  fold(keys, init: [] as List<LeafPath>, f: fn(acc, k) {
+    match map_lookup(m: by_key, key: k) {
+      Absent => acc
+      Present { value: n } => list_push(xs: acc, item: n.path)
+    }
+  })
+}
+
+// THE CRITICAL LENGTH, read off the core's own critical chain: the working days the carrier priced on each row of
+// that chain. It is the figure the rank of the chain's first row used to carry when this unit owned the rank pass --
+// sequence sums (std.realization_measurement::time_measure_seq) -- computed here by summing the chain rather than by
+// running a second longest-path pass over the graph.
+fn critical_days(keys: List<String>, by_key: Map<String, SchedNode>) -> Int {
+  fold(keys, init: 0, f: fn(acc, k) {
+    match map_lookup(m: by_key, key: k) {
+      Absent => acc
+      Present { value: n } => acc + n.days
+    }
+  })
+}
+
+// THE FIRST DAY THE BELT HAS ROOM FOR ONE MORE LEAF. Pins are facts: k of them hold k lanes whether or not k fits
+// the cap, and the read that derived them says so by name (roadmap_schedule_from_now's `pins_over_capacity`). What
+// the policy still owes an unclaimed leaf is a START day on which fewer than `workers` lanes are held by pins, so a
+// new leaf is never launched onto a belt that is already at or over its cap. ONE pass turns the pins into day
+// deltas and ONE walk folds them -- the shape `in_flight` already uses -- and the walk is bounded by the last pin's
+// finish day, past which no pin runs at all. With no pins it answers 0, which is the gate every read before
+// roadmap-schedule-from-now ran under: `start_day` is then exactly `max(dep, lane_free)`, byte for byte.
+fn earliest_day_with_room(pinned: List<PinnedLeaf>, workers: Int) -> Int {
+  let delta = fold(pinned, init: empty_map(), f: fn(m, p) {
+    let opened = map_insert(m: m, key: p.start_day, value: look_key(m: m, key: p.start_day, dflt: 0) + 1)
+    map_insert(m: opened, key: p.finish_day, value: look_key(m: opened, key: p.finish_day, dflt: 0) - 1)
+  })
+  let last_day = fold(pinned, init: 0, g: fn(m, p) { if p.finish_day > m { p.finish_day } else { m } })
+  wait_for_room(d: 0, limit: last_day, running: 0, delta: delta, workers: workers)
+}
+
+fn wait_for_room(d: Int, limit: Int, running: Int, delta: Map<Int, Int>, workers: Int) -> Int {
+  if d >= limit {
+    limit
+  } else {
+    let now = running + look_key(m: delta, key: d, dflt: 0)
+    if now < workers {
+      d
+    } else {
+      wait_for_room(d: d + 1, limit: limit, running: now, delta: delta, workers: workers)
     }
   }
 }

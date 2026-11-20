@@ -8,7 +8,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, artifact_path, artifact_directory,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, MicrovmShakedownYamlArtifact,
   InstrumentDispatchYamlArtifact, HealWorkflowYamlArtifact, HealPublisherWorkflowYamlArtifact,
-  BranchRunGrantBrokerWorkflowYamlArtifact, DriftWatchWorkflowYamlArtifact,
+  BranchRunGrantBrokerWorkflowYamlArtifact, HostedRunnerShadowGateYamlArtifact, DriftWatchWorkflowYamlArtifact,
   GitignoreArtifact, GitattributesArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, ReleaseBinsConsumerCheckScriptArtifact, Fci1BoundedExecutionContextArtifact,
   RunnerHostSudoersArtifact
@@ -20,6 +20,7 @@ import gunbc.instruments.instrument_dispatch_workflow { expected_instrument_disp
 import gunbc.heal_workflow { expected_heal_workflow_yml, HealWorkflowGenerated, HealWorkflowGenerationRefused }
 import gunbc.heal_publisher_workflow { expected_heal_publisher_workflow_yml, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused }
 import gunbc.fleet.branch_run_grant_broker_workflow { expected_branch_run_grant_broker_workflow_yml, BranchRunGrantBrokerWorkflowGenerated, BranchRunGrantBrokerWorkflowGenerationRefused }
+import gunbc.witness.hosted_runner_shadow_gate_workflow { expected_hosted_runner_shadow_gate_yml, ShadowGateWorkflowGenerated, ShadowGateWorkflowGenerationRefused }
 import gunbc.drift_watch_workflow { expected_drift_watch_workflow_yml, DriftWatchWorkflowGenerated, DriftWatchWorkflowGenerationRefused }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused }
 import gunbc.witness.compiler_gate_workflow { expected_compiler_gate_yml }
@@ -63,6 +64,7 @@ fn tier_o_fixed_artifacts() -> List<GeneratedArtifact> {
     HealWorkflowYamlArtifact,
     HealPublisherWorkflowYamlArtifact,
     BranchRunGrantBrokerWorkflowYamlArtifact,
+    HostedRunnerShadowGateYamlArtifact,
     DriftWatchWorkflowYamlArtifact,
     GitignoreArtifact,
     GitattributesArtifact,
@@ -117,6 +119,10 @@ fn tier_o_unadorned_body(a: GeneratedArtifact) -> TierOArtifactBody {
     BranchRunGrantBrokerWorkflowYamlArtifact => match expected_branch_run_grant_broker_workflow_yml() {
       BranchRunGrantBrokerWorkflowGenerated { content } => TierOArtifactProduced { content: content }
       BranchRunGrantBrokerWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
+    }
+    HostedRunnerShadowGateYamlArtifact => match expected_hosted_runner_shadow_gate_yml() {
+      ShadowGateWorkflowGenerated { content } => tier_o_workflow_produced(content: content)
+      ShadowGateWorkflowGenerationRefused { reason } => TierOArtifactRefused { reason: reason }
     }
     DriftWatchWorkflowYamlArtifact => match expected_drift_watch_workflow_yml() {
       DriftWatchWorkflowGenerated { content } => TierOArtifactProduced { content: content }

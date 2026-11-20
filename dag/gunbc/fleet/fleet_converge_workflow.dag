@@ -145,6 +145,8 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
+import gunbc.machine_intake.arrival_run { arrival_wet_ipmi_legs_bound }
+import gunbc.machine_intake.prior_life_capture_live { live_prior_life_legs_bound }
 import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation { mtcollins1_ui_status_asset_observation_receipt_path, mtcollins1_ui_status_asset_probe_bound }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_observer_release_allowance }
@@ -6302,6 +6304,18 @@ data fleet_converge_event_sha: Expression = ContextAccess { context: Github, pat
 // not a second revision authority and not a checkout selector (operator 2026-10-10). Apply's R is the
 // admitted plan receipt, not this expression.
 //
+// OPERATOR: AT THE PLAN-EXECUTING MODES (apply, dashboard_deploy, desired_instance_deploy) THE VALUE YOU
+// PASS AS expected_revision IS THE PLAN'S REVISION P, NOT THE CURRENT MAIN TIP. The plan ran in its own
+// earlier dispatch at P; the `plan-revision` job emits P; build checks out at P; and this admission
+// compares the expected_revision you supply against that checkout (P). So pass the same sha that
+// plan-revision emits — never main's tip at your dispatch time. Passing main's tip M (which has moved
+// since P) makes admit_optional_expected_revision refuse with RunRevisionRefused naming expected M and
+// observed P, and the cutover stalls even though every path changed since P was unrelated to the plan.
+// The gate is an exact cross-check and stays one: there is no relaxation that admits a moving main, and
+// none is needed — expected_revision = P passes every gate whatever main is (deploy test 44488679086:
+// dispatched --ref main at a tip past P, expected_revision = P, and the checkout-at-plan-revision step
+// and every pointer admission passed). Omitting expected_revision admits the checkout (still P).
+//
 // APPLY AND DASHBOARD_DEPLOY EXECUTE AT THE PLAN RUN'S REVISION R, NOT AT THE DISPATCHED COMMIT.
 // Plan and apply are separate runs and main moves between them; both are dispatched from main so
 // sign-in passes, but apply must run the bytes that were planned. The `plan-revision` job
@@ -8564,7 +8578,7 @@ data fleet_converge_mode_input: DispatchInput = DispatchInput {
 // same fact would be a nickname, and the dispatch-input budget (25) has no room for one.
 data fleet_converge_expected_revision_input: DispatchInput = DispatchInput {
     name: "expected_revision",
-    description: Present { value: "Optional cross-check of the event sha (RLM_EXPECTED_REVISION). Omit to admit github.sha. Present must match the checkout. Malformed refuses. qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not." },
+    description: Present { value: "Optional cross-check of the checked-out revision (RLM_EXPECTED_REVISION). Omit to admit the checkout. Present must equal the checkout. Malformed refuses. AT apply, dashboard_deploy and desired_instance_deploy the checkout is the PLAN's revision P (emitted by the plan-revision job, checked out by build), so the value to pass is that plan revision P — NEVER the current main tip: a main tip M that has moved since P is refused by name. At every other mode the checkout is the event sha (github.sha). qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not." },
     required: false,
     default: none,
     type: InputString,
@@ -9118,9 +9132,13 @@ fn fleet_converge_yml_after_unit_hold_admission(wf: Workflow) -> FleetConvergeYa
         JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
           FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet.fleet_workflow_steps)" }
         JobTimeoutWithinCeiling { minutes: _ } =>
-          match emit_yaml(v: project_workflow_to_yaml(workflow: wf)) {
-            EmittedYaml { text: t } => FleetConvergeYamlGenerated { content: t }
-            YamlEmitRefused { path: p, reason: r } => FleetConvergeYamlGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet.fleet_converge_workflow", path: p, reason: r) }
+          if fleet_converge_arrival_converge_backstop_holds() {
+            match emit_yaml(v: project_workflow_to_yaml(workflow: wf)) {
+              EmittedYaml { text: t } => FleetConvergeYamlGenerated { content: t }
+              YamlEmitRefused { path: p, reason: r } => FleetConvergeYamlGenerationRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.fleet.fleet_converge_workflow", path: p, reason: r) }
+            }
+          } else {
+            FleetConvergeYamlGenerationRefused { reason: "the arrival-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — lower the arrival step's phases or split the job; do not clamp the figure (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet.fleet_workflow_steps)" }
           }
       }
     }
@@ -9158,6 +9176,34 @@ fn fleet_converge_arrival_provider_resource_expression() -> String {
 
 fn fleet_converge_arrival_service_account_expression() -> String {
   arrival_lane_service_account_for_dispatch(template: fleet_converge_arrival_dispatch_host, lane: "arrival")
+}
+
+fn fleet_converge_arrival_converge_step_timeout_minutes() -> Int {
+  fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()])
+}
+
+// THE ARRIVAL JOB'S BACKSTOP, built the way the boot job's is (gunbc.fleet.fleet_workflow_steps
+// gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes): the checkout prelude allowance, the release
+// download at the artifact-transfer bound, the three aux steps that surround the converge step (unpack
+// and verify, the credential-free admission, the WIF auth), then the converge step's own minutes. The
+// ceiling is NOT clamped away: the generation route checks this figure through
+// checked_job_timeout_minutes (fleet_converge_arrival_converge_backstop_holds, consulted by
+// fleet_converge_yml_after_unit_hold_admission) and REFUSES generation past
+// extdeps.github.actions max_job_timeout_minutes -- clamping would silently ship a figure that fails
+// closed, which is exactly what gunbc_ci_fleet_job_backstop_timeout_note forbids for this workflow.
+fn fleet_converge_arrival_converge_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + (3 * gunbc_ci_aux_step_timeout_minutes)
+    + fleet_converge_arrival_converge_step_timeout_minutes()
+}
+
+// The arrival job's backstop under the platform ceiling: checked, never clamped.
+fn fleet_converge_arrival_converge_backstop_holds() -> Bool {
+  match checked_job_timeout_minutes(computed: fleet_converge_arrival_converge_job_backstop_timeout_minutes()) {
+    JobTimeoutWithinCeiling { minutes: _ } => true
+    JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } => false
+  }
 }
 
 fn fleet_converge_arrival_converge_job() -> Outcome<Job> {
@@ -9198,7 +9244,14 @@ fn fleet_converge_arrival_converge_job() -> Outcome<Job> {
         working_directory: none,
         if_condition: none,
         continue_on_error: none,
-        timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes },
+        // The fold, on the operator's explicit sign-off: ruling gunbc.design_ruling
+        // srv15_arrival_converge_step_raised_to_21_minutes, decided 2026-11-18T21:13Z, operator words
+        // verbatim "1. yeah thats fine" (ci_job_budgets_closed_to_growth's recording). 21 minutes, and the
+        // figure is not typed in: fleet_converge_gunbc_run_step_timeout_minutes over gunbc_ci_sm_max_time,
+        // arrival_wet_ipmi_legs_bound and live_prior_life_legs_bound, on the shared resolve allowance.
+        // Run 44249358201 died at 05m00s in this step with its fold never entered; the shortfall is owned
+        // by gunbc.recurring_failure_mode.gunbc_run_pays_a_large_fixed_pre_entry_cost_per_invocation.
+        timeout_minutes: Present { value: fleet_converge_arrival_converge_step_timeout_minutes() },
       }) }),
         ], policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
       f: fn(zesty_steps) {
@@ -9212,7 +9265,11 @@ fn fleet_converge_arrival_converge_job() -> Outcome<Job> {
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_mode_step_if(mode: ArrivalConverge) },
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes + 20 },
+    // The derived backstop, same ruling as the step above: prelude + artifact transfer + the three
+    // 5-minute neighbours + the step budget = 51 minutes, built through checked_job_timeout_minutes, with
+    // fleet_converge_arrival_converge_backstop_holds refusing generation rather than clamping if it ever
+    // passed max_job_timeout_minutes.
+    timeout_minutes: Present { value: fleet_converge_arrival_converge_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: fleet_converge_exclusive_job_concurrency(group: join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")),
     permissions: Present {

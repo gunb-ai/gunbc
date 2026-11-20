@@ -73,6 +73,7 @@ import gunbc.generated_artifact {
   HealPublisherWorkflowYamlArtifact,
   DriftWatchWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact,
+  HostedRunnerShadowGateYamlArtifact,
 }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
@@ -256,6 +257,10 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
     FleetWorkflowCensusOmission {
       artifact: MicrovmShakedownYamlArtifact,
       reason: "the Workflow value is a function of the dispatch input (microvm_shakedown_workflow(script), gunbc.runner.runner_microvm_shakedown_workflow); its trigger set is the module constant microvm_shakedown_workflow_triggers (input independence by construction), which carries only WorkflowDispatch — fleet_workflow_omissions_are_discharged proves the constant is autonomous-free, so the autonomous predicate excludes it regardless; its 10-minute job timeout is under the bound either way.",
+    },
+    FleetWorkflowCensusOmission {
+      artifact: HostedRunnerShadowGateYamlArtifact,
+      reason: "the shadow gate runs on a GitHub-hosted runner (HostedRunner { label: Ubuntu2404 }), not on the fleet pool; it is a non-required shadow job admitted by the operator ruling of 2026-11-19 and dissolves at cutover. It is not censused against the fleet job timeout bound because it never occupies a fleet runner slot.",
     },
   ]
 }

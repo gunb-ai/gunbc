@@ -1089,8 +1089,19 @@ STAGE_LOCK=/tmp/gunbc-t6-cutover-dispatch.lock
 # gunbc.fleet.fleet_converge_plan_revision::admit_dashboard_deploy_dispatch_inputs refuses an empty
 # RLM_PLAN_ARTIFACT_HASH (fleet_converge_plan_revision.dag:413-419), and the workflow fills that variable from
 # inputs.plan_artifact_hash (.github/workflows/fleet-converge.yml:3370, 3484), so a deploy dispatch without it
-# cannot pass its own admission. expected_revision is NEVER omitted: omitting it admits github.sha, which is
-# exactly the unbound activation this step refuses. The input names below are the workflow's own
+# cannot pass its own admission. expected_revision is passed explicitly. It is a cross-check, not the revision
+# authority: an OMITTED value admits the CHECKOUT (admit_optional_expected_revision_given, the Absent arm,
+# actions_run_binding.dag:210), and this workflow's build pins that checkout to the plan's revision P, so an
+# omitted value admits P — NOT the event sha github.sha that an ORDINARY (non-fleet) dispatch would admit.
+# Passing it explicitly keeps the dispatch bound and surfaces any mismatch at admission.
+# expected_revision NAMES THE PLAN'S REVISION, NOT MAIN'S TIP.
+# This transaction dispatches the plan itself at $SHA, so here P == $SHA and passing $SHA is right; but the
+# value is the plan's revision because build checks out at the plan-revision job's output (the plan's sha) and
+# admit_optional_expected_revision cross-checks your value against THAT checkout. In a cutover whose plan ran in
+# an EARLIER dispatch, expected_revision must name that earlier plan run's revision P, never the current main tip
+# M: main moves between the plan and the deploy, and M != P is refused with RunRevisionRefused naming expected M,
+# observed P even when every path changed since P is unrelated (proven to pass on dispatch test 44488679086:
+# --ref main at a tip past P with expected_revision = P). The input names below are the workflow's own
 # workflow_dispatch inputs. IDENTITY COMES FROM THE RUN'S NAME, WHICH THE WORKFLOW ITSELF BUILDS FROM ITS
 # INPUTS. `gh api repos/<repo>/actions/runs/<id>` returns NO inputs object for this workflow — measured at
 # e87b8a7f on four dispatch runs including this book's own: `.inputs` is null for every one of them, so

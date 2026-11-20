@@ -24,6 +24,7 @@ import gunbc.roadmap.roadmap_effort_estimate {
 }
 import gunbc.roadmap.roadmap_estimate_derivation {
   EstimateSource, EstimateContradiction, EstimateRefusal, UnsizedWhy, Unsized, AuthoredSize, AuthoredDuration, Derived,
+  EstimateAnswer, Answered, Refused, FindingsUnprobed, estimate_answer,
   estimate_contradictions, estimate_refusals, restated_piece_days, node_source, node_by_slug, current_estimate,
   dated_contradictions, cleared_prerequisite_pairs,
   EmptyEstimateBasis, EmptyRevocationReason, EstimateAboveCeiling, EstimateSubjectNamesNoNode, RevocationNamesNoRow, RevocationPrecedesItsRow, TwoEstimatesOneDay,
@@ -527,4 +528,51 @@ test fn the_live_reads_are_clean_while_the_sizing_lane_is_open() -> Bool {
     && size_label(s: SizeL) == "L"
     && size_label(s: SizeXl) == "XL"
     && size_label(s: SizeXxl) == "XXL"
+}
+
+// ---- RED FIRST: an unprobed FindingsOf family is UNSIZED, never priced as one member ----
+// names-bind-to-the-unique-declaration's decomposition carries a FindingsOf family (its population is unknown until
+// the probe runs) and it has no authored row, so it must reach the pieces branch. Today's code priced it Derived at
+// 1 x days -- a fabricated member count -- so it was NOT in the answer's unsized list; the fix leaves it UNSIZED
+// (listed, never priced). THIS witness uses only the stable estimate_answer(...) shape (unchanged by the fix), so it
+// COMPILES against BOTH main and the fix: false on main, true on the fix. A VALUE-level red, not a compile error --
+// exactly what @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward) demands.
+test fn an_unprobed_findings_item_is_listed_as_unsized() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(unsized, id => id == nid(s: "names-bind-to-the-unique-declaration"))) == 1
+    Refused { refusals: _ } => false
+  }
+}
+
+// The unsized cause NAMES the family and its probe (a typed UnsizedWhy::FindingsUnprobed), so the item is listed WITH
+// its reason rather than silently dropped. This references the new arm, so it runs on the fix only.
+fn source_is_findings_unprobed(src: EstimateSource, family: String, probe: String) -> Bool {
+  match src {
+    Unsized { why: w } => match w {
+      FindingsUnprobed { family: f, probe: p } => f == family && p == probe
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn an_unprobed_findings_item_names_its_family_and_probe() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: rows, unsized: _, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(rows, r => r.node == nid(s: "names-bind-to-the-unique-declaration")
+        && source_is_findings_unprobed(src: r.source, family: "one head declared in std with its claims", probe: "list the roster heads (probe)"))) == 1
+    Refused { refusals: _ } => false
+  }
+}
+
+// Produced/Reading families still price members x days: a sibling whose decomposition carries only declared
+// populations (no findings family) and no authored row stays priced -- it is NOT in the unsized list -- unchanged by
+// this fix. Both-compatible: priced on main, still priced on the fix.
+test fn a_declared_population_item_still_prices_members_times_days() -> Bool {
+  match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
+    Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>
+      count(filter(unsized, id => id == nid(s: "the-v1-dag-file-was-a-carrier-not-an-executable"))) == 0
+    Refused { refusals: _ } => false
+  }
 }
