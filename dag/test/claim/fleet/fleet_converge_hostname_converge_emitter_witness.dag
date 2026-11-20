@@ -24,10 +24,17 @@ import extdeps.github.actions {
   workflow_dispatch_max_inputs,
 }
 import gunbc.fleet.fleet_converge_workflow {
+  FleetConvergeWorkflowMode,
   FleetConvergeYamlGenerated,
   FleetConvergeYamlGenerationRefused,
   HostnameConverge,
+  RunnerHostFileConverge,
+  RunnerHostFileObserve,
+  RunnerHostRestore,
+  RunnerHostWithdraw,
   TargetHostDomain,
+  ExecutorDomain,
+  fleet_converge_subject_host_input_name,
   fleet_converge_arm_domain_clause,
   fleet_converge_host_mutation_group_for,
   fleet_converge_host_runner_expression,
@@ -708,4 +715,74 @@ test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
             && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
       }
   }
+}
+
+
+// ── THE DRAIN TRIO IS SERIALIZED ON THE MACHINE IT ACTS ON ──────────────────────────────────────────
+//
+// runner_host_file_converge / withdraw / restore name the machine they act ON in `subject_host`, and
+// their own split law refuses a dispatch whose executor IS that subject before any leg runs (refused
+// run 40085967610: srv3-13, a job that would have drained the slot it runs in). Declared
+// `ExecutorDomain`, their arm emitted an EMPTY clause and fell through to the executor-keyed default:
+// an act on srv3 queued in `gunbc-host-mutation-srv1`, serializing against acts on SRV1 while a serving
+// converge, a unit retirement, or a second drain on srv3 ran beside it -- the one race the host-mutation
+// group exists to stop, left open by a field name. All three now carry the `TargetHostDomain` arm
+// hostname_converge established, on the field the modes are required to fill.
+//
+// THE GROUP VALUE CANNOT COLLAPSE. A subject-keyed clause whose subject were empty would name the bare
+// prefix and merge every such dispatch into ONE group. The trio cannot reach that state: a missing
+// subject is a typed refusal in `fleet_converge_split_read` before any leg runs, pinned by this trio's
+// own witnesses, which assert zero actuation dispatched on that refusal.
+
+fn drain_trio_modes() -> List<FleetConvergeWorkflowMode> {
+  [RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore]
+}
+
+test fn the_drain_trio_declares_the_subject_as_its_mutation_domain() -> Bool {
+  all(drain_trio_modes(), m =>
+    match fleet_converge_mode_mutation_domain(mode: m) {
+      TargetHostDomain { field: f } =>
+        (f as String) == (fleet_converge_subject_host_input_name as String)
+          && dispatch_row_exists(name: f as String)
+      _ => false
+    }
+  )
+}
+
+// THE CLAUSE, NOT JUST THE CLASSIFICATION. An arm that classifies the mode correctly and still emits no
+// clause puts the job back in the executor's group by the fall-through, which is exactly the bug; so the
+// claim reads the text the emitter splices into the shared group, and reads it NEGATIVE on the executor
+// field -- the field whose label a drain can outlive, since the machine it acts on is not the machine
+// the job runs on.
+fn drain_trio_clause_is_subject_keyed(m: FleetConvergeWorkflowMode) -> Bool {
+  string_contains(
+    s: fleet_converge_arm_domain_clause(mode: m),
+    pattern: join(["format('", fleet_host_mutation_group_prefix, "{0}', github.event.inputs.subject_host)"], ""),
+  )
+    && !string_contains(s: fleet_converge_arm_domain_clause(mode: m), pattern: "github.event.inputs.host)")
+}
+
+test fn the_drain_trio_clause_names_the_subject_field_and_never_the_executor() -> Bool {
+  all(drain_trio_modes(), m => drain_trio_clause_is_subject_keyed(m: m))
+}
+
+// THE OBSERVE MODE STAYS ON THE MACHINE ITS RUNNER SITS ON. There is no subject for
+// runner_host_file_observe to name: it reads the files of the machine its own runner occupies, which is
+// why the split law requires a subject for the three acts and not for it. Grouping the observe on a
+// subject it never reads would separate it from the act on the SAME machine -- the pair that must not
+// overlap, an observe racing a withdraw past the same unit file -- and would queue it behind acts
+// elsewhere for no reason. This is the contrast arm: the field choice is per mode, not a blanket rule.
+test fn the_observe_mode_stays_grouped_on_its_own_executor() -> Bool {
+  match fleet_converge_mode_mutation_domain(mode: RunnerHostFileObserve) {
+    ExecutorDomain => fleet_converge_arm_domain_clause(mode: RunnerHostFileObserve) == ""
+    _ => false
+  }
+}
+
+// THE FIELD THE GROUP NAMES IS A ROW THE WORKFLOW DECLARES. The group string is built from this module's
+// NonEmptyStr because the dispatch row's name is a plain String; the row is the authority for what a
+// dispatch can carry, so a rename of the row must redden here rather than quietly fall the three modes
+// back to the executor-keyed default.
+test fn the_subject_group_field_is_a_row_the_workflow_declares() -> Bool {
+  any(fleet_converge_dispatch_inputs, r => r.name == (fleet_converge_subject_host_input_name as String))
 }
