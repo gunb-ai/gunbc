@@ -1,0 +1,43 @@
+module gunbc.integration_concern.shadow_gate_pr_time_remote_build_capability_gap
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, shadow_gate_pr_time_sighting_revision }
+
+// Filed per the build lane's direction (manager message, 2026-11-20): "Record the gap that opens in
+// gunbc.integration_concern, since the operator goal is hosted PR jobs driving remote builds." The WIF
+// switch (#gunbc.design_ruling::hosted_ci_credentials_federate_over_wif_dispatch_only) deliberately
+// refuses PR events rather than widen the credential; this row records what that closes off.
+data shadow_gate_pr_time_remote_build_capability_gap: IntegrationConcern = IntegrationConcern {
+  identity: "shadow_gate_pr_time_remote_build_capability_gap",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.witness.hosted_runner_shadow_gate_workflow", decl_name: "shadow_gate_config_check_script"),
+    requirement: "a hosted pull_request job drives the remote build WITHOUT PR-authored code ever holding the build credential: the build host verifies a GitHub OIDC token scoped to the PR and builds that commit isolated, so the credential answering for the build is issued to the host gate, not carried by the PR-controllable job",
+    standing: RequirementUnestablished { decided_by: "the build lane (clever-raven-401, 2026-11-20): the operator's goal (hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign) stands; the WIF pin deliberately refuses PR events rather than widen the credential, and the PR-scoped route on the build host is the unestablished part -- the gap is filed, not fixed" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.witness.hosted_runner_shadow_gate_workflow", decl_name: "shadow_gate_config_check_script"),
+    tail: [
+      decl_ref(module_path: "gunbc.auth.hosted_ci_secrets_federation", decl_name: "hosted_ci_secrets_attribute_condition"),
+      decl_ref(module_path: "gunbc.design_ruling", decl_name: "hosted_ci_credentials_federate_over_wif_dispatch_only"),
+    ],
+  },
+  question: "Can a hosted PR-time job drive the remote build WITHOUT PR-authored code ever holding the build credential? The WIF pin that closed the credential question (event=workflow_dispatch, ref=refs/heads/main, this workflow file at main) makes pull_request and merge_group runs unable to federate, so the shadow gate stands down on exactly the events the operator's goal names: hosted PR jobs driving remote builds. A safe route needs the build host itself to verify a PR-scoped GitHub OIDC token and build that commit isolated; the key then never enters the PR-controllable job.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: shadow_gate_pr_time_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.hosted_ci_secrets_federation", decl_name: "hosted_ci_secrets_attribute_condition") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.witness.hosted_runner_shadow_gate_workflow", decl_name: "shadow_gate_ci_credentials_fetch_step") },
+        ],
+      },
+      account: "The shape was decided before the gap was seen: the build lane confirmed \"dedicated SA and a provider pinned to the workflow path, refs/heads/main and workflow_dispatch; remote legs only on dispatch at main; PR and merge_group jobs skip with the typed notice\", and the same message named the consequence -- \"a PR job must reach the remote build without PR-authored code ever holding the key, e.g. the build host verifying a GitHub OIDC token scoped to the PR and building that commit isolated. Capability gap, no fix in this PR.\" The pin is right for the credential that exists: it cannot admit PR events while the SAME credential authorizes the build hosts, because a PR job runs PR-authored code.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

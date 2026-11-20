@@ -639,11 +639,14 @@ data remote_build_client_key_ci: RemoteBuildClientKey = RemoteBuildClientKey {
 // This is the custody ledger's row for the secret; the session key's row (remote_build_ssh_privkey_secret)
 // is the pattern. Like that row, matched by secret name against fleet_secrets_gcp_project (Secret Manager
 // names a project by number or id interchangeably, extdeps.cloud.gcp.secret_ref). The secret VERSION is
-// not in the relayed facts and is NOT guessed: it stays "pending" until the operator relays the version the
-// read of the secret names, exactly as the session key's version stayed pending (review 95989 — a version
-// written before it was read was a guessed number in a security row).
+// not in the EARLIER relayed facts, so the row kept "pending" per review 95989 (a version written before
+// it is read is a guess). THE OPERATOR RELAYED IT ON 2026-11-20 (gcloud secrets versions list: v1, enabled,
+// created 2026-11-20T19:36:30Z; nothing newer exists). The ONE pin site is the constant
+// hosted_ci_ssh_key_secret_version in gunbc.auth.hosted_ci_secrets_federation, feeding both the accessor
+// grant and the gate's fetch URL; this row stays "pending" so the version is never decided twice
+// (review 97015 — two pin sites fork).
 //
-// WHO READS IT (the single consumer, PR#2): the hosted-runner shadow gate
+// WHO READS IT (the single consumer): the hosted-runner shadow gate
 // (gunbc.witness.hosted_runner_shadow_gate_workflow), over GitHub→GCP workload identity as the dedicated
 // low-privilege hosted-ci-secrets service account (gunbc.hosted_ci_secrets_federation), which holds a
 // pinned-version secretmanager.secretAccessor grant for THIS secret. It is not read from a GitHub Actions
