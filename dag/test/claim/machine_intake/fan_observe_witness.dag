@@ -189,12 +189,12 @@ test fn fan_policy_phase_names_the_ipmi_sdr_series_it_runs() -> Bool {
       match fleet_converge_mtcollins1_fan_observe_step() {
         Rejected { diagnostics: _ } => false
         Accepted { value: observe_step } =>
-          match outcome_accepted_value(gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke()) {
-            Absent => false
-            Present { value: boot_phase_script } =>
-              match outcome_accepted_value(gunbc_ci_mtcollins1_fan_observe_invoke()) {
-                Absent => false
-                Present { value: observe_script } =>
+          match gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke() {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: boot_phase_script, diagnostics: _ } =>
+              match gunbc_ci_mtcollins1_fan_observe_invoke() {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: observe_script, diagnostics: _ } =>
                   fan_policy_phase_step_name(s: policy_step)
                     == fleet_converge_fan_observe_ipmi_series_step_name
                     && fan_policy_phase_step_name(s: observe_step)
@@ -255,11 +255,11 @@ fn fan_policy_phase_timeout_present(s: Step) -> Bool {
 // code - and it keeps its timeout, so a hang dies here, before the boot, located. The standalone
 // observe step was and stays strict the same way.
 test fn fan_policy_phase_unmodeled_failure_fails_loud_at_the_step() -> Bool {
-  match outcome_accepted_value(fleet_converge_fan_policy_phase_step()) {
-    Absent => false
-    Present { value: ph } => match outcome_accepted_value(fleet_converge_mtcollins1_fan_observe_step()) {
-      Absent => false
-      Present { value: fo } =>
+  match fleet_converge_fan_policy_phase_step() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ph, diagnostics: _ } => match fleet_converge_mtcollins1_fan_observe_step() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: fo, diagnostics: _ } =>
         !fan_policy_phase_continue_on_error(s: ph)
           && fan_policy_phase_timeout_present(s: ph)
           && !fan_policy_phase_continue_on_error(s: fo)
@@ -518,11 +518,11 @@ fn witness_step_timeout(s: Step) -> Int {
 // step failed (run 42184429821), and must still not run on a cancelled run. The fan step keeps the plain
 // mode gate it is first behind.
 test fn the_ui_status_step_runs_after_a_failed_fan_step_but_not_a_cancelled_run() -> Bool {
-  match outcome_accepted_value(fleet_converge_mtcollins1_ui_status_asset_observe_step()) {
-    Absent => false
-    Present { value: ui } => match outcome_accepted_value(fleet_converge_mtcollins1_fan_observe_step()) {
-      Absent => false
-      Present { value: fo } =>
+  match fleet_converge_mtcollins1_ui_status_asset_observe_step() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ui, diagnostics: _ } => match fleet_converge_mtcollins1_fan_observe_step() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: fo, diagnostics: _ } =>
         string_contains(s: witness_step_if_text(s: ui), pattern: "!cancelled() && ")
           && !string_contains(s: witness_step_if_text(s: fo), pattern: "cancelled()")
           && string_contains(s: witness_step_if_text(s: ui), pattern: "mtcollins1_fan_observe")
@@ -533,9 +533,9 @@ test fn the_ui_status_step_runs_after_a_failed_fan_step_but_not_a_cancelled_run(
 // The fan step pays gunbc run's resolve of its closure before its series: its budget is the fold, and the
 // flat figure that the resolve alone exceeded is not it.
 test fn the_fan_step_budget_is_the_resolve_plus_the_series_fold() -> Bool {
-  match outcome_accepted_value(fleet_converge_mtcollins1_fan_observe_step()) {
-    Absent => false
-    Present { value: fo } => witness_step_timeout(s: fo) == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
+  match fleet_converge_mtcollins1_fan_observe_step() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: fo, diagnostics: _ } => witness_step_timeout(s: fo) == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])
   }
 }
 
@@ -543,11 +543,11 @@ test fn the_fan_step_budget_is_the_resolve_plus_the_series_fold() -> Bool {
 // step died before the boot it gates). Both fan steps carry the one budget, and that budget is the fold. RED on
 // the pre-fix tree: the boot step read the flat aux figure (5) while the fan_observe step read the fold.
 test fn both_fan_steps_carry_the_one_fan_series_budget() -> Bool {
-  match outcome_accepted_value(fleet_converge_fan_policy_phase_step()) {
-    Absent => false
-    Present { value: ph } => match outcome_accepted_value(fleet_converge_mtcollins1_fan_observe_step()) {
-      Absent => false
-      Present { value: fo } =>
+  match fleet_converge_fan_policy_phase_step() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ph, diagnostics: _ } => match fleet_converge_mtcollins1_fan_observe_step() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: fo, diagnostics: _ } =>
         witness_step_timeout(s: ph) == witness_step_timeout(s: fo)
           && witness_step_timeout(s: ph) == fleet_converge_mtcollins1_fan_series_step_timeout_minutes()
           && fleet_converge_mtcollins1_fan_series_step_timeout_minutes() == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()])

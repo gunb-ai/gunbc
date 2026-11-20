@@ -27,7 +27,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import std.optional { Present }
-import v2.std.diagnostic { outcome_accepted_value }
+import v2.std.diagnostic { outcome_accepted, outcome_accepted_value }
 import gunbc.machine_intake.oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_run_record }
 
@@ -578,7 +578,14 @@ data supplied_fleet_key_marker: String = "SUPPLIED-FLEET-KEY-STEP"
 data supplied_boot_marker: String = "SUPPLIED-BOOT-STEP"
 
 fn supplied_boot_steps() -> List<Step> {
-  fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: supplied_step(marker: supplied_fleet_key_marker), boot_step: supplied_step(marker: supplied_boot_marker))
+  map(
+    fleet_converge_mtcollins1_boot_steps_around(
+      fleet_key_step: outcome_accepted(value: supplied_step(marker: supplied_fleet_key_marker)),
+      boot_step: outcome_accepted(value: supplied_step(marker: supplied_boot_marker))),
+    o => match o {
+      Accepted { value: s, diagnostics: _ } => s
+      Rejected { diagnostics: _ } => supplied_step(marker: "")
+    })
 }
 
 test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
