@@ -2,10 +2,16 @@ module test.claim.resolved_host_realization
 
 import std.host_text { HostText, chars }
 import std.types { Char, List }
+import std.algebra { trim }
 import test.claim.fixtures.unbound_host_spelling { an_unbound_legacy_position_read_keeps_its_legacy_contract }
 
 test fn an_unrelated_host_module_does_not_create_an_explicit_binding() -> Bool {
   an_unbound_legacy_position_read_keeps_its_legacy_contract()
+}
+
+// trim's declared body is an unreachable seam, including in the memory-stall monitor's PSI parser.
+test fn an_imported_trim_uses_its_declared_host_projection() -> Bool {
+  trim(s: "  aé😀  ") == "aé😀"
 }
 
 // The host declaration is in the same closure. This declaration must still run its own body.

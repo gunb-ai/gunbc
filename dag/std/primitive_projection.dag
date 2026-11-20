@@ -139,6 +139,8 @@ data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
 data primitive_text_of_chars: PrimitiveIdentity = primitive_identity_slug(name: "text_of_chars")
 data primitive_string_length: PrimitiveIdentity = primitive_identity_slug(name: "string_length")
 data primitive_char_at: PrimitiveIdentity = primitive_identity_slug(name: "char_at")
+
+data primitive_trim: PrimitiveIdentity = primitive_identity_slug(name: "trim")
 data primitive_substring: PrimitiveIdentity = primitive_identity_slug(name: "substring")
 data primitive_sha256_hex_of_text: PrimitiveIdentity = primitive_identity_slug(name: "sha256_hex_of_text")
 data primitive_machine_word_native_operate: PrimitiveIdentity = primitive_identity_slug(name: "machine_word_native_operate")
@@ -188,6 +190,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_shell_materialize_operation_argv, module_path: "std.operation_argv", decl_name: "shell_materialize_operation_argv", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_trim, module_path: "std.algebra", decl_name: "trim", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_text_of_chars, module_path: "std.host_text", decl_name: "text_of_chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_char_at, module_path: "std.host_text", decl_name: "char_at", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_substring, module_path: "std.host_text", decl_name: "substring", fidelity: HostRealizedSeam),

@@ -37,7 +37,7 @@ import std.primitive_projection {
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
-  primitive_list_push, primitive_chars, primitive_text_of_chars, primitive_string_length, primitive_substring, primitive_char_at, primitive_string_contains, primitive_machine_word_native_operate,
+  primitive_list_push, primitive_chars, primitive_text_of_chars, primitive_string_length, primitive_substring, primitive_char_at, primitive_trim, primitive_string_contains, primitive_machine_word_native_operate,
   primitive_sha256_hex_of_text, primitive_compile_dag_diagnostic_census,
 }
 
@@ -1267,6 +1267,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "string_contains",
   "chars",
   "text_of_chars",
+  "trim",
   "string_length",
   "substring",
   "char_at",
@@ -1670,6 +1671,8 @@ data primitive_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversal
 // Whole-list assembly and scalar windows preserve source order; length returns a scalar count.
 data primitive_text_of_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_text_of_chars, order: SourcePreservingOrder }
 
+data primitive_trim_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_trim, order: SourcePreservingOrder }
+
 data primitive_string_length_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_string_length, order: OrderFreeResult }
 
 data primitive_substring_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_substring, order: SourcePreservingOrder }
@@ -1723,6 +1726,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_machine_word_native_operate_traversal,
   primitive_chars_traversal,
   primitive_text_of_chars_traversal,
+  primitive_trim_traversal,
   primitive_string_length_traversal,
   primitive_substring_traversal,
   primitive_char_at_traversal,

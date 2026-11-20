@@ -294,6 +294,14 @@ data operation_declaration_roster: List<OperationDeclaration> = [
   ),
   operation_declaration_row(
     module_path: "std.algebra",
+    decl_name: "trim",
+    requirement: RequiresNone,
+    semantics: Pure,
+    disposition: NativeDerivedComputation { derived_from: symbol_intern_lexeme(lexeme: "text_whitespace_window") },
+    shape: NoResourceAccess
+  ),
+  operation_declaration_row(
+    module_path: "std.algebra",
     decl_name: "list_push",
     requirement: RequiresNone,
     semantics: Pure,
