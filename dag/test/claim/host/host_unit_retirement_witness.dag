@@ -7,6 +7,8 @@ module test.claim.host.host_unit_retirement_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { Cons, Empty, string_contains }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecRefused, TypedArgvExecConverged }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.design_ruling { hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_modes,
@@ -20,6 +22,9 @@ import gunbc.fleet.fleet_converge_workflow {
 import gunbc.host.host_unit_retirement {
   HostUnitRetirementRow,
   HostUnitRetirementReadback,
+  ReadRefusal,
+  host_unit_retirement_first_line,
+  host_unit_retirement_judge_reads,
   Retired,
   UnitStillLoaded,
   UnitActive,
@@ -176,4 +181,41 @@ test fn host_unit_retirement_units_are_retired() -> Bool {
   length(host_unit_retirement_rows_for(operator_host_srv14 as String)) == 3
     && length(readbacks) == 3
     && host_unit_retirement_all_retired(readbacks)
+}
+
+// (review 96978) A DROPPED READ IS NOT AN ANSWER. The empty stdout of a refused exec must never reach
+// read_row's accepting arm: the first read that never answered owns the verdict as ReadRefusal.
+test fn host_unit_retirement_a_refused_read_is_not_retired() -> Bool {
+  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr, ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+  let dropped = host_unit_retirement_first_line(TypedArgvExecRefused { reason: "session dropped" })
+  let ok_active = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "inactive\n", stderr: "" } })
+  let ok_ufs = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" } })
+  match host_unit_retirement_judge_reads(row, dropped, ok_active, ok_ufs, true) {
+    ReadRefusal { which_read: w, detail: _ } => w == "load-state"
+    _ => false
+  }
+}
+
+test fn host_unit_retirement_a_nonzero_exit_read_is_not_retired() -> Bool {
+  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr, ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+  let ok_load = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" } })
+  let ok_active = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "inactive\n", stderr: "" } })
+  let crashed_ufs = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 255, success: false, stdout: "", stderr: "connection reset" } })
+  match host_unit_retirement_judge_reads(row, ok_load, ok_active, crashed_ufs, true) {
+    ReadRefusal { which_read: w, detail: _ } => w == "unit-file-state"
+    _ => false
+  }
+}
+
+// THE GUARD MUST NOT SWALLOW THE TRUTH: all three reads ANSWERED (the clean --value answers of a
+// genuinely retired unit) still reads Retired.
+test fn host_unit_retirement_answered_reads_still_retire() -> Bool {
+  let row = HostUnitRetirementRow { host: "srv14", unit: "x.service" as NonEmptyStr, fragment_path: "/etc/systemd/system/x.service", retained_path: "/var/lib/gunbc/retired-units/x.service", no_consumer_reason: "test" as NonEmptyStr, ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+  let ok_load = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" } })
+  let ok_active = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "inactive\n", stderr: "" } })
+  let ok_ufs = host_unit_retirement_first_line(TypedArgvExecConverged { result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" } })
+  match host_unit_retirement_judge_reads(row, ok_load, ok_active, ok_ufs, true) {
+    Retired { unit, retained_path } => unit == "x.service"
+    _ => false
+  }
 }

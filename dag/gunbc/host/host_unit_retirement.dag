@@ -184,6 +184,17 @@ type HostUnitRetirementReadback
   | UnitActive { unit: NonEmptyStr, active_state: String }
   | UnitStillEnabled { unit: NonEmptyStr, unit_file_state: String }
   | RetainedCopyAbsent { unit: NonEmptyStr, retained_path: String }
+  // A read that never reached the manager, or ran and exited non-zero (review 96978): the answer is
+  // NOT the empty string -- empty string means the manager answered "no such property value", which is
+  // a fact; a refused or failed read answers nothing, and nothing is never `Retired`.
+  | ReadRefusal { unit: NonEmptyStr, which_read: String, detail: String }
+
+// THE READ AS A TYPE (review 96978): value-and-exit or refusal, so "the ssh session dropped" can never
+// be read as the manager's answer. systemctl show --value exits 0 and prints nothing when the property
+// is genuinely unset; that -- and only that -- is the empty value.
+type HostUnitRetirementRead
+  = ReadValue { value: String, answered: Bool }
+  | ReadFailed { detail: String }
 
 // The judgement the receipt and the wet run both run through, ONE order: the manager must not know the
 // unit (not-found), it must not be running (inactive), it must carry NO INSTALL STATE, and the retained
@@ -216,6 +227,7 @@ fn host_unit_retirement_readback_line(readback: HostUnitRetirementReadback) -> S
     UnitActive { unit, active_state } => concat("ACTIVE ", unit as String, " active-state=", active_state)
     UnitStillEnabled { unit, unit_file_state } => concat("STILL-ENABLED ", unit as String, " unit-file-state=", unit_file_state)
     RetainedCopyAbsent { unit, retained_path } => concat("RETAINED-ABSENT ", unit as String, " path=", retained_path)
+    ReadRefusal { unit, which_read, detail } => concat("READ-REFUSED ", unit as String, " read=", which_read, " detail=", detail)
   }
 }
 
@@ -280,13 +292,50 @@ fn host_unit_retirement_ok(outcome: TypedArgvExecOutcome) -> Bool {
   }
 }
 
-fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome) -> String {
+fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome) -> HostUnitRetirementRead {
   match outcome {
     TypedArgvExecConverged { result: r } => match list_head(split(s: r.stdout, delimiter: "\n")) {
-      Present { value: l } => trim(s: l)
-      Absent => ""
+      Present { value: l } => ReadValue { value: trim(s: l), answered: r.success }
+      Absent => ReadValue { value: "", answered: r.success }
     }
-    TypedArgvExecRefused { reason: _ } => ""
+    TypedArgvExecRefused { reason: reason } => ReadFailed { detail: reason }
+  }
+}
+
+// THE READ GATE (review 96978): a refused or non-zero-exit read of load-state, active state or install
+// state is its own refusal arm -- never the empty string, which belongs ONLY to a clean
+// `systemctl show --value` answer. The retained-copy test is already safe (a refused exec reads false,
+// which is RetainedCopyAbsent -- a refusal, not an acceptance).
+fn host_unit_retirement_read_refusal(read: HostUnitRetirementRead, unit: NonEmptyStr, which_read: String) -> Option<HostUnitRetirementReadback> {
+  match read {
+    ReadFailed { detail: d } => Present { value: ReadRefusal { unit: unit, which_read: which_read, detail: d } }
+    ReadValue { value: _, answered: a } =>
+      if !a { Present { value: ReadRefusal { unit: unit, which_read: which_read, detail: "exec exited non-zero" } } }
+      else { Absent }
+  }
+}
+
+// THE READ GATE (review 96978), ordered: the first read that never answered -- refused by the transport
+// or exited non-zero -- owns the verdict as ReadRefusal. Only when all three reads ANSWERED (any value,
+// including the empty one that `systemctl show --value` prints for unset UnitFileState) does
+// host_unit_retirement_read_row judge. Nothing is fabricated from silence.
+fn host_unit_retirement_judge_reads(row: HostUnitRetirementRow, load: HostUnitRetirementRead, active: HostUnitRetirementRead, unit_file_state: HostUnitRetirementRead, retained_readable: Bool) -> HostUnitRetirementReadback {
+  match host_unit_retirement_read_refusal(load, row.unit, "load-state") {
+    Present { value: rb } => rb
+    Absent => match host_unit_retirement_read_refusal(active, row.unit, "active-state") {
+      Present { value: rb } => rb
+      Absent => match host_unit_retirement_read_refusal(unit_file_state, row.unit, "unit-file-state") {
+        Present { value: rb } => rb
+        Absent => host_unit_retirement_read_row(row, host_unit_retirement_read_value(load), host_unit_retirement_read_value(active), host_unit_retirement_read_value(unit_file_state), retained_readable)
+      }
+    }
+  }
+}
+
+fn host_unit_retirement_read_value(read: HostUnitRetirementRead) -> String {
+  match read {
+    ReadValue { value: v, answered: _ } => v
+    ReadFailed { detail: _ } => ""
   }
 }
 
@@ -331,7 +380,7 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   if !copy_ok {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
   } else {
-    host_unit_retirement_read_row(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_first_line(back.at(3)), host_unit_retirement_ok(back.at(2)))
+    host_unit_retirement_judge_reads(row, host_unit_retirement_first_line(back.at(0)), host_unit_retirement_first_line(back.at(1)), host_unit_retirement_first_line(back.at(3)), host_unit_retirement_ok(back.at(2)))
   }
 }
 
