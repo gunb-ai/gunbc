@@ -1,0 +1,121 @@
+module test.claim.runner.runner_ci_width_ruled_zero_witness
+
+import std.types { Bool }
+import std.optional { Absent, Present }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv14 }
+import gunbc.design_ruling { hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
+import gunbc.runner.runner_slot_allocation {
+  HostWidthFacts, host_width_facts, committed_width_of, gunbc_runner_committed_width,
+  RunnerWidthDerived, RunnerWidthUnresolved,
+  WidthComputeOfferAbsent, CpuWidthOfferAbsent,
+  ruled_zero_ci_widths, host_ci_width_is_ruled_zero,
+}
+import gunbc.runner.runner_host_deploy {
+  runner_host_deploy_from_width, runner_host_spec_for,
+  RunnerHostSpec, RunnerHostDeployAdmission, RunnerHostSpecFound, RunnerHostSpecAbsent,
+  RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused,
+}
+
+// WHY THIS WITNESS EXISTS. A ruling that takes a host out of CI has to answer with a DECIDED zero --
+// RunnerWidthDerived { slots: 0 }, the arm gunbc.runner.runner_host_deploy admits as
+// RunnerHostDeployZeroWidthAdmitted -- and NOT with the epistemic absence WidthComputeOfferAbsent, which says the
+// fleet has not offered this machine to CI or has never surveyed it. "We decided no" and "we do not know" are
+// different states and the width chain already says so; this witnesses the one arm the ruling adds, and holds the
+// line that it adds no new way to lose an unknown. Nothing here re-derives a width from memory: that chain is
+// host_width_facts' own and is witnessed elsewhere (test.claim.runner.host_width_facts_witness).
+
+fn srv14_spec_or_none() -> RunnerHostSpec? {
+  match runner_host_spec_for(host: operator_host_srv14) {
+    RunnerHostSpecFound { spec: s } => Present { value: s }
+    RunnerHostSpecAbsent { host: _ } => Absent
+  }
+}
+
+fn deploy_at(host: HostIdentity, spec: RunnerHostSpec, resolved: RunnerWidthResolution) -> RunnerHostDeployAdmission {
+  runner_host_deploy_from_width(host: host, spec: spec, resolved: resolved)
+}
+
+// A SUPPLIED FACTS RECORD WITH NO CPU OFFER: the same producer the width chain uses, one field changed, so the
+// control cannot pass by reading some other host's rows.
+fn no_cpu_offer_record_for(f: HostWidthFacts) -> HostWidthFacts {
+  HostWidthFacts {
+    host: f.host,
+    cpu: CpuWidthOfferAbsent { host: f.host },
+    usable_ram: f.usable_ram,
+    fixed_overhead: f.fixed_overhead,
+    session: f.session,
+    control_plane: f.control_plane,
+    served_deployment: f.served_deployment,
+    disk: f.disk,
+    authored_slots: f.authored_slots,
+  }
+}
+
+// THE ROW IS AUTHORIZED BY THE RULING, not by anything else. RED if the row is keyed on an offer's absence, an
+// envelope reading, or a hand-typed number instead of the ruling's own reference.
+test fn the_ruled_zero_row_is_authorized_by_the_ruling() -> Bool {
+  ruled_zero_ci_widths.any(r =>
+    (r.host as String) == (operator_host_srv14 as String)
+      && r.ruling == hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.reference)
+}
+
+// MEMBERSHIP IS WHAT DECIDES: a host that keeps CI is not in the list.
+test fn a_host_that_keeps_ci_is_not_ruled_zero() -> Bool {
+  !host_ci_width_is_ruled_zero(host: operator_host_srv3)
+}
+
+// butch's WIDTH IS A DECIDED ZERO, NOT AN ABSENCE. RED if the producer answers RunnerWidthUnresolved for srv14,
+// or answers a positive width because its ComputeOffer row still stands (the offer is retired in its own change,
+// with the same ruling cited; until then this row OVERLAYS it).
+test fn butch_width_is_a_decided_zero() -> Bool {
+  match gunbc_runner_committed_width(host: operator_host_srv14) {
+    RunnerWidthDerived { slots: 0 } => true
+    _ => false
+  }
+}
+
+// AND THE DEPLOY PATH ADMITS IT AS ZERO WIDTH, which is what keeps butch a host with a runner lane -- the
+// executor route its own fleet-converge dispatch needs -- while holding zero CI slots.
+test fn butch_deploy_admits_the_zero_width() -> Bool {
+  match srv14_spec_or_none() {
+    Present { value: s } =>
+      match deploy_at(host: operator_host_srv14, spec: s, resolved: gunbc_runner_committed_width(host: operator_host_srv14)) {
+        RunnerHostDeployZeroWidthAdmitted { spec: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RED CONTROL ONE: an UNRULED host whose CPU axis offers nothing stays the EPISTEMIC absence. Supplied-record
+// form, so it cannot accidentally read a ruled host. The ruled arm must not have swallowed that cause: a host the
+// fleet has not offered is still "we do not know", and still refuses.
+test fn an_unruled_host_with_no_offer_stays_an_absence() -> Bool {
+  match committed_width_of(f: no_cpu_offer_record_for(f: host_width_facts(host: operator_host_srv3))) {
+    RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } } => (h as String) == (operator_host_srv3 as String)
+    _ => false
+  }
+}
+
+// RED CONTROL TWO: butch's OWN key, offered to CI but with the width left UNRESOLVED, still refuses the deploy.
+// The new arm fires on the decided zero alone -- an absence for the very same host is not admitted.
+test fn butch_with_an_unresolved_width_still_refuses_the_deploy() -> Bool {
+  match srv14_spec_or_none() {
+    Present { value: s } =>
+      match deploy_at(host: operator_host_srv14, spec: s, resolved: RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: operator_host_srv14 } }) {
+        RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RED CONTROL THREE: the ruling does not zero the fleet. srv3 keeps CI and keeps a POSITIVE derived width, so the
+// new arm is keyed on the list and not on "the width chain now answers empty".
+test fn a_host_that_keeps_ci_keeps_a_positive_width() -> Bool {
+  match gunbc_runner_committed_width(host: operator_host_srv3) {
+    RunnerWidthDerived { slots: n } => n > 0
+    _ => false
+  }
+}

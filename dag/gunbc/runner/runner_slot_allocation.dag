@@ -3,7 +3,7 @@ module gunbc.runner.runner_slot_allocation
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import std.types { Int, String, List, Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.design_ruling { srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves }
+import gunbc.design_ruling { srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves, hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
 import std.algebra { take_prefix }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -14,7 +14,7 @@ import product.host_identity { HostIdentity }
 import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
 import gunbc.session_reservation_policy { SessionReservationBytesResolution, ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished, session_reservation_bytes }
 import gunbc.host.host_memory_observation { gunbc_ci_host_memory_observation_for, oomd_actuation_floor }
 import gunbc.host.host_memory_carrier { HostUsableRam, HostFixedOverhead, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
@@ -161,6 +161,44 @@ fn host_transitional_ci_slot_identities(host: HostIdentity) -> List<RunnerSlotId
 
 fn host_transitional_ci_slot_count(host: HostIdentity) -> Int {
   host_transitional_ci_slot_identities(host: host).length()
+}
+
+// WHY A HOST TAKES NO CI SLOTS IS A RULING, NOT AN ABSENCE.
+//
+// Operator ruling 2026-11-19, gunbc.design_ruling hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
+// on the CI shape, verbatim: "OK i think basically we should start using standard 2 core github runners just
+// as placeholder runners to shell out to remote builds - and then we need a better flexible build system".
+// A host that ruling takes out of CI is answered by a DECIDED zero -- the arm the arithmetic itself takes when
+// it comes out empty, RunnerWidthDerived { slots: 0 }, which gunbc.runner.runner_host_deploy admits as
+// RunnerHostDeployZeroWidthAdmitted -- and NOT by WidthComputeOfferAbsent. That absence is EPISTEMIC: it says the
+// fleet has not offered this machine to CI, or has never surveyed it (see the three-arm comment at this module's
+// committed_width_with_serving, and "the old scalar zero conflated 'no host entry' with 'zero slots' there").
+// Conflating the two would make a recorded decision depend on whether someone had happened to delete an offer
+// row, and would leave no way to tell "we decided no" from "we do not know" -- so an UNRULED host with no offer
+// keeps refusing, exactly as it did before this row existed.
+//
+// WHAT THIS IS NOT. It is not a substitute for retiring the host's ComputeOffer, which is its own change with the
+// same ruling cited: while an offer still stands, this row OVERLAYS it -- the host has the hardware width and is
+// ruled not to spend it on CI. It is not a memory statement either: the envelope, its measurements and the serving
+// charge keep answering unchanged, and what takes the freed envelope is the build pool
+// (gunbc.runner.runner_slot_desired host_build_pool_reservation), which reads this decision as a zero, not as a gap.
+type RuledZeroCiWidth {
+  host: HostIdentity
+  ruling: DeclarationRef
+}
+
+data ruled_zero_ci_widths: List<RuledZeroCiWidth> = [
+  RuledZeroCiWidth {
+    host: operator_host_srv14,
+    ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign.reference,
+  },
+]
+
+// ONE QUESTION, ONE AUTHORITY (gunbc.design_argument single_authority): this is the only place that answers
+// "has a ruling taken this host out of CI width", and membership in the list IS the answer -- a ruling whose
+// host is not listed changes no width.
+fn host_ci_width_is_ruled_zero(host: HostIdentity) -> Bool {
+  ruled_zero_ci_widths.any(r => (r.host as String) == (host as String))
 }
 
 data authored_microvm_slots: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()]
@@ -1431,6 +1469,16 @@ fn committed_width_with_serving(f: HostWidthFacts, serving: Optional<ByteSize>, 
                 cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
               }
             MemoryDenominatorEstablished =>
+              if host_ci_width_is_ruled_zero(host: f.host) {
+                // THE RULING ANSWERS WHERE THE ARITHMETIC WOULD HAVE. It is placed after the slot-shape,
+                // serving and memory-denominator gates rather than before them, because a ruling about how much
+                // of a host CI may take says nothing about whether the host's facts are in hand: a ruled-zero host
+                // with an unestablished envelope still reports the cause it reported before this row existed. The
+                // answer it gives is the SAME ARM the arithmetic gives when it comes out empty, so every consumer
+                // that already handles an empty width -- the deploy's zero-width admission, the build-pool carve --
+                // handles this host with no new case.
+                RunnerWidthDerived { slots: 0 }
+              } else {
               if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope_over(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host), rows: rows)) == 0 {
                 RunnerWidthUnresolved {
                   cause: WidthSlotShapeInadmissible {
@@ -1447,6 +1495,7 @@ fn committed_width_with_serving(f: HostWidthFacts, serving: Optional<ByteSize>, 
                   RunnerWidthUnresolved { cause: WidthCpuOverCommitted { host: h, threads: t, withheld: w } }
                 CpuWidthDerived { slots: by_cpu } =>
                   RunnerWidthDerived { slots: derived_runner_slots_of_over(f: f, by_cpu: by_cpu, rows: rows) }
+              }
               }
               }
           }
