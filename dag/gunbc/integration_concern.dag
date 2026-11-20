@@ -875,6 +875,11 @@ data three_spark_lan_endpoint_rows_answer_their_addresses_twice_authorities: Dis
 
 // The revision at which the third-party-apt-repo fork was sighted: main, the head tailscale was modelled onto.
 data third_party_apt_repo_leaves_sighting_revision: CommitSha = "600e6a835afbcdccbf29c7cc1e44df9248cccf7b"
+// The main revision the operator's serial-console host-key read was made against (2026-11-20T20:33:25Z): the
+// tree carrying gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments' ED25519 row for
+// operator_host_e2d4b7 (#16802), whose fingerprint the read checked its ssh-keygen -lf output against. As with
+// the rows above, the revision is the tree that was read, not the sha of the commit that writes it down.
+data h11ssl_unit3_console_host_key_confirmation_revision: CommitSha = "3db1b5f096294903c63dfa43496523dcd2562996"
 
 // THREE LEAVES OF ONE RULE, NOT YET ONE SHAPE. A third-party apt repository -- URI, suite, components,
 // architecture, a signed-by keyring path, and a pinned signing-key fingerprint the fetched key must match or
