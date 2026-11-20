@@ -515,7 +515,7 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 // would erase it again, with nothing in any journal to stop it. So an install request belongs to the ONE RUN that
 // stages it, and the standing SitePxeEdgeConverge mode serves NO install file: `run_site_pxe_edge` takes its
 // requests as an input, and the mode's own entry passes the empty list. That makes the standing converge the
-// WITHDRAWAL by construction — the removal path d5d8218a2ca added is the only thing it can do with install files.
+// WITHDRAWAL by construction — the removal path @ref(gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_remove_stale) added is the only thing it can do with install files.
 // A run that stages a binding is gunbc.host.network_install (PXE 2c), which builds the request from the unit's
 // install-client NIC and its dated target-disk row (network_install_requests_for) and withdraws it in the same
 // run; its own witness file owns the "srv15's request binds exactly once" claim. srv15's request lived here until
@@ -3277,7 +3277,7 @@ data site_pxe_edge_converge_attempt_raw: String = "site-pxe-edge-converge-ci"
 
 // WHAT THE WITHDRAWAL PUSHES AT THE EDGE: nothing. The standing SitePxeEdgeConverge mode serves no install
 // binding, and this run's withdraw step converges with this same empty list, which is the only route to the
-// removal path d5d8218a2ca added. Stating it once, HERE — beside the request type it carries — is what keeps
+// removal path @ref(gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_remove_stale) added. Stating it once, HERE — beside the request type it carries — is what keeps
 // a second caller from "helpfully" passing a standing list and re-creating the file behind the run's back.
 // The wet entry and the standing-witness reach this row only through site_pxe_edge_ci_install_requests, so entry
 // and witness share one source (relayed finding, #16503 side review: the entry used to pass a bare literal
