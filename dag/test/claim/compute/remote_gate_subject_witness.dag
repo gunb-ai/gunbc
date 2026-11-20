@@ -186,7 +186,12 @@ test fn the_gate_class_is_admitted_at_its_profile_and_not_at_the_build_seat() ->
     kibibyte_count(k: bound) == kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max)) &&
     match workload_profile_for(class: work_class_of(op: gate_op)) {
       Absent => false
-      Present { value: p } => p.worst_case == gunbc_runner_slot_memory_max && count(p.standing) > 0
+      Present { value: p } =>
+        kibibyte_count(k: workload_profile_worst_case_kibibyte(p: p)) ==
+          kibibyte_count(k: kibibyte_from_byte_size_floor(b: gunbc_runner_slot_memory_max)) &&
+        // THE STANDING TRAVELS WITH THE NUMBER. A bound with no stated authority is a guess wearing a
+        // unit; the claim does not read the prose, it only refuses a profile that carries none.
+        p.standing != "" as NonEmptyStr
     } &&
     match workload_profile_for(class: work_class_of(op: build_op)) {
       Absent => true
