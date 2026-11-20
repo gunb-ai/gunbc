@@ -223,10 +223,10 @@ fn tag_dashboard_to_serving_grant() -> TailscaleGrant {
 // No fleet build host runs Tailscale SSH, so the regular sshd with its authorized_keys
 // forced_command governs the connection. The host-side decision (RunSSH=false on srv1 and
 // srv2 as of 2026-11-20; srv3/srv4 plain OpenSSH) is an operator ruling recorded at
-// @ref(gunbc.design_ruling::tailscale_ssh_off_on_fleet_build_hosts_2026_11_20), not in this comment.
+// #gunbc.design_ruling::tailscale_ssh_off_on_fleet_build_hosts_2026_11_20, not in this comment.
 // No Tailscale SSH rule for src tag:ci-dispatch is emitted; the network grant is sufficient
 // and the key is the control. The join half is held by
-// @ref(test.claim.tailscale_join_fleet_membership_witness::w_the_fleet_join_argv_never_enables_tailscale_ssh),
+// #test.claim.tailscale_join_fleet_membership_witness::w_the_fleet_join_argv_never_enables_tailscale_ssh,
 // red for --ssh in any spelling.
 fn tag_ci_dispatch_to_build_hosts_ssh_grant() -> TailscaleGrant {
   TailscaleGrant {
@@ -251,7 +251,7 @@ fn operator_tailscale_acl_grants() -> List<TailscaleGrant> {
 
 // RESIDUE: this ssh section's rules have no consumer route; classified, with its typed dissolution
 // condition (drop when the tailnet read-back first reports it absent), at
-// @ref(gunbc.design_ruling::tailscale_acl_ssh_section_residue_2026_11_20). Emitted unchanged because the
+// #gunbc.design_ruling::tailscale_acl_ssh_section_residue_2026_11_20. Emitted unchanged because the
 // emitted document equals the live tailnet policy -- the reconcile fixture
 // test/fixture/tailscale_acl_reference.json carries them -- so dropping them here before the
 // tailnet drops them would invert the drift.

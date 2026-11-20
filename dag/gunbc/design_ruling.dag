@@ -1224,7 +1224,7 @@ data reference_markers_are_hashtag_form: DesignRuling = DesignRuling {
 // The operator's wish, relayed by gentle-crab-832 on 2026-11-20 (msg_6ba80db3): "The operator wants
 // everything from today recorded in gunbc so it isn't lost." These rows are the typed carriers for the
 // three dated facts of that day's tailnet work; the prose around them cites these rows and carries none
-// of the record itself (gunbc.design_argument::source_annotations).
+// of the record itself #gunbc.design_argument::source_annotations.
 
 data tailscale_ssh_off_on_fleet_build_hosts_2026_11_20: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_ssh_off_on_fleet_build_hosts_2026_11_20"),
