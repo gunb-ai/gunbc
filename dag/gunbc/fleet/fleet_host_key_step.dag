@@ -15,6 +15,9 @@ import gunbc.ci.ci_run_step_target {
   gunbc_run_step_target,
   GunbcRunStepTarget,
 }
+import gunbc.fleet.fleet_host_key_enrollment {
+  fleet_host_key_scan_receipt_path,
+}
 import gunbc.host.fleet_keypair_mint { FleetKeypairMintSubject }
 
 // THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
@@ -54,16 +57,16 @@ data gunbc_ci_authorized_key_enroll_target: GunbcRunStepTarget = gunbc_run_step_
 
 // Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
 // enroll applies the committed registry; both srv1-dispatched, receipts catted.
-// The scan writes its combined receipt here; the workflow's upload step names the SAME const, so the path
-// the step reads and the path the receipt is written to cannot drift apart.
-data gunbc_ci_fleet_host_key_scan_receipt_path: String = "target/fleet-host-key-scan-receipt.txt"
+// The scan receipt path is the single authority in gunbc.fleet.fleet_host_key_enrollment
+// (fleet_host_key_scan_receipt_path): the writer (fleet_host_key_scan_wet), this invoke and
+// the workflow's upload step all name that one const, so they cannot drift apart.
 
 fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_scan_target,
     claim_run: false,
-    receipt_rel: gunbc_ci_fleet_host_key_scan_receipt_path
+    receipt_rel: fleet_host_key_scan_receipt_path
   )
 }
 

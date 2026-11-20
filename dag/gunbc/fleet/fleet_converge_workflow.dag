@@ -3,7 +3,7 @@ import gunbc.fleet.host_credential_custody_step { gunbc_ci_host_credential_custo
 import gunbc.fleet.tailscale_join_step { gunbc_ci_tailscale_join_invoke }
 import gunbc.fleet.board_function_step { gunbc_ci_board_function_converge_invoke }
 import gunbc.fleet.hetzner_cloud_server_step { gunbc_ci_hetzner_cloud_server_read_invoke }
-import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke, gunbc_ci_fleet_host_key_scan_invoke, gunbc_ci_fleet_host_key_scan_receipt_path }
+import gunbc.fleet.fleet_host_key_step { gunbc_ci_fleet_keypair_mint_invoke, gunbc_ci_fleet_host_key_scan_invoke }
 import gunbc.fleet.site_pxe_edge_step { gunbc_ci_site_pxe_edge_converge_invoke, gunbc_ci_site_pxe_edge_observe_invoke }
 import gunbc.host.network_install_ci_step { gunbc_ci_managed_host_network_install_invoke, managed_host_network_install_receipt_path }
 import gunbc.host.host_fleet_run_step { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_export_host_reader_converge_invoke, gunbc_ci_host_budget_preflight_invoke, gunbc_ci_host_memory_envelope_observe_invoke, gunbc_ci_host_primary_network_converge_invoke, gunbc_ci_host_primary_network_observe_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke }
@@ -44,7 +44,7 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
 // The row this step reads is declared over there; naming it in the import list is what gives the effect
 // join an identity to join, instead of one borrowed from proximity in this module.
-import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement }
+import gunbc.fleet.fleet_host_key_enrollment { probe_identity_secret_access_requirement, fleet_host_key_scan_receipt_path }
 
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
 import gunbc.fleet.hetzner_cloud_server_control { hetzner_cloud_server_read_receipt_path }
@@ -2571,7 +2571,7 @@ fn fleet_converge_fleet_host_key_scan_receipt_upload_step() -> Step {
     uses: upload_artifact_action,
     with: Present { value: workflow_artifact_upload_with(
       name: "fleet-host-key-scan-receipt",
-      path: gunbc_ci_fleet_host_key_scan_receipt_path,
+      path: fleet_host_key_scan_receipt_path,
       retention_days: Present { value: 30 },
       compression_level: none,
       absence: AbsenceRefused,
