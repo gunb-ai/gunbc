@@ -5,7 +5,7 @@ import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Optional }
 import std.nat { Nat, Zero, Succ }
-import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, empty_map, map_insert, map_lookup, contains, FreeSemigroup }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, ClaimGrain, Pathless, AtPath }
 
@@ -45,9 +45,22 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, declared_roadma
 // the claim then names its item and its path here. Not a schedule: no leaf carries a date
 // (gunbc.design_ruling planning_scheduling_is_cut). Not a count the tree must keep: a realized claimed-to-accepted
 // duration replaces a leaf's days when it lands, a Produced reading is refreshed from its producer, and a Reading
-// retires when its producer is homed. Per-name day counts are priors for the first calibration batch (ten
-// native-seven names, stratified by whether a compatible home exists, a signature must be reconciled, or the name
-// is an operation or sugar), not measurements.
+// retires when its producer is homed.
+//
+// WORK BASIS (operator, 2026-11-19): a counted spelling, module, law or acceptance clause is an inspection
+// population, not evidence that each member needs an implementation. Price shared tooling and batch verification
+// once; reuse landed declarations, mappings and readers; split actual exceptions by contract and semantic owner.
+// The revised leaves below are working-day priors for their named deliverables, not measured durations. FindingsOf
+// deliberately leaves the residual population unknown: its per-member days are a simulation assumption, NOT a
+// completed estimate. Before dispatch, replace a finding with a named, independently sized repair (or split it).
+// An unprobed FindingsOf family is unsized, never priced as one member; reducing an invented population is not
+// a measured speedup (roadmap-unprobed-findings-are-unsized).
+// Source review at 398136026b345e087968a9db4ba42ec551c5ca4c adds dated assessments to all 79 decomposed
+// tickets. Existing implementation is repriced as evidence/integration work only where its producer was read;
+// these are residual effort priors, not acceptance events. Unknown findings still prevent a delivery forecast.
+// Read on 9e9994480d1: roster_head_rows already maps first to list_head, but roster_import_row_home still emits
+// imports; service_evidence_inputs_for_attempt already gathers placement, metering and result-returned. Neither
+// the old bare-name count nor the old seven-reader count describes the remaining implementation.
 
 type Population
   = Produced { producer: DeclarationRef, members: Int, on: String }
@@ -75,6 +88,14 @@ type WorkPiece
   | Composite { label: String, stages: List<WorkStage> }
 
 type WorkStage { pieces: List<WorkPiece> }
+
+// The KIND of a top-level WorkPiece, as a TYPED closed set -- the one projection of the WorkPiece coproduct used
+// wherever only the kind matters (an unresolved-wait report says WHICH kinds filled an occurrence-less span). It is
+// NOT a String: the labels are the coproduct's own constructors, so renaming or adding a WorkPiece variant breaks the
+// TOTAL piece_kind match below at compile time rather than leaving stale text behind (single_authority, minimize_redundancy:
+// a closed set gets one spelling). piece_kind is the ONLY producer; equality is the language's structural `==`
+// (exposed once as piece_kind_eq solely to satisfy std.algebra.contains's eq: parameter).
+type PieceKind = LeafKind | FamilyKind | JoinKind | DecisionKind | CompositeKind
 
 type StageDependency {
   item: RoadmapNodeId
@@ -142,55 +163,148 @@ fn decomposition(node: String, waits_on: List<StageDependency>, stages: List<Lis
   WorkDecomposition { node: nid(s: node), waits_on: waits_on, stages: stages_of(stages: stages) }
 }
 
-// ---- folds over a piece: counted members (a FindingsOf family counts as one leaf, its population being unknown)
-fn population_members(p: Population) -> Int {
+// ---- folds over a piece. The member count of a family is KNOWN only for a Produced or Reading population. A
+// FindingsOf family carries no count until its probe runs, so the population's cardinality is TYPED (Known | Unprobed)
+// and the pricing and counting folds are typed too: they answer the days/members total ONLY when every family in
+// them has a known population, and otherwise name every unprobed family and its probe. This is the fail-closed move
+// the estimates ruling (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)) demands --
+// "unsized is listed, never priced" -- so no unmeasured population is ever multiplied into a total as one member.
+// There is exactly ONE pricing function (stages_leaf_days) and ONE count function (stages_leaf_count); neither here
+// nor anywhere downstream invents a member count for a population that has not been measured.
+
+// An unprobed FindingsOf family, named: its label and the probe whose typed findings will populate it. Carried in
+// every Unpriced/Uncounted total so a reader (and the estimate's Unsized cause) can name WHICH population is missing.
+type UnprobedFamily {
+  family: String
+  probe: String
+}
+
+// WHY LeafPricing and LeafCount stay SEPARATE types (answers gunbc.design_argument::root_generalization, which
+// rejects a repeated pattern "until the author answers why it should not be generalized"). They are the same SHAPE
+// (a known Int, or a nonempty sequence of unprobed families) and merge_count parallels merge_pricing on purpose --
+// but a portfolio day total and a member count are DIFFERENT quantities, and collapsing them into one Int-carrying
+// carrier is exactly the defect this change removes: it would let an unpriced population's member count be summed as
+// a day total and reach the portfolio unmarked. The two carriers are the type-level guard that a count can never be
+// read as a price. The one genuinely-shared operation -- merging two nonempty unprobed-family sequences -- is NOT
+// duplicated: both folds call the single fs_append. PopulationCardinality is a third shape only superficially: it is
+// per-population grain, its Unprobed carries the probe STRING (a single population was not measured), it has no fold,
+// and it is the INPUT that the aggregates are built from -- not a second implementation of the aggregate rule.
+// The days total over a piece/stage: Priced only when no FindingsOf family in it is unprobed; otherwise Unpriced,
+// naming every unprobed family and its probe. THE pricing authority the estimates read. `families` is a
+// FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup), ruling
+// gunbc.design_ruling::nonemptiness_is_constructed_or_proved): an Unpriced total that names NO family is unwritable,
+// so no caller can fall back to a made-up cause for an "unpriced but nameless" state.
+type LeafPricing
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the same inherited grain the scheduler marks on ScheduledLeaf.start_day (roadmap_schedule.dag); the tracked row lives on WorkPiece.days. Working days, never hours.
+  = Priced { days: Int }
+  | Unpriced { families: FreeSemigroup<UnprobedFamily> }
+
+// The member-count total over a piece/stage: Counted only when no FindingsOf family in it is unprobed; otherwise
+// Uncounted, naming every unprobed family and its probe. THE count authority; it never reports a member count for a
+// population that has not been measured. Nonempty by construction for the same reason as LeafPricing::Unpriced.
+type LeafCount
+  = Counted { members: Int }
+  | Uncounted { families: FreeSemigroup<UnprobedFamily> }
+
+// The single authority on a population's cardinality. A FindingsOf population is Unprobed -- not zero, not one.
+// Unprobed carries the probe so a caller can name WHICH population is missing without re-matching the population
+// (single_authority: the produced/reading/findings decision lives HERE alone).
+type PopulationCardinality
+  = Known { members: Int }
+  | Unprobed { probe: String }
+
+fn population_cardinality(p: Population) -> PopulationCardinality {
   match p {
-    Produced { producer, members, on } => members
-    Reading { members, on, basis } => members
-    FindingsOf { probe } => 1
+    Produced { producer, members, on } => Known { members: members }
+    Reading { members, on, basis } => Known { members: members }
+    FindingsOf { probe } => Unprobed { probe: probe }
   }
 }
 
-fn population_is_findings(p: Population) -> Bool {
-  match p {
-    Produced { producer, members, on } => false
-    Reading { members, on, basis } => false
-    FindingsOf { probe } => true
+// the one finding a FindingsOf family contributes to an Unpriced / Uncounted total: its label and its probe, in a
+// nonempty carrier (a single family makes the whole total unpriced, and it always names itself).
+fn findings_unprobed(label: String, probe: String) -> FreeSemigroup<UnprobedFamily> {
+  FreeSemigroup { head: UnprobedFamily { family: label, probe: probe }, tail: Empty }
+}
+
+// concatenate two nonempty unprobed-family sequences, a's families first then b's, preserving the nonempty head.
+fn fs_append(a: FreeSemigroup<UnprobedFamily>, b: FreeSemigroup<UnprobedFamily>) -> FreeSemigroup<UnprobedFamily> {
+  FreeSemigroup { head: a.head, tail: concat(a.tail, Cons { head: b.head, tail: b.tail }) }
+}
+
+// the ONE fold that totals pricing over a population: priced days accumulate; the first unprobed family makes the
+// whole total unpriced (an unmeasured population is never partially priced) and every unprobed family is collected,
+// in order, so no caller can price it and no caller can forget to check.
+fn merge_pricing(a: LeafPricing, b: LeafPricing) -> LeafPricing {
+  match a {
+    Priced { days: da } => match b {
+      Priced { days: db } => Priced { days: da + db }
+      Unpriced { families: fb } => Unpriced { families: fb }
+    }
+    Unpriced { families: fa } => match b {
+      Priced { days: db } => Unpriced { families: fa }
+      Unpriced { families: fb } => Unpriced { families: fs_append(a: fa, b: fb) }
+    }
   }
 }
 
-fn piece_leaf_count(p: WorkPiece) -> Int {
+// the ONE fold that totals the member count over a population; parallels merge_pricing (separate carriers by
+// design -- see the root_generalization answer above LeafPricing) so an unmeasured population makes the whole count
+// uncounted rather than reporting a fabricated member count. The shared step -- merging unprobed families -- is fs_append.
+fn merge_count(a: LeafCount, b: LeafCount) -> LeafCount {
+  match a {
+    Counted { members: ma } => match b {
+      Counted { members: mb } => Counted { members: ma + mb }
+      Uncounted { families: fb } => Uncounted { families: fb }
+    }
+    Uncounted { families: fa } => match b {
+      Counted { members: mb } => Uncounted { families: fa }
+      Uncounted { families: fb } => Uncounted { families: fs_append(a: fa, b: fb) }
+    }
+  }
+}
+
+fn piece_leaf_count(p: WorkPiece) -> LeafCount {
   match p {
-    Leaf { label, days, evidence } => 1
-    Family { label, days, population, owner } => population_members(p: population)
-    Join { label } => 0
-    Decision { label, alternatives } => 1
+    Leaf { label, days, evidence } => Counted { members: 1 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => Counted { members: members }
+      Unprobed { probe } => Uncounted { families: findings_unprobed(label: label, probe: probe) }
+    }
+    Join { label } => Counted { members: 0 }
+    Decision { label, alternatives } => Counted { members: 1 }
     Composite { label, stages } => stages_leaf_count(stages: stages)
   }
 }
 
-fn stages_leaf_count(stages: List<WorkStage>) -> Int {
-  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_count(p: p) }) })
+fn stages_leaf_count(stages: List<WorkStage>) -> LeafCount {
+  fold(stages, init: Counted { members: 0 }, f: fn(acc, s) { fold(s.pieces, init: acc, f: fn(a, p) { merge_count(a: a, b: piece_leaf_count(p: p)) }) })
 }
 
-fn piece_leaf_days(p: WorkPiece) -> Int {
+fn piece_leaf_days(p: WorkPiece) -> LeafPricing {
   match p {
-    Leaf { label, days, evidence } => days
-    Family { label, days, population, owner } => days * population_members(p: population)
-    Join { label } => 0
-    Decision { label, alternatives } => decision_days
+    Leaf { label, days, evidence } => Priced { days: days }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => Priced { days: days * members }
+      Unprobed { probe } => Unpriced { families: findings_unprobed(label: label, probe: probe) }
+    }
+    Join { label } => Priced { days: 0 }
+    Decision { label, alternatives } => Priced { days: decision_days }
     Composite { label, stages } => stages_leaf_days(stages: stages)
   }
 }
 
-fn stages_leaf_days(stages: List<WorkStage>) -> Int {
-  fold(stages, init: 0, f: fn(acc, s) { acc + fold(s.pieces, init: 0, f: fn(a, p) { a + piece_leaf_days(p: p) }) })
+fn stages_leaf_days(stages: List<WorkStage>) -> LeafPricing {
+  fold(stages, init: Priced { days: 0 }, f: fn(acc, s) { fold(s.pieces, init: acc, f: fn(a, p) { merge_pricing(a: a, b: piece_leaf_days(p: p)) }) })
 }
 
 fn piece_findings_families(p: WorkPiece) -> Int {
   match p {
     Leaf { label, days, evidence } => 0
-    Family { label, days, population, owner } => if population_is_findings(p: population) { 1 } else { 0 }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => 0
+      Unprobed { probe: _ } => 1
+    }
     Join { label } => 0
     Decision { label, alternatives } => 0
     Composite { label, stages } => stages_findings_families(stages: stages)
@@ -220,7 +334,10 @@ fn stages_leaf_days_within(stages: List<WorkStage>) -> Bool {
 fn piece_stages_nonempty(p: WorkPiece) -> Bool {
   match p {
     Leaf { label, days, evidence } => true
-    Family { label, days, population, owner } => population_members(p: population) >= 1
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Known { members } => members >= 1
+      Unprobed { probe: _ } => true
+    }
     Join { label } => true
     Decision { label, alternatives } => true
     Composite { label, stages } => count(stages) >= 1 && stages_nonempty(stages: stages)
@@ -302,8 +419,16 @@ fn decompositions_owners_declared() -> Bool {
 
 // STAGE DEPENDENCIES: each row names a declared parent edge, a stage the parent has, and a stage this item has;
 // and every parent that has a decomposition of its own is waited on at least once.
+// THE SAME FILTER OVER A PIECES TABLE CARRIED AS A VALUE, so a read can be given its decomposition table instead of
+// inheriting the declared one as a hidden global: the live read passes `roadmap_decompositions` and answers exactly
+// what it always did, and a witness passes the empty table to get a roadmap with no pieces under it. One filter body
+// serves both grains (single_authority); `decomposition_for` below is the one place the DECLARED table is read.
+fn decompositions_in(pieces: List<WorkDecomposition>, node: RoadmapNodeId) -> List<WorkDecomposition> {
+  filter(pieces, d => d.node == node)
+}
+
 fn decomposition_for(node: RoadmapNodeId) -> List<WorkDecomposition> {
-  filter(roadmap_decompositions, d => d.node == node)
+  decompositions_in(pieces: roadmap_decompositions, node: node)
 }
 
 // THE ONE leaf-path check: does the item's decomposition hold a leaf at this path, at its declared
@@ -334,12 +459,10 @@ fn decomposition_has_leaf_path(path: LeafPath) -> Bool {
           Absent => false
           Present { value: pc } => match pc {
             Leaf { label, days, evidence } => member_index == 0
-            Family { label, days, population, owner } =>
-              if population_is_findings(p: population) {
-                false
-              } else {
-                member_index < population_members(p: population)
-              }
+            Family { label, days, population, owner } => match population_cardinality(p: population) {
+              Known { members } => member_index < members
+              Unprobed { probe: _ } => false
+            }
             Join { label } => false
             Decision { label, alternatives } => false
             Composite { label, stages } => false
@@ -453,9 +576,9 @@ fn decompositions_leaf_days_bounded() -> Bool { all(roadmap_decompositions, d =>
 
 fn decompositions_stages_nonempty() -> Bool { all(roadmap_decompositions, d => count(d.stages) >= 1 && stages_nonempty(stages: d.stages)) }
 
-fn decomposition_leaf_count() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_count(stages: d.stages) }) }
+fn decomposition_leaf_count() -> LeafCount { fold(roadmap_decompositions, init: Counted { members: 0 }, f: fn(acc, d) { merge_count(a: acc, b: stages_leaf_count(stages: d.stages)) }) }
 
-fn decomposition_leaf_days() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_leaf_days(stages: d.stages) }) }
+fn decomposition_leaf_days() -> LeafPricing { fold(roadmap_decompositions, init: Priced { days: 0 }, f: fn(acc, d) { merge_pricing(a: acc, b: stages_leaf_days(stages: d.stages)) }) }
 
 fn decomposition_findings_families() -> Int { fold(roadmap_decompositions, init: 0, f: fn(acc, d) { acc + stages_findings_families(stages: d.stages) }) }
 
@@ -477,7 +600,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       ]),
     ],
     [
-      reading_family(label: "remaining arm of the acceptance witness", days: 5, members: 4, on: "2026-11-17", basis: "the four arms named in the acceptance witness text", owner: "namespace-reference-derived-closure"),
+      probe(label: "run the six-clause production admission seam after the closure changes; distinguish one shared missing occurrence producer from independent failed clauses (probe)", days: 2, module_path: "test.claim.namespace_reference_derived_closure_acceptance", decl_name: "witness_namespace_reference_derived_closure_closing_contract_holds"),
+    ],
+    [
+      findings_family(label: "one remaining producer or projection gap, named by the production admission; one repair may discharge several clauses, reprice by cause", days: 3, probe: "run the six-clause production admission seam after the closure changes; distinguish one shared missing occurrence producer from independent failed clauses (probe)", owner: "namespace-reference-derived-closure"),
     ],
   ]),
   decomposition(node: "namespace-reference-derived-producer-bounded", waits_on: [
@@ -485,10 +611,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     [
       piece(label: "the producer reads a name table, not the pool", stages: [
         [
-          leaf(label: "name table carrier: qualified path to declaration, built once from the universe", days: 5),
+          leaf(label: "measure the existing keyed pool and identify unnecessary retained trees; reuse its declaration index", days: 2),
         ],
         [
-          leaf(label: "producer reads the table; same edges on the N7 closure", days: 5),
+          leaf(label: "producer consumes the existing keyed declaration index without unnecessary retained trees; same edges on the N7 closure", days: 5),
         ],
         [
           leaf(label: "old pool path deleted; unknown path refuses", days: 3),
@@ -502,7 +628,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "names-bind-to-the-unique-declaration", waits_on: [
-    waits(item: "namespace-reference-derived-closure", from_stage: 2, into_stage: 0),
+    waits(item: "namespace-reference-derived-closure", from_stage: 3, into_stage: 0),
     waits(item: "namespace-reference-derived-producer-bounded", from_stage: 1, into_stage: 0),
   ], stages: [
     [
@@ -538,7 +664,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "namespace-ambiguity-discharge", waits_on: [
-    waits(item: "namespace-reference-derived-closure", from_stage: 2, into_stage: 0),
+    waits(item: "namespace-reference-derived-closure", from_stage: 3, into_stage: 0),
   ], stages: [
     [
       leaf(label: "retire as vacuous under the qualified rule, with the receipt", days: 2),
@@ -591,68 +717,73 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "declaration-provider-outcomes", waits_on: [
   ], stages: [
     [
-      leaf(label: "vertical: a valid declaration beside an invalid one", days: 5),
-      leaf(label: "dependency propagation", days: 5),
-      leaf(label: "module-admission control", days: 5),
+      leaf(label: "reuse the recorded 13/13 provider-control receipt; reconcile per-declaration and module-wide refusal coverage with the handback and rerun only for a changed producer", days: 2),
     ],
     [
-      leaf(label: "controls executing on the native resolve route", days: 5),
+      leaf(label: "verify the existing controls on the native resolve route; distinguish seed-hosted witness execution and repair only a named regression", days: 2),
     ],
     [
-      leaf(label: "native-seven rerun at the landing head", days: 2),
+      leaf(label: "native-seven rerun at the same head; publish reached-subject and first-stop evidence", days: 1),
     ],
   ]),
   decomposition(node: "native-seven-names-homed", waits_on: [
   ], stages: [
     [
-      leaf(label: "generator route: rewrite one closure to qualified spellings, byte-stable on a no-op", days: 5),
+      leaf(label: "validate the recorded native-seven caller classes against resolved occurrences, including method and pipeline forms and lexical shadowing; inspect only unclassified contract cases (probe)", days: 3),
+      leaf(label: "extend the existing sweep from import insertion to resolved qualified references: preserve lexical binders, qualify appended callees, refuse changed bindings and prove a second run is byte-stable; one shared generator change", days: 5),
     ],
     [
-      reading_family(label: "one name: its home declared by the semantic owner (std type, operation or text carrier)", days: 1, members: 54, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet)", owner: "one-standard-library"),
-      reading_family(label: "one name: the namespace policy row that binds its sites to that home", days: 1, members: 54, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet)", owner: "native-seven-names-homed"),
+      findings_family(label: "one missing semantic contract: name the owning std or operation/text declaration, actual caller requirement and discriminating claims; reprice individually, never redeclare an existing home", days: 3, probe: "validate the recorded native-seven caller classes against resolved occurrences, including method and pipeline forms and lexical shadowing; inspect only unclassified contract cases (probe)", owner: "one-standard-library"),
     ],
     [
-      leaf(label: "closure rewrite run and native-seven rerun", days: 3),
+      findings_family(label: "one uncovered rewrite contract after its home exists: exact labels, carrier crossing or appended argument, occurrence-scoped where types differ; reuse first and list_push rows without charging a new row", days: 2, probe: "validate the recorded native-seven caller classes against resolved occurrences, including method and pipeline forms and lexical shadowing; inspect only unclassified contract cases (probe)", owner: "native-seven-names-homed"),
+    ],
+    [
+      leaf(label: "run the closure sweep once; compare resolved bindings and calling-module claims under seed and native routes, classify every difference and report native-seven's first stop before and after; a compiler stop is not proof the rewrite failed", days: 3),
     ],
   ]),
   decomposition(node: "compiler-closure-names-homed-and-types-merged", waits_on: [
-    waits(item: "native-seven-names-homed", from_stage: 2, into_stage: 0),
+    waits(item: "native-seven-names-homed", from_stage: 3, into_stage: 0),
     waits(item: "declaration-identity-switchover", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "one name: its home declared by the semantic owner", days: 1, members: 80, on: "2026-11-17", basis: "the 2026-11-16 reading of the two closures: 80 names, 2,316 sites, beyond layer 1", owner: "one-standard-library"),
-      reading_family(label: "one name: the namespace policy row", days: 1, members: 80, on: "2026-11-17", basis: "the 2026-11-16 reading of the two closures", owner: "compiler-closure-names-homed-and-types-merged"),
+      leaf(label: "inspect only the compiler-closure delta after native-seven: subtract resolved declaration identities, not 54 from an assumed 80; sort_by already has symbol/string/digest rows, so identify uncovered key contracts and caller types (probe)", days: 2),
     ],
     [
-      leaf(label: "closures rewritten, self-host instrument rerun", days: 3),
+      findings_family(label: "one additional semantic contract absent after layer 1, with its actual callers and owner; independently size before dispatch", days: 3, probe: "inspect only the compiler-closure delta after native-seven: subtract resolved declaration identities, not 54 from an assumed 80; sort_by already has symbol/string/digest rows, so identify uncovered key contracts and caller types (probe)", owner: "one-standard-library"),
+    ],
+    [
+      findings_family(label: "one additional mapping or signature exception after its contract lands; existing policy rows and earlier-layer names are reused", days: 2, probe: "inspect only the compiler-closure delta after native-seven: subtract resolved declaration identities, not 54 from an assumed 80; sort_by already has symbol/string/digest rows, so identify uncovered key contracts and caller types (probe)", owner: "compiler-closure-names-homed-and-types-merged"),
+    ],
+    [
+      leaf(label: "one generated rewrite of the remaining compiler closures, binding comparison and self-host emission/build receipt; std type mergers stay with one-standard-library", days: 3),
     ],
   ]),
   decomposition(node: "corpus-names-homed-and-collisions-discharged", waits_on: [
-    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 1, into_stage: 0),
+    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 3, into_stage: 0),
     waits(item: "namespace-v2-import-completion", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      piece(label: "the generator oracle: bindings by occurrence identity before and after", stages: [
-        [
-          leaf(label: "dump bindings by occurrence identity, before", days: 3),
-          leaf(label: "dump bindings, after", days: 3),
-        ],
-        [
-          leaf(label: "diff refuses on any changed binding; planted change goes red", days: 4),
-        ],
-      ]),
+      leaf(label: "reuse the closure sweep's binding oracle on production, tests and fixtures; inspect residual contracts after both closure layers, excluding no-caller runtime exports and already-covered names; report policy subjects separately (probe)", days: 5),
     ],
     [
-      reading_family(label: "one name: its home declared by the semantic owner", days: 1, members: 432, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet); about 432 corpus names beyond the closures", owner: "one-standard-library"),
-      reading_family(label: "one name: the namespace policy row", days: 1, members: 432, on: "2026-11-17", basis: "bare_names.py reading of 2026-11-17 (scratch; its producer is not in the tree yet)", owner: "corpus-names-homed-and-collisions-discharged"),
+      findings_family(label: "one residual semantic contract with a real corpus caller and no existing home; group by contract rather than spelling, name its semantic owner and reprice", days: 3, probe: "reuse the closure sweep's binding oracle on production, tests and fixtures; inspect residual contracts after both closure layers, excluding no-caller runtime exports and already-covered names; report policy subjects separately (probe)", owner: "one-standard-library"),
+      leaf(label: "classify live_tree_disposition, extdeps_external_authority_anchor, extdeps_model_scope and non_fold_residue_frontier by governed declaration, namespace or subject; specify generated relocation and cases needing judgment (probe)", days: 4),
     ],
     [
-      leaf(label: "corpus-wide generator run", days: 5),
-      leaf(label: "per-module verification, automated over 5,910 modules", days: 5),
+      findings_family(label: "one residual mapping or caller compatibility exception after its contract exists; no charge per unchanged module", days: 2, probe: "reuse the closure sweep's binding oracle on production, tests and fixtures; inspect residual contracts after both closure layers, excluding no-caller runtime exports and already-covered names; report policy subjects separately (probe)", owner: "corpus-names-homed-and-collisions-discharged"),
+      findings_family(label: "one policy fact whose governing subject is undecided: resolve that authority once before generated relocation, with its current consumer and acceptance evidence", days: 2, probe: "classify live_tree_disposition, extdeps_external_authority_anchor, extdeps_model_scope and non_fold_residue_frontier by governed declaration, namespace or subject; specify generated relocation and cases needing judgment (probe)", owner: "corpus-names-homed-and-collisions-discharged"),
+    ],
+    [
+      leaf(label: "generate policy-subject relocations from the classified subjects, retaining each fact once and refusing an undecided subject", days: 5),
+      leaf(label: "one corpus sweep including tests and fixtures; binding comparison reports each changed binding with its reason", days: 3),
+    ],
+    [
+      leaf(label: "automated module verification and calling-module claims under both compilers; publish failures by cause, never infer success from a count of rewritten modules", days: 5),
     ],
   ]),
   decomposition(node: "import-grammar-and-lines-deleted", waits_on: [
-    waits(item: "corpus-names-homed-and-collisions-discharged", from_stage: 2, into_stage: 0),
+    waits(item: "corpus-names-homed-and-collisions-discharged", from_stage: 4, into_stage: 0),
     waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
     waits(item: "namespace-ambiguity-discharge", from_stage: 0, into_stage: 0),
   ], stages: [
@@ -676,10 +807,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "literal-elaboration", waits_on: [
   ], stages: [
     [
-      leaf(label: "run the landed specimens (#12550, #12758) at head; receipt or the failed clause (probe)", days: 3),
+      leaf(label: "reuse the recorded literal, map and fold-operand passes; reconcile uncovered literal-form coverage and execute only those specimens or changed producers (probe)", days: 3),
     ],
     [
-      findings_family(label: "one failed clause repaired", days: 3, probe: "run the landed specimens (#12550, #12758) at head; receipt or the failed clause (probe)", owner: "literal-elaboration"),
+      findings_family(label: "one failed clause repaired", days: 3, probe: "reuse the recorded literal, map and fold-operand passes; reconcile uncovered literal-form coverage and execute only those specimens or changed producers (probe)", owner: "literal-elaboration"),
     ],
     [
       join(label: "acceptance event"),
@@ -688,10 +819,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "shared-check-lets-and-matches", waits_on: [
   ], stages: [
     [
-      leaf(label: "run gunbc#15931: both binder kinds reach inhabitance through one reader; receipt or the failed clause (probe)", days: 3),
+      leaf(label: "repair the known GroundingNoValue fixture admission gap, rerun let controls and reconcile the two match frontier diagnostics with constructor inference; then run the shared-reader mutation control from gunbc#15931 (probe)", days: 3),
     ],
     [
-      findings_family(label: "one failed clause repaired", days: 3, probe: "run gunbc#15931: both binder kinds reach inhabitance through one reader; receipt or the failed clause (probe)", owner: "shared-check-lets-and-matches"),
+      findings_family(label: "one remaining shared-inhabitance or constructor/frontier cause after the named reruns; distinguish stale expectation from missing typing, retain wrong-instantiation refusal, and reprice by cause", days: 3, probe: "repair the known GroundingNoValue fixture admission gap, rerun let controls and reconcile the two match frontier diagnostics with constructor inference; then run the shared-reader mutation control from gunbc#15931 (probe)", owner: "shared-check-lets-and-matches"),
     ],
     [
       join(label: "acceptance event"),
@@ -728,7 +859,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "shared-check-lets-and-matches", from_stage: 2, into_stage: 0),
     waits(item: "native-test-verdict-realization", from_stage: 2, into_stage: 1),
     waits(item: "declaration-provider-outcomes", from_stage: 2, into_stage: 0),
-    waits(item: "native-seven-names-homed", from_stage: 2, into_stage: 0),
+    waits(item: "native-seven-names-homed", from_stage: 3, into_stage: 0),
   ], stages: [
     [
       leaf(label: "run the label through infer at the landing head; receipt", days: 1),
@@ -792,20 +923,20 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       probe(label: "run the rebuild-scope witness and establish whether its subject is the emitted closure (it assembles a fixture executable today); diagnostic otherwise", days: 2, module_path: "v2.test.claim.stage0_partition_rebuild_scope_witness", decl_name: "witness_leaf_edit_compiles_owner_and_downstream_holds"),
     ],
     [
-      leaf(label: "read the emitted closure into the module-graph carrier", days: 5),
+      leaf(label: "verify the existing emission-derived graph against the retained closure; identify missing returned edges", days: 2),
     ],
     [
-      piece(label: "derive the partition", stages: [
+      piece(label: "ground interfaces and reuse the existing partition", stages: [
         [
-          leaf(label: "partition rule: condensation of the module graph with a size bound", days: 5),
+          leaf(label: "ground exported declarations and by-value type rows in source; replace ungrounded interface maps", days: 5),
         ],
         [
-          leaf(label: "partition emitted for the N7 closure; pieces acyclic, claim green", days: 5),
+          leaf(label: "run the existing partition policy over the N7 closure with grounded interfaces; acyclicity and export controls", days: 3),
         ],
       ]),
     ],
     [
-      leaf(label: "generated workspace", days: 5),
+      leaf(label: "reuse the generated workspace renderer and replace glob over-approximation with the grounded interface boundary", days: 3),
     ],
     [
       leaf(label: "build and behavioral run", days: 5),
@@ -816,10 +947,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "second-generation", waits_on: [
     waits(item: "v2-emitter-native-crate-partition", from_stage: 4, into_stage: 0),
     waits(item: "native-seven", from_stage: 0, into_stage: 0),
-    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 1, into_stage: 0),
+    waits(item: "compiler-closure-names-homed-and-types-merged", from_stage: 3, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "missing root exits 2; directory root walked", days: 3),
+      leaf(label: "run the existing native CLI missing-root and directory/layout controls at the chosen compiler identity", days: 1),
     ],
     [
       leaf(label: "generation two builds", days: 5),
@@ -895,7 +1026,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "native-production-admission", waits_on: [
     waits(item: "native-frontier-required-lane", from_stage: 2, into_stage: 0),
     waits(item: "demand-d13-dependency-demand", from_stage: 2, into_stage: 0),
-    waits(item: "namespace-unique-on-chain", from_stage: 0, into_stage: 0),
+    waits(item: "names-bind-to-the-unique-declaration", from_stage: 3, into_stage: 0),
     waits(item: "import-grammar-and-lines-deleted", from_stage: 2, into_stage: 0),
   ], stages: [
     [
@@ -908,7 +1039,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       findings_family(label: "one divergence dispositioned", days: 2, probe: "computed once over the current route; divergences listed (probe)", owner: "native-production-admission"),
     ],
     [
-      leaf(label: "NativeProductionAdmitted receipt", days: 3),
+      leaf(label: "NativeProductionAdmitted receipt with sole-resolver control and import refusals from both parsers", days: 3),
     ],
   ]),
   decomposition(node: "demand-d13-dependency-demand", waits_on: [
@@ -937,7 +1068,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "v1-rust-source-observation", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "name the authority for one of the four questions", days: 3, members: 4, on: "2026-11-17", basis: "the four questions in the node text", owner: "v1-honest-frontier"),
+      leaf(label: "compare the four existing frontier producers once: distinguish discovery completeness from disposition completeness, name the authority for each and the concrete disagreement that requires a join", days: 3),
     ],
     [
       leaf(label: "delete or project the others", days: 5),
@@ -972,8 +1103,12 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     ],
   ]),
   decomposition(node: "v1-interpreter-quarantine", waits_on: [
-    waits(item: "v1-interpreter-primitive-dispatch-authority", from_stage: 1, into_stage: 0),
-    waits(item: "native-production-admission", from_stage: 3, into_stage: 0),
+    // Stage 0 is a lone Composite (build with the old runner left out) -- no schedulable occurrence, so a wait aimed
+    // INTO it attaches to nothing. Aim both waits at stage 1, the item's first occurrence-bearing stage -- the twin
+    // v1-emitter-quarantine is waited-on at its first emitting stage the same way (and, lacking one, its wait is
+    // reported unresolved). (operator ruling 2026-11-19)
+    waits(item: "v1-interpreter-primitive-dispatch-authority", from_stage: 1, into_stage: 1),
+    waits(item: "native-production-admission", from_stage: 3, into_stage: 1),
   ], stages: [
     [
       piece(label: "build with the old runner left out", stages: [
@@ -1069,8 +1204,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       leaf(label: "the declaration-to-text mapping", days: 5),
     ],
     [
-      reading_family(label: "one stage after ingest made file-free", days: 3, members: 6, on: "2026-11-17", basis: "the six stages after ingest in the compiler pipeline", owner: "universe-ingest-replaces-file-acquisition"),
+      leaf(label: "trace the ingested universe through resolve, infer, check, lower and emit; distinguish semantic file acquisition from diagnostic source mapping and list only acquisition dependencies (probe)", days: 3),
       leaf(label: "duplicate path refuses at ingest", days: 3),
+    ],
+    [
+      findings_family(label: "one actual post-ingest acquisition dependency removed at its owner, preserving declaration-to-text diagnostics; independently size by interface change", days: 3, probe: "trace the ingested universe through resolve, infer, check, lower and emit; distinguish semantic file acquisition from diagnostic source mapping and list only acquisition dependencies (probe)", owner: "universe-ingest-replaces-file-acquisition"),
     ],
   ]),
   decomposition(node: "one-declaration-identity-carrier", waits_on: [
@@ -1081,7 +1219,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
           leaf(label: "merged DeclarationRef with the dotted path", days: 4),
         ],
         [
-          reading_family(label: "one law as a claim: uniqueness, display, parse round-trip", days: 3, members: 3, on: "2026-11-17", basis: "the three laws", owner: "one-declaration-identity-carrier"),
+          leaf(label: "one carrier-law suite: equal identity renders equally, distinct member coordinates stay distinct, parse/display round-trip and malformed paths refuse; share fixtures and reuse existing DeclarationRef claims", days: 3),
         ],
       ]),
     ],
@@ -1123,7 +1261,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "typed-refusals-own-control-flow", waits_on: [
   ], stages: [
     [
-      reading_family(label: "one production module moved from a reason symbol to a typed refusal", days: 1, members: 32, on: "2026-11-17", basis: "the plan reading of 2026-11-17: 32 production modules branch on a reason symbol", owner: "typed-refusals-own-control-flow"),
+      leaf(label: "inspect the reason-symbol branches in the retained closures; group consumers by the typed outcome that already owns each decision, separate diagnostic rendering and identify missing outcome variants (probe)", days: 3),
+    ],
+    [
+      findings_family(label: "one missing typed outcome at its semantic producer, then its consumers switched together and a diagnostic-text mutation shown not to change control flow; price by shared contract, not by the old 32-module count", days: 4, probe: "inspect the reason-symbol branches in the retained closures; group consumers by the typed outcome that already owns each decision, separate diagnostic rendering and identify missing outcome variants (probe)", owner: "typed-refusals-own-control-flow"),
+    ],
+    [
+      leaf(label: "rewrite compatible consumers in one batch using existing outcomes; run affected claims and inspect the remaining reason reads for genuine control decisions", days: 3),
     ],
   ]),
   decomposition(node: "one-text-carrier", waits_on: [
@@ -1142,13 +1286,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     [
       piece(label: "the second String declaration deleted in the native-seven closure", stages: [
         [
-          leaf(label: "list the sites using the second String (probe)", days: 2),
+          leaf(label: "classify the second String consumers by host/scalar carrier and declared unfold; compatible path changes form one batch, only unsupported crossings are findings (probe)", days: 2),
         ],
         [
-          findings_family(label: "one site moved", days: 1, probe: "list the sites using the second String (probe)", owner: "one-text-carrier"),
+          findings_family(label: "one distinct unsupported text-crossing contract, with non-literal input and refusal evidence; independently size by contract rather than call site", days: 3, probe: "classify the second String consumers by host/scalar carrier and declared unfold; compatible path changes form one batch, only unsupported crossings are findings (probe)", owner: "one-text-carrier"),
         ],
         [
-          leaf(label: "delete the declaration", days: 2),
+          leaf(label: "batch the compatible path changes, execute affected text claims and delete the duplicate declaration", days: 2),
         ],
       ]),
     ],
@@ -1159,7 +1303,10 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "operations-are-declarations", waits_on: [
   ], stages: [
     [
-      produced_family(label: "one CanonicalOperation arm becomes a declared operation with target rows", days: 2, members: 5, on: "2026-11-17", module_path: "v2.std.compilers.target_model", decl_name: "CanonicalOperation", owner: "operations-are-declarations"),
+      leaf(label: "Add vertical: reuse the operand algebra's declared add, with checker, serializer and one target consuming that declaration; missing algebra operation refuses; inspect residual canonical operation contracts (probe)", days: 5),
+    ],
+    [
+      findings_family(label: "one uncovered operation contract: distinguish AlgebraPrimitive, AlgebraInverseCompose, OrderingComparison, EqualityComparison and CoercionCrossing; shared realization wiring once, independent semantics repriced before dispatch", days: 3, probe: "Add vertical: reuse the operand algebra's declared add, with checker, serializer and one target consuming that declaration; missing algebra operation refuses; inspect residual canonical operation contracts (probe)", owner: "operations-are-declarations"),
     ],
     [
       leaf(label: "primitive contracts folded into declarations", days: 5),
@@ -1173,18 +1320,24 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "one-standard-library", waits_on: [
   ], stages: [
     [
-      reading_family(label: "one dual std type pair merged on its own claims", days: 5, members: 8, on: "2026-11-17", basis: "the 2026-11-17 import-member reading: 8 dual std type declarations", owner: "one-standard-library"),
-      reading_family(label: "one further type pair classified and merged or renamed", days: 5, members: 4, on: "2026-11-17", basis: "the plan reading: about a dozen dual declarations, 8 of them typed pairs", owner: "one-standard-library"),
+      leaf(label: "classify actual pairs in the retained closures by meaning and consumers: std.integer versus v2.std.integer first; distinguish aliases, role wrappers and genuinely different compiler types; String belongs with one-text-carrier (probe)", days: 3),
+    ],
+    [
+      leaf(label: "resolve the Int pair under the kernel-type layer rule: reuse the semantic integer or rename a distinct compiler concern, migrate its consumers together and execute its boundary claims", days: 4),
+      findings_family(label: "one other same-concept pair or role distinction requiring a semantic decision, with named consumers and claims; exclude text-owner work and simple path aliases, independently size the repair", days: 3, probe: "classify actual pairs in the retained closures by meaning and consumers: std.integer versus v2.std.integer first; distinguish aliases, role wrappers and genuinely different compiler types; String belongs with one-text-carrier (probe)", owner: "one-standard-library"),
+    ],
+    [
+      leaf(label: "batch qualified-path rewrites for compatible aliases and verify both retained closures; report remaining same-concept pairs by identity, not twelve presumed mergers", days: 3),
     ],
   ]),
   decomposition(node: "external-specimen-compiles", waits_on: [
-    waits(item: "universe-ingest-replaces-file-acquisition", from_stage: 1, into_stage: 0),
+    waits(item: "universe-ingest-replaces-file-acquisition", from_stage: 2, into_stage: 0),
     waits(item: "one-declaration-identity-carrier", from_stage: 2, into_stage: 0),
     waits(item: "sealed-phases-and-the-checked-carrier", from_stage: 2, into_stage: 0),
-    waits(item: "typed-refusals-own-control-flow", from_stage: 0, into_stage: 0),
+    waits(item: "typed-refusals-own-control-flow", from_stage: 2, into_stage: 0),
     waits(item: "one-text-carrier", from_stage: 2, into_stage: 0),
-    waits(item: "operations-are-declarations", from_stage: 2, into_stage: 0),
-    waits(item: "one-standard-library", from_stage: 0, into_stage: 0),
+    waits(item: "operations-are-declarations", from_stage: 3, into_stage: 0),
+    waits(item: "one-standard-library", from_stage: 2, into_stage: 0),
     waits(item: "v1-products-v1-free", from_stage: 1, into_stage: 0),
   ], stages: [
     [
@@ -1197,13 +1350,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "factory-attempt-execution-on-fabric-lease", waits_on: [
   ], stages: [
     [
-      reading_family(label: "audit one belt module: what execution needs, what fabric answers, what is deleted", days: 2, members: 8, on: "2026-11-17", basis: "the eight belt modules named in the node text", owner: "factory-attempt-execution-on-fabric-lease"),
+      leaf(label: "trace one attempt through belt dispatch, lease, execution, result return and cleanup; map duplicated decisions to existing fabric authorities and name consumers of each root proposed for deletion (probe)", days: 4),
     ],
     [
       decision(label: "the realization home", alternatives: ["fabric lease as the one execution route", "a named exception per belt module"]),
     ],
     [
-      reading_family(label: "one belt module cut into fabric", days: 3, members: 8, on: "2026-11-17", basis: "the eight belt modules named in the node text", owner: "factory-attempt-execution-on-fabric-lease"),
+      findings_family(label: "one execution authority cut at its root with its consumers moved together; attempt state, lease lifecycle and result publication need different evidence, so independently size each finding rather than eight module cuts", days: 4, probe: "trace one attempt through belt dispatch, lease, execution, result return and cleanup; map duplicated decisions to existing fabric authorities and name consumers of each root proposed for deletion (probe)", owner: "factory-attempt-execution-on-fabric-lease"),
     ],
   ]),
   decomposition(node: "dogfood-g1-shared-computation-record", waits_on: [
@@ -1242,7 +1395,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "ci-executed-coverage-receipt", waits_on: [
   ], stages: [
     [
-      leaf(label: "repoint the deleted carrier", days: 2),
+      leaf(label: "trace the current required verdict to its executed denominator and upstream-failure producer; the intention carrier is already repointed", days: 1),
     ],
     [
       leaf(label: "executed population on the required check", days: 5),
@@ -1255,11 +1408,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "factory-dogfood-route", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the payload kind", days: 3),
+      leaf(label: "worker round/item payload over the existing generic fabric event log", days: 3),
     ],
     [
-      leaf(label: "append path", days: 5),
-      leaf(label: "read path", days: 5),
+      leaf(label: "connect worker event production to event_log_append_with; reuse storage and concurrency refusal", days: 5),
+      leaf(label: "attempt/cursor projection through event_log_read_partition_with; preserve order and detect gaps", days: 5),
     ],
     [
       leaf(label: "order, gap and refusal receipts", days: 5),
@@ -1288,13 +1441,13 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "work-exec-1-placement-backend-selection", waits_on: [
   ], stages: [
     [
-      leaf(label: "criteria written", days: 2),
+      leaf(label: "prepare the node's seven fixed spike criteria and obtain the operator's host grant; record which machinery each candidate would delete; no infrastructure work before the grant", days: 1),
     ],
     [
-      reading_family(label: "one backend evaluated against them", days: 3, members: 3, on: "2026-11-17", basis: "the three candidate backends named in the node text", owner: "work-exec-1-placement-backend-selection"),
+      leaf(label: "bounded k3s/Kueue spike: ordinary build, memory attribution, full-node waiting, cancel, controller restart, thermal taint, architecture placement and operator-step receipts (probe)", days: 5),
     ],
     [
-      decision(label: "the placement backend", alternatives: ["k3s with kueue", "systemd units", "the existing runner slots"]),
+      decision(label: "select k3s if its criteria pass; otherwise authorize the node's conditional Nomad evaluation or retained systemd/cgroup allocator, and amend downstream scope", alternatives: ["k3s with Kueue", "evaluate Nomad after a failed criterion", "retain systemd/cgroup and finish allocator"]),
     ],
   ]),
   decomposition(node: "work-exec-2-durable-route-first-consumer", waits_on: [
@@ -1308,7 +1461,11 @@ data roadmap_decompositions: List<WorkDecomposition> = [
           leaf(label: "state machine type", days: 3),
         ],
         [
-          reading_family(label: "one transition realized", days: 2, members: 4, on: "2026-11-17", basis: "the four transitions of the state machine", owner: "work-exec-2-durable-route-first-consumer"),
+          leaf(label: "accept one build and create its keyed backend attempt, projecting capacity delay as Waiting; receipt binds source, work and attempt", days: 4),
+        ],
+        [
+          leaf(label: "resume after controller loss and fence unresolved attempts; an unreachable pod is not stopped", days: 4),
+          leaf(label: "publish a result create-only by attempt; duplicate starts publish once and a stale receipt refuses", days: 3),
         ],
       ]),
     ],
@@ -1320,27 +1477,30 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "work-exec-2-durable-route-first-consumer", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "read the evidence rows", days: 3),
+      leaf(label: "persist completed-attempt samples and read them back by work class through the existing WorkClassPeakSample contract", days: 3),
     ],
     [
-      leaf(label: "derive the budget; refuse without evidence", days: 4),
+      leaf(label: "wire the existing work_class_grant rule to durable samples; preserve its missing/insufficient-sample ceiling policy", days: 2),
     ],
     [
-      leaf(label: "claims green", days: 3),
+      leaf(label: "execute second-run sizing, insufficient-sample and capped-budget controls against the durable writer/reader", days: 2),
     ],
   ]),
   decomposition(node: "work-exec-4-local-work-cutover", waits_on: [
     waits(item: "work-exec-3-automatic-sizing", from_stage: 2, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "one consumer moved to the durable route", days: 3, members: 3, on: "2026-11-17", basis: "the three local-work consumers named in the node text", owner: "work-exec-4-local-work-cutover"),
+      leaf(label: "move validate_worktree through durable submission and readback, identifying the direct launch it replaces; restart preserves accepted work", days: 3),
+    ],
+    [
+      leaf(label: "reuse the submission binding for build and test, preserving their distinct verdicts; full joined fleet waits and planted direct launch refuses", days: 3),
     ],
     [
       leaf(label: "old launch routes deleted", days: 5),
     ],
   ]),
   decomposition(node: "work-exec-5-ci-verdict-from-receipt", waits_on: [
-    waits(item: "work-exec-4-local-work-cutover", from_stage: 1, into_stage: 0),
+    waits(item: "work-exec-4-local-work-cutover", from_stage: 2, into_stage: 0),
   ], stages: [
     [
       leaf(label: "shadow comparison", days: 5),
@@ -1379,13 +1539,20 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "factory-dogfood-route", from_stage: 1, into_stage: 0),
   ], stages: [
     [
-      reading_family(label: "one reader bound and its fields moved from owed to observed", days: 3, members: 7, on: "2026-11-17", basis: "the seven readers in the service plan", owner: "service-evidence-capture"),
+      leaf(label: "run one qualifying attempt through service_evidence_observe_for_attempt: compare its 21 field standings with durable inputs; reuse the landed placement, metering and result readers, list only missing bindings and producers by owner (probe)", days: 2),
+    ],
+    [
+      leaf(label: "bind the shared-computation observation once its producer is available: cache counts and artifact bytes come from its typed input, foreign attempt refuses; do not implement the G1 producer here", days: 3),
+      findings_family(label: "one owned missing observation contract for wait time, seat utilization, egress, recovery action or intervention time: name source event and units, size separately; hardware health, credits and workspace recovery producers remain other nodes' work", days: 4, probe: "run one qualifying attempt through service_evidence_observe_for_attempt: compare its 21 field standings with durable inputs; reuse the landed placement, metering and result readers, list only missing bindings and producers by owner (probe)", owner: "service-evidence-capture"),
+    ],
+    [
+      leaf(label: "join available external-owner observations without rebuilding their producers; execute foreign/missing/refused controls and a qualifying-run receipt, keeping unavailable evidence explicitly owed", days: 3),
     ],
   ]),
   decomposition(node: "debt-payoff", waits_on: [
   ], stages: [
     [
-      reading_family(label: "one obligation: authority transition with one witness", days: 5, members: 7, on: "2026-11-17", basis: "the seven obligations of the 2026 batch", owner: "debt-payoff"),
+      join(label: "campaign join over the contained debt nodes and their acceptance evidence; the seven done-when conditions are not seven five-day repairs, and their implementation is charged only to their owning work items"),
     ],
   ]),
   // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17): one
@@ -1397,42 +1564,43 @@ data roadmap_decompositions: List<WorkDecomposition> = [
   decomposition(node: "roadmap-schedule-leaf-expansion", waits_on: [
   ], stages: [
     [
-      leaf(label: "expand one decomposition with a FindingsOf family and two stages into leaf occurrences with their edges, through the carrier's own well-formedness claim", days: 4),
+      leaf(label: "run the existing leaf-expansion witness, including the controlled barrier and real decomposition; attach acceptance evidence", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-list-scheduling", waits_on: [
     waits(item: "roadmap-schedule-leaf-expansion", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "longest-remaining-path list schedule answering start, finish, lanes, in-flight per day and the critical path, computed from the carriers and the log, cacheable and recomputed on read (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read)), with the two-worker and one-worker controls", days: 4),
+      leaf(label: "run the existing one/two-worker schedule and refusal controls over the shared placement core; attach per-leaf outputs", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-calendar-binding", waits_on: [
     waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "bind the schedule's days to the read date over five working days a week, kept out of the scheduler", days: 1),
+      leaf(label: "run the existing calendar weekday/weekend/week-later controls and retain the dated outputs", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-claim-names-leaf", waits_on: [
   ], stages: [
     [
-      leaf(label: "the Claimed payload names the leaf path as the decomposition spells it, and a path it does not have refuses at append (@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing))", days: 2),
+      leaf(label: "verify existing leaf coordinates at append: known leaf accepted and nonexistent leaf refused without log mutation", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-leaf-in-flight-set", waits_on: [
     waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the in-flight leaf set derived from the log alone, with the claimed-then-released control", days: 2),
+      leaf(label: "run the existing in-flight-set claim/release/acceptance witness and verify consumer reuse", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-leaf-realized-duration", waits_on: [
     waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
     waits(item: "roadmap-schedule-list-scheduling", from_stage: 0, into_stage: 0),
+    waits(item: "roadmap-schedule-calendar-binding", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "claimed-to-accepted working days read from the log, taken where they exist, with the used-value reported", days: 3),
+      leaf(label: "run the existing realized-duration witness and report prior versus realized evidence, including accepted without claim", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-from-now", waits_on: [
@@ -1440,7 +1608,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "in-flight leaves pinned at their claim day with their remaining days, the unclaimed scheduled around them", days: 3),
+      leaf(label: "run the existing from-now pinning, day-two and capacity controls; verify consumer read-date binding", days: 1),
     ],
   ]),
   decomposition(node: "roadmap-schedule-bottlenecks-and-offer", waits_on: [
@@ -1525,8 +1693,8 @@ data roadmap_decompositions: List<WorkDecomposition> = [
 // piece lists, while the member index counts UP as the Nat the occurrence is keyed by -- how-many-left and
 // which-one are distinct concepts, not one position twice. That Nat bound comes from the findings_count
 // simulation input (already a Nat, so a negative assumed count is UNWRITABLE -- fail_closed prefers making the
-// bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's bare Int `population_members`
-// (imported, never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
+// bad state unwritable to guarding it) or, for a DECLARED family, from the carrier's typed `population_cardinality`
+// (its Known { members } arm; the Unprobed arm is the findings path, never a fabricated count), imported never edited -- single_authority); that single Int is crossed into a Nat ONCE, inside `piece_occurrences`
 // via the checked crossing `checked_int_to_nat`, whose Absent (a non-positive count) REFUSES as `OccsRejected` --
 // the refusal is in the builder's own type, not a bool gate a caller could skip and not a fabricated zero. The
 // expansion and the parent resolution both consume that typed `OccurrenceBuild`. So no UNCHECKED Int ever reaches
@@ -1564,9 +1732,56 @@ type ExpansionRefusal =
   | NonPositiveDeclaredCount { item: RoadmapNodeId }
   | NotUniquelyDecomposed { item: RoadmapNodeId }
 
-// The expansion is fail-closed: it either holds the occurrences and their edges, or a typed, located refusal.
+// A top-level Composite piece that the expansion does NOT expand into occurrences -- the visible half of the
+// (b) deferral. The carrier's OWN leaf-path authority (decomposition_has_leaf_path) REFUSES a path into a
+// Composite: a Composite is a container addressed deeper than the path reaches, and LeafPath { item, stage, piece,
+// member } carries no coordinate for a nested Composite stage. So a Composite's nested worker pieces, though they
+// carry days, are not occurrences today -- that addressing is the LeafPath model change deferred to
+// roadmap-schedule-composite-nested-addressing. The expansion does NOT silently undercount them (fail_closed: an
+// omission is said, not hidden): it reports each top-level Composite keyed by the TOP-LEVEL piece's own LeafPath
+// (no new path format) with its nested day total read from the ONE count helper piece_leaf_days. This is a REPORT,
+// never a claim -- occurrence_is_offered_claimable admits only paths drawn from `occurrences`, never these.
+// The nested day total is the SAME working-day prior as WorkPiece.days, read from the ONE pricing helper
+// piece_leaf_days -- which now returns a typed LeafPricing, so an omitted composite whose nested population includes
+// an unprobed FindingsOf family reports Unpriced naming those families rather than a fabricated nested day total.
+// feature:working-day-prior-carrier -- dissolve-on: std.measure grows a working-day (effort) family.
+// Owning lane: std.measure.
+type UnexpandedComposite {
+  path: LeafPath
+  nested_days: LeafPricing
+}
+
+// A waits_on endpoint that is WELL-FORMED -- the carrier's OWN well-formedness claim already admitted the row
+// (the stage index EXISTS on that endpoint's decomposition and the parent edge is DECLARED), so it is NOT a malformed
+// row -- yet whose occurrence span AT OR BELOW the named stage mints NO occurrence, because every piece in that span
+// is a Join, Decision or Composite: the three piece kinds that, by design, emit no occurrence. Such a wait is not a
+// defect to refuse, it is CROSS-ITEM ORDERING onto a milestone or a project Join, which no lane schedules yet
+// (out_of_scope of roadmap-schedule-barrier-through-empty-stages: "no cross-item ordering"). Refusing the whole item
+// for it would blank the item's real work; dropping it silently would hide the gap. So it is REPORTED -- named and
+// counted in the expansion's unresolved_waits, beside omitted_composites (fail_closed: an omission is SAID, not
+// hidden) -- and the item still expands. A genuinely MALFORMED row (a stage index that does not exist, or a parent
+// the item does not declare) is NOT this: the carrier's well-formedness claim refuses it as DependencyClaimRefused
+// BEFORE any of this runs, which is the pre-#16716 sense and the #16678 red control, kept intact.
+type WaitSide = From | Into
+
+// The piece kinds the empty span held, so a reader sees WHY no occurrence emitted (a Join, a Decision, a Composite)
+// rather than an unexplained silence. Only these three kinds ever appear here -- a span that minted an occurrence is
+// never unresolved -- but the producer states what it saw instead of asserting it, so nothing is fabricated.
+type UnresolvedWaitReason = EndpointEmitsNoOccurrence { kinds: List<PieceKind> }
+
+type UnresolvedWait {
+  row: StageDependency
+  side: WaitSide
+  stage: Int
+  reason: UnresolvedWaitReason
+}
+
+// The expansion is fail-closed: it either holds the occurrences, their edges, the top-level Composites it did
+// NOT expand, and the waits_on rows it could NOT attach (so a schedule over an item with Composites or with a wait on
+// an occurrence-less milestone says what it omits or could not order), or a typed, located refusal for a malformed
+// row / bad count / non-unique node.
 type Expansion
-  = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge> }
+  = Expanded { occurrences: List<Occurrence>, edges: List<OccurrenceEdge>, omitted_composites: List<UnexpandedComposite>, unresolved_waits: List<UnresolvedWait> }
   | ExpansionRejected { cause: ExpansionRefusal }
 
 // Members: emit `remaining` occurrences with the given count source. `remaining` is a Nat walked DOWN by
@@ -1628,15 +1843,13 @@ fn declared_member_nat(n: Int) -> Optional<Nat> {
 fn piece_occurrences(item: RoadmapNodeId, stage: Nat, piece: Nat, p: WorkPiece, findings_count: Nat) -> OccurrenceBuild {
   match p {
     Leaf { label, days, evidence } => OccsBuilt { occurrences: [ member_occurrence(item: item, stage: stage, piece: piece, member: Zero, source: Declared) ] }
-    Family { label, days, population, owner } =>
-      if population_is_findings(p: population) {
-        OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
-      } else {
-        match declared_member_nat(n: population_members(p: population)) {
-          Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
-          Absent => OccsRejected { item: item }
-        }
+    Family { label, days, population, owner } => match population_cardinality(p: population) {
+      Unprobed { probe: _ } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: findings_count, index: Zero, source: Assumed) }
+      Known { members } => match declared_member_nat(n: members) {
+        Present { value: k } => OccsBuilt { occurrences: members_occurrences(item: item, stage: stage, piece: piece, remaining: k, index: Zero, source: Declared) }
+        Absent => OccsRejected { item: item }
       }
+    }
     Join { label } => OccsBuilt { occurrences: [] }
     Decision { label, alternatives } => OccsBuilt { occurrences: [] }
     Composite { label, stages } => OccsBuilt { occurrences: [] }
@@ -1733,63 +1946,232 @@ fn unique_decomposition(item: RoadmapNodeId) -> UniqueDecomposition {
 // REFUSED, located at the parent, never silently dropped to "no edges".
 type ParentResolution
   = Resolved { occurrences: List<Occurrence> }
+  | EmitsNoOccurrence { kinds: List<PieceKind> }
   | Rejected { cause: ExpansionRefusal }
 
+// A stage emits an occurrence EXACTLY when `groups` holds a key for it -- occurrences_by_stage inserts a key only
+// for a stage that produced at least one occurrence -- so a Present lookup IS the non-emptiness test. These two
+// walkers find, for a named stage, the nearest stage AT OR BELOW it that emits an occurrence, by STRUCTURAL descent
+// on Nat (Zero / Succ), one map lookup per step, bounded by the stage count (a modeling constant -- the same
+// bounded-scan class DESIGN.md *How to work* accepts for the parent filter). No Int loop, no sort, no list scan.
+fn nearest_nonempty_stage(groups: Map<Int, List<Occurrence>>, k: Nat) -> Int? {
+  match map_lookup(m: groups, key: nat_to_int(n: k)) {
+    Present { value: _ } => Present { value: nat_to_int(n: k) }
+    Absent => match k {
+      Zero => Absent
+      Succ { prev: j } => nearest_nonempty_stage(groups: groups, k: j)
+    }
+  }
+}
+
+// The same walk entered from a bare Int stage index: cross it into Nat through the ONE checked crossing; a
+// negative (or a stage with no non-empty stage at or below it) is Absent, which the callers now RECORD as an
+// unresolved wait (not a refusal), so an unresolvable wait is still said, never dropped silently (fail_closed).
+fn nearest_nonempty_at_or_below(groups: Map<Int, List<Occurrence>>, named: Int) -> Int? {
+  match checked_int_to_nat(n: named) {
+    Absent => Absent
+    Present { value: k } => nearest_nonempty_stage(groups: groups, k: k)
+  }
+}
+
+// The ONE projection of a top-level WorkPiece to its PieceKind. The match is TOTAL over the coproduct -- if a variant
+// is ever added to, or renamed in, WorkPiece this fails to compile, which is the point: the report can never carry a
+// kind the coproduct does not have. Only Join / Decision / Composite can ever reach an unresolved-wait report (a span
+// that minted an occurrence is never unresolved), but the match names all five so the report states what it actually
+// saw rather than special-casing.
+fn piece_kind(p: WorkPiece) -> PieceKind {
+  match p {
+    Leaf { label: _, days: _, evidence: _ } => LeafKind
+    Family { label: _, days: _, population: _, owner: _ } => FamilyKind
+    Join { label: _ } => JoinKind
+    Decision { label: _, alternatives: _ } => DecisionKind
+    Composite { label: _, stages: _ } => CompositeKind
+  }
+}
+
+// The ONE equality for PieceKind: it delegates to the language's structural `==` (data types derive it; see the
+// RolePending/RoleHandedOff comparisons in roadmap_belt_actuate for the fieldless-coproduct precedent). It exists only
+// to feed std.algebra.contains's `eq:` parameter -- the same role std's own string_eq plays -- so there is exactly one
+// equality authority (`==`) and no hand-written predicate over the coproduct.
+fn piece_kind_eq(a: PieceKind, b: PieceKind) -> Bool {
+  a == b
+}
+
+fn stage_kinds(st: WorkStage) -> List<PieceKind> {
+  map(st.pieces, piece_kind)
+}
+
+// The distinct piece kinds across the TOP-LEVEL pieces of stages 0..named. Entered only for an endpoint already
+// known to emit no occurrence (named >= 0 is guaranteed by the carrier's well-formedness gate), so it walks DOWN the
+// list by structural recursion (Empty stops it) with an Int budget counting DOWN -- bounded, no unguarded loop. The
+// kinds are de-duplicated by first appearance so the report reads as a small set, not a repetition.
+fn span_kinds(stages: List<WorkStage>, named: Int) -> List<PieceKind> {
+  distinct_kinds(span_kinds_at(stages: stages, remaining: named))
+}
+
+fn span_kinds_at(stages: List<WorkStage>, remaining: Int) -> List<PieceKind> {
+  if remaining < 0 {
+    []
+  } else {
+    match stages {
+      Empty => []
+      Cons { head: st, tail: rest } => concat(stage_kinds(st), span_kinds_at(stages: rest, remaining: remaining - 1))
+    }
+  }
+}
+
+fn distinct_kinds(ks: List<PieceKind>) -> List<PieceKind> {
+  fold(ks, init: [], f: fn(acc, k) {
+    if !contains(xs: acc, item: k, eq: piece_kind_eq) { concat(acc, [k]) } else { acc }
+  })
+}
+
+// A row's PARENT endpoint is resolved to a stage that actually emits the parent's occurrences: the named from_stage
+// if the parent emits there, else its nearest non-empty PREDECESSOR (a barrier that carries across an empty stage).
+// When NO stage at or below from_stage emits an occurrence the row is NOT refused -- the parent (a milestone Join or a
+// lone Composite) is a declared, in-range endpoint, so it is a WAIT ON SOMETHING THAT EMITS NOTHING (EmitsNoOccurrence),
+// which the caller records as an unresolved wait rather than blanking the item. A genuine Rejected here means a real
+// defect: the parent is not uniquely decomposed, or a DECLARED family on it carries a non-positive count (fail_closed).
 fn resolve_parent_occurrences(item: RoadmapNodeId, from_stage: Int, findings_count: Nat) -> ParentResolution {
   match unique_decomposition(item: item) {
     UniqueRejected { cause } => Rejected { cause: cause }
     UniqueFound { d: pd } =>
       match all_occurrences(d: pd, findings_count: findings_count) {
         OccsRejected { item: bad } => Rejected { cause: NonPositiveDeclaredCount { item: bad } }
-        OccsBuilt { occurrences: occs } => Resolved { occurrences: filter(occs, o => nat_to_int(n: o.path.stage) == from_stage) }
+        OccsBuilt { occurrences: occs } => resolve_from_parent_occurrences(item: item, occs: occs, from_stage: from_stage, stages: pd.stages)
       }
   }
 }
 
-// Stage k depends on stage k-1: each occurrence at stage k waits on every occurrence at stage k-1. The lower
-// group is a single map lookup (from occurrences_by_stage), not a scan of the whole list per occurrence -- the
-// prior version filtered occs once per occurrence, a quadratic fold DESIGN.md *How to work* says is always fixed.
-// A stage with no predecessor group (including stage 0, whose predecessor -1 is absent) simply contributes no
-// edges; nothing is fabricated.
+// The parent's built occurrence list, grouped ONCE at the top (no let inside a match arm), resolves one row's
+// from_stage endpoint to the nearest non-empty stage at or below it (a barrier carried across an empty stage) or,
+// when none exists, reports the endpoint as emitting no occurrence (the kinds it held), which the caller records as an
+// unresolved From wait -- never a silent drop and never a whole-item refusal (fail_closed: the gap is SAID).
+fn resolve_from_parent_occurrences(item: RoadmapNodeId, occs: List<Occurrence>, from_stage: Int, stages: List<WorkStage>) -> ParentResolution {
+  let pgroups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
+  match nearest_nonempty_at_or_below(groups: pgroups, named: from_stage) {
+    Absent => EmitsNoOccurrence { kinds: span_kinds(stages: stages, named: from_stage) }
+    Present { value: j } =>
+      match map_lookup(m: pgroups, key: j) {
+        Absent => EmitsNoOccurrence { kinds: span_kinds(stages: stages, named: from_stage) }
+        Present { value: ps } => Resolved { occurrences: ps }
+      }
+  }
+}
+
+// STAGE BARRIER: each occurrence in stage k waits on EVERY occurrence in the NEAREST NON-EMPTY stage below it. The
+// old code linked stage k to stage k-1 only (a single map lookup on `stage - 1`), so when k-1 emitted no occurrence
+// -- a Decision/Join/Composite-only stage -- stage k waited on NOTHING and the barrier silently vanished. The real
+// defect (factory-attempt-execution-on-fabric-lease): 8 audit leaves in stage 0, only a Decision in stage 1, 8 cut
+// leaves in stage 2, and ZERO audit-to-cut edges emitted, so the scheduler let cut start before audit. Now stage k
+// descends to its nearest non-empty EARLIER stage, so the barrier CARRIES THROUGH empty stages. The barrier is
+// between the STAGES, so it crosses their whole occurrence sets (one edge per (lower, upper) pair, not one per upper
+// leaf; an upper leaf waiting on only one of its stage's predecessors could start before its own stage is done).
+// Stage 0 has no earlier stage and so waits on nothing -- correct, not an omission. The group is one map lookup and
+// the descent is bounded by the stage count (a modeling constant); nothing scans the whole list per occurrence.
 fn stage_barrier_edges(occs: List<Occurrence>) -> List<OccurrenceEdge> {
   let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
   flat_map(occs, o =>
-    match map_lookup(m: groups, key: nat_to_int(n: o.path.stage) - 1) {
-      Absent => []
-      Present { value: lower } => map(lower, u => OccurrenceEdge { from: u.path, to: o.path })
+    match o.path.stage {
+      Zero => []
+      Succ { prev: below } =>
+        match nearest_nonempty_stage(groups: groups, k: below) {
+          Absent => []
+          Present { value: j } =>
+            match map_lookup(m: groups, key: j) {
+              Absent => []
+              Present { value: lower } => map(lower, u => OccurrenceEdge { from: u.path, to: o.path })
+            }
+        }
     }
   )
 }
 
-// A fold over the waits_on rows that aims each edge at a REAL parent occurrence. The FIRST row whose parent is
-// not uniquely decomposed short-circuits to a typed refusal; a fabricated empty default is never returned, so a
-// caller -- including the frontier list-scheduling consumer -- cannot read a dropped row as "no edges". Each
-// row's edges are PREPENDED onto the accumulator (concat copies only the small new row, never the growing
-// accumulated list), so building the list is linear in the total edges, not a quadratic copied-accumulator fold
-// (how_to_work: "a copied accumulator, a quadratic fold ... is always fixed, regardless of realized n"). The
-// edge list is order-insensitive: the witness checks counts and per-edge endpoints, not sequence.
+
+// One declared stage-dependency row, folded into either its (resolved) edge set or a located refusal.
 type WaitsEdges
-  = WaitsBuilt { edges: List<OccurrenceEdge> }
+  = WaitsBuilt { edges: List<OccurrenceEdge>, unresolved: List<UnresolvedWait> }
   | WaitsRejected { cause: ExpansionRefusal }
 
+// Stage-level dependency: every occurrence of the parent's resolved FROM stage waits on every occurrence of this
+// decomposition's resolved INTO stage -- the rows are declared once per (parent, stage) pair, not per leaf pair. BOTH
+// endpoints carry through an empty stage to their nearest non-empty predecessor. An endpoint whose whole span
+// at-or-below the named stage is WELL-FORMED (in range, edge declared -- the carrier's claim admitted it) yet mints NO
+// occurrence (only Join/Decision/Composite) is NOT a refusal: a wait onto such a milestone/Join is cross-item ordering
+// no lane schedules yet, so it is RECORDed as an UnresolvedWait on the failing side and contributes no edge, and the
+// item still expands -- named and counted, never a silent drop (fail_closed). A row whose endpoints both resolve
+// contributes its cross-product edges; a genuine Rejected from the parent (not-unique / non-positive declared count)
+// still refuses the whole expansion. The child groups are built ONCE, outside the fold; rows are PREPENDED.
 fn waits_on_edges(d: WorkDecomposition, occs: List<Occurrence>, findings_count: Nat) -> WaitsEdges {
   let groups: Map<Int, List<Occurrence>> = occurrences_by_stage(occs: occs)
-  fold(d.waits_on, init: WaitsBuilt { edges: [] }, f: fn(acc, w) {
+  fold(d.waits_on, init: WaitsBuilt { edges: [], unresolved: [] }, f: fn(acc, w) {
     match acc {
       WaitsRejected { cause } => acc
-      WaitsBuilt { edges } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
+      WaitsBuilt { edges, unresolved } => match resolve_parent_occurrences(item: w.item, from_stage: w.from_stage, findings_count: findings_count) {
         Rejected { cause } => WaitsRejected { cause: cause }
-        Resolved { occurrences: ps } => match map_lookup(m: groups, key: w.into_stage) {
-          // No child occurrence sits at into_stage: this row adds no edges (the parent is still resolved and
-          // validated above, so a bad parent still refuses -- this is not a dropped parent). Mirrors the old
-          // filter-to-empty behavior, now via a map lookup instead of a full scan (how_to_work: no quadratic).
-          Absent => WaitsBuilt { edges: edges }
-          Present { value: cs } =>
-            WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges) }
+        EmitsNoOccurrence { kinds } =>
+          WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: From, stage: w.from_stage, reason: EndpointEmitsNoOccurrence { kinds: kinds } } ], unresolved) }
+        Resolved { occurrences: ps } => match nearest_nonempty_at_or_below(groups: groups, named: w.into_stage) {
+          Absent =>
+            WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kinds(stages: d.stages, named: w.into_stage) } } ], unresolved) }
+          Present { value: j } => match map_lookup(m: groups, key: j) {
+            Absent =>
+              WaitsBuilt { edges: edges, unresolved: concat([ UnresolvedWait { row: w, side: Into, stage: w.into_stage, reason: EndpointEmitsNoOccurrence { kinds: span_kinds(stages: d.stages, named: w.into_stage) } } ], unresolved) }
+            Present { value: cs } =>
+              WaitsBuilt { edges: concat(flat_map(cs, c => map(ps, p => OccurrenceEdge { from: p.path, to: c.path })), edges), unresolved: unresolved }
+          }
         }
       }
     }
   })
+}
+
+// THE REPORT of the (b) deferral: the top-level Composite pieces the expansion does NOT expand into occurrences.
+// A Composite is a container addressed deeper than LeafPath reaches (see the UnexpandedComposite note above), so its
+// nested worker pieces are NOT occurrences today -- but an expansion must not quietly undercount them (fail_closed:
+// "no plausible output is fabricated"; an omission is SAID, not hidden). This walks the TOP-LEVEL stage/piece grid by
+// the SAME structural recursion the occurrence walk uses (Cons / Empty, carrying the single Nat stage and piece
+// index), and for each top-level Composite mints an UnexpandedComposite keyed by that piece's OWN LeafPath (no new
+// path format) with its nested day total read from the ONE count helper `piece_leaf_days`. A Composite nested inside a
+// Composite is folded into its top-level ancestor's day total, not reported separately -- the report is per TOP-LEVEL
+// piece. It is a REPORT only: nothing here mints an Occurrence or an OccurrenceEdge, and
+// occurrence_is_offered_claimable can never admit one of these paths (it draws only from `occurrences`). Linear in
+// the top-level piece count -- one pass, each hit PREPENDED via concat of a one-element list (never the growing list).
+fn composite_reports(item: RoadmapNodeId, stages: List<WorkStage>, stage: Nat) -> List<UnexpandedComposite> {
+  match stages {
+    Empty => []
+    Cons { head: st, tail: rest } => concat(
+      stage_composite_reports(item: item, stage: stage, st: st),
+      composite_reports(item: item, stages: rest, stage: Succ { prev: stage }),
+    )
+  }
+}
+
+// Read the top-level piece list off a TYPED WorkStage parameter (the SAME access stage_occurrences proves), then
+// walk it by structural recursion carrying the single Nat piece index.
+fn stage_composite_reports(item: RoadmapNodeId, stage: Nat, st: WorkStage) -> List<UnexpandedComposite> {
+  piece_list_composite_reports(item: item, stage: stage, pieces: st.pieces, piece: Zero)
+}
+
+fn piece_list_composite_reports(item: RoadmapNodeId, stage: Nat, pieces: List<WorkPiece>, piece: Nat) -> List<UnexpandedComposite> {
+  match pieces {
+    Empty => []
+    Cons { head: p, tail: rest } => concat(
+      piece_composite_report(item: item, stage: stage, piece: piece, p: p),
+      piece_list_composite_reports(item: item, stage: stage, pieces: rest, piece: Succ { prev: piece }),
+    )
+  }
+}
+
+// One top-level piece -> a one-element report if it is a Composite, else nothing. A TYPED WorkPiece parameter
+// (the SAME access piece_occurrences proves); a Composite nested inside a Composite is folded into its top-level
+// ancestor's nested_days via piece_leaf_days, never reported separately. The hit is a one-element list PREPENDED
+// via concat (linear: only the one-element left list is copied), never an accumulator append.
+fn piece_composite_report(item: RoadmapNodeId, stage: Nat, piece: Nat, p: WorkPiece) -> List<UnexpandedComposite> {
+  match p {
+    Composite { label, stages } => [ UnexpandedComposite { path: LeafPath { item: item, stage: stage, piece: piece, member: Zero }, nested_days: piece_leaf_days(p: p) } ]
+    _ => []
+  }
 }
 
 // THE expansion, gated in one place over a single fully admitted decomposition. Order: (1) ask the carrier's OWN
@@ -1808,7 +2190,13 @@ fn expand_decomposition(d: WorkDecomposition, findings_count: Nat) -> Expansion 
       OccsBuilt { occurrences: occs } =>
         match waits_on_edges(d: d, occs: occs, findings_count: findings_count) {
           WaitsRejected { cause } => ExpansionRejected { cause: cause }
-          WaitsBuilt { edges } => Expanded { occurrences: occs, edges: concat(stage_barrier_edges(occs: occs), edges) }
+          WaitsBuilt { edges, unresolved } =>
+            Expanded {
+              occurrences: occs,
+              edges: concat(stage_barrier_edges(occs: occs), edges),
+              omitted_composites: composite_reports(item: d.node, stages: d.stages, stage: Zero),
+              unresolved_waits: unresolved,
+            }
         }
     }
   }
@@ -1854,7 +2242,8 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // emits those very members as occurrences with count_source Assumed -- a declared simulation input
 // (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is computed over the
 // carriers, and an Assumed occurrence is scheduled with its source kept visible). Here the findings member index is
-// NOT bounded by population_members (which answers 1 for a FindingsOf carrier, a count the probe does not hold);
+// NOT bounded by a member count (a FindingsOf population is Unprobed under population_cardinality -- there is no
+// count the probe holds yet);
 // it is bounded by the member set the expansion itself emitted, which the scheduler checks against its own
 // occurrence set (MemberIndexBeyondExpansion) instead of here. A Produced or Reading family IS bounded by its
 // declared count in both.
@@ -1869,14 +2258,10 @@ fn piece_member_days(d: WorkDecomposition, path: LeafPath) -> Optional<Int> {
       Absent => Absent
       Present { value: pc } => match pc {
         Leaf { label, days, evidence } => if member_index == 0 { Present { value: days } } else { Absent }
-        Family { label, days, population, owner } =>
-          if population_is_findings(p: population) {
-            Present { value: days }
-          } else if member_index < population_members(p: population) {
-            Present { value: days }
-          } else {
-            Absent
-          }
+        Family { label, days, population, owner } => match population_cardinality(p: population) {
+          Unprobed { probe: _ } => Present { value: days }
+          Known { members } => if member_index < members { Present { value: days } } else { Absent }
+        }
         Join { label } => Absent
         Decision { label, alternatives } => Absent
         Composite { label, stages } => Absent

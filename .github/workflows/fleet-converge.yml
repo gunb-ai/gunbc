@@ -56,7 +56,7 @@ on:
         required: false
         type: string
       expected_revision:
-        description: Optional cross-check of the event sha (RLM_EXPECTED_REVISION). Omit to admit github.sha. Present must match the checkout. Malformed refuses. qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not.
+        description: "Optional cross-check of the checked-out revision (RLM_EXPECTED_REVISION). Omit to admit the checkout. Present must equal the checkout. Malformed refuses. AT apply, dashboard_deploy and desired_instance_deploy the checkout is the PLAN's revision P (emitted by the plan-revision job, checked out by build), so the value to pass is that plan revision P — NEVER the current main tip: a main tip M that has moved since P is refused by name. At every other mode the checkout is the event sha (github.sha). qualification_floor checks out exactly this revision first and refuses on a mismatch (gunbc.runner.runner_qualification_floor_job). rlm_launch_deployment_receipt and microvm_network_apply still require a named revision in their own admission; dashboard_deploy does not."
         required: false
         type: string
       apply_workflow_run_id:
@@ -3361,7 +3361,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'mtcollins1_bmc_cold_reset' && github.ref == 'refs/heads/main'
-        timeout-minutes: 35
+        timeout-minutes: 67
       - name: Upload fan-policy-phase observation series
         id: fan_policy_phase_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
