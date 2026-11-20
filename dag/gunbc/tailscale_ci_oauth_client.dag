@@ -11,17 +11,20 @@ module gunbc.tailscale_ci_oauth_client
 //
 // WHY AN OAUTH CLIENT AND NOT AN AUTH KEY. The tailscale/github-action README at v4.4.0 documents two
 // routes: the deprecated `authkey` input and the current `oauth-client-id`/`oauth-secret` pair. The
-// auth-key route would require the operator's GCP-stored fleet key (which is untagged: one report says
-// the fleet key is untagged, and using an untagged key would join the runner as a personal identity);
-// a new tagged auth key would need Secret Manager custody for a secret consumed only on GitHub-hosted
-// runners, which have no GCP WIF. The OAuth client is scoped (auth_keys:write, one tag), auditable (each
-// mint is a separate API call logged in the admin console), and revocable independently of the user.
-// The action installs the tailscale CLI in the runner's container and logs the node out in its post step.
+// auth-key route would require the operator's GCP-stored fleet key
+// (@ref gunbc.tailscale_fleet_auth_key::tailscale_fleet_auth_key_secret_ref), which joins as tag:ci -- the
+// build hosts' own tag -- and is reusable and non-ephemeral (tailscale_fleet_auth_key_policy), so a runner
+// joining with it would sit in the build hosts' identity permanently while the dispatch grant is written
+// for ephemeral nodes; a new tagged auth key would need Secret Manager custody for a secret consumed only
+// on GitHub-hosted runners, which have no GCP WIF. The OAuth client is scoped (auth_keys:write, one tag),
+// auditable (each mint is a separate API call logged in the admin console), and revocable independently of
+// the user. The action installs the tailscale CLI in the runner's container and logs the node out in its
+// post step.
 //
-// THE FLEET AUTH KEY IS NOT THIS CREDENTIAL. The fleet auth key (gunbc.tailscale_fleet_auth_key) joins
-// the fleet's own hosts (ken, dan, ken/dan carry tag:ci and tag:serving); it lives in GCP Secret Manager
-// and is consumed by the fleet converge. The CI OAuth client joins ONLY ephemeral GitHub-hosted runners;
-// it lives in GitHub Actions secrets and is consumed by the shadow gate workflow.
+// THE FLEET AUTH KEY IS NOT THIS CREDENTIAL. The fleet auth key (gunbc.tailscale_fleet_auth_key) enrolls
+// the fleet's own permanent hosts through GCP Secret Manager custody and the fleet converge; its standing
+// (reusable, tag:ci, non-ephemeral) is recorded there. The CI OAuth client joins ONLY ephemeral
+// GitHub-hosted runners; it lives in GitHub Actions secrets and is consumed by the shadow gate workflow.
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
