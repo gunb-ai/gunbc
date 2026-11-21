@@ -167,7 +167,7 @@ fn decomposition(node: String, waits_on: List<StageDependency>, stages: List<Lis
 // FindingsOf family carries no count until its probe runs, so the population's cardinality is TYPED (Known | Unprobed)
 // and the pricing and counting folds are typed too: they answer the days/members total ONLY when every family in
 // them has a known population, and otherwise name every unprobed family and its probe. This is the fail-closed move
-// the estimates ruling (@ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward)) demands --
+// the estimates ruling (#gunbc.design_ruling::estimates_are_one_representation_derived_upward) demands --
 // "unsized is listed, never priced" -- so no unmeasured population is ever multiplied into a total as one member.
 // There is exactly ONE pricing function (stages_leaf_days) and ONE count function (stages_leaf_count); neither here
 // nor anywhere downstream invents a member count for a population that has not been measured.
@@ -191,7 +191,7 @@ type UnprobedFamily {
 // and it is the INPUT that the aggregates are built from -- not a second implementation of the aggregate rule.
 // The days total over a piece/stage: Priced only when no FindingsOf family in it is unprobed; otherwise Unpriced,
 // naming every unprobed family and its probe. THE pricing authority the estimates read. `families` is a
-// FreeSemigroup (nonempty by construction, @ref(std.algebra::FreeSemigroup), ruling
+// FreeSemigroup (nonempty by construction, #std.algebra::FreeSemigroup, ruling
 // gunbc.design_ruling::nonemptiness_is_constructed_or_proved): an Unpriced total that names NO family is unwritable,
 // so no caller can fall back to a made-up cause for an "unpriced but nameless" state.
 type LeafPricing
@@ -1630,14 +1630,14 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-spawn-frontier-leaf-grain", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "the live dispatch row carries the leaf path beside its node id, one dispatch per leaf, the capacity bound kept, the offered leaf the belt starts by (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read))", days: 3),
+      leaf(label: "the live dispatch row carries the leaf path beside its node id, one dispatch per leaf, the capacity bound kept, the offered leaf the belt starts by (gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read)", days: 3),
     ],
   ]),
   decomposition(node: "roadmap-typed-handback", waits_on: [
     waits(item: "roadmap-claim-names-leaf", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "Close, Split on a branch, ReEstimate and Findings, accepted by the claim's return_to principal, a Split accepted as any work item is (@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)), the carrier moved only by an accepted handback", days: 4),
+      leaf(label: "Close, Split on a branch, ReEstimate and Findings, accepted by the claim's return_to principal, a Split accepted as any work item is (gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager), the carrier moved only by an accepted handback", days: 4),
     ],
   ]),
   decomposition(node: "roadmap-work-item-projection", waits_on: [
@@ -2230,7 +2230,7 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // bounded family whose member index its population does not hold, or a stage / piece that is not there. Answering
 // Present { value: 0 } for any of those would mint a zero-day leaf for a path that carries no duration -- a
 // fabricated default and a plausible output invented where the real answer is a refusal
-// (@ref(gunbc.design_argument::fail_closed): "no plausible output is fabricated"; "A diff landing a silent widen,
+// (#gunbc.design_argument::fail_closed: "no plausible output is fabricated"; "A diff landing a silent widen,
 // fabricated default ... is a hard reject"). Refusing is the consumer's job; this function's job is to answer
 // Absent, never a made-up day count.
 //
@@ -2240,7 +2240,7 @@ fn occurrence_is_offered_claimable(o: Occurrence) -> Bool {
 // A FindingsOf family is the one arm the two answer differently, and deliberately: decomposition_has_leaf_path
 // refuses a findings member because no such leaf exists to claim until the probe produces it, while an expansion
 // emits those very members as occurrences with count_source Assumed -- a declared simulation input
-// (@ref(gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read): the answer is computed over the
+// (#gunbc.design_ruling::schedule_answers_are_computed_cached_and_re_read: the answer is computed over the
 // carriers, and an Assumed occurrence is scheduled with its source kept visible). Here the findings member index is
 // NOT bounded by a member count (a FindingsOf population is Unprobed under population_cardinality -- there is no
 // count the probe holds yet);

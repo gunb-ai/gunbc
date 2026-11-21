@@ -7646,7 +7646,7 @@ fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -
 /// first multiplies rows without adding reachability. Measured on a drain-shaped pool: 2,065,084
 /// composed rows against 61,044 direct ones (run 43817027204), the same affected members, and the
 /// round died in the model evaluating the composed form
-/// (@ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence)).
+/// (#gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EdgeRowShape {
     /// Every endpoint the definer's import closure reaches, spelled once per requesting file.
@@ -7668,7 +7668,7 @@ struct BothClosureEdgeIndex {
     /// import closure of every provider the file pulls, so endpoint occurrences run two orders of
     /// magnitude above the module count; an owned `String` per occurrence makes the container cost
     /// dozens of times the bytes it spells, the mode recorded in
-    /// @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
+    /// #gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence.
     /// Interning makes an
     /// endpoint a refcount bump, and the interpreter's `Value::Str` then shares those same bytes on
     /// the way to the model instead of spelling each one a third time.
@@ -7721,7 +7721,7 @@ fn extend_sources_via_demanded_edges(
 // ONE INTERNED `Rc<str>` PER WORKSPACE-RELATIVE MODULE PATH, for the whole process. The edge index
 // and the edge list it feeds both name the same handful of paths over and over; spelling each
 // occurrence is what makes the container cost more than the data it spells, the mode recorded in
-// @ref(gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence).
+// #gunbc.recurring_failure_mode.an_edge_index_spells_each_endpoint_once_per_occurrence::an_edge_index_spells_each_endpoint_once_per_occurrence.
 thread_local! {
     static MODULE_PATH_INTERNER: RefCell<HashMap<Rc<str>, Rc<str>>> =
         RefCell::new(HashMap::new());
