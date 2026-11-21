@@ -888,6 +888,69 @@ fn recovery_trigger_fires(t: RecoveryTrigger) -> Bool {
   }
 }
 
+// WHETHER A RECOVERY WRITE IS AUTHORIZED, AND WHICH WRITE, decided ONCE.
+//
+// recovery_trigger names the state; the write path then pairs that state with the unit's OBSERVED
+// lifecycle before it touches a slot or the ledger. That pairing is this function, and it is the ONLY place
+// the decision is made: compute_recover_attempt_in consumes its outcome (terminate-and-release for a record
+// the trigger says may terminate, release-settled for a record already terminal whose unit is proven ended,
+// declined, or refused), and the recovery census (gunbc.compute.work_provider_local
+// compute_recover_catalog_for) renders the same answer for a reference it has not written to. A Bool would
+// have been the wrong carrier: the pass's three outcomes are not a yes/no -- an unreadable unit lifecycle
+// REFUSES where a still-running unit merely declines, because the first is a broken observation and the
+// second is a live attempt -- and a reader planning a write must be able to tell "not yet" from "cannot
+// tell". recovery_trigger_fires is neither this answer nor a projection of it: it reports only the
+// may-terminate arm, so a caller planning from it would never plan the release of a settled attempt whose
+// unit has ended, which is the stale-seat shape this door exists to close.
+type RecoveryWriteAuthorization
+  = RecoveryWriteTerminateAndRelease { reason: String }
+  | RecoveryWriteReleaseSettled { state: AttemptState, reason: String }
+  | RecoveryWriteDeclined { reason: String }
+  | RecoveryWriteRefused { reason: String }
+
+fn recovery_write_authorization(record: AttemptRecord, lifecycle: UnitLifecycle, now: EpochSecs) -> RecoveryWriteAuthorization {
+  match recovery_trigger(record: record, lifecycle: lifecycle, now: now) {
+    RecoveryTooEarly { deadline: d, now: n } =>
+      RecoveryWriteDeclined { reason: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
+    RecoveryMayTerminate { reason: why } => RecoveryWriteTerminateAndRelease { reason: why }
+    RecoveryUnitNotEnded { lifecycle: u } =>
+      match u {
+        UnitStillRunning { detail: _ } =>
+          RecoveryWriteDeclined { reason: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
+        _ =>
+          RecoveryWriteRefused {
+            reason: join([
+              recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }),
+              "; the unit's lifecycle was not read (", unit_lifecycle_wire(u: u),
+              "), so whether the attempt still holds memory is not established",
+            ], ""),
+          }
+      }
+    RecoveryTerminalRecordMayRelease { state: st } =>
+      if unit_lifecycle_ended(u: lifecycle) {
+        RecoveryWriteReleaseSettled { state: st, reason: recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }) }
+      } else {
+        match lifecycle {
+          UnitStillRunning { detail: _ } =>
+            RecoveryWriteDeclined {
+              reason: join([
+                recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }),
+                "; the unit is still running, so the seat is kept",
+              ], ""),
+            }
+          _ =>
+            RecoveryWriteRefused {
+              reason: join([
+                recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: st }),
+                "; the unit's lifecycle is not proven ended (", unit_lifecycle_wire(u: lifecycle),
+                "), so the seat is kept: a terminal record alone does not prove the unit stopped using memory",
+              ], ""),
+            }
+        }
+      }
+  }
+}
+
 fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
   match t {
     RecoveryMayTerminate { reason: r } => join(["may terminate: ", r], "")
