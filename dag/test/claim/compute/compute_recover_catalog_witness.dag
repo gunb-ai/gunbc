@@ -2,9 +2,12 @@ module test.claim.compute.compute_recover_catalog_witness
 
 // WHAT THE RECOVERY CENSUS OWS ITS READER, ON REAL SLOTS IN REAL SEAT DIRECTORIES.
 //
-// gunbc.compute.work_provider_local compute_recover_catalog is the reading the serving converge's recovery
-// leg plans from: it walks every seat directory the host owns, lists each one's attempt slots, and renders
-// for each reference the verdict recovery_trigger itself returns for that record against the unit's live
+// gunbc.compute.work_provider_local compute_recover_catalog is the reading a DECLARED FUTURE caller plans
+// from -- the serving converge's recovery leg, which is this roadmap node's next increment and whose trigger
+// is the serve route resolving again (#16816); this change ships no such leg. The reading walks
+// every seat directory the host owns, lists each one's attempt slots, and renders
+// for each reference the answer gunbc.compute.attempt_lifecycle recovery_write_authorization returns for
+// that record against the unit's live
 // lifecycle -- and that rendering IS gunbc.compute.attempt_lifecycle recovery_write_authorization, the one
 // authority the write path consumes for its own outcome. Each claim below therefore asks BOTH the census and
 // the door (compute_recover_attempt) about the same real record and requires the same arm from each: a record
@@ -16,18 +19,21 @@ module test.claim.compute.compute_recover_catalog_witness
 //
 //   1. a seat with no slots contributes NO reference. The census of a store nobody has written to is not a
 //      reason to act (attempt_slot_keys' own warning: a store that is not there is never a release trigger).
-//   2. an attempt still inside its declared pre-launch window is a HOLD. A producer that has not exceeded
-//      the window it asked for is not dead, and its charge stays where it is.
-//   3. an attempt whose record is terminal but whose unit's end is NOT proven is also a HOLD. The terminal
-//      record is the reason to look, never the proof: releasing on it would return a seat whose attempt may
-//      still be using memory. (This is the host this witness runs on: the user manager cannot be queried
-//      for the unit, so the lifecycle is UNKNOWN and the model keeps the charge. A host whose manager
-//      answers is where the same record reads fire -- see the live serving run.)
-//   4. an attempt whose declared launch window has PASSED is a FIRE, in recovery_trigger's own words. This
-//      is the swept-holder shape the leg exists for: a record reserved, never launched, past the deadline
-//      it declared. The census must say so, or the leg plans nothing and the seat stays charged forever.
+//   2. an attempt still inside its declared pre-launch window is a HOLD, and the door declines it. A producer
+//      that has not exceeded the window it asked for is not dead, and its charge stays where it is.
+//   3. an attempt whose record is terminal but whose unit's end is NOT proven is neither a fire nor a hold:
+//      the authorization REFUSES, and the census reports the OBSERVATION unknown naming the reference, while
+//      the door refuses the same record. The terminal record is the reason to look, never the proof --
+//      releasing on it would return a seat whose attempt may still be using memory -- and an unreadable unit
+//      observer is a broken observation, not a verdict. (This host is the case: the user manager cannot be
+//      queried for the unit, so the lifecycle is unknown here. A host whose manager answers is where the same
+//      record reads fire -- see the live serving run.)
+//   4. an attempt whose declared launch window has PASSED is a FIRE, in recovery_trigger's own words, and the
+//      door does not decline it. This is the swept-holder shape the leg exists for: a record reserved, never
+//      launched, past the deadline it declared. The census must say so, or the leg plans nothing and the seat
+//      stays charged forever.
 //   5. the same reference holding slots in two seat directories makes the OBSERVATION unknown, and an
-//      unknown observation plans nothing. The write path refuses the same shape
+//      unknown observation plans nothing. The write path refuses that shape outright
 //      (compute_recover_attempt_at); the census must not be more certain than the write.
 //
 // And the census writes nothing: the last claim censuses the same slot twice and gets the same answer both
