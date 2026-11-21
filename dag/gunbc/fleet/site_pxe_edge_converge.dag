@@ -3037,6 +3037,7 @@ fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecuti
         // The directory listing is read the same way the file listing is, and its failure makes the whole standing
         // unobservable rather than "nothing empty": an unreadable listing has never been allowed to read as clear.
         match typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg, target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "d"])) {
+          TypedArgvExecOverran { deadline: d } => StaleInstallFilesUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge directory listing", deadline: d) }
           TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: join(["directory listing refused: ", why], "") }
           TypedArgvExecConverged { result: d } =>
             if !d.success {
