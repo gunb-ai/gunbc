@@ -4277,10 +4277,12 @@ data fleet_converge_arm64_label_blocks_x86_executor_host: IntegrationConcern = I
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: fleet_converge_arm64_label_sighting_revision,
-      evidence: [
-        CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_host_runner_expression_body") },
-        CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.h11ssl_x86_bringup_frontier", decl_name: "h11ssl_x86_bringup_frontier_rows") },
-      ],
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_host_runner_expression_body") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.h11ssl_x86_bringup_frontier", decl_name: "h11ssl_x86_bringup_frontier_rows") },
+        ],
+      },
       account: "A read-only remote_build_serving_observe was dispatched with the H11SSL unit (operator_host_e2d4b7) as the EXECUTOR host (run 44815656750, 2026-11-20). Its build job completed; the self-hosted fleet-converge job stayed queued, because its runs-on is the fromJSON label list fleet_converge_host_runner_expression_body builds -- [self-hosted, linux, arm64, host-e2d4b7] -- and no runner carries that set, the unit being x86 per its own bring-up frontier. The job could never be scheduled and the run was cancelled. This names the gap only: the arm64 slot is a literal, not read from the executor's architecture. It does not fix the derivation, which is the build lane's pending decision for where ken's serving converge runs.",
     },
     tail: [],
