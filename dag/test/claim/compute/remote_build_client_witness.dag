@@ -188,12 +188,15 @@ test fn a_rostered_pin_walks_exactly_that_one_host() -> Bool {
 }
 
 // NO PIN is the ordinary roster walk, UNCHANGED: the whole roster in order, identical to the
-// unpinned candidates the existing selection claims already rely on. Green here means the pin did
-// not disturb the path every request without a --arg host= still takes.
+// unpinned candidates the existing selection claims already rely on, and in DISPATCH-roster order.
+// Green here means the pin did not disturb the path every request without a --arg host= still takes.
+// The expected order is read FROM remote_build_serving_hosts (the roster is the authority for both
+// membership and order), never transcribed as a literal -- a roster change stays a roster fact, not
+// a witness edit.
 test fn no_pin_walks_the_whole_roster_in_order() -> Bool {
   let walked = remote_build_pinned_candidates(pin: none) |> map(c => c.host as String)
-  let full = remote_build_candidates() |> map(c => c.host as String)
-  walked == ["srv3", "srv4"] && walked == full
+  let roster = remote_build_serving_hosts() |> map(h => h as String)
+  walked == roster && count(walked) == count(roster)
 }
 
 // THE RED CONTROL. srv1 is provisioned as a serving CANDIDATE (remote_build_serving_candidate_hosts)
