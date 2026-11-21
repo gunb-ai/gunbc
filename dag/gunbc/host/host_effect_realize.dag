@@ -86,6 +86,11 @@ import extdeps.posix.test_utility {
   ContainedPresent,
   ContainedUnreadable,
   contained_existence,
+  AncestorExistenceProbe,
+  AncestorEntryReading,
+  AncestorEntryUnprobed,
+  AncestorEntryRead,
+  absent_under_nearest_present_ancestor,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -9382,9 +9387,13 @@ fn host_remove_outcome_verdict(
 }
 
 // A PATH'S STATE AS THE UNPRIVILEGED PROBE CAN ESTABLISH IT. `test -e` exits 1 both for an absent path
-// and for a path it cannot stat (a parent without search permission), so a false is not absence; only
-// containment under a searchable parent is (extdeps.posix.test_utility contained_existence). Any other
-// status, or a refused transport, is Unreadable, and Unreadable never folds into Absent.
+// and for a path it cannot stat (a parent without search permission), so a false is not absence; it
+// becomes absence only where an ancestor that IS present and SEARCHABLE reports the component under it
+// as not there -- the directory was searched and the component was not in it, so the whole subtree below
+// it is absent (extdeps.posix.test_utility absent_under_nearest_present_ancestor, which walks up to that
+// ancestor). With no such searchable ancestor -- every level above unreadable, or one of them present
+// with its search bit off -- the reading is Unreadable, and Unreadable never folds into Absent: that is
+// the sanitation guarantee (extdeps.posix.test_utility contained_existence for the one-level case).
 type HostRemovePathState
   = HostRemovePathPresent
   | HostRemovePathAbsent
@@ -9432,7 +9441,23 @@ fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathEx
 
 // PURE: the state a path reading plus its searchable-parent reading establish.
 fn host_remove_state_of(path: String, parent: String, reading: PathExistenceReading, parent_reading: PathExistenceReading) -> HostRemovePathState {
-  match contained_existence(path: path, parent: parent, parent_reading: parent_reading, child_reading: reading) {
+  host_remove_state_of_contained(
+    contained: contained_existence(
+      path: path,
+      parent: parent,
+      parent_reading: parent_reading,
+      child_reading: reading,
+    ),
+  )
+}
+
+// PURE: the ONE fold from a containment verdict to a path state, shared by the single-level
+// host_remove_state_of and by the ancestor walk below, so the two can never disagree about what an
+// unreadable containment means. ContainedPresent is reachable only from a path whose own entry read
+// present; the walk is asked only where it read absent-or-unstattable and keeps the arm anyway, because
+// a state fold that silently dropped a verdict is worse than one that names it.
+fn host_remove_state_of_contained(contained: ContainedExistence) -> HostRemovePathState {
+  match contained {
     ContainedPresent => HostRemovePathPresent
     ContainedAbsent => HostRemovePathAbsent
     ContainedUnreadable { reason: r } => HostRemovePathUnreadable { reason: r as String }
@@ -9447,11 +9472,87 @@ fn host_remove_parent_of(path: String) -> String {
   )
 }
 
+// THE ANCESTOR CHAIN, NEAREST FIRST: the parent, its parent, up to the file-system root -- the levels
+// the absence proof may climb. Every step is host_remove_parent_of, this module's own parent authority,
+// and the chain ends where the parent stops moving (the root, or a bare relative name whose parent is
+// the root), so a path of any depth is walked in depth steps and no path can loop it.
+fn host_remove_ancestors(path: String) -> List<String> {
+  let parent = host_remove_parent_of(path: path)
+  if parent == path || parent == "/" {
+    [parent]
+  } else {
+    list_append(left: [parent], right: host_remove_ancestors(path: parent))
+  }
+}
+
+// THE WALK, DRIVEN: probe the ancestors nearest-first and stop at the first that answers. `test -x` is
+// asked FIRST because it is the only reading that can end the walk on the spot; its false is the same
+// two-valued ambiguity as the path's own, so the ENTRY is asked next (extdeps.posix.test_utility
+// entry_existence_reading -- the same lstat-OR-stat the path itself is read by, so a symlinked ancestor
+// is read as the entry it is and not as whatever it points at), and only an entry that is genuinely not
+// there lets the walk climb a level. A present-but-unsearchable ancestor and an unreadable reading both
+// end the walk there, leaving the verdict to the pure law, which refuses both. The runner is the same
+// parameter the entry probe is driven by, so one control supplies the whole probe vector and no
+// filesystem is touched.
+fn host_remove_ancestor_chain(
+  path: String,
+  ancestors: List<String>,
+  run: fn(ArgvCommand) -> RunArgvTransportOutcome,
+) -> List<AncestorExistenceProbe> {
+  match ancestors {
+    Empty => []
+    Cons { head: ancestor, tail: rest } => {
+      let searchable = host_remove_reading(path: ancestor, outcome: run(test_executable_command(path: ancestor)))
+      match searchable {
+        // Present-and-searchable, or a reading nothing can be read from: the pure law decides this
+        // ancestor on that one reading, so no entry is owed to it.
+        PathPresent => [AncestorExistenceProbe { ancestor: ancestor, searchable: searchable, entry: AncestorEntryUnprobed }]
+        PathExistenceUnreadable { reason: _ } =>
+          [AncestorExistenceProbe { ancestor: ancestor, searchable: searchable, entry: AncestorEntryUnprobed }]
+        PathAbsentOrUnstattable => {
+          let entry = entry_existence_reading(
+            link: host_remove_reading(path: ancestor, outcome: run(test_symbolic_link_command(path: ancestor))),
+            follow: host_remove_reading(path: ancestor, outcome: run(test_exists_command(path: ancestor))),
+          )
+          let probe = AncestorExistenceProbe {
+            ancestor: ancestor,
+            searchable: searchable,
+            entry: AncestorEntryRead { reading: entry },
+          }
+          match entry {
+            // Not in its own parent either: climb, keeping this level in the chain the law reads.
+            PathAbsentOrUnstattable =>
+              list_append(left: [probe], right: host_remove_ancestor_chain(path: path, ancestors: rest, run: run))
+            // There but not searchable, or unreadable: the chain ends here, and the law refuses it.
+            PathPresent => [probe]
+            PathExistenceUnreadable { reason: _ } => [probe]
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ABSENCE PROOF, WALKED -- asked only where the path's own entry read absent-or-unstattable. This
+// is the leg the srv1 retract refusal of 2026-11-21 was missing: an absent parent under a present,
+// searchable grandparent is an ESTABLISHED absence, not an unreadable subtree, and the refusal that
+// stopped there was the earliest unjustified boundary of the proof, not a conservative one.
+fn host_remove_absent_state(path: String, run: fn(ArgvCommand) -> RunArgvTransportOutcome) -> HostRemovePathState {
+  host_remove_state_of_contained(
+    contained: absent_under_nearest_present_ancestor(
+      path: path,
+      chain: host_remove_ancestor_chain(path: path, ancestors: host_remove_ancestors(path: path), run: run),
+    ),
+  )
+}
+
 // THE READ-BACK PROBE, OF THE ENTRY AND NOT ITS REFERENT. Unprivileged `test -L` then `test -e`
 // (extdeps.posix.test_utility entry_existence_reading: lstat OR stat), so a symlink is Present whether
 // it dangles, points into an unsearchable directory or loops on itself -- `test -e` alone follows the
 // link and reads all three as false, and `rm` still removes the entry. A both-false reading is only
-// trusted as absence when the parent is searchable (`test -x parent`); the parent is probed only then.
+// trusted as absence once an ancestor that IS present and searchable reports the component under it as
+// not there (`test -x`, walked nearest-first by host_remove_absent_state); ancestors are probed only
+// then, and the walk stops at the first one that answers.
 // The runner is a parameter so the same fold is driven by a control over supplied outcomes.
 fn host_remove_entry_state(path: String, run: fn(ArgvCommand) -> RunArgvTransportOutcome) -> HostRemovePathState {
   let link = host_remove_reading(path: path, outcome: run(test_symbolic_link_command(path: path)))
@@ -9463,15 +9564,7 @@ fn host_remove_entry_state(path: String, run: fn(ArgvCommand) -> RunArgvTranspor
   match reading {
     PathPresent => HostRemovePathPresent
     PathExistenceUnreadable { reason: r } => HostRemovePathUnreadable { reason: r as String }
-    PathAbsentOrUnstattable => {
-      let parent = host_remove_parent_of(path: path)
-      host_remove_state_of(
-        path: path,
-        parent: parent,
-        reading: reading,
-        parent_reading: host_remove_reading(path: parent, outcome: run(test_executable_command(path: parent))),
-      )
-    }
+    PathAbsentOrUnstattable => host_remove_absent_state(path: path, run: run)
   }
 }
 

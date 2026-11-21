@@ -1,0 +1,78 @@
+module gunbc.recurring_failure_mode.an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+
+// THE ROW: a proof abandoned at the level where its reading is ambiguous, when the same evidence exists
+// at a level where it is not.
+//
+// THE SHAPE, in the abstract: a two-valued probe answers a three-valued question. `test -e p` exits 1
+// both when p is not there and when p cannot be stat'ed -- the boundary case being a parent with no
+// search permission, where `opendir` says EACCES for every name in it. A proof that consumes that false
+// has to answer "absent, or merely unlookable?" and the honest one-level answer is "unreadable". Where
+// this goes WRONG is stopping: the same question is not ambiguous one level up. If some ancestor of p IS
+// present and searchable, then that directory WAS searched, the component of p's path under it was not
+// in it, and so that component is absent -- and a component that is absent has no subtree, so everything
+// beneath it, p included, is absent with it. Refusing there is not conservatism; it is a boundary drawn
+// earlier than the evidence reaches, and everything downstream of it -- a deploy that cannot converge, a
+// retirement that never retires -- inherits the refusal the proof should not have made.
+//
+// WHERE IT BIT: srv1 production gunbc-roadmap, down from 2026-11-21 06:32Z. dashboard_deploy at
+// 3b1ba654f7e (run 44895373286, job 136822617862) cleared tree-sync and refused at leg 40,
+// 'attempt-unit-sudo-route-retire': RemoveForce refused /etc/sudoers.d/gunbc-attempt-system-unit-srv1-live,
+// .../attempt-system-unit-helpers/srv1-live/installed-revision and .../attempt-unit-spool/drain.lock
+// because each read false, its parent srv1-live read false, and the fold stopped -- "nothing under that
+// parent could be read and the path's absence is not established". `sudo stat` on the host: all three
+// absent, srv1-live absent, and the grandparent /opt/gunbc/attempt-system-unit-helpers present as
+// root:root 0755. The proof had its answer one level up and never looked.
+//
+// THE GENERALIZATION, which is what belongs in the ledger: wherever a probe collapses "not there" into
+// "cannot tell", the level that produced the collapse is not automatically the level the verdict is due
+// at. Before a proof is allowed to conclude "not established", it owes one question -- is there a level
+// ABOVE this one where the ambiguity does not exist? If there is, that level's reading is the evidence,
+// and the nearer refusal is only one of the levels the walk passes on the way to it. The shape recurs
+// beyond paths: any containment, inheritance or reachability argument built on a chain of one-valued
+// readings inherits it.
+//
+// WHAT KEEPS IT HONEST, and why this is not a licence to guess: the walk may not pass a level that is
+// present and NOT searchable -- `test -x` false is ambiguous the same way, and a directory with its
+// search bit off may be holding exactly what the sanitation guarantee says must not be there. So every
+// level the walk passes is read twice, `test -x` for present-and-searchable and the ENTRY (`test -L` or
+// `test -e`) for there-or-not, and the first level that answers decides: a refusal nearer the path is
+// never overwritten by readable ground farther above it. With no searchable ancestor anywhere, the
+// verdict stays "not established", exactly as it was.
+
+data an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish" as NonEmptyStr,
+
+  // STATED BY THIS ROW: found below the floor -- a production deploy was down for hours and every green
+  // read in the run (tree-sync, the probe itself, the typed refusal) reported a proof that had stopped
+  // short as a proof that had refused, so nothing in the system could see that the refusal was
+  // unwarranted. Closed to the rung this row declares reachable: the absence rule is written once, as a
+  // walk with a stated stop, and the two shapes that decide it -- a searchable ancestor that settles it
+  // and a present-but-unsearchable one that refuses it -- are controls the claim route executes. The
+  // ceiling is mechanically preventable and no higher: whether an ancestor may carry an inheritance is
+  // decidable from the readings, so a proof that stops early is a defect and not a matter of judgment.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: AtCeiling {
+      rung: MechanicallyPreventable,
+      ceiling_reason: "the containment law is one walk with a stated stop, and both deciding shapes -- a present and searchable ancestor, and a present unsearchable one -- are executed controls, so an early stop is a mechanical defect rather than a judgment call." as NonEmptyStr,
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a probe answers a three-valued question with two values -- `test -e p` exits 1 for a p that is absent and for a p that cannot be stat'ed, the boundary case being a parent without search permission. A proof that takes that false and stops at the parent concludes 'not established'. The conclusion is right AT that level and wrong as the END of the proof: the same question is not ambiguous one level up.",
+    "WHERE IT BIT, and how it was mistaken for conservatism: srv1, 2026-11-21 06:32Z, dashboard_deploy run 44895373286 at 3b1ba654f7e refusing leg 40 'attempt-unit-sudo-route-retire' -- three paths absent, their parent srv1-live absent, and the fold refusing because 'nothing under that parent could be read'. sudo stat on the host: all absent, and the grandparent /opt/gunbc/attempt-system-unit-helpers present as root:root 0755. The refusal read like the sanitation guarantee doing its job; it was the guarantee being asked a question it had already answered one level above.",
+    "THE GENERALIZATION, which is what belongs in the ledger: wherever a reading collapses 'not there' into 'cannot tell', the level that collapsed it is not automatically the level the verdict is due at. A proof may conclude 'not established' only after it has asked whether some level ABOVE has the same evidence without the ambiguity. The walk that goes looking must not pass a level that is present and unsearchable -- `test -x` false is the same collapse -- so each level it passes is read twice and the FIRST level that answers decides, nearest first: an unsearchable directory below a readable one still refuses, and no amount of readable ground above it repairs that.",
+    "HOW THE LEDGER CLOSES IT: the containment rule is one walk with a stated stop (extdeps.posix.test_utility absent_under_nearest_present_ancestor, driven by gunbc.host.host_effect_realize host_remove_ancestor_chain), and the controls execute both deciding shapes -- the srv1 shape resolving to Absent with the levels above it rigged to refuse, an unsearchable ancestor still refusing, and no-searchable-ancestor-anywhere still refusing. RECOGNITION RULE: before a proof is allowed to say 'not established' from an ambiguous reading, it names the level that would have settled it and shows why that level cannot answer.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "the_srv1_shape_is_an_established_absence_and_the_walk_stops_at_the_searchable_grandparent", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "a_present_unsearchable_ancestor_still_refuses_the_absence", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "an_absence_no_ancestor_ever_searched_for_stays_unreadable", field: WholeDeclaration },
+  ],
+}
