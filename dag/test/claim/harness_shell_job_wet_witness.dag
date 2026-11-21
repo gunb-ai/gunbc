@@ -432,25 +432,20 @@ test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
   let dir = shell.Mktemp.Dir()
   let out = shell.Mktemp.Dir()
   let inited = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_init_in_repo_args(repo: dir.path as FilePath),
   )
   let configured = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_config_set_in_repo_args(
       repo: dir.path, key: "user.email", value: "job@example.test",
     ),
   )
   let named = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_config_set_in_repo_args(repo: dir.path, key: "user.name", value: "job"),
   )
   let committed = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_commit_allow_empty_silent_in_repo_args(repo: dir.path, message: "seed"),
   )
   let before = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_status_porcelain_argv(repo: dir.path as FilePath),
   )
   let step = harness_run_command_scheduled(
@@ -459,7 +454,6 @@ test fn run_command_does_not_dirty_the_worktree_git_status() -> Bool {
     schedule: fixture_schedule(),
   )
   let after = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_status_porcelain_argv(repo: dir.path as FilePath),
   )
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)

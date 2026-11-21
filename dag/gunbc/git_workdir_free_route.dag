@@ -1,6 +1,6 @@
 module gunbc.git_workdir_free_route
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.types { String, List, Bool, Int }
 import gunbc.git_argv_route_wall {
   spawn_git_argv_workdir_free,
   GitWorkdirFreeSpawnAdmitted, GitWorkdirFreeSpawnRefused,
@@ -26,8 +26,9 @@ import extdeps.shell
 // (consumption: the route is consumed by real executing callers, but is not yet the sole path).
 //
 // The argv reaches here only from an `extdeps/git.dag` shape (`gunbc.design_argument::
-// interface_realization_policy`); the program is the caller-named NonEmptyStr the seam takes, passed
-// straight through so classification stays the wall's alone and this route adds no policy of its own.
+// interface_realization_policy`). The program is NOT a caller argument: the wall fixes it to git
+// (`extdeps.git::git_program_name`) on the admitted arm, and this route spawns exactly that command
+// back -- so classification and the program are the wall's alone, and this route adds no policy of its own.
 
 // The result is a CLOSED COPRODUCT: a spawned step carries the observation the seam returned; a
 // refused step carries nothing and spawned nothing -- no `""`-means-ran sentinel, no fabricated
@@ -41,8 +42,8 @@ type GitWorkdirFreeRun
 // place this module touches `RunArgv`, and it spawns EXACTLY the command the gate handed back -- the
 // program and arguments carried on `GitWorkdirFreeSpawnAdmitted`, not a program re-named here; the
 // refused arm never reaches the seam.
-fn run_git_argv_workdir_free(program: NonEmptyStr, argv: List<String>) -> GitWorkdirFreeRun {
-  match spawn_git_argv_workdir_free(program: program, argv: argv) {
+fn run_git_argv_workdir_free(argv: List<String>) -> GitWorkdirFreeRun {
+  match spawn_git_argv_workdir_free(argv: argv) {
     GitWorkdirFreeSpawnAdmitted { program: gate_program, arguments: arguments } =>
       {
         let out = shell.Exec.RunArgv(program: gate_program, arguments: arguments)

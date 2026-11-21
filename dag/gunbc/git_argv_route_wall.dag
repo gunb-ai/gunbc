@@ -3,6 +3,7 @@ module gunbc.git_argv_route_wall
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.algebra { list_at_optional }
 import std.optional { Present, Absent }
+import extdeps.git { git_program_name }
 
 // git argv is written in two dressings (`extdeps/git.dag`):
 //
@@ -236,9 +237,14 @@ type GitWorkdirFreeSpawn
 
 // The decision a workdir-free git route makes before any spawn. Admitted carries the program and the
 // argv to run; Refused produces no command -- the bare-mutating argv is refused, never spawned.
-fn spawn_git_argv_workdir_free(program: NonEmptyStr, argv: List<String>) -> GitWorkdirFreeSpawn {
+// The PROGRAM is NOT a caller choice: a workdir-free git route runs git and only git, so the program
+// name is part of git's interface and is fixed HERE (the single authority `extdeps.git::git_program_name`),
+// never taken from a caller. The wall judges the argv WORDS; the admitted program is always git, so no
+// caller can smuggle another program through a git-shaped argv (`interface_realization_policy`,
+// `single_authority`; a non-git program never reaches an admit -- `fail_closed`).
+fn spawn_git_argv_workdir_free(argv: List<String>) -> GitWorkdirFreeSpawn {
   match admit_git_argv_on_route(route: GitWorkdirFree, argv: argv) {
-    GitArgvAdmitted => GitWorkdirFreeSpawnAdmitted { program: program, arguments: argv }
+    GitArgvAdmitted => GitWorkdirFreeSpawnAdmitted { program: git_program_name, arguments: argv }
     GitArgvRefused => GitWorkdirFreeSpawnRefused
   }
 }

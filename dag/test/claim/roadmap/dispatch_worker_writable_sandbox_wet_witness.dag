@@ -21,7 +21,7 @@ import extdeps.systemd.systemd_run {
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, attempt_state_prepare_argvs_for_instance }
-import extdeps.git { git_program_name, shape_git_commit_in_git_dir_work_tree_args, shape_git_worktree_add_detached_in_repo_args }
+import extdeps.git { shape_git_commit_in_git_dir_work_tree_args, shape_git_worktree_add_detached_in_repo_args }
 import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_succeeded }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -973,7 +973,6 @@ fn prepare_launcher_linked_worktree(instance: HostDashboardInstance, unit_key: S
   prepare_launcher_probe(instance: instance, unit_key: unit_key)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-rf", "--", wt]).exit_code == 0
     && git_workdir_free_succeeded(run: run_git_argv_workdir_free(
-      program: git_program_name,
       argv: shape_git_worktree_add_detached_in_repo_args(
         repo: instance.repo_root as String,
         path: wt,

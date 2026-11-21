@@ -45,7 +45,6 @@ fn bootstrap_scratch(populated: Bool) -> BootstrapScratch? {
   let source = concat(root, "/source")
   let repo = concat(root, "/repo")
   let init = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_init_in_parent_args(parent: root, leaf: "source"),
   )
   let email = git.Core.ConfigLocalSetInRepo(repo: source as FilePath, key: "user.email", value: "witness@example.invalid")
@@ -85,7 +84,6 @@ test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_re
       let outcome = run_bootstrap(s: s)
       let head = git.Core.RevParseInRepo(repo: s.repo as FilePath, target: "HEAD" as GitRef)
       let diff = run_git_argv_workdir_free(
-        program: git_program_name,
         argv: shape_git_diff_quiet_head_in_repo_args(repo: s.repo),
       )
       let tracked = Filesystem.Read(path: concat(s.repo, "/tracked"))

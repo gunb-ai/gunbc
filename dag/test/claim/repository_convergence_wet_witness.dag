@@ -48,11 +48,9 @@ fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
   let linked = concat(root, "/linked")
   let repo_path = repo as FilePath
   let bare = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_init_bare_in_parent_args(parent: root, leaf: "remote.git"),
   )
   let init = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_init_in_parent_args(parent: root, leaf: "repo"),
   )
   let email = git.Core.ConfigLocalSetInRepo(repo: repo_path, key: "user.email", value: "witness@example.invalid")
@@ -68,38 +66,30 @@ fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
   let old_sha = trim(s: old.revision)
   let candidate_sha = trim(s: candidate.revision)
   let branch = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_branch_create_in_repo_args(repo: repo, branch: "dispatch-linked", sha: old_sha),
   )
   let worktree = git.Core.WorktreeAddInRepo(repo: repo_path, path: linked as FilePath, start_point: "dispatch-linked")
   let packed_ref = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_update_ref_in_repo_args(repo: repo, ref: "refs/dispatch/packed", value: old_sha),
   )
   let pack = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_pack_refs_in_repo_args(repo: repo),
   )
   let loose_ref = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_update_ref_in_repo_args(repo: repo, ref: "refs/dispatch/loose", value: old_sha),
   )
   let remote_add = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_remote_add_in_repo_args(repo: repo_path, remote: "origin", url: remote),
   )
   let pushed = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_push_in_repo_args(
       repo: repo, remote: "origin", refspec: concat(candidate_sha, ":refs/heads/main"),
     ),
   )
   let detached = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_checkout_detached_in_repo_args(repo: repo, revision: old_sha),
   )
   let tracking = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_update_ref_in_repo_args(repo: repo, ref: "refs/remotes/origin/main", value: old_sha),
   )
   let positioned = if already_candidate {
@@ -107,7 +97,6 @@ fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
       && shell.Copy.File(source: concat(repo, "/.git/index") as FilePath, destination: concat(root, "/good-index") as FilePath).success
       && git_workdir_free_succeeded(
         run: run_git_argv_workdir_free(
-          program: git_program_name,
           argv: shape_git_read_tree_in_repo_args(repo: repo, revision: old_sha),
         ),
       )

@@ -36,7 +36,6 @@ fn ancestry_scratch() -> AncestryScratch? {
   let on = concat(root, "/on")
   let off = concat(root, "/off")
   let init = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_init_default_branch_in_parent_args(parent: root, branch: "main", leaf: "on"),
   )
   let email = git.Core.ConfigLocalSetInRepo(repo: on as FilePath, key: "user.email", value: "witness@example.invalid")
@@ -45,13 +44,11 @@ fn ancestry_scratch() -> AncestryScratch? {
   let added_on = git.Core.AddAllInRepo(repo: on as FilePath)
   let committed_on = git.Core.CommitInRepo(repo: on as FilePath, message: "on-main")
   let tracked_ref = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_update_ref_in_repo_args(
       repo: on, ref: "refs/remotes/origin/main", value: "HEAD",
     ),
   )
   let detached = run_git_argv_workdir_free(
-    program: git_program_name,
     argv: shape_git_checkout_detached_in_repo_args(repo: on, revision: "HEAD"),
   )
   let copied = shell.Exec.RunArgv(program: "cp", arguments: ["-a", on, off])
