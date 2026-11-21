@@ -28,7 +28,7 @@ import gunbc.live_deploy.spec {
   TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping,
   DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, ApprovalBrokerFrontDoor,
-  deployment_oidc_config_steps, deployment_declared_serve_mapping_endpoint
+  deployment_oidc_config_steps, deployment_declared_serve_mapping_endpoint, deployment_fabric_storage_door_socket
 }
 import extdeps.tailscale.serve {
   tailscale_serve_backend_target,
@@ -43,7 +43,7 @@ import gunbc.live_deploy.unit_standing { service_directive_required_reads_of_uni
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file_over, live_deploy_approval_broker_unit_file_for_closure,
   live_deploy_tailnet_door_unit_file_for_closure, live_deploy_agent_door_unit_file_for_closure,
-  live_deploy_tree_remote_unit_file_for_closure,
+  live_deploy_tree_remote_unit_file_for_closure, live_deploy_fabric_storage_unit_file,
   live_deploy_belt_event_path_read_paths, live_deploy_publication_path_read_paths,
 }
 import extdeps.systemd.unit_file { SystemdUnitFile }
@@ -198,12 +198,17 @@ fn deployment_artifact_read_set(step: DeploymentArtifactStep, spec: DeploymentSp
       // OidcConfigArtifact — so serve's read and the installed artifact are one string, never re-spelled.
       SystemdUnit => serve_unit_read_set(spec: spec, revision: revision, instance: instance)
       FleetConvergeTimerUnit => NotYetModeled { reason: "a fleet-converge timer is enabled by the fleet actuation path, not the deploy enable authority; it is not in the deploy roster. DISSOLUTION: the fleet-path node (separate) declares its unit read-set; nothing here should own it" }
-      FabricStorageServeUnit => NotYetModeled { reason: "fabric storage is outside live-deploy ownership (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) and apply_legs refuses it as a deployment step, so the deploy never owns it. DISSOLUTION: none while the ruling stands; if fabric storage re-enters live deploy, declare its read-set then" }
+      FabricStorageServeUnit =>
+        match deployment_fabric_storage_door_socket(spec: spec) {
+          Absent => NotYetModeled { reason: "the deployment holds no prod role, so it composes no fabric-storage unit and has no door socket to bind it to; there is no unit file on the host belonging to this member to read (gunbc.live_deploy.spec deployment_fabric_storage_door_socket). DISSOLUTION: none needed -- a roleless deployment has no such member" }
+          Present { value: door } =>
+            unit_file_read_set(Present { value: live_deploy_fabric_storage_unit_file(spec: spec, revision: revision, door_socket: door) }, repo_root: instance.repo_root as String)
+        }
       // A tailscale serve ROUTE MAPPING is not a filesystem artifact: its dependency is the listening
       // ENDPOINT it maps to (fabric storage serve at <port>:<mount> = step.path, the one route-key authority
       // from gunbc.extdeps.tailscale.serve tailscale_serve_route_key_label), never a file the gate can own.
-      // Not a TODO: the T6 ruling excludes fabric storage from live deploy, but the mapping's absence from
-      // the file population is not "an unmodeled read" -- it has no filesystem read. EndpointDependency
+      // Not a TODO: a route mapping has no filesystem read -- it depends on the endpoint, not a file.
+      // EndpointDependency
       // states that honestly (a dependency on an endpoint, not a filesystem artifact).
       FabricStorageServeMapping => EndpointDependency { endpoint: step.path as String }
       // THE TAILNET DOOR's read = {argv[0] (serve binary), WorkingDirectory (svc.repo_root)} from its OWN
