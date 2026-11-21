@@ -3716,7 +3716,12 @@ fn walk_reference_migration_controls(binary: &Path, workspace: &Path) -> Result<
 
     // Apply over a scratch copy: the fixture in the tree stays in its pre-edit state, so this walk is
     // repeatable and the population it edited is one the tree never has to carry.
-    let scratch = std::env::temp_dir().join("gunbc-reference-migration-controls");
+    // Review 97128: the scratch folder is per-PID so two concurrent runs on one host
+    // cannot clear each other's copy mid-walk.
+    let scratch = std::env::temp_dir().join(format!(
+        "gunbc-reference-migration-controls-{}",
+        std::process::id()
+    ));
     if scratch.exists() {
         std::fs::remove_dir_all(&scratch)
             .map_err(|e| format!("clearing {}: {e}", scratch.display()))?;
