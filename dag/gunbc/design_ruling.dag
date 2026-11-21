@@ -1213,6 +1213,13 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
 
 
 
+data hosted_ci_credentials_federate_over_wif_dispatch_only: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "hosted_ci_credentials_federate_over_wif_dispatch_only"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.auth.hosted_ci_secrets_federation", decl_name: "hosted_ci_secrets_attribute_condition"),
+  provenance: "Decides WHERE the hosted shadow gate's credentials live and WHICH runs may hold them. The operator's wish, relayed by gentle-crab-832 (from clever-raven-401, 2026-11-20): \"keys live in GCP Secret Manager (project gunbai-secrets), not GitHub secrets ... Follow the fleet-converge fleet-automation-ssh-key route ... Do not make a second path.\" The shape, confirmed by clever-raven-401 (2026-11-20): \"dedicated SA and a provider pinned to the workflow path, refs/heads/main and workflow_dispatch; remote legs only on dispatch at main; PR and merge_group jobs skip with the typed notice\" -- INTERPRETATION (mine, 2026-11-20, not their words): a DEDICATED pool/provider (gunbc.auth.hosted_ci_secrets_federation), not the fleet-converge provider shared, because the claim pins differ and one provider pinned to two workflows is one pin for neither; the remote legs exist ONLY on the dispatch-at-main arm; pull_request and merge_group runs carry a typed notice naming WHY (the pin refuses them) instead of a silent green. The same message ordered the consequence recorded: \"Record the gap that opens in gunbc.integration_concern, since the operator goal is hosted PR jobs driving remote builds: a PR job must reach the remote build without PR-authored code ever holding the key, e.g. the build host verifying a GitHub OIDC token scoped to the PR and building that commit isolated. Capability gap, no fix in this PR.\" That row is gunbc.integration_concern::shadow_gate_pr_time_remote_build_capability_gap. The pinned secret versions ride the operator's 2026-11-20 relay (both v1) through the single constants in the federation module.",
+}
+
 data reference_markers_are_hashtag_form: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "reference_markers_are_hashtag_form"),
   decided: "2026-11-19",
@@ -1237,7 +1244,7 @@ data tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20: DesignRuling
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20"),
   decided: "2026-11-20",
   governs: decl_ref(module_path: "gunbc.tailscale_ci_oauth_client", decl_name: "ci_oauth_client_name"),
-  provenance: "Decides the OAuth client identity for CI tailnet joins: the operator created gunbc-ci-github (auth_keys:write, tag:ci-dispatch, ephemeral) and the model names it (ci_oauth_client_name); the predecessor client for GitHub runners, named githubcirunners, was REVOKED the same day -- the operator's instruction as relayed by clever-raven-401 (msg_069afa76, 2026-11-20): \"the old githubcirunners client recorded as revoked\". INTERPRETATION (mine, 2026-11-20, not the operator's words): replaced, not grown beside. The revocation has no executing consumer today -- the tailnet reconcile route (tailscale_acl_reported) reads ACL policy, not OAuth clients -- so the lifecycle fact lives HERE, in this ledger row, and not as string data beside the client rows; if a client read-back route is modeled, this row's fact moves into a closed lifecycle type that route consumes.",
+  provenance: "Decides the OAuth client identity for CI tailnet joins: the operator created gunbc-ci-github (auth_keys:write, tag:ci-dispatch, ephemeral) and the model names it (ci_oauth_client_name); the predecessor client for GitHub runners, named githubcirunners, is REPLACED, its revocation PENDING -- it stays alive until CI works on gunbc-ci-github, then the operator revokes it. The relay of 2026-11-20 (clever-raven-401, msg_069afa76) said \"recorded as revoked\"; the operator corrected that on 2026-11-21 via gentle-crab-832 (msg_525f0786): NOT revoked yet, revoked after CI works on the new client. INTERPRETATION (mine, 2026-11-20, not the operator's words): replaced, not grown beside. The revocation has no executing consumer today -- the tailnet reconcile route (tailscale_acl_reported) reads ACL policy, not OAuth clients -- so the lifecycle fact lives HERE, in this ledger row, and not as string data beside the client rows; if a client read-back route is modeled, this row's fact moves into a closed lifecycle type that route consumes.",
 }
 
 data tailscale_acl_ssh_section_residue_2026_11_20: DesignRuling = DesignRuling {
@@ -1350,6 +1357,7 @@ fn design_rulings() -> List<DesignRuling> {
     tailscale_ssh_off_on_fleet_build_hosts_2026_11_20,
     tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20,
     tailscale_acl_ssh_section_residue_2026_11_20,
+    hosted_ci_credentials_federate_over_wif_dispatch_only,
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
