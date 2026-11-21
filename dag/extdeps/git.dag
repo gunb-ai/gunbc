@@ -1070,8 +1070,10 @@ fn is_git_program(invocation: String) -> Bool {
 // binary and skip the uncataloged-program census, and argv_command(program, arguments) is a plain alias
 // -- a second path beside a modeled route (gunbc.design_argument::how_to_work / fail_closed). The
 // absolute-path red controls that needed them build their identities/commands in the witness itself,
-// where the arbitrary-path construction is sealed to that test decl (as test.claim.cursor_runtime_root_
-// wet_witness already is). Only `is_git_program` (a classifier) and the typed git builders live here.
+// as NULLARY fixed-spelling fixtures (each identity row a single literal invocation, each command a
+// named argv constructor), admitted individually -- NOT a parameterised path/argv passthrough, which
+// caller-admission-by-enclosing-decl would hand to any importer. Only `is_git_program` (a classifier)
+// and the typed git builders live here.
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   git_argv_of_args(args: ["commit", "--no-verify", "--no-edit"])
 }

@@ -102,9 +102,11 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
 
 // THE LAST COMPONENT OF A PATH, the final non-empty segment. The dual of path_parent_directory.
 // Empty string and "/" both yield "" (POSIX basename of "/" is "/" but no caller needs that; if
-// one does it gets its own predicate). THE single spelling of this fold (root_generalization): after
-// consolidating every hand-rolled copy, `grep 'fn path_basename' dag` and the fold body itself both
-// resolve ONLY to this definition. Consumers, each of which formerly carried its own copy of the fold:
+// one does it gets its own predicate). THE single spelling of this fold (root_generalization): the only
+// `fn path_basename` in the tree (`grep 'fn path_basename' dag` resolves here), and every OTHER
+// `/`-split fold is named below by name with the reason it is NOT this fold -- so the claim is "every
+// discoverable sibling is either migrated or listed here," not "no sibling exists." Consumers, each of
+// which formerly carried its own copy of the fold:
 //   extdeps.git::is_git_program (classify the program by basename, not spelling);
 //   extdeps.virtualization.firecracker (jailer exec-file basename);
 //   extdeps.docker.cgroup (cgroup last segment);
@@ -122,8 +124,13 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
 // (runner_slot_retirement, live_deploy.emit), test all-segments-safe (verified_binary_install,
 // cursor_agent_realization), or take a raw last segment -- INCLUDING empty -- under a DISTINCT, accurate
 // name because that behavior is load-bearing and must not be merged: gunbc.url_file_acquisition::
-// url_file_final_segment (parent/leaf must agree for trailing-slash subjects) and the witness-local
-// worker_git_subtree_apply wet_basename. None shares this name or meaning (single_authority).
+// url_file_final_segment (parent/leaf must agree for trailing-slash subjects), gunbc.bmc.bmc_netboot_
+// serve::bmc_staged_file_basename (`f: (acc, segment) => segment`, keeps the raw last segment INCLUDING
+// an empty one), and the witness-local worker_git_subtree_apply wet_basename. A fifth sibling, gunbc.
+// compute.work_provider_local::compute_basename, is this fold but seeded with `init: path` rather than
+// "", so an input with no non-empty segment returns ITSELF -- a different meaning, kept distinct and NOT
+// merged (migrating it would silently change that edge case). None shares this name or meaning
+// (single_authority).
 fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
 }

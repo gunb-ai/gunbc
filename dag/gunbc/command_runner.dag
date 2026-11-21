@@ -307,7 +307,7 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
 }
 
 // THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
-// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation. A
+// missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation.
 // THE GIT ROUTE WALL GATE. Before any transport wrapping, classify whether the inner ArgvCommand's
 // program is git (by basename, not exact spelling) and if so, consult the route wall.
 // SCOPE OF THE GUARANTEE, stated at its real rung (gunbc.design_argument::guarantee_ladder): this gate
