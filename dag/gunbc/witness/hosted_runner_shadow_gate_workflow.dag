@@ -172,7 +172,7 @@ data shadow_gate_fork_guard: String = "github.event_name == 'merge_group' || git
 // dispatch-at-main ONLY: pull_request and merge_group runs cannot federate, and the config job says so
 // with a typed notice instead of pretending to shadow. The gap that leaves against the operator's goal
 // (hosted PR jobs driving remote builds) is recorded as an open capability concern at
-// #gunbc.integration_concern::shadow_gate_pr_time_remote_build_capability_gap: a PR job must reach the
+// #gunbc.integration_concern.shadow_gate_pr_time_remote_build_capability_gap::shadow_gate_pr_time_remote_build_capability_gap: a PR job must reach the
 // remote build without PR-authored code ever holding the key, which needs the build host to verify a
 // PR-scoped GitHub OIDC token and build that commit isolated -- not this pin relaxed.
 // The OAuth client ID itself is PUBLIC (a model constant: #gunbc.tailscale_ci_oauth_client::ci_oauth_client_id);
@@ -492,7 +492,7 @@ fn shadow_gate_plumbing_proof_run() -> String {
           // the fetched CI key is NOT loaded into an agent -- the WIF route replaced the ssh-setup
           // step -- so the probe names the key file explicitly (review 97131). The host comes from
           // the Present side of the typed roster, never from a literal (PR #16801).
-          concat(concat(concat(concat("ssh -i \"", shadow_gate_ci_ssh_key_file), "\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "), shadow_gate_remote_user), concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true")))),
+          concat(concat(concat(concat("ssh -i \"", shadow_gate_ci_ssh_key_file), "\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "), shadow_gate_remote_user), concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true"))),
         ], " && "),
         "\n"
       ),
