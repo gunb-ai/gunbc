@@ -117,10 +117,12 @@ test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
     }
 }
 
-// THE GROUP-KEY FIELD IS ITSELF A ROW THE WORKFLOW DECLARES (node adhoc-c17ab64c-0d5, PR #16813). This is a
-// workflow property, not a job property: the trio's rows name `subject_host` as their mutation-domain field,
-// and that field is real only because the dispatch declares it -- a row-less input renders every subject
-// clause to '' and the whole group falls back to the executor default while every domain still type-checks.
+}
+
+// THE FIELD THE GROUP NAMES IS A ROW THE WORKFLOW DECLARES. The group string is built from this module's
+// NonEmptyStr because the dispatch row's name is a plain String; the row is the authority for what a
+// dispatch can carry, so a rename of the row must redden here rather than quietly fall the three modes
+// back to the executor-keyed default.
 test fn the_subject_group_field_is_a_row_the_workflow_declares() -> Bool {
-  any(fleet_converge_dispatch_inputs(), row => row.name == fleet_converge_subject_host_input_name)
+  any(fleet_converge_dispatch_inputs, r => r.name == (fleet_converge_subject_host_input_name as String))
 }
