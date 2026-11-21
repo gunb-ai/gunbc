@@ -117,8 +117,6 @@ test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
     }
 }
 
-}
-
 // THE FIELD THE GROUP NAMES IS A ROW THE WORKFLOW DECLARES. The group string is built from this module's
 // NonEmptyStr because the dispatch row's name is a plain String; the row is the authority for what a
 // dispatch can carry, so a rename of the row must redden here rather than quietly fall the three modes
