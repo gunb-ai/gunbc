@@ -1,0 +1,31 @@
+module test.claim.rust_case_allowance_witness
+
+import std.types { Bool, String }
+import extdeps.languages.rust.emit { rust_case_allowance_attr, rust_type_name_is_camel_case }
+
+// THE RULE: an emitted Rust type whose name, or whose variants' names, rustc's non_camel_case_types refuses carries
+// a per-item allow for exactly that lint; camel-case items carry nothing. The live RED is the emitted build itself:
+// #15454 @ d14cd0c put POSIX `S_IFREG` into the emitted closure and v2-bootstrap refused with
+// EmittedCompilerBuildFailed (`variant S_IFREG should have an upper camel case name`, Actions run 41146451086).
+// These claims pin the predicate that the repair emits from; they do not claim rustc accepts the output, which
+// only the emitted build observes.
+
+test fn an_upstream_screaming_variant_draws_the_allowance() -> Bool {
+  rust_case_allowance_attr(names: ["PosixFileType", "S_IFREG", "S_IFDIR"]) == "#[allow(non_camel_case_types)]\n"
+}
+
+test fn a_dotted_service_symbol_draws_the_allowance() -> Bool {
+  rust_case_allowance_attr(names: ["Git__Worktree"]) == "#[allow(non_camel_case_types)]\n"
+}
+
+test fn camel_case_items_draw_no_allowance() -> Bool {
+  rust_case_allowance_attr(names: ["DivError", "DivideByZero", "Overflow", "Ok", "Err"]) == ""
+}
+
+test fn edge_underscores_and_digit_runs_are_camel() -> Bool {
+  rust_type_name_is_camel_case(name: "_Private") && rust_type_name_is_camel_case(name: "Sha256Digest_") && rust_type_name_is_camel_case(name: "V1_2")
+}
+
+test fn a_lowercase_head_is_refused() -> Bool {
+  !rust_type_name_is_camel_case(name: "lowerCamel")
+}
