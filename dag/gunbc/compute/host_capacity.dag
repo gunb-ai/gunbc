@@ -35,7 +35,7 @@ import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, DirectoryOwn
 import extdeps.posix.identity { PosixOwnerNames }
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_compute_ledger_group_name }
-import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.spool_queue { SpoolComputeExit, PartitionedSpoolKind, partitioned_spool_base_dir, partitioned_spool_done_dir }
 import std.types { FilePath }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -223,8 +223,9 @@ type ComputeLedgerSharing
   = ComputeLedgerServiceOnly
   | ComputeLedgerSharedWithRemoteBuild
 
-// THE SHARED ARM IS KEYED ON THE HOST, NOT ON AN INSTANCE ID. A directory is grouped to
-// gunbc-compute (3770, sticky) iff its host is on the remote-build roster AND the instance carrying it
+// THE SHARED ARM IS KEYED ON THE HOST THE SERVING ROUTE IS PROVISIONED ON, NOT ON AN INSTANCE ID, AND NOT ON
+// THE DISPATCH GATE. A directory is grouped to gunbc-compute (3770, sticky) iff the serving route is
+// provisioned on its host (remote_build_host_is_serving_candidate) AND the instance carrying it
 // is rooted at the host capacity home (/opt/gunbc) -- i.e. the ledger really is the host home and not
 // some instance's private tree. This is the host-scoped test that replaces the old one, which matched
 // the carried instance against gunbc.roadmap.roadmap_dashboard_instance.dashboard_instance_for_host by
@@ -232,12 +233,20 @@ type ComputeLedgerSharing
 // with no ledger, so it must not return. The red control in the witnesses fails if resolution goes back
 // to it. The home root is NOT re-typed here -- it is gunbc.roadmap.roadmap_dashboard_instance
 // host_capacity_home_root, the SAME data host_capacity_ledger_home mints its carrier from, so the sharing test
-// and the carrier can never disagree about what "the host home" is (single_authority). srv1's host home
-// carries that root, so srv1's shared directories are unchanged.
+// and the carrier can never disagree about what "the host home" is (single_authority).
+//
+// WHY THE CANDIDATE ROW AND NOT THE LIVE DISPATCH GATE, since 2026-11-20. A dispatch suspension is not a
+// withdrawal of the serving route: the remote-build account, the capacity home and the ledger's own content are
+// still on that host's disk, and the account still has to reach its ledger. Keying a POSIX posture on
+// "may this host be dispatched to right now" also silently forked this test from the serving setup's own area
+// rows, which use the shared posture for a candidate directly -- the account witness
+// the_shared_ledger_grants_exactly_its_two_areas is the claim that caught the fork when srv1 was taken off the
+// dispatch gate while staying a provisioned candidate with an unsettled seat in its ledger. The red control is
+// that same claim: key the posture back to the dispatch gate and srv1's areas stop being group-shared.
 data compute_capacity_home_root: FilePath = host_capacity_home_root
 
 fn compute_ledger_sharing_carrier(home: HostCapacityHome) -> ComputeLedgerSharing {
-  if remote_build_host_is_serving(host: (home.host_identity as HostIdentity))
+  if remote_build_host_is_serving_candidate(host: (home.host_identity as HostIdentity))
     && ((home.instance_root as String) == (compute_capacity_home_root as String)) {
     ComputeLedgerSharedWithRemoteBuild
   } else {

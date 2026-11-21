@@ -543,6 +543,9 @@ data h11ssl_unit3_census_standing_sighting_revision: CommitSha = "6be8eaef58a481
 // closed. As with the other rows here, the revision is the tree that was read, not the sha of the commit that
 // writes this down.
 data h11ssl_unit3_build_pool_carve_derived_revision: CommitSha = "5215eaaf821ef0bfb9e22e9b88932dd294deaa4b"
+// The MAIN tree read when srv1's roster row was taken out and this row's requirement text was re-read. As
+// with the other revisions here, it is the tree that was read, not the sha of the commit that writes this down.
+data h11ssl_unit3_roster_departure_sighting_revision: CommitSha = "255d7aae358e02e466f4c2b6dd29ebf2ded8cdf3"
 // The reading at which the sold srv9 endpoint declaration still stood at 192.168.1.236 while the 2026-10-10
 // Group B sale already recorded that unit as sold. This branch retires the declaration; the sighting names the
 // commit the retirement was authored against, so the before-state stays checkable.
