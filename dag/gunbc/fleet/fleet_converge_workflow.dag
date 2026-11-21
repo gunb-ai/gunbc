@@ -7612,10 +7612,6 @@ fn fleet_converge_fleet_keypair_mint_job() -> Job {
 }
 
 // ── THE GCP IAM CONVERGE JOB (operator requirement 2026-09-24; decision B 2026-09-25) ────────
-// KNOWN INSTANCE of #gunbc.recurring_failure_mode.a_job_waits_while_holding_the_runner_its_dependency_needs::a_job_waits_while_holding_the_runner_its_dependency_needs:
-// this job's request step files and polls the approval wait on srv1 (loopback-bound today), so a long
-// approval window holds an srv1 executor from other fleet-converge dispatches (observed 2026-11-21,
-// run 44885624911; the class row carries the sighting and the proposed hosted-await shape).
 // Its own job for the boot's reason: OIDC tokens are minted per job, and this one federates through
 // its own pool pinned by the `environment` claim (gunbc.auth.gcp_iam_converge_federation). It runs on
 // srv1 because the approval client files and polls over srv1's loopback. THE STEP ORDER IS THE GATE
