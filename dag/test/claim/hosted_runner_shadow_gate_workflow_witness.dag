@@ -77,8 +77,10 @@ test fn the_emitted_workflow_arms_the_events_with_typed_notices() -> Bool {
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "$GITHUB_EVENT_NAME")
     && contains(haystack: rendered, needle: "\"refs/heads/main\" ]; then")
-    && contains(haystack: rendered, needle: "::notice::not a dispatch at refs/heads/main")
-    && contains(haystack: rendered, needle: "refusing rather than pretending to shadow")
+    // a dispatch at a non-main ref is a verdict REQUEST that cannot federate: error + exit 1, never
+    // a green with a notice (review 97115; fail_closed: no green-by-default on an explicit ask).
+    && contains(haystack: rendered, needle: "::error::not a dispatch at refs/heads/main")
+    && contains(haystack: rendered, needle: "fails rather than passing green'\n  exit 1")
     && contains(haystack: rendered, needle: "the pinned WIF provider refuses pull_request/merge_group claims")
 }
 

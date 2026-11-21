@@ -28,8 +28,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo 'configured=true' >> $GITHUB_OUTPUT
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            echo 'configured=false' >> $GITHUB_OUTPUT
-            echo '::notice::not a dispatch at refs/heads/main: the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; refusing rather than pretending to shadow'
+            echo '::error::not a dispatch at refs/heads/main: the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; a dispatched verdict request that cannot federate fails rather than passing green'
+            exit 1
           else
             echo 'configured=false' >> $GITHUB_OUTPUT
             echo '::notice::remote legs run only on workflow_dispatch at refs/heads/main: the pinned WIF provider refuses pull_request/merge_group claims, so the remote build is not shadowed on this event; see gunbc.integration_concern::shadow_gate_pr_time_remote_build_capability_gap'

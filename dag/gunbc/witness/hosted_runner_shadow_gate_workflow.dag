@@ -71,11 +71,12 @@ import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 // account admits the CI key, so the blast radius is the remote-build gate operation and nothing
 // else on the host. Even if a host ran Tailscale SSH, no ssh rule names tag:ci-dispatch.
 //
-// THE CONFIG-CHECK ARM (manager ruling 2026-11-19): when the required secrets are absent (the
-// operator has not yet set them), the config-check step prints ::notice::not configured:: and all
-// downstream steps skip via if_condition. The job is not green-as-passed (it reports the gate was
-// not attempted) and not red. Red control: when secrets ARE present and the remote gate fails, the
-// step's exit code propagates and the job goes red.
+// THE CONFIG-CHECK ARMS (manager ruling 2026-11-19, re-armed for WIF by review 97115): the job
+// branches on the EVENT, not on secret presence -- the credentials federate or the fetch step goes
+// red. Only a dispatch at the default branch runs remote legs; a dispatch elsewhere is a verdict
+// request that cannot federate and goes red; pull_request/merge_group report the typed skip and
+// cite the concern row. Red control: when the federation works and the remote gate fails, the
+// gate step's exit code propagates and the job goes red.
 //
 // THE HAND-SHELL GATE (ctrl review policy): the run: fields build shell as strings. This is a
 // scaffold; the dissolution trigger below names the capability that would replace it — the
@@ -193,9 +194,10 @@ data shadow_gate_oauth_secret_env: String = "TS_OAUTH_SECRET"
 // - workflow_dispatch at refs/heads/main: configured=true. This is the ONLY arm the pinned WIF
 //   provider federates, so it is the only arm with remote legs (the pin:
 //   #gunbc.auth.hosted_ci_secrets_federation::hosted_ci_secrets_attribute_condition).
-// - workflow_dispatch at any other ref: typed notice + configured=false. A dispatched run of an
-//   unreviewed branch copy of this workflow must not reach the build hosts, and the pin refuses
-//   it anyway -- the notice types WHY instead of leaving a silently-green job.
+// - workflow_dispatch at any other ref: ::error:: + exit 1 (never green). A dispatch IS an
+//   explicit verdict request, and one this arm cannot honour -- the pin refuses the credentials
+//   for an unreviewed copy -- fails with a located diagnostic. Green-with-a-notice would be
+//   green-by-default on the one event where someone asked for a verdict (review 97115).
 // - pull_request / merge_group: typed notice + configured=false. The provider refuses these
 //   events' claims; the remote legs are skipped and the event-concern that records the gap is
 //   cited in the notice text.
@@ -203,9 +205,9 @@ fn shadow_gate_config_check_script() -> String {
   join([
     "if [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ] && [ \"$GITHUB_REF\" = \"refs/heads/",
     gunbc_default_branch_name,
-    "\" ]; then\n  echo 'configured=true' >> $GITHUB_OUTPUT\nelif [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::not a dispatch at refs/heads/",
+    "\" ]; then\n  echo 'configured=true' >> $GITHUB_OUTPUT\nelif [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n  echo '::error::not a dispatch at refs/heads/"
     gunbc_default_branch_name,
-    ": the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; refusing rather than pretending to shadow'\nelse\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::remote legs run only on workflow_dispatch at refs/heads/",
+    ": the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; a dispatched verdict request that cannot federate fails rather than passing green'\n  exit 1\nelse\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::remote legs run only on workflow_dispatch at refs/heads/",
     gunbc_default_branch_name,
     ": the pinned WIF provider refuses pull_request/merge_group claims, so the remote build is not shadowed on this event; see gunbc.integration_concern::shadow_gate_pr_time_remote_build_capability_gap'\nfi\n",
   ], "")
