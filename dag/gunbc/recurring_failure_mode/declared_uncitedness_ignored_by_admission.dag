@@ -2,6 +2,7 @@ module gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef }
 
 data declared_uncitedness_ignored_by_admission: RecurringFailureMode = RecurringFailureMode {
   identity: "declared_uncitedness_ignored_by_admission" as NonEmptyStr,
@@ -9,6 +10,12 @@ data declared_uncitedness_ignored_by_admission: RecurringFailureMode = Recurring
 
   receipts: [
     "INVALID STATE: a rate table carries CitedFigureStanding but its consumer admits any matching row without reading that standing. HARM: a declared TranscribedUncited figure becomes an admitted hardware operating rate. SPECIMEN: gunbc#10954 product.node_power_envelope rank_specific_2dpc_clock refused empty rows but admitted nonempty uncited rows; the positive witness itself supplied such a table. DISTINGUISHING FACT: row presence and provenance are independent inputs; refusing absence does not refuse explicitly uncited presence. RUNG FOUND AT: mitigatable, caught during review. REPAIR: the matching-row arm consumes table.evidence and propagates RankSpecificRateUncited with its read obligation through ChannelClockUnresolved and MemoryBandwidthUnresolved. The absent-row arm remains RankSpecificRateMissing. CONTROLS: test.claim.node_power_envelope_witness emptying_rank_specific_ceiling_rows_does_not_admit_an_effective_rate and uncited_rank_specific_rows_do_not_admit_an_effective_rate, paired with a_rank_specific_ceiling_row_admits_the_capped_effective_rate. CEILING: mechanically preventable for consuming the declared provenance, with citation truth remaining an external boundary. NEXT TRIGGER: acceptance derives and enforces provenance consumption for every admitted figure, rather than relying on each domain's match and witnesses. A CitedToAuthority constructor does not independently prove that its document attests the figure; the synthetic positive fixture cites itself and establishes no Ampere operating rate.",
+
+    "FOUND AGAIN, 2026-11-21, one domain over and in a decision that spends money: the hardware model's rows were consumed as complete in an accelerator purchase comparison while their OWN standing said otherwise. extdeps.gpu.gigabyte::gigabyte_r9700_ai_top_figures_standing is TranscribedUncited -- a transcription with no authority attached -- and the R9700 and Gigabyte figures still entered the comparison; extdeps.gpu.nvidia::nvidia_rtx_2000_ada_catalog declares no memory_bandwidth at all, which did not stop the row being used where bandwidth is exactly what decides; and the H11SSL unit-1 intake receipt (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt, the host now named dan) carries accounts_and_ssh_keys_report as NotRelayed while that host's access was gated by a key sitting outside gunbc.compute.remote_build's fleet_authorized_keys roster. Three different declarations of incompleteness -- uncited transcription, an absent field, an unrelayed report -- and one consumer behavior: none of them was read before the row was used.",
+
+    "WHAT THIS ADDS TO THE RECOGNITION RULE, stated so the row stays one row rather than three: the standing of a figure is an INPUT to the decision, not metadata beside it. Before a row enters a comparison, a rate table or an access decision, the consumer reads its standing -- TranscribedUncited, NotRelayed, an absent field -- and the conclusion carries that standing in its own text rather than dropping it at the boundary. The hardware case is the proof that the rule cannot live in each domain's match arm: the rate-table consumer was fixed to refuse uncited rows, and a year of hardware comparisons downstream of it still consumed the same rows as complete.",  ],
+  evidence: [
+    DeclarationRef { module_path: "extdeps.gpu.gigabyte", decl_name: "gigabyte_r9700_ai_top_figures_standing", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.gpu.nvidia", decl_name: "nvidia_rtx_2000_ada_catalog", field: WholeDeclaration },
   ],
-  evidence: [],
 }

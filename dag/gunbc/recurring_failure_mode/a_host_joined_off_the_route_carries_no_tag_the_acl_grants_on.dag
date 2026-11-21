@@ -1,0 +1,45 @@
+module gunbc.recurring_failure_mode.a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on: RecurringFailureMode = RecurringFailureMode {
+  // THE JOIN WAS DONE BY HAND, THE ACL GRANTS BY TAG, AND EVERY LATER JUDGMENT ABOUT THE HOST
+  // INHERITED THE GAP. The host was a member; the fleet's grants do not speak about members.
+
+  identity: "a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "fleet membership is granted only through gunbc.tailscale_join_converge, which joins with a key carrying the fleet node tag and reports a node that joined without it as a refusal rather than a success; and the reach judgment that would otherwise read 'answers ICMP, refuses TCP' as a network fault names it instead as an ACL standing, so the gap is said at the moment a roster would rely on the host"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE: a host is on the tailnet -- it answers ping, it resolves, it is listed -- and it is refused every granted connection, because the grants are written against a TAG and the node carries no tag. The membership fact and the grant fact are both true and neither mentions the other, so the operator sees a working network and a dead host.**",
+
+    "FOUND: 2026-11-21, butch (operator_host_srv14), during a lane's bring-up. An interactive `tailscale up` had enrolled the node; the fleet's ACLs (extdeps.tailscale.acl, extdeps.tailscale.acl_api) grant by tag, so an untagged node sits outside every grant. The symptom that reached the lane was a TCP refusal under a successful ping, which reads as a network fault and invites network debugging that cannot succeed.",
+
+    "THE RECOGNITION RULE THE REPORT STATES, WORTH KEEPING VERBATIM IN THE ROW: pings but refuses TCP = ACL, not network. ICMP reaching a host while every granted port refuses is the signature of a grant gap, not of a link gap; the reverse pairing (refuses ICMP, answers a port) points elsewhere.",
+
+    "WHAT THE TREE ALREADY OWNS, SO THIS ROW DOES NOT FORK IT: gunbc.tailscale_join_converge models the fleet node tag, the join states `joined with the required tag` and `joined WITHOUT the required tag`, the expiry of the enrolling key, and a refusal arm for a key/join tag mismatch -- its own commentary states the consequence exactly: a node whose tags do not match the key's leaves 'every reachability judgment this converge then makes about a tag the node is not in'. The model is right; the specimen is a join performed OUTSIDE that route, which is why the model never saw the host. That is the consumption failure, not a modeling gap.",
+
+    "THE OTHER HALF, WHICH IS MINE AND NOT THAT MODULE'S: nothing on the read side refuses an untagged member. A host may sit in the fleet's inventories -- hardware, units, runner slot, memory envelope all present and correct -- while being unreachable by the identity those rows assume. The identity axis of gunbc.plans.desired_state_follows_the_machine is where that is closed: per host, read the node's own tags and the fingerprint it answers with, and refuse admission where they do not match what the model claims.",
+
+    "RUNG, CEILING, AND WHY NOT HIGHER THAN IT IS: found at Mitigatable (re-join the node through the route, or tag it). The ceiling is StructurallyGuaranteed because an untagged fleet member can be made unnameable: if membership is only ever granted by the route that carries the tag, and the reach judgment refuses rather than guesses when a member carries no tag, the state has no route in. It is NOT StructurallyImpossible: an operator can always run `tailscale up` by hand on a host, and this repository does not own the operator's keyboard -- the guarantee is that such a host is refused, not that it cannot happen.",
+
+    "NEXT TRIGGER: the per-host identity read of gunbc.plans.desired_state_follows_the_machine running over both the build and serving rosters and refusing a member outside every grant -- or any further host found reachable-by-ping and refused-by-grant, which is the discovery this row was written from.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.tailscale_join_converge", decl_name: "tailscale_join_converge_mode", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrolled_anchor", field: WholeDeclaration },
+  ]
+}
