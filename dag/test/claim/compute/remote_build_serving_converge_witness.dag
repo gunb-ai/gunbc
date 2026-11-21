@@ -123,7 +123,8 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // A converged /etc/group carries BOTH required groups at their declared gids: the ledger group
@@ -238,7 +239,8 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,), pin: pin_ok())
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
       string_contains(s: body, pattern: "remote-build-serving-plan: settled")
     }
@@ -298,7 +300,8 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) && length(plan_writes(plan)) == 0
@@ -336,7 +339,8 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
@@ -408,7 +412,8 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     user_manager_linger: ObservationEstablished { observed: false },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // A TRULY FRESH HOST (no account, so no rustup) plans the rustup bootstrap: the pinned rustup-init for
@@ -476,7 +481,8 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s("riscv64"), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let plan = converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin), pin: pin, target_arch: est_s("riscv64"), rustup: est_absent())
       match plan {
         ConvergeUnhandled { items: us } => length(plan_writes(plan)) == 0
@@ -510,7 +516,8 @@ test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let ws = plan_writes(converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok()))
       length(ws) == 1 && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name) && rank_of_rustup(ws: ws) == -1
     }
@@ -580,7 +587,8 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
@@ -616,7 +624,8 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) && length(plan_writes(plan)) == 0
@@ -657,7 +666,8 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
           target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
         
-          serve_identity: Absent,), pin: pin_ok()),
+          serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
       let refused = converge_plan(
         d: d,
@@ -679,7 +689,8 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         
-          serve_identity: Absent,), pin: pin_ok()),
+          serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let planned = converge_plan(
         d: d,
@@ -701,7 +712,8 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
         
-          serve_identity: Absent,), pin: pin_ok()),
+          serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       // The two non-plan arms must offer the executor nothing, and the plan arm must offer it
       // something — otherwise the two assertions above are vacuous.
@@ -737,7 +749,8 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: String) -> ServingObserved {
@@ -759,7 +772,8 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // A host settled in EVERY leg except the scratch root's presence and mode, which the caller supplies.
@@ -784,7 +798,8 @@ fn fully_matched_scratch(d: RemoteBuildServingDesired, line: String, scratch_roo
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // An EnsureDirectory write carrying EXACTLY this path, owner pair and mode. The owner pair is asserted,
@@ -1288,7 +1303,8 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 test fn ledger_group_extra_member_is_unhandled_not_planned() -> Bool {
@@ -1334,7 +1350,8 @@ fn slice_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn is_install_slice(a: ConvergeAction) -> Bool {
@@ -1472,7 +1489,8 @@ fn slice_refused_max_observed(d: RemoteBuildServingDesired, line: String) -> Ser
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 test fn refused_slice_max_plans_no_install_leg() -> Bool {
@@ -1577,7 +1595,8 @@ fn not_lingering_uncapped_observed(d: RemoteBuildServingDesired, line: String) -
     user_manager_linger: ObservationEstablished { observed: false },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // The same host, but the Linger read is REFUSED (an ssh/sudo failure): the minimal-delta control. An
@@ -1602,7 +1621,8 @@ fn refused_linger_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     user_manager_linger: ObservationRefused { cause: ServingLegFailure { item: "user_manager.linger", cause: "ssh refused" } },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // A proven-not-lingering manager assesses as a real drift and plans exactly ONE enable leg (refused and
@@ -1930,7 +1950,8 @@ fn fully_matched_identity(d: RemoteBuildServingDesired, line: String, sidecar: O
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+  seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn sidecar_absent() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarAbsent } }
@@ -2041,6 +2062,7 @@ fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: Obs
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
     group: est_s(converged_groups()), authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },

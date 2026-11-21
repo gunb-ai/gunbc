@@ -926,10 +926,13 @@ type ServingObserved {
   // The seat census AS OBSERVED: the recovery door's rendering, parsed through the model. Established
   // entries classify every seat the census read; a census that could not establish itself carries its
   // detail and makes the assessment indeterminate (the plan REFUSES rather than recovering against a
-  // half-read seat pool). The EMPTY established census means 'the census ran and found no seat in need
-  // of the recovery write' — the default for a caller that has not wired the read (witnesses that do
-  // not exercise the recovery leg).
-  seat_census: RecoverCatalogLegReading = RecoverCatalogLegEstablished { entries: [] }
+  // half-read seat pool). The EMPTY established census means 'the census RAN and found no seat in need
+  // of the recovery write' — so it is a value only a caller that actually read the census may hand in.
+  // There is NO default (review 97273, finding 1): an unwired read must not arrive as a confirmed
+  // empty census, which would assess as satisfied (gunbc.design_argument::fail_closed — "a fabricated
+  // default … is a hard reject"). Call sites state their census: production passes the read
+  // (serving_leg_seat_census); witnesses state explicitly what their cell asserts.
+  seat_census: RecoverCatalogLegReading
 }
 
 // ---------------------------------------------------------------------------
@@ -1636,7 +1639,7 @@ fn serving_observed_from_reads(
   user_manager_linger: ObservationAttempt<Bool, ServingLegFailure>,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
-  seat_census: RecoverCatalogLegReading = RecoverCatalogLegEstablished { entries: [] },
+  seat_census: RecoverCatalogLegReading,
 ) -> ServingObserved {
   // The elevation precondition applied ONCE here (not re-checked in each leg): when 'sudo -n true' was
   // refused, every sudo-dependent leg is ObservationRefused regardless of what the leg would have read,
