@@ -46,7 +46,7 @@ import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCa
 // dispatch gate and the provisioned-candidate row are read side by side and host_capacity can answer the
 // ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
-import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host }
+import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host, compute_root }
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_admission → observed_cgroup_bound) that
 // serving_user_work_slice_deviations settles on, plus the slice's canonical unit name.
@@ -130,6 +130,13 @@ type ServingDeviation
   // and each routes to its own EnsureDirectory at the declared mode (review 95935).
   | StoreRootModeMismatch { path: String, declared: FileMode, observed: FileMode }
   | StoreStagingModeMismatch { path: String, declared: FileMode, observed: FileMode }
+  // THE SCRATCH ROOT'S MODE. The provider's own subject-scratch mkdir (gunbc.compute.work_provider_local
+  // compute_resolve_subject) runs AS THE SERVING ACCOUNT under this directory; if the directory exists at a
+  // mode the account cannot write, every remote compile dies at "subject scratch directory could not be
+  // made (exit 1)". A drift re-establishes it at the declared owner and mode through the SAME
+  // EnsureDirectory the presence arm uses, so the mode is d.scratch_root_mode and never a per-arm literal
+  // (single_authority).
+  | ScratchRootModeMismatch { path: String, declared: FileMode, observed: FileMode }
   // The two FILE modes the observe used to be blind to: authorized_keys and the serve binary were
   // compared on their BYTES only, so a world-writable file with the right bytes reported settled
   // (side-chat review of 2026-11-16, finding A3). Each is a stat-mode deviation under a confirmed-present
@@ -195,6 +202,7 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     AccountShellMismatch { desired: _, observed: _ } => "account.shell"
     StoreRootModeMismatch { path: _, declared: _, observed: _ } => "store.root.mode"
     StoreStagingModeMismatch { path: _, declared: _, observed: _ } => "store.staging.mode"
+    ScratchRootModeMismatch { path: _, declared: _, observed: _ } => "scratch.root.mode"
     AuthorizedKeysModeMismatch { path: _, declared: _, observed: _ } => "authorized_keys.mode"
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => "serve.binary.mode"
     UserWorkSliceUncapped { unit_name, reason: _ } => concat("user_work.slice.", unit_name)
@@ -239,6 +247,7 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     LedgerAbsent { path } => concat((path as String), " (confirmed absent)")
     AccountShellMismatch { desired, observed } => concat("account.shell (want ", desired, ", have ", observed, ")")
     StoreRootModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
+    ScratchRootModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     StoreStagingModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     AuthorizedKeysModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
     ServeBinaryModeMismatch { path, declared, observed } => concat(path, " mode (want ", file_mode_octal(mode: declared), ", have ", file_mode_octal(mode: observed), ")")
@@ -536,7 +545,21 @@ type RemoteBuildServingDesired {
   // (single_authority + root_generalization, review 95935).
   store_dir_mode: FileMode
 
-  // component 8: the account's authorized_keys (mode 0600), and the single
+  // component 8: THE ACCOUNT'S OWN SCRATCH ROOT -- <instance root>/compute, the directory the serve
+  // route's provider creates per compile (gunbc.compute.work_provider_local::compute_resolve_subject runs
+  // 'mkdir -p <compute_root>/subject' AS THE SERVING ACCOUNT). It is declared because the serve-binary
+  // install's parents are root-owned BY DESIGN (a build the account runs must not be able to replace the
+  // binary its forced command execs), and no principal can mkdir inside a root-owned parent: that is
+  // exactly how every remote compile was dying, on both serving hosts. The path is spelled from the SAME
+  // capacity authority's own path (gunbc.compute.host_capacity::compute_root -- the same call
+  // gunbc.compute.work_provider_local::compute_root reads), so what the converge creates and what the
+  // provider asks for cannot drift apart: it is not a path this module re-derives. It is deliberately NOT
+  // one of ledger_dirs: that list is judged as ledger ROWS by serving_ledger_row_judge, and no ledger row
+  // lives here.
+  scratch_root_dir: String
+  scratch_root_mode: FileMode
+
+  // component 9: the account's authorized_keys (mode 0600), and the single
   // forced-command line the host must carry. none when the host's line is
   // unrenderable — exactly the serve-time refusal, surfaced at plan time so a host
   // that cannot serve is refused, not half-written at apply.
@@ -598,6 +621,17 @@ fn serving_store_dir_declared_mode() -> FileMode? {
   file_mode_of_octal_text(text: "0755")
 }
 
+// THE SCRATCH ROOT IS OWNER-ONLY, 0700, and that is a decision with a reason, not a habit. The store root
+// and its staging sibling carry 0755 because the ledger area under them is GROUP-shared -- two principals
+// create entries in the same rows (gunbc.compute.host_capacity ComputeLedgerSharedWithRemoteBuild). The
+// scratch root has no second reader in the model: it holds the provider's per-call checkouts (mktemp -d
+// under <scratch>/subject), written and read by the serving account alone. 0700 is therefore the narrowest
+// mode that lets the account do its work; anything wider would be a grant the model cannot name a reader
+// for. (Assigned with the scratch-root item: manager brief of 2026-11-21, keen-swift-260's receipts.)
+fn serving_scratch_root_declared_mode() -> FileMode? {
+  file_mode_of_octal_text(text: "0700")
+}
+
 fn serving_authorized_keys_declared_mode() -> FileMode? {
   file_mode_of_octal_text(text: "0600")
 }
@@ -622,6 +656,15 @@ fn serving_serve_binary_dir_declared_mode() -> FileMode? {
 // is derived from the FileMode authority rather than authored at each call site.
 fn serving_store_dir_mode_octal(d: RemoteBuildServingDesired) -> String {
   file_mode_octal(mode: d.store_dir_mode)
+}
+
+// The declared scratch-root dir mode as the chmod octal spelling, from the same FileMode authority
+// the assess compares against — the apply's dir item and the witnesses' fixtures both spell it from
+// here, never a bare literal. 0700, not the store dirs' 0755: the store area is group-shared because
+// every host's ledger area is a flat shared tree, while a subject scratch root has exactly one
+// reader (the serving account's own mkdir and run), so the narrower mode is the defensible one.
+fn serving_scratch_root_mode_octal(d: RemoteBuildServingDesired) -> String {
+  file_mode_octal(mode: d.scratch_root_mode)
 }
 
 // The two A3 file-mode declarations as chmod octals, spelled from the same FileMode authority the
@@ -735,7 +778,9 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
               Absent => Absent
               Present { value: account_ssh_dir_mode } => match serving_serve_binary_dir_declared_mode() {
                 Absent => Absent
-                Present { value: serve_binary_dir_mode } => Present { value: {
+                Present { value: serve_binary_dir_mode } => match serving_scratch_root_declared_mode() {
+            Absent => Absent
+            Present { value: scratch_root_mode } => Present { value: {
     host: host,
     account_name: fleet_posix_remote_build_user.name as String,
     account_uid: fleet_posix_remote_build_user.uid,
@@ -767,8 +812,12 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     serve_binary_dir_owner_user: linux_service_directory_owner().user as String,
     serve_binary_dir_owner_group: linux_service_directory_owner().group as String,
     serve_binary_dir_mode: serve_binary_dir_mode,
+    // NOT spelled from instance_root: it is the capacity authority's own compute root for this very
+    // instance, the same NonEmptyStr the serve route's provider reads. One authority, one path.
+    scratch_root_dir: compute_root(instance: instance) as String,
+    scratch_root_mode: scratch_root_mode,
     forced_command_line: serving_forced_command_line(host: host),
-            } } } }
+            } } } } }
           }
         }
       }
@@ -810,6 +859,11 @@ type ServingObserved {
   // that); a refused read is an unknown, never read as the declared mode (review 95935).
   store_root_mode: ObservationAttempt<String, ServingLegFailure>
   store_staging_mode: ObservationAttempt<String, ServingLegFailure>
+  // The scratch root's presence and octal mode, read the same way the store directories are: absence is a
+  // proved PresentAbsent (the apply creates it), a mode drift is ScratchRootModeMismatch, and a refused
+  // read is an unknown that mints no write.
+  scratch_root: ObservationAttempt<Bool, ServingLegFailure>
+  scratch_root_mode: ObservationAttempt<String, ServingLegFailure>
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>
   checkout: ObservationAttempt<Bool, ServingLegFailure>
   // ESTABLISHED TRUE means the PINNED channel (ServingPlanInput.toolchain_channel) is installed —
@@ -1213,6 +1267,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           concat(
             match o.store_root { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "store.root", cause: c.cause }] },
             match o.store_staging { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "store.staging", cause: c.cause }] },
+            match o.scratch_root { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "scratch.root", cause: c.cause }] },
           ),
         ),
       )
@@ -1240,6 +1295,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
             concat(
               serving_present_deviations(item: "store.root", present: o.store_root),
               serving_present_deviations(item: "store.staging", present: o.store_staging),
+              serving_present_deviations(item: "scratch.root", present: o.scratch_root),
             ),
             concat(
               serving_present_deviations(item: "seed.serve_binary", present: o.serve_binary),
@@ -1292,6 +1348,11 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       // declared mode, and an unreadable mode is an unknown rather than a silent match.
       let root_mode_check = serving_store_mode_check(present: o.store_root, mode: o.store_root_mode, declared: d.store_dir_mode)
       let staging_mode_check = serving_store_mode_check(present: o.store_staging, mode: o.store_staging_mode, declared: d.store_dir_mode)
+      // The scratch root's mode rides the SAME compare as the store directories: one octal parse, one
+      // compare, one coproduct. Reusing serving_store_mode_check rather than minting a second compare is
+      // the single_authority answer -- the judgment's shape is identical; only the declared mode and the
+      // item name differ.
+      let scratch_mode_check = serving_store_mode_check(present: o.scratch_root, mode: o.scratch_root_mode, declared: d.scratch_root_mode)
       let shell_check = serving_account_shell_check(d: d, passwd: o.passwd)
       // A3 (side-chat review of 2026-11-16): the two file modes the byte-only compares were blind to.
       // Each is a gated value leg judged with the same parse-and-compare; a drift routes to the write
@@ -1306,7 +1367,8 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           concat(
             match staging_mode_check { StoreModeCheckDrifted { observed: g } => [StoreStagingModeMismatch { path: d.store_staging, declared: d.store_dir_mode, observed: g }]  _ => [] },
             concat(
-              match ak_mode_check { StoreModeCheckDrifted { observed: g } => [AuthorizedKeysModeMismatch { path: d.authorized_keys_path, declared: d.authorized_keys_mode, observed: g }]  _ => [] },
+              match scratch_mode_check { StoreModeCheckDrifted { observed: g } => [ScratchRootModeMismatch { path: d.scratch_root_dir, declared: d.scratch_root_mode, observed: g }]  _ => [] },
+          match ak_mode_check { StoreModeCheckDrifted { observed: g } => [AuthorizedKeysModeMismatch { path: d.authorized_keys_path, declared: d.authorized_keys_mode, observed: g }]  _ => [] },
               match binary_mode_check { StoreModeCheckDrifted { observed: g } => [ServeBinaryModeMismatch { path: d.serve_binary, declared: d.serve_binary_mode, observed: g }]  _ => [] },
             ),
           ),
@@ -1539,6 +1601,8 @@ fn serving_observed_from_reads(
   store_staging: ObservationAttempt<Bool, ServingLegFailure>,
   store_root_mode: ObservationAttempt<String, ServingLegFailure>,
   store_staging_mode: ObservationAttempt<String, ServingLegFailure>,
+  scratch_root: ObservationAttempt<Bool, ServingLegFailure>,
+  scratch_root_mode: ObservationAttempt<String, ServingLegFailure>,
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
   checkout: ObservationAttempt<Bool, ServingLegFailure>,
   toolchain: ObservationAttempt<Bool, ServingLegFailure>,
@@ -1592,6 +1656,8 @@ fn serving_observed_from_reads(
     store_staging: serving_elevation_gate_bool(elevation, "store.staging", store_staging),
     store_root_mode: serving_elevation_gate_str(elevation, "store.root.mode", store_root_mode),
     store_staging_mode: serving_elevation_gate_str(elevation, "store.staging.mode", store_staging_mode),
+    scratch_root: serving_elevation_gate_bool(elevation, "scratch.root", scratch_root),
+    scratch_root_mode: serving_elevation_gate_str(elevation, "scratch.root.mode", scratch_root_mode),
     serve_binary: serve_binary_g,
     checkout: checkout_g,
     toolchain: serving_elevation_gate_bool(elevation, "toolchain", toolchain),
