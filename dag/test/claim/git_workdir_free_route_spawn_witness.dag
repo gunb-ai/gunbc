@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WORDS only -- never on which program is named -- so a fixed git program keeps the claim focused
 // on the pairing this wall guards. (The program is carried through unchanged on the admitted path;
 // nothing is spawned here.)
-data git_program: String = "git"
+data git_program: NonEmptyStr = "git"
 
 // WHAT THIS WITNESS EARNS. `gunbc.git_argv_route_wall` now exposes a SANCTIONED route for the
 // workdir-FREE channel -- `spawn_git_argv_workdir_free` -- so a route that names no working

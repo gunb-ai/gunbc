@@ -6,7 +6,7 @@ import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.git
-import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_exit_code }
+import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_succeeded }
 import extdeps.filesystem.filesystem_io
 import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -105,16 +105,16 @@ fn scratch_repository(already_candidate: Bool) -> ScratchRepository? {
   let positioned = if already_candidate {
     git.Core.ResetHardInRepo(repo: repo_path, target: candidate_sha).exit_code == 0
       && shell.Copy.File(source: concat(repo, "/.git/index") as FilePath, destination: concat(root, "/good-index") as FilePath).success
-      && git_workdir_free_exit_code(
+      && git_workdir_free_succeeded(
         run: run_git_argv_workdir_free(
           program: git_program_name,
           argv: shape_git_read_tree_in_repo_args(repo: repo, revision: old_sha),
         ),
-      ) == 0
+      )
   } else {
     git.Core.ResetHardInRepo(repo: repo_path, target: old_sha).exit_code == 0
   }
-  if dir.success && git_workdir_free_exit_code(run: bare) == 0 && git_workdir_free_exit_code(run: init) == 0 && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && git_workdir_free_exit_code(run: branch) == 0 && worktree.exit_code == 0 && git_workdir_free_exit_code(run: packed_ref) == 0 && git_workdir_free_exit_code(run: pack) == 0 && git_workdir_free_exit_code(run: loose_ref) == 0 && git_workdir_free_exit_code(run: remote_add) == 0 && git_workdir_free_exit_code(run: pushed) == 0 && git_workdir_free_exit_code(run: detached) == 0 && git_workdir_free_exit_code(run: tracking) == 0 && positioned {
+  if dir.success && git_workdir_free_succeeded(run: bare) && git_workdir_free_succeeded(run: init) && email.success && name.success && wrote_old.success && added_old.exit_code == 0 && committed_old.exit_code == 0 && old.exit_code == 0 && wrote_new.success && added_new.exit_code == 0 && committed_new.exit_code == 0 && candidate.exit_code == 0 && git_workdir_free_succeeded(run: branch) && worktree.exit_code == 0 && git_workdir_free_succeeded(run: packed_ref) && git_workdir_free_succeeded(run: pack) && git_workdir_free_succeeded(run: loose_ref) && git_workdir_free_succeeded(run: remote_add) && git_workdir_free_succeeded(run: pushed) && git_workdir_free_succeeded(run: detached) && git_workdir_free_succeeded(run: tracking) && positioned {
     Present { value: ScratchRepository { root: root, repo: repo, remote_path: remote, old: old_sha, candidate: candidate_sha } }
   } else { none }
 }

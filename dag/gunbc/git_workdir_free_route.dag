@@ -31,45 +31,50 @@ type GitWorkdirFreeRun
   | GitWorkdirFreeRefused
 
 // Spawn the argv iff the wall's gate admits it at a workdir-free route. The admitted arm is the one
-// place this module touches `RunArgv`, and it spawns exactly the command the gate handed back; the
+// place this module touches `RunArgv`, and it spawns EXACTLY the command the gate handed back -- the
+// program and arguments carried on `GitWorkdirFreeSpawnAdmitted`, not a program re-named here; the
 // refused arm never reaches the seam.
 fn run_git_argv_workdir_free(program: NonEmptyStr, argv: List<String>) -> GitWorkdirFreeRun {
   match spawn_git_argv_workdir_free(program: program, argv: argv) {
-    GitWorkdirFreeSpawnAdmitted { program: _, arguments: arguments } =>
+    GitWorkdirFreeSpawnAdmitted { program: gate_program, arguments: arguments } =>
       {
-        let out = shell.Exec.RunArgv(program: program, arguments: arguments)
+        let out = shell.Exec.RunArgv(program: gate_program, arguments: arguments)
         GitWorkdirFreeSpawned { exit_code: out.exit_code, stdout: out.stdout }
       }
     GitWorkdirFreeSpawnRefused => GitWorkdirFreeRefused
   }
 }
 
-// Read the exit code of a run that happened; a refused (never-spawned) step is reported as a
-// NON-ZERO result (126, the shell's "command could not be run" class), so a witness that expects the
-// step to succeed reddens if it ever joins a bare mutation -- the guard surfaces, it never silently
-// passes.
-fn git_workdir_free_exit_code(run: GitWorkdirFreeRun) -> Int {
+// Whether the step reached the seam AND the process exited 0. A refused step (never spawned) is
+// false -- there is no fabricated exit code to mistake for a real observation. This is the one honest
+// "spawned and succeeded" check a caller that only cares about success uses (fail_closed).
+fn git_workdir_free_succeeded(run: GitWorkdirFreeRun) -> Bool {
   match run {
-    GitWorkdirFreeSpawned { exit_code: code, stdout: _ } => code
-    GitWorkdirFreeRefused => 126
+    GitWorkdirFreeSpawned { exit_code: code, stdout: _ } => code == 0
+    GitWorkdirFreeRefused => false
   }
 }
 
-// The stdout of a run that happened; "" for a never-spawned step, so equality against real stdout
-// fails for a refused step UNLESS the caller also asserts `git_workdir_free_spawned` -- which every
-// caller that compares stdout MUST, so a refusal is never mistaken for an empty-but-equal result.
-fn git_workdir_free_stdout(run: GitWorkdirFreeRun) -> String {
-  match run {
-    GitWorkdirFreeSpawned { exit_code: _, stdout: out } => out
-    GitWorkdirFreeRefused => ""
-  }
-}
-
-// Whether the step actually reached the seam. Callers that read stdout (rather than only the exit
-// code) gate on this so a refused step -- reported as "" -- cannot masquerade as a real empty result.
+// Whether the step actually reached the seam (spawned), refused or not-refused made explicit rather
+// than inferred from a sentinel value.
 fn git_workdir_free_spawned(run: GitWorkdirFreeRun) -> Bool {
   match run {
     GitWorkdirFreeSpawned { exit_code: _, stdout: _ } => true
+    GitWorkdirFreeRefused => false
+  }
+}
+
+// Whether two runs both spawned and produced equal stdout. Either side refused -> false: a
+// never-spawned step is never "equal" to a real observation (no `""`-equals-`""` collision). This lets
+// a witness compare the stdout of two admitted steps without a sentinel reader that fabricates "" for
+// a refusal (fail_closed).
+fn git_workdir_free_stdout_equal(left: GitWorkdirFreeRun, right: GitWorkdirFreeRun) -> Bool {
+  match left {
+    GitWorkdirFreeSpawned { exit_code: _, stdout: l } =>
+      match right {
+        GitWorkdirFreeSpawned { exit_code: _, stdout: r } => l == r
+        GitWorkdirFreeRefused => false
+      }
     GitWorkdirFreeRefused => false
   }
 }

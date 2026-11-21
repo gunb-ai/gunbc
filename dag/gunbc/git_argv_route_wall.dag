@@ -231,12 +231,12 @@ fn admit_git_argv_on_route(route: GitArgvRoute, argv: List<String>) -> GitArgvRo
 // reason carries nothing and the refused arm is nullary, mirroring the wall's single-inhabitant
 // `GitArgvRefused`; a one-inhabitant reason sum would not expose its constructor in this DSL.
 type GitWorkdirFreeSpawn
-  = GitWorkdirFreeSpawnAdmitted { program: String, arguments: List<String> }
+  = GitWorkdirFreeSpawnAdmitted { program: NonEmptyStr, arguments: List<String> }
   | GitWorkdirFreeSpawnRefused
 
 // The decision a workdir-free git route makes before any spawn. Admitted carries the program and the
 // argv to run; Refused produces no command -- the bare-mutating argv is refused, never spawned.
-fn spawn_git_argv_workdir_free(program: String, argv: List<String>) -> GitWorkdirFreeSpawn {
+fn spawn_git_argv_workdir_free(program: NonEmptyStr, argv: List<String>) -> GitWorkdirFreeSpawn {
   match admit_git_argv_on_route(route: GitWorkdirFree, argv: argv) {
     GitArgvAdmitted => GitWorkdirFreeSpawnAdmitted { program: program, arguments: argv }
     GitArgvRefused => GitWorkdirFreeSpawnRefused

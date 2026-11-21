@@ -14,7 +14,7 @@ import gunbc.live_deploy.pre_swap_admission {
 import extdeps.git
 import extdeps.git.inspect { merge_base_outcome, MergeBaseOutcome }
 import gunbc.git_workdir_free_route {
-  run_git_argv_workdir_free, git_workdir_free_exit_code,
+  run_git_argv_workdir_free, git_workdir_free_succeeded,
 }
 import extdeps.shell
 import extdeps.shell.exec
@@ -58,7 +58,7 @@ fn ancestry_scratch() -> AncestryScratch? {
   let wrote_off = Filesystem.Write(path: concat(off, "/tracked"), content: "off-main")
   let added_off = git.Core.AddAllInRepo(repo: off as FilePath)
   let committed_off = git.Core.CommitInRepo(repo: off as FilePath, message: "off-main")
-  if dir.success && git_workdir_free_exit_code(run: init) == 0 && email.success && name.success && wrote_on.success && added_on.exit_code == 0 && committed_on.exit_code == 0 && git_workdir_free_exit_code(run: tracked_ref) == 0 && git_workdir_free_exit_code(run: detached) == 0 && copied.exit_code == 0 && wrote_off.success && added_off.exit_code == 0 && committed_off.exit_code == 0 {
+  if dir.success && git_workdir_free_succeeded(run: init) && email.success && name.success && wrote_on.success && added_on.exit_code == 0 && committed_on.exit_code == 0 && git_workdir_free_succeeded(run: tracked_ref) && git_workdir_free_succeeded(run: detached) && copied.exit_code == 0 && wrote_off.success && added_off.exit_code == 0 && committed_off.exit_code == 0 {
     Present { value: AncestryScratch { root: root, on_main: on, off_main: off } }
   } else { none }
 }

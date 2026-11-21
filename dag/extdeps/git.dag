@@ -1046,9 +1046,9 @@ fn shape_git_add_argv() -> List<String> {
 data git_program_word: String = "git"
 
 // The git program name as a NonEmptyStr, for a caller that invokes git on a spawn route that takes a
-// non-empty program directly (gunbc.git_workdir_free_route). Derived from git_program_word so the two
-// spellings cannot drift.
-data git_program_name: NonEmptyStr = "git"
+// non-empty program directly (gunbc.git_workdir_free_route). Derived from git_program_word -- the one
+// authority for the spelling -- so the two cannot drift (single_authority).
+data git_program_name: NonEmptyStr = git_program_word as NonEmptyStr
 
 fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
 
