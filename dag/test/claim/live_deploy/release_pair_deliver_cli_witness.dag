@@ -15,7 +15,8 @@ import gunbc.live_deploy.release_binding {
 }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
 import std.optional { Optional, Present, Absent }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import std.algebra { string_contains }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned, process_observation }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   release_pair_converged_noop, PlanWaits,
@@ -429,31 +430,36 @@ test fn witness_source_placement_rerun_is_idempotent() -> Bool {
 // wildcard success made ProcessOutputAbsent / ProcessRefused read as "seeded" and route to a fetch; both must read NOT
 // present so the decision emits PlacementCloneMissing ("delivery clone not seeded / not readable at <path>").
 test fn witness_delivery_clone_present_requires_output() -> Bool {
-  let present = release_pair_delivery_clone_present(outcome: ProcessOutputPresent { text: head_hex as String })
-  let absent_is_present = release_pair_delivery_clone_present(outcome: ProcessOutputAbsent)
-  let refused_is_present = release_pair_delivery_clone_present(outcome: ProcessRefused { exit_code: 128, stderr: "fatal: not a git repository" })
-  present && (!absent_is_present) && (!refused_is_present)
+  let present = release_pair_delivery_clone_present(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: head_hex as String, stderr: "") })
+  let absent_is_present = release_pair_delivery_clone_present(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "", stderr: "") })
+  let refused_is_present = release_pair_delivery_clone_present(outcome: ProcessRan { observation: process_observation(exit_code: 128, stdout: "", stderr: "fatal: not a git repository") })
+  let not_spawned_is_present = release_pair_delivery_clone_present(outcome: ProcessNotSpawned { program: "git" as NonEmptyStr, cause: "git route wall: refusing ambient-repository mutation" as NonEmptyStr })
+  present && (!absent_is_present) && (!refused_is_present) && (!not_spawned_is_present)
 }
 
 // RED CONTROL: a refused clone-side FETCH refuses with its own reason naming the revision and the command's stderr; exit-0
 // (stdout present OR absent -- git fetch writes progress to stderr) is placement progress, not a refusal.
 test fn witness_source_fetch_refused_reason_is_own() -> Bool {
   let refused = match release_pair_source_fetch_verdict(
-    outcome: ProcessRefused { exit_code: 128, stderr: "fatal: couldn't find remote ref" },
+    outcome: ProcessRan { observation: process_observation(exit_code: 128, stdout: "", stderr: "fatal: couldn't find remote ref") },
     rev: head_hex as String,
   ) {
     ActionRefused { reason: r } => (r as String) == (join(["fetch of ", head_hex as String, " refused: ", "fatal: couldn't find remote ref"], "") as String)
     ActionPlaced => false
   }
-  let ok_present = match release_pair_source_fetch_verdict(outcome: ProcessOutputPresent { text: "" }, rev: head_hex as String) {
+  let ok_present = match release_pair_source_fetch_verdict(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "ok", stderr: "") }, rev: head_hex as String) {
     ActionPlaced => true
     ActionRefused { reason: _ } => false
   }
-  let ok_absent = match release_pair_source_fetch_verdict(outcome: ProcessOutputAbsent, rev: head_hex as String) {
+  let ok_absent = match release_pair_source_fetch_verdict(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "", stderr: "") }, rev: head_hex as String) {
     ActionPlaced => true
     ActionRefused { reason: _ } => false
   }
-  refused && ok_present && ok_absent
+  let not_spawned_refuses = match release_pair_source_fetch_verdict(outcome: ProcessNotSpawned { program: "git" as NonEmptyStr, cause: "git route wall" as NonEmptyStr }, rev: head_hex as String) {
+    ActionRefused { reason: r } => string_contains(s: r as String, pattern: "not spawned")
+    ActionPlaced => false
+  }
+  refused && ok_present && ok_absent && not_spawned_refuses
 }
 
 // RED CONTROL: a refused WORKTREE-ADD refuses with its own reason naming the command's stderr (distinct from fetch and from
@@ -461,18 +467,22 @@ test fn witness_source_fetch_refused_reason_is_own() -> Bool {
 // as a misleading 'tree at another head'.
 test fn witness_source_add_refused_reason_is_own() -> Bool {
   let refused = match release_pair_source_add_verdict(
-    outcome: ProcessRefused { exit_code: 128, stderr: "fatal: already registered" },
+    outcome: ProcessRan { observation: process_observation(exit_code: 128, stdout: "", stderr: "fatal: already registered") },
   ) {
     ActionRefused { reason: r } => (r as String) == (join(["worktree add refused: ", "fatal: already registered"], "") as String)
     ActionPlaced => false
   }
-  let ok_present = match release_pair_source_add_verdict(outcome: ProcessOutputPresent { text: "" }) {
+  let ok_present = match release_pair_source_add_verdict(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "ok", stderr: "") }) {
     ActionPlaced => true
     ActionRefused { reason: _ } => false
   }
-  let ok_absent = match release_pair_source_add_verdict(outcome: ProcessOutputAbsent) {
+  let ok_absent = match release_pair_source_add_verdict(outcome: ProcessRan { observation: process_observation(exit_code: 0, stdout: "", stderr: "") }) {
     ActionPlaced => true
     ActionRefused { reason: _ } => false
   }
-  refused && ok_present && ok_absent
+  let not_spawned_refuses = match release_pair_source_add_verdict(outcome: ProcessNotSpawned { program: "git" as NonEmptyStr, cause: "git route wall" as NonEmptyStr }) {
+    ActionRefused { reason: r } => string_contains(s: r as String, pattern: "not spawned")
+    ActionPlaced => false
+  }
+  refused && ok_present && ok_absent && not_spawned_refuses
 }

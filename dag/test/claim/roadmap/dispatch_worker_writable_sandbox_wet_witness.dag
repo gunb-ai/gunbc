@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.filesystem { path_parent_directory }
+import std.filesystem { path_parent_directory, path_basename }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_listing_observation, filesystem_listing_entry_names, FilesystemDirectoryListed,
@@ -1219,7 +1219,7 @@ fn wet_run_nonce() -> String {
   if !tmp.success {
     ""
   } else {
-    fold(split(s: tmp.path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+    path_basename(path: tmp.path as String)
   }
 }
 

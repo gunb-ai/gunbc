@@ -1,0 +1,333 @@
+module test.claim.git_command_runner_route_wall_witness
+
+// GIT ROUTE WALL ENFORCEMENT OVER gunbc.command_runner: THE EXECUTED RECEIPT.
+//
+// WHAT THIS WITNESS HOLDS (PR #16827).
+// This is the enforcement witness for the git argv route wall gate in
+// gunbc.command_runner. It exercises command_runner's run sites with git
+// ArgvCommands and grades the result: bare mutating argv is refused (typed
+// ProcessNotSpawned, no fabricated exit code), in-repo and read-only argv
+// flows through unchanged, and the SSH arm is gated identically (a remote
+// bare mutation has the same ambient-CWD hazard).
+//
+// THE HAZARD, RESTATED (from gunbc.git_argv_route_wall's WHY).
+// An ArgvCommand has no working-directory field. A bare `git commit` reaching
+// shell.Exec.RunArgv acts on the ambient tree. Without the gate, command_runner
+// forwards it unchecked.
+//
+// THE MUTATION CONTROL (documented, not inlined).
+// Forcing git_route_wall_admits to always-admit (disabling the gate) makes test_refused_bare_mutating_local,
+// test_refused_bare_mutating_local_add, test_refused_absolute_path_local, test_refused_deep_absolute_path_local,
+// test_refused_bare_mutating_ssh, test_refused_bare_mutating_ssh_absolute, test_refused_bare_mutating_run_shell_command,
+// test_refused_absolute_run_shell_command, test_refused_bare_mutating_run_shell_command_ssh,
+// test_refused_bare_mutating_stdin_local and test_refused_absolute_stdin_local STOP yielding the refusal --
+// they proceed to RunArgv/RunArgvStdin and never carry the wall reason (and, with no mock response, STOP at
+// HostEffectRefused{RunArgvOutcome, NoMockResponse}) -- and test_bare_mutating_git_yields_the_single_not_spawned_arm
+// goes false. Reverting the mutation makes them refuse again: this proves the gate is load-bearing on BOTH the
+// ProcessRunOutcome entry AND the two ProcessExit entries. (Run and reverted in-PR; the head has the gate live.)
+//
+// THE COMMIT-BUILDER AND EXIT-ZERO CONTROLS (side-chat blockers 1 and 2).
+// test_admitted_commit_snapshot_builder_passes_gate consumes the shipped git_commit_snapshot_command
+// (guards the `-C`-first ordering against regression); test_nonzero_exit_with_plausible_stdout_is_refused_not_present
+// and test_zero_exit_with_stdout_is_present pin the exit-zero prerequisite the output readers depend on.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.algebra { string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.filesystem { path_basename }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, SshExec, argv_command }
+import extdeps.git {
+  is_git_program,
+  shape_git_add_all_args, shape_git_commit_allow_empty_args,
+  shape_git_status_porcelain_nul_args, git_commit_snapshot_command,
+}
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.tools.ls { ls_program }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, process_observation }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command, run_shell_command_stdin_local, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
+import gunbc.remote_shell_command { openssh_login_shell_interpretation }
+
+// ---------------------------------------------------------------------------
+// BUILT-IN (pure): basename catches absolute-path spellings.
+// ---------------------------------------------------------------------------
+
+// THE WITNESS-LOCAL GIT FIXTURES. extdeps.git deliberately does NOT expose a way to mint a
+// ProgramIdentity for an arbitrary path or a generic argv builder -- that was a public way around
+// the program-identity seal (any importer could mint an identity for ANY binary; a generic argv
+// passthrough is a second path beside a modeled route). The identity rows and argv constructors
+// that ARE admitted live HERE as NULLARY, FIXED-SPELLING functions -- the same shape as every
+// fixture. That is the same shape as every identity row (`fn ls_program() =
+// uncataloged_program(invocation: "ls")`), not a
+// parameterised passthrough. That is load-bearing, not cosmetic: caller admission is checked
+// against the ENCLOSING declaration (infer.dag ~L11642-11657), and the test-reference wall is
+// declaration-scoped (declaration_marker), so an unmarked `witness_git_program_at(path)` or a
+// generic `witness_git_argv(program, arguments)` would be ordinary importable code that makes the
+// call for whoever invokes it -- an arbitrary mint by any importer. A nullary fixed fixture can
+// only ever hand back its one spelling, so an importer cannot extract anything arbitrary. Each is
+// sealed by name on `uncataloged_program` / `argv_command` (the rows in extdeps/exec/program.dag
+// and extdeps/exec/command.dag). The non-git control uses the existing modeled identity
+// `ls_program()` (it calls uncataloged_program("ls")), not a fresh mint.
+fn witness_git_identity_bare() -> ProgramIdentity = uncataloged_program(invocation: "git" as NonEmptyStr)
+fn witness_git_identity_absolute() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin/git" as NonEmptyStr)
+fn witness_git_identity_deep() -> ProgramIdentity = uncataloged_program(invocation: "/opt/local/libexec/git-core/git" as NonEmptyStr)
+
+// Each git command the witness exercises is its own named nullary constructor that stamps a FIXED
+// identity and FIXED argv -- only these witness functions can build these ArgvCommands.
+fn argv_bare_commit() -> ArgvCommand = argv_command(program: witness_git_identity_bare(), arguments: shape_git_commit_allow_empty_args(message: "x"))
+fn argv_bare_add() -> ArgvCommand = argv_command(program: witness_git_identity_bare(), arguments: shape_git_add_all_args())
+fn argv_bare_status() -> ArgvCommand = argv_command(program: witness_git_identity_bare(), arguments: shape_git_status_porcelain_nul_args())
+fn argv_inrepo_commit() -> ArgvCommand = argv_command(program: witness_git_identity_bare(), arguments: ["-C", "/tmp", "commit", "--allow-empty", "-m", "x"])
+fn argv_absolute_commit() -> ArgvCommand = argv_command(program: witness_git_identity_absolute(), arguments: shape_git_commit_allow_empty_args(message: "x"))
+fn argv_absolute_add() -> ArgvCommand = argv_command(program: witness_git_identity_absolute(), arguments: shape_git_add_all_args())
+fn argv_absolute_inrepo_revparse() -> ArgvCommand = argv_command(program: witness_git_identity_absolute(), arguments: ["-C", "/tmp", "rev-parse", "HEAD"])
+fn argv_deep_add() -> ArgvCommand = argv_command(program: witness_git_identity_deep(), arguments: shape_git_add_all_args())
+fn argv_ls() -> ArgvCommand = argv_command(program: ls_program(), arguments: ["-la"])
+
+
+// is_git_program must be true for any basename-"git" spelling, false otherwise.
+fn test_is_git_program_classifies_all_spellings() -> Bool {
+  is_git_program(invocation: "git")
+    && is_git_program(invocation: "/usr/bin/git")
+    && is_git_program(invocation: "/usr/local/bin/git")
+    && is_git_program(invocation: "/opt/local/libexec/git-core/git")
+    && !is_git_program(invocation: "/bin/ls")
+    && !is_git_program(invocation: "notgit")
+    && !is_git_program(invocation: "git-lfs")
+}
+
+// ---------------------------------------------------------------------------
+// RED CONTROL 1: bare mutating git on the LOCAL arm is refused.
+// ---------------------------------------------------------------------------
+
+fn test_refused_bare_mutating_local() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_bare_commit(),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: _, cause: c } =>
+      string_contains(s: c, pattern: "git route wall")
+    ProcessRan { observation: _ } => false
+  }
+}
+
+fn test_refused_bare_mutating_local_add() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_bare_add(),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: _, cause: c } =>
+      string_contains(s: c, pattern: "git route wall")
+    ProcessRan { observation: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RED CONTROL 2: absolute-path /usr/bin/git is refused (basename classification).
+// ---------------------------------------------------------------------------
+
+fn test_refused_absolute_path_local() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_absolute_commit(),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      string_contains(s: c, pattern: "git route wall")
+        && p == "/usr/bin/git" as NonEmptyStr
+    ProcessRan { observation: _ } => false
+  }
+}
+
+fn test_refused_deep_absolute_path_local() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_deep_add(),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      string_contains(s: c, pattern: "git route wall")
+        && p == "/opt/local/libexec/git-core/git" as NonEmptyStr
+    ProcessRan { observation: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RED CONTROL 3: bare mutating git on the SSH arm is refused (concern #1).
+// A remote bare `git commit` acts in the SSH session's ambient CWD -- the same
+// hazard as local bare, so the gate fires identically on both arms.
+// ---------------------------------------------------------------------------
+
+data test_ssh_transport: CommandTransport = SshExec {
+  ssh_target: "testhost.invalid" as NonEmptyStr,
+  interpretation: openssh_login_shell_interpretation,
+}
+
+fn test_refused_bare_mutating_ssh() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_bare_commit(),
+    transport: test_ssh_transport,
+  ) {
+    ProcessNotSpawned { program: _, cause: c } =>
+      string_contains(s: c, pattern: "git route wall")
+    ProcessRan { observation: _ } => false
+  }
+}
+
+fn test_refused_bare_mutating_ssh_absolute() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_absolute_add(),
+    transport: test_ssh_transport,
+  ) {
+    ProcessNotSpawned { program: _, cause: c } =>
+      string_contains(s: c, pattern: "git route wall")
+    ProcessRan { observation: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE TYPED-REFUSAL READBACK for the ProcessExit-returning gated entries (run_shell_command,
+// run_shell_command_stdin_local). ProcessExit is the operation's own outcome, so a wall refusal is the
+// module's typed exit_failure(reason: "git route wall: ..."). We match the ExitFailure variant and read
+// its reason; the code field is the shared general-error sentinel (NEVER an observed child exit), so the
+// reason is the honest thing to assert. An admitted command would instead proceed to RunArgv, so these
+// red controls are only satisfiable when the gate actually fired.
+// ---------------------------------------------------------------------------
+
+fn process_exit_is_wall_refusal(result: ProcessExit) -> Bool {
+  match result {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "git route wall: bare mutating argv refused")
+    ExitSuccess => false
+  }
+}
+
+fn witness_stdin_command(command: ArgvCommand) -> ProcessExit {
+  run_shell_command_stdin_local(command: command, stdin_payload: "")
+}
+
+// RED CONTROL 4: run_shell_command (a ProcessExit entry) refuses bare mutating git -- the refusal rides the
+// module's typed ProcessExit refusal (exit_failure with the wall reason), never a fabricated child exit.
+fn test_refused_bare_mutating_run_shell_command() -> Bool {
+  process_exit_is_wall_refusal(result: run_shell_command(command: argv_bare_commit(), transport: LocalExec))
+}
+
+fn test_refused_absolute_run_shell_command() -> Bool {
+  process_exit_is_wall_refusal(result: run_shell_command(command: argv_absolute_commit(), transport: LocalExec))
+}
+
+// RED CONTROL 5: the SSH arm of run_shell_command is refused (a remote bare mutation has the same
+// ambient-CWD hazard, so the gate fires on the SSH arm too).
+fn test_refused_bare_mutating_run_shell_command_ssh() -> Bool {
+  process_exit_is_wall_refusal(result: run_shell_command(command: argv_bare_commit(), transport: test_ssh_transport))
+}
+
+// RED CONTROL 6: run_shell_command_stdin_local (the other ProcessExit entry) refuses the same bare mutation.
+fn test_refused_bare_mutating_stdin_local() -> Bool {
+  process_exit_is_wall_refusal(result: witness_stdin_command(command: argv_bare_commit()))
+}
+
+fn test_refused_absolute_stdin_local() -> Bool {
+  process_exit_is_wall_refusal(result: witness_stdin_command(command: argv_absolute_commit()))
+}
+
+// ---------------------------------------------------------------------------
+// GREEN CONTROL: the gate ADMITS read-only verbs and in-repo commands. Tests the predicate directly
+// (no network needed: the gate is pure logic, checked before any transport wrapping).
+// ---------------------------------------------------------------------------
+
+fn test_admitted_read_only_passes_gate() -> Bool {
+  git_route_wall_admits(
+    command: argv_bare_status(),
+  )
+}
+
+fn test_admitted_in_repo_passes_gate() -> Bool {
+  git_route_wall_admits(
+    command: argv_inrepo_commit(),
+  )
+}
+
+fn test_admitted_in_repo_absolute_passes_gate() -> Bool {
+  git_route_wall_admits(
+    command: argv_absolute_inrepo_revparse(),
+  )
+}
+
+// THE COMMIT BUILDER ITSELF MUST BE ADMITTED (side-chat blocker 1). The positive controls hand-spell a
+// leading `-C`, which is exactly why they MISSED the shipped git_commit_snapshot_command leading with
+// `-c user.name=...` and being refused. This consumes the real builder, so if it ever regresses to a
+// leading `-c` the gate refuses it and this claim goes false.
+fn test_admitted_commit_snapshot_builder_passes_gate() -> Bool {
+  git_route_wall_admits(
+    command: git_commit_snapshot_command(
+      repository_dir: "/tmp/seed-repo", identity_name: "w", identity_email: "w@e", message: "seed",
+    ),
+  )
+}
+
+fn test_non_git_passes_gate() -> Bool {
+  // Non-git programs are never gated.
+  git_route_wall_admits(
+    command: argv_ls(),
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SINGLE "NOT SPAWNED" AUTHORITY (#4): ProcessNotSpawned is declared on exactly ONE coproduct in
+// extdeps.shell.exec -- ProcessRunOutcome. An earlier draft also declared it on ProcessOutcome; the
+// compiler REJECTED it ("variant 'ProcessNotSpawned' appears in both 'ProcessRunOutcome' and
+// 'ProcessOutcome'"), which is itself the proof that a second same-named arm is not silently
+// ambiguous but illegal. The wall therefore speaks through the one ProcessNotSpawned, via the gated
+// run_shell_command_observe_outcome. A bare mutating git argv yields that typed arm with the wall's
+// cause -- no fabricated exit code -- which is the fail-closed result on the ProcessExit routes.
+// ---------------------------------------------------------------------------
+
+fn test_bare_mutating_git_yields_the_single_not_spawned_arm() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: argv_bare_add(),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      string_contains(s: c, pattern: "git route wall") && path_basename(path: p) == "git"
+    ProcessRan { observation: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PATH_BASENAME (the hoisted utility): correct on known inputs.
+// ---------------------------------------------------------------------------
+
+fn test_path_basename_correctness() -> Bool {
+  path_basename(path: "/usr/bin/git") == "git"
+    && path_basename(path: "git") == "git"
+    && path_basename(path: "/opt/local/libexec/git-core/git") == "git"
+    && path_basename(path: "/bin/ls") == "ls"
+    && path_basename(path: "./relative/path") == "path"
+    && path_basename(path: "") == ""
+}
+
+// ---------------------------------------------------------------------------
+// THE EXIT-ZERO PREREQUISITE (side-chat blocker 2). An admitted output reader (wet_out / out) trusts
+// stdout ONLY via classify_process_observation(ExitZeroSucceeds). This proves that a command that RAN
+// and exited NONZERO while printing PLAUSIBLE stdout is classified ProcessRefused -- not
+// ProcessOutputPresent -- so a downstream readback reading the "present" text can never accept output
+// from a command that did not fully succeed (e.g. a `find` that hit a permission error, exited 1, yet
+// printed the one line a sticky-mode readback would accept).
+// ---------------------------------------------------------------------------
+
+fn test_nonzero_exit_with_plausible_stdout_is_refused_not_present() -> Bool {
+  let o = process_observation(exit_code: 1, stdout: "100700 sticky_dir\n", stderr: "find: permission denied\n")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: o) {
+    // THE BUG WOULD CLASSIFY THIS AS PRESENT; the correct rung is Refused.
+    ProcessRefused { exit_code: e, stderr: _ } => e == 1
+    ProcessOutputPresent { text: _ } => false
+    ProcessOutputAbsent => false
+  }
+}
+
+// And a genuine success (exit 0, stdout) IS present -- so the control is not just "always refuse".
+fn test_zero_exit_with_stdout_is_present() -> Bool {
+  let o = process_observation(exit_code: 0, stdout: "abc123def\n", stderr: "")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: o) {
+    ProcessOutputPresent { text: t } => t == "abc123def\n"
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
