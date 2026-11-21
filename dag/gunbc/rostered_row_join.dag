@@ -70,6 +70,7 @@ type RosteredRowType
   = GuaranteeStallRows
   | RecurringFailureModeRows
   | RungDropRows
+  | IntegrationConcernRows
   | OmittedRowControl
   | CollisionRowControl
 
@@ -102,6 +103,12 @@ data rostered_row_joins: List<RosteredRowJoin> = [
     declared_type_name: "RungDrop",
     roster_module: "gunbc.rung_drop.roster",
     roster_declaration: "rung_drop_roster",
+  },
+  RosteredRowJoin {
+    row_type: IntegrationConcernRows,
+    declared_type_name: "IntegrationConcern",
+    roster_module: "gunbc.integration_concern.roster",
+    roster_declaration: "integration_concern_roster",
   },
   RosteredRowJoin {
     row_type: CollisionRowControl,

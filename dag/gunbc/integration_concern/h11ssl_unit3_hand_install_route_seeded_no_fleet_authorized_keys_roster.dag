@@ -1,0 +1,57 @@
+module gunbc.integration_concern.h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at --row-only.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, h11ssl_unit3_intake_sighting_revision, h11ssl_unit3_reach_report_sighting_revision }
+
+data h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_ssh_access", decl_name: "fleet_authorized_keys"),
+    requirement: "The ruling says every install or boot route that brings up an OS the fleet reaches consumes the ONE roster. This unit's OS was brought up by a route that is not in the model at all -- a hand-staged seed on srv4 -- and the installed system admits none of the fleet identities: inbound ssh was refused for briansrls, ubuntu, gunbc and admin. So the model has no standing for an installed host the fleet cannot reach with its roster, and no route that closes it short of a hand edit on the host (which would be exactly the per-host special case the ruling refuses).",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_authorized_keys_on_every_install_route"),
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_ssh_access", decl_name: "fleet_authorized_keys"),
+    tail: [
+      decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_authorized_keys_on_every_install_route"),
+      decl_ref(module_path: "gunbc.host.host_authorized_keys_reconcile", decl_name: "host_authorized_keys_reconcile"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_seen_host_key_fingerprint"),
+      decl_ref(module_path: "gunbc.integration_concern", decl_name: "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat"),
+    ],
+  },
+  question: "What is the modeled effect that puts the fleet roster on a host an operator installed by hand, and does the hand-staged install route need a standing of its own so the gap is visible before an operator is locked out?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_intake_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesArtifact {
+          label: "artifacts/host-observations/h11ssl-unit3-lan-read-2026-11-15/lan_read_2026-11-15.txt (publickey refused for briansrls, ubuntu, gunbc, admin at 192.168.1.236)",
+          sha256: Sha256Digest { hex: "a5500a7c1bfd9528d4284532569e2d15eb48a991eb15a9280ed5df39e97be6cb" as Sha256DigestHex },
+        },
+        tail: [],
+      },
+      account: "Sighted by smart-crane-730 on 2026-11-15 from srv1, read-only: inbound ssh to the unit's LAN address was refused for briansrls, ubuntu, gunbc and admin, so the hand install route seeded none of the fleet roster. No key was guessed, copied or probed; the reading and its limits are in artifacts/host-observations/h11ssl-unit3-lan-read-2026-11-15/.",
+    },
+    tail: [ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.integration_concern", decl_name: "h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat"),
+        },
+        tail: [],
+      },
+      account: "Second sighting, of the SAME gap closing from the other side: the operator reports (2026-11-16) that all three fleet access principals' keys now sit on this unit's ubuntu account with passwordless sudo. That placement was made BY HAND on one box, and no read from this repository has confirmed it -- the probe from srv1 the same day is still refused, correctly, because srv1 holds none of those principals' private keys. This sighting does NOT dissolve the concern: its subject is the install ROUTE, which the model still does not hold, and a hand placement on one host is exactly what gunbc.design_ruling::fleet_authorized_keys_on_every_install_route refuses as a route. What it does change is only what this unit's reach refuses: the enrollment row stays HostKeyLoginRefused -- no read has logged in, and the address the report names is the one srv9 holds in the model -- while the report itself stands as an open row of this register, h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat, which names the dispatch that would ground it.",
+    }],
+  },
+  disposition: Open,
+}

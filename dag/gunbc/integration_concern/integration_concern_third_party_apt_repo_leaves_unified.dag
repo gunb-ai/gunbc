@@ -1,0 +1,54 @@
+module gunbc.integration_concern.integration_concern_third_party_apt_repo_leaves_unified
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region integration_concern_third_party_apt_repo_leaves_unified_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, integration_concern_third_party_apt_repo_leaves_unified_authorities, third_party_apt_repo_leaves_sighting_revision }
+
+// The revision at which the third-party-apt-repo fork was sighted: main, the head tailscale was modelled onto.
+// THREE LEAVES OF ONE RULE, NOT YET ONE SHAPE. A third-party apt repository -- URI, suite, components,
+// architecture, a signed-by keyring path, and a pinned signing-key fingerprint the fetched key must match or
+// the route refuses -- has three declarations today: extdeps.container.docker_ce::DockerCeAptRepo,
+// extdeps.container.nvidia_container_toolkit::NvidiaContainerToolkitAptRepo, and the general
+// extdeps.package_managers.apt::ThirdPartyAptRepo (with its one source-line renderer and one install route)
+// that tailscale was just modelled onto. The two container leaves were written first, each re-spelling the
+// sequence; the general shape is the Single-Authority home. This is NOT a claim they are wrong -- each has been
+// running on hosts -- it is that they and the general shape decide the same governed meaning in three places,
+// kept in agreement by nothing. The trigger to consolidate: the next edit to either container leaf moves it
+// onto ThirdPartyAptRepo rather than editing the leaf in place; a fix to the shared shape (fingerprint
+// handling, keyrings mode, the sudo/quote discipline) then lands once and reaches all three vendors.
+data integration_concern_third_party_apt_repo_leaves_unified: IntegrationConcern = IntegrationConcern {
+  identity: "third-party-apt-repo-shape-forked-across-vendor-leaves",
+  kind: SuspectedFork {
+    authorities: integration_concern_third_party_apt_repo_leaves_unified_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "DockerCeAptRepo"),
+    tail: [
+      decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "NvidiaContainerToolkitAptRepo"),
+      decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "ThirdPartyAptRepo"),
+      decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_plan"),
+    ],
+  },
+  question: "Which declaration decides the shape and provisioning sequence of a third-party apt repository -- the URI, suite, components and architecture, the signed-by keyring path, and the pinned fingerprint the fetched key must match or the route refuses -- so a vendor is a row and a fix to the shared discipline lands once?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: third_party_apt_repo_leaves_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.container.docker_ce", decl_name: "docker_ce_repo_install_script") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_container_toolkit_apt_source_line") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_third_party_repo_install_plan") },
+        ],
+      },
+      account: "tailscale had to be onboarded onto its own apt repository (a fresh host cannot locate the tailscale package without it; the live srv4 join run 44686507960 failed at apt-get install exit=100 'Unable to locate package tailscale'). Its provisioning sequence -- keyrings dir, fetch the armored key, dearmor, verify the pinned fingerprint and refuse, write the deb line, apt-get update, install -- is word-for-word the sequence docker_ce_repo_install_script and the nvidia leaf already render, differing only in the cited values. Rather than add a third leaf, the sequence was lifted into extdeps.package_managers.apt::ThirdPartyAptRepo and tailscale became a row (extdeps.tailscale.apt_repo::tailscale_apt_repo_noble). The two container leaves were left in place -- migrating them is out of scope for the tailscale onboarding that motivated this, and would change live runner/GPU provisioning paths under an unrelated deadline. They are named here so the next edit to either carries it onto the general shape instead of editing the leaf.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
