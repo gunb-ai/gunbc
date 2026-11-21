@@ -53,6 +53,7 @@ import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeWorkflowMode,
   HostMemoryObserve,
   ExecutorDomain,
+  TargetHostDomain,
   fleet_converge_mode_facts, fleet_converge_subject_rule_expression, fleet_converge_workflow_mode_wire, fleet_converge_workflow_modes }
 import gunbc.fleet.fleet_known_hosts_anchor { anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, SshTargetResolved, SshTargetRefused }
 import product.host_identity { HostIdentity }
@@ -303,13 +304,13 @@ test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   let drain_half = filter(roster, w => drain_rule_admits_its_own_mode(mode: w))
   let install_half = filter(roster, w => install_rule_admits_its_own_mode(mode: w))
-  length(roster) == 5
+  length(roster) == 6
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) != drain_rule_admits_its_own_mode(mode: w))
     && length(drain_half) == 3
-    && length(install_half) == 2
+    && length(install_half) == 3
     && all(drain_half, w => w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
-    && all(install_half, w => w == "remote_build_serving_observe" || w == "remote_build_serving_converge")
+    && all(install_half, w => w == "remote_build_serving_observe" || w == "remote_build_serving_converge" || w == "tailscale_join_converge")
     && !any(roster, w => w == "runner_host_file_observe")
 }
 
@@ -363,12 +364,44 @@ test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Boo
   let gate = step_id_text(step: fleet_converge_executor_subject_split_gate_step())
   let gated = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   gate != ""
-    && length(gated) == 5
+    && length(gated) == 6
     && length(filter(names, n => n == gate)) == 1
     // appears_before alone would let a gated mode off free: if its step is renamed away, the gate is trivially
     // "first". So every gated wire must have a step in the emitted list before the order means anything.
     && all(gated, w => any(names, n => n == w))
     && all(gated, w => appears_before(names: names, before: gate, after: w))
+}
+
+// (15) THE JOIN NAMES THE MACHINE IT JOINS AS A SUBJECT, NOT AS ITS OWN LANE. Before the fold the join step
+// bound github.event.inputs.host to BOTH the lane (FLEET_CONVERGE_EXPECTED_HOST, which the job's runs-on label
+// is derived from) and the machine to join (TAILSCALE_JOIN_HOST). So the only host ever joinable was the one
+// whose runner the job landed on -- true for srv3 (run 44782572818) and srv4, which own runner lanes, and a
+// dead end for a host without one, which is exactly why butch/srv14 could not join. The discriminating input
+// is the shape of the fix: re-pointing TAILSCALE_JOIN_HOST at the subject input while leaving the old key in
+// place would leave TWO authorities naming one machine, one of them unread, and this claim fails it. The rule
+// half is load-bearing too: the arm declares may_be_executors_own precisely so the recorded self-joins stay
+// legal while a cross-machine dispatch (executor srv1, subject srv14) becomes admissible.
+test fn the_join_step_names_the_joined_machine_as_a_subject_not_as_its_own_lane() -> Bool {
+  let join_mode = mode_named(name: "tailscale_join_converge")
+  match first_where(xs: fleet_converge_job_work_steps(), keep: s => step_id_text(step: s) == "tailscale_join_converge") {
+    Present { value: s } =>
+      env_keys(step: s)
+        == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_subject_rule_env_name, "WIF_ACCESS_TOKEN"]
+        && env_text(step: s, key: fleet_converge_expected_host_env_name) == "${{ github.event.inputs.host }}"
+        && env_text(step: s, key: fleet_converge_subject_host_env_name) == concat("${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")
+        && env_text(step: s, key: fleet_converge_subject_rule_env_name)
+          == fleet_converge_split_rule_wire(rule: fleet_converge_mode_facts(mode: join_mode).subject_rule)
+        && env_text(step: s, key: "TAILSCALE_JOIN_HOST") == ""
+        && match fleet_converge_mode_facts(mode: join_mode).subject_rule {
+          SubjectMayBeTheExecutorsOwnMachine => true
+          _ => false
+        }
+        && match fleet_converge_mode_mutation_domain(mode: join_mode) {
+          TargetHostDomain { field: _ } => true
+          _ => false
+        }
+    Absent => false
+  }
 }
 
 // ---------------------------------------------------------------- helpers
