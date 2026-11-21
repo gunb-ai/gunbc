@@ -21,8 +21,14 @@ import gunbc.runner.runner_slot_provision {
   SlotProvenanceObserved,
   SlotUnregistered,
 }
-import std.content_hash { serialize_content_hash }
+import std.content_hash { serialize_content_hash, compare_content_hash, ContentHashEqual }
 import std.algebra { string_contains, length }
+import gunbc.executor_privileged_operation {
+  EnsureOwnedDirectory,
+  RemoveDirectoryTree,
+  executor_managed_directory_mode,
+  executor_privileged_operation_shell_command,
+}
 import gunbc.fleet.fleet_converge_plan {
   fleet_converge_member_set_drift_text,
   fleet_converge_retirement_drift_text,
@@ -83,9 +89,11 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_expected_slots,
   FabricCellObservationRefusal,
   FabricCellUnexpectedCellEvidence,
+  fabric_cell_slice_name,
+  fabric_cell_desired_state_digest,
 }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet.fleet_converge_plan {
@@ -94,6 +102,7 @@ import gunbc.fleet.fleet_converge_plan {
   fabric_cell_observation_refusal_line,
   TimerRetirementMember,
   FleetConvergePlanSubject,
+  fleet_converge_plan_subject,
   fleet_converge_plan_artifact,
   fleet_converge_plan_artifact_hash,
   fleet_converge_observed_baseline_matches,
@@ -154,7 +163,8 @@ import gunbc.fleet.fleet_converge_plan {
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
   fleet_converge_slot_lines,
-  fleet_converge_slot_refusal_count
+  fleet_converge_slot_refusal_count,
+  slot_apply_lines
 }
 import gunbc.fabric.fabric_cell_effect {
   fabric_cell_realization, CellPlanRealizable, CellPlanRefused, fabric_cell_slice_desired_directives_for_slot,
@@ -1481,7 +1491,7 @@ test fn witness_fabric_cell_plan_and_apply_project_the_same_effects() -> Bool {
 // everything" unconditionally and every other row here would still pass.
 test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
   length(
-    items: fleet_converge_fabric_cell_lines(
+    xs: fleet_converge_fabric_cell_lines(
       host: "srv3" as NonEmptyStr,
       observed_fabric_cells: fabric_cells_observed_converged(),
     )
@@ -1819,7 +1829,7 @@ test fn witness_fabric_cell_kernel_conserves_every_expected_ref() -> Bool {
     init: true,
     f: (acc, n) => acc && (
       length(
-        items: classify_fabric_cell_host(
+        xs: classify_fabric_cell_host(
           expected_slots: synthetic_fabric_slots(count: n),
           readback: synthetic_host_readback(slots: synthetic_fabric_slots(count: n)),
         ).standings
@@ -1854,7 +1864,7 @@ test fn witness_fabric_cell_kernel_conserves_unexpected_supplied_evidence() -> B
 test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> Bool {
   let slots = synthetic_fabric_slots(count: 21)
   length(
-    items: classify_fabric_cell_host(
+    xs: classify_fabric_cell_host(
       expected_slots: slots,
       readback: synthetic_host_readback(slots: slots),
     ).unexpected
