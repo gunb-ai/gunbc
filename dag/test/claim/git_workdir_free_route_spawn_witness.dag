@@ -18,6 +18,13 @@ import gunbc.git_argv_route_wall {
   GitWorkdirFreeSpawnRefused,
   spawn_git_argv_workdir_free,
 }
+import gunbc.git_workdir_free_route {
+  run_git_argv_workdir_free,
+  GitWorkdirFreeRun,
+  GitWorkdirFreeSpawned,
+  GitWorkdirFreeRefused,
+  git_workdir_free_spawned,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -38,14 +45,16 @@ data git_program: NonEmptyStr = "git"
 // route -- make it always admit -- and `workdir_free_route_refuses_bare_mutation_before_producing_a_command`
 // goes red: the refusal is load-bearing, not decoration.
 //
-// WHERE THE ROUTE IS EXECUTED. This file is the hermetic gate witness -- the red control: it calls only
-// the pure gate (`spawn_git_argv_workdir_free`), never `shell.Exec.RunArgv`, so it stays green under
-// Hermetic. The sanctioned SPAWN (`run_git_argv_workdir_free`, gunbc.git_workdir_free_route -- the only
-// path from a workdir-free git argv to the local process seam) is executed for real by the workdir-free
-// wet witnesses that now route their git steps through it (repository_bootstrap, harness_shell_job,
-// repository_convergence, roadmap/dispatch_worker_writable_sandbox, live_deploy/pre_swap): each admitted
-// git step is a real `RunArgv` there. Those wet files, not this one, are the executing consumers
-// (consumption); this one keeps the guard's ability to redden.
+// WHERE THE ROUTE IS EXECUTED. This file is the hermetic gate witness -- the red control: its claims
+// drive the pure gate (`spawn_git_argv_workdir_free`) and the sanctioned route's REFUSED arm
+// (`run_git_argv_workdir_free` on a bare mutating shape), none of which reach `shell.Exec.RunArgv`, so
+// it stays green under Hermetic (no host effect is attempted -- the refusal never touches the seam).
+// The sanctioned SPAWN (`run_git_argv_workdir_free`, gunbc.git_workdir_free_route -- the sanctioned path
+// from a workdir-free git argv to the local process seam, partial migration: see that module's header)
+// is executed for real by the workdir-free wet witnesses that now route their git steps through it
+// (repository_bootstrap, harness_shell_job, repository_convergence, roadmap/dispatch_worker_writable_sandbox,
+// live_deploy/pre_swap): each admitted git step is a real `RunArgv` there. Those wet files, not this one,
+// are the executing consumers (consumption); this one keeps the guard's ability to redden.
 
 // The route refuses argv -- and the refused arm carries NO command. The Admitted arm returning false
 // is the whole point: a refused argv yields nothing to spawn. At a workdir-free route the gate refuses
@@ -88,4 +97,26 @@ test fn workdir_free_route_admits_in_repo_dressing_to_spawn() -> Bool {
      spawn_admitted(git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main"))
   && spawn_admitted(shape_git_status_porcelain_nul_args())
   && spawn_admitted(shape_git_rev_parse_head_args())
+}
+
+// THE ROUTE ITSELF -- not just the pure gate -- refuses before the seam. `run_git_argv_workdir_free` is
+// the function a real caller uses; if it branched unconditionally into `RunArgv`, the pure-gate claims
+// above would still pass and the guard would be decoration. Here the RESULT of calling the route with a
+// bare mutating shape is the `GitWorkdirFreeRefused` arm -- which carries no exit_code and no stdout --
+// so reaching it is the typed proof that `shell.Exec.RunArgv` was NOT called: the step spawned nothing.
+// `git_workdir_free_spawned` (false on the refused arm) states the same fact without a sentinel. NO
+// SANDBOX IS TOUCHED: the refused argv never reaches the seam, so this claim attempts no host effect and
+// stays green under Hermetic (it is a no-spawn control, not a real-execution claim needing enrollment).
+fn route_refused_without_spawn(argv: List<String>) -> Bool {
+  match run_git_argv_workdir_free(program: git_program, argv: argv) {
+    GitWorkdirFreeRefused => true
+    GitWorkdirFreeSpawned { exit_code: _, stdout: _ } => false
+  }
+}
+
+test fn run_git_argv_workdir_free_refuses_bare_mutation_without_spawning() -> Bool {
+     route_refused_without_spawn(shape_git_commit_allow_empty_args(message: "root commit"))
+  && route_refused_without_spawn(shape_git_add_all_args())
+  && route_refused_without_spawn(shape_git_checkout_orphan_args(branch: "orphan-root" as NonEmptyStr))
+  && !git_workdir_free_spawned(run_git_argv_workdir_free(program: git_program, argv: shape_git_commit_allow_empty_args(message: "x")))
 }

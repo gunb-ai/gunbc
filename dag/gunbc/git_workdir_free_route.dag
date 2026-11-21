@@ -7,16 +7,23 @@ import gunbc.git_argv_route_wall {
 }
 import extdeps.shell
 
-// THE SANCTIONED SPAWN for the workdir-FREE git channel -- the ONLY path from a git argv to the
-// local process seam when the step carries no working directory. The model's channel for running git
-// without a working directory is `shell.Exec.RunArgv` (it names no directory), and a bare mutating
-// git shape joined to it would mutate whatever tree the harness happens to sit in. This function is
-// what a git step on that channel must call instead of `shell.Exec.RunArgv`: it asks the wall's
-// sanctioned gate (`spawn_git_argv_workdir_free`, which alone consults `admit_git_argv_on_route`)
-// whether the argv may run without a place, spawns `RunArgv` on the admitted command it hands back,
-// and spawns NOTHING on the refused arm. There is no second path to the seam beside it, and this
-// module re-implements no classification of its own -- the wall is the single authority
-// (consumption; fail_closed).
+// THE SANCTIONED SPAWN for the workdir-FREE git channel: the path a git step that carries NO working
+// directory must call instead of `shell.Exec.RunArgv` directly (which names no directory, so a bare
+// mutating git shape joined to it would mutate whatever tree the harness happens to sit in). It asks
+// the wall's sanctioned gate (`spawn_git_argv_workdir_free`, which alone consults
+// `admit_git_argv_on_route`) whether the argv may run without a place, spawns `RunArgv` on the admitted
+// command the gate hands back, and spawns NOTHING on the refused arm. This module re-implements no
+// classification of its own -- the wall is the single authority (consumption; fail_closed).
+//
+// PARTIAL CALLER MIGRATION, NOT AN ENFORCED BOUNDARY. `RunArgv` itself still accepts any program, so
+// this route is the sanctioned path, not yet the only one. Other workdir-free git-to-`RunArgv` sites
+// remain unmigrated: the #16625-owned `roadmap_event_carrier_fixture`'s `roadmap_event_carrier_run_git`
+// (adopts the route after #16625 lands, per that PR's owner), and git commands dispatched through
+// `gunbc.command_runner`'s workdir-less `ArgvCommand` seam (e.g. the git-subtree witness). The five
+// witnesses this change migrates route EVERY git step through this function. An ENFORCED boundary -- a
+// gate `RunArgv` cannot be bypassed for git, or a census witness over the git-to-`RunArgv` call sites --
+// is the named follow-up, triggered by that enforcement item; it is deliberately NOT claimed here
+// (consumption: the route is consumed by real executing callers, but is not yet the sole path).
 //
 // The argv reaches here only from an `extdeps/git.dag` shape (`gunbc.design_argument::
 // interface_realization_policy`); the program is the caller-named NonEmptyStr the seam takes, passed
