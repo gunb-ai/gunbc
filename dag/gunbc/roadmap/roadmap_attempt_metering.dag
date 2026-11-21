@@ -1840,15 +1840,24 @@ fn metering_attempt_index_decode(name: String, raw: String) -> RowDecode<Metered
   }
 }
 
-fn metering_attempt_index_admit(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> String? {
+// THE INDEX ADMIT ANSWERS A TYPED COPRODUCT, NOT `String?` WITH PROSE (dag_absence_is_one_meaning): every
+// refusal carries its own arm, so a caller discriminates causes by SHAPE, never by parsing text. The pre-seal
+// metering_create_only on main keeps its older shape; it is listed in the PR body as the remaining instance.
+type MeteringIndexAdmission
+  = IndexAdmitted
+  | IndexMemberUnsafe { member: String }
+  | IndexStoreUnready { detail: String }
+  | IndexCreateRefused { error: String }
+
+fn metering_attempt_index_admit(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> MeteringIndexAdmission {
   match attempt_metering_index_store(instance: instance) {
-    AttemptMeteringIndexStoreUnready { detail } => Present { value: detail }
+    AttemptMeteringIndexStoreUnready { detail } => IndexStoreUnready { detail: detail }
     AttemptMeteringIndexStoreReady { store } => match attempt_metering_member_name(raw: metering_attempt_index_name(node_id: node_id, attempt_key: attempt_key)) {
-      Absent => Present { value: "the index member name is not one safe path segment; the index write is refused" }
+      Absent => IndexMemberUnsafe { member: metering_attempt_index_name(node_id: node_id, attempt_key: attempt_key) }
       Present { value: mname } => match attempt_metering_index_create_once(store: store, entry: mname, content: metering_attempt_index_json(node_id: node_id, attempt_key: attempt_key)) {
-      AttemptMeteringCreated => none
-      AttemptMeteringAlreadyPresent => none
-      AttemptMeteringCreateRefused { error: e } => Present { value: e }
+      AttemptMeteringCreated => IndexAdmitted
+      AttemptMeteringAlreadyPresent => IndexAdmitted
+      AttemptMeteringCreateRefused { error: e } => IndexCreateRefused { error: e }
     }
     }
   }

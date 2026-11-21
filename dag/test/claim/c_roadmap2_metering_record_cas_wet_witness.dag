@@ -32,7 +32,8 @@ import gunbc.roadmap.roadmap_attempt_metering {
   metered_role_seat_owner, metering_record_head, metering_record_slot_key, metering_launch_entry_name,
   metering_roster_admit, metering_roster_digest,
   metering_roster_for_attempt, metering_roster_seal,
-  metering_attempt_index_admit, metering_commit_at_head,
+  metering_attempt_index_admit, MeteringIndexAdmission, IndexAdmitted, IndexMemberUnsafe, IndexStoreUnready,
+  IndexCreateRefused, metering_attempt_index_name, metering_commit_at_head,
   attempt_metering_member_name}
 
 // THE METERING RECORD IS COMPARE-AND-SET, AND THESE CLAIMS RUN THE REAL ROUTE IN AN ISOLATED INSTANCE UNDER
@@ -481,12 +482,16 @@ test fn an_unsafe_index_key_is_refused_by_the_admit() -> Bool {
   let sealed = fx_sealed_attempt(instance: instance, key: key)
   sealed
     && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: "../x") {
-         Present { value: e } => string_contains(s: e, p: "safe path segment")
-         Absent => false
+         IndexMemberUnsafe { member: m } => m == metering_attempt_index_name(node_id: fx_node() as String, attempt_key: "../x")
+         IndexAdmitted => false
+         IndexStoreUnready { detail: _ } => false
+         IndexCreateRefused { error: _ } => false
        }
     && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: "a/b") {
-         Present { value: e } => string_contains(s: e, p: "safe path segment")
-         Absent => false
+         IndexMemberUnsafe { member: m } => m == metering_attempt_index_name(node_id: fx_node() as String, attempt_key: "a/b")
+         IndexAdmitted => false
+         IndexStoreUnready { detail: _ } => false
+         IndexCreateRefused { error: _ } => false
        }
 }
 
@@ -502,8 +507,7 @@ test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> 
     Present { value: store } => sealed
       && attempt_metering_create_once(store: store, entry: fx_member(raw: (metering_attempt_record_name() as String)), content: bytes) is AttemptMeteringCreated
       && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: key) {
-           Present { value: _ } => false
-           Absent => match belt_metering_departed(instance: instance, attempts: [] as List<WorkflowAttemptProgress>).first() {
+           IndexAdmitted => match belt_metering_departed(instance: instance, attempts: [] as List<WorkflowAttemptProgress>).first() {
              Present { value: MeteringAlreadyFinal } => match metering_record_head(store: store) {
                MeteringRecordHeadCommitted { generation: g, content: head } =>
                  cas_generation_count(g: g) == cas_generation_count(g: cas_generation_first())
@@ -516,6 +520,9 @@ test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> 
              }
              _ => false
            }
+           IndexStoreUnready { detail: _ } => false
+           IndexMemberUnsafe { member: _ } => false
+           IndexCreateRefused { error: _ } => false
          }
   }
 }

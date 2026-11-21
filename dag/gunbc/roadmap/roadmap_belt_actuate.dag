@@ -26,6 +26,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, metering_roster_admit,
   MeteredRole, metered_role_eq, metering_roster_for_attempt, metering_roster_launches, RosterRefused,
   MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
+  MeteringIndexAdmission, IndexAdmitted, IndexMemberUnsafe, IndexStoreUnready, IndexCreateRefused,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history, roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
@@ -8680,8 +8681,10 @@ fn belt_metering_for_attempt(
   progress: WorkflowAttemptProgress,
 ) -> MeteringPersist {
   match metering_attempt_index_admit(instance: instance, node_id: progress.node_id, attempt_key: progress.attempt_key) {
-    Present { value: e } => MeteringPersistRefused { cause: join(["the metering attempt index could not be written: ", e], "") }
-    Absent =>
+    IndexStoreUnready { detail: d } => MeteringPersistRefused { cause: join(["the metering attempt index store is unready: ", d], "") }
+    IndexMemberUnsafe { member: m } => MeteringPersistRefused { cause: join(["the metering attempt index member name is not one safe path segment; the index write is refused: ", m], "") }
+    IndexCreateRefused { error: e } => MeteringPersistRefused { cause: join(["the metering attempt index entry could not be created: ", e], "") }
+    IndexAdmitted =>
       if belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) {
         // ADOPT, THEN PERSIST (DESIGN 3: the pre-seal bytes are migrated by an act, never read through). srv2
         // holds plain records written by main's raw route; this act verifies them against the roster and its
