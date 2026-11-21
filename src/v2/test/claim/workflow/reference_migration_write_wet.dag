@@ -1,0 +1,82 @@
+module v2.test.claim.workflow.reference_migration_write_wet
+
+// WET BY NECESSITY (operator side-chat review, #16134 F1): the PARTIAL APPLICATION outcome is a
+// property of the host write loop -- Filesystem.Write side effects that cannot be rolled back --
+// and it is not observable from the hermetic fixture sandbox, which refuses host I/O. This file
+// declares the host surface it uses (same convention as
+// src/v2/test/claim/direct_rust_door_written_compile_wet.dag: a live_tree_disposition row naming
+// what it touches). It writes only under target/ (a gitignored, disposable directory) and it
+// deliberately attempts one write that the host must refuse (/proc/...), so the mixed batch is
+// exercised for real: a batch that writes one file and refuses the next must report BOTH halves
+// -- the file that stands rewritten and the refusal -- instead of a bare Refused that describes
+// a world where nothing happened.
+
+import std.types { Bool, List, String }
+import std.algebra { Cons, Empty, fold_list, is_empty, length, string_contains }
+import std.integer { int_to_decimal_string }
+import v2.workflow.reference_migration {
+  MigrationApplyOutcome,
+  MigrationFile,
+  migration_file,
+  migration_write,
+}
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data written_path: String = "/tmp/gunbc-reference-migration-write-control-written.dag"
+data parentfile_path: String = "/tmp/gunbc-reference-migration-write-control-parentfile"
+data refused_path: String = "/tmp/gunbc-reference-migration-write-control-parentfile/child.dag"
+
+fn names_contains(xs: List<String>, want: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, w) { acc || w == want })
+}
+
+test fn a_mixed_batch_records_both_the_written_file_and_the_refusal() -> Bool {
+  // Write order: a real file (must succeed), the parent-file regular file (must succeed), then a
+  // write UNDER that regular file (must refuse with ENOTDIR). The pre-fix outcome hid the two
+  // written files behind a bare Refused naming only the third path.
+  let files = [
+    migration_file(path: written_path, content: "module tmp.wet.write.control.written\n"),
+    migration_file(path: parentfile_path, content: "not-a-directory\n"),
+    migration_file(path: refused_path, content: "module tmp.wet.write.control.refused\n"),
+  ]
+  match migration_write(contents: files, paths: [written_path, parentfile_path, refused_path]) {
+    PartiallyApplied { written: written, refusals: refusals } =>
+      length(xs: written) == 2
+        && names_contains(xs: written, want: written_path)
+        && names_contains(xs: written, want: parentfile_path)
+        && length(xs: refusals) == 1
+        && (match refusals {
+             Cons { head: r, tail: _ } => r.id == refused_path && string_contains(s: r.reason, pattern: "refused"),
+             Empty => false,
+           })
+    // An Applied here would mean the refused write silently vanished; a Refused would mean the
+    // files that stand rewritten were hidden. Either is the F1 defect.
+    Applied { written: _, contents: _ } => false
+    Refused { refusals: _ } => false
+  }
+}
+
+test fn an_all_success_batch_still_reports_applied() -> Bool {
+  let files = [migration_file(path: written_path, content: "module tmp.wet.write.control.ok\n")]
+  match migration_write(contents: files, paths: [written_path]) {
+    Applied { written: written, contents: contents } =>
+      length(xs: written) == 1 && names_contains(xs: written, want: written_path) && length(xs: contents) == 1
+    PartiallyApplied { written: _, refusals: _ } => false
+    Refused { refusals: _ } => false
+  }
+}
+
+test fn an_all_refused_batch_reports_refused_with_every_reason() -> Bool {
+  // Both writes attempt to live UNDER the regular parent file: constructed ENOTDIR, twice.
+  let files = [
+    migration_file(path: "/tmp/gunbc-reference-migration-write-control-parentfile/refused-a.dag", content: "module tmp.wet.write.refused.a\n"),
+    migration_file(path: "/tmp/gunbc-reference-migration-write-control-parentfile/refused-b.dag", content: "module tmp.wet.write.refused.b\n"),
+  ]
+  match migration_write(contents: files, paths: ["/tmp/gunbc-reference-migration-write-control-parentfile/refused-a.dag", "/tmp/gunbc-reference-migration-write-control-parentfile/refused-b.dag"]) {
+    Refused { refusals: refusals } => length(xs: refusals) == 2
+    Applied { written: _, contents: _ } => false
+    PartiallyApplied { written: _, refusals: _ } => false
+  }
+}

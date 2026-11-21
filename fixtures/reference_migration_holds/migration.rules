@@ -1,0 +1,10 @@
+# THE HOLDING CONTROL'S RUN INPUT, exactly as an operator passes one: --rules <this file>. Three rules
+# and two resolutions. The rules are the forms the route moves — a citation rewritten, a sentence
+# deleted, a marked reference renamed — and the resolve lines are the case a rule cannot be: the same
+# section named twice in one sentence where the two clauses mean two different rows, each answered by
+# the id this file's plan renders, with the digest of the bytes that extent was cut from.
+rule cite DESIGN 3 => gunbc.reference_migration_fixture_home::reference_migration_fixture_value
+rule cite DESIGN 2026 => delete sentence
+rule ref gunbc.reference_migration_fixture_home::reference_migration_fixture_other => gunbc.reference_migration_fixture_home::reference_migration_fixture_value
+resolve fixtures/reference_migration_holds/dag/gunbc/reference_migration_fixture_citer.dag@954-962 f38a4edff9595f33e6fb83e24530f2839b3de6f7714e0261f103676ce8b826df => gunbc.reference_migration_fixture_home::reference_migration_fixture_value
+resolve fixtures/reference_migration_holds/dag/gunbc/reference_migration_fixture_citer.dag@979-987 f38a4edff9595f33e6fb83e24530f2839b3de6f7714e0261f103676ce8b826df => gunbc.reference_migration_fixture_home::reference_migration_fixture_boundary

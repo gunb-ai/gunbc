@@ -9,3 +9,5 @@ import std.types { String }
 data cli_verb_check_layout: String = "check-layout"
 data cli_verb_parse_population: String = "parse-population"
 data cli_verb_check_references: String = "check-references"
+data cli_verb_plan_reference_migration: String = "plan-reference-migration"
+data cli_verb_apply_reference_migration: String = "apply-reference-migration"
