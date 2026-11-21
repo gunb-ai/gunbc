@@ -124,19 +124,14 @@ fn workflow_expressions() -> List<String> {
   let runsons = map(jobs, j => runs_on_text(job: j))
   let job_ifs = map(jobs, j => job_if_text(job: j))
   let step_ifs = flat_map(jobs, j => map(j.steps, s => step_if_text(step: s)))
-  filter(concat(concat(runs ons, job_ifs), step_ifs), e => string_contains(s: e, pattern: "${{"))
+  filter(concat(concat(runsons, job_ifs), step_ifs), e => string_contains(s: e, pattern: "${{"))
 }
 
 fn has_double_quote_outside_single_quotes(expression: String) -> Bool {
   fold(
     split(s: expression, delimiter: "'"),
     init: QuoteScanState { in_single: false, found_illegal: false },
-    f: fn(acc: QuoteScanState, segment: String) -> QuoteScanState {
-      QuoteScanState {
-        in_single: !acc.in_single,
-        found_illegal: acc.found_illegal || (!acc.in_single && string_contains(s: segment, pattern: "\"")),
-      }
-    },
+    f: (acc, segment) => QuoteScanState { in_single: !acc.in_single, found_illegal: acc.found_illegal || (!acc.in_single && string_contains(s: segment, pattern: "\"")) },
   ).found_illegal
 }
 
