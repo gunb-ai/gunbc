@@ -41,8 +41,10 @@ fn gunbc_ci_runner_spec() -> RunnerSpec {
 // THE CI POOL'S ARCHITECTURE, read from the survey -- the Architecture ENUM, not a rendered label. The
 // fleet-converge build job compares this to a host-bound run's executor arch (gunbc.fleet.machine_board
 // fleet_converge_runner_arch, published through the plan-revision job's executor_arch step): on the pool when
-// the two agree (srv1-srv4 arm64 builds keep the fast pool), on the executor host when they differ (an x86
-// executor such as ken gets bins built for its own arch). Compared enum-vs-enum, never rendered strings
+// the two agree (srv1-srv4 arm64 builds keep the fast pool), and REFUSED when they differ -- there is no
+// admitted off-pool build yet, so an x86_64 executor's build refuses rather than being placed on a runner the
+// frozen pool does not advertise (a fleet-converge runner-width exception is an operator ruling that does not
+// exist; see the follow-up ken x86 bring-up). Compared enum-vs-enum, never rendered strings
 // (clever-raven-401 ruling). Absent when the pool host has no surveyed primary CPU, which the caller refuses
 // rather than defaulting.
 fn gunbc_ci_pool_runner_arch() -> Architecture? {
