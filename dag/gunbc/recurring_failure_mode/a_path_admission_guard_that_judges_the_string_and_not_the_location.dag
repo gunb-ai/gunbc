@@ -1,0 +1,69 @@
+module gunbc.recurring_failure_mode.a_path_admission_guard_that_judges_the_string_and_not_the_location
+
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A GUARD THAT DECIDES WHERE A PATH MAY GO BY READING THE PATH'S CHARACTERS ADMITS EVERY NAME WHOSE
+// SPELLING IS NOT ITS LOCATION. Found 2026-11-20 by the REQUEST_CHANGES review (GitHub review 5999428189)
+// of gunb-ai/gunbc#15794, and twice more in the same review round in files this row does not touch.
+//
+// WHY THIS IS ITS OWN ROW AND NOT THE SIBLING IT SITS NEXT TO. The row
+// `a_pathname_reresolves_its_ancestry_between_calls` indicts a producer that creates a location, KEEPS A
+// PATH, and addresses it again in every later operation. This row indicts the other end: a guard that
+// judges the STRING at the moment of admission -- and the ORDER, because an admission that runs after the
+// create or the install it governs is not an admission at all. The two rows agree where it matters: this row
+// adopts that row's ruling about its own repair rather than restating it as coverage, and says so in the
+// receipts.
+data a_path_admission_guard_that_judges_the_string_and_not_the_location: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_path_admission_guard_that_judges_the_string_and_not_the_location",
+  discovered_at: "2026-11-20",
+  discovered_by: "the REQUEST_CHANGES review (GitHub review 5999428189) of gunb-ai/gunbc#15794, corroborated by two sibling sightings in the same review round: #15602 derived a per-attempt credential runtime root by joining a caller-chosen reference into the instance root unchecked, and #15574 joined a metering entry name into the store directory unchecked",
+
+  symptom: "A guard asked whether a path is inside an admitted area answers from the path's CHARACTERS, so a name whose lexemes are not what its location is -- a '.' or '..' component, or any component a symlink stands in for -- passes the words and lands elsewhere. The admission also runs AFTER the artifact it was supposed to police, so the un-admitted work is already on disk by the time the refusal arrives.",
+
+  root_cause: "The path was modelled as text and the guard was written as a text test -- a prefix compare, a startswith, a regex -- while nothing in the signature says which of the two things a String is. The invalid state, a location judged while only its name is in hand, is expressible; and both shapes the corpus uses to build such paths (a prefix compare, and a join over components one of which came from outside the module) admit exactly the spelling the guard was meant to refuse.",
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability to ask a host primitive for an OPENED DIRECTORY HANDLE and operate relative to that handle, so ancestry is a capability held open rather than a name re-resolved per call. While an admission must accept an arbitrary caller-named base it has exactly one strong form -- ask the kernel what the name is where it resolves, refuse unless the ANSWER is under the admitted root, and run before the first byte is written -- and that form sits at Mitigatable, not above it: the resolution is the answer at the moment of asking. Where the invalid state can instead be DELETED, a carrier (a path segment, or a root only the provider can build) reaches the ceiling without any check at all.",
+    },
+  },
+
+  receipts: [
+    "NAMED AS A CLASS BY THIS ROUND, which is what the obligation asks for. Three sightings, no shared file: (i) a witness fixture's scratch base and helper-locus base, both supplied from the environment, whose admission asked only whether the STRING starts with a literal prefix; (ii) a per-attempt credential runtime root formed by joining a caller-chosen reference into an instance root, with no check that the reference is one segment (#15602, repaired there by making a path-segment carrier the sole constructor); (iii) a metering entry name joined into a store directory, same shape, same repair (#15574). What the three share is not the filesystem, not the subsystem, and not the code: it is that a decision about a LOCATION was taken from a NAME.",
+
+    "THE CEILINGS DIFFER BY REPAIR FORM, AND RECORDING THE CLASS TOGETHER IS WHAT MAKES THAT VISIBLE. The segment form ((ii) and (iii)) deletes the invalid state: once a segment carrier is the only thing that can be joined, a name containing a separator or a traversal cannot be spelled, so the guard becomes a type fact. The resolved-ancestry form ((i), and the only form available where a caller must still be able to name an arbitrary base) deletes nothing: it keeps the caller's string and asks the kernel, per call, where it actually is. Strong, and a rung below -- it refuses every name whose spelling or symlink aliases resolve outside the admitted root, but the answer it gets is the answer at the moment of asking, and the write that relies on it happens after.",
+
+    "SO THE RESIDUAL THIS FORM LEAVES IS NAMED RATHER THAN PRESENTED AS COVERAGE. Between the resolution and the write that relies on it, an actor able to modify a component can rename a directory and plant a symlink in its place, and the write follows. That window is exactly what the sibling row on the same family, `a_pathname_reresolves_its_ancestry_between_calls`, records: 'a one-time lstat or canonicalize before the writes MOVES the window rather than removing it, and citing it as coverage would be worse than not having it'. This row adopts that ruling about its own repair, which is why its found rung is Mitigatable and its ceiling is named as a place this form does not reach while the base stays caller-named on a shared filesystem.",
+
+    "SPECIMEN (i), reproduced on this host before the repair was written. A witness fixture took its scratch base from one environment variable and its helper-locus base from another, and admitted either by asking whether the text started with an admitted prefix -- a compare between two strings, neither of which had been resolved. `/tmp/../opt/gunbc-lab` starts with the admitted prefix and resolves to the host's own install root; `mktemp -d` ran under the accepted name BEFORE the confinement check ran at all, so a scratch tree was created inside the live install and a refused claim still left it there. The same string test also sat inside the claim-level confinement verdict, so the same spelling passed there too, and the other base reached a real install fold. Nothing failed: it was found by reading the guard, with the suite green around it.",
+
+    "THE COMPOSITION IS WHERE IT BIT. The prefix test was sound against the prefix it compared; what made it unsound was that the OTHER operand of that compare -- the admitted prefix itself -- was a literal trusted as if it were already a location. Canonicalising only the candidate and comparing it against an unresolved literal keeps the hole open in the operand nobody thought to check. So an admission that compares two paths resolves BOTH sides and compares them component by component: `/tmpfoo` starts with `/tmp` as text and is not under it as a location.",
+
+    "THE CONTROL ASSERTS ABSENCE, NOT REFUSAL, AND CARRIES ITS DISCRIMINATING PAIR. A claim that only asserts 'the guard refused' is satisfied by a guard that refuses everything; a claim that only asserts 'nothing was created' is satisfied by a guard that never ran for a reason the test did not mean to check. Each claim therefore pairs its refusal with the admission of a plain scratch root that must still pass, and asserts by listing the admitted prefix that the refused name left nothing behind. A symlink arm is required separately, because a component check that refuses `/tmp/../opt` will still admit `/tmp/alias` where `alias` is a link out -- so the two arms have disjoint red sets, each deleted by a different mutant, and neither can be dropped silently.",
+
+    "MEASURED CONTROL RECEIPTS. The four claims and their runs: the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create PASS at ed1c420fda3d (h50-guard-claims.log): one [witness] line, cpu=71ms wall=157ms eval_steps=7400 subject=5c045cf0ee186ed8; the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused PASS at ed1c420fda3d (h50-guard-claims.log): one [witness] line, cpu=58ms wall=165ms eval_steps=7679 subject=3d20930a45c20f18; the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold PASS at ed1c420fda3d (h50-guard-claims.log): one [witness] line, cpu=55ms wall=147ms eval_steps=7399 subject=bb70899a863dcfae; the_guard_refuses_a_path_it_cannot_resolve PASS at ed1c420fda3d (h50-guard-claims.log): one [witness] line, cpu=53ms wall=141ms eval_steps=7105 subject=eedf47b86aa52c43. Two of these stated a false thing in the making and are recorded in the shape they now have: the fold claim first asserted that the install destination FOLLOWS the base, which holds by construction and can never fail, where the falsifiable conjunct is that the base resolves into the live root while the fold never runs. The negative control at ed1c420fda3d: deleting the guard's resolved-ancestry arm reddens exactly these claims (mutant-M1-no-resolved-arm.log): the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold, the_guard_refuses_a_path_it_cannot_resolve, the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused -- while these stay green: the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create. Deleting its path-component arm reddens exactly these (mutant-M2-no-spelling-arm.log): the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold, the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create -- while these stay green: the_guard_refuses_a_path_it_cannot_resolve, the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused. The restore is the green run above (h50-guard-claims.log). Both mutants were made by deleting one arm from the live fixture and each type-checked, so neither red is a compile error.",
+
+    "RECOGNITION RULE: a decision about a LOCATION -- admit it, refuse it, confine it, clean it up -- taken from a value whose type is text, with nothing in between. The tells are a starts_with / prefix compare / regex against a path, a join over components one of which came from outside the module, and a guard placed after the create or install it governs. The repair is chosen by one question: can the invalid state be DELETED (then mint a carrier -- a segment, or a root only the provider can build -- and let the type refuse), or must an arbitrary name stay nameable (then judge the resolved location, resolve BOTH sides, compare components, refuse anything the kernel cannot answer for, and run before the first byte) -- and if the second, say in the same place that the resolution is a window and not a seal.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_pathname_reresolves_its_ancestry_between_calls", decl_name: "a_pathname_reresolves_its_ancestry_between_calls"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.a_confinement_witness_whose_only_writable_root_is_the_live_host", decl_name: "a_confinement_witness_whose_only_writable_root_is_the_live_host"),
+    decl_ref(module_path: "test.claim.roadmap.witness_supplied_instance", decl_name: "witness_resolved_root_is_refused"),
+    decl_ref(module_path: "test.claim.roadmap.witness_supplied_instance", decl_name: "witness_path_spelling_is_refused"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "wet_claim_is_confined"),
+    decl_ref(module_path: "test.claim.roadmap.witness_supplied_instance", decl_name: "witness_supplied_credential_is_confined"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "realpath_canonicalize_missing_command"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_sandbox_base_that_spells_its_way_into_the_live_lab_root_is_refused_before_any_create"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is_refused"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold"),
+    decl_ref(module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", decl_name: "the_guard_refuses_a_path_it_cannot_resolve"),
+  ],
+}
