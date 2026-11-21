@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
   operator_host_e2d4b7, operator_host_183527, operator_host_mtcollins1,
 }
-import extdeps.toolchain.types { Architecture }
+import extdeps.toolchain.types { Architecture, X86_64 }
 import extdeps.github.actions { SelfHosted, self_hosted_labels, runner_arch_label }
 import std.os.types { Linux }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec, gunbc_ci_build_runner_spec }
@@ -171,7 +171,7 @@ test fn srv1_to_srv4_build_on_the_ci_pool() -> Bool {
 // ken (x86_64) differs from the arm64 pool, so its software builds ON KEN with ken's own runner labels --
 // the change that lets ken host a converge job instead of queueing forever for an arm64 runner.
 test fn ken_builds_on_its_own_host_not_the_arm64_pool() -> Bool {
-  builds_on_host(host: operator_host_e2d4b7, host_text: "host-e2d4b7", exec_arch: Architecture { X86_64 })
+  builds_on_host(host: operator_host_e2d4b7, host_text: "host-e2d4b7", exec_arch: X86_64)
 }
 
 // A host with no architecture the fleet can establish has NO build runner: the plan refuses rather than
