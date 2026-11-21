@@ -8,6 +8,7 @@ import extdeps.linux.procfs
 import std.optional { Optional, Present, Absent }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import product.capacity.pool { Pool, pool_of, NoReplenishment, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
 import product.capacity.event_chain { PartitionId }
 import product.capacity.pool_events { SeatRequest, pool_full_wire, PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved }
