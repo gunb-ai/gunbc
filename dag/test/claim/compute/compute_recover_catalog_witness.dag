@@ -304,7 +304,7 @@ fn past_window_attempt_is_a_write_the_census_names() -> Bool {
           RecoverCatalogEstablished { entries: es } =>
             count_where(xs: es, predicate: e => true) == 1
               && entry_for(entries: es, reference: reference)
-              && string_contains(s: render_entries(entries: es), pattern: "recover-catalog fire ")
+              && string_contains(s: render_entries(entries: es), pattern: "recover-catalog terminate ")
               && string_contains(s: render_entries(entries: es), pattern: "launch deadline")
               // The door agrees on the arm: it does not decline a record the census marks fire, and it does
               // not refuse the observation. Here it answers from the LEDGER step, because this test wrote the
