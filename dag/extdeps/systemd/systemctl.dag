@@ -224,7 +224,6 @@ data systemctl_is_enabled_verb: NonEmptyStr = "is-enabled" as NonEmptyStr
 // metering-closing observation and the shared test stand-in (test.fixture.systemd_fence_stub) both name
 // it, and a verb authored twice in two spellings is how a check starts answering a slightly different
 // question than the one it claims to.
-data systemctl_show_verb: NonEmptyStr = "show" as NonEmptyStr
 
 // RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
 // here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and
