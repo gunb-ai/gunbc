@@ -1,0 +1,26 @@
+module gunbc.reference_migration_fixture_home
+
+// THE TARGET HOME of the reference-migration control. Every coordinate the holds rules name as a
+// replacement resolves HERE, in the same bound root the citations live in, so a green control says the
+// replacement the migration wrote is one the population's own checker accepts. The declarations are
+// deliberately several: a rename rule moves a marked reference from one of them to the other.
+
+type ReferenceMigrationFixtureHome {
+  home_field: Int
+}
+
+fn reference_migration_fixture_value() -> Int {
+  7
+}
+
+fn reference_migration_fixture_other() -> Int {
+  9
+}
+
+// A third declaration, deliberately NOT the rename rule's subject: the second same-sentence citation of
+// the fixture's citer is resolved here, so applying the plan leaves no marker that a later rule wants to
+// move. A rule whose subject its own edit re-creates is a rule that never finishes, and the replan over
+// the applied bytes is what catches it.
+fn reference_migration_fixture_boundary() -> Int {
+  11
+}

@@ -256,8 +256,7 @@ data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTU
 // without cadence enrollment, or as an unenrolled-but-honest UnexecutedDeferredWitness record
 // (the gunbc#7762 shape). Before this module, nothing in the tree could see a severed aggregator;
 // after it, strictly more of the #8437 incident shape is covered -- a partial fix of a gap that
-// predates this module, not new debt, so no admission verdict is owed (AcknowledgePreexistingDebt,
-// DESIGN 2026-08-10). The live join's natural home is where its cost is already paid: the
+// predates this module, not new debt, so no admission verdict is owed. The live join's natural home is where its cost is already paid: the
 // required-floor run resolves the whole corpus during preparation before any claim executes, so
 // re-deriving decl_facts inside a claim duplicates work the floor has done -- the #8470 shape one
 // level up. Building that preparation-time consumer is its own future work item with its own
