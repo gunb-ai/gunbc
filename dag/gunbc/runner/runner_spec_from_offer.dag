@@ -1,6 +1,6 @@
 module gunbc.runner.runner_spec_from_offer
 
-import extdeps.github.actions { RunnerSpec, SelfHosted, self_hosted_provenance_label, runner_os_label, runner_arch_label, self_hosted_labels }
+import extdeps.github.actions { RunnerSpec, SelfHosted, self_hosted_provenance_label, runner_os_label, self_hosted_labels }
 import gunbc.ci.ci_fleet { ComputeOffer, gunbc_ci_fleet_offer }
 import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import extdeps.cpu { cpu_facts_architecture }
@@ -36,4 +36,46 @@ data gunbc_ci_runner_spec_dissolution_trigger: DissolutionCondition = unbound_di
 
 fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+}
+
+// THE CI POOL'S ARCHITECTURE, read from the survey -- the Architecture ENUM, not a rendered label. The
+// fleet-converge build job compares this to a host-bound run's executor arch (gunbc.fleet.machine_board
+// fleet_converge_runner_arch, published through the plan-revision job's executor_arch step): on the pool when
+// the two agree (srv1-srv4 arm64 builds keep the fast pool), and REFUSED when they differ -- there is no
+// admitted off-pool build yet, so an x86_64 executor's build refuses rather than being placed on a runner the
+// frozen pool does not advertise (a fleet-converge runner-width exception is an operator ruling that does not
+// exist; see the follow-up ken x86 bring-up). Compared enum-vs-enum, never rendered strings
+// (clever-raven-401 ruling). Absent when the pool host has no surveyed primary CPU, which the caller refuses
+// rather than defaulting.
+fn gunbc_ci_pool_runner_arch() -> Architecture? {
+  match compute_host_primary_cpu(host: gunbc_ci_fleet_offer.supply.physical) {
+    PrimaryCpuMeasured { cpu } => Present { value: cpu_facts_architecture(cpu: cpu) }
+    PrimaryCpuAbsentFromSurvey { host: _ } => Absent
+    PrimaryCpuCensusUnread { host: _ } => Absent
+  }
+}
+
+// THE BUILD JOB'S RUNNER FOR A HOST-BOUND RUN, decided ONCE by the one rule (the manager co-owned
+// design, msg_824e7b84). When the executor host's architecture EQUALS the CI pool's architecture the
+// fast pool builds the software; when they DIFFER the build is REFUSED, not placed off-pool. Building a
+// different-architecture executor's software on the pool would ship wrong-arch binaries, and building it
+// on the executor host would need a runner there -- a fleet-converge runner width beyond the frozen pool
+// is an operator ruling that does not exist yet (ken's x86 bring-up is tracked as a SEPARATE follow-up,
+// opened only on the operator's own words), so admitting it here would mint authority the record does not
+// carry (gunbc.design_argument::fail_closed). The comparison is Architecture-enum to Architecture-enum,
+// NEVER a rendered label string: two spellings that mean the same arch compare equal as enums and would
+// not as strings, and the enum is the single source the label is derived from. Absent when EITHER the pool
+// has no surveyed architecture OR the executor's differs from the pool's: there is no honest default
+// runner, so the caller refuses rather than borrowing the old hard-coded arm64. resolve_executor_arch and
+// the machine_board witness claim both call THIS so the rule cannot be stated twice.
+fn gunbc_ci_build_runner_spec(exec_arch: Architecture) -> RunnerSpec? {
+  match gunbc_ci_pool_runner_arch() {
+    Absent => Absent
+    Present { value: pool } =>
+      if exec_arch == pool {
+        Present { value: gunbc_ci_runner_spec() }
+      } else {
+        Absent
+      }
+  }
 }

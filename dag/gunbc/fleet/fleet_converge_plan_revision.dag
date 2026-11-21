@@ -15,6 +15,10 @@ import extdeps.transports.rest { RestAnswered, RestRefused, RestResult }
 import gunbc.repository { gunbc_repository }
 import gunbc.actions_run_binding {
   actions_variable_trimmed,
+  actions_variable_read,
+  ActionsVariablePresent,
+  ActionsVariableAbsent,
+  fleet_converge_expected_host_env_name,
   observe_actions_run_binding,
   ActionsRunBinding,
   ActionsRunBindingObservation,
@@ -23,6 +27,11 @@ import gunbc.actions_run_binding {
   rlm_expected_revision_env_name,
 }
 import gunbc.running_release_identity { release_revision_text_valid }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch }
+import gunbc.runner.runner_spec_from_offer { gunbc_ci_pool_runner_arch, gunbc_ci_build_runner_spec }
+import extdeps.github.actions { runner_arch_label }
+import gunbc.runner.runner_unit_file { runner_unit_labels_json, RunnerUnitLabels, RunnerUnitLabelsHostedRunner, RunnerUnitLabelsUnresolvedExpression }
 import gunbc.live_deploy.apply_receipt { rlm_plan_artifact_hash_env_name }
 import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.fleet.fleet_converge_receipt {
@@ -166,6 +175,71 @@ fn resolve_plan_revision() -> ProcessExit {
       }
     }
     refused => exit_failure(reason: join(["fleet_converge_plan_revision: ", plan_revision_admission_text(a: refused)], ""))
+  }
+}
+
+// THE EXECUTOR RUNNER ARCHITECTURE AND THE BUILD JOB'S RUNNER, published as the `plan-revision` job's
+// `arch` and `build_runner` outputs. This is the queue-time read that lets the host and build jobs derive
+// their runner from the model instead of the old hard-coded arm64 -- runs-on is decided before any job's
+// steps run, so a model value must be published by the first job (plan-revision) for the needs-consumers to
+// interpolate. It reads the dispatch's executor host (FLEET_CONVERGE_EXPECTED_HOST), resolves its arch as a
+// single Architecture enum through gunbc.fleet.machine_board fleet_converge_runner_arch (the pool's via
+// gunbc.runner.runner_spec_from_offer gunbc_ci_pool_runner_arch when no host is named), and writes
+// `arch=<label>` plus `build_runner=<json labels>` to GITHUB_OUTPUT. The build placement (pool vs the
+// executor host) is decided once by gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec, comparing
+// the executor's enum to the pool's. A host whose board establishes no architecture -- or a pool with no
+// surveyed primary CPU -- makes the step FAIL -- the plan then has no output and the job never falls back to
+// a default arm64. Run as
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/fleet/fleet_converge_plan_revision.dag --function resolve_executor_arch`
+fn resolve_executor_arch() -> ProcessExit {
+  let host_text = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent => ""
+  }
+  // ONE RULE, NO LITERAL: the arch is the executor host's when a host is named, else the CI build pool's --
+  // both read from the model as a single Architecture ENUM, never a hard-coded arm64. That one enum drives
+  // BOTH the runner label below AND the build placement, so the label can never disagree with the runner it
+  // feeds. A named host whose board establishes no architecture yields no arch (a loud refusal); an unnamed
+  // host falls to the pool's, and if the pool has no surveyed primary CPU it too refuses rather than invent arm64.
+  let exec_arch = if host_text == "" {
+    gunbc_ci_pool_runner_arch()
+  } else {
+    fleet_converge_runner_arch(host: host_text as HostIdentity)
+  }
+  match exec_arch {
+    Absent => exit_failure(reason: if host_text == "" {
+      "fleet_converge_plan_revision: no executor host named and the CI build pool has no surveyed primary CPU to read an arch from"
+    } else {
+      join(["fleet_converge_plan_revision: the executor host ", host_text, " has no board-established architecture; add and cite its board SoC edge in gunbc.host.board_platform_facts board_soc_edges (see gunbc.fleet.machine_board fleet_converge_runner_arch) -- refusing to default its runner arch"], "")
+    })
+    Present { value: arch } => {
+      let label = runner_arch_label(arch: arch)
+      // THE BUILD JOB'S RUNNER, decided ONCE, in gunbc_ci_build_runner_spec: the CI pool when the executor's
+      // Architecture equals the pool's, and REFUSED when they differ -- no off-pool build placement, because a
+      // fleet-converge runner width beyond the frozen pool is an operator ruling that does not exist yet.
+      // Compared enum to enum. Absent when the pool's own arch is unknown OR the executor's differs from the
+      // pool's -- there is no honest default, so refuse with a typed reason.
+      match gunbc_ci_build_runner_spec(exec_arch: arch) {
+        Absent => exit_failure(reason: if host_text == "" {
+          "fleet_converge_plan_revision: the CI build pool has no surveyed primary CPU, so the build cannot be placed; refusing to default the build runner"
+        } else {
+          join(["fleet_converge_plan_revision: the executor host ", host_text, " cannot be assigned a build runner -- either the CI build pool has no surveyed primary CPU, or the executor's architecture differs from the pool's and off-pool build placement needs a fleet-converge runner-width ruling that does not exist yet; refusing to default the build runner"], "")
+        })
+        Present { value: spec } => match runner_unit_labels_json(spec: spec) {
+          RunnerUnitLabels { json_text: build_runner_json } => {
+            let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
+            if path == "" {
+              exit_failure(reason: "fleet_converge_plan_revision: GITHUB_OUTPUT is unset; this entry runs only in a fleet-converge job")
+            } else {
+              let w = Filesystem.Write(path: path, content: join(["arch=", label, "\nbuild_runner=", build_runner_json, "\n"], ""))
+              if w.success { ExitSuccess } else { exit_failure(reason: join(["fleet_converge_plan_revision: could not write the arch/build_runner outputs: ", w.error], "")) }
+            }
+          }
+          RunnerUnitLabelsHostedRunner => exit_failure(reason: "fleet_converge_plan_revision: the build runner resolved to a GitHub-hosted spec, which the fleet build does not target; refusing")
+          RunnerUnitLabelsUnresolvedExpression { expression: e } => exit_failure(reason: join(["fleet_converge_plan_revision: the build runner resolved to an unresolved expression, not a label set: ", e], ""))
+        }
+      }
+    }
   }
 }
 

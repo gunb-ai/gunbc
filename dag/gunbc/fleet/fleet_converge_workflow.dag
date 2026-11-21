@@ -16,7 +16,7 @@ import gunbc.fabric.fabric_ci_step { gunbc_ci_fabric_writer_identity_observe_inv
 import gunbc.auth.auth_ci_step { gunbc_ci_branch_run_grant_apply_invoke, gunbc_ci_branch_run_grant_await_invoke, gunbc_ci_branch_run_grant_request_invoke, gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke, gunbc_ci_gcp_iam_bootstrap_delta_request_invoke, gunbc_ci_gcp_iam_converge_apply_invoke, gunbc_ci_gcp_iam_converge_request_invoke, gunbc_ci_srv15_bmc_secret_versions_read_invoke }
 import gunbc.live_deploy.live_deploy_ci_step { gunbc_ci_assert_dashboard_deploy_receipts_invoke, gunbc_ci_live_deploy_apply_srv1_invoke, gunbc_ci_live_deploy_transaction_invoke, gunbc_ci_desired_instance_deploy_invoke, gunbc_ci_desired_instance_receipt_identity_invoke, gunbc_ci_microvm_controller_install_admission_invoke, gunbc_ci_microvm_controller_install_invoke, gunbc_ci_record_plan_serve_entry_verdict_invoke }
 import gunbc.live_deploy.apply { live_deploy_ci_instance_subject_env_name, live_deploy_ci_instance_subject_delimiter, deployment_is_prod_role_holder }
-import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
+import gunbc.fleet.fleet_plan_apply_ci_step { gunbc_ci_admit_apply_run_pointer_invoke, gunbc_ci_admit_dashboard_deploy_inputs_invoke, gunbc_ci_admit_plan_run_pointer_invoke, gunbc_ci_fleet_converge_allocation_store_plan_invoke, gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_fleet_converge_checkout_verify_invoke, gunbc_ci_fleet_converge_launch_environment_plan_invoke, gunbc_ci_fleet_converge_plan_artifact_hash_env_name, gunbc_ci_fleet_converge_plan_invoke, gunbc_ci_fleet_converge_plan_revision_invoke, gunbc_ci_fleet_converge_executor_arch_invoke, gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke, gunbc_ci_workspace_allocation_plan_invoke }
 import gunbc.roadmap.roadmap_launch_deployment_ci_step { gunbc_ci_rlm_launch_deployment_receipt_invoke }
 import gunbc.spark.spark_ci_step { gunbc_ci_spark_bootstrap_invoke, gunbc_ci_spark_grant_install_invoke, gunbc_ci_spark_grants_observe_invoke, gunbc_ci_spark_native_serving_apply_invoke, gunbc_ci_spark_runtime_image_probe_invoke, gunbc_ci_spark_serving_apply_invoke, gunbc_ci_spark_wireless_link_converge_invoke }
 import gunbc.image_ci_step { gunbc_ci_revision_job_image_build_invoke, gunbc_ci_workspace_image_build_invoke }
@@ -129,9 +129,10 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
   WorkflowPermissions, PermRead, PermWrite, 
-  RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
+  RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm, runner_arch_label,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch }
 import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_seed_build_step_run }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
@@ -1329,17 +1330,80 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
   }
 }
 
-data fleet_converge_host_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host))"
+data fleet_converge_host_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\"]', needs.plan-revision.outputs.arch, github.event.inputs.host))"
 
 data fleet_converge_host_runner_expression: String = join(["${{ ", fleet_converge_host_runner_expression_body, " }}"], "")
+
+// THE SELF-HOSTED RUNNER for a job pinned to ONE modeled host, DERIVED from that host's board architecture
+// (review 97146 root-generality; clever-raven-401 msg_653962b9). This is the ONE place that turns
+// "run job X on host H" into runner labels: self-hosted, linux, H's board-established Architecture label,
+// and H's own name. NO hard-coded "arm64" -- the arch comes from gunbc.fleet.machine_board
+// fleet_converge_runner_arch (board authority -> SoC edge -> Architecture), the SAME derivation the runtime
+// host selector reads through needs.plan-revision.outputs.arch; the only difference is these jobs pin a host
+// known at GENERATION time, so the arch is resolved here rather than published as a step output. Compared
+// and rendered through the Architecture enum via runner_arch_label -- never a hand-written label string.
+// Absent when H has no board-established architecture; the caller then emits the refused job below rather
+// than pinning it to a literal arch it did not derive (gunbc.design_argument::fail_closed: no plausible
+// label is fabricated, and no unlabelled runner is silently queued).
+fn fleet_converge_self_hosted_runner_for(host: HostIdentity, host_label: String) -> RunnerSpec? {
+  match fleet_converge_runner_arch(host: host) {
+    Absent => Absent
+    Present { value: arch } =>
+      Present { value: SelfHosted { labels: ["self-hosted", "linux", runner_arch_label(arch: arch), host_label] } }
+  }
+}
+
+// THE REFUSED PLACEHOLDER for a host-pinned job whose pinned host has no board-established architecture.
+// Like the other *refused jobs in this file (e.g. fleet_converge_gcp_iam_converge_refused_job), it runs one
+// step that prints a typed refusal and fails. It is placed on the shared CI pool via gunbc_ci_runner_spec --
+// NOT on the arch-less host, which cannot advertise a runner for an arch the model cannot establish -- because
+// it carries no host work; it never represents real converged state. Unreachable while every host these jobs
+// pin has a board row (srv1, mtcollins1, the approval broker); if one ever loses its board row this refuses
+// the dispatch instead of defaulting it to arm64.
+fn fleet_converge_host_arch_refused_job(id: String, host_label: String) -> Job {
+  Job {
+    id: id,
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    environment: none,
+    steps: [
+      RunStep {
+        name: Present { value: "REFUSED: the pinned host has no board-established architecture" },
+        id: none,
+        run: "echo 'REFUSED: pinned host has no board-established Architecture; refusing to place a host-pinned job on a literal arch (fail_closed, review 97146)'; exit 1",
+        shell: none,
+        env: none,
+        working_directory: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: Present { value: 1 },
+      },
+    ],
+    needs: fleet_converge_job_needs(id: id),
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 5 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
 
 // THE DEPLOY SLOT'S SELECTOR, for the one host that has such a slot. Selection is set membership, so
 // srv1's selector adds the deploy label to the host's and every other host keeps its own selector
 // unchanged; the restricted group (gunbc.ci.deploy_slot_tenancy), not this expression, is the wall
-// that refuses a pull request workflow the slot.
+// that refuses a pull request workflow the slot. srv1's arch is the PUBLISHED arch (needs.plan-revision
+// .outputs.arch), read the same way the host selector reads it -- never a hard-coded "arm64". srv1 is
+// arm64 today because its board says so, not because this string says so; a host whose board changed
+// would change the runner here too (review 97086; gunbc.design_argument::fail_closed -- an empty arch
+// here must fail at the identity-join claim, not silently queue an unlabelled runner). The two constant
+// format ARGS (the srv1 host label and the deploy group) are emitted SINGLE-quoted, matching the host
+// selector above whose JSON sits inside one single-quoted literal; a double-quoted string literal in a
+// GitHub expression is a parse error that refuses the WHOLE workflow at dispatch (review 97094).
 data fleet_converge_deploy_slot_runner_expression: String = join([
-  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON('[\"self-hosted\",\"linux\",\"arm64\",\"",
-  runner_host_label(host: operator_host_srv1) as String, "\",\"", deploy_slot_runner_group_name as String, "\"]') || ",
+  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\",\"{2}\"]', needs.plan-revision.outputs.arch, '",
+  runner_host_label(host: operator_host_srv1) as String, "','", deploy_slot_runner_group_name as String, "')) || ",
   fleet_converge_host_runner_expression_body, " }}",
 ], "")
 
@@ -1506,7 +1570,13 @@ fn fleet_converge_build_job() -> Job {
   Job {
     id: "build",
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    // THE ONE RULE: build on the CI pool when the executor's Architecture equals the pool's, and REFUSE
+    // when they differ (no off-pool build is admitted until the operator rules on runner width). Decided once
+    // in gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec
+    // and published as needs.plan-revision.outputs.build_runner; this job reads that output as-is, so no arch
+    // literal and no placement logic sits in the YAML (needs already lists plan-revision for the build checkout
+    // ref, so the output is readable here).
+    runner: RunsOnExpression { expression: fleet_converge_build_runner_expression },
     environment: none,
     steps: fleet_converge_build_job_steps(),
     needs: fleet_converge_job_needs(id: fleet_converge_release_bins_job_id),
@@ -1595,6 +1665,29 @@ fn fleet_converge_plan_revision_resolve_step() -> Step {
   }
 }
 
+// THE EXECUTOR ARCHITECTURE READ. Runs in EVERY dispatch (no condition): when the dispatch names an
+// executor host it reads that host's board-established architecture; when it names none it reads the CI
+// build pool's own surveyed architecture. Either way it publishes `arch` for the shared job's selector and
+// the build job's pool-vs-host decision. A named host whose board establishes no architecture makes the
+// step FAIL loudly at plan time (add and cite its board SoC edge) rather than default it to arm64.
+fn fleet_converge_executor_arch_step() -> Step {
+  RunStep {
+    name: Present { value: "Resolve the executor architecture from the model (host board, else CI pool)" },
+    id: Present { value: "executor_arch" },
+    run: gunbc_ci_fleet_converge_executor_arch_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 // THE READBACK: the checkout this job is about to execute is the tree the plan receipt names. Placed
 // after the plan artifact is on disk and before anything actuates.
 fn fleet_converge_checkout_verify_step(if_condition: String?) -> Step {
@@ -1619,6 +1712,7 @@ fn fleet_converge_plan_revision_steps() -> List<Step> {
       fleet_converge_admit_plan_run_pointer_step(if_condition: fleet_converge_plan_revision_step_if),
       fleet_converge_plan_revision_download_step(),
       fleet_converge_plan_revision_resolve_step(),
+      fleet_converge_executor_arch_step(),
     ]
   )
 }
@@ -1634,7 +1728,7 @@ fn fleet_converge_plan_revision_job() -> Job {
     needs: fleet_converge_job_needs(id: fleet_converge_plan_revision_job_id),
     env: none,
     outputs: Present {
-      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}"))]
+      value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}")), kv(key: fleet_converge_executor_arch_output_name, value: yaml_string(s: "${{ steps.executor_arch.outputs.arch }}")), kv(key: fleet_converge_build_runner_output_name, value: yaml_string(s: "${{ steps.executor_arch.outputs.build_runner }}"))]
     },
     if_condition: Present { value: fleet_converge_dispatch_event_if },
     timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
@@ -6018,6 +6112,25 @@ data fleet_converge_plan_revision_job_id: NonEmptyStr = "plan-revision" as NonEm
 
 data fleet_converge_plan_revision_output_name: String = "revision"
 
+// THE EXECUTOR ARCHITECTURE, published by plan-revision's executor_arch step (a model read of the chosen
+// host's board SoC edge, or the CI build pool's own surveyed arch when no host is named), so a host-bound
+// run's runner architecture is DERIVED from the model, never the literal "arm64" the selector used to carry
+// (gunbc.integration_concern fleet_converge_arm64_label_blocks_x86_executor_host). plan-revision runs in
+// every dispatch, so needs.plan-revision.outputs.arch is present when the shared job places itself.
+data fleet_converge_executor_arch_output_name: String = "arch"
+
+// THE BUILD JOB'S RUNNER, published by plan-revision's executor_arch step as GitHub JSON label array. The
+// build runs on the CI pool when the executor host's Architecture equals the pool's, and is REFUSED when they
+// differ (no off-pool build is admitted until the operator rules on runner width; an x86_64 executor's build
+// refuses rather than being queued to the arm64 pool or placed on an unadvertised runner). The
+// whole rule lives in gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec; the YAML carries no
+// logic -- the build job just reads this output as-is (no defaulting on its side; a missing/absent output fails
+// the build step, matching the arch refusal). plan-revision runs in every dispatch, so this is set whenever the
+// build job schedules.
+data fleet_converge_build_runner_output_name: String = "build_runner"
+
+data fleet_converge_build_runner_expression: String = "${{ fromJSON(needs.plan-revision.outputs.build_runner) }}"
+
 data fleet_converge_plan_revision_output: Expression = ContextAccess {
   context: Needs,
   path: [fleet_converge_plan_revision_job_id as String, "outputs", fleet_converge_plan_revision_output_name],
@@ -6217,9 +6330,11 @@ fn fleet_converge_mtcollins1_boot_store_host_unread() -> String {
 // THE BOOT JOB'S RUNNER AND STEPS ARE THEIR OWN PRODUCERS for the same reason as the credential
 // prelude below: which runner holds the credentials, and which bytes the steps fetch and execute, are
 // facts a witness reads, and reading them here costs those parts rather than the whole job's.
-fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
-  SelfHosted { labels: ["self-hosted", "linux", "arm64", fleet_converge_mtcollins1_boot_store_host()] }
-}
+// (review 97167) The former fleet_converge_mtcollins1_boot_runner RunnerSpec producer is GONE: a RunnerSpec arm
+// cannot refuse, and its Absent case borrowed the refused job's .runner, which left the credential-carrying
+// fleet-key and boot steps on the shared pool -- a second placement path, not a refusal (fail_closed). The boot
+// JOB builder now derives its runner through fleet_converge_self_hosted_runner_for and, on a host with no
+// board-established architecture, emits the WHOLE refused job. The boot_run witness reads the job's runner.
 
 // The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
 // expensive parts, so the composition takes them as parameters: a witness of the composition supplies
@@ -6426,10 +6541,17 @@ fn fleet_converge_mtcollins1_boot_steps() -> List<Step> {
 }
 
 fn fleet_converge_mtcollins1_boot_job() -> Job {
+  match fleet_converge_self_hosted_runner_for(host: fleet_converge_mtcollins1_boot_store_host() as HostIdentity, host_label: fleet_converge_mtcollins1_boot_store_host()) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String, host_label: fleet_converge_mtcollins1_boot_store_host())
+    Present { value: runner } => fleet_converge_mtcollins1_boot_job_with_runner(runner: runner)
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_job_with_runner(runner: RunnerSpec) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
     name: none,
-    runner: fleet_converge_mtcollins1_boot_runner(),
+    runner: runner,
     environment: Present { value: fleet_converge_mtcollins1_boot_environment() },
     steps: fleet_converge_mtcollins1_boot_steps(),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)),
@@ -6886,6 +7008,39 @@ data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
   fleet_converge_plan_revision_job_id as String,
 ]
 
+// THE PLAN-REVISION-OUTPUT-READING JOBS: every job whose runner `runs-on` interpolates a
+// `needs.plan-revision.outputs.*` value -- the host-selector jobs (fleet_converge_host_pinned_runner_spec
+// reads `.arch`; MicrovmControllerInstall via fleet_converge_administrator_edge_runner_spec reads `.arch`
+// too) and the `build` job (reads `.build_runner`). Because GitHub's `needs` context exposes ONLY DIRECT
+// dependencies, each of these MUST list plan-revision directly or its `runs-on` value is empty and the job
+// queues forever on an unlabelled/undefined runner -- a silent hang, exactly what
+// gunbc.design_argument::fail_closed forbids. This roster drives that dependency DERIVED in
+// fleet_converge_job_needs (one rule, not seven hand-edited edge rows).
+//
+// WHY A ROSTER AND NOT A DERIVATION FROM THE JOB MODEL: the honest derivation is "the jobs whose runner is
+// the host selector / deploy slot / build runner", which needs each job's runner -- reachable only via
+// fleet_converge_jobs(). But fleet_converge_job_needs runs DURING job construction (it fills each Job's
+// `needs` field), so calling fleet_converge_jobs() there is a cyclic rebuild of the very job being built --
+// the hazard the module already flags at fleet_converge_job_edges ("costly to lift into List<Job>"). A
+// non-recursive derivation would need a separate id->runner lookup that the job builders ALSO consume for
+// their `runner:` field (so the runner stays one source); that is a module-wide refactor far beyond this
+// change and untestable until regen. So the roster stays, and the correctness guard is NOT this list: it is
+// the identity-join claim in test.claim.fleet.fleet_converge_hostname_converge_emitter_witness, which reads
+// the EMITTED runs-on strings and reddens on any job reading a producer's output it does not directly need
+// -- a new host-selector job that forgets this roster fails THERE, not silently in production. `build` and
+// `shared` already carry plan-revision in their edge; listed for uniformity, distinct_by_key dedups.
+data fleet_converge_plan_revision_runner_consumer_job_ids: List<String> = [
+  fleet_converge_shared_job_id as String,
+  fleet_converge_release_bins_job_id as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(DesiredInstanceDeploy)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(MicrovmControllerInstall)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalNtfyRetire)) as String,
+  fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt) as String,
+  fleet_converge_mode_job_id(mode: NamecheapObserve) as String,
+]
+
 // EVERY JOB THAT TOUCHES A HOST HAS A DECLARED SOURCE FOR ITS BINARIES: it waits for `build`, the
 // producer of the release pack, or it is rostered in fleet_converge_in_job_compiler_pair_jobs and
 // builds the compiler pair itself. `build`, the rostered jobs, the grant wait and the reader key mint --
@@ -6900,7 +7055,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_release_bins_job_id, needs: [fleet_converge_plan_revision_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_branch_run_grant_await_job_id, needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_fleet_keypair_mint_job_id, needs: [] },
-  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_shared_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_branch_run_grant_await_job_id as String, fleet_converge_plan_revision_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: MtCollins1Boot), needs: [fleet_converge_branch_run_grant_await_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostResetReturn), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: HostnameConverge), needs: [fleet_converge_release_bins_job_id as String] },
@@ -6937,7 +7092,19 @@ fn fleet_converge_job_edge_lookup(id: NonEmptyStr) -> FleetConvergeJobEdgeLookup
 
 fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
   match fleet_converge_job_edge_lookup(id: id) {
-    FleetConvergeJobEdgeFound { edge: e } => e.needs
+    FleetConvergeJobEdgeFound { edge: e } =>
+      // A job whose runner reads a plan-revision output gets plan-revision as a DIRECT need, derived here
+      // once (GitHub's needs context only exposes direct dependencies, so an indirect one leaves runs-on
+      // reading an empty value and the job hangs on an unlabelled runner). distinct_by_key collapses the
+      // duplicate where an edge already declared it (build, shared).
+      distinct_by_key(
+        xs: if any(fleet_converge_plan_revision_runner_consumer_job_ids, j => j == (id as String)) {
+          concat(e.needs, [fleet_converge_plan_revision_job_id as String])
+        } else {
+          e.needs
+        },
+        key: n => n,
+      )
     FleetConvergeJobEdgeAbsent { id: missing } =>
       [join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", missing as String, " is not a row of fleet_converge_job_edges, so its dependency edges are unknown and no needs list may be invented for it"], "")]
   }
@@ -7986,6 +8153,14 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
   Job {
     id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
     name: none,
+    // (C) review 97146 (clever-raven-401 msg_653962b9): this is the REFUSED-dispatch placeholder emitted only
+    // when the approval broker has no host (prod role unresolved). It carries NO host work -- its single step
+    // (below) prints the typed refusal and exits 1 -- so it is placed on the shared CI pool by its own labels
+    // purely so that refusal can print. The host the real job would have pinned is genuinely unknown here
+    // (that is the refusal), so there is no executor arch to derive; and because the job always fails, no real
+    // work can land on the wrong arch. This is NOT the build/executor placement rule (gunbc_ci_build_runner_spec)
+    // nor the host-pinned rule (fleet_converge_self_hosted_runner_for); it is a label on a job that never runs
+    // real work. Its runs-on is on the pool, which every dispatch can already schedule.
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
     environment: none,
     steps: [
@@ -8021,10 +8196,17 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
 }
 
 fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
+  match fleet_converge_self_hosted_runner_for(host: host as HostIdentity, host_label: host as String) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String, host_label: host as String)
+    Present { value: runner } => fleet_converge_gcp_iam_converge_job_on_with_runner(runner: runner)
+  }
+}
+
+fn fleet_converge_gcp_iam_converge_job_on_with_runner(runner: RunnerSpec) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+    runner: runner,
     environment: Present { value: gcp_iam_converge_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(),
@@ -8707,10 +8889,17 @@ fn fleet_converge_arrival_converge_backstop_holds() -> Bool {
 }
 
 fn fleet_converge_arrival_converge_job() -> Job {
+  match fleet_converge_self_hosted_runner_for(host: operator_host_srv1, host_label: operator_host_srv1 as String) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String, host_label: operator_host_srv1 as String)
+    Present { value: runner } => fleet_converge_arrival_converge_job_with_runner(runner: runner)
+  }
+}
+
+fn fleet_converge_arrival_converge_job_with_runner(runner: RunnerSpec) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
+    runner: runner,
     environment: Present { value: fleet_converge_arrival_environment_expression() },
     steps: [
       fleet_converge_event_sha_checkout_step(),
@@ -8994,21 +9183,24 @@ fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
 // the mint requests the OIDC assertion from the Actions sidecar at use time, not in a pre-poll step.
 
 fn fleet_converge_printer_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
-    environment: Present { value: printer_environment as String },
-    steps: fleet_converge_printer_job_steps(),
-    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
-    env: none, outputs: none,
-    if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
-    timeout_minutes: Present { value: fleet_converge_printer_job_backstop_timeout_minutes() },
-    continue_on_error: none,
-    concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
-    permissions: Present { value: WorkflowPermissions {
-      contents: Present { value: PermRead }, pull_requests: none, issues: none,
-      actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
-    } },
+  match fleet_converge_self_hosted_runner_for(host: printer_lan_host_identity() as HostIdentity, host_label: printer_lan_host_identity() as String) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, host_label: printer_lan_host_identity() as String)
+    Present { value: runner } => Job {
+      id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
+      runner: runner,
+      environment: Present { value: printer_environment as String },
+      steps: fleet_converge_printer_job_steps(),
+      needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
+      env: none, outputs: none,
+      if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
+      timeout_minutes: Present { value: fleet_converge_printer_job_backstop_timeout_minutes() },
+      continue_on_error: none,
+      concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
+      permissions: Present { value: WorkflowPermissions {
+        contents: Present { value: PermRead }, pull_requests: none, issues: none,
+        actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+      } },
+    }
   }
 }
 
@@ -9096,10 +9288,12 @@ fn fleet_converge_gcp_iam_bootstrap_refused(id: NonEmptyStr, cause: ProdRoleReal
 
 fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
+    ApprovalBrokerHostResolved { host } => match fleet_converge_self_hosted_runner_for(host: host as HostIdentity, host_label: host as String) {
+      Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_gcp_iam_bootstrap_request_job_id as String, host_label: host as String)
+      Present { value: runner } => Job {
       id: fleet_converge_gcp_iam_bootstrap_request_job_id as String,
       name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+      runner: runner,
       environment: Present { value: gcp_iam_converge_environment as String },
       steps: [
         fleet_converge_event_sha_checkout_step(),
@@ -9144,6 +9338,7 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
     }
+      }
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_request_job_id, cause: cause)
   }
 }
@@ -9153,10 +9348,12 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
 // iam_bootstrap_delta_observer_trust) -- so the request it re-admits is the one the operator approved.
 fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
+    ApprovalBrokerHostResolved { host } => match fleet_converge_self_hosted_runner_for(host: host as HostIdentity, host_label: host as String) {
+      Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_gcp_iam_bootstrap_job_id as String, host_label: host as String)
+      Present { value: runner } => Job {
       id: fleet_converge_gcp_iam_bootstrap_job_id as String,
       name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+      runner: runner,
       environment: Present { value: gcp_iam_bootstrap_environment as String },
       steps: [
         fleet_converge_event_sha_checkout_step(),
@@ -9193,6 +9390,7 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
     }
+      }
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_job_id, cause: cause)
   }
 }

@@ -8,7 +8,9 @@ module test.claim.fleet.fleet_converge_hostname_converge_workflow_witness
 
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
-import extdeps.github.actions { DispatchInput, InputString, Job, Step }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch }
+import extdeps.github.actions { DispatchInput, InputString, Job, Step, runner_arch_label }
 import gunbc.fleet.fleet_converge_workflow {
   FleetConvergeYamlGenerated,
   FleetConvergeYamlGenerationRefused,
@@ -23,8 +25,9 @@ import gunbc.host.host_hostname_converge {
   hostname_converge_act_input_name,
   hostname_converge_act_rollback_value,
   hostname_converge_mode,
+  hostname_converge_peer_input_name,
 }
-import test.claim.fleet.fleet_converge_hostname_converge_emitter_witness { hostname_converge_job_id, step_if_text }
+import test.claim.fleet.fleet_converge_hostname_converge_emitter_witness { hostname_converge_job_id, step_if_text, runs_on_text, dispatch_input_options }
 
 // THE ROUTE, NOT ONLY THE ANSWER. The job the workflow emits under this mode's id is the very value its
 // constructor builds; deleting the constructor's entry from the job list, or emitting a second job under the
@@ -114,4 +117,82 @@ test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
       FleetConvergeYamlGenerated { content: c } =>
         string_contains(s: c, pattern: "hostname-converge")
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// CLAIMS OVER THE WHOLE EMITTED FILE (moved in from the job-level witness when it was split by #16816;
+// these read every job / the whole dispatch form, so they are workflow claims, not job claims).
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+
+type QuoteScanState { in_single: Bool, found_illegal: Bool }
+
+fn job_if_text(job: Job) -> String {
+  match job.if_condition { Present { value: v } => v  Absent => "" }
+}
+
+// The expression-bearing String fields over EVERY job: runs-on, job `if`, step `if` -- the fields that carry
+// format()/fromJSON() where a stray double quote can appear. job `outputs` carry only needs-ref interpolations
+// with no string literals, so they add no surface this claim would miss.
+fn workflow_expressions() -> List<String> {
+  let jobs = fleet_converge_jobs()
+  let runsons = map(jobs, j => runs_on_text(job: j))
+  let job_ifs = map(jobs, j => job_if_text(job: j))
+  let step_ifs = flat_map(jobs, j => map(j.steps, s => step_if_text(step: s)))
+  filter(concat(concat(runsons, job_ifs), step_ifs), e => string_contains(s: e, pattern: "${{"))
+}
+
+// A double quote that is NOT inside a single-quoted Actions string literal is illegal in the GitHub Actions
+// expression grammar (the docs: "You must use single quotes. Double quotes will throw an error."). Splitting
+// on the single-quote boundary and folding carries the in-single-quote parity: a segment at even index is
+// OUTSIDE single quotes, so a `"` there is illegal. On the pre-fix head the deploy-slot hands format()
+// double-quoted host/group args and this goes red; single-quoted it goes green -- the discriminating input
+// gunbc.design_argument::fail_closed asks a boundary to owe (review 97094 / clever-raven-401 msg_19a920bf).
+fn has_double_quote_outside_single_quotes(expression: String) -> Bool {
+  fold(
+    split(s: expression, delimiter: "'"),
+    init: QuoteScanState { in_single: false, found_illegal: false },
+    f: (acc, segment) => QuoteScanState { in_single: !acc.in_single, found_illegal: acc.found_illegal || (!acc.in_single && string_contains(s: segment, pattern: "\"")) },
+  ).found_illegal
+}
+
+test fn no_double_quoted_string_literal_in_any_expression() -> Bool {
+  all(workflow_expressions(), e => !has_double_quote_outside_single_quotes(expression: e))
+}
+
+// NO SILENT HANG FROM A MISSING OUTPUT (review 97086). GitHub's `needs` context only shows a job its DIRECT
+// dependencies, so a runs-on that reads needs.<job>.outputs.<x> must list <job> in its own needs or the label
+// renders empty and the job queues forever on an unlabelled runner. Over EVERY emitted job: if its runs-on
+// references another job's published output, that producer is one of its declared needs.
+test fn every_runs_on_needs_output_reference_lists_its_producer_as_a_direct_need() -> Bool {
+  let jobs = fleet_converge_jobs()
+  let producers = filter(jobs, j => match j.outputs {
+    Present { value: os } => any(os, kv => true)
+    Absent => false
+  })
+  all(jobs, job =>
+    all(producers, p =>
+      !(string_contains(s: runs_on_text(job: job), pattern: join(["needs.", p.id, ".outputs"], "")))
+        || any(job.needs, n => n == p.id)
+    )
+  )
+}
+
+// (A) review 97146 / clever-raven-401 msg_653962b9: THE DEFERRAL GUARD, checked rather than prose. The
+// reset-observer runner expression and the peer-run hostname-converge runner still pin the LITERAL "arm64",
+// because their host is chosen at DISPATCH time (github.event.inputs.reset_observer, and the `host` field which
+// names the peer for that mode) while plan-revision publishes only the EXECUTOR's arch; the per-host host->arch
+// map (the reset_subject_map_json precedent) is DEFERRED. The trigger: the first host whose board Architecture is
+// NOT arm64 becomes SELECTABLE for either role -- so the literal is checked against the BOARD MODEL. The day a
+// non-arm64 host enters either option list this goes RED, and publishing the host->arch map from plan-revision is
+// the fix (a new literal would be the same fork review 97146 rejects).
+fn selectable_reset_or_peer_option_derives_arm64(host: String) -> Bool {
+  match fleet_converge_runner_arch(host: host as HostIdentity) {
+    Absent => false
+    Present { value: arch } => runner_arch_label(arch: arch) == "arm64"
+  }
+}
+
+test fn every_reset_observer_and_hostname_converge_peer_option_derives_arm64_from_its_board() -> Bool {
+  all(dispatch_input_options(name: "reset_observer"), h => selectable_reset_or_peer_option_derives_arm64(host: h))
+    && all(dispatch_input_options(name: hostname_converge_peer_input_name as String), h => selectable_reset_or_peer_option_derives_arm64(host: h))
 }

@@ -52,6 +52,14 @@ data gunbc_ci_fleet_converge_plan_revision_target: GunbcRunStepTarget = gunbc_ru
   function: "resolve_plan_revision",
 )
 
+// THE EXECUTOR ARCH PUBLISHER. Reads the dispatch executor host and writes arch=<label> to GITHUB_OUTPUT,
+// consumed by the build and shared jobs' runs-on (gunbc.fleet.fleet_converge_workflow). Same entry module
+// as resolve_plan_revision; the wet fn is gunbc.fleet.fleet_converge_plan_revision resolve_executor_arch.
+data gunbc_ci_fleet_converge_executor_arch_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.fleet.fleet_converge_plan_revision",
+  function: "resolve_executor_arch",
+)
+
 data gunbc_ci_fleet_converge_checkout_verify_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.fleet_converge_plan_revision",
   function: "verify_checkout_at_plan_revision",
@@ -147,6 +155,15 @@ fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_plan_revision_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_executor_arch_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_fleet_converge_executor_arch_target,
     claim_run: false,
     receipt_rel: none
   )

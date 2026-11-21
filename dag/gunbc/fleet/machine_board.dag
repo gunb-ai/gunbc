@@ -1,9 +1,16 @@
 module gunbc.fleet.machine_board
 
 import std.types { List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.list { first_where }
 import std.decl_ref { DeclarationRef, decl_ref }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.boards.types { BaseboardCatalogRow }
+import extdeps.board_soc { BoardSocArchitectureStanding, board_soc_architecture }
+import extdeps.toolchain.types { Architecture }
+import gunbc.host.board_platform_facts { board_soc_edges_for }
+import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
 import gunbc.fleet.fleet_host_identity {
@@ -28,6 +35,7 @@ import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard
 type MachineBoardStanding
   = MachineBoardCatalogued { catalog: BaseboardCatalogRow, source: DeclarationRef }
   | MachineBoardUncatalogued { board: NonEmptyStr, obligation: NonEmptyStr }
+  | MachineBoardAuthorityBound { authority: BoardAuthorityRef, board: NonEmptyStr, obligation: NonEmptyStr }
   | MachineBoardProviderOwned { provider: NonEmptyStr }
 
 type MachineBoardRow {
@@ -59,6 +67,36 @@ fn uncatalogued(host: HostIdentity, board: NonEmptyStr) -> MachineBoardRow {
   }
 }
 
+// A board whose AUTHORITATIVE identity is cited but whose BaseboardCatalogRow (manual, BMC family,
+// onboard ports) is not yet read. It yields the same board authority a catalog row would, so the
+// architecture seam below can resolve the SoC edge, WITHOUT asserting any catalog field the citation
+// does not support. Mt. Collins uses this: its board -> SoC edge is cited (extdeps.ampere.mt_collins_board
+// .mt_collins_board_soc_edge), but its BMC firmware family is only an expectation under the machine-intake
+// ruling 2026-08-29 §1 (gunbc#9690), so it cannot honestly fill a BaseboardCatalogRow yet.
+fn authority_bound(host: HostIdentity, authority: BoardAuthorityRef, board: NonEmptyStr) -> MachineBoardRow {
+  MachineBoardRow {
+    host: host,
+    board: MachineBoardAuthorityBound {
+      authority: authority,
+      board: board,
+      obligation: "a BaseboardCatalogRow for the board and a reading of its manual for how each board function is switched off; the board authority is cited, the catalog is not yet read",
+    },
+  }
+}
+
+// THE AUTHORITY SEAM (one rule, clever-raven-401 ruling). A machine-board row yields its board
+// authority either through its catalog (srv1-4, srv14) or through a direct authority binding
+// (mtcollins1); the architecture then flows from that one authority, never from a re-read of the
+// variant. Uncatalogued and provider-owned boards yield no authority.
+fn machine_board_authority(standing: MachineBoardStanding) -> BoardAuthorityRef? {
+  match standing {
+    MachineBoardCatalogued { catalog, source: _ } => Present { value: catalog.model }
+    MachineBoardAuthorityBound { authority, board: _, obligation: _ } => Present { value: authority }
+    MachineBoardUncatalogued { board: _, obligation: _ } => Absent
+    MachineBoardProviderOwned { provider: _ } => Absent
+  }
+}
+
 fn provider_owned(host: HostIdentity) -> MachineBoardRow {
   MachineBoardRow {
     host: host,
@@ -71,7 +109,7 @@ data machine_board_rows: List<MachineBoardRow> = [
   fleet_intent_board(host: operator_host_srv2, decl_name: "srv2_baseboard", catalog: srv2_baseboard.catalog),
   fleet_intent_board(host: operator_host_srv3, decl_name: "srv3_baseboard", catalog: srv3_baseboard.catalog),
   fleet_intent_board(host: operator_host_srv4, decl_name: "srv4_baseboard", catalog: srv4_baseboard.catalog),
-  uncatalogued(host: operator_host_mtcollins1, board: "Foxconn Ampere Mt. Collins"),
+  authority_bound(host: operator_host_mtcollins1, authority: mt_collins_board_authority, board: "Foxconn Ampere Mt. Collins"),
   uncatalogued(host: operator_host_mtjade1, board: "Foxconn Ampere Mt. Jade"),
   uncatalogued(host: operator_host_srv9, board: "NVIDIA DGX Spark"),
   uncatalogued(host: operator_host_srv10, board: "NVIDIA DGX Spark"),
@@ -98,3 +136,44 @@ data machine_board_rows: List<MachineBoardRow> = [
     catalog: supermicro_h11ssl_catalog,
   ),
 ]
+
+// THE ONE RUNNER ARCHITECTURE LABEL FOR A CONVERGE EXECUTOR HOST. This is the single place a
+// fleet-converge runner label learns its CPU architecture; it is derived, never hard-coded.
+//
+// THE CHAIN, WRITTEN ONCE: the machine's board (machine_board_rows, the host -> board authority above)
+// -> the SoC edge that board's authority names (gunbc.host.board_platform_facts board_soc_edges_for) ->
+// the architecture its admitted SoC families establish (extdeps.board_soc board_soc_architecture, which
+// agrees every family on one architecture) -> the GitHub runner architecture label
+// (extdeps.github.actions runner_arch_label). Aarch64 yields "arm64", exactly the literal every serving
+// runner label carried before this derivation existed, so srv1-srv4 resolve byte-identically; X86_64
+// yields "x64", which is what lets an x86 executor such as ken host a converge job.
+//
+// A machine whose board is uncatalogued, provider-owned, names no SoC edge, or whose families agree on
+// no single architecture yields NO architecture: fleet_converge_runner_arch returns Optional Absent. The
+// caller (the fleet-converge plan) REFUSES on that absence -- it never defaults to arm64, so a host with no
+// modeled architecture cannot silently borrow an arm64 runner. This is the same "typed unestablished, never
+// a silent default" discipline as board_soc_architecture itself, and absence rides std.optional::Optional
+// alone -- never a second presence/absence type invented beside it (gunbc.design_argument::single_authority).
+
+// THE ARCHITECTURE SOURCE OF TRUTH for a runner. Reads the host's board authority -> SoC edge ->
+// Architecture ENUM (never a rendered string). Every runner label -- the GH arch label AND the self-hosted
+// label set the build job uses -- is DERIVED from this one enum by extdeps.github.actions runner_arch_label
+// at the call site (resolve_executor_arch and the machine_board witness make the SAME call), so no second
+// place decides architecture and no test-only path decides the label apart from production
+// (clever-raven-401 ruling; gunbc.design_argument::witness_one_interface). A host whose board establishes no
+// architecture yields Optional Absent, which the caller must refuse loudly rather than default to arm64.
+fn fleet_converge_runner_arch(host: HostIdentity) -> Architecture? {
+  match first_where(xs: machine_board_rows, keep: r => host_identity_eq(a: r.host, b: host)) {
+    Absent => Absent
+    Present { value: r } => match machine_board_authority(standing: r.board) {
+      Absent => Absent
+      Present { value: authority } => match board_soc_edges_for(authority: authority) {
+        Absent => Absent
+        Present { value: edge } => match board_soc_architecture(edge: edge) {
+          Unestablished => Absent
+          Established { architecture } => Present { value: architecture }
+        }
+      }
+    }
+  }
+}
