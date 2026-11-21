@@ -71,9 +71,12 @@ fn url_file_entry_from(path: String, first_cause: NonEmptyStr?) -> UrlFileEntry 
 // last segment INCLUDING empty ("a/b/" -> ""). The difference is LOAD-BEARING here: url_file_entry_from
 // derives BOTH the parent (path_parent_directory, which already drops the empty final segment) and the
 // leaf from the same subject path, and they must agree. For a trailing-slash subject like "/tmp/occupied/"
-// the parent is "/tmp/occupied", so the leaf must be "" (probing an entry that cannot exist -> the honest
-// Indeterminate -> the nonregular-subject refusal), NOT "occupied" (which would query "/tmp/occupied/
-// occupied" and report Absent, and acquire_artifact would treat Absent as licence to create the parent and
+// the parent is "/tmp/occupied", so the leaf must be "" -- an empty name that matches no entry in the
+// parent's listing and is not a regular file under the parent (IsFile false), so the probe reports the
+// destination as present-but-not-a-regular-file and observe_url_file yields AcquisitionProbeFailed, which
+// is the nonregular-subject refusal (the executed srv3 control checks exactly this). The WRONG leaf would
+// be "occupied" (which would query "/tmp/occupied/occupied" and report Absent, and acquire_artifact would
+// treat Absent as licence to create the parent and
 // acquire -- breaking this module's own contract that an existing nonregular destination refuses BEFORE
 // any attempt). root_generalization does NOT require merging operations that merely shared a name; the
 // former `path_basename` copy here was a meaning fork (single_authority), now resolved by the distinct
