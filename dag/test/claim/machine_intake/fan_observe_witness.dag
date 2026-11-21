@@ -17,6 +17,7 @@ import gunbc.machine_intake.bmc_fan_observation {
   FanObservationRound, ThermalRead, FanSensorsRead, SdrVerboseNotRequired,
 }
 import std.optional { Present, Absent }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fan_observe_ipmi_series_step_name,
