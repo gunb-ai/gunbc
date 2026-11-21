@@ -1,0 +1,32 @@
+module gunbc.integration_concern.execution_receipt_outcome_binding
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent, Present }
+import std.types { CommitSha }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesHistorical, ConcernSighting, ExistingHome, HistoricalDeclaration, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern {
+  identity: "execution_receipt_outcome_binding",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt"),
+    requirement: "Bind admitted domain outcome and terminal evidence to canonical source and work identity in the existing attempt-and-lease receipt contract.",
+    standing: RequirementEstablished { by: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt"), tail: [decl_ref(module_path: "product.fabric.work", decl_name: "SourceManifestRef"), decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOutcome")] },
+  question: "Bind admitted domain outcome and terminal evidence to canonical source and work identity in the existing attempt-and-lease receipt contract.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
+      evidence: FreeSemigroup { head: CitesHistorical { declaration: HistoricalDeclaration { at: "6765aefcf11e8a384d425f6fd7f6ad6b30aed3f3" as CommitSha, module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan" } }, tail: [] },
+      account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "product.fabric.execution", decl_name: "admit_receipt_for_grant"), control: Present { value: decl_ref(module_path: "test.claim.fabric.fabric_terminal_contract_witness", decl_name: "acceptance_compares_lease_identity_not_only_generation") }, statement: "Preserve complete lease identity and attempt admission; generation equality alone is insufficient." }, PreservedObligation { holder: decl_ref(module_path: "product.fabric.work", decl_name: "SourceManifestRef"), control: Absent, statement: "Source identity is provider-neutral; clean Git and dirty worktrees are adapters with provenance distinct." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOutcome"), control: Absent, statement: "Preserve the existing five endings; OOM and watchdog evidence inhabit infrastructure refusal rather than domain failure or a sixth ending." }],
+    next: climbs_when(capability: "PR 2/3/5 bind the existing ReceiptPayload.ExecutionReceipt to source/work and typed terminal evidence; mismatched or stale receipts cannot complete requests and the existing lease-identity control remains green."),
+  },
+}

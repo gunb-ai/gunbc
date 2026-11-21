@@ -1,0 +1,72 @@
+module gunbc.integration_concern.converge_retires_before_replacement_has_run
+
+// CONVERGE RETIRES A WORKING SLOT BEFORE ITS REPLACEMENT HAS RUN A JOB. Surfaced by
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09), which moved srv3-06/07 and
+// srv4-06/07 from fabric execution to GitHub Actions: the live hosts then carry CI slots 01-05 and
+// 08-20 (19 and 20 started by hand to deliver the promised 18) while the model commits 01-18. One pass
+// of the converge entry therefore asks for 06 and 07 to be provisioned AND for 19 and 20 to be retired,
+// in the same plan -- so the two runners that are serving today stop before the two that are meant to
+// replace them have registered, let alone completed a job. Nothing in the ordering is wrong in the
+// model; what is missing is the ORDER ITSELF: converge has no phase that reads back a completed job on
+// a newly provisioned slot before it lets the retirement side of the same transition fire.
+//
+// This row is where that invariant is owned, not a caller's discipline. The operator is not running
+// converge on srv3/srv4 while it stands.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data converge_retires_before_replacement_has_run: IntegrationConcern = IntegrationConcern {
+  identity: "converge_retires_before_replacement_has_run",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    requirement: "a converge pass must not retire a slot that is serving while the slot meant to replace it has neither registered nor completed a job: provision, read back one completed job on the replacement, then retire",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "classify_runner_slot_population_with_fabric"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_provision", decl_name: "desired_runner_slot_members"),
+      decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host"),
+    ],
+  },
+  question: "Where does the ordering live -- a phase in the converge pass that holds retirements until every provisioned replacement has registered and completed one job, a standing the plan carries and the caller must satisfy, or separate passes with a readback between them? And what exactly is the readback: registration alone, a completed job on the new slot, or a completed job plus the old slot's queue draining?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ca9a3a44194e713da051e7b764b501e93436cd2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv3_srv4_fabric_slots_serve_ci") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_provision", decl_name: "desired_runner_slot_members") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host") },
+        ],
+      },
+      account: "Read on 2026-11-09 while implementing that ruling: srv3 and srv4 carry install trees for slots 01-05 and 08-20 (19 and 20 started by hand once 06/07 were released from fabric duty, which left the hosts with 18 serving runners), while the committed population after the ruling is 01-18. The provisioning side keys on desired_runner_slot_members and would build 06/07 from nothing -- the same path that brought up 01-05, so it is supported -- and the retirement side, driven by required_retirees_for_host over the same width, names 19 and 20 as observed-but-unexpected in the same pass. Both halves are correct against the model; running them together is what loses two runners before the replacements exist. No host was touched while this was read.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
+        control: Absent,
+        statement: "a converge pass over a width transition emits retirements only for slots whose replacement has registered and completed at least one job; it goes red if a plan can retire a serving slot in the same pass that provisions its replacement, which is exactly what it can do today",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.runner.runner_width_transition", decl_name: "required_retirees_for_host"),
+        control: Absent,
+        statement: "the retirement side stays derivable from the width alone -- the two-phase ordering gates WHEN a derived retirement may be executed, it does not make the retiree list a caller's opinion",
+      },
+    ],
+    next: climbs_when(capability: "converge becomes a two-phase transition -- provision, readback of one completed job on each replacement, then retire -- so the ordering is enforced in the pass rather than left to the caller's discipline"),
+  },
+}
