@@ -489,7 +489,10 @@ fn shadow_gate_plumbing_proof_run() -> String {
         join([
           "set -euo pipefail",
           "echo '--- remote gate step ---'",
-          concat("ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ", concat(shadow_gate_remote_user, concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true")))),
+          // the fetched CI key is NOT loaded into an agent -- the WIF route replaced the ssh-setup
+          // step -- so the probe names the key file explicitly (review 97131). The host comes from
+          // the Present side of the typed roster, never from a literal (PR #16801).
+          concat(concat(concat(concat("ssh -i \"", shadow_gate_ci_ssh_key_file), "\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "), shadow_gate_remote_user), concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true")))),
         ], " && "),
         "\n"
       ),
