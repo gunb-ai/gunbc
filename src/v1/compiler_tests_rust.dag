@@ -6748,6 +6748,62 @@ fn ct_test_reference_import_all_test() -> String {
   )
 }
 
+// THE GRAMMAR HALF OF THE PER-LEG CEILING (fleet leg deadline, PR #16737, review 96999).
+// A shell transport may DECLARE a per-leg wall-clock ceiling as a field of its own block,
+// `wall_deadline: <expr>`, exactly as `stdin:` is a declared field; the ceiling is then a
+// property of the transport declaration and not a parameter spelling the dispatcher guesses.
+// This control is a SOURCE-TEXT control, so it lives at the front end and never depends on a
+// corpus .dag using the field: the accept arm, the keep-it-optional control, and the refusal
+// that must name all three declared fields. The third arm is the one that keeps an unknown
+// ceiling-shaped field from being silently absorbed -- an unmodeled field is refused, never
+// defaulted, and the refusal now has to say `wall_deadline` or this assertion goes red.
+fn ct_transport_shell_declared_wall_deadline_field_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn transport_shell_declared_wall_deadline_field() {\n",
+    "        let head = concat!(\n",
+    "            \"module probe\\n\",\n",
+    "            \"service Probe {\\n\",\n",
+    "            \"  operation Run {\\n\",\n",
+    "            \"    input { ceiling: Int }\\n\",\n",
+    "            \"    output {\\n\",\n",
+    "            \"      out: String from \\\"stdout\\\"\\n\",\n",
+    "            \"    }\\n\",\n",
+    "        );\n",
+    "        let tail = concat!(\"  }\\n\", \"}\\n\");\n",
+    "        let error_of = |body: &str| -> Option<String> {\n",
+    "            let src = format!(\"{}{}\\n{}\", head, body, tail);\n",
+    "            let tokens = crate::v1_compiler_tokenize::tokenize(\n",
+    "                src,\n",
+    "                \"ceiling_fixture.dag\".to_string(),\n",
+    "                crate::extdeps_languages_dag_syntax::dag_parse_environment(),\n",
+    "            );\n",
+    "            let parsed = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));\n",
+    "            parsed.error.as_ref().map(|e| format!(\"{:?}\", e))\n",
+    "        };\n",
+    "        let mut failures: Vec<String> = Vec::new();\n",
+    "        if let Some(e) = error_of(\"    transport shell { argv: [\\\"true\\\"] }\") {\n",
+    "            failures.push(format!(\"a shell transport with NO declared ceiling must still parse, got: {}\", e));\n",
+    "        }\n",
+    "        if let Some(e) = error_of(\"    transport shell { argv: [\\\"true\\\"], wall_deadline: 15 }\") {\n",
+    "            failures.push(format!(\"the grammar must accept the declared wall_deadline field, got: {}\", e));\n",
+    "        }\n",
+    "        match error_of(\"    transport shell { argv: [\\\"true\\\"], wall_clock_limit: 15 }\") {\n",
+    "            None => failures.push(\"an undeclared ceiling-shaped field must still refuse\".to_string()),\n",
+    "            Some(msg) => {\n",
+    "                if !msg.contains(\"has no field `wall_clock_limit`\") {\n",
+    "                    failures.push(format!(\"the refusal must name the offending field, got: {}\", msg));\n",
+    "                }\n",
+    "                if !msg.contains(\"`argv`, `stdin` and `wall_deadline`\") {\n",
+    "                    failures.push(format!(\"the refusal must list the declared ceiling among the declared fields, got: {}\", msg));\n",
+    "                }\n",
+    "            }\n",
+    "        }\n",
+    "        assert!(failures.is_empty(), \"{:?}\", failures);\n",
+    "    }\n",
+  )
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -6763,6 +6819,7 @@ fn compiler_tests_source() -> String {
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
+    ct_transport_shell_declared_wall_deadline_field_test(),
     ct_generic_optional_over_a_type_application_keeps_the_optional_test(),
     ct_optional_nested_list_stamps_the_collection_test(),
     ct_user_declared_optional_is_not_stamped_test(),

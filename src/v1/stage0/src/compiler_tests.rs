@@ -897,6 +897,60 @@ mod compiler_tests {
     }
 
     #[test]
+    fn transport_shell_declared_wall_deadline_field() {
+        let head = concat!(
+            "module probe\n",
+            "service Probe {\n",
+            "  operation Run {\n",
+            "    input { ceiling: Int }\n",
+            "    output {\n",
+            "      out: String from \"stdout\"\n",
+            "    }\n",
+        );
+        let tail = concat!("  }\n", "}\n");
+        let error_of = |body: &str| -> Option<String> {
+            let src = format!("{}{}\n{}", head, body, tail);
+            let tokens = crate::v1_compiler_tokenize::tokenize(
+                src,
+                "ceiling_fixture.dag".to_string(),
+                crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+            );
+            let parsed =
+                crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+            parsed.error.as_ref().map(|e| format!("{:?}", e))
+        };
+        let mut failures: Vec<String> = Vec::new();
+        if let Some(e) = error_of("    transport shell { argv: [\"true\"] }") {
+            failures.push(format!(
+                "a shell transport with NO declared ceiling must still parse, got: {}",
+                e
+            ));
+        }
+        if let Some(e) = error_of("    transport shell { argv: [\"true\"], wall_deadline: 15 }") {
+            failures.push(format!(
+                "the grammar must accept the declared wall_deadline field, got: {}",
+                e
+            ));
+        }
+        match error_of("    transport shell { argv: [\"true\"], wall_clock_limit: 15 }") {
+            None => {
+                failures.push("an undeclared ceiling-shaped field must still refuse".to_string())
+            }
+            Some(msg) => {
+                if !msg.contains("has no field `wall_clock_limit`") {
+                    failures.push(format!(
+                        "the refusal must name the offending field, got: {}",
+                        msg
+                    ));
+                }
+                if !msg.contains("`argv`, `stdin` and `wall_deadline`") {
+                    failures.push(format!("the refusal must list the declared ceiling among the declared fields, got: {}", msg));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{:?}", failures);
+    }
+    #[test]
     fn generic_optional_over_a_type_application_keeps_the_optional() {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
