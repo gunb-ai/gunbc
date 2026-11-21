@@ -126,7 +126,7 @@ test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "workloadIdentityPools/github-hosted-shadow-gate/providers/github-hosted-shadow-gate-oidc")
     && contains(haystack: rendered, needle: "hosted-ci-secrets@gunbai-secrets.iam.gserviceaccount.com")
-    && contains(haystack: rendered, needle: "secrets/remote-build-ci-ssh-key/versions/1:access")
+    && contains(haystack: rendered, needle: "secrets/remote-build-ci-ssh-key/versions/2:access")
     && contains(haystack: rendered, needle: "secrets/tailscale-oauth-client-secret/versions/1:access")
     && contains(haystack: rendered, needle: "oauth-client-id: kNQLY8UpZK11CNTRL")
     && contains(haystack: rendered, needle: "oauth-secret: ${{ env.TS_OAUTH_SECRET }}")
@@ -141,6 +141,12 @@ test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -
     && contains(haystack: rendered, needle: "ssh -i \"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
     && contains(haystack: rendered, needle: "echo \"::add-mask::$VAL\"")
     && occurs_before(haystack: rendered, before: "secrets/tailscale-oauth-client-secret/versions/1:access", after: "\n          rm -f \"$HDR_FILE\"")
+    // the join passes NO up args: --accept-dns=false broke MagicDNS resolution of the serving
+    // hosts (run 44954152909), and `up` has no ephemeral flag -- the invented one aborted the join
+    // on run 44948446694 (ephemerality lives in the minted key)
+    && contains(haystack: rendered, needle: "args: ''\n")
+    && !(contains(haystack: rendered, needle: "--accept-dns"))
+    && !(contains(haystack: rendered, needle: "--ephemeral"))
     && !(contains(haystack: rendered, needle: "${{ secrets."))
 }
 

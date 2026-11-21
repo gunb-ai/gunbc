@@ -1,7 +1,7 @@
 module gunbc.witness.hosted_runner_shadow_gate_workflow
 
 
-import std.types { String, Int, List, bool_text }
+import std.types { String, Int, List }
 import std.optional { Present, Absent }
 import std.algebra { list_map, list_head, list_append }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -218,14 +218,20 @@ fn shadow_gate_config_check_script() -> String {
 // The hosted runner joins as tag:ci-dispatch (operator ruling @ref
 // gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign:
 // "OK for ci-dispatch, as long as its all modeled/recorded for tailscale convergence").
-// EPHEMERAL (--ephemeral), so it self-expires from the tailnet when the runner exits; no operator
-// or Terraform cleanup. The tailscale/github-action's post step logs the node out.
+// EPHEMERAL, so it self-expires from the tailnet when the runner exits; no operator or Terraform
+// cleanup. Ephemerality is a property of the OAuth-MINTED AUTH KEY (the action mints it that way per
+// gunbc.tailscale_ci_oauth_client ci_oauth_client_ephemeral), NOT a `tailscale up` flag -- there is
+// none, and passing one aborts the join ('flag provided but not defined: -ephemeral', run
+// 44948446694). The action's post step logs the node out.
 
 data shadow_gate_tailscale_tags: String = join(ci_oauth_client_tags, ",")
-// `tailscale up` args for the runner node. --ephemeral is DERIVED from the credential's ephemeral
-// row (a non-ephemeral OAuth-minted node would linger on a GitHub-hosted runner forever; the
-// standing is one fact with one home: ci_oauth_client_ephemeral).
-data shadow_gate_tailscale_args: String = concat("--accept-dns=false --ephemeral=", bool_text(b: ci_oauth_client_ephemeral))
+// `tailscale up` args for the runner node: EMPTY. --accept-dns=false was wrong: the probe step
+// needs MagicDNS to resolve the serving hosts' srv*.tailecbe08.ts.net names (run 44954152909 typed
+// 'Could not resolve hostname srv3.tailecbe08.ts.net'), and MagicDNS forwards everything else
+// upstream, so nothing off-tailnet breaks -- `tailscale up` accepts DNS by default anyway.
+// Ephemerality is decided where the key is minted (ci_oauth_client_ephemeral), never in up args
+// (`up` has no such flag; run 44948446694 typed-failed on the invented one).
+data shadow_gate_tailscale_args: String = ""
 
 // ── THE CONFIG-CHECK STEP ─────────────────────────────────────────────────────────────────────────
 //

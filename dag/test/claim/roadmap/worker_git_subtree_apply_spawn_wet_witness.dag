@@ -46,8 +46,8 @@ import gunbc.live_deploy.member_observe {
   AbsentIsTheStanding, AbsentContradictsListing, posture_missing_sentinel,
 }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessObservation }
-import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe }
+import extdeps.shell.exec { ProcessNotSpawned, ProcessRan, ProcessObservation, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_observe, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command,
   git_worktree_add_detached_command, git_branch_command, git_rev_parse_head_command, git_checkout_revision_command,
@@ -101,25 +101,29 @@ import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, E
   // alone reports three.
   belt_worker_git_entry_grant_readback }
 
-// THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_capture over LocalExec. An ArgvCommand goes in as an
-// ArgvCommand, which is what makes a refusal here a real refusal and not a string comparison.
-fn wet(command: ArgvCommand) -> ProcessOutcome {
-  run_shell_command_capture(command: command, transport: LocalExec)
-}
-
+// THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_observe_outcome over LocalExec. An ArgvCommand
+// goes in as an ArgvCommand, which is what makes a refusal here a real refusal and not a string
+// comparison; a process the git route wall will not spawn is ProcessNotSpawned, never a fabricated exit.
 fn wet_ok(command: ArgvCommand) -> Bool {
-  match wet(command: command) {
-    ProcessRefused { exit_code: _, stderr: _ } => false
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
+  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+    ProcessRan { observation: observation } => observation.exit_code == 0
+    ProcessNotSpawned { program: _, cause: _ } => false
   }
 }
 
 fn wet_out(command: ArgvCommand) -> String {
-  match wet(command: command) {
-    ProcessOutputPresent { text: text } => trim(s: text)
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+    // THE EXIT-ZERO PREREQUISITE IS NOT OPTIONAL. stdout is trusted ONLY on an admitted (exit-zero)
+    // run, reclassified through the same classify_process_observation(ExitZeroSucceeds) the production
+    // decoders use: a command that ran and exited NONZERO yields "", so a downstream readback fails
+    // rather than accepting output from a command that did not fully succeed.
+    ProcessRan { observation: observation } =>
+      match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+        ProcessOutputPresent { text: text } => trim(s: text)
+        ProcessOutputAbsent => ""
+        ProcessRefused { exit_code: _, stderr: _ } => ""
+      }
+    ProcessNotSpawned { program: _, cause: _ } => ""
   }
 }
 

@@ -780,6 +780,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_empty_seat_contributes_no_reference_to_a_plan" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_empty_seat_contributes_no_reference_to_a_plan",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attempt_inside_its_declared_window_is_censused_as_a_hold" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attempt_inside_its_declared_window_is_censused_as_a_hold",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "a_terminal_record_alone_does_not_census_as_a_write" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "a_terminal_record_alone_does_not_census_as_a_write",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "an_attempt_past_its_declared_window_is_censused_as_a_write" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "an_attempt_past_its_declared_window_is_censused_as_a_write",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "one_reference_in_two_seat_directories_makes_the_observation_unknown" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "one_reference_in_two_seat_directories_makes_the_observation_unknown",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_census_answers_the_same_way_twice_and_settles_nothing" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_census_answers_the_same_way_twice_and_settles_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_cli_door_exits_two_when_no_instance_resolves" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_cli_door_exits_two_when_no_instance_resolves",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.manager_unaskable_wet_witness", function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting" },
       entry: "dag/test/claim/compute/manager_unaskable_wet_witness.dag",
       function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting",

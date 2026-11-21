@@ -533,6 +533,14 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // is a proved deviation, not a presence-check pass (review 95935). The stat legs stand on their own.
   let store_root_mode = serving_leg_stat(item: "store.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_root))
   let store_staging_mode = serving_leg_stat(item: "store.staging.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.store_staging))
+  // THE ACCOUNT'S SCRATCH ROOT: <instance root>/compute, the directory the serve route's own provider
+  // mkdir -p's per compile (gunbc.compute.work_provider_local::compute_resolve_subject, running AS the
+  // serving account). Its presence and mode are read as their own legs, exactly as the store dirs are:
+  // absence is a proved PresentAbsent the apply can write toward, a wrong mode is a proved drift, and a
+  // refused read mints no write. The serve-binary install's parents are root-owned by design, so this is
+  // the one directory in the account's tree the converge must own INTO existence.
+  let scratch_root = serving_leg_test(elevation: elevation, item: "scratch.root", target: target, context: context, probe: test_directory_command(path: d.scratch_root_dir))
+  let scratch_root_mode = serving_leg_stat(item: "scratch.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.scratch_root_dir))
   let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, probe: test_executable_command(path: d.serve_binary))
   let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, probe: test_directory_command(path: d.checkout_dir))
   // THE TOOLCHAIN PAIR, gated on the ACCOUNT (side-chat review follow-up): a confirmed-absent
@@ -620,6 +628,8 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     store_staging: store_staging,
     store_root_mode: store_root_mode,
     store_staging_mode: store_staging_mode,
+    scratch_root: scratch_root,
+    scratch_root_mode: scratch_root_mode,
     serve_binary: serve_binary,
     checkout: checkout,
     toolchain: toolchain,
@@ -879,6 +889,24 @@ fn converge_store_directories(acc: ConvergeDraft, path: String, d: RemoteBuildSe
   ConvergeDraft { writes: concat([EnsureDirectory { path: path, owner_user: d.account_name, owner_group: d.account_group_name, mode: d.store_dir_mode }], acc.writes), unhandled: acc.unhandled }
 }
 
+// The scratch root is created at the SAME rank and through the SAME path-generic EnsureDirectory write the
+// store directories use (ConvergeAction EnsureDirectory, converge_order rank 3) -- deliberately not
+// EnsureLedgerDirectory, whose rank-3 write is judged as ledger ROWS: no ledger row lives under the scratch
+// root. Owner is the serving account and its own primary group (the same pair converge_store_directories
+// uses), and the mode is the desired state's declared scratch mode (0700), never a literal here: the narrow
+// mode is justified in gunbc.compute.remote_build_serving_setup::serving_scratch_root_declared_mode.
+fn converge_scratch_root_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft {
+    writes: concat([EnsureDirectory {
+      path: d.scratch_root_dir,
+      owner_user: d.account_name,
+      owner_group: d.account_group_name,
+      mode: d.scratch_root_mode,
+    }], acc.writes),
+    unhandled: acc.unhandled,
+  }
+}
+
 // The authorized_keys write carries the single forced-command line. It is only ever a
 // divergence when the line is renderable (serving_ak_deviations yields none otherwise),
 // but the field is Optional, so an absent line is treated as unhandled, never a blank write.
@@ -1132,6 +1160,7 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       "group.members" => converge_group_membership(acc, d)
       "store.root" => converge_store_directories(acc, d.store_root, d)
       "store.staging" => converge_store_directories(acc, d.store_staging, d)
+      "scratch.root" => converge_scratch_root_directory(acc, d)
       "authorized_keys" => converge_authorized_keys(acc, d)
       "checkout" => converge_checkout(acc, d, pin)
       // The absence of the PINNED channel is remediated by `rustup toolchain install` as the account,
@@ -1203,6 +1232,9 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // the arm, not by a stored item string (review 95935).
     StoreRootModeMismatch { path: _, declared: _, observed: _ } => converge_store_directories(acc, d.store_root, d)
     StoreStagingModeMismatch { path: _, declared: _, observed: _ } => converge_store_directories(acc, d.store_staging, d)
+    // The scratch root at the wrong mode re-establishes at the declared owner and mode through the same
+    // builder the presence arm uses -- remediable, so not unhandled, and the routing is by the arm.
+    ScratchRootModeMismatch { path: _, declared: _, observed: _ } => converge_scratch_root_directory(acc, d)
     // A3 (side-chat review of 2026-11-16): a file present at the WRONG MODE re-runs the install that
     // carries the declared mode (the write arms chmod as they install) — remediable, so not unhandled.
     AuthorizedKeysModeMismatch { path: _, declared: _, observed: _ } => converge_authorized_keys(acc, d)
@@ -1657,7 +1689,17 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
   let _clone = converge_as_user(target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
   let fetch = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
   let detach = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
-  converge_checkout_step(fetch: fetch, detach: detach)
+  match converge_checkout_step(fetch: fetch, detach: detach) {
+    // The detach's zero exit is not the proof — a detached HEAD can land somewhere other than the pin.
+    // Read HEAD back AS the serving account and require it to equal the pin, the same read-back-equality
+    // the binary install applies to its sha256; a HEAD that did not reach the pin is a StepFailed write.
+    StepDone => converge_readback_step(
+      what: "checkout HEAD",
+      read: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: dir, owner: usr),
+      want: rev,
+    )
+    StepFailed { cause: c } => StepFailed { cause: c }
+  }
 }
 
 // The execute path, and the only consumer of a plan's writes. Its parameter is the PLAN arm's

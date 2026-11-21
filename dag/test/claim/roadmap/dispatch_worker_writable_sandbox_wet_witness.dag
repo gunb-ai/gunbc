@@ -31,7 +31,7 @@ import std.algebra { length, list_at_optional, trim }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.measure { kibibyte }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.filesystem { path_parent_directory }
+import std.filesystem { path_parent_directory, path_basename }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 // THE LANE'S OWN ROWS: what this witness has scheduled, what it has declared unscheduled and with
 // which capability, and the capability names the refusals below carry. Imported rather than
@@ -5618,7 +5618,7 @@ fn wet_run_nonce() -> String {
   if !tmp.success {
     ""
   } else {
-    fold(split(s: tmp.path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+    path_basename(path: tmp.path as String)
   }
 }
 

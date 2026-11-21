@@ -72,16 +72,21 @@ fn probe_failed(o: AcquisitionObservation) -> Bool {
 // RED: a directory at the install path is present, not absent. `test -f` is false for it, so the
 // observation read through that answer called it absent and authorized a download moved into it.
 // It must refuse before any attempt. And a path whose parent does not exist yet is absent, which is
-// the first-run case the parent listing alone could not establish.
+// the first-run case the parent listing alone could not establish. THE TRAILING-SLASH FORM MUST REFUSE
+// TOO: an existing directory must refuse as both `occupied` and `occupied/` -- the parent and the leaf
+// are derived from the same subject and must agree, so a trailing slash cannot smuggle the probe past
+// the nonregular refusal into an Absent that acquire_artifact would treat as licence to create and fetch.
 test fn a_non_regular_entry_refuses_and_a_missing_parent_is_absent_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let occupied = concat(dir.path as String, "/occupied") as NonEmptyStr
   let made = shell.Mkdir.Parents(path: occupied as FilePath)
   let refused = probe_failed(o: observe_url_file(path: occupied, expected_hash: install_media_fetch_fixture_sha256))
+  let occupied_slashed = concat(dir.path as String, "/occupied/") as NonEmptyStr
+  let refused_slash = probe_failed(o: observe_url_file(path: occupied_slashed, expected_hash: install_media_fetch_fixture_sha256))
   let nested = concat(dir.path as String, "/not-yet/fixture") as NonEmptyStr
   let absent_ok = observe_url_file(path: nested, expected_hash: install_media_fetch_fixture_sha256) == AcquisitionAbsent
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && made.success && refused && absent_ok
+  dir.success && made.success && refused && refused_slash && absent_ok
 }
 
 // THE BYTE-FOR-BYTE PROOF for the install-media cutover (sealed stores, cohort C-host): the store's
