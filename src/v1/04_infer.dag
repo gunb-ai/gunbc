@@ -1790,6 +1790,27 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       },
       scope: scope)
   }
+  else if coproduct_declared_head_rejects_foreign_coproduct(
+      position: position,
+      declared_coproduct: nominal_coproduct_head_name(n: declared, scope: scope),
+      produced_coproduct: nominal_coproduct_head_name(n: produced, scope: scope),
+      scope: scope) {
+    // THE DECLARED-RETURN CONSUMER of the coproduct-declared-head judgment, the sibling of the
+    // kernel-scalar arm directly above and authored the same way -- it DELEGATES to the one relation
+    // rather than emitting a bare type_mismatch_error like the two coproduct arms below it, so the
+    // refusal lands as DeclaredTypeNotInhabited with the relation's own located reason
+    // (RefusedDistinctCoproductHead) at the fn body, exactly as it does at the direct-call argument
+    // and the record field. The three positions are then judged by one rule and carry one class. A
+    // fn declared `-> C` handed an `Outcome<C>` (a carrier, a foreign coproduct -- the same
+    // declaration or a declared alias stays accepted) is refused here instead of reaching the runtime
+    // as a non-exhaustive match or a silently-wrong `_` arm. Gated to the admitted lanes inside the
+    // judgment, so the lanes this chain also serves that were never granted the judgment are inert.
+    declared_type_obligation_diags(
+      obligation: DeclaredTypeObligation {
+        position: position, subject: subject, declared: declared, produced: produced, span: span
+      },
+      scope: scope)
+  }
   else if nominal_coproduct_applied_argument_conflict(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
@@ -5164,6 +5185,7 @@ type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
   | RefusedProductCoproductHeadMismatch
+  | RefusedDistinctCoproductHead
   | RefusedCollectionAtEstablishedIdentity
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
@@ -5531,6 +5553,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
       scope: scope)
   } else { none }
   let either_optional = declared.return_cardinality == CardOptional || produced.return_cardinality == CardOptional
+  let declared_coproduct_head = nominal_coproduct_head_name(n: declared, scope: scope)
+  let produced_coproduct_head = nominal_coproduct_head_name(n: produced, scope: scope)
   let declared_is_generic = (declared.params |> count) > 0 || match declared.inferred {
     Present { value: TypeVariable { id: _ } } => true
     _ => false
@@ -5589,6 +5613,15 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
   } else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductAtScalar }
+  } else if coproduct_declared_head_rejects_foreign_coproduct(
+      position: obligation.position, declared_coproduct: declared_coproduct_head,
+      produced_coproduct: produced_coproduct_head, scope: scope) {
+    // A coproduct-declared head handed a value whose head resolves to a DIFFERENT coproduct
+    // declaration (a carrier such as Outcome<C>, or a foreign named coproduct). Refused with its own
+    // located reason, not the kind-clash reason, so the diagnostic names what happened: the head is
+    // the same KIND (coproduct), only a different DECLARATION. Same declaration and declared aliases
+    // agree and fall through to Inhabits above; a generic formal abstained before this arm.
+    InhabitanceRefused { reason: RefusedDistinctCoproductHead }
   } else if product_versus_coproduct_head_mismatch(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedProductCoproductHeadMismatch }
   } else {
@@ -6227,6 +6260,59 @@ fn product_versus_coproduct_head_mismatch(declared: Node, produced: Node, scope:
   }
 }
 
+// A COPRODUCT DECLARED HEAD IS INHABITED ONLY BY ITS OWN DECLARATION, NOT BY ANOTHER COPRODUCT.
+// THE GAP, AND WHY IT WAS A GAP. The relation already refused a structured head at a kernel
+// scalar (#16699) and a head-kind CLASH at a structured head (product-vs-coproduct above). It did
+// not refuse a coproduct against a coproduct: `nominal_product_head_name` answers "" for both and
+// the two disjuncts above both require a product on one side, so the pair fell through to
+// `coproduct_payload_where_parent_required` -- whose foreign-coproduct lookup keys on the produced
+// SPELLING via `lookup_type_by_name(actual_name)`. A CARRIER APPLIED HEAD such as `Outcome<C>` is
+// not a declared name, so that lookup returns Absent and the pair was ACCEPTED with zero
+// diagnostics, then failed at runtime as a non-exhaustive match -- or silently returned the wrong
+// arm when the callee closed with `_` (the `step_if_text(step: Step)` that returned "", found by
+// zesty-ram-689 in #16721). Keying the judgment on the produced value's spelling is the recurring
+// failure this file has been burned on (@ref(gunbc.recurring_failure_mode
+// ::declared_type_wall_keyed_on_the_value_being_a_kernel)): the fix is NOT a second relation beside
+// the product one but the SAME declaration-identity rule the product and scalar arms use, applied
+// to the coproduct-declared head.
+//
+// IT KEYS ON DECLARATION IDENTITY, NEVER SPELLING. `nominal_coproduct_head_name` resolves an
+// applied head to its constructor declaration (so `Outcome<C>` settles to `Outcome`, and the bare
+// declared coproduct settles to itself), and agreement is decided by `application_type_names_compatible`
+// -- the same authority `nominal_product_head_names_agree` uses -- which is transparent-alias and
+// module aware. So the three controls stay ACCEPTED: the same coproduct (heads agree), a declared
+// ALIAS of it (alias_identity_in_judgment short-circuits above, and the resolved heads collapse to
+// one declaration), and a GENERIC formal (the relation abstains with UndecidableGenericFormal
+// before this arm is ever reached). A same-constructor pair at differing type arguments
+// (`Outcome<String>` at `Outcome<C>`) AGREES on the head and is left to the applied-argument
+// judgments, so this arm does not invent a verdict the applied seam already owns.
+//
+// IT IS GRANTED ONLY THE LANES THE OTHER ARMS HOLD. Like #16699's scalar arm, this is gated by
+// `kernel_lane_admitted_position` (declared return, direct-call argument, record-literal field):
+// the ungranted lanes arrive post-substitution with artefacts of generic instantiation, and the rows
+// those lanes own have not admitted this judgment. It is consumed at exactly the three sites the
+// scalar arm is consumed at -- v1.compiler.infer declared_type_inhabitance (direct-call argument),
+// v1.compiler.infer declared_type_conformance_diags_core (fn body / declared return) and the
+// record-literal field chain -- and each delegates to the ONE relation so the verdict, the position
+// label and this reason all come from declared_type_inhabitance, rather than a copy of the rule per
+// position. v1.compiler.infer product_versus_coproduct_head_mismatch is UNCHANGED (still the head-kind
+// clash alone): folding this same-kind case into it would have routed the declared-return refusal
+// through its bare type_mismatch_error and given the same defect two diagnostic classes.
+fn coproduct_declared_head_rejects_foreign_coproduct(
+    position: DeclaredTypePosition, declared_coproduct: String,
+    produced_coproduct: String, scope: InferScope) -> Bool {
+  if declared_coproduct == "" || produced_coproduct == "" {
+    false
+  } else if !kernel_lane_admitted_position(position: position) {
+    false
+  } else {
+    !application_type_names_compatible(
+      formal_name: declared_coproduct, lit_name: produced_coproduct,
+      type_env: scope.type_env, module_name: scope.module_name,
+      source_indices: scope.type_env.source_indices)
+  }
+}
+
 // The obligation carries its own position, so ONE emitter locates every refusal. A per-position
 // diagnostic function would be the N-representation problem moved one layer down.
 // WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
@@ -6775,6 +6861,8 @@ fn inhabitance_refusal_position_label(
   match reason {
     RefusedProductCoproductHeadMismatch =>
       concat(base, " [RefusedProductCoproductHeadMismatch]")
+    RefusedDistinctCoproductHead =>
+      concat(base, " [RefusedDistinctCoproductHead: a declared nominal coproduct is inhabited only by a value whose head resolves to that coproduct's own declaration or a declared alias of it; the produced value resolves to a different coproduct declaration (a carrier such as Outcome<T>, or a foreign named coproduct), which has no route to it]")
     RefusedValueAtNever =>
       concat(base, " [RefusedValueAtNever]")
     RefusedCallableMismatch =>
@@ -14389,6 +14477,26 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           // node_type_compatible, which is the arm that admitted it, and it delegates to the ONE relation
           // rather than judging here: the verdict, the position label and the refusal reason all come from
           // declared_type_inhabitance, exactly as the two arms above it do.
+          declared_type_obligation_diags(
+            obligation: DeclaredTypeObligation {
+              position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_value, span: ar_typed.span
+            },
+            scope: scope)
+        } else if coproduct_declared_head_rejects_foreign_coproduct(
+            position: PositionRecordLiteralField,
+            declared_coproduct: nominal_coproduct_head_name(n: expected_node, scope: scope),
+            produced_coproduct: nominal_coproduct_head_name(n: got_value, scope: scope),
+            scope: scope) {
+          // THE RECORD-LITERAL FIELD CONSUMER FOR THE COPRODUCT-DECLARED HEAD, the sibling of the
+          // kernel-scalar arm above and authored the same way. This chain is separate from
+          // declared_type_conformance_diags_core and never consulted the inhabitance relation for a
+          // non-application, non-container pair: a record's `C` field assigned an `Outcome<C>` fell
+          // through to the permissive tail (the trailing coproduct_payload_where_parent_required keys
+          // on the produced SPELLING, so an applied head is Absent there and the pair was ACCEPTED)
+          // while the fn body and the direct-call argument of the same value refused. It delegates to
+          // the ONE relation, so the verdict, the position label and the refusal reason
+          // (RefusedDistinctCoproductHead) all come from declared_type_inhabitance rather than a
+          // second copy of the rule here.
           declared_type_obligation_diags(
             obligation: DeclaredTypeObligation {
               position: PositionRecordLiteralField, subject: fi_name, declared: expected_node, produced: got_value, span: ar_typed.span
