@@ -20,11 +20,11 @@ import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_one_fi
 import extdeps.tools.util_linux_umount { umount_command }
 import extdeps.linux.procfs { procfs_path_literal, ProcSelfMountinfo }
 import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, MountPointsUndecodable }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured, ProcessCaptureOutcome}
 import extdeps.posix.test_utility {
   test_exists_command,
   PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable,
-  path_existence_reading, ContainedExistence, ContainedAbsent, ContainedPresent, ContainedUnreadable,
+  path_existence_reading, path_existence_reading_capture, ContainedExistence, ContainedAbsent, ContainedPresent, ContainedUnreadable,
   contained_existence,
 }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -37,7 +37,7 @@ import extdeps.systemd { systemd_unit_property_wire, InvocationIDProperty,
   SystemdUnitProperty, EnvironmentProperty, ExecMainStatus,
   SystemdSliceCgroupPath, SliceCgroupPath, SliceNameNotASlice, systemd_slice_cgroup_path,
 }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, process_capture_admitted}
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_slice_name }
 import gunbc.runner.runner_microvm_attempt {
@@ -46,7 +46,7 @@ import gunbc.runner.runner_microvm_attempt {
   runner_microvm_attempt_part_of_property,
 }
 import gunbc.runner.runner_attempt_launch {
-  InputDriveStaging,
+  InputDriveStaging, StagingStep, Staged, StageNotSpawned,
   AttemptGround, GroundClear, GroundOccupied,
   AttemptLaunchPlan, LaunchAuthorized,
   AttemptStagingVerdict, StagingAdmitsJailer, StagingRefusedVmConfiguration, AttemptStagingReceipt, jail_config_path,
@@ -380,9 +380,9 @@ fn absence_of_containment(path: String, parent: String, contained: ContainedExis
 // THERE; sanitation needs the attempt's resources to be GONE. One boundary reading, two folds.
 fn observe_path_exists(path: String) -> PathExistenceReading
 {
-  path_existence_reading(
+  path_existence_reading_capture(
     path: path,
-    outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
+    captured: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec),
   )
 }
 
@@ -732,7 +732,7 @@ fn attempt_binding_of_environment(unit: NonEmptyStr, environment: String) -> Uni
 // that cannot be read or decoded skips the deletes altogether, for the same reason.
 type AttemptCleanupStep {
   command: String
-  outcome: ProcessOutcome
+  outcome: ProcessCaptureOutcome
 }
 
 type AttemptCleanupRun
@@ -812,7 +812,7 @@ fn attempt_cleanup_text(c: AttemptCleanupRun) -> String {
     CleanupSkippedMountTableUnreadable { detail: d } => join(["cleanup=skipped-mount-table-unreadable (", d, ")"], "")
     CleanupPerformed { unmounted: m, steps: st } =>
       join(["cleanup=performed unmounted=", to_string(length(m)), " steps=", to_string(length(st)),
-            " refused_steps=", to_string(length(filter(st, x => !process_outcome_admitted(outcome: x.outcome))))], "")
+            " refused_steps=", to_string(length(filter(st, x => !process_capture_admitted(captured: x.outcome))))], "")
   }
 }
 
@@ -1000,11 +1000,25 @@ fn run_teardown(
 // the later step is downstream of the earlier one, so no realization may reorder them. Short-circuiting
 // on the prior exit would ALSO have ordered them, and was rejected: it would have to invent an exit for
 // a step that never ran, which is the fabricated-value class this module exists to remove.
-fn run_staged_after(after: ProcessOutcome, command: ArgvCommand) -> ProcessOutcome
+fn run_staged_after(after: ProcessCaptureOutcome, command: ArgvCommand) -> ProcessCaptureOutcome
 {
   run_shell_command_capture(command: command, transport: LocalExec)
 }
 
+// THE STAGING STEP, TYPED. A child that ran reports the exit observed from it; a child the spawner never
+// ran reports THAT, because no exit code belongs to it. Reading a not-spawned staging command as 0 would
+// report an unstaged drive as staged, and reading it as some other number would name a status no child
+// returned (gunbc.design_argument::fail_closed).
+fn staging_step_of(captured: ProcessCaptureOutcome) -> StagingStep {
+  match captured {
+    ProcessCaptured { outcome: outcome } => Staged { exit: command_exit_code(outcome: outcome) }
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      StageNotSpawned { program: p, cause: why }
+  }
+}
+
+// THE OBSERVED EXIT OF A CHILD THAT RAN. Only reachable through ProcessCaptured, so the exit it returns
+// is always one a real child returned.
 fn command_exit_code(outcome: ProcessOutcome) -> Int {
   match outcome {
     ProcessOutputPresent { text: _ } => 0
@@ -1020,6 +1034,7 @@ fn command_exit_code(outcome: ProcessOutcome) -> Int {
 fn read_workspace_superblock(workspace_path: String) -> WorkspaceReadback
 {
   match run_shell_command_capture(command: workspace_readback_command(workspace_path: workspace_path), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code: c, stderr: e } =>
       WorkspaceReadbackFailed {
         reason: join(["dumpe2fs on ", workspace_path, " exited ", to_string(c), ": ", trim(s: e)], "") as NonEmptyStr,
@@ -1036,6 +1051,13 @@ fn read_workspace_superblock(workspace_path: String) -> WorkspaceReadback
             ext_magic: m == ext2_superblock_magic,
             bytes: byte_size(count: bc * bs),
           }
+      }
+    // dumpe2fs never ran, so there is no superblock and no exit code: the readback failed at the
+    // spawner, and its words are the cause.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      WorkspaceReadbackFailed {
+        reason: join(["dumpe2fs on ", workspace_path, " was never spawned: ", p, ": ", why], "") as NonEmptyStr,
       }
   }
 }
@@ -1095,7 +1117,7 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
       let rootfs_outcome = run_staged_after(after: kernel_outcome, command: stage_rootfs)
       let input_outcomes = map(inputs, d => InputDriveStaging {
         jail_path: d.jail_path,
-        exit: command_exit_code(outcome: run_staged_after(after: rootfs_outcome, command: d.stage)),
+        step: staging_step_of(captured: run_staged_after(after: rootfs_outcome, command: d.stage)),
         present: observe_path_exists(path: join([jail_root, d.jail_path], "")),
       })
       let create_outcome = run_staged_after(after: rootfs_outcome, command: create)
@@ -1108,17 +1130,17 @@ fn stage_attempt(plan: AttemptLaunchPlan) -> AttemptStaging
         verdict: attempt_staging_verdict(
           plan: plan,
           jail: JailMaterialStaging {
-            jail_root_exit: command_exit_code(outcome: root_outcome),
-            kernel_exit: command_exit_code(outcome: kernel_outcome),
-            rootfs_exit: command_exit_code(outcome: rootfs_outcome),
+            jail_root_step: staging_step_of(captured: root_outcome),
+            kernel_step: staging_step_of(captured: kernel_outcome),
+            rootfs_step: staging_step_of(captured: rootfs_outcome),
             kernel: kernel_present,
             rootfs: rootfs_present,
             inputs: input_outcomes,
           },
           jit: stage_bootstrap_device(device: launch_payload_device(payload: payload)),
           workspace: WorkspaceStagingObservation {
-            create_exit: command_exit_code(outcome: create_outcome),
-            format_exit: command_exit_code(outcome: format_outcome),
+            create_step: staging_step_of(captured: create_outcome),
+            format_step: staging_step_of(captured: format_outcome),
             readback: read_workspace_superblock(workspace_path: workspace_path),
           },
         ),

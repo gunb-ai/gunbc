@@ -5,9 +5,9 @@ import std.algebra { trim }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
 import extdeps.languages.json.emit { serialize_json }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import product.placement_supply { HostIdentity }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_allocation_store { fabric_allocation_store, FabricAllocationStoreReady, FabricAllocationStoreUnready }
@@ -64,10 +64,17 @@ fn workspace_observe_candidate(host: HostIdentity, local_host: HostIdentity, rel
     let command = join(["printf '%s' ", posix_single_quote(spelling: request_text), " | ",
       executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: release_dir, function: "workspace_dispatch_offer_cli"))], "")
     match run_shell_command_capture(command: bash_program_command(script: command), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
       ProcessOutputPresent { text } => workspace_host_offer_reading(host: host, output: text)
       ProcessOutputAbsent => WorkspaceHostOffersRefused { host: host, reason: "installed host offer observer returned nothing" }
       ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostOffersRefused { host: host, reason: "installed host offer observer refused" }
     }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceHostOffersRefused { host: host, reason: "installed host offer observer refused" }
+
+
+
+
+}
   }
 }
 

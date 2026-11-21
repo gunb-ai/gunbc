@@ -74,7 +74,7 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted , process_capture_admitted}
 import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
@@ -249,6 +249,7 @@ import gunbc.fleet.fleet_converge_receipt {
   admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
+import extdeps.shell.exec { ProcessCaptured, ProcessCaptureNotSpawned }
 // The apply script is written by this CLI and then executed, so its mode is a decision this module
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
@@ -272,11 +273,18 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 fn observe_effective_user_wet() -> NonEmptyStr?
 {
   match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" { none } else { Present { value: trim(s: t) as NonEmptyStr } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => none
+
+
+
+
+}
 }
 
 fn observe_host_short_wet() -> NonEmptyStr?
@@ -285,6 +293,7 @@ fn observe_host_short_wet() -> NonEmptyStr?
     command: hostname_short_read_command(),
     transport: LocalExec,
   ) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
     ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" {
         none
@@ -293,7 +302,13 @@ fn observe_host_short_wet() -> NonEmptyStr?
       }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => none
+
+
+
+
+}
 }
 
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
@@ -315,7 +330,7 @@ fn observe_timer_members_wet() -> List<TimerRetirementMember>
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
-    process_outcome_admitted(outcome: run_shell_command_capture(
+    process_capture_admitted(captured: run_shell_command_capture(
       command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
       transport: LocalExec,
     ))
@@ -588,10 +603,17 @@ fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersio
     Absent => ""
   }
   let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc2 } => match __pc2 {
     ProcessOutputPresent { text: _ } => true
     ProcessOutputAbsent => true
     ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp2, cause: __pw2 } => false
+
+
+
+
+}
   HostGrantDecisionRead {
     query: query,
     decision: if present {
@@ -1600,7 +1622,7 @@ fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMembe
     }
   } else {
     let registration_path = join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")
-    let registered = process_outcome_admitted(outcome: run_shell_command_capture(
+    let registered = process_capture_admitted(captured: run_shell_command_capture(
       command: test_regular_file_command(path: registration_path),
       transport: LocalExec,
     ))

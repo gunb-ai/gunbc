@@ -55,6 +55,7 @@ import gunbc.live_deploy.operations { systemctl_restart_command }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.command_runner { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
@@ -181,14 +182,19 @@ fn release_pair_resume_decision(receipt_read: FilesystemReadOutcome, expected_bo
 // write the receipt. Read the link back with the admitted readlink_command (extdeps.tools.gnu_coreutils): it prints
 // the target and refuses on a non-symlink, so a refusal or any DIFFERENT target is NOT this revision's placement and
 // must refuse, never be silently adopted (a silent widen). Pure over the readlink ProcessOutcome so it is witnessed.
-fn release_pair_occupied_link_benign(link_read: ProcessOutcome, expected_source: String) -> Bool {
+fn release_pair_occupied_link_benign(link_read: ProcessCaptureOutcome, expected_source: String) -> Bool {
   match link_read {
-    ProcessOutputPresent { text: t } => match trim(s: t) == expected_source {
-      true => true
-      false => false
+    // The link was never read, so nothing proves the existing link is THIS revision's placement; a
+    // readback that never ran can no more be adopted than one that refused.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => false
+    ProcessCaptured { outcome: read } => match read {
+      ProcessOutputPresent { text: t } => match trim(s: t) == expected_source {
+        true => true
+        false => false
+      }
+      ProcessOutputAbsent => false
+      ProcessRefused { exit_code: _, stderr: _ } => false
     }
-    ProcessOutputAbsent => false
-    ProcessRefused { exit_code: _, stderr: _ } => false
   }
 }
 

@@ -4,8 +4,8 @@ import std.types { NonEmptyStr, String, List, Int, Timestamp, EpochSecs }
 import std.algebra { trim }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
+import gunbc.command_runner { run_shell_command_capture  }
 import std.decl_ref { DeclarationRef }
 import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
@@ -87,6 +87,7 @@ fn workspace_observe_host_supply(host: HostIdentity) -> WorkspaceHostSupplyRead 
 
 fn workspace_observe_local_host_supply(host: HostIdentity) -> WorkspaceHostSupplyRead {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputAbsent => WorkspaceHostSupplyUnavailable { reason: "local host identity is absent" }
     ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostSupplyUnavailable { reason: "local host identity is unreadable" }
     ProcessOutputPresent { text: hostname } => if !workspace_local_host_is(host: host, kernel_hostname: trim(s: hostname)) {
@@ -98,7 +99,13 @@ fn workspace_observe_local_host_supply(host: HostIdentity) -> WorkspaceHostSuppl
         observed_at: match clock_now_probed_at() { Present { value: instant } => instant as String Absent => "" },
       } }
     }
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceHostSupplyUnavailable { reason: "local host identity is unreadable" }
+
+
+
+
+}
 }
 
 // Route policy and observations enter the same candidate-field authority CI uses. No workspace

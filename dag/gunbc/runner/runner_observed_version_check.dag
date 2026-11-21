@@ -2,13 +2,13 @@ module gunbc.runner.runner_observed_version_check
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.shell.exec { ProcessObservation, process_observation }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import extdeps.tools.gnu_coreutils { cat_command }
-import gunbc.command_runner { run_shell_command_observe, LocalExec }
+import gunbc.command_runner { run_shell_command_observe_outcome, LocalExec }
 import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootConsoleLacksRunnerVersion,
-  BootProducedNoConsole, BootVmmFailed, BootExceededHostDeadline,
+  BootProducedNoConsole, BootVmmFailed, BootExceededHostDeadline, BootNotAttempted,
   boot_probe_verdict, boot_probe_verdict_text,
 }
 
@@ -56,21 +56,27 @@ data runner_version_check_standing: VersionCheckStanding = CheckedAtReceiptTime 
 // A CAPTURE THAT CANNOT BE READ IS NOT A PASS. boot_probe_verdict already refuses an empty console,
 // and feeding it a failed read would produce BootVmmFailed -- which names the VMM rather than the
 // reader. The exit code is taken from cat so the two causes stay distinguishable.
-fn observe_captured_console(path: String) -> ProcessObservation
-{
-  let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
-  process_observation(exit_code: obs.exit_code, stdout: obs.stdout, stderr: obs.stderr)
-}
-
 // THE MODELED RELEASE COMES FROM THE GUEST IMAGE ROW, not from a literal here. A version string in
 // this module would be a third place saying which runner this fleet installs, which is the fork the
 // check exists to detect -- committed one layer up.
+//
+// THE READER ITSELF CAN FAIL TO EXIST, and that is neither BootVmmFailed (which blames a VMM that
+// never ran) nor BootProducedNoConsole (which reports an empty console it never read): it is
+// BootNotAttempted, the arm that already says 'nothing was booted', here carrying the program and
+// the cause of the reader that was never spawned. The observation is no longer re-built by hand --
+// run_shell_command_observe_outcome returns the child's own, and a hand-built copy of a result one
+// does not possess is the fabrication this entry stopped carrying.
 fn check_captured_console(path: String) -> BootProbeVerdict
 {
-  boot_probe_verdict(
-    runner: gunbc_runner_guest_image.runner,
-    observed: observe_captured_console(path: path),
-  )
+  match run_shell_command_observe_outcome(command: cat_command(path: path), transport: LocalExec) {
+    ProcessNotSpawned { program: p, cause: why } => BootNotAttempted {
+      cause: join(["the captured console ", path, " was never read: ", p as String, " -- ", why as String], ""),
+    }
+    ProcessRan { observation: obs } => boot_probe_verdict(
+      runner: gunbc_runner_guest_image.runner,
+      observed: obs,
+    )
+  }
 }
 
 // THE VERDICT BECOMES AN EXIT CODE, because a check that reports a mismatch and exits 0 is the

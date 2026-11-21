@@ -3,8 +3,8 @@ import std.types { String, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slice_to_project_command }
 import extdeps.exec.command { LocalExec, ArgvCommand, env_prefixed_command_in }
-import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent, ProcessCaptureNotSpawned, ProcessCaptured}
+import gunbc.command_runner { run_shell_command_capture}
 
 // THE VERIFIED ORCA EXECUTION BOUNDARY, AND NOTHING ELSE. Process policy (supports, walls, infill,
 // temperatures) is product.printed_chassis.print_preparation required_settings, read back from the
@@ -20,16 +20,24 @@ fn slice_profile_in(directory:String,appimage:String,model:String,output:String,
   match with_verified_orca(appimage: appimage as FilePath, use: executable => {
     let probe = run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_version_probe_command(executable: executable)), transport: LocalExec)
     match probe {
+      // The version probe never ran, so the slice is not attempted: the closure returns that capture
+      // unchanged, program and cause included -- the reason the slice never happened.
+      ProcessCaptureNotSpawned { program: _, cause: _ } => return probe
+      ProcessCaptured { outcome: probe } => match probe {
       ProcessRefused { exit_code: _, stderr: _ } => return probe
       ProcessOutputAbsent => {}
       ProcessOutputPresent {text:_} => {}
+      }
     }
     run_shell_command_capture(command: slice_command_in(directory:directory,command:orca_slice_to_project_command(
         executable: executable, input_model: model, output_project: output,
         printer_profile: machine, filament_profile: filament, process_profile: process,
       )), transport: LocalExec)
   }) {
+    ProcessCaptureNotSpawned { program: p, cause: why } => exit_failure(reason: join(["Orca was never spawned for the slice: ", p as String, " -- ", why as String], ""))
+    ProcessCaptured { outcome: slice } => match slice {
     ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
     ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
+    }
   }
 }

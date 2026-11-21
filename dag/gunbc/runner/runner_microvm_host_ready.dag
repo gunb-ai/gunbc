@@ -32,8 +32,7 @@ import extdeps.virtualization.firecracker {
 }
 import gunbc.command_runner {
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
-  run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec,
-}
+run_shell_command_capture, run_shell_commands, process_outcome_admitted, LocalExec, process_capture_admitted}
 import extdeps.tools.id { id_group_names_command }
 import extdeps.tools.coreutils_stat {
   PathOwnershipObservation, PathOwnershipObserved, PathOwnershipUnobservable, coreutils_stat_path_ownership,
@@ -52,6 +51,7 @@ import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
+import extdeps.shell.exec { ProcessCaptured, ProcessCaptureNotSpawned }
 
 // THE HOST HALF OF THE RUNNER MICRO-VM, OBSERVED BEFORE ANYTHING IS BUILT ON IT. gunbc.runner.runner_microvm
 // models what a runner guest is and admits a VM config; nothing had ever asked a host whether it
@@ -504,6 +504,7 @@ fn observe_kvm_device_delegation_wet() -> KvmDeviceDelegation {
 
 fn observe_kvm_group_enrolment_wet(login: NonEmptyStr) -> KvmGroupEnrolment {
   match run_shell_command_capture(command: id_group_names_command(user: login), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessOutputPresent { text: t } =>
       if group_names_contain(output: t, group: kvm_device_group) {
         KvmGroupEnrolled { login: login, group: kvm_device_group }
@@ -514,6 +515,9 @@ fn observe_kvm_group_enrolment_wet(login: NonEmptyStr) -> KvmGroupEnrolment {
       KvmGroupEnrolmentUnreadable { login: login, cause: "id -nG exited successfully and printed nothing, so no group list was read" }
     ProcessRefused { exit_code: c, stderr: e } =>
       KvmGroupEnrolmentUnreadable { login: login, cause: join(["id -nG exited ", to_string(c), ": ", trim(s: e)], "") }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      KvmGroupEnrolmentUnreadable { login: login, cause: join(["id -nG was never spawned: ", p, ": ", why], "") }
   }
 }
 
@@ -538,24 +542,38 @@ fn observe_firecracker_host_standing_at_binary_wet(binary: String, login: NonEmp
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
-  let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
-  let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
-  let executable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
+  let exists = process_capture_admitted(captured: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
+  let writable = process_capture_admitted(captured: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
+  let executable = process_capture_admitted(captured: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
   let version_output = if executable {
     match run_shell_command_capture(command: firecracker_version_command(binary: binary), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
       ProcessOutputPresent { text: t } => t
       ProcessOutputAbsent => ""
       ProcessRefused { exit_code: _, stderr: _ } => ""
     }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => ""
+
+
+
+
+}
   } else { "" }
-  let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_program().invocation), transport: LocalExec))
-  let cgroup_peak = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path()), transport: LocalExec))
+  let gnu_time = process_capture_admitted(captured: run_shell_command_capture(command: test_executable_command(path: gnu_time_program().invocation), transport: LocalExec))
+  let cgroup_peak = process_capture_admitted(captured: run_shell_command_capture(command: test_exists_command(path: cgroup_v2_memory_peak_path()), transport: LocalExec))
   let systemd_version = match run_shell_command_capture(command: systemctl_version_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc2 } => match __pc2 {
     ProcessOutputPresent { text: t } =>
       match first(split(trim(s: t), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
     ProcessOutputAbsent => ""
     ProcessRefused { exit_code: _, stderr: _ } => ""
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp2, cause: __pw2 } => ""
+
+
+
+
+}
   FirecrackerHostStanding {
     kvm: kvm_standing_of(exists: exists, writable: writable),
     kvm_group: observe_kvm_group_enrolment_wet(login: login),

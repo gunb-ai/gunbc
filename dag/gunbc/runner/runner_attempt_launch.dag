@@ -66,11 +66,11 @@ import gunbc.runner.runner_microvm_network {
   runner_slot_guest_network_boot_args,
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.posix.test_utility { PathExistenceReading, PathPresent, PathAbsentOrUnstattable, PathExistenceUnreadable }
-import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_size_bytes_command, StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading, stat_field_reading_capture }
 import std.resources { Filesystem }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 
 data runner_attempt_launch_disposition: ConstructionMechanism = SingleAuthority
 
@@ -732,9 +732,9 @@ fn write_and_read_back_bootstrap_device(device: BootstrapDeviceStaging) -> Boots
     let mode_outcome = run_shell_command_capture(command: stat_mode_command(path: device.host_path), transport: LocalExec)
     let size_outcome = run_shell_command_capture(command: stat_size_bytes_command(path: device.host_path), transport: LocalExec)
     match bootstrap_device_readback(
-      uid: stat_field_reading(outcome: uid_outcome),
-      mode: stat_field_reading(outcome: mode_outcome),
-      size: stat_field_reading(outcome: size_outcome),
+      uid: stat_field_reading_capture(captured: uid_outcome),
+      mode: stat_field_reading_capture(captured: mode_outcome),
+      size: stat_field_reading_capture(captured: size_outcome),
       content: device.content,
     ) {
       Present { value: refused } => refused
@@ -746,11 +746,18 @@ fn write_and_read_back_bootstrap_device(device: BootstrapDeviceStaging) -> Boots
 fn stage_bootstrap_device(device: BootstrapDeviceStaging) -> BootstrapDeviceStagingOutcome
 {
   match run_shell_command_capture(command: device.create, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessRefused { exit_code: _, stderr: e } =>
       BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: trim(s: e) }
     ProcessOutputPresent { text: _ } => write_and_read_back_bootstrap_device(device: device)
     ProcessOutputAbsent => write_and_read_back_bootstrap_device(device: device)
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => BootstrapDeviceStagingRefused { step: BootstrapDeviceCreateStep, detail: trim(s: join(["never spawned ", __pp0, ": ", __pw0], "")) }
+
+
+
+
+}
 }
 
 type WorkNotEstablished {
@@ -785,8 +792,8 @@ type WorkspaceReadback
   | WorkspaceReadbackFailed { reason: NonEmptyStr }
 
 type WorkspaceStagingObservation {
-  create_exit: Int
-  format_exit: Int
+  create_step: StagingStep
+  format_step: StagingStep
   readback: WorkspaceReadback
 }
 
@@ -813,23 +820,33 @@ fn workspace_standing(obs: WorkspaceStagingObservation, planned_path: String) ->
 }
 
 fn workspace_standing_for_grant(obs: WorkspaceStagingObservation, planned_path: String, expected_bytes: ByteSize) -> WorkspaceStanding {
-  if obs.create_exit != 0 {
-    WorkspaceCreateFailed { exit: obs.create_exit }
-  } else if obs.format_exit != 0 {
-    WorkspaceFormatFailed { exit: obs.format_exit }
-  } else {
-    match obs.readback {
-      WorkspaceReadbackFailed { reason: r } => WorkspaceUnreadable { reason: r }
-      WorkspaceSuperblockRead { image_path: read, ext_magic: m, bytes: b } =>
-        if read != planned_path {
-          WorkspaceReadbackOfDifferentImage { read: read, planned: planned_path }
-        } else if !m {
-          WorkspaceNotExtFilesystem
-        } else if byte_size_count(b: b) != byte_size_count(b: expected_bytes) {
-          WorkspaceSizeMismatch { observed: b, expected: expected_bytes }
+  match obs.create_step {
+    StageNotSpawned { program: _, cause: _ } =>
+      WorkspaceUnreadable { reason: staging_step_cause(step: "the workspace image create", stage: obs.create_step) }
+    Staged { exit: e } => if e != 0 {
+      WorkspaceCreateFailed { exit: e }
+    } else {
+      match obs.format_step {
+        StageNotSpawned { program: _, cause: _ } =>
+          WorkspaceUnreadable { reason: staging_step_cause(step: "the workspace image format", stage: obs.format_step) }
+        Staged { exit: fe } => if fe != 0 {
+          WorkspaceFormatFailed { exit: fe }
         } else {
-          WorkspaceReady
+          match obs.readback {
+            WorkspaceReadbackFailed { reason: r } => WorkspaceUnreadable { reason: r }
+            WorkspaceSuperblockRead { image_path: read, ext_magic: m, bytes: b } =>
+              if read != planned_path {
+                WorkspaceReadbackOfDifferentImage { read: read, planned: planned_path }
+              } else if !m {
+                WorkspaceNotExtFilesystem
+              } else if byte_size_count(b: b) != byte_size_count(b: expected_bytes) {
+                WorkspaceSizeMismatch { observed: b, expected: expected_bytes }
+              } else {
+                WorkspaceReady
+              }
+          }
         }
+      }
     }
   }
 }
@@ -873,16 +890,34 @@ type StagedInputDrive {
   jail_path: String
 }
 
+// A STAGING STEP IS EITHER a child that ran, with the exit observed from it, or the fact that the
+// spawner never ran it at all. The second is not an exit code and is never carried as one: naming a
+// number for a child that did not exist is the fabrication gunbc.design_argument::fail_closed forbids,
+// and reading it as 0 would report an unstaged step as staged.
+type StagingStep
+  = Staged { exit: Int }
+  | StageNotSpawned { program: NonEmptyStr, cause: NonEmptyStr }
+
+// WHY A CAUSE AND NOT A CODE: the two arms answer different questions. `Staged` reports what a child
+// returned; `StageNotSpawned` reports the spawner's own refusal, in its own words.
+fn staging_step_cause(step: String, stage: StagingStep) -> NonEmptyStr {
+  match stage {
+    Staged { exit: e } => join([step, " exited ", to_string(e)], "") as NonEmptyStr
+    StageNotSpawned { program: p, cause: why } =>
+      join([step, " was never spawned: ", p, ": ", why], "") as NonEmptyStr
+  }
+}
+
 type InputDriveStaging {
   jail_path: String
-  exit: Int
+  step: StagingStep
   present: PathExistenceReading
 }
 
 type JailMaterialStaging {
-  jail_root_exit: Int
-  kernel_exit: Int
-  rootfs_exit: Int
+  jail_root_step: StagingStep
+  kernel_step: StagingStep
+  rootfs_step: StagingStep
   kernel: PathExistenceReading
   rootfs: PathExistenceReading
   inputs: List<InputDriveStaging>
@@ -895,25 +930,52 @@ type JailMaterialStanding
   | JailMaterialUnobservable { step: JailMaterialStep, reason: NonEmptyStr }
 
 fn jail_material_standing(obs: JailMaterialStaging) -> JailMaterialStanding {
-  if obs.jail_root_exit != 0 {
-    JailMaterialStepFailed { step: JailRootStep, exit: obs.jail_root_exit }
-  } else if obs.kernel_exit != 0 {
-    JailMaterialStepFailed { step: JailKernelStep, exit: obs.kernel_exit }
-  } else if obs.rootfs_exit != 0 {
-    JailMaterialStepFailed { step: JailRootfsStep, exit: obs.rootfs_exit }
-  } else { match filter(obs.inputs, i => i.exit != 0).first() {
-    Present { value: failed } => JailMaterialStepFailed { step: JailInputDriveStep { jail_path: failed.jail_path }, exit: failed.exit }
-    Absent => match jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs) {
-      JailMaterialReady => fold(obs.inputs, init: JailMaterialReady, f: (acc, i) => match acc {
-        JailMaterialReady => match jail_material_present(step: JailInputDriveStep { jail_path: i.jail_path }, reading: i.present) {
-          Present { value: refusal } => refusal
-          Absent => JailMaterialReady
+  match jail_material_step_refusal(step: JailRootStep, stage: obs.jail_root_step) {
+    Present { value: refusal } => refusal
+    Absent => match jail_material_step_refusal(step: JailKernelStep, stage: obs.kernel_step) {
+      Present { value: refusal } => refusal
+      Absent => match jail_material_step_refusal(step: JailRootfsStep, stage: obs.rootfs_step) {
+        Present { value: refusal } => refusal
+        Absent => match filter(obs.inputs, i => match i.step {
+          Staged { exit: e } => e != 0
+          StageNotSpawned { program: _, cause: _ } => true
+        }).first() {
+          Present { value: failed } => match failed.step {
+            Staged { exit: e } =>
+              JailMaterialStepFailed { step: JailInputDriveStep { jail_path: failed.jail_path }, exit: e }
+            // Nothing ran, so nothing failed with a status: the step is unobservable, and the cause is
+            // the spawner's own words. Reading it as a failed exit would name a code no child returned.
+            StageNotSpawned { program: p, cause: why } => JailMaterialUnobservable {
+              step: JailInputDriveStep { jail_path: failed.jail_path },
+              reason: join(["the input drive staging was never spawned: ", p, ": ", why], "") as NonEmptyStr,
+            }
+          }
+          Absent => match jail_material_readbacks(kernel: obs.kernel, rootfs: obs.rootfs) {
+            JailMaterialReady => fold(obs.inputs, init: JailMaterialReady, f: (acc, i) => match acc {
+              JailMaterialReady => match jail_material_present(step: JailInputDriveStep { jail_path: i.jail_path }, reading: i.present) {
+                Present { value: refusal } => refusal
+                Absent => JailMaterialReady
+              }
+              refused => refused
+            })
+            refused => refused
+          }
         }
-        refused => refused
-      })
-      refused => refused
+      }
     }
-  } }
+  }
+}
+
+// ONE STEP'S REFUSAL, in the standing's own vocabulary: a non-zero exit is a failed step, a step the
+// spawner never ran is an UNOBSERVABLE step -- never a failed step with a number no child returned.
+fn jail_material_step_refusal(step: JailMaterialStep, stage: StagingStep) -> JailMaterialStanding? {
+  match stage {
+    Staged { exit: e } => if e != 0 { Present { value: JailMaterialStepFailed { step: step, exit: e } } } else { Absent }
+    StageNotSpawned { program: p, cause: why } => Present { value: JailMaterialUnobservable {
+      step: step,
+      reason: join(["the staging command was never spawned: ", p, ": ", why], "") as NonEmptyStr,
+    } }
+  }
 }
 
 fn jail_material_readbacks(kernel: PathExistenceReading, rootfs: PathExistenceReading) -> JailMaterialStanding {

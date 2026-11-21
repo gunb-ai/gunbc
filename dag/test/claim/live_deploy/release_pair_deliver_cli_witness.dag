@@ -16,7 +16,7 @@ import gunbc.live_deploy.release_binding {
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
 import std.optional { Optional, Present, Absent }
 import std.algebra { string_contains }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned, process_observation }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned, process_observation, ProcessCaptured}
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   release_pair_converged_noop, PlanWaits,
@@ -48,7 +48,7 @@ data member_src_str: String = "/opt/gunbc/releases/incoming-release-bins/gunbc_s
 
 // A clean head observation decodes to Present, naming the exact head printed.
 test fn witness_decode_head_present_names_the_head() -> Bool {
-  match release_pair_decode_head(ProcessOutputPresent { text: head_hex as String }) {
+  match release_pair_decode_head(ProcessCaptured { outcome: ProcessOutputPresent { text: head_hex as String } }) {
     Present { value: v } => (v as String) == (head_hex as String)
     none => false
   }
@@ -56,7 +56,7 @@ test fn witness_decode_head_present_names_the_head() -> Bool {
 
 // A failed git rev-parse is NOT a head: a refusal decodes to none (keep last good, do not even try to deliver).
 test fn witness_decode_head_refused_is_none() -> Bool {
-  match release_pair_decode_head(ProcessRefused { exit_code: 128, stderr: "fatal: not a git repository" }) {
+  match release_pair_decode_head(ProcessCaptured { outcome: ProcessRefused { exit_code: 128, stderr: "fatal: not a git repository" } }) {
     none => true
     Present { value: _ } => false
   }
@@ -66,11 +66,11 @@ test fn witness_decode_head_refused_is_none() -> Bool {
 // DECLARED refusal, NOT a benign wait and NOT a fabricated run id — the timer must surface it (review 96216), so an
 // expired gh token cannot make every tick exit green and silently stop tracking main.
 test fn witness_decode_run_refused_is_discovery_refused() -> Bool {
-  let refused = match release_pair_decode_run(ProcessRefused { exit_code: 1, stderr: "gh: auth expired" }) {
+  let refused = match release_pair_decode_run(ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "gh: auth expired" } }) {
     RunLookupDiscoveryRefused { reason } => (reason as String) == (release_pair_run_discovery_refused_reason as String)
     _ => false
   }
-  let absent = match release_pair_decode_run(ProcessOutputAbsent) {
+  let absent = match release_pair_decode_run(ProcessCaptured { outcome: ProcessOutputAbsent }) {
     RunLookupDiscoveryRefused { reason: _ } => true
     _ => false
   }
@@ -80,7 +80,7 @@ test fn witness_decode_run_refused_is_discovery_refused() -> Bool {
 // The BENIGN wait is specifically "gh succeeded but returned no successful run for the head" (empty stdout): that
 // decodes to RunLookupNoneForHead (keep-last-good, retry), distinct from the discovery-refused arm above.
 test fn witness_decode_run_empty_is_none_for_head() -> Bool {
-  match release_pair_decode_run(ProcessOutputPresent { text: "" }) {
+  match release_pair_decode_run(ProcessCaptured { outcome: ProcessOutputPresent { text: "" } }) {
     RunLookupNoneForHead => true
     _ => false
   }
@@ -88,7 +88,7 @@ test fn witness_decode_run_empty_is_none_for_head() -> Bool {
 
 // A fetched pack with an OBSERVED digest decodes to PackPresent naming the observed digest, dir and serve member.
 test fn witness_pack_fetch_present_binds_observed_digest() -> Bool {
-  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: sha_hex as String }, pack_dir_str, member_src_str)
+  let f = release_pair_pack_fetch(ProcessCaptured { outcome: ProcessOutputAbsent }, ProcessCaptured { outcome: ProcessOutputPresent { text: sha_hex as String } }, pack_dir_str, member_src_str)
   match f {
     PackPresent { sha256: d, pack_dir: pd, binary_source: bs } =>
       (d as String) == (sha_hex as String) && (pd as String) == pack_dir_str && (bs as String) == member_src_str
@@ -99,7 +99,7 @@ test fn witness_pack_fetch_present_binds_observed_digest() -> Bool {
 // A download that refused decodes to PackAbsent — the pair keeps serving, it is never delivered from a pack the host
 // could not actually fetch.
 test fn witness_pack_fetch_refused_is_absent() -> Bool {
-  let f = release_pair_pack_fetch(ProcessRefused { exit_code: 1, stderr: "gh run download failed" }, ProcessOutputPresent { text: sha_hex as String }, pack_dir_str, member_src_str)
+  let f = release_pair_pack_fetch(ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "gh run download failed" } }, ProcessCaptured { outcome: ProcessOutputPresent { text: sha_hex as String } }, pack_dir_str, member_src_str)
   match f {
     PackAbsent { reason: _ } => true
     PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
@@ -109,7 +109,7 @@ test fn witness_pack_fetch_refused_is_absent() -> Bool {
 // The `sha256sum` line "<hex>  <path>" binds the bare hex, NOT the whole line: the fold builds the member path from
 // this digest, so a path-bearing digest would corrupt the placement. Proves the first-field extraction.
 test fn witness_pack_fetch_binds_digest_from_sha256sum_line() -> Bool {
-  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: sha_line_with_path }, pack_dir_str, member_src_str)
+  let f = release_pair_pack_fetch(ProcessCaptured { outcome: ProcessOutputAbsent }, ProcessCaptured { outcome: ProcessOutputPresent { text: sha_line_with_path } }, pack_dir_str, member_src_str)
   match f {
     PackPresent { sha256: d, pack_dir: _, binary_source: _ } => (d as String) == (sha_hex as String)
     PackAbsent { reason: _ } => false
@@ -119,7 +119,7 @@ test fn witness_pack_fetch_binds_digest_from_sha256sum_line() -> Bool {
 // A digest line whose first field is not 64 lowercase hex is NOT a pack: the lower_hex_64 gate refuses it (red control
 // for the digest binding — a corrupt or truncated digest can never authorize an install).
 test fn witness_pack_fetch_rejects_non_hex_digest() -> Bool {
-  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: "not-a-digest  /x" }, pack_dir_str, member_src_str)
+  let f = release_pair_pack_fetch(ProcessCaptured { outcome: ProcessOutputAbsent }, ProcessCaptured { outcome: ProcessOutputPresent { text: "not-a-digest  /x" } }, pack_dir_str, member_src_str)
   match f {
     PackAbsent { reason: _ } => true
     PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
@@ -128,7 +128,7 @@ test fn witness_pack_fetch_rejects_non_hex_digest() -> Bool {
 
 // The build-key check running clean is VerifiedOn the observed pack_dir.
 test fn witness_pack_verify_clean_is_verified_on() -> Bool {
-  match release_pair_pack_verify(ProcessOutputAbsent, pack_dir_str) {
+  match release_pair_pack_verify(ProcessCaptured { outcome: ProcessOutputAbsent }, pack_dir_str) {
     VerifiedOn { pack_dir: p } => (p as String) == pack_dir_str
     Refused { reason: _ } => false
   }
@@ -136,7 +136,7 @@ test fn witness_pack_verify_clean_is_verified_on() -> Bool {
 
 // The build-key check refusing is a named Refused, never VerifiedOn — fail closed.
 test fn witness_pack_verify_refused_is_not_verified() -> Bool {
-  match release_pair_pack_verify(ProcessRefused { exit_code: 1, stderr: "build key mismatch" }, pack_dir_str) {
+  match release_pair_pack_verify(ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "build key mismatch" } }, pack_dir_str) {
     Refused { reason: _ } => true
     VerifiedOn { pack_dir: _ } => false
   }
@@ -189,12 +189,12 @@ test fn witness_serving_mixed_is_poison() -> Bool {
 // The run-list decode reads BOTH sides off the run metadata: the run id (download target) and the run's head_sha
 // (the binary-side observation). A line without the tab separator is malformed and decodes to none (fail-closed).
 test fn witness_decode_run_splits_run_id_and_head_sha() -> Bool {
-  let ok = match release_pair_decode_run(outcome: ProcessOutputPresent { text: "44015305678\t1234567890abcdef1234567890abcdef12345678" }) {
+  let ok = match release_pair_decode_run(outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: "44015305678\t1234567890abcdef1234567890abcdef12345678" } }) {
     RunLookupFound { run: r } =>
       (r.run_id as String) == "44015305678" && (r.head_sha as String) == "1234567890abcdef1234567890abcdef12345678"
     _ => false
   }
-  let no_tab = match release_pair_decode_run(outcome: ProcessOutputPresent { text: "44015305678" }) {
+  let no_tab = match release_pair_decode_run(outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: "44015305678" } }) {
     RunLookupDiscoveryRefused { reason } => (reason as String) == (release_pair_run_list_malformed_reason as String)
     _ => false
   }

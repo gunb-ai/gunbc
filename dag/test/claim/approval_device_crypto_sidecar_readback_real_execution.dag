@@ -8,7 +8,8 @@ import std.materialization_ladder { string_list_contains }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
 import extdeps.http.client { http_client_max_time_flag }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.native_serve { native_serve_startup_deadline }
 import gunbc.auth.approval_device_crypto_client {
   device_crypto_sidecar_startup_bound, approval_device_crypto_connect_bound, approval_device_crypto_request_bound,
@@ -84,28 +85,39 @@ fn old_argv() -> List<String> {
   }
 }
 
-fn observed(argv: List<String>, delay: Int) -> String {
-  run_shell_command_observe(command: bash_program_command(script: run_against_listener(argv: argv, delay: delay)), transport: LocalExec).stdout
+// THE CLAIM GRAIN: every claim here asserts on what the sidecar PRINTED. A child that was never
+// spawned did not print nothing -- there was no child to print -- so the arm is false outright rather
+// than an empty string, which would let these claims fail for the wrong reason and, in front of a `!`,
+// pass for one (gunbc.design_argument::fail_closed).
+fn observed_stdout_contains(argv: List<String>, delay: Int, pattern: String) -> Bool {
+  match run_shell_command_observe_outcome(command: bash_program_command(script: run_against_listener(argv: argv, delay: delay)), transport: LocalExec) {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: o } => string_contains(s: o.stdout, pattern: pattern)
+  }
 }
 
 test fn a_listener_appearing_inside_the_startup_bound_is_reached() -> Bool {
-  let out = observed(argv: retrying_argv(startup_seconds: 6), delay: 1)
-  string_contains(s: out, pattern: "EXIT=0") && string_contains(s: out, pattern: "ok")
+  // ONE SPAWN, TWO READINGS: both patterns are read out of the same stdout, because a second call would
+  // be a second execution of a claim about one execution.
+  match run_shell_command_observe_outcome(command: bash_program_command(script: run_against_listener(argv: retrying_argv(startup_seconds: 6), delay: 1)), transport: LocalExec) {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: o } => string_contains(s: o.stdout, pattern: "EXIT=0") && string_contains(s: o.stdout, pattern: "ok")
+  }
 }
 
 test fn a_listener_appearing_past_the_startup_bound_is_refused_unreachable() -> Bool {
-  string_contains(s: observed(argv: retrying_argv(startup_seconds: 2), delay: 12), pattern: "EXIT=7")
+  observed_stdout_contains(argv: retrying_argv(startup_seconds: 2), delay: 12, pattern: "EXIT=7")
 }
 
 test fn a_listener_that_never_appears_is_refused_unreachable_at_the_bound() -> Bool {
-  string_contains(s: observed(argv: retrying_argv(startup_seconds: 2), delay: -1), pattern: "EXIT=7")
+  observed_stdout_contains(argv: retrying_argv(startup_seconds: 2), delay: -1, pattern: "EXIT=7")
 }
 
 // CONTROL: the command the readback used before goes RED on the very case the retrying command passes.
 test fn the_old_single_shot_command_is_refused_on_a_listener_inside_the_bound() -> Bool {
   let argv = old_argv()
   (argv |> count) > 0 && !string_list_contains(xs: argv, wanted: "--retry-connrefused")
-    && string_contains(s: observed(argv: argv, delay: 1), pattern: "EXIT=7")
+    && observed_stdout_contains(argv: argv, delay: 1, pattern: "EXIT=7")
 }
 
 // THE WINDOW IS THE SIDECAR'S OWN BOUND, not a literal: the readback's bound is the startup deadline the sidecar's main waits.

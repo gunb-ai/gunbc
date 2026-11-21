@@ -11,7 +11,8 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEntryPresence, f
 import extdeps.llm.cursor_cli { cursor_api_key_env_var }
 import extdeps.posix.sh_invocation { posix_sh_export_from_file_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused, PosixShKeepFile }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.provider_standing { ProviderStanding, ProviderStandingUnobserved }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import gunbc.dispatch_credential_acquisition {
@@ -70,8 +71,15 @@ fn wet_probe(program: ProgramIdentity, root: CursorAttemptRuntimeRoot, key_file:
     CursorBoundedProbeNameRefused { spelling: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "variable name refused" }
     CursorBoundedProbeEmitRefused { name: _ } => CursorKeyProbeUnreadable { exit_code: 0 - 1, detail: "emitter refused" }
     CursorBoundedProbeReady { command } => {
-      let run = run_shell_command_observe(command: command, transport: LocalExec)
-      cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+      // A probe that never spawned is unreadable, not accepted: CursorKeyProbeUnreadable is the arm that
+      // already says 'no reading was had', and its detail carries the program and the cause instead of an
+      // exit code and a stdout invented for a child that did not exist.
+      match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+        ProcessNotSpawned { program: p, cause: why } => CursorKeyProbeUnreadable {
+          exit_code: 0 - 1, detail: join(["the keyed probe was never spawned: ", p as String, " -- ", why as String], ""),
+        }
+        ProcessRan { observation: run } => cursor_key_probe_reading(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr)
+      }
     }
   }
 }

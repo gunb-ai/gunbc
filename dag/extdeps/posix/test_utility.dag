@@ -4,7 +4,7 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { String, NonEmptyStr, Int, List }
 import std.algebra { trim, Cons, Empty }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptureOutcome, ProcessCaptured }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -135,6 +135,19 @@ fn path_existence_reading(path: String, outcome: ProcessOutcome) -> PathExistenc
     ProcessOutputPresent { text: _ } => path_existence_reading_of_exit(path: path, exit_code: 0, stderr: "")
     ProcessOutputAbsent => path_existence_reading_of_exit(path: path, exit_code: 0, stderr: "")
     ProcessRefused { exit_code: code, stderr: e } => path_existence_reading_of_exit(path: path, exit_code: code, stderr: e)
+  }
+}
+
+// THE SAME READING AT CAPTURE GRAIN. A `test` the spawner never ran answered nothing about the path: it
+// is UNREADABLE, with the spawner's own cause -- never absent (which would license a create over a path
+// that is there) and never present (which would license a boot off a kernel nobody checked). It can
+// never carry an exit code, because the child that would have returned one did not exist.
+fn path_existence_reading_capture(path: String, captured: ProcessCaptureOutcome) -> PathExistenceReading {
+  match captured {
+    ProcessCaptured { outcome: outcome } => path_existence_reading(path: path, outcome: outcome)
+    ProcessCaptureNotSpawned { program: p, cause: why } => PathExistenceUnreadable {
+      reason: join(["`test ", path, "` was never spawned: ", p, ": ", why], "") as NonEmptyStr,
+    }
   }
 }
 

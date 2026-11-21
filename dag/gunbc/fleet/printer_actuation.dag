@@ -1,5 +1,5 @@
 module gunbc.fleet.printer_actuation
-import extdeps.shell.exec {ProcessOutputAbsent,ProcessRefused}
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessRefused,ProcessCaptured,ProcessCaptureNotSpawned}
 import std.scoped_authorization {AuthorizationRefused}
 import extdeps.languages.json.emit {JsonNull,JsonBool,JsonArray,JsonObject}
 import extdeps.languages.json.parse {JsonMemberAbsent,JsonMemberNotAnObject,JsonMemberDuplicated,JsonDocumentUnreadable}
@@ -250,7 +250,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
         match deliver_project_with_session(session:claim.session, payload:payload) {
           ProjectDelivered { receipt: receipt } => {
             let remote = receipt_remote_name(r: receipt)
-            let still_idle=match report_using_session(session:claim.session) { ProcessOutputPresent {text:t}=>report_allows_start(text:t) && (match printer_state_generation(text:t) {Present {value:g}=>(match parse_json_document(s:claim.request.subject) {JsonDocumentParsed {value:v}=>(match json_object_unique_member(v:v,key:"printer_state") {JsonMemberFound {value:JsonString {value:acked}}=>acked==g _=>false}) JsonDocumentUnreadable {gap:_}=>false}) Absent=>false}) ProcessOutputAbsent=>false ProcessRefused {exit_code:_,stderr:_}=>false }
+            let still_idle=match report_using_session(session:claim.session) { ProcessCaptured { outcome: observed } => match observed { ProcessOutputPresent {text:t}=>report_allows_start(text:t) && (match printer_state_generation(text:t) {Present {value:g}=>(match parse_json_document(s:claim.request.subject) {JsonDocumentParsed {value:v}=>(match json_object_unique_member(v:v,key:"printer_state") {JsonMemberFound {value:JsonString {value:acked}}=>acked==g _=>false}) JsonDocumentUnreadable {gap:_}=>false}) Absent=>false}) ProcessOutputAbsent=>false ProcessRefused {exit_code:_,stderr:_}=>false } ProcessCaptureNotSpawned { program: _, cause: _ } => false }
             if !still_idle { return exit_failure(reason:"Printer no longer ready after upload; start withheld and claim retained") }
             let fresh_authority=match approval_instant_now() {
               Absent=>false
@@ -296,7 +296,9 @@ fn start_authorized(claims:PrinterStartClaims,evidence:StartEvidenceStore,printe
  }
  if session_printer(s:session)!=printer || session_version(s:session)!=version {return exit_failure(reason:"Printer start host/session mismatch")}
  let claim_key=attempt_claim_key(attempt:request.attempt as String)
- let live_text=match report_using_session(session:session) {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
+ let live_text=match report_using_session(session:session) { ProcessCaptured { outcome: observed } => match observed {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; nothing uploaded or started") ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; nothing uploaded or started")}
+  // The report never spawned: nothing was read, so the upload is withheld exactly as an unreadable report withholds it, with the spawner's own cause recorded.
+  ProcessCaptureNotSpawned {program:pp,cause:c}=>return exit_failure(reason:concat("Printer report never spawned: ",concat(pp as String,": ",c as String)))}
  if !Filesystem.Write(path:concat(start_claim_evidence_prefix(claims:claims,key:claim_key),".before-start.json"),content:live_text).success || !report_allows_start(text:live_text) {return exit_failure(reason:"Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started")}
  let state=match printer_state_generation(text:live_text) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified from the report; nothing uploaded or started")}
  let expected=match print_request(printer:printer,digest:digest,version:version as String,attempt:request.attempt as String,printer_state:state,ams_slot:ams_tray.index + 1) {Present {value:r}=>r Absent=>return exit_failure(reason:"Cannot bind start request")}

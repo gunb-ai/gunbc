@@ -7,8 +7,8 @@ import std.measure {second}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, env_prefixed_command }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome}
+import gunbc.command_runner { run_shell_command_capture  }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.sha256sum {
   Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell,
@@ -191,14 +191,23 @@ fn acquire_pinned_ca_bundle() -> CaBundleAcquisition
         destination: destination),
       transport: LocalExec
     ) {
-      ProcessRefused { exit_code: _, stderr: stderr } =>
+      ProcessCaptured { outcome: fetched } => match fetched {
+        ProcessRefused { exit_code: _, stderr: stderr } =>
+          ca_bundle_fetch_refusal(
+            workspace: created.path as FilePath,
+            what_failed: concat("the pinned CA bundle could not be downloaded: ", stderr))
+        ProcessOutputAbsent =>
+          verify_pinned_ca_bundle(workspace: created.path as FilePath, destination: destination)
+        ProcessOutputPresent { text: _ } =>
+          verify_pinned_ca_bundle(workspace: created.path as FilePath, destination: destination)
+      }
+      // Nothing was downloaded, so nothing can be verified: the leg refuses with the program and the
+      // cause named, rather than reading a refusal of a child that never existed.
+      ProcessCaptureNotSpawned { program: pp, cause: why } =>
         ca_bundle_fetch_refusal(
           workspace: created.path as FilePath,
-          what_failed: concat("the pinned CA bundle could not be downloaded: ", stderr))
-      ProcessOutputAbsent =>
-        verify_pinned_ca_bundle(workspace: created.path as FilePath, destination: destination)
-      ProcessOutputPresent { text: _ } =>
-        verify_pinned_ca_bundle(workspace: created.path as FilePath, destination: destination)
+          what_failed: concat("the pinned CA bundle was never downloaded: ",
+            join(["never spawned ", pp, ": ", why], "")))
     }
   }
 }
@@ -431,13 +440,14 @@ fn start_receipt(
 // production rather than about a function production happens to use today.
 fn classify_publish_outcome(
   printer: PhysicalAssetIdentity,
-  outcome: ProcessOutcome,
+  outcome: ProcessCaptureOutcome,
   topic: MqttTopic,
   remote_name: NonEmptyStr,
   sequence_id: NonEmptyStr,
   cleaned: Bool,
 ) -> PrintStart {
   match outcome {
+    ProcessCaptured { outcome: published } => match published {
     ProcessRefused { exit_code: _, stderr: stderr } =>
       start_refusal(printer: printer, stderr: stderr, cleaned: cleaned)
     ProcessOutputAbsent =>
@@ -446,6 +456,12 @@ fn classify_publish_outcome(
     ProcessOutputPresent { text: _ } =>
       start_receipt(printer: printer, topic: topic, remote_name: remote_name,
         sequence_id: sequence_id, cleaned: cleaned)
+    }
+    // The publish client was never spawned, so whether the printer received the start command is
+    // UNKNOWN in exactly the way a refusal makes it unknown -- and the cause is the spawner's own
+    // words, not an exit code no child returned.
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      start_refusal(printer: printer, stderr: join(["never spawned ", p, ": ", why], ""), cleaned: cleaned)
   }
 }
 

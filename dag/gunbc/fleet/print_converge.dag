@@ -188,7 +188,7 @@ fn copy_verified(record: PrintRequestRecord, path: String) -> Bool {
 fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, credential_source: PrinterCredentialSource) -> String? {
   match read_existing_printer_session(printer: printer, version: version, credential_source: credential_source) {
     PrinterSessionRefused { cause: _ } => none
-    PrinterSessionReady { session: s } => match report_using_session(session: s) { ProcessOutputPresent { text: t } => Present { value: t } ProcessOutputAbsent => none ProcessRefused { exit_code: _, stderr: _ } => none }
+    PrinterSessionReady { session: s } => match report_using_session(session: s) { ProcessCaptured { outcome: observed } => match observed { ProcessOutputPresent { text: t } => Present { value: t } ProcessOutputAbsent => none ProcessRefused { exit_code: _, stderr: _ } => none } ProcessCaptureNotSpawned { program: _, cause: _ } => none }
   }
 }
 

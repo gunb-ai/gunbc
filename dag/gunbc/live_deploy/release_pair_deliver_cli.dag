@@ -87,6 +87,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_for_repo_root,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli { belt_pair_serve_gate }
+import extdeps.shell.exec { ProcessRunOutcome, ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome}
 
 // THE SINGLE AUTHORITY for where the incoming pack lands (dir + serve member) is release_pair_delivery's
 // release_pair_incoming_pack_dir / release_pair_incoming_serve_source; the entry derives them and passes them to the
@@ -143,12 +144,12 @@ data release_pair_run_list_malformed_reason: NonEmptyStr = "the release-bins run
 // extdeps.crypto.hash.sha256sum_file_command. This module does NOT build argv itself: the sealed ArgvCommand is
 // minted only at those admitted sites (git is not in the program census, so origin/main's head is observed via the
 // cataloged gh program). The effectful entry composes those commands through the command seam and hands each leg's
-// ProcessOutcome to the decode fns below.
+// ProcessCaptureOutcome to the decode fns below.
 
-// ── pure observation-decode fns (ProcessOutcome -> typed observation) ────────────────────────────────────────────
+// ── pure observation-decode fns (ProcessCaptureOutcome -> typed observation) ────────────────────────────────────────────
 // The head the executing host OBSERVED on origin/main: Present only when a command that ran (exit 0) printed a
 // non-empty head; none on an absent output or a refusal (a failed git rev-parse is NOT a head).
-fn release_pair_decode_head(outcome: ProcessOutcome) -> NonEmptyStr? {
+fn release_pair_decode_head(outcome: ProcessCaptureOutcome) -> NonEmptyStr? {
   match outcome {
     ProcessOutputPresent { text: t } =>
       if (trim(s: t) as String) == "" {
@@ -158,6 +159,8 @@ fn release_pair_decode_head(outcome: ProcessOutcome) -> NonEmptyStr? {
       }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
+    // A head nobody printed is not a head: the spawner's refusal is not an observation of origin/main.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => none
   }
 }
 
@@ -180,7 +183,7 @@ type ReleasePairRunLookup
   | RunLookupNoneForHead
   | RunLookupDiscoveryRefused { reason: NonEmptyStr }
 
-fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
+fn release_pair_decode_run(outcome: ProcessCaptureOutcome) -> ReleasePairRunLookup {
   match outcome {
     ProcessOutputPresent { text: t } =>
       if (trim(s: t) as String) == "" {
@@ -213,13 +216,15 @@ fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
       }
     ProcessOutputAbsent => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
     ProcessRefused { exit_code: _, stderr: _ } => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
+    // The run list was never printed: the discovery is refused, and no run id can be named for the head.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
   }
 }
 
 // THE DIGEST BINDING: the observed `sha256sum` line's first field, admitted only as a valid lower_hex_64 through
 // extdeps.crypto.hash::sha256sum_line_digest (the same parser the belt's member_observe uses — never re-parsed here);
 // a refusal, an empty output, or a non-hex/wrong-width line is a named digest-unreadable, never a false PackPresent.
-fn release_pair_pack_digest_bound(digest_outcome: ProcessOutcome, pack_dir: String, member_src: String) -> PackFetch {
+fn release_pair_pack_digest_bound(digest_outcome: ProcessCaptureOutcome, pack_dir: String, member_src: String) -> PackFetch {
   match digest_outcome {
     ProcessOutputPresent { text: d } =>
       match sha256sum_line_digest(line: d) {
@@ -232,6 +237,8 @@ fn release_pair_pack_digest_bound(digest_outcome: ProcessOutcome, pack_dir: Stri
       }
     ProcessOutputAbsent => PackAbsent { reason: release_pair_digest_unreadable_reason }
     ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_digest_unreadable_reason }
+    // No sha256sum child, so no line to bind: a digest read off nothing would authorize an install.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => PackAbsent { reason: release_pair_digest_unreadable_reason }
   }
 }
 
@@ -239,13 +246,15 @@ fn release_pair_pack_digest_bound(digest_outcome: ProcessOutcome, pack_dir: Stri
 // download` is silent on success — or present stdout) AND the digest leg OBSERVED a valid hex; a refused download is
 // a named PackAbsent, never a falsely-bound PackPresent. dir and serve-member source are the entry's OBSERVED values.
 fn release_pair_pack_fetch(
-  fetch_outcome: ProcessOutcome,
-  digest_outcome: ProcessOutcome,
+  fetch_outcome: ProcessCaptureOutcome,
+  digest_outcome: ProcessCaptureOutcome,
   pack_dir: String,
   member_src: String,
 ) -> PackFetch {
   match fetch_outcome {
     ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_fetch_refused_reason }
+    // The download client never ran, so no pack landed in pack_dir: absent, not a pack to digest.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => PackAbsent { reason: release_pair_fetch_refused_reason }
     ProcessOutputAbsent => release_pair_pack_digest_bound(digest_outcome: digest_outcome, pack_dir: pack_dir, member_src: member_src)
     ProcessOutputPresent { text: _ } => release_pair_pack_digest_bound(digest_outcome: digest_outcome, pack_dir: pack_dir, member_src: member_src)
   }
@@ -275,17 +284,20 @@ data release_pair_verify_shell_scaffold: Disposition = Scaffold {
 
 data release_pair_verify_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: release_pair_verify_dispatch ships the fleet consumer key-check as a rendered sh -c program; the CLI runs it via posix_sh_program_command. It stays a genuine multi-statement shell program today (test guards, a digest compute-and-compare, a grep -qxF closure check, shell variables). DISSOLVES WHEN the consumer key-check is modeled as Bash grammar Nodes emitted through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), so no hand-authored medium-as-string program remains in the pair-delivery verify path and the dispatch yields a typed program rather than a script String.")
 
-fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) -> PackVerify {
+fn release_pair_pack_verify(verify_outcome: ProcessCaptureOutcome, pack_dir: String) -> PackVerify {
   match verify_outcome {
     ProcessOutputPresent { text: _ } => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
     ProcessOutputAbsent => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
     ProcessRefused { exit_code: _, stderr: _ } => Refused { reason: release_pair_verdict_refused_reason }
+    // The key-check never ran, so the pack is not verified: the verdict a child that never existed
+    // cannot give.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => Refused { reason: release_pair_verdict_refused_reason }
   }
 }
 
 // ── the effectful entry: THE executing consumer of the dry plan ──────────────────────────────────────────────────
 // The consumer the fold's plan was written for. It OBSERVES every stage through the admitted command seam and hands
-// each OBSERVED ProcessOutcome to the decode fns above — no stage is handed its predecessor's result as an input it
+// each OBSERVED ProcessCaptureOutcome to the decode fns above — no stage is handed its predecessor's result as an input it
 // did not observe. It (1) observes origin/main's head (what to DEPLOY) via the cataloged gh program, (2) discovers the
 // fleet-converge run for THAT head, (3) downloads its release-bins pack, (4) digests the fetched serve member, then
 // (5) runs the consumer build-key check ON the fetched pack, and only then asks release_pair_install_plan for the
@@ -748,9 +760,17 @@ data release_pair_restart_shell_dissolution_trigger: DissolutionCondition = unbo
 // sudo restart builder here.
 fn release_pair_restart_serve(restart: String) -> ProcessExit {
   match run_shell_command_capture(command: posix_sh_program_command(script: restart), transport: LocalExec) {
-    ProcessRefused { exit_code: _, stderr: _ } =>
-      exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
-    _ => ExitSuccess
+    ProcessCaptured { outcome: restarted } => match restarted {
+      ProcessRefused { exit_code: _, stderr: _ } =>
+        exit_failure(reason: "pair-deliver: the pair was placed but the serve restart was refused — operator attention needed (kept, not restarted)")
+      _ => ExitSuccess
+    }
+    // The restart was never spawned, so the serve is still running the PREVIOUS pair: the same
+    // outcome-unknown a refusal carries, with the spawner's own cause named instead of an exit
+    // number no child returned.
+    ProcessCaptureNotSpawned { program: pp, cause: why } =>
+      exit_failure(reason: join(["pair-deliver: the serve restart was never spawned (", pp, ": ", why,
+        ") — operator attention needed (kept, not restarted)"], ""))
   }
 }
 

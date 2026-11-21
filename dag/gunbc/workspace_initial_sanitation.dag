@@ -1,6 +1,6 @@
 module gunbc.workspace_initial_sanitation
 
-import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
@@ -9,7 +9,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.procfs { procfs_path_literal, ProcSelfMountinfo }
 import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, MountPointsUndecodable }
 import extdeps.tools.hostname { hostname_short_read_command }
-import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec  }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_root_path, fabric_cell_attempt_root_path, fabric_cell_slice_name }
@@ -99,12 +99,19 @@ fn workspace_initial_mount_reading(root: String, success: Bool, content: String)
 // observation can construct the sealed result consumed by commissioning.
 fn workspace_observe_initial_sanitation(subject: SlotNetworkSanitationSubject) -> WorkspaceInitialSanitationRead {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: host } => if trim(s: host) != (subject.subject.slot.host as String) {
       WorkspaceInitialSanitationUnavailable { reason: "initial sanitation must execute on the slot's host" }
     } else { workspace_observe_initial_sanitation_on_host(subject: subject) }
     ProcessOutputAbsent => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
     ProcessRefused { exit_code: _, stderr: _ } => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
+
+
+
+
+}
 }
 
 fn workspace_observe_initial_sanitation_on_host(subject: SlotNetworkSanitationSubject) -> WorkspaceInitialSanitationRead

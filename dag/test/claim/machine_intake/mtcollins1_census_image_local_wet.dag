@@ -6,8 +6,9 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.command_runner { run_shell_command_observe }
-import extdeps.shell.exec { ProcessObservation }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessRunOutcome}
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessRunOutcome }
+import gunbc.command_runner { run_shell_command_observe_outcome, process_run_outcome_admitted, ExitZeroSucceeds }
 import gunbc.machine_intake.host_capture_envelope {
   BoundHostCaptureEnvelope,
   host_capture_argv_open,
@@ -207,13 +208,17 @@ test fn the_committed_capture_matches_its_recorded_identity_by_real_execution() 
         _ => false
       }
   }
-  let counted = run_shell_command_observe(
+  let counted = run_shell_command_observe_outcome(
     command: posix_sh_program_command(script: concat("printf '%s' \"$(wc -c < ", path as String, ")\"\n")),
     transport: LocalExec,
   )
+  match counted {
+    ProcessNotSpawned { program: p, cause: why } => false
+    ProcessRan { observation: counted } =>
   digest_holds
     && counted.exit_code == 0
     && counted.stdout == (nat_to_decimal_string(value: byte_size_count(b: census_historical_capture.byte_count)))
+  }
 }
 
 // A roster whose stages print what the census stages print, cheaply: the nproc reading, mc0's counter
@@ -236,10 +241,13 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
     stages: census_round_trip_stages,
     halt_command: "true",
   )
-  let obs = run_shell_command_observe(
+  let obs = run_shell_command_observe_outcome(
     command: posix_sh_program_command(script: program as String),
     transport: LocalExec,
   )
+  match obs {
+    ProcessNotSpawned { program: p, cause: why } => false
+    ProcessRan { observation: obs } =>
   let out = obs.stdout
   obs.exit_code == 0
     && match host_capture_bind_transcript(capture: out, machine: "witness") {
@@ -254,6 +262,7 @@ test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> B
     }
     && string_contains(s: out, pattern: "----EXIT boot-media: 3")
     && string_contains(s: out, pattern: "\nit's quoted\n")
+  }
 }
 
 // A SUPPLIED user-data body: these claims drive the real resolver over a real directory and need
@@ -325,8 +334,8 @@ test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
 // them through two functions ran the program twice per case to learn what a single run already
 // reported -- eight executions where four suffice. It also made the disagreeing case incoherent:
 // that stub counts invocations, so a second spawn continued a sequence the first had started.
-fn workload_case_of(stubs: String, workload: HostCaptureWorkloadShape) -> ProcessObservation {
-  run_shell_command_observe(
+fn workload_case_of(stubs: String, workload: HostCaptureWorkloadShape) -> ProcessRunOutcome {
+  run_shell_command_observe_outcome(
     command: posix_sh_program_command(script: concat(stubs, "\n", host_capture_workload_command(workload: workload) as String, "\n")),
     transport: LocalExec,
   )
@@ -335,12 +344,18 @@ fn workload_case_of(stubs: String, workload: HostCaptureWorkloadShape) -> Proces
 // The token must be a WHOLE LINE, not a substring -- a body emitting "workload-digest-stable=yesX",
 // or the token inside an argv echo, may not satisfy this. Captured stdout carries no trailing
 // newline, so the capture is padded on BOTH sides before the line-delimited match.
-fn workload_case(stubs: String) -> ProcessObservation {
+fn workload_case(stubs: String) -> ProcessRunOutcome {
   workload_case_of(stubs: stubs, workload: mtcollins1_one_socket_workload)
 }
 
-fn workload_emitted_the_token(o: ProcessObservation) -> Bool {
-  string_contains(s: concat("\n", o.stdout, "\n"), pattern: "\nworkload-digest-stable=yes\n")
+// A case whose workload never ran emitted nothing, and 'nothing' is not a stdout that happens to lack
+// the token: the arm is false, so a case that was never executed cannot be read as a negative result --
+// nor, with the `!` the empty case wears, as its opposite.
+fn workload_emitted_the_token(o: ProcessRunOutcome) -> Bool {
+  match o {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: o } => string_contains(s: concat("\n", o.stdout, "\n"), pattern: "\nworkload-digest-stable=yes\n")
+  }
 }
 
 // CAPACITY IS STUBBED TOO: 16 GiB free on /dev/shm and 16 GiB MemAvailable -- mtcollins1's one-socket
@@ -378,7 +393,7 @@ fn workload_stub_disagree(dir: String) -> String {
 
 test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
   let complete = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
-  workload_emitted_the_token(o: complete) && complete.exit_code == 0
+  workload_emitted_the_token(o: complete) && process_run_outcome_admitted(policy: ExitZeroSucceeds, run: complete)
 }
 
 // (Hoisted to module grain from the body of the item below: a source annotation inside a
@@ -399,6 +414,18 @@ test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execu
   let partial = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
   let disagree = workload_case(stubs: concat(workload_stub_dd, workload_stub_disagree(dir: dir)))
   let removed = shell.Remove.RecursiveForce(path: dir)
+  // EVERY CASE MUST HAVE RUN. The assertions here are negative ('no token') and paired with a non-zero
+  // exit, and a case that was never spawned would satisfy BOTH -- an empty stdout and no admitted exit.
+  // So each case is matched, and a case that never ran fails the claim instead of passing it.
+  match empty {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: empty } =>
+  match partial {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: partial } =>
+  match disagree {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: disagree } =>
   string_contains(s: empty.stdout, pattern: "workload-digest-stable=yes") == false
     && empty.exit_code != 0
     && string_contains(s: partial.stdout, pattern: "workload-digest-stable=yes") == false
@@ -406,6 +433,9 @@ test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execu
     && string_contains(s: disagree.stdout, pattern: "workload-digest-stable=yes") == false
     && disagree.exit_code != 0
     && removed.success
+  }
+  }
+  }
 }
 
 
@@ -418,6 +448,15 @@ fn workload_stub_dd_marks(marker: String) -> String {
   concat("dd() { echo dd-ran > ", marker, "; }; rm() { :; }; mkdir() { :; };")
 }
 
+// THE STDOUT A CHILD PRINTED. A program that was never spawned printed nothing, so it yields no
+// output to search: a claim over it can only fail, never be credited on an invented reading.
+fn run_stdout(run: ProcessRunOutcome) -> String {
+  match run {
+    ProcessRan { observation: o } => o.stdout
+    other => ""
+  }
+}
+
 test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution() -> Bool {
   let dir = workload_scratch()
   let marker = concat(dir, "/dd-marker")
@@ -426,22 +465,32 @@ test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution()
   let small = workload_case_of(stubs: concat(workload_stub_dd_marks(marker: marker), workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_one_socket_workload)
   let dd_after_small = Filesystem.Read(path: marker).success
   let removed = shell.Remove.RecursiveForce(path: dir)
+  match big {
+    // As in the absence claim: a big workload that was never spawned would show no write, no token and
+    // no admitted exit, so the refusal is matched for having happened before it is credited.
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: big } =>
   string_contains(s: concat("\n", big.stdout, "\n"), pattern: "\nworkload-preflight=refused\n")
     && string_contains(s: big.stdout, pattern: "workload-bytes=68719476736")
     && string_contains(s: big.stdout, pattern: "workload-write-rc=") == false
     && string_contains(s: big.stdout, pattern: "workload-digest-stable=yes") == false
     && big.exit_code != 0
     && dd_after_big == false
-    && string_contains(s: concat("\n", small.stdout, "\n"), pattern: "\nworkload-preflight=fits\n")
-    && string_contains(s: small.stdout, pattern: "workload-bytes=4294967296")
-    && workload_emitted_the_token(o: small) && small.exit_code == 0
+    && string_contains(s: concat("\n", run_stdout(run: small), "\n"), pattern: "\nworkload-preflight=fits\n")
+    && string_contains(s: run_stdout(run: small), pattern: "workload-bytes=4294967296")
+    && workload_emitted_the_token(o: small) && process_run_outcome_admitted(policy: ExitZeroSucceeds, run: small)
     && dd_after_small
     && removed.success
+  }
 }
 
 // AN UNREADABLE CAPACITY REFUSES, it is not read as room: df printing no figure must not fit.
 test fn an_unreadable_capacity_refuses_at_preflight_by_real_execution() -> Bool {
   let o = workload_case(stubs: concat(workload_stub_io, "df() { :; }; awk() { printf 17179869184; };", workload_stub_complete))
+  match o {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: o } =>
   string_contains(s: o.stdout, pattern: "workload-preflight=refused") && o.exit_code != 0
     && string_contains(s: o.stdout, pattern: "workload-digest-stable=yes") == false
+  }
 }

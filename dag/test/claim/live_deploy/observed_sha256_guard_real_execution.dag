@@ -5,7 +5,8 @@ import std.types { String, NonEmptyStr, Int }
 import std.optional { Present, Absent }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.live_deploy.effect_leaf { observed_sha256_env_write_effect }
 import v2.std.effect_plan { EffectPlan, Do }
 import v2.std.orchestration { FailFast }
@@ -78,8 +79,12 @@ fn shadow_line(line: String) -> String {
 data shadow_unreadable: String = "sha256sum() { return 1; }; "
 
 fn wrote_nothing_and_exited(case: String, shadow: String, status: String) -> Bool {
-  let obs = run_shell_command_observe(command: bash_program_command(script: run_case(case: case, shadow: shadow)), transport: LocalExec)
+  let obs = run_shell_command_observe_outcome(command: bash_program_command(script: run_case(case: case, shadow: shadow)), transport: LocalExec)
+  match obs {
+    ProcessNotSpawned { program: p, cause: why } => false
+    ProcessRan { observation: obs } =>
   to_string(obs.exit_code) == status && !string_contains(s: obs.stdout, pattern: write_marker) && !string_contains(s: obs.stdout, pattern: "NAME=")
+  }
 }
 
 fn shape_refused(case: String, line: String) -> Bool {
@@ -89,13 +94,21 @@ fn shape_refused(case: String, line: String) -> Bool {
 // POSITIVE CONTROL: the real sha256sum over the real (empty) observed file is admitted and exactly
 // NAME=<that digest> is written, where the expected digest is read independently by sha256sum itself.
 test fn a_real_observation_is_written_by_real_execution() -> Bool {
-  let obs = run_shell_command_observe(command: bash_program_command(script: run_case(case: "positive", shadow: "")), transport: LocalExec)
-  let expected = run_shell_command_observe(
+  let obs = run_shell_command_observe_outcome(command: bash_program_command(script: run_case(case: "positive", shadow: "")), transport: LocalExec)
+  match obs {
+    ProcessNotSpawned { program: p, cause: why } => false
+    ProcessRan { observation: obs } =>
+  let expected = run_shell_command_observe_outcome(
     command: bash_program_command(script: join(["printf 'NAME=%s' \"$(sha256sum ", scratch_root, "/positive/observed | cut -d' ' -f1)\""], "")),
     transport: LocalExec,
   )
+  match expected {
+    ProcessNotSpawned { program: p, cause: why } => false
+    ProcessRan { observation: expected } =>
   obs.exit_code == 0 && string_contains(s: obs.stdout, pattern: write_marker) && string_contains(s: obs.stdout, pattern: expected.stdout)
     && string_length(s: expected.stdout) == 69
+  }
+  }
 }
 
 // RED, ObservationFailed: sha256sum cannot read the file; no write, the typed cause's exit status.
@@ -147,8 +160,12 @@ fn first_field(line: String) -> String {
 // std.content_hash lower_hex_64 accepts the line's first field. The ERE is derived from that alphabet and width
 // (v2.workflow.effect_plan_bash_hex_ere); this is the claim that the derivation did not drift.
 fn guard_agrees(case: String, line: String) -> Bool {
-  let obs = run_shell_command_observe(command: bash_program_command(script: run_case(case: case, shadow: shadow_line(line: line))), transport: LocalExec)
+  let obs = run_shell_command_observe_outcome(command: bash_program_command(script: run_case(case: case, shadow: shadow_line(line: line))), transport: LocalExec)
+  match obs {
+    ProcessNotSpawned { program: p, cause: why } => false
+    ProcessRan { observation: obs } =>
   (obs.exit_code == 0) == lower_hex_64(value: first_field(line: line))
+  }
 }
 
 test fn the_guard_agrees_with_the_sha256_digest_hex_validator() -> Bool {

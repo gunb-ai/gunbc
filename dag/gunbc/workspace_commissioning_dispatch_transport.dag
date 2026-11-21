@@ -7,10 +7,10 @@ import std.algebra { list_append }
 import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObservation, WorkspaceCommissioningFleetRefused, workspace_commissioning_basis_from_privileged }
 import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, RunGunbcEntryAs, executor_privileged_operation_shell_command }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_controller_owner }
@@ -75,10 +75,17 @@ fn workspace_dispatch_observe(host: NonEmptyStr, revision: CommitSha) -> Workspa
   let command = join(["printf '%s' ", posix_single_quote(spelling: join([revision as String, host as String], "\n")), " | ",
     executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: installed, function: "workspace_dispatch_plan_cli"))], "")
   match run_shell_command_capture(command: bash_program_command(script: command), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text } => workspace_commissioning_basis_from_privileged(text: text, host: host, revision: revision)
     ProcessOutputAbsent => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
     ProcessRefused { exit_code: _, stderr: _ } => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
+
+
+
+
+}
 }
 
 // Use the fleet lock's existing owner, including for an operator-local apply.

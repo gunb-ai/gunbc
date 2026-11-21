@@ -34,7 +34,7 @@ import gunbc.auth.private_secret_file {
   PrivateSecretFileNotEnteredResidueRemains,
 }
 import extdeps.exec.command { CommandTransport }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptureOutcome}
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.auth.secret_ref_credential {
@@ -788,13 +788,14 @@ fn settle_transfer(
   payload: IdentifiedProjectPayload,
   endpoint: FtpsEndpoint<PrinterUnverifiablePeerClass>,
   credential_version: SmResolvedVersionIdentity,
-  outcome: ProcessOutcome,
+  outcome: ProcessCaptureOutcome,
   credential_removed: Bool,
 ) -> ProjectDelivery
 {
   let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
   let cleaned = credential_removed && realization_removed
   match outcome {
+    ProcessCaptured { outcome: transferred } => match transferred {
     ProcessRefused { exit_code: _, stderr: stderr } =>
       refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
     ProcessOutputAbsent =>
@@ -807,6 +808,11 @@ fn settle_transfer(
         printer: printer, payload: payload, endpoint: endpoint,
         credential_version: credential_version, cleaned: cleaned
       )
+    }
+    // No transfer child ran, so nothing reached the printer: refused, with the spawner's own cause
+    // rather than an exit code that no child returned.
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      refused_delivery(printer: printer, stderr: join(["never spawned ", p, ": ", why], ""), cleaned: cleaned)
   }
 }
 

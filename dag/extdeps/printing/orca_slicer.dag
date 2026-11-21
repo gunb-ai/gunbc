@@ -1,5 +1,5 @@
 module extdeps.printing.orca_slicer
-import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent, ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome}
 
 import extdeps.exec.program { uncataloged_program }
 
@@ -148,28 +148,41 @@ fn orca_slice_to_project_command(
 }
 
 // The caller's copy is never executed, and a failed digest cannot mint the capability.
-fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessOutcome) -> ProcessOutcome {
+// EVERY REFUSAL HERE IS A CAPTURE THAT NEVER HAPPENED. This function's job is to run a verified Orca,
+// and each of its own refusals -- no private directory, no copy, no digest, no chmod, failed cleanup --
+// is the AppImage never being executed. They therefore carry ProcessCaptureNotSpawned, naming the
+// AppImage and the cause, rather than ProcessRefused with an exit code 1 that would be attributed to a
+// process that never ran. `use` is the caller's capture of the verified executable, and its verdict
+// passes through untouched.
+fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessCaptureOutcome) -> ProcessCaptureOutcome {
   let temp = shell.Mktemp.Dir()
-  if !temp.success { return ProcessRefused { exit_code: 1, stderr: "Cannot create private Orca realization" } }
+  if !temp.success { return ProcessCaptureNotSpawned { program: (appimage as String) as NonEmptyStr, cause: "Cannot create private Orca realization" as NonEmptyStr } }
   let path = join([temp.path as String, "/", orca_slicer_linux_aarch64_appimage_sha256 as String, ".AppImage"], "")
   let result = if !shell.Copy.File(source: appimage, destination: path as FilePath).success {
-    ProcessRefused { exit_code: 1, stderr: "Cannot copy Orca archive" }
+    ProcessCaptureNotSpawned { program: (appimage as String) as NonEmptyStr, cause: "Cannot copy Orca archive" as NonEmptyStr }
   } else {
     match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
-      Sha256FileDigestUnavailable { path: _, reason: r } => ProcessRefused { exit_code: 1, stderr: r as String }
+      Sha256FileDigestUnavailable { path: _, reason: r } => ProcessCaptureNotSpawned { program: path as NonEmptyStr, cause: r as NonEmptyStr }
       Sha256FileDigest { digest: d } =>
         if (d.hex as String) != (orca_slicer_linux_aarch64_appimage_sha256 as String) {
-          ProcessRefused { exit_code: 1, stderr: "Orca archive differs from the selected upstream digest; not executed" }
+          ProcessCaptureNotSpawned { program: path as NonEmptyStr, cause: "Orca archive differs from the selected upstream digest; not executed" as NonEmptyStr }
         } else {
           match run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0500", path: path), transport: LocalExec) {
-            ProcessRefused { exit_code: c, stderr: e } => ProcessRefused { exit_code: c, stderr: e }
-            ProcessOutputAbsent=>use(OrcaExecutable { program: path as NonEmptyStr }) ProcessOutputPresent {text:_}=>use(OrcaExecutable { program: path as NonEmptyStr })
+            // The chmod never ran, so the AppImage was never made executable and there is no verified
+            // Orca to hand to `use`.
+            ProcessCaptureNotSpawned { program: p, cause: why } => ProcessCaptureNotSpawned {
+              program: p, cause: join(["chmod of the Orca AppImage was never spawned: ", why as String], "") as NonEmptyStr,
+            }
+            ProcessCaptured { outcome: chmod } => match chmod {
+              ProcessRefused { exit_code: c, stderr: e } => ProcessCaptured { outcome: ProcessRefused { exit_code: c, stderr: e } }
+              ProcessOutputAbsent=>use(OrcaExecutable { program: path as NonEmptyStr }) ProcessOutputPresent {text:_}=>use(OrcaExecutable { program: path as NonEmptyStr })
+            }
           }
         }
     }
   }
   if shell.Remove.RecursiveForce(path: temp.path as FilePath).success { result }
-  else { ProcessRefused { exit_code: 1, stderr: concat("Orca realization cleanup failed at ", temp.path as String) } }
+  else { ProcessCaptureNotSpawned { program: (appimage as String) as NonEmptyStr, cause: join(["Orca realization cleanup failed at ", temp.path as String], "") as NonEmptyStr } }
 }
 
 // THE SYSTEM PROFILES SHIP INSIDE THE PINNED ARCHIVE, so a profile named here is a fact of that one

@@ -7,7 +7,7 @@ import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptB
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, restricted_group_1 }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome }
 import gunbc.runner.runner_attempt_launch {
-  InputDriveStaging, GitHubLaunchPayload, launch_payload_device }
+  InputDriveStaging, StagingStep, Staged, StageNotSpawned, GitHubLaunchPayload, launch_payload_device }
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Absent, Present }
@@ -529,8 +529,8 @@ fn planned_ws_path() -> String {
 
 fn good_workspace() -> WorkspaceStagingObservation {
   WorkspaceStagingObservation {
-    create_exit: 0,
-    format_exit: 0,
+    create_step: Staged { exit: 0 },
+    format_step: Staged { exit: 0 },
     readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: runner_attempt_workspace_bytes() },
   }
 }
@@ -597,9 +597,9 @@ fn staging_with(jit_of: Bool, obs: WorkspaceStagingObservation, ground: AttemptG
 // jail-material reds below supply the failing shapes instead.
 fn staged_jail_material() -> JailMaterialStaging {
   JailMaterialStaging {
-    jail_root_exit: 0,
-    kernel_exit: 0,
-    rootfs_exit: 0,
+    jail_root_step: Staged { exit: 0 },
+    kernel_step: Staged { exit: 0 },
+    rootfs_step: Staged { exit: 0 },
     kernel: PathPresent,
     rootfs: PathPresent,
     inputs: [],
@@ -616,19 +616,21 @@ fn staged_jail_material() -> JailMaterialStaging {
 // where the jailer will open it is the host's, and the two are separated by a full disk. A gate that
 // read only the exits would pass the first three reds and fail these two.
 test fn a_failed_or_missing_jail_material_does_not_admit_the_jailer() -> Bool {
-  jail_label(m: JailMaterialStaging { jail_root_exit: 1, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:jail root"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 1, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:kernel"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 2, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:rootfs"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathAbsentOrUnstattable, rootfs: PathPresent, inputs: [] }) == "missing:kernel"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathAbsentOrUnstattable, inputs: [] }) == "missing:rootfs"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr }, inputs: [] }) == "unobservable:rootfs"
+  jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 1 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:jail root"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 1 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 2 }, kernel: PathPresent, rootfs: PathPresent, inputs: [] }) == "step-failed:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathAbsentOrUnstattable, rootfs: PathPresent, inputs: [] }) == "missing:kernel"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathAbsentOrUnstattable, inputs: [] }) == "missing:rootfs"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathExistenceUnreadable { reason: "test -e exited 126" as NonEmptyStr }, inputs: [] }) == "unobservable:rootfs"
     && jail_label(m: staged_jail_material()) == "admit"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent,
-         inputs: [InputDriveStaging { jail_path: "/tree.tar", exit: 1, present: PathPresent }] }) == "step-failed:input drive /tree.tar"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent,
-         inputs: [InputDriveStaging { jail_path: "/tree.tar", exit: 0, present: PathPresent }, InputDriveStaging { jail_path: "/vendor.tar", exit: 0, present: PathAbsentOrUnstattable }] }) == "missing:input drive /vendor.tar"
-    && jail_label(m: JailMaterialStaging { jail_root_exit: 0, kernel_exit: 0, rootfs_exit: 0, kernel: PathPresent, rootfs: PathPresent,
-         inputs: [InputDriveStaging { jail_path: "/tree.tar", exit: 0, present: PathPresent }] }) == "admit"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", step: Staged { exit: 1 }, present: PathPresent }] }) == "step-failed:input drive /tree.tar"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", step: Staged { exit: 0 }, present: PathPresent }, InputDriveStaging { jail_path: "/vendor.tar", step: Staged { exit: 0 }, present: PathAbsentOrUnstattable }] }) == "missing:input drive /vendor.tar"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", step: Staged { exit: 0 }, present: PathPresent }, InputDriveStaging { jail_path: "/never.tar", step: StageNotSpawned { program: "cp" as NonEmptyStr, cause: "the spawner refused it" as NonEmptyStr }, present: PathPresent }] }) == "unobservable:input drive /never.tar"
+    && jail_label(m: JailMaterialStaging { jail_root_step: Staged { exit: 0 }, kernel_step: Staged { exit: 0 }, rootfs_step: Staged { exit: 0 }, kernel: PathPresent, rootfs: PathPresent,
+         inputs: [InputDriveStaging { jail_path: "/tree.tar", step: Staged { exit: 0 }, present: PathPresent }] }) == "admit"
 }
 
 fn jail_label(m: JailMaterialStaging) -> String {
@@ -710,19 +712,19 @@ fn admitted_receipt_names_this_attempts_paths() -> Bool {
 test fn the_jailer_is_admitted_only_onto_a_read_back_workspace() -> Bool {
   staging_for(obs: good_workspace(), ground: GroundClear) == "admit"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 1, format_exit: 1, readback: WorkspaceReadbackFailed { reason: "absent" as NonEmptyStr },
+      create_step: Staged { exit: 1 }, format_step: Staged { exit: 1 }, readback: WorkspaceReadbackFailed { reason: "absent" as NonEmptyStr },
     }, ground: GroundClear) == "create"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 1, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: runner_attempt_workspace_bytes() },
+      create_step: Staged { exit: 0 }, format_step: Staged { exit: 1 }, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: runner_attempt_workspace_bytes() },
     }, ground: GroundClear) == "format"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: false, bytes: runner_attempt_workspace_bytes() },
+      create_step: Staged { exit: 0 }, format_step: Staged { exit: 0 }, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: false, bytes: runner_attempt_workspace_bytes() },
     }, ground: GroundClear) == "not-ext"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 0, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: byte_size(count: 1048576) },
+      create_step: Staged { exit: 0 }, format_step: Staged { exit: 0 }, readback: WorkspaceSuperblockRead { image_path: planned_ws_path(), ext_magic: true, bytes: byte_size(count: 1048576) },
     }, ground: GroundClear) == "size"
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0, format_exit: 0, readback: WorkspaceReadbackFailed { reason: "dumpe2fs exited 1" as NonEmptyStr },
+      create_step: Staged { exit: 0 }, format_step: Staged { exit: 0 }, readback: WorkspaceReadbackFailed { reason: "dumpe2fs exited 1" as NonEmptyStr },
     }, ground: GroundClear) == "unreadable"
 }
 
@@ -755,8 +757,8 @@ test fn the_workspace_readback_reads_the_planned_image() -> Bool {
 test fn another_images_readback_does_not_authorize_this_plan() -> Bool {
   planned_ws_path() != ""
     && staging_for(obs: WorkspaceStagingObservation {
-      create_exit: 0,
-      format_exit: 0,
+      create_step: Staged { exit: 0 },
+      format_step: Staged { exit: 0 },
       readback: WorkspaceSuperblockRead {
         image_path: "/srv/jailer/firecracker/other-attempt/root/work.img",
         ext_magic: true,

@@ -46,8 +46,8 @@ import gunbc.live_deploy.member_observe {
   AbsentIsTheStanding, AbsentContradictsListing, posture_missing_sentinel,
 }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessNotSpawned, ProcessRan, ProcessObservation, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.command_runner { run_shell_command_observe, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds }
+import extdeps.shell.exec { ProcessNotSpawned, ProcessRan, ProcessRunOutcome, ProcessObservation, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds }
 import extdeps.git {
   git_init_quiet_command, git_add_all_force_command, git_commit_snapshot_command,
   git_worktree_add_detached_command, git_branch_command, git_rev_parse_head_command, git_checkout_revision_command,
@@ -1455,7 +1455,7 @@ test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> 
 //      --git-dir turns OFF git's upward discovery, so a nested directory can no longer resolve to an outer
 //      repository (that is why this replaces the deleted path-EQUALITY gate, which needed the raw observer to
 //      read a stdout sentence); the EXIT STATUS is the verdict, so there is no capture, no comparison, no
-//      printf and no quoting hazard left to go wrong. run_shell_command_observe (the raw {exit_code, stdout,
+//      printf and no quoting hazard left to go wrong. run_shell_command_observe_outcome (the raw {exit_code, stdout,
 //      stderr} triple) is used because the refusals read stderr -- run_shell_command_capture discards output
 //      on a nonzero exit.
 //  (b) the single read decides every state, because git's OWN discovery rules what counts as a repository.
@@ -1475,8 +1475,8 @@ test fn the_unit_document_leg_reads_absence_by_what_its_caller_established() -> 
 // the ruling (bright-moth-475, msg_dd453af6) is that the premise is not a shell script at all -- it is one
 // argv, git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir, whose EXIT STATUS
 // is the premise. This runs the very ArgvCommand the realized ApplyLegDiagnosedCommand carries, so the wet
-fn wre3_gate_observation(repo: String) -> ProcessObservation {
-  run_shell_command_observe(
+fn wre3_gate_observation(repo: String) -> ProcessRunOutcome {
+  run_shell_command_observe_outcome(
     command: git_absolute_git_dir_premise_argv(repo: repo as NonEmptyStr),
     transport: LocalExec,
   )
@@ -1485,8 +1485,16 @@ fn wre3_gate_observation(repo: String) -> ProcessObservation {
 // ADMIT: the premise exited 0 (git resolved <repo>/.git through the explicit --git-dir). On an admit git
 // PRINTS the resolved git-dir, so stdout is deliberately NOT asserted empty -- that check belonged to the
 // deleted gate, which printed nothing.
+// A premise that was never spawned was NOT admitted, and a premise that was never spawned is also not
+// 'git said not a repository': both arms are false on ProcessNotSpawned, so a wall refusal or a transport
+// refusal cannot satisfy either side of the discrimination. This argv is read-only (`rev-parse`), which is
+// why the route wall admits it -- and this claim is where that admission is asserted, not merely stated in
+// a comment on the gated entry.
 fn wre3_gate_passes(repo: String) -> Bool {
-  wre3_gate_observation(repo: repo).exit_code == 0
+  match wre3_gate_observation(repo: repo) {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: o } => o.exit_code == 0
+  }
 }
 
 // REFUSE: the premise exited NONZERO AND git itself said the directory is not a repository. The second
@@ -1498,8 +1506,10 @@ fn wre3_gate_passes(repo: String) -> Bool {
 // the outer repository (upward discovery is off), which is exactly why this is one exit-status premise and
 // not the deleted path-equality gate.
 fn wre3_gate_refused(repo: String) -> Bool {
-  let o = wre3_gate_observation(repo: repo)
-  o.exit_code != 0 && string_contains(s: o.stderr, pattern: "not a git repository")
+  match wre3_gate_observation(repo: repo) {
+    ProcessNotSpawned { program: _, cause: _ } => false
+    ProcessRan { observation: o } => o.exit_code != 0 && string_contains(s: o.stderr, pattern: "not a git repository")
+  }
 }
 
 // A fresh scratch root for one state's claim; "" if the host gave us none.

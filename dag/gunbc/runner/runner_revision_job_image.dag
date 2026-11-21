@@ -15,9 +15,9 @@ import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.posix.test_utility { test_executable_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.rust.standalone_installer { rust_standalone_install_command }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.rust.rustc { rustc_version_command }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted , process_capture_admitted}
 import gunbc.runner.microvm_guest_artifacts {
   runner_guest_base_rootfs_artifact, revision_job_rust_dist_artifact, runner_guest_base_artifact_path,
   guest_artifact_verdict, ArtifactMatchesPin, ArtifactUnpinnedFirstContact, ArtifactBuildReceipt,
@@ -113,6 +113,7 @@ fn revision_job_rust_dist_unpacked_dir() -> String {
 // image. The job compares its version against the tree's rust-toolchain.toml channel.
 fn revision_job_write_toolchain_receipt(root: String, closure: RevisionJobToolchainClosure) -> Bool {
   match run_shell_command_capture(command: rustc_version_command(rustc: concat(revision_job_tree_path(root: root), "/usr/local/bin/rustc")), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } => {
       let words: List<String> = trim(s: t).split(delimiter: " ")
       match skip(words, 1).first() {
@@ -122,12 +123,18 @@ fn revision_job_write_toolchain_receipt(root: String, closure: RevisionJobToolch
     }
     ProcessOutputAbsent => false
     ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => false
+
+
+
+
+}
 }
 
 fn revision_job_run_commands(commands: List<ArgvCommand>) -> Bool {
   fold(commands, init: true, f: (ok, command) => if ok {
-    process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+    process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
   } else { false })
 }
 

@@ -128,9 +128,14 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
     PrinterSessionReady {session:s}=>s
   }
   let report = match report_using_session(session:session) {
-    ProcessOutputPresent {text:t}=>t
-    ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; no approval requested")
-    ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; no approval requested")
+    ProcessCaptured { outcome: observed } => match observed {
+      ProcessOutputPresent {text:t}=>t
+      ProcessOutputAbsent=>return exit_failure(reason:"Printer report empty; no approval requested")
+      ProcessRefused {exit_code:_,stderr:_}=>return exit_failure(reason:"Printer report unreadable; no approval requested")
+    }
+    // The report client never ran, so nothing was read and no approval is requested -- the same
+    // refusal an unreadable report earns, with the spawner's cause behind it.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => return exit_failure(reason:"Printer report never ran; no approval requested")
   }
   if !report_allows_start(text:report) { return exit_failure(reason:"Printer is not ready; no approval requested") }
   let state = match printer_state_generation(text:report) {Present {value:g}=>g Absent=>return exit_failure(reason:"Printer state cannot be identified; no approval requested")}

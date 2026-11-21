@@ -9,7 +9,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, j
 import extdeps.languages.json.emit { JsonString, JsonNumber }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { env_prefixed_command, LocalExec }
 import extdeps.tools.mosquitto_rr { mosquitto_snapshot_command }
@@ -36,48 +36,48 @@ import gunbc.auth.mosquitto_options_binding {
 
 // Read-only status request/response. Topic/endpoint/credential all join through the same fleet identity.
 // It observes current state, not causality or an acknowledgement of a particular start.
-fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
+fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessCaptureOutcome {
   match read_existing_printer_session(printer:printer,version:version,credential_source:SecretManagerCredentialSource {token_source:token_source}) {
-   PrinterSessionRefused {cause:c}=>ProcessRefused {exit_code:1,stderr:c as String}
+   PrinterSessionRefused {cause:c}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:c as String} }
    PrinterSessionReady {session:s}=>report_using_session(session:s)
   }
 }
-fn report_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+fn report_using_session(session:PrinterCredentialSession) -> ProcessCaptureOutcome {
  report_session_attempts(session:session,remaining:8)
 }
 
 // Reconciliation owns its retry budget; do not multiply it by the readiness retry loop.
-fn report_once_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+fn report_once_using_session(session:PrinterCredentialSession) -> ProcessCaptureOutcome {
  report_session_attempts(session:session,remaining:1)
 }
-fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> ProcessOutcome {
+fn report_session_attempts(session:PrinterCredentialSession,remaining:Int) -> ProcessCaptureOutcome {
  let printer=session_printer(s:session)
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
    PrinterAddressFound {address:a}=>if remaining==1 {report_with_credential(serial:serial,address:a,credential:session_credential(s:session))} else {complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:remaining)}
-   PrinterAddressUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
+   PrinterAddressUnknown {printer:_}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} } PrinterAddressAmbiguous {printer:_}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} } PrinterAddressWrongClass {printer:_}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"} }
   }
-  PrinterSerialUnknown {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}
+  PrinterSerialUnknown {printer:_}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} } PrinterSerialUnrecorded {printer:_}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} } PrinterSerialAmbiguous {printer:_}=>ProcessCaptured { outcome: ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"} }
  }
 }
 
-fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> ProcessOutcome {
+fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> ProcessCaptureOutcome {
   match acquire_pinned_ca_bundle() {
-    CaBundleRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
-    CaBundleRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+    CaBundleRefused { cause: c } => ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: c as String } }
+    CaBundleRefusedResidueRemains { cause: c } => ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: c as String } }
     CaBundlePinned { bundle: bundle, workspace: workspace } => {
       let result = match place_mosquitto_rr_options_privately(login: bambu_lan_mqtt_user, password: credential) {
-        MosquittoOptionsRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
-        MosquittoOptionsRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+        MosquittoOptionsRefused { cause: c } => ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: c as String } }
+        MosquittoOptionsRefusedResidueRemains { cause: c } => ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: c as String } }
         MosquittoOptionsPlaced { binding: b } => {
           let outcome = run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_snapshot_command(
             endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), request_topic: bambu_request_topic(serial: serial), payload: bambu_status_snapshot_payload(), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec)
           if shred_mosquitto_options_binding(binding: b) { outcome }
-          else { ProcessRefused { exit_code: 1, stderr: "Printer report credential cleanup failed" } }
+          else { ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "Printer report credential cleanup failed" } } }
         }
       }
       if shell.Remove.RecursiveForce(path: workspace).success { result }
-      else { ProcessRefused { exit_code: 1, stderr: "Printer report CA workspace cleanup failed" } }
+      else { ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "Printer report CA workspace cleanup failed" } } }
     }
   }
 }
@@ -88,11 +88,17 @@ fn run(printer: String, version: String, output: String) -> ProcessExit {
     PrinterSelected { printer: p } => match read_supplied_access_token() {
       SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
       SuppliedTokenReady { token: t } => match report(printer: p, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: t }) {
-        ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
-        ProcessOutputAbsent => exit_failure(reason: "No printer report received")
-        ProcessOutputPresent { text: text } =>
-          if Filesystem.Write(path: output, content: text).success { ExitSuccess }
-          else { exit_failure(reason: "Cannot retain printer report") }
+        ProcessCaptured { outcome: observed } => match observed {
+          ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+          ProcessOutputAbsent => exit_failure(reason: "No printer report received")
+          ProcessOutputPresent { text: text } =>
+            if Filesystem.Write(path: output, content: text).success { ExitSuccess }
+            else { exit_failure(reason: "Cannot retain printer report") }
+        }
+        // The report client was never spawned, so the printer's state is unknown and the operator
+        // hears the spawner's own cause -- not an exit code no child ever returned.
+        ProcessCaptureNotSpawned { program: pp, cause: why } =>
+          exit_failure(reason: join(["Printer report was never spawned: ", pp, " -- ", why], ""))
       }
     }
   }
@@ -127,11 +133,14 @@ fn report_has_state_and_error(text: String) -> Bool {
   }
 }
 
-fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> ProcessOutcome {
-  if remaining <= 0 { return ProcessRefused { exit_code: 1, stderr: "No complete state/error report within eight fresh observations" } }
+fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> ProcessCaptureOutcome {
+  if remaining <= 0 { return ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "No complete state/error report within eight fresh observations" } } }
   match report_with_credential(serial: serial, address: address, credential: credential) {
-    ProcessOutputPresent { text: text } => if report_has_state_and_error(text: text) { ProcessOutputPresent { text: text } }
+    ProcessCaptured { outcome: ProcessOutputPresent { text: text } } =>
+      if report_has_state_and_error(text: text) { ProcessCaptured { outcome: ProcessOutputPresent { text: text } } }
       else { complete_report_with_credential(serial: serial, address: address, credential: credential, remaining: remaining - 1) }
+    // A report that never ran is not an incomplete report: retrying a program the spawner refused
+    // would only answer the same refusal eight times.
     other => other
   }
 }

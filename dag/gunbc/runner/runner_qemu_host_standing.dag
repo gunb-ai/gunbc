@@ -12,12 +12,13 @@ import extdeps.virtualization.qemu {
 import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, AavmfFirmwareFile, aavmf_2024_02_ubuntu_noble }
 import gunbc.command_runner {
   ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, run_shell_command_capture,
-  process_outcome_admitted, LocalExec,
+  process_outcome_admitted, LocalExec, process_capture_admitted
 }
 import gunbc.runner.runner_microvm_host_ready { KvmDeviceStanding, KvmDeviceWritable, kvm_standing_of, kvm_standing_text }
 import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
 import extdeps.tools.ldd { ldd_command, ldd_reading_of, LddReading, LddAllResolved, LddUnresolved, LddUnreadable }
 import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_rooted, qemu_toolchain_cleared_command }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptured }
 
 // WHAT AN EXECUTOR HOST CARRIES FOR A QEMU BOOT UNDER KVM, READ AND NOTHING WRITTEN. This is an
 // EXECUTOR-HOST reading (managed-host cut 4b): its subject is the machine the job runs on, KEYED BY
@@ -125,9 +126,12 @@ fn observe_qemu_banner_wet(root: String, build: QemuDistributionBuild, presence:
   let path = qemu_toolchain_rooted(root: root, packaged: build.installed_binary)
   let banner = if qemu_banner_may_be_read(presence: presence) {
     match run_shell_command_capture(command: qemu_toolchain_cleared_command(root: root, command: qemu_version_command(binary: path as FilePath)), transport: LocalExec) {
+      ProcessCaptured { outcome: __outcome } => match __outcome {
       ProcessOutputPresent { text: t } => QemuBannerRead { banner: qemu_banner_first_line(output: t) }
       ProcessOutputAbsent => QemuBannerRead { banner: "" }
       ProcessRefused { exit_code: x, stderr: e } => QemuBannerRead { banner: join(["(--version exit ", to_string(x), ": ", trim(s: e), ")"], "") }
+      }
+      ProcessCaptureNotSpawned { program: p, cause: why } => QemuBannerRead { banner: join(["(--version never spawned: ", p, ": ", why, ")"], "") }
     }
   } else {
     QemuBannerNotRead
@@ -137,7 +141,7 @@ fn observe_qemu_banner_wet(root: String, build: QemuDistributionBuild, presence:
 
 fn observe_qemu_presence_wet(root: String, build: QemuDistributionBuild) -> QemuPresence {
   let path = qemu_toolchain_rooted(root: root, packaged: build.installed_binary)
-  if process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)) {
+  if process_capture_admitted(captured: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)) {
     QemuExecutable { digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
   } else {
     QemuNotExecutable
@@ -151,9 +155,12 @@ fn observe_qemu_libraries_wet(root: String, build: QemuDistributionBuild, presen
     QemuNotExecutable => QemuLibrariesNotRead { reason: "no executable at the rooted path" }
     QemuExecutable { digest: _ } =>
       match run_shell_command_capture(command: qemu_toolchain_cleared_command(root: root, command: ldd_command(binary: qemu_toolchain_rooted(root: root, packaged: build.installed_binary))), transport: LocalExec) {
+        ProcessCaptured { outcome: __outcome } => match __outcome {
         ProcessOutputPresent { text: t } => QemuLibrariesRead { reading: ldd_reading_of(output: t) }
         ProcessOutputAbsent => QemuLibrariesRead { reading: ldd_reading_of(output: "") }
         ProcessRefused { exit_code: x, stderr: e } => QemuLibrariesNotRead { reason: join(["ldd exited ", to_string(x), ": ", trim(s: e)], "") }
+        }
+        ProcessCaptureNotSpawned { program: p, cause: why } => QemuLibrariesNotRead { reason: join(["ldd was never spawned: ", p, ": ", why], "") }
       }
   }
 }
@@ -271,8 +278,8 @@ fn qemu_host_standing_of(
 
 fn observe_qemu_host_standing_wet(host: HostnameShortCapture, root: String) -> QemuHostStanding {
   let kvm_path = qemu_kvm_accelerator_device as String
-  let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
-  let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
+  let exists = process_capture_admitted(captured: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
+  let writable = process_capture_admitted(captured: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
   let build = qemu_8_2_2_ubuntu_noble_arm64
   let firmware = aavmf_2024_02_ubuntu_noble
   let presence = observe_qemu_presence_wet(root: root, build: build)

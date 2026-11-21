@@ -9,13 +9,13 @@ import extdeps.python { python_interpreter_at }
 import extdeps.cadquery.cadquery { cadquery_run_program_command, cadquery_import_probe_command }
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
 import extdeps.shell
-import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent }
+import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slicer_linux_aarch64_appimage_sha256 }
 import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
 import std.types { FilePath }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import gunbc.host_state_root { HostStateTree }
 import product.printing.cad_runtime_store { cad_runtime_store, CadRuntimeStoreReady, CadRuntimeStoreUnready, cad_environment_interpreter, cad_environment_publication, CadEnvironmentNotBuilt, CadEnvironmentUnpublished, CadEnvironmentPublished, CadEnvironmentMarkerWrong, CadEnvironmentStoreUnreadable }
 import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec, cad_runtime_spec_text, cad_runtime_spec_digest }
@@ -128,11 +128,16 @@ fn read_cad_environment(tree: HostStateTree) -> CadEnvironmentReading {
   let spec = cad_runtime_spec
   let interpreter = cad_environment_interpreter(store: store, spec: spec)
   match run_shell_command_capture(command: uname_machine_command(), transport: LocalExec) {
+    // 'Could not observe' and 'never attempted to observe' are different sentences, and the second one
+    // names the program and the reason nothing ran.
+    ProcessCaptureNotSpawned { program: p, cause: why } => return CadEnvironmentUnreadable { reason: join(["Cannot observe host architecture: the uname was never spawned: ", p as String, " -- ", why as String], "") }
+    ProcessCaptured { outcome: uname } => match uname {
     ProcessRefused { exit_code: _, stderr: e } => return CadEnvironmentUnreadable { reason: concat("Cannot observe host architecture: ", e) }
     ProcessOutputAbsent => return CadEnvironmentUnreadable { reason: "Host architecture observation printed nothing" }
     ProcessOutputPresent { text: t } => match judge_host_architecture(spec: spec, uname_stdout: t) {
       RuntimeMismatch { reason: r } => return CadEnvironmentWrong { reason: r }
       RuntimeMatches => {}
+    }
     }
   }
   match cad_environment_publication(store: store, spec: spec) {
@@ -155,9 +160,12 @@ fn probe_cad_interpreter(spec: CadRuntimeSpec, interpreter: String) -> RuntimeJu
     transport: LocalExec,
   )
   match probe {
+    ProcessCaptureNotSpawned { program: p, cause: why } => RuntimeMismatch { reason: join(["CAD interpreter ", interpreter, " was never spawned for the distribution probe: ", p as String, " -- ", why as String], "") }
+    ProcessCaptured { outcome: probe } => match probe {
     ProcessRefused { exit_code: _, stderr: e } => RuntimeMismatch { reason: join(["CAD interpreter ", interpreter, " could not import the declared distributions: ", e], "") }
     ProcessOutputAbsent => RuntimeMismatch { reason: "CAD runtime probe printed nothing" }
     ProcessOutputPresent { text: t } => judge_cad_probe(spec: spec, interpreter: interpreter, reply: t)
+    }
   }
 }
 
@@ -202,9 +210,12 @@ fn observe_print_runtime(tree: HostStateTree, appimage: String, receipt: String)
   let scratch = concat(receipt, ".orca")
   if !shell.Mkdir.Parents(path: scratch as FilePath).success { return PrintRuntimeRefused { reason: "Cannot isolate runtime probe output" } }
   let orca_probe = match with_verified_orca(appimage: appimage as FilePath, use: e => run_shell_command_capture(command: env_prefixed_command_in(directory: scratch, bindings: [], command: orca_version_probe_command(executable: e)), transport: LocalExec)) {
+    ProcessCaptureNotSpawned { program: p, cause: why } => return PrintRuntimeRefused { reason: join(["Pinned Orca was never spawned for the runtime probe: ", p as String, " -- ", why as String], "") }
+    ProcessCaptured { outcome: orca } => match orca {
     ProcessRefused { exit_code: _, stderr: e } => return PrintRuntimeRefused { reason: concat("Pinned Orca runtime probe failed before CAD preparation: ", e) }
     ProcessOutputAbsent => return PrintRuntimeRefused { reason: "Orca runtime probe returned no help output" }
     ProcessOutputPresent { text: t } => t
+    }
   }
   let body = serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "gunbc.print-runtime-receipt.v1")),

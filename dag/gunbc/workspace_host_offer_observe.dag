@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr, List, CommitSha }
 import std.algebra { trim }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
+import gunbc.command_runner { run_shell_command_capture  }
 import gunbc.hostname_allocation { observed_host_identity, ObservedHostIdentityResolved, ObservedHostIdentityRefused, observed_host_identity_refusal_text }
 import gunbc.clock_read { clock_now_probed_at }
 import product.placement_supply { HostIdentity }
@@ -45,6 +45,7 @@ type WorkspaceHostOfferObservation
 // as "no supply" at the coordinator.
 fn workspace_observe_host_offers(request: WorkspaceRequest) -> WorkspaceHostOfferObservation {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputAbsent => WorkspaceHostOfferNameRefused { reason: "the kernel hostname could not be read (no output)" as NonEmptyStr }
     ProcessRefused { exit_code: _, stderr: _ } => WorkspaceHostOfferNameRefused { reason: "the kernel hostname could not be read (the command was refused)" as NonEmptyStr }
     ProcessOutputPresent { text: raw } =>
@@ -59,7 +60,13 @@ fn workspace_observe_host_offers(request: WorkspaceRequest) -> WorkspaceHostOffe
           else { WorkspaceHostOffersObserved { reads: map(slots, slot => workspace_observe_slot_offer(request: request, host: host, slot: slot)) } }
         }
       }
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceHostOfferNameRefused { reason: "the kernel hostname could not be read (the command was refused)" as NonEmptyStr }
+
+
+
+
+}
 }
 
 fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, slot: RunnerSlotIdentity) -> WorkspaceHostOfferRead {

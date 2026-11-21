@@ -8,8 +8,8 @@ import extdeps.shell
 import extdeps.posix.signal
 import extdeps.filesystem.filesystem_io
 import extdeps.tools.gnu_coreutils { pwd_command }
-import gunbc.command_runner { run_shell_command_capture, LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture, LocalExec  }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.git
 import gunbc.git_workdir_free_route {
   run_git_argv_workdir_free, git_workdir_free_succeeded, git_workdir_free_stdout_equal,
@@ -88,10 +88,17 @@ fn is_duration_exceeded(outcome: HarnessToolOutcome) -> Bool {
 
 fn claim_process_cwd() -> String {
   match run_shell_command_capture(command: pwd_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text } => trim(s: text)
     ProcessOutputAbsent => ""
     ProcessRefused { exit_code: _, stderr: _ } => ""
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => ""
+
+
+
+
+}
 }
 
 test fn a_command_over_the_inline_hold_returns_a_job_not_duration_exceeded() -> Bool {

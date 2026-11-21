@@ -21,7 +21,7 @@ import extdeps.systemd.systemctl {
   systemctl_list_all_service_units_argv,
 }
 import extdeps.exec.command { argv_words }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -176,8 +176,7 @@ test fn the_realizers_transport_refusal_names_the_transport() -> Bool {
 // same judgment the remote arms reach, reached from the local seam's own observation record.
 test fn a_local_refusal_is_a_refused_census_not_an_empty_population() -> Bool {
   match slot_census_from_process_outcome(
-    host: operator_host_srv1,
-    outcome: ProcessRefused { exit_code: 7, stderr: "witness: systemctl could not reach the manager" },
+    host: operator_host_srv1,outcome:      ProcessCaptured { outcome: ProcessRefused { exit_code: 7, stderr: "witness: systemctl could not reach the manager" } },
   ) {
     CensusRefused { cause: cause } => starts_with(s: cause, prefix: "systemctl list-units exit=7 ")
     CensusDerived { rows: _ } => false
@@ -188,11 +187,29 @@ test fn a_local_refusal_is_a_refused_census_not_an_empty_population() -> Bool {
 // seam's output-bearing arm reaches the same census the typed arms reach.
 test fn a_local_output_present_reads_a_real_census() -> Bool {
   match slot_census_from_process_outcome(
-    host: operator_host_srv1,
-    outcome: ProcessOutputPresent { text: census_decode_fixture },
+    host: operator_host_srv1,outcome:      ProcessCaptured { outcome: ProcessOutputPresent { text: census_decode_fixture } },
   ) {
     CensusDerived { rows: rows } =>
       rows_mention_unit(rows: rows, unit: "actions-runner@srv1-01.service")
     CensusRefused { cause: _ } => false
+  }
+}
+
+// A LISTING THE SPAWNER NEVER STARTED IS REFUSED, NOT EMPTY (the fabricated -1 this migration
+// removes used to arrive here as ProcessRefused { exit_code: -1 }, which read as a child that ran and
+// failed with a status no child has). The census refuses and the cause names the spawner, never a code.
+test fn a_local_never_spawned_listing_is_a_refused_census() -> Bool {
+  match slot_census_from_process_outcome(
+    host: operator_host_srv1,
+    outcome: ProcessCaptureNotSpawned {
+      program: "systemctl list-units" as NonEmptyStr,
+      cause: "the transport declined to spawn it" as NonEmptyStr,
+    },
+  ) {
+    CensusRefused { cause: cause } =>
+      starts_with(s: cause, prefix: "the slot listing was never spawned: ")
+        && contains(s: cause, needle: "the transport declined to spawn it")
+        && !contains(s: cause, needle: "exit=")
+    CensusDerived { rows: _ } => false
   }
 }

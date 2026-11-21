@@ -5,9 +5,9 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, LocalExec  }
 import extdeps.tools.hostname { hostname_short_read_command }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
@@ -78,10 +78,17 @@ data workspace_operator_receipt_path: String = "target/workspace-operation.json"
 
 fn workspace_operator_on_candidate_host() -> Bool {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text } => any(workspace_execution_slot_identities(), slot => (slot.host as String) == trim(s: text))
     ProcessOutputAbsent => false
     ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => false
+
+
+
+
+}
 }
 
 fn workspace_operator_receipt(allocation: WorkspaceAllocation) -> ProcessExit {

@@ -48,7 +48,9 @@ fn reconcile_start(session:PrinterCredentialSession,remote:NonEmptyStr,version:S
 }
 fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,remaining:Int) -> ProcessExit {
  let response=report_once_using_session(session:session)
- let text=match response {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
+ let text=match response {ProcessCaptured { outcome: observed } => match observed {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))} // The telemetry client was never spawned: the read is recorded as never having run, with the
+// spawner's cause, rather than as a read that came back refusing.
+ProcessCaptureNotSpawned {program:pp,cause:why}=>serialize_json(v:json_object(members:[json_kv(key:"read_never_spawned",value:json_string(s:join([pp," -- ",why],"")))]))}
  let read=9-remaining
  let evidence=match start_evidence_record(store:evidence_store,claim_key:claim_key,read:read,content:text) {
   CreateOnceRecorded {path:p}=>p

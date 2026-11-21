@@ -84,7 +84,7 @@ import extdeps.github.effect { GitHubOrganizationRef }
 import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import product.fabric.work { Work }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, process_capture_admitted}
 import gunbc.host.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -252,13 +252,13 @@ fn bind_slot_host(slot: RunnerSlotIdentity) -> MicrovmHostBinding {
 fn path_is_executable(path: String) -> Bool
   uses net: Network
 {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
 }
 
 fn path_exists(path: String) -> Bool
   uses net: Network
 {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
 }
 
 // THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same

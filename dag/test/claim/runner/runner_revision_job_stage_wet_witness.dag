@@ -15,7 +15,7 @@ import extdeps.git {
 }
 import extdeps.git.object_store { git_sha1_object_id }
 import extdeps.rust.cargo_build { cargo_vendor_command, cargo_vendor_command_from }
-import gunbc.command_runner { process_outcome_admitted }
+import gunbc.command_runner { process_outcome_admitted, process_capture_admitted, run_shell_command_observe_outcome}
 import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds }
 import gunbc.instrument_targets { self_host_label }
 import gunbc.runner.runner_revision_job_stage {
@@ -126,7 +126,7 @@ fn vendor_base() -> String {
 test fn the_vendor_step_ignores_the_trees_cargo_configuration_by_real_execution() -> Bool {
   let base = vendor_base()
   hostile_vendor_tree(base: base)
-    && process_outcome_admitted(outcome: run_shell_command_capture(
+    && process_capture_admitted(captured: run_shell_command_capture(
       command: cargo_vendor_command(manifest_path: concat(base, "/tree/Cargo.toml"), output_dir: concat(base, "/vendor"), cargo_home: concat(base, "/cargo-home")),
       transport: LocalExec))
 }
@@ -134,7 +134,7 @@ test fn the_vendor_step_ignores_the_trees_cargo_configuration_by_real_execution(
 test fn the_same_vendor_argv_run_from_the_tree_refuses_on_its_configuration() -> Bool {
   let base = concat(vendor_base(), "-control")
   hostile_vendor_tree(base: base)
-    && !process_outcome_admitted(outcome: run_shell_command_capture(
+    && !process_capture_admitted(captured: run_shell_command_capture(
       command: cargo_vendor_command_from(directory: concat(base, "/tree"), manifest_path: concat(base, "/tree/Cargo.toml"), output_dir: concat(base, "/vendor"), cargo_home: concat(base, "/cargo-home")),
       transport: LocalExec))
 }

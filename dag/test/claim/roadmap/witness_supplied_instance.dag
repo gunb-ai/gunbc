@@ -86,7 +86,7 @@ fn witness_scratch_template() -> String {
   join([witness_scratch_prefix as String, "/", witness_scratch_leaf_template as String], "")
 }
 
-// THE ONE PROCESS THE FIXTURE NEEDS TO GET A ROOT. Callers run this with `run_shell_command_observe` and read
+// THE ONE PROCESS THE FIXTURE NEEDS TO GET A ROOT. Callers run this with `run_shell_command_observe_outcome` and read
 // the created path off stdout; an empty or absent stdout is `Absent`, which every claim turns into a refusal
 // rather than a default.
 fn witness_scratch_parent_command() -> ArgvCommand {

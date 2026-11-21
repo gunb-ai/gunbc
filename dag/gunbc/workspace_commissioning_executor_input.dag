@@ -7,7 +7,7 @@ import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_gr
 import gunbc.executor_privileged_operation { executor_privileged_operation_elevated_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptureOutcome}
 
 import extdeps.crypto.hash { Digest, sha256sum_line_digest }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
@@ -99,8 +99,11 @@ fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool 
 
 // Captured command text trims trailing whitespace. Digest the file under its exact grant,
 // and the expected bytes through stdin, so a missing or added final newline still refuses.
-fn workspace_executor_grant_digest_matches(expected: Digest, observed: ProcessOutcome) -> Bool {
+fn workspace_executor_grant_digest_matches(expected: Digest, observed: ProcessCaptureOutcome) -> Bool {
   match observed {
+    // Nothing was digested, so nothing matches: a digest read off an unspawned command would be a
+    // digest of nothing claiming to be the grant's.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => false
     ProcessOutputPresent { text } => match sha256sum_line_digest(line: text) {
       Present { value: actual } => actual == expected
       Absent => false

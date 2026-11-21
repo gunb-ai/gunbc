@@ -16,9 +16,9 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.posix.test_utility { test_executable_command }
-import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead, StatFieldUnread }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, stat_field_reading_capture, StatFieldRead, StatFieldUnread }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, process_capture_admitted}
 import gunbc.runner.microvm_guest_artifacts {
   runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
   runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
@@ -40,8 +40,8 @@ type WorkspaceImageAdmission
 type WorkspaceImageProtectedSources sole_constructor { kernel: String, rootfs: String }
 
 fn workspace_image_file_protected(path: String) -> Bool {
-  let uid = stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec))
-  let mode = stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec))
+  let uid = stat_field_reading_capture(captured: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec))
+  let mode = stat_field_reading_capture(captured: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec))
   (match uid { StatFieldRead { value: value } => value == "0" StatFieldUnread { detail: _ } => false })
     && (match mode { StatFieldRead { value: value } => value == "400" || value == "444" || value == "600" || value == "644" StatFieldUnread { detail: _ } => false })
 }
@@ -171,7 +171,7 @@ fn workspace_image_tree_commands(root: String) -> List<ArgvCommand> {
 
 fn workspace_image_run_commands(commands: List<ArgvCommand>) -> Bool {
   fold(commands, init: true, f: (ok, command) => if ok {
-    process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+    process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
   } else { false })
 }
 
@@ -195,7 +195,7 @@ fn workspace_image_build(root: String) -> Bool {
 fn workspace_image_tree_ownership(root: String) -> Bool {
   let tree = workspace_tree_path(root: root)
   all([tree, concat(tree, "/root"), concat(tree, "/usr/sbin/sshd")], path =>
-    match stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
+    match stat_field_reading_capture(captured: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
       StatFieldRead { value: owner } => owner == "0"
       StatFieldUnread { detail: _ } => false
     }

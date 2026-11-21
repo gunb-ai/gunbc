@@ -38,8 +38,9 @@ import gunbc.runner.runner_microvm_host_ready {
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused,
   microvm_host_binding_wet, microvm_host_binding_refusal_text,
 }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessRunOutcome }
 import gunbc.command_runner {
-  ProcessObservation, run_shell_command_observe, run_shell_commands, LocalExec,
+  ProcessObservation, run_shell_command_observe_outcome, run_shell_commands, LocalExec,
 }
 
 data runner_microvm_boot_probe_disposition: ConstructionMechanism = SingleAuthority
@@ -219,6 +220,21 @@ fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObser
   }
 }
 
+// THE RUN GRAIN of the guest-agent verdict, for the caller that holds a ProcessRunOutcome and so has
+// not yet been told whether a child existed. A VMM that was never spawned is BootNotAttempted -- the
+// arm that already means 'nothing was booted' -- and NOT BootVmmFailed, which would attribute a
+// failure to a VMM that never had the chance to produce one, nor BootProducedNoConsole, which reports
+// a console nobody read. The ProcessRan arm falls through to guest_agent_boot_verdict unchanged: this
+// adds no judgment, it only stops a missing child from being judged as a booted one.
+fn guest_agent_boot_verdict_of_run(runner: ActionsRunnerRelease, run: ProcessRunOutcome) -> BootProbeVerdict {
+  match run {
+    ProcessNotSpawned { program: p, cause: why } => BootNotAttempted {
+      cause: join(["nothing was booted: the VMM was never spawned -- ", p as String, ": ", why as String], ""),
+    }
+    ProcessRan { observation: observed } => guest_agent_boot_verdict(runner: runner, observed: observed)
+  }
+}
+
 fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
   match v {
     BootPrintedRunnerVersion { version: x } => join(["boot=printed-runner-version ", x], "")
@@ -328,9 +344,9 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                   )
                 } else {
                   runner_microvm_boot_probe_receipt_wet(
-                    verdict: guest_agent_boot_verdict(
+                    verdict: guest_agent_boot_verdict_of_run(
                       runner: image.runner,
-                      observed: run_shell_command_observe(
+                      run: run_shell_command_observe_outcome(
                         command: runner_microvm_boot_probe_bounded_command(
                           binary: firecracker_installed_binary(root: fc_root, rel: firecracker_release_aarch64),
                           config_path: runner_microvm_boot_probe_config_path(root: root),

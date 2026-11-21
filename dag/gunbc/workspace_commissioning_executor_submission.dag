@@ -40,9 +40,9 @@ import gunbc.runner.runner_microvm_slot_unit { workspace_launch_credential_sourc
 import gunbc.runner.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.fleet.fleet_generation_execution { fleet_generation_publication_as_owner }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import std.algebra { trim }
 import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetDependencyObserved, WorkspaceCommissioningFleetRefused }
 
@@ -194,6 +194,7 @@ fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> Works
         Absent => match run_shell_command_capture(command: fleet_generation_publication_as_owner(action: "admit",
           host: input.plan.provenance.slot.host as NonEmptyStr, prior: input.plan.receipt.prior_generation,
           planned: input.plan.receipt.planned_generation, bundle: input.plan.bundle), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
           ProcessOutputPresent { text } => if trim(s: text) != "apply" {
             WorkspaceExecutorPreparationRefused { reason: "unsubmitted commissioning cannot inherit a pending fleet publication" }
           } else { match workspace_commissioning_basis_observe(provenance: input.plan.provenance) {
@@ -208,7 +209,13 @@ fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> Works
           } }
           ProcessOutputAbsent => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
           ProcessRefused { exit_code: _, stderr: _ } => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
-        }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
+
+
+
+
+}
         Present { value: record } => if record.subject.plan_hash != input.plan.provenance.plan_hash
           || record.subject.fleet_bundle_hash != input.plan.bundle {
           WorkspaceExecutorPreparationRefused { reason: "existing executor belongs to another reviewed plan" }

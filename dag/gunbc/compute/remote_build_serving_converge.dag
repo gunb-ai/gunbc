@@ -80,8 +80,8 @@ import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_en
 // observed_cgroup_bound), so the cap comparison and the wrap admission share one carrier; the VALUE itself is
 // decoded by the one systemctl-show authority, extdeps.systemd::parse_systemd_memory_limit_show, below.
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryUnlimited, CgroupMemoryLimited }
-import gunbc.command_runner { run_shell_command_capture }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture  }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.github.actions_environment { github_sha_variable_name }
 import extdeps.rust.rustup {rustup_toolchain_file_channel, rustup_toolchain_list_command, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm, rustup_toolchain_install_command,
   rustup_init_release, rustup_init_url, rustup_linux_gnu_triple, rustup_init_install_command }
@@ -324,18 +324,32 @@ fn serving_ledger_row_read(target: SshTarget, context: FleetSshExecutionContext,
 // is read once per run from the executor's own state — its built binary's sha and its arch.
 fn serving_local_first_token(cmd: ArgvCommand) -> String? {
   match run_shell_command_capture(command: cmd, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } => match first_space_token(text: t) == "" { true => none  false => Present { value: first_space_token(text: t) } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => none
+
+
+
+
+}
 }
 
 fn serving_local_trimmed(cmd: ArgvCommand) -> String? {
   match run_shell_command_capture(command: cmd, transport: LocalExec) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
     ProcessOutputPresent { text: t } => match trim(s: t) == "" { true => none  false => Present { value: trim(s: t) } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => none
+
+
+
+
+}
 }
 
 // THE EXECUTOR PLAN-TIME PIN, read ONCE per run and handed to BOTH observe and apply (the manager's
@@ -1299,9 +1313,14 @@ fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, user: 
 // and sha256 readback then happen over the ssh edge.
 fn converge_upload(target: SshTarget, context: FleetSshExecutionContext, local_path: NonEmptyStr, remote_path: NonEmptyStr) -> ConvergeStep {
   match run_shell_command_capture(command: fleet_scp_upload_command(context: context, target: target, local_path: local_path, remote_path: remote_path), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessOutputPresent { text: _ } => StepDone
     ProcessOutputAbsent => StepDone
     ProcessRefused { exit_code: c, stderr: e } => StepFailed { cause: join(["scp upload exit ", to_string(c), ": ", trim(e)], "") }
+    // No scp client ran, so nothing crossed the wire. The failure is the spawner's own words, not an
+    // exit code the client never returned.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => StepFailed { cause: join(["scp upload was never spawned: ", p, ": ", why], "") }
   }
 }
 
