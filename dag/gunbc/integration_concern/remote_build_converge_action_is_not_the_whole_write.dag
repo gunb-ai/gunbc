@@ -1,0 +1,49 @@
+module gunbc.integration_concern.remote_build_converge_action_is_not_the_whole_write
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 23: main 7f27f475982 (#16632).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged, remote_build_serving_converge_merge_revision }
+
+data remote_build_converge_action_is_not_the_whole_write: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_converge_action_is_not_the_whole_write",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "ConvergeAction"),
+    requirement: "every byte a write uses is carried by the planned ConvergeAction, so the plan the receipt renders is the whole of what the apply writes",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write"),
+    tail: [decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "ConvergeAction")],
+  },
+  question: "Can converge_run_write take only the ConvergeAction, with the facts it reads from the desired state today moved onto the action, and the action fields that only witnesses read either consumed by the executor or dropped?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write") },
+        tail: [],
+      },
+      account: "converge_run_write takes the desired state beside the action and reads the account group name, the authorized_keys and serve-binary modes, the rustup home and the account home at execution time; the planner also carries literal staging paths. Review findings on PR 5(b) repeatedly found the apply deciding a fact the plan did not carry (reviews 95935, the B2 parent directories, 96039), each fixed at the site that prompted it. EnsureAccount.primary_group and EnsureGroupMembership.group_gid are read only by witnesses.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "ConvergeAction") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_run_write"),
+        control: Absent,
+        statement: "a write that does not land fails with its key and cause, and the run stops at the first failed write; the re-observe, not any write's exit, decides settled",
+      },
+    ],
+    next: climbs_when(capability: "converge_run_write's signature takes only the action, so no write can read a fact the plan did not carry"),
+  },
+}
