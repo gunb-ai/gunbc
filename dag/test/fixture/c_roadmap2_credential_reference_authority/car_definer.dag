@@ -1,0 +1,17 @@
+module test.fixture.c_roadmap2_credential_reference_authority.car_definer
+
+// THE SEALED TWIN DEFINER: the same shape the production carrier has -- a record sealed by
+// sole_constructor whose only entrance is a checked constructor in the declaring module (here the seal
+// itself is what the claim tests, so this definer carries no constructor). The probes forge the carrier
+// with `as` casts in a probe module that is FOREIGN to this declaring module; the seal must refuse both
+// forgings. Companion: car_stripped_definer.dag, identical but for the seal keyword.
+
+import std.types { Bool, PathSegment, String }
+
+type CredentialAttemptReference sole_constructor {
+  segment: PathSegment
+}
+
+fn forge_target(reference: CredentialAttemptReference) -> Bool {
+  true
+}
