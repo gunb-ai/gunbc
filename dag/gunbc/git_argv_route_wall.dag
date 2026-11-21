@@ -3,6 +3,7 @@ module gunbc.git_argv_route_wall
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.algebra { list_at_optional }
 import std.optional { Present, Absent }
+import extdeps.git { git_program_name }
 
 // git argv is written in two dressings (`extdeps/git.dag`):
 //
@@ -209,5 +210,41 @@ fn admit_git_argv_on_route(route: GitArgvRoute, argv: List<String>) -> GitArgvRo
       } else {
         GitArgvRefused
       }
+  }
+}
+
+// THE SANCTIONED ROUTE for the workdir-FREE channel. A route that names no working directory must
+// not reach a git spawn by classifying the argv itself and calling `shell.Exec.RunArgv`; it calls
+// THIS gate and spawns only the command the gate hands back. A bare mutating argv -- the shape that
+// would mutate whatever repository the process happens to occupy -- yields NO command and a typed
+// refusal, so it cannot be mis-joined to a directory-less route; the in-repo `-C <repo>` dressing and
+// bare read-only inspection are handed back intact to spawn.
+//
+// This is a SPAWN GATE, not a command builder: it constructs no ArgvCommand and spawns nothing, so
+// `extdeps/git.dag` stays anemic and no new row is owed to the `extdeps/exec/command.dag` spawn
+// census. It is the SAME wall (`admit_git_argv_on_route`) expressed as the decision a workdir-free
+// route branches on -- a single authority, never a second check bolted beside the route's own.
+//
+// At a workdir-FREE route `admit_git_argv_on_route` refuses BOTH the bare-mutation mis-join and any
+// verb the closed read-only allowlist has not earned (fail-closed classification). Neither is a
+// taxonomy the route could branch on -- an unconsidered verb's actionable class is "re-dress it
+// (`-C <repo> ...`) or take a directory-carrying route", the same as the bare mutation's -- so the
+// reason carries nothing and the refused arm is nullary, mirroring the wall's single-inhabitant
+// `GitArgvRefused`; a one-inhabitant reason sum would not expose its constructor in this DSL.
+type GitWorkdirFreeSpawn
+  = GitWorkdirFreeSpawnAdmitted { program: NonEmptyStr, arguments: List<String> }
+  | GitWorkdirFreeSpawnRefused
+
+// The decision a workdir-free git route makes before any spawn. Admitted carries the program and the
+// argv to run; Refused produces no command -- the bare-mutating argv is refused, never spawned.
+// The PROGRAM is NOT a caller choice: a workdir-free git route runs git and only git, so the program
+// name is part of git's interface and is fixed HERE (the single authority `extdeps.git::git_program_name`),
+// never taken from a caller. The wall judges the argv WORDS; the admitted program is always git, so no
+// caller can smuggle another program through a git-shaped argv (`interface_realization_policy`,
+// `single_authority`; a non-git program never reaches an admit -- `fail_closed`).
+fn spawn_git_argv_workdir_free(argv: List<String>) -> GitWorkdirFreeSpawn {
+  match admit_git_argv_on_route(route: GitWorkdirFree, argv: argv) {
+    GitArgvAdmitted => GitWorkdirFreeSpawnAdmitted { program: git_program_name, arguments: argv }
+    GitArgvRefused => GitWorkdirFreeSpawnRefused
   }
 }

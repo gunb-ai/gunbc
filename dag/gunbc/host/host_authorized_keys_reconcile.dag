@@ -1,7 +1,8 @@
 module gunbc.host.host_authorized_keys_reconcile
 
 import std.types { String, List, Bool, NonEmptyStr }
-import extdeps.ssh.keys { SshPublicKey, SshKeyAlgorithm, ssh_key_algorithm_token }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.ssh.keys { SshPublicKey, SshKeyAlgorithm, Ed25519, AuthorizedKeyOption, NoAgentForwardingOption, NoPortForwardingOption, NoX11ForwardingOption, ssh_key_algorithm_token }
 import gunbc.fleet.fleet_ssh_access {
   fleet_authorized_keys,
   operator_macbook_ssh_key,
@@ -10,6 +11,10 @@ import gunbc.fleet.fleet_ssh_access {
   authorized_keys_for_account,
 }
 import gunbc.fleet.fleet_posix_accounts { FleetAccountHostAdministrator }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_intent_network { operator_lan_segment, srv1_tailscale_endpoint, srv2_tailscale_endpoint }
+import product.network_topology { NetworkSegment, NetworkEndpoint }
+import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -144,3 +149,107 @@ data srv4_observed_authorized_keys: List<SshPublicKey> = [
   operator_macbook_ssh_key,
   fleet_automation_ssh_key,
 ]
+
+// ==================================================================================================
+// OBSERVED (not intended) node-orch operator-account authorized_keys on srv1/srv2 -- OUT-OF-BAND
+// residue. Verified live by gentle-crab-832 2026-11-20; each host's ~/.ssh/authorized_keys.bak-20261120
+// holds the pre-edit form. The briansrls operator account on each host carries a node-orch PEER key with
+// a per-host from= source-address and a forwarding posture, each admitted by a named consumer. gunbc.fleet
+// .fleet_ssh_access grants the node-orch principal only to FleetAccountHostAdministrator (never
+// FleetAccountOperator), so these operator-account lines are deliberately OUT OF BAND -- recorded here, in
+// the module that owns authorized_keys ownership, as their declared home. srv1's node-orch@srv1 key is NOT
+// in the roster; this is its only home in the model -- a hand-written OBSERVED fixture exactly like
+// srv3_observed_briansrls_srv1_key above (an observed read, never a desired/intent row). Tailscale SSH was
+// on for srv1/srv2 and admitted these by tailnet identity, so the LAN-only from= was never enforced; it is
+// now off (sibling tailscale-ssh-off record), so from= is load-bearing and recorded before it is modeled.
+//
+// CONSUMPTION and the no-silent-undo guarantee: node_orch_operator_out_of_band_preserved() runs each
+// recorded key through authorized_key_ownership -- the SAME route the reconcile spine uses to decide a
+// teardown. A key the fleet does not own resolves Absent (none) -> OwnershipUnknown -> the spine REFUSES to
+// remove it (membership_reconcile MemberRemovalRefused), so the srv2 account's node-orch@srv1 line (srv1's
+// own key, absent from the roster) can never be silently torn down. srv1's line is the fleet-owned
+// node-orch@srv2 (node_orch_ssh_key): the wall does not protect an OWNED key on an account it is not granted
+// to, so srv1's line persists only while no converge is pointed at the operator account -- exactly the
+// condition the typed retirement names on each entry. from= is recorded as references to the fleet's
+// EXISTING address authorities (product.network_topology NetworkSegment/NetworkEndpoint rows in
+// gunbc.fleet.fleet_intent_network), not as a hand-typed comma string and not as an extdeps
+// AuthorizedKeyOption arm (a capability no executing route reads is speculative,
+// gunbc.design_argument::consumption); it becomes a typed option when an operator-account converge (the
+// first retirement trigger) actually consumes it. The admitting consumer and on-host backup path are
+// recorded as // comments on each fixture: no generic typed systemd-unit carrier models an arbitrary user
+// unit such as srv1-docker-tunnel.service, nor the srv2 docker-over-ssh sessions, so carrying them as
+// String fields would be data whose only purpose is commentary (gunbc.design_argument::source_annotations).
+// ==================================================================================================
+
+type NodeOrchOperatorOutOfBandEntry {
+  host: HostIdentity,
+  key: SshPublicKey,
+  current_options: List<AuthorizedKeyOption>,
+  from_source_lan: NetworkSegment,
+  from_source_tailnets: List<NetworkEndpoint>,
+  retirement: DissolutionCondition,
+}
+
+// srv1's node-orch public key (node-orch@srv1, srv1's ~/.node-orch id_ed25519). NOT in fleet_ssh_access;
+// this is its declared home, held as an observed out-of-band fixture.
+data srv2_operator_observed_node_orch_srv1_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIMIzI+97T4CY1FsAqAcZce4quloDCNAxLXFCoq16G17i",
+  comment: "node-orch@srv1",
+}
+
+fn node_orch_operator_out_of_band_retirement() -> DissolutionCondition {
+  unbound_dissolution(description: "Retires when EITHER trigger fires: (a) a modeled converge writes the briansrls operator account's authorized_keys on srv1/srv2 -- these entries then move into that converge's desired set and from=/forwarding become typed AuthorizedKeyOptions consumed over its executing route; or (b) gunbc.fleet.fleet_ssh_access grants the node-orch principal to FleetAccountOperator -- the lines then become roster-owned via authorized_keys_for_account(FleetAccountOperator) and this out-of-band record is redundant.")
+}
+
+// srv1 (LAN 192.168.1.203) operator account: the fleet-authorized node-orch@srv2 key (reused
+// single-authority from fleet_ssh_access), observed out-of-band. from= widened 2026-11-20 to add srv2's
+// tailnet address 100.73.169.40; no-port-forwarding REMOVED.
+// ADMITTING CONSUMER: srv1-docker-tunnel.service -- srv2 user unit
+// `ssh -N -L /run/user/1000/srv1-docker.sock:/home/briansrls/.run/docker.sock srv1` (a stream-local -L
+// forward -- permitopen/permitlisten do not apply); backs the dashboard's srv1 docker context. It was
+// broken ~19:13-19:20Z until no-port-forwarding was removed from this line.
+// ON-HOST BACKUP: srv1:~/.ssh/authorized_keys.bak-20261120 (verified live by gentle-crab-832 2026-11-20).
+// from= sources reference the fleet's own authorities: the operator LAN segment and srv2's tailnet
+// endpoint (the peer that authenticates to srv1 with this key).
+data srv1_operator_node_orch_out_of_band_entry: NodeOrchOperatorOutOfBandEntry = NodeOrchOperatorOutOfBandEntry {
+  host: operator_host_srv1,
+  key: node_orch_ssh_key,
+  current_options: [NoAgentForwardingOption, NoX11ForwardingOption],
+  from_source_lan: operator_lan_segment,
+  from_source_tailnets: [srv2_tailscale_endpoint],
+  retirement: node_orch_operator_out_of_band_retirement(),
+}
+
+// srv2 operator account: srv1's node-orch@srv1 key, observed out-of-band. from= widened 2026-11-20 to add
+// srv1's tailnet address 100.69.18.126; no-port-forwarding KEPT.
+// ADMITTING CONSUMER: sessions on srv1 reaching srv2 as srv2-lan -> srv2.tailecbe08.ts.net (ssh and
+// `docker -H ssh://srv2-lan`); no port forwarding is performed, so no-port-forwarding is kept.
+// ON-HOST BACKUP: srv2:~/.ssh/authorized_keys.bak-20261120 (verified live by gentle-crab-832 2026-11-20).
+// from= sources reference the fleet's own authorities: the operator LAN segment and srv1's tailnet
+// endpoint (the peer that authenticates to srv2 with this key).
+data srv2_operator_node_orch_out_of_band_entry: NodeOrchOperatorOutOfBandEntry = NodeOrchOperatorOutOfBandEntry {
+  host: operator_host_srv2,
+  key: srv2_operator_observed_node_orch_srv1_key,
+  current_options: [NoPortForwardingOption, NoAgentForwardingOption, NoX11ForwardingOption],
+  from_source_lan: operator_lan_segment,
+  from_source_tailnets: [srv1_tailscale_endpoint],
+  retirement: node_orch_operator_out_of_band_retirement(),
+}
+
+fn node_orch_operator_out_of_band_entries() -> List<NodeOrchOperatorOutOfBandEntry> {
+  [srv1_operator_node_orch_out_of_band_entry, srv2_operator_node_orch_out_of_band_entry]
+}
+
+// The consumer / no-silent-undo route. Runs each recorded out-of-band key through the reconcile's own
+// ownership decision (authorized_key_ownership -> the membership spine's teardown gate) and returns the
+// entries the fleet does NOT own: for those, OwnershipUnknown makes the spine REFUSE the removal, so they
+// are structurally preserved against any future converge. srv1's fleet-owned line (node-orch@srv2) is
+// excluded here -- its
+// protection is the absence of an operator-account converge, which the typed retirement names.
+fn node_orch_operator_out_of_band_preserved() -> List<NodeOrchOperatorOutOfBandEntry> {
+  filter(
+    node_orch_operator_out_of_band_entries(),
+    e => authorized_key_ownership(e.key) == none,
+  )
+}
