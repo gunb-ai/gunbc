@@ -1373,10 +1373,11 @@ fn write_tailscale_join_receipt_then_exit(body: String, ok: Bool) -> ProcessExit
   }
 }
 
-// ONE DISPATCH, ONE HOST. Reads: TAILSCALE_JOIN_HOST, the host this run joins (the workflow binds it to
-// the dispatch's `host` input, the same input that pinned the job's runner). The clock gates the fetch;
-// the fetch gates the converge. No arm prints the credential: the refused arms name CAUSES, and only
-// tailscale_join_host ever sees the Secret itself.
+// ONE DISPATCH, ONE MACHINE. The machine this run joins arrives as the mode's SUBJECT -- FLEET_CONVERGE_SUBJECT_HOST
+// read through fleet_converge_install_subject_read under the rule the facts table declares for this mode --
+// never as a variable that also names the runner. The clock gates the fetch; the fetch gates the converge.
+// No arm prints the credential: the refused arms name CAUSES, and only tailscale_join_host ever sees the
+// Secret itself.
 fn tailscale_join_converge_ci_wet() -> ProcessExit {
   let stamp = concat("probed_at=", probed_at_word(reading: clock_now_probed_at()) as String)
   let today = tailscale_join_today_from_clock(reading: clock_now_probed_at())
@@ -1402,7 +1403,7 @@ fn tailscale_join_converge_ci_wet() -> ProcessExit {
 
 // THE ROSTER GATE AND THE JOIN ITSELF, for whichever machine the reader settled on. Unchanged behaviour:
 // an unenrolled name is refused before any write, and only a rostered host ever reaches the credential fetch.
-fn tailscale_join_converge_host_chosen(supplied: String, stamp: String, today: String) -> ProcessExit {
+fn tailscale_join_converge_host_chosen(supplied: String, stamp: String, today: Optional<Iso8601CivilDate>) -> ProcessExit {
       match tailscale_join_host_selection(supplied: supplied) {
         JoinHostUnrostered { supplied: s } =>
           write_tailscale_join_receipt_then_exit(
