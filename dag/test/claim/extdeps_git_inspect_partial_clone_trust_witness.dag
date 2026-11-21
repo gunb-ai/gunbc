@@ -7,25 +7,37 @@ import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_r
 
 // WITNESS: the three partial-clone probes in extdeps.git.inspect -- ConfigGetInRepo,
 // ConfigGetRegexpInRepo and IsShallowRepository -- build a `git` argv that carries the per-invocation
-// trust grant `-c safe.directory=<repository_path>` IMMEDIATELY BEFORE `-C <repository_path>`, the same
-// shape their already-trusted siblings (HeadCommitIn, ReadTreeIntoIndex, StatusAgainstIndex,
-// IgnoredAgainstIndex, IndexFlagsIn) carry and the same words extdeps.git git_in_trusted_repository_args
-// builds for the transported legs.
+// trust grant as TWO SEPARATE tokens `-c` and `safe.directory=<repository_path>`, IMMEDIATELY BEFORE the
+// two separate tokens `-C` and `<repository_path>` -- the same shape their already-trusted siblings
+// (HeadCommitIn, ReadTreeIntoIndex, StatusAgainstIndex, IgnoredAgainstIndex, IndexFlagsIn) carry and the
+// same words extdeps.git git_in_trusted_repository_args builds for the transported legs.
 //
-// WHY THIS IS WITNESSED RATHER THAN ASSERTED IN PROSE. inspect.dag's own header paragraph records that
-// a flag living inside a `transport shell` literal "cannot be called by a test" and so "nothing stops a
-// later reader deleting this flag as noise; the protection is this paragraph ... strictly weaker than a
-// witness". std.operation_argv shell_materialize_operation_argv lifts the literal out far enough to READ
-// it: it answers the declaration's own realized argv, with the operation's declared inputs bound by name,
-// so the grant is checked against the declaration that actually ships rather than against prose.
+// WHY A TOKEN LIST, NOT A JOINED STRING. `git -c k=v ...` is argument-sensitive: `["git", "-c",
+// "safe.directory=/repo", ...]` runs, but `["git", "-c safe.directory=/repo", ...]` (the grant merged into
+// ONE token) makes git exit 129 -- it reads `-c safe.directory=/repo` as one unknown option. So the
+// assertion is made on the materialized List<String> token vector against token-list goldens, never on a
+// space-joined string: a join cannot tell the two apart, which would let a correct AND a broken argv pass.
+// THE COMPARISON IS STRUCTURAL (== / != on List<String>).
 //
-// WHY THE PROBES NEEDED THE GRANT AT ALL. Their consumer, extdeps.git partial_clone
-// object_source_serve_admission, is run by repository_convergence_placement's owner leg as the service
-// user against the runner's checkout (a tree another principal owns). Without the grant the read dies at
-// git's dubious-ownership gate -- `git config extensions.partialClone` exits 128 -- the model reads that
-// as fail-closed and refuses operands. The model's refusal on 128 is correct; the defect was the argv.
-// The grant is derived from the input path, so it can name neither a different repository nor the
-// wildcard, and it writes nothing to any config.
+// THE FOUR MUTATION TARGETS this witness must turn red. One named mutant each:
+//   * the three *_carries_the_trusted_repository_grant claims each die when THAT op's grant is removed
+//     (its token list then differs from the golden);
+//   * the three *_is_not_the_merged_grant_token claims each die when THAT op's `-c` / `safe.directory=`
+//     pair is collapsed into a single token.
+// The positive claims are the grant-removal detectors; the merged-token claims are the token-boundary
+// detectors. Together they cover the four mutation shapes (one grant removed per op, plus the merge).
+//
+// WHY THIS IS WITNESSED AT ALL. inspect.dag's header paragraph records that a flag inside a `transport
+// shell` literal "cannot be called by a test"; std.operation_argv shell_materialize_operation_argv lifts the
+// literal out far enough to READ the declaration that actually ships, with the operation's declared inputs
+// bound by name.
+//
+// WHY THE PROBES NEEDED THE GRANT. Their consumer, extdeps.git partial_clone object_source_serve_admission,
+// is run by repository_convergence_placement's owner leg as the service user against the runner's checkout
+// (a tree another principal owns). Without the grant the read dies at git's dubious-ownership gate -- `git
+// config extensions.partialClone` exits 128 -- the model reads that fail-closed and refuses operands. The
+// model's refusal on 128 is correct; the defect was the argv. The grant is derived from the input path, so
+// it names neither a different repository nor the wildcard, and writes nothing to any config.
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,106 +47,106 @@ data inspect_service: String = "git.Inspect"
 // The runner checkout srv1 tree-sync reads as a different principal; the SHAPE is asserted, not the
 // location, so this fixed absolute path stands in for the host-specific one.
 data probe_repo: String = "/opt/actions-runner/srv1-09/_work/gunbc/gunbc"
-// The exact operand the real probe carries: extensions.partialClone for the config get, the promisor key
-// regexp for the config get-regexp.
 data partial_clone_key: String = "extensions.partialClone"
 data promisor_pattern: String = "remote\\..*\\.promisor"
 
-fn argv_join(argv: List<String>) -> String {
-  join(argv, " ")
-}
+// THE GOLDENS. Index 1 and 2 are the grant as two tokens; indices 3 and 4 are `-C <repo>`. A grant merged
+// into one token shifts everything left (one fewer element) and is structurally unequal to these.
+data golden_config_get_in_repo: List<String> = ["git", "-c", "safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "-C", "/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "config", "--local", "--get", "extensions.partialClone"]
+data golden_config_get_regexp_in_repo: List<String> = ["git", "-c", "safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "-C", "/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "config", "--local", "--get-regexp", "remote\\..*\\.promisor"]
+data golden_is_shallow_repository: List<String> = ["git", "-c", "safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "-C", "/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "rev-parse", "--is-shallow-repository"]
 
-fn config_get_in_repo_realized() -> String {
-  argv_join(
-    argv: operation_argv_tokens_or_refusal_label(
-      m: shell_materialize_operation_argv(
-        inspect_module_path,
-        inspect_service,
-        "ConfigGetInRepo",
-        [
-          operation_argv_bind_text(name: "repository_path", text: probe_repo),
-          operation_argv_bind_text(name: "key", text: partial_clone_key)
-        ]
-      )
-    )
-  )
-}
+// THE MERGED-TOKEN MUTANTS: the same argvs with the `-c` / `safe.directory=` pair collapsed into one token
+// -- the spelling that makes git exit 129. A correct declaration's token list is NEVER equal to one of
+// these; each merged-token control goes red the moment its op's grant is written as a single token.
+data merged_config_get_in_repo: List<String> = ["git", "-c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "-C", "/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "config", "--local", "--get", "extensions.partialClone"]
+data merged_config_get_regexp_in_repo: List<String> = ["git", "-c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "-C", "/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "config", "--local", "--get-regexp", "remote\\..*\\.promisor"]
+data merged_is_shallow_repository: List<String> = ["git", "-c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "-C", "/opt/actions-runner/srv1-09/_work/gunbc/gunbc", "rev-parse", "--is-shallow-repository"]
 
-fn config_get_regexp_in_repo_realized() -> String {
-  argv_join(
-    argv: operation_argv_tokens_or_refusal_label(
-      m: shell_materialize_operation_argv(
-        inspect_module_path,
-        inspect_service,
-        "ConfigGetRegexpInRepo",
-        [
-          operation_argv_bind_text(name: "repository_path", text: probe_repo),
-          operation_argv_bind_text(name: "pattern", text: promisor_pattern)
-        ]
-      )
-    )
-  )
-}
-
-fn is_shallow_repository_realized() -> String {
-  argv_join(
-    argv: operation_argv_tokens_or_refusal_label(
-      m: shell_materialize_operation_argv(
-        inspect_module_path,
-        inspect_service,
-        "IsShallowRepository",
-        [
-          operation_argv_bind_text(name: "repository_path", text: probe_repo)
-        ]
-      )
-    )
-  )
-}
-
-// THE GOLDEN. The grant tokens sit at positions 1 and 2, immediately before the `-C` and `<repository_path>`
-// at positions 3 and 4. Pinning the WHOLE realized argv (not merely the presence of `-c safe.directory=...`)
-// is what makes "immediately before `-C`" the assertion: a grant placed anywhere else, a second `-C`, or a
-// bare `git -C <repo>`, none of them join to this string.
-data expected_config_get_in_repo: String = "git -c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get extensions.partialClone"
-data expected_config_get_regexp_in_repo: String = "git -c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get-regexp remote\\..*\\.promisor"
-data expected_is_shallow_repository: String = "git -c safe.directory=/opt/actions-runner/srv1-09/_work/gunbc/gunbc -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc rev-parse --is-shallow-repository"
-
-// THE NAMED MUTATED STATE. The same three argv with the `-c safe.directory=<repository_path>` grant removed --
-// the pre-fix spelling. Each positive test also asserts the realized argv is NOT this string, so if the grant
-// is deleted from the operation the equality fails (it is no longer the golden) AND the inequality fails (it
-// has become the mutated state): the claim is red by execution at the named mutated state.
-data mutated_config_get_in_repo: String = "git -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get extensions.partialClone"
-data mutated_config_get_regexp_in_repo: String = "git -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc config --local --get-regexp remote\\..*\\.promisor"
-data mutated_is_shallow_repository: String = "git -C /opt/actions-runner/srv1-09/_work/gunbc/gunbc rev-parse --is-shallow-repository"
-
-// POSITIVE. The realized argv is exactly the grant-carrying golden. Deleting the grant from the
-// operation turns this red by execution: the materializer would answer the grant-removed spelling,
-// which does not join to this golden.
+// MUTATION TARGET: grant removed from ConfigGetInRepo turns the first claim red (7 tokens vs 9); the grant
+// merged into one token turns the second claim red.
 test fn config_get_in_repo_carries_the_trusted_repository_grant() -> Bool {
-  config_get_in_repo_realized() == expected_config_get_in_repo
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      inspect_module_path,
+      inspect_service,
+      "ConfigGetInRepo",
+      [
+        operation_argv_bind_text(name: "repository_path", text: probe_repo),
+        operation_argv_bind_text(name: "key", text: partial_clone_key)
+      ]
+    )
+  ) == golden_config_get_in_repo
 }
 
+test fn config_get_in_repo_is_not_the_merged_grant_token() -> Bool {
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      inspect_module_path,
+      inspect_service,
+      "ConfigGetInRepo",
+      [
+        operation_argv_bind_text(name: "repository_path", text: probe_repo),
+        operation_argv_bind_text(name: "key", text: partial_clone_key)
+      ]
+    )
+  ) != merged_config_get_in_repo
+}
+
+// MUTATION TARGET: grant removed from ConfigGetRegexpInRepo turns the first claim red; merge turns the
+// second red.
 test fn config_get_regexp_in_repo_carries_the_trusted_repository_grant() -> Bool {
-  config_get_regexp_in_repo_realized() == expected_config_get_regexp_in_repo
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      inspect_module_path,
+      inspect_service,
+      "ConfigGetRegexpInRepo",
+      [
+        operation_argv_bind_text(name: "repository_path", text: probe_repo),
+        operation_argv_bind_text(name: "pattern", text: promisor_pattern)
+      ]
+    )
+  ) == golden_config_get_regexp_in_repo
 }
 
+test fn config_get_regexp_in_repo_is_not_the_merged_grant_token() -> Bool {
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      inspect_module_path,
+      inspect_service,
+      "ConfigGetRegexpInRepo",
+      [
+        operation_argv_bind_text(name: "repository_path", text: probe_repo),
+        operation_argv_bind_text(name: "pattern", text: promisor_pattern)
+      ]
+    )
+  ) != merged_config_get_regexp_in_repo
+}
+
+// MUTATION TARGET: grant removed from IsShallowRepository turns the first claim red; merge turns the
+// second red.
 test fn is_shallow_repository_carries_the_trusted_repository_grant() -> Bool {
-  is_shallow_repository_realized() == expected_is_shallow_repository
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      inspect_module_path,
+      inspect_service,
+      "IsShallowRepository",
+      [
+        operation_argv_bind_text(name: "repository_path", text: probe_repo)
+      ]
+    )
+  ) == golden_is_shallow_repository
 }
 
-// RED-BY-EXECUTION CONTROL AT THE NAMED MUTATED STATE. Each is its own executed control, not a
-// conjunct of the positive test (where it would be a tautology). It asserts the realized argv is NOT
-// the grant-removed spelling, so it is green while the grant ships and goes red by execution the
-// instant the grant is deleted -- the materializer then answers the bare `git -C <repo> ...` row and
-// the inequality fails. Two independent red signals for one mutation, per gunbc.design_argument::fail_closed.
-test fn config_get_in_repo_is_not_the_grant_removed_form() -> Bool {
-  config_get_in_repo_realized() != mutated_config_get_in_repo
-}
-
-test fn config_get_regexp_in_repo_is_not_the_grant_removed_form() -> Bool {
-  config_get_regexp_in_repo_realized() != mutated_config_get_regexp_in_repo
-}
-
-test fn is_shallow_repository_is_not_the_grant_removed_form() -> Bool {
-  is_shallow_repository_realized() != mutated_is_shallow_repository
+test fn is_shallow_repository_is_not_the_merged_grant_token() -> Bool {
+  operation_argv_tokens_or_refusal_label(
+    m: shell_materialize_operation_argv(
+      inspect_module_path,
+      inspect_service,
+      "IsShallowRepository",
+      [
+        operation_argv_bind_text(name: "repository_path", text: probe_repo)
+      ]
+    )
+  ) != merged_is_shallow_repository
 }
