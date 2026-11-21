@@ -57,13 +57,14 @@ import gunbc.worker_turn_standing {
   cursor_entitlement_trip_pending_reason,
   cursor_sandbox_unavailable_reason_prefix,
 }
-import gunbc.dispatch_credential_acquisition { cursor_attempt_runtime_root }
+import gunbc.dispatch_credential_acquisition { cursor_attempt_runtime_root, cursor_attempt_runtime_home, cursor_attempt_runtime_config }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_actuator_worker_turn_selection_observed, DispatchAttemptPrepared, DispatchAttemptSelectionRefused }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program }
 import extdeps.exec.command { argv_words }
 import test.claim.roadmap.roadmap_dispatch_actuator_witness { sized_derivable }
 
+import test.claim.dispatch_credential_acquisition_witness { fx_cursor_root, fx_witness_stable_root, fx_cursor_parent }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUPPLIED AT THE TRIP BOUNDARY: the account trip's stdout, in the wire shapes the press witnesses
@@ -286,16 +287,35 @@ test fn an_unmarked_nonzero_preflight_is_unreadable_and_keeps_its_status() -> Bo
 // already holds native never reaches the command; an unsandboxed fallback then prints the sentinel
 // back, and that reads not-entered, never ready.
 test fn an_inherited_native_cannot_make_an_unsandboxed_preflight_ready() -> Bool {
-  let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: cursor_attempt_runtime_root(instance_root: "/i", reference: "r"))), " ")
-  let sentinel_set_outside = argv == concat(concat("env -u CURSOR_API_KEY CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " env HOME=/i/cursor-attempt-runtime/r/home XDG_CONFIG_HOME=/i/cursor-attempt-runtime/r/config /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent --disable-auto-update sandbox run printenv CURSOR_SANDBOX")
-  let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
-  let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
-    CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail } } => string_contains(s: detail, pattern: "sentinel survived")
-    CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } => false
-    CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } => false
-    CursorSandboxReady => false
+  // The root is the sealed record the store module alone builds, taken from the one witness route there is:
+  // test.claim.dispatch_credential_acquisition_witness fx_cursor_root mints the instance's credential store
+  // the production way over a temporary root (the pre-seal
+  // cursor_attempt_runtime_root(instance_root:, reference:) is gone, and the seal leaves no other way to hold
+  // one), and the two bindings are read back through the module's own accessors. What the claim ASSERTS -- the
+  // sentinel binding, the pinned program, --disable-auto-update -- is unchanged; only how the root is obtained
+  // changed, and that made this witness wet. A store that cannot be minted refuses the claim (none => false);
+  // the mint never re-roots to a different directory to keep a pass.
+  match fx_cursor_root(instance_root: fx_witness_stable_root("standing"), reference: "r") {
+    none => false
+    Present { value: root } => {
+      let argv = join(argv_words(command: cursor_sandbox_discriminating_preflight_command(program: cursor_agent_pinned_program(), root: root)), " ")
+      let sentinel_set_outside = argv == concat(
+        concat(concat("env -u CURSOR_API_KEY CURSOR_SANDBOX=", cursor_sandbox_outside_sentinel as String), " env HOME="),
+        concat(
+          concat(concat(cursor_attempt_runtime_home(root: root), " XDG_CONFIG_HOME="), cursor_attempt_runtime_config(root: root)),
+          " /opt/gunbc/cursor-agent/2026.09.15-d2fe57e/cursor-agent --disable-auto-update sandbox run printenv CURSOR_SANDBOX",
+        ),
+      )
+      let unsandboxed_stdout = concat(concat("Executing command: printenv CURSOR_SANDBOX\nWorking directory: /w\n", cursor_sandbox_outside_sentinel as String), "\n")
+      let not_ready = match cursor_sandbox_preflight_reading(exit_code: 0, stdout: unsandboxed_stdout, stderr: "") {
+        CursorSandboxRefused { refusal: CursorSandboxNotEntered { detail } } => string_contains(s: detail, pattern: "sentinel survived")
+        CursorSandboxRefused { refusal: CursorSandboxUnavailable { detail: _ } } => false
+        CursorSandboxRefused { refusal: CursorSandboxPreflightUnreadable { exit_code: _, detail: _ } } => false
+        CursorSandboxReady => false
+      }
+      sentinel_set_outside && not_ready
+    }
   }
-  sentinel_set_outside && not_ready
 }
 
 // THE ROUTE, through the production actuator selection: on an instance that does not hold the

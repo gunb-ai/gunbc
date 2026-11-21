@@ -1,0 +1,42 @@
+module gunbc.roadmap.roadmap_attempt_state_naming
+
+// The naming facts for a roadmap attempt's state entries, in their own layer.
+//
+// These were declared in gunbc.roadmap.roadmap_attempt_state_store, the module that also reads, lists and
+// appends those entries. That placed the naming of an entry above the persistence of one, so any module that
+// had to NAME an entry but not touch its contents had to import the store -- and the store reaches the dispatch
+// layer (gunbc.roadmap.roadmap_dispatch_destination, which imports gunbc.dispatch_attempt_launch), so a sealed
+// store that derived its own path from here closed a ring in the import graph. DESIGN.md section 3 makes the
+// import graph's acyclicity its only structural law and gives a fact its home at its layer, so the naming moves
+// down rather than the effecting code moving up or being passed around as strings.
+//
+// This module is the ONE declaration of these facts. Nothing here wraps, aliases or re-states a spelling that
+// lives elsewhere, and no other module may declare an attempt-state entry name: gunbc.roadmap.roadmap_attempt_state_store
+// and every sealed store that derives a path import them from here. The `<node>-a<key>` and `<node>-current`
+// shapes are written nowhere else, which is what makes the sealed stores' byte-identity controls meaningful --
+// they compare a derived path against this declaration, so a spelling change here is a red claim there rather
+// than an orphaned file at the next cutover.
+
+import std.types { String, NonEmptyStr }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
+
+type AttemptStateSlotsDeclaration { attempt_infix: String, current_suffix: String }
+
+data attempt_state_slots: AttemptStateSlotsDeclaration = AttemptStateSlotsDeclaration {
+  attempt_infix: "-a",
+  current_suffix: "-current",
+}
+
+// The directory name the attempt's state lives under, the one place the `<node>-a<key>` and `<node>-current`
+// shapes are written.
+fn attempt_state_entry_name(node: String, attempt_key: String) -> String {
+  join([node, attempt_state_slots.attempt_infix, attempt_key], "")
+}
+
+fn attempt_state_current_entry_name(node: String) -> String {
+  join([node, attempt_state_slots.current_suffix], "")
+}
+
+fn attempt_state_entry_path(instance: HostDashboardInstance, entry: String) -> NonEmptyStr {
+  join([dashboard_instance_dispatch_attempt_state_root(instance: instance) as String, "/", entry], "") as NonEmptyStr
+}

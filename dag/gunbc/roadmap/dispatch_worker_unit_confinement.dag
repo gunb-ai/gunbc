@@ -27,6 +27,7 @@ import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_propert
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.spool_queue { SpoolAttemptExit, RolePending, spool_role_dirs }
+import gunbc.dispatch_provider_words { DispatchProviderWordsDeclaration, dispatch_provider_words }
 import gunbc.roadmap.dispatch_worker_handed_set {
   HandedEntry, HandedWorkingDirectory, HandedReadWrite, HandedReadOnly, HandedStdout, HandedStderr,
   HandedExitRoot, HandedExecutable, HandedCredentialSource, dispatch_worker_source_roots, dispatch_worker_set_working_directory,
@@ -62,6 +63,21 @@ type DispatchCliProvider
   | CursorDispatchProvider
   | GunbcHarnessProvider
   | ReplayDispatchProvider
+
+// The word for a provider, read from the row above. This is not a second map of literals: the literals are the
+// row's, and every site that spells a provider word reads it.
+fn dispatch_provider_word(provider: DispatchCliProvider) -> NonEmptyStr {
+  match provider {
+    ClaudeCodeProvider => dispatch_provider_words.claude
+    CodexDispatchProvider => dispatch_provider_words.codex
+    CursorDispatchProvider => dispatch_provider_words.cursor
+    GunbcHarnessProvider => dispatch_provider_words.gunbc_harness
+    // Added with the merge of #14396, which introduced the replay executor and spelled its word in the
+    // actuator's own copy of the map. Read here instead: this row is the one owner, and a provider whose word
+    // lived only in one of the two readers is exactly the drift the row exists to prevent.
+    ReplayDispatchProvider => dispatch_provider_words.gunbc_replay
+  }
+}
 
 // THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
 // writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
