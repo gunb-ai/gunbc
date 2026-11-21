@@ -15,7 +15,7 @@ import std.nat { Nat }
 import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim, skip, take_prefix, zip_map }
+import std.algebra { trim, skip, take_prefix, zip_map, count_where }
 import std.list { first_where }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
@@ -64,12 +64,15 @@ import extdeps.posix.signal { linux_standard_signal_wire_name }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptOwner, DispatchOwned, DirectInvocation, OwnerUnrecorded, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptVerdict, AttemptWorkEnded, AttemptRecovered,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
-  recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
+  recovery_write_authorization, RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled,
+  RecoveryWriteDeclined, RecoveryWriteRefused,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
@@ -3811,11 +3814,11 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
       match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
-          match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {
-            RecoveryTooEarly { deadline: d, now: n } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
-            RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
-            RecoveryTerminalRecordMayRelease { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
-            RecoveryMayTerminate { reason: why } =>
+          match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
+            RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
+            RecoveryWriteRefused { reason: r } => RecoveryRefused { detail: r }
+            RecoveryWriteReleaseSettled { state: _, reason: why } => compute_recover_settled_seat(subject: subject, rec: rec, why: why, lifecycle: lifecycle)
+            RecoveryWriteTerminateAndRelease { reason: why } =>
               match attempt_terminate(store: seat.slots, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
@@ -3836,22 +3839,16 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
 // SEAT, and the trigger names that state RecoveryTerminalRecordMayRelease. Declining there would make the
 // settle-then-kill window permanent. THE TERMINATION PROOF is the same one every other arm relies on:
 // the unit's observed lifecycle must be ENDED (unit_lifecycle_ended) at this moment; the terminal
-// record is the reason to look, never the proof. A still-running unit declines and an unknown
-// lifecycle refuses, both keeping the charge. Only then does the door ask the ledger to release. The ledger refuses a reference it is not holding
-// at the proposal, so a seat already returned is reported as declined, never released twice.
-fn compute_recover_after_terminal(subject: ComputeCapacitySubject, rec: AttemptRecord, state: AttemptState, lifecycle: UnitLifecycle) -> ComputeRecovery {
-  let why = recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: state })
-  if unit_lifecycle_ended(u: lifecycle) {
-    match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
-      ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }
-      ComputeNothingToRelease { detail: d } => RecoveryNothingHeld { reference: rec.reference, verdict: why, detail: d }
-      ComputeReleaseRefused { detail: d } => RecoverySettledButHeld { reference: rec.reference, verdict: why, seat: d }
-    }
-  } else {
-    match lifecycle {
-      UnitStillRunning { detail: _ } => RecoveryDeclined { reference: rec.reference, why: join([why, "; the unit is still running, so the seat is kept"], "") }
-      _ => RecoveryRefused { detail: join([why, "; the unit's lifecycle is not proven ended (", unit_lifecycle_wire(u: lifecycle), "), so the seat is kept: a terminal record alone does not prove the unit stopped using memory"], "") }
-    }
+// record is the reason to look, never the proof. That pairing -- ended authorizes, a still-running unit
+// declines, an unreadable lifecycle refuses, both keeping the charge -- is decided once, in
+// gunbc.compute.attempt_lifecycle recovery_write_authorization, which the caller has already consulted by the
+// time this runs; this helper performs only the authorized release. The ledger refuses a reference it is not
+// holding at the proposal, so a seat already returned is reported as declined, never released twice.
+fn compute_recover_settled_seat(subject: ComputeCapacitySubject, rec: AttemptRecord, why: String, lifecycle: UnitLifecycle) -> ComputeRecovery {
+  match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
+    ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }
+    ComputeNothingToRelease { detail: d } => RecoveryNothingHeld { reference: rec.reference, verdict: why, detail: d }
+    ComputeReleaseRefused { detail: d } => RecoverySettledButHeld { reference: rec.reference, verdict: why, seat: d }
   }
 }
 
@@ -3889,6 +3886,154 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
     appropriation: kibibyte(count: 0),
     reference: reference,
     reason: join(["recovered: ", reason], "") as NonEmptyStr)
+  }
+}
+
+// THE CENSUS A RECOVERY PLAN IS READ FROM, AND IT DECIDES NOTHING.
+//
+// A caller that wants to plan a recovery write has to know which attempt slots on this host a recovery
+// would act on, and it has to know that BEFORE it plans. DECLARED FRONTIER, not a present consumer: the
+// caller this is built for is the serving converge's recovery leg (ConvergeAction RecoverStaleSeat), which
+// THIS change does not ship -- it is the next increment of the same roadmap node, and its trigger is the
+// serve route resolving again (done by #16828, which cut compute_seat_ensure out of that route), because
+// until that entry resolves
+// the converge's own witnesses cannot be run. Today the routes that RUN this reading are this module's
+// witness (compute_recover_catalog_witness, over real slot stores it creates) and the attempt-door witnesses
+// that read the same authorization; nothing here dispatches a host effect. Reading the census before
+// planning is what keeps a plan from disagreeing with the door it would call. This reading walks EVERY seat directory the host
+// owns (the flat seat and each dispatch-owned seat, gunbc.compute.compute_attempt_slots_root compute_seat_of),
+// lists each one's attempt slots, and for each reference renders exactly what
+// gunbc.compute.attempt_lifecycle recovery_write_authorization answers for that record against the unit's
+// live lifecycle -- the same authority the write path consumes, so a plan read from the census cannot disagree
+// with the door it will call. Authorized is rendered "fire" with the model's own reason; declined is "hold";
+// a REFUSED authorization (the unit's lifecycle could not be read) is not a word at all: it makes the whole
+// census's OBSERVATION unknown, which is the same refusal the write path would answer with.
+//
+// It is three-valued and the unknown arm is the honest one. A seat listing that cannot be read, a seat whose
+// attempt store is not ready, a reference a census listed whose record cannot be read or vanished between the
+// census and the read, or the SAME reference holding slots in two different seat directories: each makes the
+// OBSERVATION unknown, and a caller must refuse its plan on that rather than plan against a partial census --
+// the same rule the write path itself applies (compute_recover_attempt_at refuses a reference in two seats,
+// compute_recover_attempt_in refuses an unreadable slot). A seat whose slot directory does not exist at all
+// contributes no reference: that is the census of a store that was never created, and nothing here releases
+// on a census, which is attempt_slot_keys' own warning.
+type RecoverCatalogEntry { reference: NonEmptyStr, authorization: RecoveryWriteAuthorization }
+
+type RecoverCensusPairs
+  = RecoverCensusPairsListed { pairs: List<RecoverSlotPair> }
+  | RecoverCensusPairsUnknown { detail: String }
+
+type RecoverSlotPair { store: ComputeSeatStore, reference: NonEmptyStr }
+
+fn compute_recover_census_pairs(stores: List<ComputeSeatStore>) -> RecoverCensusPairs {
+  fold(stores, init: RecoverCensusPairsListed { pairs: [] }, f: (acc, seat) => match acc {
+    RecoverCensusPairsUnknown { detail: d } => RecoverCensusPairsUnknown { detail: d }
+    RecoverCensusPairsListed { pairs: ps } =>
+      match attempt_slot_keys(store: seat.slots) {
+        AttemptSlotKeysListed { keys: ks } =>
+          RecoverCensusPairsListed { pairs: fold(ks, init: ps, f: (inner, k) => inner |> list_push(RecoverSlotPair { store: seat, reference: k })) }
+        AttemptSlotKeysAbsent { store: _ } => RecoverCensusPairsListed { pairs: ps }
+        AttemptSlotKeysRefused { detail: d } => RecoverCensusPairsUnknown { detail: join(["a seat's attempt listing could not be read: ", d], "") }
+      }
+  })
+}
+
+fn compute_recover_reference_holds(pairs: List<RecoverSlotPair>, reference: NonEmptyStr) -> Int {
+  count_where(xs: pairs, predicate: p => (p.reference as String) == (reference as String))
+}
+
+type ComputeRecoverCatalog
+  = RecoverCatalogEstablished { entries: List<RecoverCatalogEntry> }
+  | RecoverCatalogUnknown { detail: String }
+
+fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecoverCatalog {
+  match compute_recover_census_pairs(stores: stores) {
+    RecoverCensusPairsUnknown { detail: d } => RecoverCatalogUnknown { detail: d }
+    RecoverCensusPairsListed { pairs: ps } =>
+      match first_where(xs: ps, keep: p => compute_recover_reference_holds(pairs: ps, reference: p.reference) > 1) {
+        Present { value: dup } =>
+          RecoverCatalogUnknown { detail: join(["the attempt reference ", dup.reference as String, " holds a slot in more than one seat directory; which attempt it names cannot be established"], "") }
+        Absent =>
+          fold(ps, init: RecoverCatalogEstablished { entries: [] }, f: (acc, pair) => match acc {
+            RecoverCatalogUnknown { detail: d } => RecoverCatalogUnknown { detail: d }
+            RecoverCatalogEstablished { entries: es } =>
+              match attempt_slot_read(store: pair.store.slots, reference: pair.reference) {
+                AttemptSlotUnreadable { detail: d } =>
+                  RecoverCatalogUnknown { detail: join(["the attempt slot for ", pair.reference as String, " could not be read: ", d], "") }
+                AttemptSlotAbsent =>
+                  RecoverCatalogUnknown { detail: join(["the census listed ", pair.reference as String, " but its slot is no longer there; the observation is not complete"], "") }
+                AttemptSlotHeld { record: rec, generation: _ } =>
+                  match now_epoch_seconds() {
+                    Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged"], "") }
+                    Present { value: now } => {
+                      let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr)
+                      match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
+                        RecoveryWriteRefused { reason: r } =>
+                          RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r], "") }
+                        auth =>
+                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, authorization: auth }) }
+                      }
+                    }
+                  }
+              }
+          })
+      }
+  }
+}
+
+fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCatalog {
+  match compute_dispatch_seats(instance: instance) {
+    ComputeSeatsUnreadable { reason: r } => RecoverCatalogUnknown { detail: r }
+    ComputeSeatsListed { seats } =>
+      match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
+        ComputeSeatStoresUnready { detail: d } => RecoverCatalogUnknown { detail: join(["a seat's attempt store is not ready: ", d], "") }
+        ComputeSeatStoresReady { stores } => compute_recover_catalog_for(stores: stores)
+      }
+  }
+}
+
+fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
+  let verdict = match e.authorization {
+    RecoveryWriteTerminateAndRelease { reason: _ } => "terminate"
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => "settle"
+    RecoveryWriteDeclined { reason: _ } => "hold"
+    RecoveryWriteRefused { reason: _ } => "refused"
+  }
+  let why = match e.authorization {
+    RecoveryWriteTerminateAndRelease { reason: r } => r
+    RecoveryWriteReleaseSettled { state: _, reason: r } => r
+    RecoveryWriteDeclined { reason: r } => r
+    RecoveryWriteRefused { reason: r } => r
+  }
+  join(["recover-catalog ", verdict, " ", e.reference as String, " ", why, "\n"], "")
+}
+
+// THE CENSUS DOOR, OVER THE PROCESS WIRE -- a READ: no slot is written, no lease is touched, nothing is
+// released here. The answer is one line per reference in the census
+// (`recover-catalog terminate|settle|hold <reference> <trigger>`), exit 0 when the census was established and
+// exit 2 when the observation is unknown -- the same three exits the recovery door itself uses, so a leg that
+// reads this and a leg that writes there agree about what a number means.
+// DECLARED FRONTIER for exit 0: the caller this is shaped for is the serving converge's
+// recovery leg (its action kind RecoverStaleSeat, at the rank after RecordServeIdentity, gated on that
+// identity leg being Met), which does NOT ship in this change; the trigger for that leg is the serve route
+// resolving again (done by #16828, which cut compute_seat_ensure out of that route), since until that entry
+// resolves the converge's witnesses cannot be run. This change exercises the exit-2 path from its witness
+// (`the_cli_door_exits_two_when_no_instance_resolves`), which asserts the refusal exit. Exit 0 is exercised
+// by increment 2's live proof over a fleet-converge run on --ref main.
+fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } =>
+      CliWirePrintable { bytes: join(["recover-catalog unknown: no dashboard instance is rooted at ", r, "\n"], ""), exit: ExitFailure { code: 2, reason: "recover-catalog: the host's dashboard instance could not be resolved" } }
+    DashboardInstanceResolved { instance } =>
+      match compute_recover_catalog(instance: instance) {
+        RecoverCatalogUnknown { detail: d } =>
+          CliWirePrintable { bytes: join(["recover-catalog unknown: ", d, "\n"], ""), exit: ExitFailure { code: 2, reason: "recover-catalog: the seat census could not be established" } }
+        RecoverCatalogEstablished { entries } =>
+          CliWirePrintable {
+            bytes: concat("recover-catalog established\n", fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),
+            exit: ExitSuccess
+          }
+      }
   }
 }
 
