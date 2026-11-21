@@ -115,6 +115,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_claim_helper_locus, witness_locus_dir_text, witness_locus_dag_dir,
   witness_locus_receipt_path, witness_locus_binary_path, witness_locus_source_roots,
   witness_locus_receipt_seal_path, witness_seal_locus_receipt, witness_file_sha256_hex,
+  witness_locus_destination_is_admitted, witness_locus_destinations_are_admitted,
   witness_batch_locus_base, witness_batch_locus_env_var,
   witness_release_stage_dir, witness_release_stage_member, witness_stage_release_binary,
   witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
@@ -2540,10 +2541,9 @@ fn wet_stage_trail_contains(needle: String) -> Bool {
   if trail == "" {
     false
   } else {
-    match Filesystem.Read(path: trail) {
-      Absent => false
-      Present { content: text } => string_contains(s: text, pattern: needle)
-    }
+    // wet_file_text is THIS module's read interface: Filesystem.Read through the exact-read fold, so an
+    // absent file and an unreadable one both answer "" and neither can be read as a found line.
+    string_contains(s: wet_file_text(path: trail), pattern: needle)
   }
 }
 
@@ -2627,10 +2627,7 @@ test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_t
     && starts_with(s: trail, prefix: wet_claim_root_base())
     && wet_stage(stage: green_line, ok: true)
     && wet_stage_trail_contains(needle: green_line)
-  let kept = match Filesystem.Read(path: trail) {
-    Absent => ""
-    Present { content: text } => text
-  }
+  let kept = wet_file_text(path: trail)
   let outside = join([away, "/gunbc-witness-stages.log"], "")
   let planted = away != ""
     && wet_ok(command: rm_force_command(path: trail))
