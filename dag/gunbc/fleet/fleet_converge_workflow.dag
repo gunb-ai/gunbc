@@ -6330,17 +6330,11 @@ fn fleet_converge_mtcollins1_boot_store_host_unread() -> String {
 // THE BOOT JOB'S RUNNER AND STEPS ARE THEIR OWN PRODUCERS for the same reason as the credential
 // prelude below: which runner holds the credentials, and which bytes the steps fetch and execute, are
 // facts a witness reads, and reading them here costs those parts rather than the whole job's.
-fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
-  // The boot runs on the unit-hold store host (srv1 today). Its arch is DERIVED from that host's board
-  // authority via the one helper -- no hard-coded "arm64" (review 97146). The Absent arm is unreachable while
-  // the store host keeps its board row (arm64 by board, pinned by the srv-arch witnesses); if it ever loses
-  // its board row we refuse to fabricate arm64 and place the placeholder refusal on the shared pool, where
-  // the boot steps fail LOUDLY (no host access) rather than queue on an unlabelled runner.
-  match fleet_converge_self_hosted_runner_for(host: fleet_converge_mtcollins1_boot_store_host() as HostIdentity, host_label: fleet_converge_mtcollins1_boot_store_host()) {
-    Present { value: runner } => runner
-    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String, host_label: fleet_converge_mtcollins1_boot_store_host()).runner
-  }
-}
+// (review 97167) The former fleet_converge_mtcollins1_boot_runner RunnerSpec producer is GONE: a RunnerSpec arm
+// cannot refuse, and its Absent case borrowed the refused job's .runner, which left the credential-carrying
+// fleet-key and boot steps on the shared pool -- a second placement path, not a refusal (fail_closed). The boot
+// JOB builder now derives its runner through fleet_converge_self_hosted_runner_for and, on a host with no
+// board-established architecture, emits the WHOLE refused job. The boot_run witness reads the job's runner.
 
 // The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
 // expensive parts, so the composition takes them as parameters: a witness of the composition supplies
@@ -6547,10 +6541,17 @@ fn fleet_converge_mtcollins1_boot_steps() -> List<Step> {
 }
 
 fn fleet_converge_mtcollins1_boot_job() -> Job {
+  match fleet_converge_self_hosted_runner_for(host: fleet_converge_mtcollins1_boot_store_host() as HostIdentity, host_label: fleet_converge_mtcollins1_boot_store_host()) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String, host_label: fleet_converge_mtcollins1_boot_store_host())
+    Present { value: runner } => fleet_converge_mtcollins1_boot_job_with_runner(runner: runner)
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_job_with_runner(runner: RunnerSpec) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
     name: none,
-    runner: fleet_converge_mtcollins1_boot_runner(),
+    runner: runner,
     environment: Present { value: fleet_converge_mtcollins1_boot_environment() },
     steps: fleet_converge_mtcollins1_boot_steps(),
     needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: MtCollins1Boot)),
