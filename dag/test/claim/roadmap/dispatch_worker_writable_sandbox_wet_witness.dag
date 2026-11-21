@@ -129,9 +129,12 @@ import extdeps.tools.gnu_coreutils {
   ls_almost_all_one_per_line_command, realpath_canonicalize_missing_command,
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, pwd_command,
-  ln_symbolic_force_command,
+  ln_symbolic_force_command, rm_force_command,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+// `test -e` as a COMMAND, for the claim that must show a failing observation collapsing to the empty
+// string through the text-only route: the route has to be one that can genuinely fail.
+import extdeps.posix.test_utility { test_exists_command }
 // The fleet's ONE environment read: `shell.Env.Get` (extdeps/shell.dag, transport shell
 // { argv: ["printenv", "{name}"] }, `value: String?`, exit 1 "Variable not set"). A second
 // printenv argv path beside it was a parallel authority and is deleted (review 90936).
@@ -1345,7 +1348,48 @@ fn wet_root_launcher_is_available() -> Bool {
 // trail is appended, one line per stage, to a fixture-prefixed file the runner cats after the batch:
 // `grep FAILED /tmp/gunbc-sandbox-witness-stages.log` names the conjunct that failed. Stage strings carry
 // the claim's own labels (unit_key, entry name), which is what makes the shared file readable.
-data wet_stage_trail: NonEmptyStr = "/tmp/gunbc-sandbox-witness-stages.log" as NonEmptyStr
+// THE TRAIL IS RUN-OWNED, AND ITS DESTINATION IS ADMITTED BEFORE THE FIRST APPEND. This used to be the
+// fixed pathname "/tmp/gunbc-sandbox-witness-stages.log" with a `tee -a`, which had two defects the review
+// found. (1) A symlink planted at that pathname -- by an earlier run that did not clean up, another tenant
+// of a shared /tmp, or anything that can write there -- redirects every append of every LATER run, and
+// nothing ever checked where the bytes landed. That is not a cosmetic trail: the trail carries the typed
+// not-observed records the whole capability tally is adjudicated from, so whoever owns the file owns the
+// verdict, and an outside symlink makes a leg's "host lacks the capability" line a claim someone else can
+// write, while a leg's own FAILED line can be pointed into a file nobody reads. (2) One unowned pathname
+// shared by every run mixes runs and lets a stale run's lines be read as this run's.
+// The trail now lives UNDER THE RUN'S OWN SUPPLIED BASE (the same runner-owned directory the claim roots
+// hang under, named by GUNBC_WITNESS_SANDBOX_BASE, or the scratch prefix), is named with the run's token so
+// two runs cannot share it, and is admitted with `witness_supplied_root_is_refused` -- which RESOLVES the
+// pathname, so a symlink at it resolves outside the supplied tree and is refused. A refused destination is
+// NO TRAIL AND A FALSE STAGE, never a fallback to a shared fixed path: a stage that cannot be recorded
+// cannot be audited, and an unauditable stage is not a pass (DESIGN 5, no silent pass-through).
+data wet_stage_trail_stem: NonEmptyStr = "gunbc-sandbox-witness-stages" as NonEmptyStr
+data wet_stage_trail_suffix: NonEmptyStr = ".log" as NonEmptyStr
+
+// WHAT MAKES THE TRAIL THIS RUN'S, IN PREFERENCE ORDER. (1) GUNBC_WITNESS_SANDBOX_BASE, the directory the
+// runner created for this batch and removes itself. (2) WITNESS_LOCUS_BASE, which the S1 script mktemps once
+// per run and exports to both batches, so it is per-run even on a runner that never claimed the litter.
+// (3) only then the scratch prefix, which IS shared between runs -- and that third tier is exactly why the
+// admission below is mandatory rather than advisory: the fallback keeps the witness's byte-for-byte
+// behaviour when no runner has taken ownership, and the resolution check is what stops that shared name
+// from being a shared weakness. Each tier is admitted before use; a refused tier is not used, and the
+// writer never invents a path of its own.
+fn wet_stage_trail_dir() -> String {
+  let sandbox = wet_environment_value(name: wet_sandbox_base_env_var)
+  if sandbox != "" && !witness_supplied_root_is_refused(candidate: sandbox) {
+    sandbox
+  } else {
+    let locus = wet_environment_value(name: witness_batch_locus_env_var)
+    if locus != "" && !witness_supplied_root_is_refused(candidate: locus) { locus } else { wet_claim_root_base() }
+  }
+}
+
+// THE ONE PATH WRITERS AND READERS AGREE ON. Empty string means the destination was refused: it is never
+// created, never written, and never read, so there is no way for a stage line to reach an outside file.
+fn wet_stage_trail_path() -> String {
+  let candidate = join([wet_stage_trail_dir(), "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  if witness_supplied_root_is_refused(candidate: candidate) { "" } else { candidate }
+}
 
 // A STAGE SPELLING THAT A CLAIM ASSERTS IS DECLARED HERE, ONCE, and read by BOTH the emitter and the
 // conjunct that reads the trail for it. Before this, the same sentence was written twice -- once where the
@@ -1362,16 +1406,51 @@ data witness_stage_exit_record_check_absent: NonEmptyStr = "exit-record-check-ab
 
 fn wet_stage(stage: String, ok: Bool) -> Bool {
   let note = join([stage, if ok { " ok" } else { " FAILED" }], "")
-  let trail = wet_stage_trail as String
-  let dir = mkdir_parents_command(path: "/tmp")
-  let _ = shell.Exec.RunArgv(program: dir.program.invocation as String, arguments: dir.arguments)
-  let append = tee_append_command(path: trail)
-  let _ = shell.Exec.RunArgvStdin(
-    program: append.program.invocation as String,
-    arguments: append.arguments,
-    stdin_payload: join([note, "\n"], ""),
-  )
-  ok
+  // ADMIT THE APPEND DESTINATION BEFORE WRITING, IN THAT ORDER. `wet_stage_trail_path` has already RESOLVED
+  // the pathname and refused it unless it lands inside the run's supplied tree, so `tee` is only ever handed
+  // a path this lane decided was inside: a symlink planted at the historical fixed /tmp name can no longer
+  // redirect the batch's capability evidence into a file the witness does not read. The directory is created
+  // only for the admitted trail's own parent -- never a mkdir of a fixed "/tmp" the write then ignored --
+  // and only after that decision. A refused destination records nothing and answers false: the trail carries
+  // the typed not-observed records the whole capability tally is adjudicated from, so a stage that cannot be
+  // recorded cannot be audited, and an unauditable stage is not a pass (DESIGN 5, no silent pass-through).
+  // The in-memory trace still shows the attempt, so a run log can tell "refused" from "never reached".
+  let trail = wet_stage_trail_path()
+  if trail == "" {
+    wet_claim_sandbox_trace(join(["stage-refused:", note], ""))
+    false
+  } else {
+    let dir = mkdir_parents_command(path: wet_stage_trail_dir())
+    let _ = shell.Exec.RunArgv(program: dir.program.invocation as String, arguments: dir.arguments)
+    let append = tee_append_command(path: trail)
+    let written = shell.Exec.RunArgvStdin(
+      program: append.program.invocation as String,
+      arguments: append.arguments,
+      stdin_payload: join([note, "\n"], ""),
+    )
+    if written.exit_code != 0 {
+      // ONE RETRY OF THE SAME APPEND TO THE SAME ALREADY-ADMITTED PATH, then false. A vanished stage
+      // directory used to silence the trail for the whole run, which is how srv2 lost the not-observed lines
+      // and left the tally unadjudicable. The retry never redirects to another file, and a second failure
+      // still answers false -- this records evidence, it does not invent it.
+      let retry_dir = mkdir_parents_command(path: wet_stage_trail_dir())
+      let _ = shell.Exec.RunArgv(program: retry_dir.program.invocation as String, arguments: retry_dir.arguments)
+      let retry = shell.Exec.RunArgvStdin(
+        program: append.program.invocation as String,
+        arguments: append.arguments,
+        stdin_payload: join([note, "\n"], ""),
+      )
+      if retry.exit_code != 0 {
+        false
+      } else {
+        wet_claim_sandbox_trace(join(["stage:", note]))
+        ok
+      }
+    } else {
+      wet_claim_sandbox_trace(join(["stage:", note]))
+      ok
+    }
+  }
 }
 
 // NOT OBSERVED IS NOT A GREEN. A wet claim returns Bool, and the lane has no third verdict today, so a claim
@@ -1733,8 +1812,19 @@ fn wet_retire_unit(root: NonEmptyStr, label: String) -> Bool {
 // THE READBACK IS THE HOST'S OWN UNIT LIST, not the exit code of the command that removed it: a
 // stop/reset pair can exit 0 and still leave the name listed, which is the state that matters.
 fn wet_unit_is_gone(unit: NonEmptyStr) -> Bool {
-  let listing = wet_out(command: systemctl_list_all_service_units_command())
-  !string_contains(s: listing, pattern: unit as String)
+  // A SUCCESSFUL LIST IS A PREREQUISITE FOR SAYING "GONE". `wet_out` collapses a refused spawn and a
+  // nonzero exit into the empty string, and `!string_contains("", unit)` is TRUE -- so an unreadable system
+  // manager (no systemd, systemctl missing, the elevated read refused) read as a successful retirement,
+  // which is the exact state this readback exists to catch. The observation goes through `RunArgvOutcome`
+  // and BOTH halves are required: the process exited, it exited 0, and only then does the name's absence
+  // mean absence. An empty listing from an exited-0 systemctl is still the host's own answer -- "no units"
+  // -- so nothing is tightened past the exit status, and a refused spawn is a NO rather than an abort.
+  let list = systemctl_list_all_service_units_command()
+  let read = shell.Exec.RunArgvOutcome(program: list.program.invocation as String, arguments: list.arguments)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => wet_absence_from_listing(exit_code: read.exit_code, listing: read.stdout, unit: unit as String)
+  }
 }
 
 // THE CONTROL UNITS ARE NOT ATTEMPT UNITS. The sandboxed leg's unit is named by production's own
@@ -1767,11 +1857,18 @@ fn wet_control_unit_name(root: NonEmptyStr, label: String) -> NonEmptyStr? {
 
 // Same readback discipline as `wet_unit_is_gone`, against the manager that actually holds the unit.
 fn wet_user_unit_is_gone(unit: NonEmptyStr) -> Bool {
-  !string_contains(
-    s: wet_argv_out(program: systemctl_path_resolved_program().invocation as String,
-      arguments: systemctl_list_all_user_service_units_argv()),
-    pattern: unit as String,
+  // SAME DISCIPLINE AS `wet_unit_is_gone`, and the same hole closed: `wet_argv_out` answers the empty
+  // string for a manager that could not be reached as readily as for a manager with no units, and silence
+  // is not absence. One observation supplies both the exit status and the text, so the verdict and the
+  // evidence cannot come from two different reads of the host.
+  let read = shell.Exec.RunArgvOutcome(
+    program: systemctl_path_resolved_program().invocation as String,
+    arguments: systemctl_list_all_user_service_units_argv(),
   )
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => wet_absence_from_listing(exit_code: read.exit_code, listing: read.stdout, unit: unit as String)
+  }
 }
 
 // The unsandboxed sibling is a transient too, and a FAILED one is retained until someone resets it;
@@ -1946,26 +2043,22 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
   // asks the image the very question the drain will ask, and after this PR that question is asked UNDER
   // THE LOCUS (same env, same workspace root), so it can only be asked once the locus exists. On a host
   // with no elevation the gate refuses here with its cause on the trail, which is the same posture the
-  // root-launcher refusal above already takes -- a typed "needs elevation" stop, never a silent skip.
+  // root-launcher refusal below takes -- a typed "needs elevation" stop, never a silent skip.
   let locus_key = wet_locus_gate_text(instance: instance, label: unit_key, claim: claim)
-  if !wet_root_launcher_is_available() {
-    WetRootLaunchRefused {
-      // NOT OBSERVED, SAID BY TYPE AS FAR AS THIS LANE ALLOWS. Every root-launch leg that reaches this line on a
-      // sudo-less host is a leg that never launched a unit -- and on srv2, where the launcher exists, this line
-      // is unreachable, so the S1 script's rule "any not-observed line on an elevating host fails the run" is
-      // what keeps the eleven legs honest there instead of here.
-      cause: wet_not_observed_cause(
-        claim: claim as NonEmptyStr,
-        capability: wet_capability_root_launcher,
-        cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it",
-      ),
-    }
-  } else if locus_key == "" {
+  // THE LOCUS IS JUDGED FIRST, BEFORE ANY HOST-CAPABILITY EXCUSE IS OFFERED. The order of these two arms
+  // is not cosmetic: with the sudo test first, a leg whose locus genuinely failed to install -- bad fold,
+  // inadmissible destination, receipt that never appeared -- reached a sudo-less host and reported the
+  // root-launcher not-observed line instead, laundering a real defect into a permanent host fact that the
+  // S1 rule forgives on a non-elevating host. The locus question is answered by this lane's own code and
+  // can be wrong for this PR's reasons; the launcher question is a fact about the host. Judge the thing
+  // that can be broken here first, and let the host excuse only be reached once the locus is real.
+  if locus_key == "" {
     // THE LOCUS IS A PREREQUISITE, NOT A DETAIL THE DRAIN DISCOVERS. srv2's S1 at 114bcf31 learned this
     // the expensive way: with no installed locus the drain's GUNBC_WORKSPACE_ROOT named a copied tree,
     // the CLI refused it, and nine legs reported a failed drain instead of the one fact that mattered.
     // `wet_locus_gate` has already written the cause to the trail -- elevation, staging, the fold's own
-    // step, or a fold that converged without leaving what the reader asks for -- so this arm only stops.
+    // step, an inadmissible destination, or a fold that converged without leaving what the reader asks
+    // for -- so this arm only stops.
     WetRootLaunchRefused {
       cause: join(
         [
@@ -1975,6 +2068,19 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
           unit_key,
         ],
         "",
+      ),
+    }
+  } else if !wet_root_launcher_is_available() {
+    WetRootLaunchRefused {
+      // NOT OBSERVED, SAID BY TYPE AS FAR AS THIS LANE ALLOWS -- and only ever now that the locus has
+      // already been established, so this line can no longer be reached by a leg whose locus was broken.
+      // Every root-launch leg that reaches it on a sudo-less host is a leg that never launched a unit, and
+      // on srv2, where the launcher exists, it is unreachable; the S1 script's rule "any not-observed line
+      // on an elevating host fails the run" is what keeps the eleven legs honest there instead of here.
+      cause: wet_not_observed_cause(
+        claim: claim as NonEmptyStr,
+        capability: wet_capability_root_launcher,
+        cause: "needs a root launcher: the host says sudo -n true does not exit 0, and the system manager production uses is unreachable without it",
       ),
     }
   } else if !wet_stage(
@@ -2022,21 +2128,23 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
           } else {
             match attempt_system_unit_systemd_run_command(instance: instance, plan: plan, granted: facts.granted, user: facts.user) {
               SystemdRunCommandRefused { cause: cause } => WetRootLaunchRefused {
-                // THE SAME RECORD ON THE OTHER CAPABILITY EDGE: systemd-run exists and refused the argv this
-                // claim builds. That is a host fact about the launcher, not a verdict about the sandbox, and it
-                // must not be counted as the leg having observed its subject.
-                cause: wet_not_observed_cause(
-                  claim: claim as NonEmptyStr,
-                  capability: "systemd-run-user-manager-accepted-the-unit-argv" as NonEmptyStr,
-                  cause: join(["systemd-run option words refused: ", systemd_run_option_words_refused_cause_detail(cause: cause)], ""),
-                ),
+                // A PLAIN FAILURE, NOT A CAPABILITY MARKER. This arm is a pure argv-projection refusal:
+                // `attempt_system_unit_systemd_run_command` refused the option words this claim itself asked
+                // for, in dag/extdeps/systemd/systemd_run.dag:344, BEFORE any process was spawned and before
+                // any manager was contacted. Nothing about the host was observed on this path, so declaring a
+                // host capability missing here turned an argv-builder defect into a permanent not-observed line
+                // that no fleet run could ever turn red -- the S1 rule counts not-observed lines as host facts.
+                // The cause keeps its full detail; it simply stops carrying a capability claim with it.
+                cause: join(["systemd-run option words refused: ", systemd_run_option_words_refused_cause_detail(cause: cause)], ""),
               }
               SystemdRunCommandReady { command: command } => {
                 let elevated = sudo_elevate_command(command: concat([command.program.invocation as String], command.arguments))
                 let code = shell.Exec.RunArgv(program: elevated.program.invocation as String, arguments: elevated.arguments).exit_code
                 // The unit has run by now, so retiring it here cannot take its effect away -- and it
                 // means no claim can end with a live unit, whichever conjunct fails after this point.
-                let _ = wet_retire_unit(root: root, label: unit_key)
+                // Its answer is KEPT, not discarded: the same readback that decides whether the host still
+                // lists the unit is a claim about the host, and a leg may not report `Ran` while it is false.
+                let retired = wet_retire_unit(root: root, label: unit_key)
                 // THE RECORD IS WHAT PROVES THE UNIT RAN, and until this line the claim only ASSUMED it
                 // had. The comment here used to read "its ExecStopPost record is written"; on srv2
                 // run15794m that was false -- both units died at stdout setup with status=209 before
@@ -2056,6 +2164,21 @@ fn wet_worker_unit_start(instance: HostDashboardInstance, unit_key: String, inne
                         exit_inbox_dir(instance_root: instance.instance_root as String),
                         " for attempt ",
                         wet_attempt_key(root: root, label: unit_key),
+                      ],
+                      "",
+                    ),
+                  }
+                } else if !retired {
+                  // NOT OBSERVED GONE IS NOT PUT AWAY. `wet_retire_unit` answers whether the host's own
+                  // listing still lacks the unit; while that Bool was discarded a leg could reach `Ran` with
+                  // the unit still on the manager -- the leaked transient stern's `systemctl list-units --all`
+                  // readback exists to find, and the reason the retirement duty was written at all.
+                  WetRootLaunchRefused {
+                    cause: join(
+                      [
+                        "the launched unit was not put away: ",
+                        unit as String,
+                        " is still listed, or its listing could not be read",
                       ],
                       "",
                     ),
@@ -2201,13 +2324,16 @@ fn unsandboxed_sibling_write_ok(root: NonEmptyStr, label: String, path: String, 
       join([path, ".unsandboxed-control"], ""),
     ],
   ) {
-    // A REFUSAL IS A RECORD, NOT A SILENT FALSE. The control route needs a systemd
-    // USER manager and no elevation, so this is its capability edge; answering bare
-    // `false` let the leg reach its verdict with no typed answer to "did my control
-    // unit run?" -- the same silent pass-through the launch legs carried.
-    SystemdSummaryPrintingWaitRefused { cause: _ } => wet_control_unit_refusal_record(
+    // A REFUSAL IS A RECORD, NOT A SILENT FALSE -- AND NOT A CAPABILITY CLAIM EITHER. This arm is the
+    // argv projection in dag/extdeps/systemd/systemd_run.dag:387 refusing the words this claim asked for:
+    // no process was spawned, no user manager was contacted, so nothing about the host was observed and no
+    // capability may be declared missing. The stage line still lands (a bare `false` was the silent
+    // pass-through the launch legs carried); only the not-observed marker goes. A host that genuinely has
+    // no systemd-run arrives at `ShellSpawnRefused` below, which keeps the capability record.
+    SystemdSummaryPrintingWaitRefused { cause: cause } => wet_control_unit_projection_refusal_record(
       label: label,
       claim: claim,
+      cause: systemd_run_option_words_refused_cause_detail(cause: cause),
     )
     SystemdSummaryPrintingWaitReady { wait: wait } => wet_systemd_run_control_ran(
       words: systemd_run_command_argument_words(command: wait.command),
@@ -2261,6 +2387,18 @@ fn wet_control_unit_refusal_record(label: String, claim: String) -> Bool {
     capability: wet_capability_user_scope_systemd_run,
   )
   record && marker
+}
+
+// THE SIBLING ARM FOR AN ARGV-PROJECTION REFUSAL: same stage record, NO capability marker. Split from the
+// function above because the two refusals mean different things and the old code credited both to the host.
+// `systemd_run_user_wait_command` refuses from its own option-word projection before spawning anything, so a
+// defect in what this claim asks systemd-run to do would have been recorded as "this host has no user manager"
+// forever. The cause is written to the trail under its own spelling so a run log can still name the arm.
+fn wet_control_unit_projection_refusal_record(label: String, claim: String, cause: String) -> Bool {
+  wet_stage(
+    stage: join(["control-unit-argv-refused:", label, " -- ", cause], ""),
+    ok: false,
+  )
 }
 fn sandbox_touch_write_refused(instance: HostDashboardInstance, unit: NonEmptyStr, path: String, root: NonEmptyStr, claim: String) -> Bool {
   let control_label = join(["sibling-", unit as String], "")
@@ -2391,6 +2529,181 @@ test fn the_sandbox_base_that_is_a_symlink_alias_escaping_the_admitted_prefix_is
       root: root,
     )
       && root != "" && away != "" && linked && arms_split && answer == "" && nothing_escapes,
+    roots: [root as NonEmptyStr, away as NonEmptyStr],
+  )
+}
+
+
+// DOES THE RUN'S OWN TRAIL CARRY THIS LINE? The one route claims use to read the trail, so a claim can
+// assert that a refusal was RECORDED (and that a control was not) without any of them spelling the path --
+// the path is derived, admitted and owned by the run, and a claim that guessed it would be asserting about
+// a file the witness never decided to write.
+fn wet_stage_trail_contains(needle: String) -> Bool {
+  let trail = wet_stage_trail_path()
+  if trail == "" {
+    false
+  } else {
+    match Filesystem.Read(path: trail) {
+      Absent => false
+      Present { content: text } => string_contains(s: text, pattern: needle)
+    }
+  }
+}
+
+// THE ONE ABSENCE DECISION BOTH UNIT READBACKS SHARE. It takes the OBSERVATION, not a string, because the
+// defect it closes was in what the old code threw away: `wet_out` and `wet_argv_out` answer the empty string
+// for a refused spawn and for a nonzero exit alike, and `!string_contains("", unit)` is TRUE, so a host
+// whose manager could not be reached reported every unit as retired. An exit code is now part of the
+// decision, and this is the only place that decision is written -- a claim exercises the table here and the
+// two predicates above are the two callers, so neither can drift from the other.
+fn wet_absence_from_listing(exit_code: Int, listing: String, unit: String) -> Bool {
+  exit_code == 0 && !string_contains(s: trim(s: listing), pattern: unit)
+}
+
+// A FAILED LISTING IS NOT AN ABSENT UNIT. The table is on the single interface the readbacks share, and it
+// is paired -- two arms that must be TRUE and two that must be FALSE, so a rule that refuses everything
+// cannot satisfy it either. Then the trap itself is MEASURED rather than asserted: the text-only route is
+// shown collapsing a failing observation to the empty string, which is precisely the value the old code
+// read as "the unit is gone", and the host-facing predicates are shown refusing to answer absence when
+// their listing route cannot be used at all.
+test fn a_failed_unit_listing_is_never_read_as_a_successful_retirement() -> Bool {
+  let root = wet_claim_root(tag: "unit-listing-read" as NonEmptyStr)
+  let absent = "gunbc-claim-unit-that-is-not-here"
+  let present = "gunbc-claim-unit-that-is-here"
+  // THE TABLE: a successful listing without the name is absence; a successful listing carrying it is not;
+  // a FAILED listing is neither, in either of its two shapes (a tool that ran and said no, and a manager
+  // that could not be reached at all and said so on stderr).
+  let table = wet_absence_from_listing(exit_code: 0, listing: "gunbc-other.service loaded active running", unit: absent)
+    && !wet_absence_from_listing(exit_code: 0, listing: join([present, ".service loaded active running"], ""), unit: present)
+    && !wet_absence_from_listing(exit_code: 1, listing: "", unit: absent)
+    && !wet_absence_from_listing(exit_code: 2, listing: "Failed to connect to bus. No default.", unit: absent)
+  // THE COLLAPSE, MEASURED. `test -e` on a path this claim knows is absent exits 1 and prints nothing, so
+  // the text-only route returns exactly what an unreachable manager returned: the empty string. That the
+  // OLD absence predicate answered TRUE for that value is the bug; that this route still collapses is the
+  // reason the predicates may not use it.
+  let missing = join([root, "/no-such-unit-file"], "")
+  let collapsed_to_empty = wet_out(command: test_exists_command(path: missing)) == ""
+    && !wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", missing])
+  // AND THE PREDICATES DO NOT REPEAT IT, on the host rather than on a fixture: wherever a list route cannot
+  // be used, absence must be answered NO. On a host where the route works this arm is vacuous by design and
+  // the table above carries the claim; on a host without a reachable manager it is the whole claim.
+  let system_list = systemctl_list_all_service_units_command()
+  let system_usable = wet_argv_ok(
+    program: system_list.program.invocation as String,
+    arguments: system_list.arguments,
+  )
+  let user_argv = systemctl_list_all_user_service_units_argv()
+  let user_usable = wet_argv_ok(
+    program: systemctl_path_resolved_program().invocation as String,
+    arguments: user_argv,
+  )
+  let honest_when_unusable = (system_usable || !wet_unit_is_gone(absent as NonEmptyStr))
+    && (user_usable || !wet_user_unit_is_gone(absent as NonEmptyStr))
+  wet_claim_verdict_with_root_readback(
+    verdict: wet_claim_is_confined(
+      instance: wet_supplied_lab_instance(scratch_parent: root),
+      root: root,
+    )
+      && root != "" && table && collapsed_to_empty && honest_when_unusable,
+    root: root as NonEmptyStr,
+  )
+}
+
+// A SYMLINK PLANTED AT THE STAGE TRAIL IS REFUSED, AND RECORDS NOTHING OUTSIDE. The trail is where the
+// typed not-observed records live, and the whole capability tally is adjudicated from it -- so before this
+// fix, a link at the fixed /tmp pathname let whoever planted it decide what a run's evidence said, and
+// decide nothing was said at all. The claim runs the CONTROL FIRST (a stage line reaches the admitted trail
+// and can be read back), because a claim that only measures a refusal is satisfiable by a trail that never
+// worked. It then plants the link, shows the lexical arm still admits the path and only resolution refuses
+// it, shows the staging route now records NOTHING and answers false, and shows the file outside stayed
+// absent -- the bytes did not go through the link. The batch's earlier evidence is preserved and restored,
+// because this claim is destroying a file the rest of the run still appends to.
+test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_the_supplied_tree() -> Bool {
+  let root = wet_claim_root(tag: "stage-trail-symlink" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let away = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-trail-escape-XXXXXX" as NonEmptyStr,
+  ))
+  let green_line = "trail-ownership-control-probe"
+  let trail = wet_stage_trail_path()
+  let green = trail != ""
+    && starts_with(s: trail, prefix: wet_claim_root_base())
+    && wet_stage(stage: green_line, ok: true)
+    && wet_stage_trail_contains(needle: green_line)
+  let kept = match Filesystem.Read(path: trail) {
+    Absent => ""
+    Present { content: text } => text
+  }
+  let outside = join([away, "/gunbc-witness-stages.log"], "")
+  let planted = away != ""
+    && wet_ok(command: rm_force_command(path: trail))
+    && wet_ok(command: ln_symbolic_force_command(target: outside, link_name: trail))
+  let arms_split = planted
+    && !witness_path_spelling_is_refused(candidate: trail)
+    && witness_resolved_root_is_refused(candidate: trail)
+    && wet_stage_trail_path() == ""
+  let refused = !wet_stage(stage: "trail-symlink-probe", ok: true)
+  let nothing_outside = !wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", outside])
+  // PUT IT BACK, WITH WHAT IT HELD: the refusal was the point, and the run must not lose the lines earlier
+  // claims wrote -- including the ones the absent-check readbacks still need.
+  let restored = wet_ok(command: rm_force_command(path: trail))
+    && Filesystem.Write(path: trail, content: kept).success
+    && wet_stage_trail_path() != ""
+    && wet_stage_trail_contains(needle: green_line)
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && away != "" && green && arms_split && refused && nothing_outside && restored,
+    roots: [root as NonEmptyStr, away as NonEmptyStr],
+  )
+}
+
+// A SYMLINK PLANTED AT THE LOCUS DESTINATION IS REFUSED BEFORE ANY EFFECT, AND NOTHING LANDS THROUGH IT.
+// The base was admitted and the destinations were not, so the fold's write, its receipt and its 0755 binary
+// all followed a link someone else had planted under the admitted base -- no race, no root, just a name the
+// witness was about to create. The pair runs first: a normal key, admitted, stages for real (receipt and
+// binary included), so the refusal below cannot be credited to a staging route that never worked. Then the
+// planted key -- an ordinary name under the admitted base, which the lexical arm admits and only resolution
+// can refuse -- must be refused by the destination predicate AND by the staging route, leave the escape
+// directory empty, and say so on the trail under its own label while the ordinary key's refusal label is
+// absent. The binary is the sharpest edge: the drain execs what lands at that path.
+test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect() -> Bool {
+  let root = wet_claim_root(tag: "locus-destination-symlink" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let away = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-locus-escape-XXXXXX" as NonEmptyStr,
+  ))
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+  let planted_tree = wet_plant_confined_tree(instance: inst)
+  let staged_ready = planted_tree && named != "" && witness_stage_release_binary(instance: inst, image: named)
+  // THE CONTROL: the ordinary key is admitted and stages, receipt and all. Without this the claim below is
+  // green for any reason at all, including a staging route that cannot work here.
+  let ordinary_key = witness_locus_key_from_environment(instance: inst)
+  let ordinary_ok = staged_ready
+    && ordinary_key != ""
+    && witness_locus_destinations_are_admitted(instance: inst, locus_key: ordinary_key)
+    && wet_stage_locus_by_hand(instance: inst, locus_key: ordinary_key, image: named)
+  // THE PLANTED DESCENDANT, standing where the witness is about to write.
+  let planted_key = "planted-descendant"
+  let planted_dir = witness_locus_dir_text(instance: inst, locus_key: planted_key as NonEmptyStr)
+  let linked = wet_ok(command: ln_symbolic_force_command(target: away, link_name: planted_dir))
+  let arms_split = away != ""
+    && linked
+    && !witness_path_spelling_is_refused(candidate: planted_dir)
+    && witness_resolved_root_is_refused(candidate: planted_dir)
+    && !witness_locus_destination_is_admitted(candidate: planted_dir)
+    && !witness_locus_destinations_are_admitted(instance: inst, locus_key: planted_key)
+  // THE ROUTE REFUSES, AND THE EFFECT DOES NOT HAPPEN ANYWHERE ELSE.
+  let route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: planted_key, image: named)
+  let escape_stayed_empty = away != "" && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  let recorded = wet_stage_trail_contains(
+      needle: join([witness_locus_destination_refused_stage as String, planted_key], ""),
+    )
+    && !wet_stage_trail_contains(
+      needle: join([witness_locus_destination_refused_stage as String, ordinary_key], ""),
+    )
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && ordinary_ok && arms_split && route_refused && escape_stayed_empty && recorded,
     roots: [root as NonEmptyStr, away as NonEmptyStr],
   )
 }
@@ -2642,19 +2955,6 @@ fn wet_witness_entry(instance: HostDashboardInstance) -> String {
   join([instance.repo_root as String, "/", wet_witness_entry_relative as String], "")
 }
 
-// THE SAME FILE, INSIDE THE LOCUS THE DRAIN NAMES. `repo_relative_path_normalized` refuses an entry
-// outside the process workspace root, so a drain that sets GUNBC_WORKSPACE_ROOT to the locus and hands
-// over a source-tree entry panics 101 before it drains anything.
-fn wet_witness_entry_in_locus(instance: HostDashboardInstance, locus_key: String) -> String {
-  join(
-    [
-      witness_locus_dir_text(instance: instance, locus_key: locus_key),
-      "/",
-      wet_witness_entry_relative as String,
-    ],
-    "",
-  )
-}
 
 // THE GATE AS ONE STRING, for legs whose verdict is a chain of `&&`s rather than a match: the revision
 // on success, "" when the leg must not run. The empty string is never an unexplained stop --
@@ -4361,7 +4661,7 @@ test fn a_unit_that_exited_without_its_exit_record_refuses_before_the_probe_chec
     // THE CAUSE IS NAMED ON THE TRAIL: the inbox and the attempt, so a reader can tell this apart from
     // any other false the leg can produce. The trail is shared across the batch, and the line is keyed
     // by this claim's own instance root, so it cannot be another claim's line.
-    && (match Filesystem.Read(path: wet_stage_trail as String) {
+    && (match Filesystem.Read(path: wet_stage_trail_path()) {
          // THE SPELLING THE CHECK ACTUALLY WRITES. This conjunct is what caught the rename: when the check's
          // stage was re-spelled to `exit-record-check-absent:` (above, so a trail line names one call site),
          // this readback kept searching for the OLD sentence and the claim went false on a corpus where the
@@ -4408,7 +4708,21 @@ test fn no_unit_this_witness_names_ever_ends_in_a_doubled_service_suffix() -> Bo
 // per-file digests. Those are the FOLD's duty, on the leg that runs it, and this claim says so instead
 // of pretending to have re-verified them.
 fn wet_stage_locus_by_hand(instance: HostDashboardInstance, locus_key: String, image: String) -> Bool {
-  wet_ok(command: mkdir_parents_command(path: witness_locus_dag_dir(instance: instance, locus_key: locus_key)))
+  // EVERY DESTINATION IS ADMITTED BEFORE ANY OF THEM IS TOUCHED, and the refusal is recorded rather than
+  // swallowed. This helper is the by-hand stand-in for the fold on a sudo-less host: it mkdirs the locus's
+  // `dag` directory, writes the receipt and installs the 0755 binary, each by a pathname derived from a key
+  // the caller supplies. Judging only the base left all three following a pre-existing symlink out of the
+  // supplied tree -- the binary most dangerously, since the drain execs what lands there. The same predicate
+  // the writers apply now runs first, over the whole destination set, and a refusal says so on the trail
+  // under its own label instead of appearing as a stage that merely did not converge.
+  if !witness_locus_destinations_are_admitted(instance: instance, locus_key: locus_key) {
+    let _ = wet_stage(
+      stage: join([witness_locus_destination_refused_stage as String, locus_key], ""),
+      ok: false,
+    )
+    false
+  } else {
+    wet_ok(command: mkdir_parents_command(path: witness_locus_dag_dir(instance: instance, locus_key: locus_key)))
     // THE RECEIPT IS WRITTEN IN THE SHAPE A FOLD WRITES, AND DELIBERATELY LEFT UNSEALED. A real receipt
     // is one "<hex>  <path>" line per installed file and the fold seals it after writing it, so a hand
     // stage that wants the reuse arm to believe it has to call `witness_seal_locus_receipt` like any
@@ -4427,11 +4741,12 @@ fn wet_stage_locus_by_hand(instance: HostDashboardInstance, locus_key: String, i
       stage_key: join(["hand-receipt-", locus_key], ""),
     )
     && witness_install_locus_file(
-      instance: instance,
-      source: image,
-      destination: witness_locus_binary_path(instance: instance, locus_key: locus_key),
-      mode: "0755" as NonEmptyStr,
-    )
+        instance: instance,
+        source: image,
+        destination: witness_locus_binary_path(instance: instance, locus_key: locus_key),
+        mode: "0755" as NonEmptyStr,
+      )
+  }
 }
 
 // THE DISCRIMINATION FOR THE REUSE ARM, IN BOTH DIRECTIONS. Every arm is the reason the one before it

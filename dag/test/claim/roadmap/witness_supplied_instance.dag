@@ -370,6 +370,61 @@ fn witness_supplied_root_is_refused(candidate: String) -> Bool {
     || !is_under(text: candidate, root: witness_scratch_prefix as String)
 }
 
+// EVERY DESTINATION THE LOCUS WRITERS ARE ABOUT TO TOUCH, ADMITTED BEFORE ANY OF THEM IS TOUCHED.
+// `witness_batch_locus_base` admits the BASE, and that admission was the whole confinement decision this
+// fixture made -- but nothing downstream of it was ever admitted, and a base is not a destination. The locus
+// dir, its `dag` directory, the receipt, the receipt seal and the installed binary are each derived by
+// joining a caller-controlled key under that base, and `mkdir -p`, `write` and `install` happily follow an
+// EXISTING symlink at any of those names. So a descendant planted before the witness ran -- the locus
+// directory itself, or a component on the way to the binary -- took the fold's write, the receipt and the
+// 0755 executable outside the supplied tree while the base guard went on reporting that the base is fine.
+// No race and no root-created escape is needed: on a host where the scratch prefix is world-writable, any
+// earlier run or other tenant can plant the link, and the witness then performs the write THROUGH it.
+//
+// The predicate is deliberately the SAME one the base is judged by. `witness_supplied_root_is_refused`
+// resolves the pathname with `realpath -m`, which resolves the components that exist and tolerates the
+// trailing ones that do not exist yet -- the state at staging time -- so a symlink standing at a destination
+// resolves to whatever it points at and is refused by the ancestry test. Judging the base cannot catch it;
+// judging the destination can, and every writer now goes through this one interface.
+// THE STAGE LINE AND THE REFUSAL CAUSE, AS ONE NAME EACH. The RED claim asserts against these, and the
+// fold and the hand stage both emit them; a string literal in each of three places is how the pair drifts.
+data witness_locus_destination_refused_stage: NonEmptyStr = "locus-destination-refused:" as NonEmptyStr
+data witness_locus_destination_refused_cause: NonEmptyStr = "the locus destination is not admitted: it resolves outside the supplied tree, because a symlink stands at it or at a component on the way to it: " as NonEmptyStr
+
+fn witness_locus_destination_is_admitted(candidate: String) -> Bool {
+  !witness_supplied_root_is_refused(candidate: candidate)
+}
+
+// THE COMPLETE SET, spelled once. "Which destinations?" must not depend on remembering the writers: adding a
+// writer means adding its destination here, and the claims assert against this list rather than a copy of it.
+fn witness_locus_destinations(instance: HostDashboardInstance, locus_key: String) -> List<String> {
+  [
+    witness_locus_dir_text(instance: instance, locus_key: locus_key),
+    witness_locus_dag_dir(instance: instance, locus_key: locus_key),
+    witness_locus_receipt_path(instance: instance, locus_key: locus_key),
+    witness_locus_receipt_seal_path(instance: instance, locus_key: locus_key),
+    witness_locus_binary_path(instance: instance, locus_key: locus_key),
+  ]
+}
+
+// ALL OF THEM OR NONE. A partial pass is not a pass: staging that admits the directory and then installs the
+// binary through a link is exactly the failure this exists to stop.
+fn witness_locus_destinations_are_admitted(instance: HostDashboardInstance, locus_key: String) -> Bool {
+  fold(
+    witness_locus_destinations(instance: instance, locus_key: locus_key),
+    init: true,
+    f: (acc, destination) => acc && witness_locus_destination_is_admitted(candidate: destination),
+  )
+}
+
+// THE SAME VERDICT FOR A KEY A CALLER SUPPLIES, before a fold is ever asked to create it -- so a caller can
+// name what it refused instead of discovering it as a fold that merely did not converge.
+fn witness_locus_target_is_admitted(instance: HostDashboardInstance, locus_key: String) -> Bool {
+  witness_locus_destination_is_admitted(
+    candidate: witness_locus_dir_text(instance: instance, locus_key: locus_key),
+  )
+}
+
 // THE SPELLING OF A PATH IS NOT ITS LOCATION. `is_under` is a string-prefix test, and a prefix test cannot see
 // through `..`: measured at review 5999428189, `GUNBC_WITNESS_SANDBOX_BASE=/tmp/../opt/gunbc-lab` sits under
 // `witness_scratch_prefix` by string test and under `srv1_dashboard_lab_root` once the kernel resolves it, so the
@@ -881,6 +936,21 @@ fn witness_locus_install(
       step: TreeStepInstallDirectory,
       reason: witness_locus_needs_elevation_cause as String,
     }
+  } else if !witness_locus_destinations_are_admitted(instance: instance, locus_key: locus_key) {
+    // ADMITTED OR REFUSED, BEFORE THE FOLD IS ASKED FOR ANYTHING. The fold creates the locus directory and
+    // everything under it from a key this batch chose, so a guard that only ever judged the base never saw
+    // the path it was about to populate: an existing symlink at the target turned "install the release
+    // locus" into "install the release locus wherever that link points", and the fold reported success. The
+    // answer is the same predicate every writer uses -- one verdict -- and it is given BEFORE the effect, so
+    // no bytes are ever written through a link this lane could have refused. It is a REFUSAL with its step
+    // and its reason, not a silent false, and it carries no capability: nothing about the host was observed.
+    TreeInstallRefused {
+      step: TreeStepInstallDirectory,
+      reason: join(
+        [witness_locus_destination_refused_cause as String, witness_locus_dir_text(instance: instance, locus_key: locus_key)],
+        "",
+      ),
+    }
   } else {
     // THE LOCUS RECORD, MINTED HERE AND NOT THROUGH THE TWO SANCTIONED FOLDS, AND THAT IS THE POINT.
     // `release_locus_record` and `helper_release_locus_record` both DERIVE the directory from the
@@ -975,6 +1045,14 @@ fn witness_file_sha256_hex(path: String) -> String {
 // and write route cannot drift apart again. THE VERDICT IS THE READBACK, never the exit code: the bytes must
 // come back identical, elevated or not, or the caller is told it failed.
 fn witness_write_locus_file(instance: HostDashboardInstance, destination: String, content: String, stage_key: String) -> Bool {
+  // THE WRITER JUDGES ITS OWN DESTINATION. Admission used to live only at the base, so any caller could hand
+  // this function a pathname and it would write through whatever stood there; the check now travels with the
+  // interface, which is the only way the decision taken about the base can still be true of the bytes being
+  // written. A refused destination writes NOTHING -- neither at the path it was handed nor at its staging
+  // file -- and answers false with no capability marker, because nothing about the host was observed here.
+  if !witness_locus_destination_is_admitted(candidate: destination) {
+    false
+  } else {
   let written = if witness_sudo_elevation_available() {
     // Stage where the claim principal can write (its own root, off the live host by the supplied-root guard),
     // then copy it in through the SAME elevated route the install used, at the mode the fold installs at.
@@ -990,12 +1068,20 @@ fn witness_write_locus_file(instance: HostDashboardInstance, destination: String
   let back = Filesystem.Read(path: destination)
   written && back.success && back.content == content
 }
+  }
 
 // THE SAME BOUNDARY FOR A FILE THAT ALREADY EXISTS ON DISK rather than bytes in hand: the hand stage puts the
 // locus binary in with `install_file_mode_command`, which is unprivileged and therefore fails on a locus the
 // fold made root-owned. Elevated install, mode preserved, readback by DIGEST -- the bytes are an image, not
 // text, and a truncated copy must not pass.
 fn witness_install_locus_file(instance: HostDashboardInstance, source: String, destination: String, mode: NonEmptyStr) -> Bool {
+  // THE SAME RULE APPLIES TO THE EXECUTABLE, and it matters most here: this is the 0755 binary the drain
+  // execs, so an unadmitted destination is not a stray file but an attacker-chosen path receiving an
+  // executable the batch then runs. Refused means no `install` is attempted at all, and no capability is
+  // claimed -- the host was not consulted on this path.
+  if !witness_locus_destination_is_admitted(candidate: destination) {
+    false
+  } else {
   if !witness_sudo_elevation_available() {
     wet_ok(command: install_file_mode_command(source: source, destination: destination, mode: mode))
       && wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", destination])
@@ -1008,6 +1094,7 @@ fn witness_install_locus_file(instance: HostDashboardInstance, source: String, d
       && witness_file_sha256_hex(path: source) == witness_file_sha256_hex(path: destination)
   }
 }
+  }
 
 // SEAL IT. A fold that cannot seal its receipt has not delivered a locus the batch may reuse.
 fn witness_seal_locus_receipt(instance: HostDashboardInstance, locus_key: String) -> Bool {
