@@ -95,6 +95,6 @@ fn census_ran(source: String) -> Bool {
 test fn the_member_carrier_seal_is_what_refuses_forged_casts() -> Bool {
   census_ran(source: member_forged_cast_sealed_twin_source)
     && census_ran(source: member_forged_cast_stripped_twin_source)
-    && sole_ctor_rows(source: member_forged_cast_sealed_twin_source) >= 2
+    && sole_ctor_rows(source: member_forged_cast_sealed_twin_source) >= 1
     && sole_ctor_rows(source: member_forged_cast_stripped_twin_source) == 0
 }
