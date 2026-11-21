@@ -99,3 +99,11 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
     }
   }
 }
+
+// THE LAST COMPONENT OF A PATH, the final non-empty segment. The dual of path_parent_directory.
+// Empty string and "/" both yield "" (POSIX basename of "/" is "/" but no caller needs that; if
+// one does it gets its own predicate). Three hand-rolled instances exist in extdeps (firecracker,
+// docker/cgroup, linux/cgroup_v2_memory) and are hoisted here by root_generalization.
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}

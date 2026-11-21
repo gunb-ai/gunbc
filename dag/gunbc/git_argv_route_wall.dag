@@ -96,6 +96,7 @@ fn git_subcommand_is_safe_read_only(subcommand: String) -> Bool {
   || subcommand == "shortlog"
   || subcommand == "whatchanged"
   || subcommand == "grep"
+  || subcommand == "hash-object"
 }
 
 // The in-repo dressing: a git global option in first position that actually LOCATES the repository --

@@ -9,6 +9,7 @@ import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmpty
 import std.env_binding { EnvBinding, EnvSet }
 import extdeps.tools.env { env_bindings_argv }
 import std.algebra { length, skip, trim }
+import std.filesystem { path_basename }
 import std.resources { Network }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -1051,6 +1052,25 @@ data git_program_word: String = "git"
 data git_program_name: NonEmptyStr = git_program_word as NonEmptyStr
 
 fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
+
+// CLASSIFY ANY PROGRAM SPELLING AS GIT: basename-equality, so "/usr/bin/git", "/usr/local/bin/git",
+// or "./git" are all caught. The dispatch sandbox (command_runner) uses this to gate the route wall
+// before transport, closing the absolute-path bypass the #16810-era exact-spelling check left open.
+fn is_git_program(invocation: String) -> Bool {
+  path_basename(path: invocation) == git_program_word
+}
+
+// A git ProgramIdentity at an arbitrary path, for witnesses that exercise the absolute-path spelling.
+// The admitted-caller seal on uncataloged_program is satisfied here because this module already calls
+// it (git_program). The path is a caller argument: it is what makes the red control cover every spelling.
+fn git_program_at(path: NonEmptyStr) -> ProgramIdentity = uncataloged_program(invocation: path)
+
+// Build a git ArgvCommand at a given program path with the given argv (no program-word prepending;
+// `arguments` are what follows the program). Witness and route-wall callers use this to exercise
+// the command_runner gate with specific argv shapes.
+fn git_argv_command_at(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand {
+  argv_command(program: program, arguments: arguments)
+}
 
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   git_argv_of_args(args: ["commit", "--no-verify", "--no-edit"])

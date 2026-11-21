@@ -29,6 +29,10 @@ import extdeps.shell.exec {
   ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused,
   ProcessObservation, process_observation, classify_process_observation, ProcessRunOutcome, ProcessRan, ProcessNotSpawned,
 }
+import extdeps.git { is_git_program }
+import gunbc.git_argv_route_wall {
+  GitWorkdirFreeSpawnAdmitted, GitWorkdirFreeSpawnRefused, spawn_git_argv_workdir_free,
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -283,39 +287,76 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
 
 // THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
 // missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation. A
-// transport that refuses to build the command spawned nothing either, so it is the same arm, never
-// an exit code: no process ran, and a sentinel exit status would be a fabricated observation (gunbc.design_argument::fail_closed).
-fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
-  uses net: Network
-{
-  match command_over_transport(command: command, transport: transport) {
-    CommandOverTransportRefused { cause: c } =>
-      ProcessNotSpawned {
-        program: command.program.invocation,
-        cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
-      }
-    CommandOverTransportBuilt { command: over } =>
-      {
-        let run = shell.Exec.RunArgvOutcome(
-          program: over.program.invocation,
-          arguments: process_argv_expansion(
-            surface: cli_surface_of_literal_words(words: over.arguments)
-          ),
-        )
-        match run.outcome {
-          ShellSpawnRefused { program: p, cause: why } => ProcessNotSpawned { program: p, cause: why }
-          ShellExited => ProcessRan { observation: process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) }
-        }
-      }
+// THE GIT ROUTE WALL GATE. Before any transport wrapping, classify whether the inner ArgvCommand's
+// program is git (by basename, not exact spelling) and if so, consult the route wall. This is the
+// enforcement point for the "nothing structurally prevents RunArgv with git" concern: command_runner
+// is the ONLY module that turns an ArgvCommand into a local process (its dissolution trigger), so
+// gating here makes the sanctioned route compulsory for bare mutating git on BOTH arms (local AND
+// SSH). A remote `git commit -m x` without in-repo dressing runs in the SSH session's ambient CWD --
+// the same hazard the wall guards (the caller does not control that CWD), so refusal applies to both.
+fn git_route_wall_admits(command: ArgvCommand) -> Bool {
+  if !is_git_program(invocation: command.program.invocation) {
+    true
+  } else {
+    match spawn_git_argv_workdir_free(argv: command.arguments) {
+      GitWorkdirFreeSpawnAdmitted { program: _, arguments: _ } => true
+      GitWorkdirFreeSpawnRefused => false
+    }
   }
 }
 
+// THE TYPED REFUSAL SURFACE: ProcessRunOutcome already carries ProcessNotSpawned { program, cause },
+// which is the wall's answer without fabricating an exit code (gunbc.design_argument::fail_closed).
+fn git_route_wall_refusal(command: ArgvCommand) -> ProcessRunOutcome {
+  ProcessNotSpawned {
+    program: command.program.invocation,
+    cause: "git route wall: bare mutating argv refused at workdir-free route; use gunbc.git_workdir_free_route" as NonEmptyStr,
+  }
+}
+
+// THE TYPED REFUSAL SURFACE: ProcessRunOutcome is the one meaning of "nothing ran". A transport that
+// refuses to build the command spawned nothing either, so it is the same arm, never an exit code:
+// no process ran, and a sentinel exit status would be a fabricated observation (gunbc.design_argument::fail_closed).
+fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
+  uses net: Network
+{
+  if !git_route_wall_admits(command: command) {
+    git_route_wall_refusal(command: command)
+  } else {
+    match command_over_transport(command: command, transport: transport) {
+      CommandOverTransportRefused { cause: c } =>
+        ProcessNotSpawned {
+          program: command.program.invocation,
+          cause: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)) as NonEmptyStr,
+        }
+      CommandOverTransportBuilt { command: over } =>
+        {
+          let run = shell.Exec.RunArgvOutcome(
+            program: over.program.invocation,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: over.arguments)
+            ),
+          )
+          match run.outcome {
+            ShellSpawnRefused { program: p, cause: why } => ProcessNotSpawned { program: p, cause: why }
+            ShellExited => ProcessRan { observation: process_observation(exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr) }
+          }
+        }
+    }
+  }
+}
+
+// DECODES FROM run_shell_command_observe_outcome (which returns ProcessRunOutcome) rather than
+// calling run_shell_command_observe (which returns the record ProcessObservation). This inherits
+// the git route wall gate and its typed ProcessNotSpawned arm without duplicating the wall check.
+// ProcessNotSpawned reuses the same meaning as ProcessRunOutcome's variant of the same name (the
+// single "nothing ran" fact in this module), satisfying single_authority: no nickname fork.
 fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
 {
-  classify_process_observation(
-    policy: ExitZeroSucceeds,
-    observation: run_shell_command_observe(command: command, transport: transport),
-  )
+  match run_shell_command_observe_outcome(command: command, transport: transport) {
+    ProcessRan { observation: obs } => classify_process_observation(policy: ExitZeroSucceeds, observation: obs)
+    ProcessNotSpawned { program: p, cause: c } => ProcessNotSpawned { program: p, cause: c }
+  }
 }
 
 // Did the process do its job? Callers whose product is the EXIT STATUS rather than the output ask
@@ -327,6 +368,7 @@ fn process_outcome_admitted(outcome: ProcessOutcome) -> Bool {
     ProcessOutputPresent { text: _ } => true
     ProcessOutputAbsent => true
     ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessNotSpawned { program: _, cause: _ } => false
   }
 }
 
@@ -340,6 +382,7 @@ fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
     ProcessOutputPresent { text: t } => trim(s: t)
     ProcessOutputAbsent => "(no output)"
     ProcessRefused { exit_code: _, stderr: e } => join(["(refused: ", trim(s: e), ")"], "")
+    ProcessNotSpawned { program: p, cause: c } => join(["(not spawned: ", trim(s: p), " -- ", trim(s: c), ")"], "")
   }
 }
 
