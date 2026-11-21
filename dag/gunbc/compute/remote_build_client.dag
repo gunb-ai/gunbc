@@ -16,6 +16,7 @@ import extdeps.ssh.session {
   ssh_session_exec_wire_refusal_text,
 }
 import std.measure { Second, second_count }
+import std.nat { nat_to_decimal_string }
 import extdeps.bazel.label { render_label }
 import extdeps.bazel.target_pattern {
   TargetPatternParsed, TargetPatternRefused, parse_target_pattern, render_target_pattern, target_pattern_refusal_text,
@@ -280,7 +281,7 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
                       HostOutcomeUnknown {
                         detail: concat(
                           "the request leg overran its ",
-                          concat(int_to_decimal_string(value: second_count(s: d)),
+                          concat(nat_to_decimal_string(value: second_count(s: d)),
                             "s wall-clock deadline after the request was sent; the host may still be building, so the outcome is unknown and the walk stops"),
                         )
                       }
@@ -426,7 +427,7 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostRefusedRequest { detail: _ } => "request-refused"
     HostOutcomeUnknown { detail: _ } => "outcome-unknown"
     HostLegOverran { deadline: d } =>
-      concat("probe-leg-overran-at-", concat(int_to_decimal_string(value: second_count(s: d)), "s"))
+      concat("probe-leg-overran-at-", concat(nat_to_decimal_string(value: second_count(s: d)), "s"))
   }
 }
 
@@ -441,7 +442,7 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostRefusedRequest { detail } => detail
     HostOutcomeUnknown { detail } => detail
     HostLegOverran { deadline: d } =>
-      concat("the probe leg overran its ", concat(int_to_decimal_string(value: second_count(s: d)), "s wall-clock deadline; the process group was killed before the host answered"))
+      concat("the probe leg overran its ", concat(nat_to_decimal_string(value: second_count(s: d)), "s wall-clock deadline; the process group was killed before the host answered"))
   }
 }
 
@@ -583,6 +584,10 @@ fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
         HostCannotServe { detail: _ } => GateNoHostAdmitted
         HostUnreachable { detail: _ } => GateNoHostAdmitted
         HostOutcomeUnknown { detail: _ } => GateNoHostAdmitted
+        // A LEG THAT OVERRAN ITS CEILING NEVER ANSWERED, so nothing in this run judges the code: the
+        // same class as a host that could not be reached inside the ceiling, and never the code-verdict
+        // class -- CI must not mark a commit failed because a leg ran out of wall clock.
+        HostLegOverran { deadline: _ } => GateNoHostAdmitted
       }
     RemoteBuildNoHostAvailable { attempts: _ } => GateNoHostAdmitted
     RemoteBuildTryHost { candidate: _ } => GateNoHostAdmitted
