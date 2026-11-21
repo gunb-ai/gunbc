@@ -74,5 +74,8 @@ data an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish: RecurringFai
     DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "the_srv1_shape_is_an_established_absence_and_the_walk_stops_at_the_searchable_grandparent", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "a_present_unsearchable_ancestor_still_refuses_the_absence", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "an_absence_no_ancestor_ever_searched_for_stays_unreadable", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "the_srv1_shape_is_an_established_absence_at_the_searchable_grandparent", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "a_present_unsearchable_ancestor_still_refuses_the_absence", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "a_searchable_parent_still_settles_the_path_in_one_level", field: WholeDeclaration },
   ],
 }
