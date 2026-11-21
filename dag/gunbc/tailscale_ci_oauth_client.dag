@@ -62,8 +62,9 @@ data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-github"
 // (test.claim.hosted_ci_secrets_custody_witness pins this row to the relayed value).
 data ci_oauth_client_id: NonEmptyStr = "kNQLY8UpZK11CNTRL"
 
-// THE PREDECESSOR, RECORDED AS REVOKED: the identity of this client and the revocation of its
-// predecessor (githubcirunners, 2026-11-20) are operator decisions carried at
+// THE PREDECESSOR, REPLACED WITH REVOCATION PENDING: the identity of this client and the pending
+// revocation of its predecessor (githubcirunners; it stays alive until CI works on this client) are
+// operator decisions carried at
 // #gunbc.design_ruling::tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20, not here.
 // No model row states an OAuth client's lifecycle today; if a client read-back route is modeled,
 // the lifecycle becomes a closed type that route consumes.
