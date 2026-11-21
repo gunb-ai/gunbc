@@ -24,20 +24,30 @@ import gunbc.fleet.fleet_fan_tach_expectation { fleet_fan_tach_expectations, Hos
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts, supermicro_h11ssl_unit3_host, ComputeHost }
 import gunbc.fleet.fleet_intent_network { ken_host_lan_endpoint }
 import gunbc.integration_concern {
-  ConcernDisposition, ConcernKind, ConcernSighting, Distinct, Integrated, IntegrationConcern, Open,
+  ConcernDisposition,
+  ConcernKind,
+  ConcernSighting,
+  Distinct,
+  Integrated,
+  IntegrationConcern,
+  Open,
   RequirementEstablished,
-  RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
+  RequirementUnestablished,
+  SuspectedCapabilityGap,
+  SuspectedFork,
+  Triaged,
+  Withdrawn,
   h11ssl_unit3_edge_gate_refusal_revision,
-  h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer,
-  h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
-  h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
-  h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
   edge_install_residue_fold_integrated_revision,
-  h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
   h11ssl_unit3_intake_sighting_revision,
-  h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
-  site_pxe_edge_pinned_chainloader_member_absent_from_srv4,
 }
+import gunbc.integration_concern.h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer { h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer }
+import gunbc.integration_concern.h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster { h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster }
+import gunbc.integration_concern.h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model { h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model }
+import gunbc.integration_concern.h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat { h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat }
+import gunbc.integration_concern.h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture { h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture }
+import gunbc.integration_concern.h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population { h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population }
+import gunbc.integration_concern.site_pxe_edge_pinned_chainloader_member_absent_from_srv4 { site_pxe_edge_pinned_chainloader_member_absent_from_srv4 }
 import extdeps.bmc.ipmi_boot_selection { ipmi_boot_selectable_devices, ipmi_boot_selection_label }
 import gunbc.machine_intake.supermicro_h11ssl_unit_identity {
   supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac, supermicro_h11ssl_unit3_bmc_mac,
