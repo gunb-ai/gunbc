@@ -269,3 +269,60 @@ test fn host_unit_retirement_is_active_empty_stdout_is_a_refusal() -> Bool {
     _ => false
   }
 }
+
+// THE RECEIPT PATH, judged as itself (review 97221 took out the borrowed plan row that carried a fragment
+// path of "" and a reason of "observed"). These three legs are the shapes a real dispatch's receipt answers,
+// read through host_unit_retirement_observed_row_readback -- the path that fills
+// host_unit_retirement_observed_readings after a live run -- and they were untested before: the trigger claim
+// only counts them. Two things they pin. FIRST, the retained path in the verdict is THE RECEIPT'S OWN, not a
+// path rebuilt from the unit name: the engine instances share one template fragment, so a function that
+// derived the copy path from "strata-pool@a.service" would name a file the run never wrote. SECOND, the
+// receipt cannot talk its way into `Retired`: a leftover install state reads UnitStillEnabled and an
+// unreadable copy reads RetainedCopyAbsent, exactly as in the wet run, because both paths run through the one
+// decision body gunbc.host.host_unit_retirement::host_unit_retirement_judge_states.
+test fn host_unit_retirement_receipt_reads_are_judged_as_the_receipt_they_are() -> Bool {
+  let retired = HostUnitRetirementObservation {
+    unit: "strata-pool@a.service" as NonEmptyStr,
+    load_state: "not-found",
+    active_state: "inactive",
+    unit_file_state: "",
+    retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
+    retained_readable: true,
+    probed_at: "2026-11-21T00:00:00Z",
+    dispatch_run_id: "0",
+  }
+  let still_enabled = HostUnitRetirementObservation {
+    unit: "a2-power-cap.service" as NonEmptyStr,
+    load_state: "not-found",
+    active_state: "inactive",
+    unit_file_state: "enabled",
+    retained_path: "/var/lib/gunbc/retired-units/a2-power-cap.service",
+    retained_readable: true,
+    probed_at: "2026-11-21T00:00:00Z",
+    dispatch_run_id: "0",
+  }
+  let copy_gone = HostUnitRetirementObservation {
+    unit: "strata-pool@b.service" as NonEmptyStr,
+    load_state: "not-found",
+    active_state: "inactive",
+    unit_file_state: "",
+    retained_path: "/var/lib/gunbc/retired-units/strata-pool@.service",
+    retained_readable: false,
+    probed_at: "2026-11-21T00:00:00Z",
+    dispatch_run_id: "0",
+  }
+  match host_unit_retirement_observed_row_readback(retired) {
+    Retired { unit, retained_path } =>
+      unit == "strata-pool@a.service"
+        && retained_path == "/var/lib/gunbc/retired-units/strata-pool@.service"
+        && match host_unit_retirement_observed_row_readback(still_enabled) {
+             UnitStillEnabled { unit: u, unit_file_state: w } => u == "a2-power-cap.service" && w == "enabled"
+             _ => false
+           }
+        && match host_unit_retirement_observed_row_readback(copy_gone) {
+             RetainedCopyAbsent { unit: u2, retained_path: p2 } => u2 == "strata-pool@b.service" && p2 == "/var/lib/gunbc/retired-units/strata-pool@.service"
+             _ => false
+           }
+    _ => false
+  }
+}

@@ -151,23 +151,22 @@ type HostUnitRetirementObservation {
 
 data host_unit_retirement_observed_readings: List<HostUnitRetirementObservation> = []
 
-// The receipt's reads, judged through the SAME readback the wet entry applies to its own acts.
+// The receipt's reads, judged through the SAME decision the wet run applies to its own acts -- but taken
+// as the OBSERVATION it is, not as a borrowed plan row. HostUnitRetirementRow means "a unit this ruling
+// retires, with its fragment path on the host and the reason it has no consumer"; a committed observation
+// is a different fact -- what a real dispatch read back, and the path the run wrote its copy to -- and
+// forcing it into the row type means inventing a fragment path that is not one and a reason that is not
+// one (review 97221). Under gunbc.design_argument::continuous_generalization that is a fork: the fact is
+// forced into a model that cannot express it, with sentinels standing where the missing meaning would be.
+// Nothing here is rebuilt from the unit name either: the retained path is the receipt's own.
 fn host_unit_retirement_observed_row_readback(o: HostUnitRetirementObservation) -> HostUnitRetirementReadback {
-  host_unit_retirement_read_row(
-    HostUnitRetirementRow {
-      host: srv14_host_name,
-      unit: o.unit,
-      // The observation's readback only ever JUDGES; the fragment path is never consulted by the readback
-      // and the retained path is the receipt's own, so nothing here is rebuilt from the unit name.
-      fragment_path: "",
-      retained_path: o.retained_path,
-      no_consumer_reason: "observed" as NonEmptyStr,
-      ruling: hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
-    },
-    o.load_state,
-    o.active_state,
-    o.unit_file_state,
-    o.retained_readable,
+  host_unit_retirement_judge_states(
+    unit: o.unit,
+    retained_path: o.retained_path,
+    load_state: o.load_state,
+    active_state: o.active_state,
+    unit_file_state: o.unit_file_state,
+    retained_readable: o.retained_readable,
   )
 }
 
@@ -219,7 +218,12 @@ type HostUnitRetirementRead
 // `enabled` or `disabled` (a disabled state means a unit FILE is still on disk) or one from a newer
 // systemd we do not parse, refuses with the word retained. The act batch runs systemctl_disable_now_argv
 // before the rm precisely so the empty answer is what a correctly-retired unit prints.
-fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String, active_state: String, unit_file_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
+// ONE DECISION, over the ANSWERS the reads gave, whatever produced them: the wet run's own reads (through
+// host_unit_retirement_read_row, which projects the ruled row onto what is judged) and a committed
+// receipt's reads (through host_unit_retirement_observed_row_readback) run through this body and nothing
+// else. It takes only the four facts a verdict depends on -- the unit, the retained copy's path, and the
+// three states -- because those are all the verdict is made of.
+fn host_unit_retirement_judge_states(unit: NonEmptyStr, retained_path: String, load_state: String, active_state: String, unit_file_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
   if load_state != "not-found" {
     UnitStillLoaded { unit: row.unit, load_state: load_state }
   } else if active_state != "inactive" {
@@ -227,10 +231,23 @@ fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String,
   } else if unit_file_state != "" {
     UnitStillEnabled { unit: row.unit, unit_file_state: unit_file_state }
   } else if !retained_readable {
-    RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
+    RetainedCopyAbsent { unit: unit, retained_path: retained_path }
   } else {
-    Retired { unit: row.unit, retained_path: row.retained_path }
+    Retired { unit: unit, retained_path: retained_path }
   }
+}
+
+// THE RULED ROW'S PROJECTION onto that decision -- the wet entry's interface. It adds no judgement of its
+// own: the row supplies the unit and the path the copy is retained at, the reads supply the rest.
+fn host_unit_retirement_read_row(row: HostUnitRetirementRow, load_state: String, active_state: String, unit_file_state: String, retained_readable: Bool) -> HostUnitRetirementReadback {
+  host_unit_retirement_judge_states(
+    unit: row.unit,
+    retained_path: row.retained_path,
+    load_state: load_state,
+    active_state: active_state,
+    unit_file_state: unit_file_state,
+    retained_readable: retained_readable,
+  )
 }
 
 fn host_unit_retirement_readback_line(readback: HostUnitRetirementReadback) -> String {
@@ -340,40 +357,36 @@ fn host_unit_retirement_first_line(outcome: TypedArgvExecOutcome, exit_is_verdic
   }
 }
 
-// THE READ GATE (review 96978): a refused or non-zero-exit read of load-state, active state or install
-// state is its own refusal arm -- never the empty string, which belongs ONLY to a clean
-// `systemctl show --value` answer. The retained-copy test is already safe (a refused exec reads false,
-// which is RetainedCopyAbsent -- a refusal, not an acceptance).
-fn host_unit_retirement_read_refusal(read: HostUnitRetirementRead, unit: NonEmptyStr, which_read: String) -> Optional<HostUnitRetirementReadback> {
+// A READ ANSWERS, OR IT ANSWERS NOTHING (review 97221). The value and the absence of a value come out of
+// the SAME function as one sum, so there is no second function that flattens a read to a String: the
+// previous shape carried a `ReadFailed => ""` arm, and "" is exactly the answer that satisfies
+// "no install state" -- the accepting value for `Retired`. A function whose failure case returns the
+// value that passes the judgement is a fork even while no caller reaches it, because the next caller
+// inherits the trap. Here the only way to reach the decision body is with an ANSWER.
+type HostUnitRetirementAnswer = Answered { value: String } | RefusedBy { detail: String }
+
+fn host_unit_retirement_read_answer(read: HostUnitRetirementRead, which_read: String) -> HostUnitRetirementAnswer {
   match read {
-    ReadFailed { detail: d } => Present { value: ReadRefusal { unit: unit, which_read: which_read, detail: d } }
-    ReadValue { value: _, answered: a } =>
-      if !a { Present { value: ReadRefusal { unit: unit, which_read: which_read, detail: "exec exited non-zero" } } }
-      else { Absent }
+    ReadFailed { detail: d } => RefusedBy { detail: concat(which_read, ": ", d) }
+    ReadValue { value: v, answered: a } =>
+      if a { Answered { value: v } } else { RefusedBy { detail: concat(which_read, ": exec exited non-zero") } }
   }
 }
 
-// THE READ GATE (review 96978), ordered: the first read that never answered -- refused by the transport
-// or exited non-zero -- owns the verdict as ReadRefusal. Only when all three reads ANSWERED (any value,
-// including the empty one that `systemctl show --value` prints for unset UnitFileState) does
-// host_unit_retirement_read_row judge. Nothing is fabricated from silence.
+// THE READ GATE (review 96978), ordered: the first read that never answered -- refused by the transport,
+// or answered nothing, or exited non-zero -- owns the verdict as ReadRefusal. Only when all three reads
+// ANSWERED (any value, including the empty one that `systemctl show --value` prints for an unset
+// UnitFileState) does the decision run. Nothing is fabricated from silence (gunbc.design_argument::fail_closed).
 fn host_unit_retirement_judge_reads(row: HostUnitRetirementRow, load: HostUnitRetirementRead, active: HostUnitRetirementRead, unit_file_state: HostUnitRetirementRead, retained_readable: Bool) -> HostUnitRetirementReadback {
-  match host_unit_retirement_read_refusal(load, row.unit, "load-state") {
-    Present { value: rb } => rb
-    Absent => match host_unit_retirement_read_refusal(active, row.unit, "active-state") {
-      Present { value: rb } => rb
-      Absent => match host_unit_retirement_read_refusal(unit_file_state, row.unit, "unit-file-state") {
-        Present { value: rb } => rb
-        Absent => host_unit_retirement_read_row(row, host_unit_retirement_read_value(load), host_unit_retirement_read_value(active), host_unit_retirement_read_value(unit_file_state), retained_readable)
+  match host_unit_retirement_read_answer(load, "load-state") {
+    RefusedBy { detail: d } => ReadRefusal { unit: row.unit, which_read: "load-state", detail: d }
+    Answered { value: l } => match host_unit_retirement_read_answer(active, "active-state") {
+      RefusedBy { detail: d } => ReadRefusal { unit: row.unit, which_read: "active-state", detail: d }
+      Answered { value: a } => match host_unit_retirement_read_answer(unit_file_state, "unit-file-state") {
+        RefusedBy { detail: d } => ReadRefusal { unit: row.unit, which_read: "unit-file-state", detail: d }
+        Answered { value: f } => host_unit_retirement_judge_states(unit: row.unit, retained_path: row.retained_path, load_state: l, active_state: a, unit_file_state: f, retained_readable: retained_readable)
       }
     }
-  }
-}
-
-fn host_unit_retirement_read_value(read: HostUnitRetirementRead) -> String {
-  match read {
-    ReadValue { value: v, answered: _ } => v
-    ReadFailed { detail: _ } => ""
   }
 }
 
