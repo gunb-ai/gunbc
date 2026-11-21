@@ -3,10 +3,10 @@ module test.claim.revision_job_fixture.revision_job_light_claims
 import std.types { Bool, String }
 import std.algebra { trim }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessRan, ProcessNotSpawned }
 import extdeps.git { git_hash_object_command }
 import extdeps.rust.cargo_build { cargo_run_release_manifest_offline_command }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome }
 
 // THE REVISION JOB'S LIGHT, DISCRIMINATING CLAIM SET -- FIXTURES, NOT CLAIMS ABOUT THE PROGRAM.
 //
@@ -33,9 +33,9 @@ import gunbc.command_runner { run_shell_command_capture }
 data link_smoke_dir: String = "dag/test/claim/revision_job_fixture/link_smoke"
 
 test fn the_guest_toolchain_links_c_into_rust() -> Bool {
-  let hashed = match run_shell_command_capture(command: git_hash_object_command(path: concat(link_smoke_dir, "/smoke.c")), transport: LocalExec) {
-    ProcessOutputPresent { text: t } => trim(s: t) == "e012e4200b94e6f1ca8eee16515e389e5ee10f75"
-    _ => false
+  let hashed = match run_shell_command_observe_outcome(command: git_hash_object_command(repository_dir: ".", path: concat(link_smoke_dir, "/smoke.c")), transport: LocalExec) {
+    ProcessRan { observation: observation } => trim(s: observation.stdout) == "e012e4200b94e6f1ca8eee16515e389e5ee10f75"
+    ProcessNotSpawned { program: _, cause: _ } => false
   }
   let linked = match run_shell_command_capture(command: cargo_run_release_manifest_offline_command(manifest_path: concat(link_smoke_dir, "/Cargo.toml"), target_dir: "/work/link-smoke-target"), transport: LocalExec) {
     ProcessOutputPresent { text: t } => trim(s: t) == "link-smoke 46"

@@ -1142,9 +1142,14 @@ fn git_checkout_revision_command(repository_dir: String, revision: String) -> Ar
 // THE TREE A REVISION NAMES, read from the object store: `rev-parse --verify <rev>^{tree}` prints the
 // tree id or refuses, so a caller compares a printed id rather than trusting the revision.
 // `git hash-object <path>`: the blob object id of the file's bytes (git-hash-object(1)), printed on
-// stdout. Without -w it writes nothing, so it needs no repository.
-fn git_hash_object_command(path: String) -> ArgvCommand {
-  argv_command(program: git_program(), arguments: ["hash-object", path])
+// stdout. The no-`-w` form writes nothing. It is dressed with `-C <repository_dir>` (like every
+// sibling mutating builder) so the route wall admits it via in-repo dressing rather than by widening
+// the closed read-only allowlist: `hash-object -w` WOULD write the object DB, so the subcommand word
+// is not uniformly read-only and does not earn an allowlist slot. For the no-`-w` form the named
+// repository is not consulted for the hash, so any existing directory is behavior-identical; the
+// caller passes the repository whose working tree holds `path`, keeping the relative path resolution.
+fn git_hash_object_command(repository_dir: String, path: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "hash-object", path])
 }
 
 fn git_rev_parse_tree_command(repository_dir: String, revision: String) -> ArgvCommand {

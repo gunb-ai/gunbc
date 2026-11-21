@@ -11,10 +11,11 @@ module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 // landed. Not one of those was visible to any shape claim. These witnesses RUN each builder against a
 // throwaway tree and read back the EFFECT -- the config key git reports, the mode find reports.
 //
-// THE ROUTE IS THE PRODUCTION ROUTE: gunbc.command_runner run_shell_command_capture over
+// THE ROUTE IS THE PRODUCTION ROUTE: gunbc.command_runner run_shell_command_observe_outcome over
 // CommandTransport LocalExec, the same call the provision executor and the actuator make when they
 // spawn one of these ArgvCommands, and the same route the runner-revision wet witnesses take. The
-// witness never re-shells an argv: the ArgvCommand goes in as an ArgvCommand.
+// witness never re-shells an argv: the ArgvCommand goes in as an ArgvCommand. A process the git route
+// wall refuses to spawn is ProcessNotSpawned, never a fabricated exit code.
 //
 // WET: it creates a throwaway tree, writes into it, and runs real processes, so the hermetic envelope
 // refuses it; it is excluded from discovery and enrolled as declared wet entries
@@ -29,8 +30,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim, Cons, Empty }
 import std.optional { Optional, Present, Absent }
 import extdeps.exec.command { ArgvCommand, argv_words, LocalExec }
-import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import extdeps.git {
   git_core_shared_repository_config_key, git_core_shared_repository_group_value,
   git_gc_auto_config_key, git_maintenance_auto_config_key,
@@ -67,18 +68,16 @@ import extdeps.posix.test_utility { test_regular_file_command }
 // between the model and execve. A Refused outcome is FALSE here, never an error: an argv the host cannot
 // exec is the exact defect this file was written to catch.
 fn wet_ran(command: ArgvCommand) -> Bool {
-  match run_shell_command_capture(command: command, transport: LocalExec) {
-    ProcessRefused { exit_code: _, stderr: _ } => false
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
+  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+    ProcessRan { observation: observation } => observation.exit_code == 0
+    ProcessNotSpawned { program: _, cause: _ } => false
   }
 }
 
 fn wet_out(command: ArgvCommand) -> String {
-  match run_shell_command_capture(command: command, transport: LocalExec) {
-    ProcessOutputPresent { text: t } => trim(s: t)
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+    ProcessRan { observation: observation } => trim(s: observation.stdout)
+    ProcessNotSpawned { program: _, cause: _ } => ""
   }
 }
 

@@ -30,7 +30,7 @@ import extdeps.git {
   shape_git_status_porcelain_nul_args,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.command_runner { run_shell_command_observe_outcome, git_route_wall_admits }
 import gunbc.remote_shell_command { openssh_login_shell_interpretation }
 
@@ -171,6 +171,27 @@ fn test_non_git_passes_gate() -> Bool {
   git_route_wall_admits(
     command: git_argv_command_at(program: git_program_at(path: "/bin/ls" as NonEmptyStr), arguments: ["-la"]),
   )
+}
+
+// ---------------------------------------------------------------------------
+// SINGLE "NOT SPAWNED" AUTHORITY (#4): ProcessNotSpawned is declared on exactly ONE coproduct in
+// extdeps.shell.exec -- ProcessRunOutcome. An earlier draft also declared it on ProcessOutcome; the
+// compiler REJECTED it ("variant 'ProcessNotSpawned' appears in both 'ProcessRunOutcome' and
+// 'ProcessOutcome'"), which is itself the proof that a second same-named arm is not silently
+// ambiguous but illegal. The wall therefore speaks through the one ProcessNotSpawned, via the gated
+// run_shell_command_observe_outcome. A bare mutating git argv yields that typed arm with the wall's
+// cause -- no fabricated exit code -- which is the fail-closed result on the ProcessExit routes.
+// ---------------------------------------------------------------------------
+
+fn test_bare_mutating_git_yields_the_single_not_spawned_arm() -> Bool {
+  match run_shell_command_observe_outcome(
+    command: git_argv_command_at(program: git_identity, arguments: shape_git_add_all_args()),
+    transport: LocalExec,
+  ) {
+    ProcessNotSpawned { program: p, cause: c } =>
+      string_contains(s: c, pattern: "git route wall") && path_basename(path: p) == "git"
+    ProcessRan { observation: _ } => false
+  }
 }
 
 // ---------------------------------------------------------------------------

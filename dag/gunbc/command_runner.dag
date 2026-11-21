@@ -346,17 +346,20 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
   }
 }
 
-// DECODES FROM run_shell_command_observe_outcome (which returns ProcessRunOutcome) rather than
-// calling run_shell_command_observe (which returns the record ProcessObservation). This inherits
-// the git route wall gate and its typed ProcessNotSpawned arm without duplicating the wall check.
-// ProcessNotSpawned reuses the same meaning as ProcessRunOutcome's variant of the same name (the
-// single "nothing ran" fact in this module), satisfying single_authority: no nickname fork.
+// THE UNCHECKED ROUTE, declared. Capture's product is stdout, so it returns ProcessOutcome (the three
+// output arms) via run_shell_command_observe (the ProcessObservation record path). It carries NO git
+// route wall gate: a bare mutating git argv forwarded here would reach RunArgv un-walled. Every
+// KNOWN git caller has been migrated onto run_shell_command_observe_outcome (gated), so capture-on-git
+// is a declared-unchecked residual with no live caller; the trigger to gate it is a consumer that needs
+// capture's stdout product on a git command -- at which point ProcessOutcome must grow a not-spawned
+// concept through the single-path (it cannot redeclare ProcessNotSpawned: the compiler rejects a second
+// same-named variant in this module, and it already lives on ProcessRunOutcome).
 fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
 {
-  match run_shell_command_observe_outcome(command: command, transport: transport) {
-    ProcessRan { observation: obs } => classify_process_observation(policy: ExitZeroSucceeds, observation: obs)
-    ProcessNotSpawned { program: p, cause: c } => ProcessNotSpawned { program: p, cause: c }
-  }
+  classify_process_observation(
+    policy: ExitZeroSucceeds,
+    observation: run_shell_command_observe(command: command, transport: transport),
+  )
 }
 
 // Did the process do its job? Callers whose product is the EXIT STATUS rather than the output ask
@@ -368,7 +371,6 @@ fn process_outcome_admitted(outcome: ProcessOutcome) -> Bool {
     ProcessOutputPresent { text: _ } => true
     ProcessOutputAbsent => true
     ProcessRefused { exit_code: _, stderr: _ } => false
-    ProcessNotSpawned { program: _, cause: _ } => false
   }
 }
 
@@ -382,7 +384,6 @@ fn process_outcome_receipt_text(outcome: ProcessOutcome) -> String {
     ProcessOutputPresent { text: t } => trim(s: t)
     ProcessOutputAbsent => "(no output)"
     ProcessRefused { exit_code: _, stderr: e } => join(["(refused: ", trim(s: e), ")"], "")
-    ProcessNotSpawned { program: p, cause: c } => join(["(not spawned: ", trim(s: p), " -- ", trim(s: c), ")"], "")
   }
 }
 
