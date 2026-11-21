@@ -63,6 +63,7 @@ import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hard
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory, butch_a_strata_engine_memory, butch_b_strata_engine_memory, ken_strata_engine_memory }
+import extdeps.systemd.systemctl { UnitFileState, UnitEnabled, UnitDisabled }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -373,40 +374,70 @@ data srv14_serving_memory_charge_retirement_frontier: DissolutionCondition = unb
 // operator's hand retirement actually reached -- not the a2-power-cap residue (the four A2s were physically removed
 // 2026-11-17 and its cap intents are already gone from gunbc.serving.gpu_power_state_policy) and not the memory
 // charge, which the frontier above holds until the quiescent read.
-type BootEnableState
-  = EnabledAtBoot
-  | DisabledAtBoot
+// THE VALUE DOMAIN IS extdeps.systemd.systemctl::UnitFileState, NOT a new enum: systemctl's unit-file state is
+// already modelled there (UnitEnabled | ... | UnitDisabled | ..., with parse_unit_file_state), and a second two-arm
+// enum would be a lossier fork of the same fact (gunbc.design_argument::single_authority;
+// gunbc.design_argument::external_upstreams). A unit the operator's hand retirement reached reads UnitDisabled; one
+// the model still declared at boot would read UnitEnabled and red the witness.
+//
+// WHY `unit` IS NonEmptyStr AND NOT extdeps.systemd::SystemdUnitName: that carrier's admission
+// (systemd_unit_name_char_admitted) admits only [A-Za-z0-9:_.\-\\] and REJECTS '@', so it cannot name a template
+// INSTANCE -- and strata-pool@a.service IS a template instance. The sibling engine rows in
+// gunbc.serving.serving_host_memory carry these same unit names as NonEmptyStr for the same reason. A
+// template-instance unit-name carrier would need its own admission and a named consumer; that is outside this change.
+//
+// WHY THE PROVENANCE IS A TYPED CARRIER, NOT prose: a receipt with named parts (reader, date, prior state) belongs
+// in a typed carrier (gunbc.design_argument::source_annotations); the witness reads those fields, not a substring
+// of a string.
+type ServingUnitRetirementRead {
+  reader: NonEmptyStr
+  read_on: NonEmptyStr
+  prior_unit_file_state: UnitFileState?
+}
 
-// ONE SYSTEMD UNIT OF A HOST, AS ITS BOOT-ENABLE STATE WAS READ. `unit` is the exact systemd name the read used;
-// `read` is the provenance -- who read it, when, and the before/after it observed -- never a bare assertion.
+// ONE SYSTEMD UNIT OF A HOST, AS THE OPERATOR'S HAND RETIREMENT READ IT. `unit_file_state` uses the systemd carrier;
+// `read` is the typed receipt (who read it, when, what it read before the hand action) -- never a bare assertion.
 type ServingUnitBootState {
   host: HostIdentity
   unit: NonEmptyStr
-  enable_state: BootEnableState
-  read: NonEmptyStr
+  unit_file_state: UnitFileState
+  read: ServingUnitRetirementRead
 }
 
-// The three butch serving units the operator's 2026-11-21 hand retirement reached, each read DISABLED (was enabled
-// in multi-user.target.wants for the two pool instances; all three now inactive/disabled). Its consumer is
-// test.claim.serving.butch_serving_retirement_witness.
+// The three butch serving units the operator's 2026-11-21 hand retirement reached, each read UnitDisabled. The two
+// pool instances read UnitEnabled before the hand action (enabled in /etc/systemd/system/multi-user.target.wants,
+// so a boot returned them); strata-expert-lock's prior file-state was not recorded, so it is Absent rather than
+// guessed. Its consumer is test.claim.serving.butch_serving_retirement_witness.
 data srv14_serving_unit_boot_states: List<ServingUnitBootState> = [
   ServingUnitBootState {
     host: operator_host_srv14,
     unit: "strata-pool@a.service" as NonEmptyStr,
-    enable_state: DisabledAtBoot,
-    read: "operator hand retirement 2026-11-21: after inactive/disabled; before enabled in /etc/systemd/system/multi-user.target.wants" as NonEmptyStr,
+    unit_file_state: UnitDisabled,
+    read: ServingUnitRetirementRead {
+      reader: "operator" as NonEmptyStr,
+      read_on: "2026-11-21" as NonEmptyStr,
+      prior_unit_file_state: Present { value: UnitEnabled },
+    },
   },
   ServingUnitBootState {
     host: operator_host_srv14,
     unit: "strata-pool@b.service" as NonEmptyStr,
-    enable_state: DisabledAtBoot,
-    read: "operator hand retirement 2026-11-21: after inactive/disabled; before enabled in /etc/systemd/system/multi-user.target.wants" as NonEmptyStr,
+    unit_file_state: UnitDisabled,
+    read: ServingUnitRetirementRead {
+      reader: "operator" as NonEmptyStr,
+      read_on: "2026-11-21" as NonEmptyStr,
+      prior_unit_file_state: Present { value: UnitEnabled },
+    },
   },
   ServingUnitBootState {
     host: operator_host_srv14,
     unit: "strata-expert-lock.service" as NonEmptyStr,
-    enable_state: DisabledAtBoot,
-    read: "operator hand retirement 2026-11-21: after inactive/disabled" as NonEmptyStr,
+    unit_file_state: UnitDisabled,
+    read: ServingUnitRetirementRead {
+      reader: "operator" as NonEmptyStr,
+      read_on: "2026-11-21" as NonEmptyStr,
+      prior_unit_file_state: Absent,
+    },
   },
 ]
 

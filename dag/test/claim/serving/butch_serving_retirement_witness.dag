@@ -31,45 +31,60 @@ module test.claim.serving.butch_serving_retirement_witness
 import std.types { Bool }
 import std.dissolution { dissolution_description, dissolution_is_bound }
 import std.algebra { string_contains }
+import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import extdeps.systemd.systemctl { UnitFileState, UnitEnabled, UnitDisabled }
 import gunbc.serving.serving_reservation {
-  BootEnableState, EnabledAtBoot, DisabledAtBoot,
   srv14_serving_unit_boot_states, serving_unit_boot_states_on,
   srv14_serving_memory_charge_retirement_frontier,
 }
 
-// A unit is boot-DISABLED only in the DisabledAtBoot arm; the two arms cannot both be satisfied, so a flip to
-// EnabledAtBoot (a serving engine the model still declares at boot) fails here rather than silently widening.
-fn is_disabled_at_boot(s: BootEnableState) -> Bool {
+// The systemd carrier's own value domain decides it: UnitFileState is the single authority for a unit's file state
+// (gunbc.design_argument::single_authority -- the witness does NOT re-invent a two-arm enum). A retired unit reads
+// UnitDisabled; any other arm (e.g. the model left declaring UnitEnabled) fails here rather than widening silently.
+fn is_unit_disabled(s: UnitFileState) -> Bool {
   match s {
-    EnabledAtBoot => false
-    DisabledAtBoot => true
+    UnitDisabled => true
+    _ => false
   }
 }
 
-// THE RED CONTROL: SRV14'S DESIRED UNITS CONTAIN NO SERVING ENGINE. Every boot-enable state the model holds for
-// butch is disabled, AND the population really covers the pool engines the operator disabled (so an empty or
-// gutted set cannot pass by saying nothing). Discriminating reds: any row EnabledAtBoot (an engine still declared),
-// or the set emptied so no strata-pool@ engine is represented at all.
+// THE RED CONTROL: SRV14'S DESIRED UNITS CONTAIN NO SERVING ENGINE. Every boot-state the model holds for butch
+// reads UnitDisabled, AND the population really covers the pool engines the operator disabled (so an empty or gutted
+// set cannot pass by saying nothing). Discriminating reds: any row whose unit_file_state is not UnitDisabled (an
+// engine still declared at boot), or the set emptied so no strata-pool@ engine is represented at all.
 test fn butch_desired_state_declares_no_serving_engine() -> Bool {
   let on_butch = serving_unit_boot_states_on(host: operator_host_srv14)
   length(on_butch) == 3
-    && all(on_butch, u => is_disabled_at_boot(u.enable_state))
+    && all(on_butch, u => is_unit_disabled(u.unit_file_state))
     && any(on_butch, u => string_contains(s: u.unit, pattern: "strata-pool@a.service"))
     && any(on_butch, u => string_contains(s: u.unit, pattern: "strata-pool@b.service"))
     && any(on_butch, u => string_contains(s: u.unit, pattern: "strata-expert-lock.service"))
 }
 
-// THE RECEIPT IS A HOST READ, NOT THE RULING ROW. Each row's `read` provenance records the operator's hand
-// retirement on 2026-11-21 and its before/after -- the evidence the ruling itself refuses to be. A row whose
-// provenance dropped the read (a bare assertion) or lost its provenance reds this.
-test fn every_boot_state_is_grounded_in_the_operator_hand_read() -> Bool {
-  length(srv14_serving_unit_boot_states) == 3
-    && all(srv14_serving_unit_boot_states, u =>
-      string_contains(s: u.read, pattern: "operator hand retirement")
-        && string_contains(s: u.read, pattern: "2026-11-21"))
-    && all(srv14_serving_unit_boot_states, u =>
-      string_contains(s: u.read, pattern: "disabled"))
+// THE RECEIPT IS A TYPED HOST READ, NOT THE RULING ROW. Each row's provenance is the typed ServingUnitRetirementRead
+// -- reader, date, prior file state -- and the witness reads those FIELDS, not a substring of prose
+// (gunbc.design_argument::source_annotations). Every row was read by the operator on 2026-11-21 and reads
+// UnitDisabled; the two pool instances read UnitEnabled before the hand action (that is the before/after that makes
+// this a host read the ruling alone cannot be), and strata-expert-lock's prior state was not recorded -- Absent, not
+// guessed. Discriminating reds: a bare assertion (prior state absent where the pools record it), a wrong reader, or
+// a wrong date.
+test fn every_boot_state_is_a_typed_operator_read() -> Bool {
+  let rows = srv14_serving_unit_boot_states
+  length(rows) == 3
+    && all(rows, u => is_unit_disabled(u.unit_file_state))
+    && all(rows, u => (u.read.reader as String) == "operator")
+    && all(rows, u => (u.read.read_on as String) == "2026-11-21")
+    && all(filter(rows, r => string_contains(s: r.unit, pattern: "strata-pool@")), r =>
+      match r.read.prior_unit_file_state {
+        Present { value: UnitEnabled } => true
+        _ => false
+      })
+    && any(filter(rows, r => string_contains(s: r.unit, pattern: "strata-expert-lock")), r =>
+      match r.read.prior_unit_file_state {
+        Absent => true
+        _ => false
+      })
 }
 
 // THE CHARGE IS NOT RELEASED EARLY. Step 1 retires the UNITS; it does not release the memory charge. The serving
