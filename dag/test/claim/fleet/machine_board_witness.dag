@@ -21,9 +21,8 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
   operator_host_e2d4b7, operator_host_183527, operator_host_mtcollins1,
 }
-import extdeps.toolchain.types { Architecture, X86_64 }
-import extdeps.github.actions { SelfHosted, self_hosted_labels, runner_arch_label }
-import std.os.types { Linux }
+import extdeps.toolchain.types { Architecture }
+import extdeps.github.actions { runner_arch_label }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec, gunbc_ci_build_runner_spec }
 import gunbc.runner.runner_unit_file { runner_unit_labels_json, RunnerUnitLabels, RunnerUnitLabelsHostedRunner, RunnerUnitLabelsUnresolvedExpression }
 
@@ -88,14 +87,17 @@ test fn every_fleet_converge_dropdown_host_resolves_an_architecture() -> Bool {
 // ------------------------------------------------------------------------------------
 // THE BUILD JOB'S RUNNER -- the one build rule (manager co-owned, msg_824e7b84).
 //
-// Build on the CI pool when the executor host's Architecture EQUALS the pool's; build on the executor
-// host when they DIFFER; refuse when the host has no architecture the fleet can establish. The rule lives
-// once, in gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec, and compares Architecture ENUMS
-// -- never rendered label strings. These claims state the three outcomes INDEPENDENTLY of that function:
-// srv1-srv4 (Altra, arm64) match the arm64 pool so they build ON THE POOL; ken (H11SSL, x86_64) differs so
-// it builds ON ITSELF with its own runner labels; a no-arch host gets no build runner at all. If the rule
-// silently regressed to "everything builds on the pool" (the bug that queued ken forever), ken's claim
-// reddens; if it regressed to "everything builds on the host", srv's does.
+// Build on the CI pool when the executor host's Architecture EQUALS the pool's; REFUSE when they DIFFER
+// (there is no admitted off-pool build -- a fleet-converge runner width beyond the frozen pool is an
+// operator ruling that does not exist yet, so ken's x86 bring-up is a separate follow-up PR); refuse when
+// the host has no architecture the fleet can establish. The rule lives once, in
+// gunbc.runner.runner_spec_from_offer gunbc_ci_build_runner_spec, and compares Architecture ENUMS -- never
+// rendered label strings. These claims state the outcomes INDEPENDENTLY of that function: srv1-srv4
+// (Altra, arm64) match the arm64 pool so they build ON THE POOL; ken (H11SSL, x86_64) differs so its build
+// is REFUSED (no runner is placed -- not the pool's wrong-arch labels, and not ken's, which would need an
+// unadmitted runner); a no-arch host gets no build runner at all. If the rule regressed to "everything
+// builds on the pool" (the bug that queued ken forever), ken's refusal claim reddens; if it regressed to
+// placing the build on the executor host, the differ-arch refusal reddens.
 // ------------------------------------------------------------------------------------
 
 // The CI pool's runner labels, as the GitHub JSON array the build job's runs-on would receive.
@@ -108,11 +110,12 @@ fn pool_runner_labels_json() -> String? {
 }
 
 // The build runner the ONE RULE picks for a host, rendered to its GitHub JSON. Absent when the host has no
-// architecture the fleet can establish (the plan refuses there) -- which is exactly the refused outcome.
-fn build_runner_json_for(host: HostIdentity, host_text: String) -> String? {
+// architecture the fleet can establish, OR its architecture differs from the pool's -- the plan refuses at
+// either, which is exactly the refused outcome.
+fn build_runner_json_for(host: HostIdentity) -> String? {
   match fleet_converge_runner_arch(host: host) {
     Absent => Absent
-    Present { value: arch } => match gunbc_ci_build_runner_spec(exec_arch: arch, host_text: host_text) {
+    Present { value: arch } => match gunbc_ci_build_runner_spec(exec_arch: arch) {
       Absent => Absent
       Present { value: spec } => match runner_unit_labels_json(spec: spec) {
         RunnerUnitLabels { json_text: j } => Present { value: j }
@@ -124,8 +127,8 @@ fn build_runner_json_for(host: HostIdentity, host_text: String) -> String? {
 }
 
 // POSITIVE (pool): the host's build runner is exactly the CI pool's labels.
-fn builds_on_pool(host: HostIdentity, host_text: String) -> Bool {
-  match build_runner_json_for(host: host, host_text: host_text) {
+fn builds_on_pool(host: HostIdentity) -> Bool {
+  match build_runner_json_for(host: host) {
     Absent => false
     Present { value: j } => match pool_runner_labels_json() {
       Absent => false
@@ -134,26 +137,19 @@ fn builds_on_pool(host: HostIdentity, host_text: String) -> Bool {
   }
 }
 
-// POSITIVE (host): the host's build runner is its OWN self-hosted labels -- stated independently here
-// (kernel Linux, this host's arch enum, the host named as its one custom label), NOT by calling the rule.
-fn builds_on_host(host: HostIdentity, host_text: String, exec_arch: Architecture) -> Bool {
-  let want = match runner_unit_labels_json(spec: SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: exec_arch, custom: [host_text]) }) {
-    RunnerUnitLabels { json_text: j } => Present { value: j }
-    RunnerUnitLabelsHostedRunner => Absent
-    RunnerUnitLabelsUnresolvedExpression { expression: _ } => Absent
-  }
-  match build_runner_json_for(host: host, host_text: host_text) {
-    Absent => false
-    Present { value: j } => match want {
-      Absent => false
-      Present { value: w } => j == w
-    }
+// RED (differ-arch): the rule yields NO build runner for an executor whose Architecture differs from the
+// pool's. Stated by asking the single rule whether it refuses for that enum -- if an off-pool arm were ever
+// re-admitted without a ruling, this goes red.
+fn no_build_runner_for_arch(exec_arch: Architecture) -> Bool {
+  match gunbc_ci_build_runner_spec(exec_arch: exec_arch) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
 // RED: a host the board cannot answer for gets no build runner (the plan refuses it, never defaults it).
 fn no_build_runner(host: HostIdentity) -> Bool {
-  match build_runner_json_for(host: host, host_text: "irrelevant") {
+  match build_runner_json_for(host: host) {
     Absent => true
     Present { value: _ } => false
   }
@@ -162,16 +158,21 @@ fn no_build_runner(host: HostIdentity) -> Bool {
 // srv1-srv4 share the pool's arm64 architecture, so their software builds ON THE POOL -- the fast path the
 // fleet has always had, now derived by the rule rather than hard-coded.
 test fn srv1_to_srv4_build_on_the_ci_pool() -> Bool {
-  builds_on_pool(host: operator_host_srv1, host_text: "srv1")
-    && builds_on_pool(host: operator_host_srv2, host_text: "srv2")
-    && builds_on_pool(host: operator_host_srv3, host_text: "srv3")
-    && builds_on_pool(host: operator_host_srv4, host_text: "srv4")
+  builds_on_pool(host: operator_host_srv1)
+    && builds_on_pool(host: operator_host_srv2)
+    && builds_on_pool(host: operator_host_srv3)
+    && builds_on_pool(host: operator_host_srv4)
 }
 
-// ken (x86_64) differs from the arm64 pool, so its software builds ON KEN with ken's own runner labels --
-// the change that lets ken host a converge job instead of queueing forever for an arm64 runner.
-test fn ken_builds_on_its_own_host_not_the_arm64_pool() -> Bool {
-  builds_on_host(host: operator_host_e2d4b7, host_text: "host-e2d4b7", exec_arch: X86_64)
+// ken (x86_64) differs from the arm64 pool, so with no admitted off-pool runner its build is REFUSED. This
+// asserts ken really derives an architecture (its own ken_resolves_to_x64 claim pins x64) AND that the rule
+// yields no build runner for it -- the fail-closed posture that replaces the earlier off-pool arm until the
+// operator rules on runner width (ken's x86 bring-up is a separate follow-up PR).
+test fn ken_build_is_refused_when_its_architecture_differs_from_the_pool() -> Bool {
+  match fleet_converge_runner_arch(host: operator_host_e2d4b7) {
+    Present { value: arch } => no_build_runner_for_arch(exec_arch: arch)
+    Absent => false
+  }
 }
 
 // A host with no architecture the fleet can establish has NO build runner: the plan refuses rather than

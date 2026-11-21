@@ -100,13 +100,6 @@ data bmc_secure_goes_live_per_controller_family: DesignRuling = DesignRuling {
   provenance: "Operator answers to session cool-owl-599 on staffing the brief that retires gunbc.tools.bmc_onboard for BMC credential rotation. (1) The state-shaped BmcSecure (gunbc.machine_intake.bmc_secure cut O1b) may become the live authority for the ASRock ALTRAD8UD / OpenBMC family while the rotation-event path stays frozen as mtcollins1's standing under ruling C (eager-gull-22, 2026-10-04), on the condition that mtcollins1's own cutover is left near a flag switch rather than stranded: \"yeah thats fine assuming the code is basically a flag switch to finish the mtcollins migration - i don't want to leave it on an island/stranded\". (2) A build that forces the published credential's change on first login is behaviour modeled per version and interacted with, and in that state the password write is the first rotation; the converge rotates at the earliest point and never redundantly: \"thats behavior we have to model per version and interact with ... Our workflow should be smart enough to rotate credentials at the earliest place, and not do it redundantly\" (gunbc.machine_intake.bmc_credential_policy). (3) Failed-login probes against an account with a lockout budget are avoided where a derivation is available, and otherwise accounted for: \"we can't do lockout bound reads basically - or, we have to account for them - i would avoid it if possible\" (bmc_secure PublishedCredentialRetiredOnTheManagedAccount). (4) srv1-srv4, the same board family, are in scope for the cutover; the Supermicro H11SSL units are folded in, with their per-unit bootstrap credential held in the operator's sheet for now.",
 }
 
-data ken_fleet_converge_only_x86_runner_width_exception: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "ken_fleet_converge_only_x86_runner_width_exception"),
-  decided: "2026-11-21",
-  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
-  provenance: "Approved BY DEFAULT on 2026-11-21, NOT in the operator's own words: escalation msg_99a9cc35 received no operator answer within 15 minutes, so the recommended option applies. DECIDED: ken (host-e2d4b7, Supermicro H11SSL, x86_64) runs ONE self-hosted x86_64 fleet-converge runner, for fleet-converge execution only, adding no CI width. This is a bounded EXCEPTION to part (c) of gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign, which freezes 'the fixed self-hosted runner width and per-slot MemoryMax and the carved build-pool seat ... are not extended' under gunbc.design_argument::replacement_migration. The exception reaches only the single executor runner on ken: it does not extend the arm64 build pool, its carved seat, or any per-slot MemoryMax, and it does not create CI width. ken's software builds natively on this runner (the build job places on the CI pool only when the pool's Architecture equals the executor's, per gunbc.runner.runner_spec_from_offer::gunbc_ci_build_runner_spec). The runner install (runner_host_file_converge) will cite this row when it lands (the row is consumed today only by the design_rulings() roster and its render witness).",
-}
-
 data one_serving_context_cap: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_serving_context_cap"),
   decided: "2026-10-30",
@@ -1366,9 +1359,6 @@ fn design_rulings() -> List<DesignRuling> {
     mtcollins1_bmc_cold_reset_step_raised_to_67_minutes,
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
-    // ken's single fleet-converge-only x86 runner is a bounded exception to part (c) of
-    // the ruling above; kept adjacent so the exception reads against what it excepts.
-    ken_fleet_converge_only_x86_runner_width_exception,
     srv15_arrival_reviewer_selected_by_operator,
     // The srv15 versions-read backstop row (#16640) was missing from the roster, so
     // documentary_refs never checked its citation or what it governs (manager ruling

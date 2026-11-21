@@ -215,11 +215,16 @@ fn resolve_executor_arch() -> ProcessExit {
     Present { value: arch } => {
       let label = runner_arch_label(arch: arch)
       // THE BUILD JOB'S RUNNER, decided ONCE, in gunbc_ci_build_runner_spec: the CI pool when the executor's
-      // Architecture equals the pool's, the executor host natively when they differ (so ken, x86_64, builds
-      // x86_64 instead of queueing forever for an arm64 runner that no longer names it). Compared enum to
-      // enum. Absent only when the pool's own arch is unknown -- there is no honest default, so refuse.
-      match gunbc_ci_build_runner_spec(exec_arch: arch, host_text: host_text) {
-        Absent => exit_failure(reason: "fleet_converge_plan_revision: the CI build pool has no surveyed primary CPU, so the build cannot be placed; refusing to default the build runner")
+      // Architecture equals the pool's, and REFUSED when they differ -- no off-pool build placement, because a
+      // fleet-converge runner width beyond the frozen pool is an operator ruling that does not exist yet.
+      // Compared enum to enum. Absent when the pool's own arch is unknown OR the executor's differs from the
+      // pool's -- there is no honest default, so refuse with a typed reason.
+      match gunbc_ci_build_runner_spec(exec_arch: arch) {
+        Absent => exit_failure(reason: if host_text == "" {
+          "fleet_converge_plan_revision: the CI build pool has no surveyed primary CPU, so the build cannot be placed; refusing to default the build runner"
+        } else {
+          join(["fleet_converge_plan_revision: the executor host ", host_text, " cannot be assigned a build runner -- either the CI build pool has no surveyed primary CPU, or the executor's architecture differs from the pool's and off-pool build placement needs a fleet-converge runner-width ruling that does not exist yet; refusing to default the build runner"], "")
+        })
         Present { value: spec } => match runner_unit_labels_json(spec: spec) {
           RunnerUnitLabels { json_text: build_runner_json } => {
             let path = actions_variable_trimmed(name: github_output_variable_name as NonEmptyStr)
