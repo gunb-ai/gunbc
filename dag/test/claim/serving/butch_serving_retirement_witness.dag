@@ -1,0 +1,96 @@
+module test.claim.serving.butch_serving_retirement_witness
+
+// THE WITNESS FOR THE OPERATOR'S HAND RETIREMENT OF BUTCH'S SERVING STACK -- the first real consumer of
+// gunbc.serving.serving_reservation srv14_serving_unit_boot_states, and the control that says butch's DESIRED STATE
+// now declares NO serving engine (step 1 of the butch admission program, work item adhoc-fb73153b-838).
+//
+// WHY IT EXISTS. The operator retired butch's serving engines BY HAND on 2026-11-21, outside the fleet-converge
+// route (ruling gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21). That ruling records
+// WHO retires, never THAT it happened -- the model may only follow the host once the host has been READ. This
+// witness is the consumer that makes the operator's before/after host read true by execution: it reads the three
+// units the operator's hand retirement reached (strata-pool@a.service, strata-pool@b.service and
+// strata-expert-lock.service) and asserts every one is DISABLED at boot, so no converge -- and there is no butch CI
+// runner lane, and the host_unit_retirement mode is expressly not the route -- recreates a serving engine.
+//
+// THE RED CONTROL. On main the boot-state rows do not exist yet, so this module does not resolve and every claim
+// below is red; the change that lands them is what turns it green. Within the branch each claim still discriminates
+// at a real interface: re-enabling any unit (flipping a row to EnabledAtBoot), emptying the population, dropping the
+// provenance that ties a row to the operator's read, or widening the boot-state set onto another host, each reds a
+// specific claim below -- not by counting prose, but by deciding a value over the rows the operator read.
+//
+// WHAT IT DELIBERATELY DOES NOT CLAIM. It does NOT release butch's 192 GiB serving memory charge, retire the
+// srv14_strata_reservation row, or touch srv14_strata_engine_residency_at_read: those stay held by
+// srv14_serving_memory_charge_retirement_frontier until the quiescent /proc/meminfo re-read (fleet-converge
+// host_memory_observe host=srv14) lands, and test.claim.runner.srv14_runner_capacity_witness pins them at 5/0 in
+// the meantime. Claim (3) here pins exactly that: the charge frontier must STILL be unbound after step 1.
+//
+// Run (this witness runs alone):
+//   claim_batch --hermetic --source-root dag --source-root src/v2 \
+//     --entry dag/test/claim/serving/butch_serving_retirement_witness.dag \
+//     --functions <the test fn names, comma-joined>
+import std.types { Bool }
+import std.dissolution { dissolution_description, dissolution_is_bound }
+import std.algebra { string_contains }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.serving.serving_reservation {
+  BootEnableState, EnabledAtBoot, DisabledAtBoot,
+  srv14_serving_unit_boot_states, serving_unit_boot_states_on,
+  srv14_serving_memory_charge_retirement_frontier,
+}
+
+// A unit is boot-DISABLED only in the DisabledAtBoot arm; the two arms cannot both be satisfied, so a flip to
+// EnabledAtBoot (a serving engine the model still declares at boot) fails here rather than silently widening.
+fn is_disabled_at_boot(s: BootEnableState) -> Bool {
+  match s {
+    EnabledAtBoot => false
+    DisabledAtBoot => true
+  }
+}
+
+// THE RED CONTROL: SRV14'S DESIRED UNITS CONTAIN NO SERVING ENGINE. Every boot-enable state the model holds for
+// butch is disabled, AND the population really covers the pool engines the operator disabled (so an empty or
+// gutted set cannot pass by saying nothing). Discriminating reds: any row EnabledAtBoot (an engine still declared),
+// or the set emptied so no strata-pool@ engine is represented at all.
+test fn butch_desired_state_declares_no_serving_engine() -> Bool {
+  let on_butch = serving_unit_boot_states_on(host: operator_host_srv14)
+  length(on_butch) == 3
+    && all(on_butch, u => is_disabled_at_boot(u.enable_state))
+    && any(on_butch, u => string_contains(s: u.unit, pattern: "strata-pool@a.service"))
+    && any(on_butch, u => string_contains(s: u.unit, pattern: "strata-pool@b.service"))
+    && any(on_butch, u => string_contains(s: u.unit, pattern: "strata-expert-lock.service"))
+}
+
+// THE RECEIPT IS A HOST READ, NOT THE RULING ROW. Each row's `read` provenance records the operator's hand
+// retirement on 2026-11-21 and its before/after -- the evidence the ruling itself refuses to be. A row whose
+// provenance dropped the read (a bare assertion) or lost its provenance reds this.
+test fn every_boot_state_is_grounded_in_the_operator_hand_read() -> Bool {
+  length(srv14_serving_unit_boot_states) == 3
+    && all(srv14_serving_unit_boot_states, u =>
+      string_contains(s: u.read, pattern: "operator hand retirement")
+        && string_contains(s: u.read, pattern: "2026-11-21"))
+    && all(srv14_serving_unit_boot_states, u =>
+      string_contains(s: u.read, pattern: "disabled"))
+}
+
+// THE CHARGE IS NOT RELEASED EARLY. Step 1 retires the UNITS; it does not release the memory charge. The serving
+// memory-charge retirement frontier must still be UNBOUND (trigger two -- the quiescent re-read -- is unmet), and
+// must still name the units and the quiescent gate it waits on. This is the guard that srv14's 192 GiB reservation
+// stays held and srv14_runner_capacity_witness stays green: were the charge retired with the units, this frontier
+// would be bound and this claim would go red.
+test fn the_serving_memory_charge_frontier_is_still_held() -> Bool {
+  let text = dissolution_description(srv14_serving_memory_charge_retirement_frontier)
+  !dissolution_is_bound(srv14_serving_memory_charge_retirement_frontier)
+    && string_contains(s: text, pattern: "strata-pool@a")
+    && string_contains(s: text, pattern: "a2-power-cap")
+    && string_contains(s: text, pattern: "quiescent")
+    && string_contains(s: text, pattern: "OPERATOR'S HAND")
+}
+
+// THE BOOT-STATE SET IS SCOPED TO BUTCH ALONE. This is a boot-enable reading of butch's units, not a fleet-wide
+// claim: a row leaking onto another host (a fabricated host, or a copy-paste) would make the model assert a boot
+// state it never read there. Discriminating red: any row whose host is not srv14 empties nothing here but breaks
+// the scoping, so the whole population must resolve through the srv14 lookup.
+test fn the_boot_states_are_butch_only() -> Bool {
+  length(srv14_serving_unit_boot_states) == length(serving_unit_boot_states_on(host: operator_host_srv14))
+    && length(srv14_serving_unit_boot_states) > 0
+}
