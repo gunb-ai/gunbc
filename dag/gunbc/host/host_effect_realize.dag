@@ -87,9 +87,9 @@ import extdeps.posix.test_utility {
   ContainedUnreadable,
   contained_existence,
   AncestorExistenceProbe,
-  AncestorEntryReading,
-  AncestorEntryUnprobed,
-  AncestorEntryRead,
+  AncestorSearchable,
+  AncestorSearchUnreadable,
+  AncestorNotSearchable,
   absent_under_nearest_present_ancestor,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
@@ -9439,23 +9439,15 @@ fn host_remove_reading(path: String, outcome: RunArgvTransportOutcome) -> PathEx
   }
 }
 
-// PURE: the state a path reading plus its searchable-parent reading establish.
-fn host_remove_state_of(path: String, parent: String, reading: PathExistenceReading, parent_reading: PathExistenceReading) -> HostRemovePathState {
-  host_remove_state_of_contained(
-    contained: contained_existence(
-      path: path,
-      parent: parent,
-      parent_reading: parent_reading,
-      child_reading: reading,
-    ),
-  )
-}
-
-// PURE: the ONE fold from a containment verdict to a path state, shared by the single-level
-// host_remove_state_of and by the ancestor walk below, so the two can never disagree about what an
-// unreadable containment means. ContainedPresent is reachable only from a path whose own entry read
-// present; the walk is asked only where it read absent-or-unstattable and keeps the arm anyway, because
-// a state fold that silently dropped a verdict is worse than one that names it.
+// PURE: the ONE fold from a containment verdict to a path state, the single place a verdict becomes a
+// host path state, used by the entry read-back and by the ancestor walk alike, so the two can never
+// disagree about what an unreadable containment means. ContainedPresent is reachable only from a path
+// whose own entry read present; the walk is asked only where it read absent-or-unstattable and keeps the
+// arm anyway, because a state fold that silently dropped a verdict is worse than one that names it.
+// The one-level entry point that used to sit above this (`host_remove_state_of`, a path plus a single
+// parent reading) is GONE: the walk subsumes it (gunbc.design_argument::replacement_migration), and a
+// second proof that no production path runs is a second thing to keep true -- its verdicts are witnessed
+// at the fold they used to produce.
 fn host_remove_state_of_contained(contained: ContainedExistence) -> HostRemovePathState {
   match contained {
     ContainedPresent => HostRemovePathPresent
@@ -9505,10 +9497,12 @@ fn host_remove_ancestor_chain(
       let searchable = host_remove_reading(path: ancestor, outcome: run(test_executable_command(path: ancestor)))
       match searchable {
         // Present-and-searchable, or a reading nothing can be read from: the pure law decides this
-        // ancestor on that one reading, so no entry is owed to it.
-        PathPresent => [AncestorExistenceProbe { ancestor: ancestor, searchable: searchable, entry: AncestorEntryUnprobed }]
-        PathExistenceUnreadable { reason: _ } =>
-          [AncestorExistenceProbe { ancestor: ancestor, searchable: searchable, entry: AncestorEntryUnprobed }]
+        // ancestor on that one reading, and the coproduct has no entry slot for it to be owed in.
+        PathPresent => [AncestorExistenceProbe { ancestor: ancestor, search: AncestorSearchable }]
+        PathExistenceUnreadable { reason: r } =>
+          [AncestorExistenceProbe { ancestor: ancestor, search: AncestorSearchUnreadable { reason: r } }]
+        // Not searchable as far as `test -x` could tell: the entry is asked next, and the type will not
+        // let this level be put in the chain without its answer.
         PathAbsentOrUnstattable => {
           let entry = entry_existence_reading(
             link: host_remove_reading(path: ancestor, outcome: run(test_symbolic_link_command(path: ancestor))),
@@ -9516,8 +9510,7 @@ fn host_remove_ancestor_chain(
           )
           let probe = AncestorExistenceProbe {
             ancestor: ancestor,
-            searchable: searchable,
-            entry: AncestorEntryRead { reading: entry },
+            search: AncestorNotSearchable { entry: entry },
           }
           match entry {
             // Not in its own parent either: climb, keeping this level in the chain the law reads.

@@ -232,17 +232,24 @@ fn absent_under(path: String, parent: String, parent_reading: PathExistenceReadi
 // The chain is NEAREST FIRST and the walk stops at the first ancestor that answers: a refusal below a
 // searchable ancestor is still a refusal, so a farther reading never overwrites a nearer one, and no
 // amount of readable ground above an unreadable directory repairs it.
+
+// WHAT ONE LEVEL OF THE WALK ANSWERED, declared as a coproduct rather than as a reading plus a
+// presence rule. Two fields -- a `test -x` reading and an optional entry -- would make the illegal
+// combinations writable: an ancestor absent-or-unstattable with NO entry reading, or a searchable one
+// carrying an entry nobody asked for. The first is precisely the ambiguity this walk exists to refuse,
+// so refusing it at run time would be a second representation of a constraint the model can simply
+// carry: `AncestorNotSearchable` cannot be written without the entry reading that settles it, and
+// `AncestorSearchable` cannot carry one at all (gunbc.design_argument::fail_closed section 5).
+type AncestorSearchReading
+  = AncestorSearchable
+  | AncestorSearchUnreadable { reason: NonEmptyStr }
+  | AncestorNotSearchable { entry: PathExistenceReading }
+
+// One ancestor of the path: which level it is, and what its two readings settled.
 type AncestorExistenceProbe {
   ancestor: String
-  searchable: PathExistenceReading
-  entry: AncestorEntryReading
+  search: AncestorSearchReading
 }
-
-// The entry of an ancestor is asked only where `test -x` did not answer present, so the slot says
-// whether it was asked instead of carrying a reading nobody took.
-type AncestorEntryReading
-  = AncestorEntryUnprobed
-  | AncestorEntryRead { reading: PathExistenceReading }
 
 // What one ancestor's readings say about the walk.
 type AncestorWalkStep
@@ -252,22 +259,22 @@ type AncestorWalkStep
 
 fn ancestor_walk_step(path: String, probe: AncestorExistenceProbe) -> AncestorWalkStep {
   match probe {
-    AncestorExistenceProbe { ancestor: ancestor, searchable: searchable, entry: entry } =>
-      match searchable {
+    AncestorExistenceProbe { ancestor: ancestor, search: search } =>
+      match search {
         // Present AND searchable: the component toward the path was searched for and not found.
-        PathPresent => AncestorEstablishesAbsence
-        PathExistenceUnreadable { reason: r } =>
+        AncestorSearchable => AncestorEstablishesAbsence
+        AncestorSearchUnreadable { reason: r } =>
           AncestorRefuses {
             reason: join([
               "`test -x ", ancestor, "` could not be read while establishing the absence of ", path,
               " (", r as String, "), so the path's absence is not established",
             ], "") as NonEmptyStr,
           }
-        PathAbsentOrUnstattable =>
+        AncestorNotSearchable { entry: entry } =>
           match entry {
             // There, but not searchable (or unreadable): the walk stops WITHOUT an answer, because
             // nothing under this ancestor could have been searched, so its child's false proves nothing.
-            AncestorEntryRead { reading: PathPresent } =>
+            PathPresent =>
               AncestorRefuses {
                 reason: join([
                   "`test -x ", ancestor, "` is false while establishing the absence of ", path,
@@ -275,7 +282,7 @@ fn ancestor_walk_step(path: String, probe: AncestorExistenceProbe) -> AncestorWa
                   " searched: the path's absence is not established",
                 ], "") as NonEmptyStr,
               }
-            AncestorEntryRead { reading: PathExistenceUnreadable { reason: r } } =>
+            PathExistenceUnreadable { reason: r } =>
               AncestorRefuses {
                 reason: join([
                   "`test -x ", ancestor, "` is false and its entry could not be read while establishing",
@@ -283,16 +290,7 @@ fn ancestor_walk_step(path: String, probe: AncestorExistenceProbe) -> AncestorWa
                 ], "") as NonEmptyStr,
               }
             // Not in its own parent: the answer waits for the level above, which is why the walk climbs.
-            AncestorEntryRead { reading: PathAbsentOrUnstattable } => AncestorIsAbsentOrUnstattable
-            // The driver owes an entry reading whenever `test -x` was false. Walking past an ancestor
-            // without it is the ambiguity this walk exists to refuse, so it is a refusal and not a climb.
-            AncestorEntryUnprobed =>
-              AncestorRefuses {
-                reason: join([
-                  "`test -x ", ancestor, "` is false while establishing the absence of ", path,
-                  " and the ancestor was walked past without reading whether it is present at all",
-                ], "") as NonEmptyStr,
-              }
+            PathAbsentOrUnstattable => AncestorIsAbsentOrUnstattable
           }
       }
   }

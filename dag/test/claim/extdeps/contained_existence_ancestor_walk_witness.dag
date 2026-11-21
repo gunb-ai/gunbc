@@ -11,9 +11,10 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.algebra { Cons, Empty }
 import extdeps.posix.test_utility {
-  AncestorEntryRead,
-  AncestorEntryUnprobed,
   AncestorExistenceProbe,
+  AncestorNotSearchable,
+  AncestorSearchable,
+  AncestorSearchUnreadable,
   AncestorIsAbsentOrUnstattable,
   AncestorEstablishesAbsence,
   AncestorRefuses,
@@ -49,11 +50,7 @@ fn srv1_grandparent() -> String {
 // An ancestor whose `test -x` said present-and-searchable: the entry reading is owed only where that
 // did not answer, so it stays unprobed here.
 fn searchable(ancestor: String) -> AncestorExistenceProbe {
-  AncestorExistenceProbe {
-    ancestor: ancestor,
-    searchable: PathPresent,
-    entry: AncestorEntryUnprobed,
-  }
+  AncestorExistenceProbe { ancestor: ancestor, search: AncestorSearchable }
 }
 
 // An ancestor `test -x` answered false for, and whose entry then read ABSENT: not in its own parent,
@@ -61,8 +58,7 @@ fn searchable(ancestor: String) -> AncestorExistenceProbe {
 fn absent_ancestor(ancestor: String) -> AncestorExistenceProbe {
   AncestorExistenceProbe {
     ancestor: ancestor,
-    searchable: PathAbsentOrUnstattable,
-    entry: AncestorEntryRead { reading: PathAbsentOrUnstattable },
+    search: AncestorNotSearchable { entry: PathAbsentOrUnstattable },
   }
 }
 
@@ -71,8 +67,7 @@ fn absent_ancestor(ancestor: String) -> AncestorExistenceProbe {
 fn unsearchable_ancestor(ancestor: String) -> AncestorExistenceProbe {
   AncestorExistenceProbe {
     ancestor: ancestor,
-    searchable: PathAbsentOrUnstattable,
-    entry: AncestorEntryRead { reading: PathPresent },
+    search: AncestorNotSearchable { entry: PathPresent },
   }
 }
 
@@ -109,14 +104,37 @@ fn searchable_parent_chain() -> List<AncestorExistenceProbe> {
   Cons { head: searchable(srv1_parent()), tail: Empty }
 }
 
-// The ambiguity one-level `absent_under` was written to refuse: `test -x` false with the entry never
-// read, so nothing says whether that ancestor is absent or merely unlookable.
-fn unowed_entry_chain() -> List<AncestorExistenceProbe> {
+// `test -x` itself unreadable: the level cannot be called searchable or unsearchable, so it answers
+// nothing and the walk stops there.
+fn unreadable_search_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons {
+      head: AncestorExistenceProbe {
+        ancestor: srv1_grandparent(),
+        search: AncestorSearchUnreadable { reason: "test exited 2" as NonEmptyStr },
+      },
+      tail: Empty,
+    },
+  }
+}
+
+// Not searchable as far as `test -x` said, and the entry itself unreadable: the level cannot be
+// climbed past either, because "the entry is not there" is exactly what was not answered.
+//
+// NOTE what is NOT here. Under an earlier shape of this model an ancestor could be put in the chain
+// with `test -x` false and NO entry reading at all -- the ambiguity one-level `absent_under` exists to
+// refuse -- and a run-time arm refused it. That value is no longer constructible: AncestorNotSearchable
+// carries its entry reading, so the driver cannot hand the law a level it has not settled
+// (gunbc.design_argument::fail_closed section 5). What is witnessed below is the nearest state that IS
+// writable, and the refusal it earns.
+fn unreadable_entry_chain() -> List<AncestorExistenceProbe> {
   Cons {
     head: AncestorExistenceProbe {
       ancestor: srv1_parent(),
-      searchable: PathAbsentOrUnstattable,
-      entry: AncestorEntryUnprobed,
+      search: AncestorNotSearchable {
+        entry: PathExistenceUnreadable { reason: "test exited 2" as NonEmptyStr },
+      },
     },
     tail: Empty,
   }
@@ -185,13 +203,16 @@ test fn a_searchable_parent_still_settles_the_path_in_one_level() -> Bool {
   answered_absence(walk_of(searchable_parent_chain()))
 }
 
-// CONTROL 3b -- AND THE AMBIGUITY `absent_under` was written to refuse is still refused: `test -x`
-// false with no entry reading says nothing about whether that ancestor is there at all.
-test fn a_false_ancestor_with_no_entry_reading_still_refuses() -> Bool {
-  refused_because(
-    walk_of(unowed_entry_chain()),
-    "was walked past without reading whether it is present at all",
-  )
+// An unreadable `test -x` at a level is not an answer at that level: the walk refuses there rather
+// than climbing on to readable ground above it.
+test fn an_unreadable_search_reading_refuses_the_walk() -> Bool {
+  refused_because(walk_of(unreadable_search_chain()), "could not be read while establishing")
+}
+
+// And so is an unreadable entry under a level `test -x` said was not searchable: climbing past it
+// would assert "not in its parent" on a reading that never said so.
+test fn an_unreadable_entry_reading_refuses_the_walk() -> Bool {
+  refused_because(walk_of(unreadable_entry_chain()), "its entry could not be read")
 }
 
 // THE ONE-LEVEL FOLD ON ITS OWN FACE is untouched: parent and child both false is still not an
@@ -255,6 +276,19 @@ test fn an_unsearchable_present_level_refuses() -> Bool {
 test fn an_absent_level_is_climbed_past() -> Bool {
   match ancestor_walk_step(path: srv1_path(), probe: absent_ancestor(srv1_parent())) {
     AncestorIsAbsentOrUnstattable => true
+    _ => false
+  }
+}
+
+test fn an_unreadable_search_level_refuses_on_its_face() -> Bool {
+  match ancestor_walk_step(
+    path: srv1_path(),
+    probe: AncestorExistenceProbe {
+      ancestor: srv1_grandparent(),
+      search: AncestorSearchUnreadable { reason: "test exited 2" as NonEmptyStr },
+    },
+  ) {
+    AncestorRefuses { reason: _ } => true
     _ => false
   }
 }

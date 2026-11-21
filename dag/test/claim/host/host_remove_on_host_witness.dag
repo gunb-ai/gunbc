@@ -18,7 +18,7 @@ import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.algebra { Empty, FreeSemigroup, fold_list, non_empty_append, non_empty_singleton, non_empty_to_list }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.posix.test_utility { test_symbolic_link_command }
+import extdeps.posix.test_utility { test_symbolic_link_command, contained_existence }
 import gunbc.host.host_effect_realize {
   HostRemoveTarget,
   HostRemoveEvidence,
@@ -29,7 +29,7 @@ import gunbc.host.host_effect_realize {
   HostRemovePathAbsent,
   HostRemovePathUnreadable,
   host_remove_reading,
-  host_remove_state_of,
+  host_remove_state_of_contained,
   host_remove_state_present,
   host_remove_entry_state,
   host_remove_ancestors,
@@ -341,11 +341,40 @@ fn state_is_absent(st: HostRemovePathState) -> Bool {
 }
 
 // `test` exit 1 is absence ONLY under a searchable parent; exit 1 under an unsearchable parent (the
-// existing-path-behind-0000-dir case) and any exit above 1 are unreadable.
+// existing-path-behind-0000-dir case) and any exit above 1 are unreadable. Driven through the ONE fold
+// the production path uses -- the one-level `host_remove_state_of` this used to call is deleted, the
+// ancestor walk subsumes it, and a proof no production path runs is a second thing to keep true.
 test fn test_status_is_absent_only_under_a_searchable_parent() -> Bool {
-  state_is_absent(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
-    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1))))
-    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
+  state_is_absent(
+    st: host_remove_state_of_contained(
+      contained: contained_existence(
+        path: "/p/c",
+        parent: "/p",
+        child_reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)),
+        parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0)),
+      ),
+    ),
+  )
+    && state_is_unreadable(
+      st: host_remove_state_of_contained(
+        contained: contained_existence(
+          path: "/p/c",
+          parent: "/p",
+          child_reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)),
+          parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1)),
+        ),
+      ),
+    )
+    && state_is_unreadable(
+      st: host_remove_state_of_contained(
+        contained: contained_existence(
+          path: "/p/c",
+          parent: "/p",
+          child_reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)),
+          parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0)),
+        ),
+      ),
+    )
 }
 
 // -- THE ENTRY, NOT ITS REFERENT. `test -e` follows symlinks (POSIX stat), so a link whose referent is
