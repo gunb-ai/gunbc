@@ -88,14 +88,16 @@ data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimpor
 // TWIN: the identical literal over test.fixture.spool_queue_seal.unsealed PartitionedSpoolStore (same fields,
 // sole_constructor removed) is admitted with zero TOTAL blocking diagnostics -- it compiles clean -- so the refusal
 // is the keyword, not the shape or the uid. POSITIVE
-// CONTROL: a foreign module that only RECEIVES an admitted store and passes it back carries zero sole-constructor seal violations (this probe is a pass-through scored on the sole-constructor census only).
+// CONTROL: a foreign module that INVOKES the real mint compute_attempt_exit_spool_open(instance) and handles every verdict arm carries zero sole-constructor violations AND adds zero blocking diagnostics over its own same-imports closure (a discriminating delta, the keyed corpus's approved accepted-positive-control form -- the real store's host_capacity closure carries an inherent 6 blocking rows, so absolute total==0 is unreachable).
 
 data forged_partitioned_store_source: String = "module probe_spool_queue_forged_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport gunbc.compute.host_capacity { PartitionedSpoolStore }\nfn f() -> PartitionedSpoolStore {\n  PartitionedSpoolStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
 
 
 data twin_partitioned_store_source: String = "module probe_spool_queue_twin_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport test.fixture.spool_queue_seal.unsealed { PartitionedSpoolStore }\nfn f() -> PartitionedSpoolStore {\n  PartitionedSpoolStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
 
-data minted_partitioned_store_source: String = "module probe_spool_queue_minted_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport gunbc.compute.host_capacity { PartitionedSpoolStore }\nfn f(store: PartitionedSpoolStore) -> PartitionedSpoolStore {\n  store\n}\n"
+data minted_partitioned_store_source: String = "module probe_spool_queue_minted_partitioned_store\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_open, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(instance: HostDashboardInstance) -> String {\n  match compute_attempt_exit_spool_open(instance: instance) {\n    SpoolOpenReady { store: _ } => \"ready\"\n    SpoolOpenUidUnreadable => \"unreadable\"\n    SpoolOpenUidRoot => \"root\"\n  }\n}\n"
+
+data minted_partitioned_store_safe_source: String = "module probe_spool_queue_minted_partitioned_safe\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_open, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(instance: HostDashboardInstance) -> String {\n  \"no-mint\"\n}\n"
 
 // CONTROL: there is NO path-taking store mint left to aim at a foreign tree (review 95668). A module that tries
 // to reach the deleted spool_queue path-mint spool_open_uid -- the route that used to accept an arbitrary root +
@@ -148,12 +150,20 @@ test fn the_same_forged_partitioned_store_passes_against_the_seal_stripped_twin(
   ])
 }
 
-// POSITIVE CONTROL: a foreign module that RECEIVES an admitted PartitionedSpoolStore and passes it back carries zero
-// sole-constructor seal violations -- the seal blocks CONSTRUCTION, not handling, so the refusal in the forged case is
-// the keyword, not the receiving of the store. (This probe source is a bare pass-through that does not fully resolve on
-// its own, so it is scored on the sole-constructor census only, not total blocking diagnostics.)
+// POSITIVE CONTROL (DESIGN 4b rung honesty -- an ACCEPTED, discriminating positive control): a foreign module that
+// INVOKES the real mint compute_attempt_exit_spool_open(instance) and handles every verdict arm carries zero
+// sole-constructor seal violations (it never spells the store literal; it gets it from the mint), AND adds zero
+// blocking diagnostics OVER its own imported closure. The census counts the imported modules and their closure
+// (compile_diagnostic_census.dag:105), and the sealed store's home -- host_capacity, whose mint reads the effective
+// uid via posix -- carries an inherent 6 blocking rows (verified: a same-imports no-mint baseline scores the same 6),
+// so an ABSOLUTE total==0 is unreachable for any probe of the real store. This mirrors the keyed side's approved
+// the_lawful_entry_key_mint_is_admitted: total_blocking is scored as a DELTA against a same-imports baseline, so a
+// broken / ill-typed mint raises the probe over the baseline and turns this RED, while a lawful mint scores 0.
 test fn a_minted_partitioned_store_has_no_seal_violation() -> ProcessExit {
-  census_exit(census_verdict(census: seal_violations(source: minted_partitioned_store_source, subject: "PartitionedSpoolStore"), holds: fn(n) { n == 0 }))
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: minted_partitioned_store_source, subject: "PartitionedSpoolStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: minted_partitioned_store_source, safe: minted_partitioned_store_safe_source, holds: fn(n) { n <= 0 }),
+  ])
 }
 
 // NO PATH-TAKING ROUTE SURVIVES (review 95668): the former public mint `spool_open_uid` (a caller-chosen instance_root
