@@ -1,0 +1,215 @@
+module test.claim.compute.compute_recover_catalog_witness
+
+// WHAT THE RECOVERY CENSUS OWS ITS READER, ON REAL SLOTS IN REAL SEAT DIRECTORIES.
+//
+// gunbc.compute.work_provider_local compute_recover_catalog is the reading the serving converge's recovery
+// leg plans from: it walks every seat directory the host owns, lists each one's attempt slots, and renders
+// for each reference the verdict recovery_trigger itself returns for that record against the unit's live
+// lifecycle. The leg that follows plans one write per reference the model's own predicate
+// (recovery_trigger_fires) says is ready, so everything the leg trusts rests on four facts, each with its
+// red here:
+//
+//   1. a seat with no slots contributes NO reference. The census of a store nobody has written to is not a
+//      reason to act (attempt_slot_keys' own warning: a store that is not there is never a release trigger).
+//   2. a slot whose unit is not proven ended is rendered as a HOLD, not a fire: a live or too-early holder
+//      plans no write, and its charge stays where its holder left it.
+//   3. a slot carrying a terminal record is rendered as a FIRE, in recovery_trigger's own words -- not a
+//      paraphrase written at the call site.
+//   4. the same reference holding slots in two seat directories makes the OBSERVATION unknown, and an unknown
+//      observation plans nothing. The write path refuses the same shape (compute_recover_attempt_at); the
+//      census must not be more certain than the write.
+//
+// And the census writes nothing: claim five censuses the same slot twice and gets the same verdict both
+// times. A census that settled a slot would flip its own answer, and a "read-only" door that wrote would be
+// a second write path beside compute_recover_attempt.
+//
+// The stores are real durable slot stores under a directory the test owns, minted the way the provider mints
+// them -- the same shape test.claim.compute.attempt_lifecycle_wet_witness drives its controls through.
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.measure { kibibyte }
+import std.algebra { count_where, string_contains }
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
+import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.compute.attempt_lifecycle {
+  attempt_slot_read, AttemptSlotHeld, AttemptSlotAbsent, AttemptSlotUnreadable, AttemptWorkEnded,
+}
+import gunbc.compute.work_request { WorkEndedSucceeded }
+import gunbc.compute.compute_attempt_slots_root {
+  ComputeFlatSeat, ComputeDispatchSeat, ComputeSeat, ComputeSeatStore, ComputeSeatStoreReady, ComputeSeatStoreUnready,
+  compute_seat_path, compute_seat_store,
+}
+import gunbc.compute.work_provider_local {
+  ComputeRecoverCatalog, RecoverCatalogEstablished, RecoverCatalogUnknown, RecoverCatalogEntry,
+  compute_recover_catalog_for, compute_recover_catalog_entry_line,
+  compute_open_attempt, compute_begin_launch, compute_settle_attempt,
+  AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
+  AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
+}
+
+// A DIRECTORY THIS CLAIM OWNS, created per claim: srv1 hosts several runner instances sharing /tmp, and a
+// fixed path across claims or runners is the hazard gunbc.recurring_failure_mode
+// wet_witness_keyed_to_the_runner_not_its_subject files.
+fn witness_root(kind: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: concat("/tmp/gunbc-recover-catalog-", concat(kind, ".XXXXXX"))).path
+}
+
+// AN INSTANCE ROOTED IN A DIRECTORY THE TEST OWNS, minted the way the provider mints one.
+fn instance_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "recover-catalog-witness" as NonEmptyStr),
+    instance_id: "recover-catalog-witness" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+}
+
+fn owner_of(seat: ComputeSeat) -> AttemptOwner {
+  match seat {
+    ComputeDispatchSeat { attempt_key: k } => DispatchOwned { node_id: "witness" as NonEmptyStr, attempt_key: k }
+    ComputeFlatSeat => DirectInvocation { why: "recover-catalog witness" }
+  }
+}
+
+// THE SEAT STORE FOR A SEAT UNDER THE TEST'S OWN ROOT, directory created the way the provider creates it.
+fn seat_store_of(root: String, seat: ComputeSeat) -> ComputeSeatStore? {
+  let _made = shell.Mkdir.Parents(path: compute_seat_path(instance: instance_at(root: root), seat: seat) as FilePath)
+  match compute_seat_store(instance: instance_at(root: root), seat: seat) {
+    ComputeSeatStoreReady { store: s } => Present { value: s }
+    ComputeSeatStoreUnready { detail: _ } => Absent
+  }
+}
+
+fn open_slot(root: String, seat: ComputeSeat, identity: String, reference: String) -> Bool {
+  match compute_open_attempt(
+    instance: instance_at(root: root),
+    identity: identity,
+    owner: owner_of(seat: seat),
+    reference: reference,
+    granted: kibibyte(count: 1048576),
+  ) {
+    _ => true
+  }
+}
+
+// CONTROL ONE: A SEAT NOBODY WROTE TO CENSUSES EMPTY, so the leg plans no write from it. If the census ever
+// turns an empty store into material -- or into a refusal that would mask a live seat -- this goes red.
+test fn an_empty_seat_contributes_no_reference_to_a_plan() -> Bool {
+  let root = witness_root(kind: "empty")
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      match compute_recover_catalog_for(stores: [store]) {
+        RecoverCatalogEstablished { entries: es } => count_where(xs: es, predicate: e => true) == 0
+        RecoverCatalogUnknown { detail: _ } => false
+      }
+  }
+}
+
+// CONTROL TWO: A HOLDER THE MODEL CANNOT PROVE ENDED IS A HOLD. The slot is opened and never settled; its
+// unit has not been proven ended, so recovery_trigger does not fire and the line the leg reads says hold.
+// This is the claim that keeps a live unit's charge out of a recovery plan.
+test fn a_slot_whose_unit_is_not_proven_ended_is_censused_as_a_hold() -> Bool {
+  let root = witness_root(kind: "live")
+  let _opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "0123456789abcdef", reference: "catalog-live")
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      match compute_recover_catalog_for(stores: [store]) {
+        RecoverCatalogEstablished { entries: es } =>
+          count_where(xs: es, predicate: e => (e.reference as String) == "catalog-live") == 1
+            && !any(es, e => e.fires)
+            && string_contains(s: render_entries(entries: es), pattern: "hold catalog-live")
+        RecoverCatalogUnknown { detail: _ } => false
+      }
+  }
+}
+
+// CONTROL THREE: A TERMINAL RECORD IS A FIRE, IN THE TRIGGER'S OWN WORDS. The slot is opened, launched and
+// settled with a real terminal record; the census must then render recovery_trigger's verdict for a terminal
+// record, and the rendering carries that verdict's wire rather than a paraphrase.
+test fn a_terminal_record_is_censused_as_recoverable() -> Bool {
+  let root = witness_root(kind: "terminal")
+  let _opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "123456789abcdef0", reference: "catalog-terminal")
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      match attempt_slot_read(store: store.slots, reference: "catalog-terminal" as NonEmptyStr) {
+        AttemptSlotAbsent => false
+        AttemptSlotUnreadable { detail: _ } => false
+        AttemptSlotHeld { record: rec, generation: g } => {
+          let launched = compute_begin_launch(instance: instance_at(root: root), gate: AttemptGateReady { record: rec, generation: g })
+          let settled = match launched {
+            AttemptGateReady { record: r2, generation: g2 } =>
+              compute_settle_attempt(instance: instance_at(root: root), gate: AttemptGateReady { record: r2, generation: g2 }, verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "the witness closes the slot")
+            AttemptGateRefused { detail: _ } => AttemptUnsettleable { detail: "the witness could not take the gate" }
+          }
+          match compute_recover_catalog_for(stores: [store]) {
+            RecoverCatalogEstablished { entries: es } =>
+              (match settled { AttemptSettled => true  AttemptNotSettled { detail: _ } => false  AttemptUnsettleable { detail: _ } => false })
+                && any(es, e => (e.reference as String) == "catalog-terminal" && e.fires)
+                && any(es, e => (e.reference as String) == "catalog-terminal" && string_contains(s: e.trigger, pattern: "terminal"))
+            RecoverCatalogUnknown { detail: _ } => false
+          }
+        }
+      }
+  }
+}
+
+// CONTROL FOUR: ONE REFERENCE HOLDING SLOTS IN TWO SEAT DIRECTORIES IS AN UNKNOWN OBSERVATION, not a coin
+// flip about which attempt it names. The write path refuses that shape outright; the census must refuse to
+// classify it too, so the caller's plan is refused rather than half-informed.
+test fn one_reference_in_two_seat_directories_makes_the_observation_unknown() -> Bool {
+  let root = witness_root(kind: "twice")
+  let _flat = open_slot(root: root, seat: ComputeFlatSeat, identity: "23456789abcdef01", reference: "catalog-twice")
+  let _dispatch = open_slot(root: root, seat: ComputeDispatchSeat { attempt_key: "witness" }, identity: "23456789abcdef01", reference: "catalog-twice")
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: first } =>
+      match seat_store_of(root: root, seat: ComputeDispatchSeat { attempt_key: "witness" }) {
+        Absent => false
+        Present { value: second } =>
+          match compute_recover_catalog_for(stores: [first, second]) {
+            RecoverCatalogEstablished { entries: _ } => false
+            RecoverCatalogUnknown { detail: d } => string_contains(s: d, pattern: "catalog-twice")
+          }
+      }
+  }
+}
+
+// CONTROL FIVE: THE CENSUS READS AND WRITES NOTHING. The same slot is censused twice and answers the same
+// way both times; a census that settled or terminated the slot would change its own second answer.
+test fn the_census_answers_the_same_way_twice_and_settles_nothing() -> Bool {
+  let root = witness_root(kind: "readonly")
+  let _opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "3456789abcdef012", reference: "catalog-readonly")
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      match compute_recover_catalog_for(stores: [store]) {
+        RecoverCatalogUnknown { detail: _ } => false
+        RecoverCatalogEstablished { entries: first } =>
+          match compute_recover_catalog_for(stores: [store]) {
+            RecoverCatalogUnknown { detail: _ } => false
+            RecoverCatalogEstablished { entries: second } =>
+              count_where(xs: first, predicate: e => true) == count_where(xs: second, predicate: e => true)
+                && render_entries(entries: first) == render_entries(entries: second)
+                && !any(second, e => e.fires)
+          }
+      }
+  }
+}
+
+// HOW THE CENSUS ANSWERS ON THE WIRE, rendered through the production line builder so the claims read the
+// same text the converge leg will parse.
+fn render_entries(entries: List<RecoverCatalogEntry>) -> String {
+  fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))
+}
