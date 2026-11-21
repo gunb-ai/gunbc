@@ -1,16 +1,139 @@
 module gunbc.roadmap.roadmap_ingress
 
-import std.types { String, Int }
-import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import std.types { String, Int, List }
+import std.algebra { list_push }
+import gunbc.http_ingress {
+  HttpIngressAdmission, http_ingress_binding, http_ingress_serves_declared_handler,
+  http_ingress_undeclared_handler_reason, http_ingress_row_missing_authority_handler_reason,
+}
+// The handler module whose declarations this entry serves. Importing it is NOT what realizes them:
+// under the demanded-scope run an imported-but-uncalled declaration is not realized (#16069,
+// gunbc.design_ruling::run_realizes_only_demanded_declarations), which is what the row below and the
+// runtime-key registry are for -- see roadmap_ingress_served_handlers.
 import gunbc.roadmap.roadmap_serve { roadmap_serve_handle }
+// THE AUTHORITY for which handler an instance serves: the roadmap dashboard roster's serve_function
+// field (gunbc.roadmap.roadmap_dashboard_instance HostDashboardInstance). The row below mirrors it, and
+// roadmap_ingress_row_missing_roster_handlers checks that it does on every startup.
+import gunbc.roadmap.roadmap_dashboard_instance { public_builtin_dashboard_instances, HostDashboardInstance }
+// THE DOOR AUTHORITIES: whether an instance's deployment runs an agent door is the write policy's own
+// answer (gunbc.auth.request_authentication deployment_admits_agent_peer, read through
+// gunbc.live_deploy.spec deployment_agent_door_socket), and the name its unit launches is that
+// instance's serve_function with the spec's suffix. Both halves are read, never copied, so the door
+// name in the row below is checked against the thing that decides it (review 95559).
+import gunbc.live_deploy.spec { deployment_agent_door_socket, deployment_agent_door_function_suffix }
 
-// THE DEPLOYMENT BINDING OF the roadmap dashboard and its tailnet door (gunbc.http_ingress, gunbc.plans.converged_ingress (deleted 2026-11-08)).
-// The handler stays an ordinary entry; this module is where serving it is declared. The import above
-// is what puts the handler's module in the run's closure, and `handler` names which of its entries
-// this process serves. gunbc.live_deploy.emit renders the per-host values as `gunbc run --arg`s.
+// THE HANDLERS THIS ENTRY MAY SERVE. `handler` arrives from `gunbc run --arg`, so the name is runtime
+// data and nothing in the graph names it; the run host therefore refuses a binding whose handler its
+// loaded index does not hold (gunbc.http_ingress http_ingress_serves_declared_handler, and
+// src/v1/stage0/src/cli_run/http_ingress_host.rs realize_in), and this row -- seeded into the
+// realization by the runtime-key registry (src/v1/04_infer.dag runtime_key_readers, instance
+// loaded_index_runtime_named_handler_roadmap) -- is what puts them there.
+//
+// WHERE EACH NAME COMES FROM, one line each. The five bases are the serve_function values of the
+// instances in gunbc.roadmap.roadmap_dashboard_instance public_builtin_dashboard_instances, which is
+// what gunbc.live_deploy.emit renders into the serve unit's `--arg handler=`; roadmap_ingress refuses a
+// launch while the row misses any of them (roadmap_ingress_row_missing_handlers), so the row cannot
+// silently fall behind the roster. The two doors are the same instances' handlers plus a suffix, which
+// is how the door units are launched: gunbc.live_deploy.emit live_deploy_tailnet_door_unit_file and
+// live_deploy_agent_door_unit_file name `serve_function <> suffix`, the suffixes being
+// gunbc.live_deploy.spec deployment_tailnet_door_function_suffix and
+// deployment_agent_door_function_suffix, and a door unit exists only for a deployment that carries that
+// socket. The AGENT door is checked against that authority on every startup: the row must name
+// `serve_function <> deployment_agent_door_function_suffix` for each instance whose deployment carries
+// deployment_agent_door_socket, so a deployment that rosters an agent peer without the row naming its
+// door handler refuses at startup, naming the missing name. The TAILNET door's existence is read from
+// the deployment's names (deployment_tailnet_door_socket), which are per-host rather than per-roster —
+// srv1-live's are srv1_live_deployment_names, kept for production byte-identity — so judging it inside
+// the entry would judge a different deployment than the one emitted; it is checked by the executing
+// control instead (cli_run/demanded_typecheck_equivalence.rs
+// serve_entries_realize_the_handlers_their_rows_declare, which requires every element of this row to be
+// either a roster serve_function or a roster serve_function plus one of the two suffixes spec declares,
+// and to be a function declared in the handler module this entry names). A name in this row that is
+// none of those is a red there; a name MISSING from it is refused by the host at the unit's first start
+// (a demanded run never realized it). That is what keeps a written list honest
+// (gunbc.design_argument::fail_closed); the reason it is written at all is the declared drop
+// gunbc.rung_drop serve_handler_rows_are_written_literals.
+//
+// Why strings and not DeclarationRefs: the seed fold reads a declared row's literal string elements
+// (src/v1/04_infer.dag runtime_key_declared_row_keys), and the module half of the identity is fixed by
+// the entry itself below -- so no request can name a handler in a module this entry did not choose. The
+// gap that forces the row to be written rather than folded out of the roster is declared, dated and
+// given a restoration trigger in gunbc.rung_drop.serve_handler_rows_are_written_literals.
+data roadmap_ingress_served_handlers: List<String> = [
+  "roadmap_serve_handle",
+  "roadmap_serve_handle_door",
+  "roadmap_serve_handle_srv1_lab",
+  "roadmap_serve_handle_srv1_lab_agent_door",
+  "roadmap_serve_handle_srv2_preview",
+  "roadmap_serve_handle_srv2_deploy",
+  "roadmap_serve_handle_srv2_lab",
+]
+
+// WHICH OF THE AUTHORITIES' HANDLERS THE ROW DOES NOT NAME, in roster order: the roster's own
+// serve_function values, and for every instance whose deployment carries an agent door, that instance's
+// serve_function with the spec's agent-door suffix. Non-empty means the row has fallen behind what the
+// deployment launches -- an instance added (or its serve_function renamed, or its write policy given an
+// agent roster) without declaring here that this entry serves it -- and roadmap_ingress refuses every
+// launch until it is fixed, because starting for the handlers that ARE declared is exactly how a
+// deployment discovers the gap after the cutover that needed it. Measured, not assumed: the srv1 serve
+// unit refused `roadmap_serve_handle_srv1_lab` at startup while the entry named no row at all.
+fn roadmap_ingress_row_missing_handlers() -> List<String> {
+  fold(roadmap_ingress_missing_agent_door_handlers(), init: roadmap_ingress_row_missing_roster_handlers(),
+    f: (missing, door) => list_push(missing, door))
+}
+
+// THE BASES THE ROSTER NAMES AND THE ROW DOES NOT.
+fn roadmap_ingress_row_missing_roster_handlers() -> List<String> {
+  fold(public_builtin_dashboard_instances(), init: [], f: (missing, instance) =>
+    if http_ingress_serves_declared_handler(
+      served_handlers: roadmap_ingress_served_handlers, handler: instance.serve_function as String,
+    ) {
+      missing
+    } else {
+      list_push(missing, instance.serve_function as String)
+    })
+}
+
+// THE AGENT DOORS THE DEPLOYMENT RUNS AND THE ROW DOES NOT NAME. Whether an instance runs one is the
+// write policy's answer (deployment_agent_door_socket, read through gunbc.auth.request_authentication
+// deployment_admits_agent_peer), and its launch name is the instance's serve_function with the spec's
+// suffix -- both read from the authorities that decide them.
+fn roadmap_ingress_missing_agent_door_handlers() -> List<String> {
+  fold(public_builtin_dashboard_instances(), init: [], f: (missing, instance) =>
+    match deployment_agent_door_socket(instance: instance) {
+      Absent => missing
+      Present { value: _ } =>
+        if http_ingress_serves_declared_handler(
+          served_handlers: roadmap_ingress_served_handlers,
+          handler: roadmap_ingress_agent_door_handler(instance: instance),
+        ) {
+          missing
+        } else {
+          list_push(missing, roadmap_ingress_agent_door_handler(instance: instance))
+        }
+    })
+}
+
+fn roadmap_ingress_agent_door_handler(instance: HostDashboardInstance) -> String {
+  join([instance.serve_function as String, deployment_agent_door_function_suffix], "")
+}
+
+// THE DEPLOYMENT BINDING OF the roadmap dashboard and its tailnet door (gunbc.http_ingress, gunbc.plans.consummated_launch T6 step 5b).
+// The handler stays an ordinary entry; this module is where serving it is declared, and `handler` names
+// which of gunbc.roadmap.roadmap_serve's entries this process serves. gunbc.live_deploy.emit renders the
+// per-host values as `gunbc run --arg`s -- which is why the handler must be admitted against a declared
+// row rather than trusted as an argv string: an unchecked argv name is a launch whose first request
+// would call a declaration this execution never loaded.
 fn roadmap_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
-  http_ingress_binding(
-    handler_module: "gunbc.roadmap.roadmap_serve", handler: handler, listener: listener,
-    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
-  )
+  let drifted = roadmap_ingress_row_missing_handlers()
+  if count(drifted) > 0 {
+    HttpIngressRefused { reason: http_ingress_row_missing_authority_handler_reason(row: "roadmap_ingress_served_handlers", handlers: drifted) }
+  } else if !http_ingress_serves_declared_handler(served_handlers: roadmap_ingress_served_handlers, handler: handler) {
+    HttpIngressRefused { reason: http_ingress_undeclared_handler_reason(entry: "roadmap_ingress", row: "roadmap_ingress_served_handlers", handler: handler) }
+  } else {
+    http_ingress_binding(
+      handler_module: "gunbc.roadmap.roadmap_serve", handler: handler, listener: listener,
+      release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+    )
+  }
 }

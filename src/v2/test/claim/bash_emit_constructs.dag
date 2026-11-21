@@ -15,7 +15,7 @@ module v2.test.claim.bash_emit_constructs
 import std.algebra { list_at_optional, list_head }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, diagnostics_reason_lexemes, Outcome, Rejected }
 import v2.extdeps.languages.bash {
   bash_kw_case_arm_newline_text,
   bash_kw_case_block_lead_text,
@@ -29,6 +29,7 @@ import v2.extdeps.languages.bash {
   bash_kw_in_text
 }
 import v2.extdeps.languages.bash_build {
+  bash_build_word_exit_status,
   bash_build_array_assign,
   bash_build_brace_group_from_stmts,
   bash_build_case,
@@ -41,12 +42,19 @@ import v2.extdeps.languages.bash_build {
   bash_build_function_def,
   bash_build_word_array_expansion,
   bash_build_word_bare,
+  bash_build_word_cmdsubst,
   bash_build_word_lit,
   bash_build_word_double_quoted,
   bash_build_word_param_error,
   bash_build_word_var_bare,
   bash_build_quoted_text,
   bash_build_word_positional_all,
+  bash_build_word_kinded,
+  bash_build_word_test_operator,
+  bash_build_test_comparison,
+  bash_build_test_bracket,
+  BracketQuoted,
+  BracketBare,
   bash_build_with_redir_stderr_to_stdout,
   bash_build_with_redir_stdout_to_stderr
 }
@@ -583,6 +591,49 @@ test fn double_quoted_word_serializes_installed_shape() -> Bool {
   emits(stmt: quoted_message_statement(), golden: quoted_message_golden)
 }
 
+// The other half of a double-quoted word: the expansions bash KEEPS inside it.
+// Bash manual, node "Double Quotes" lists '$' and '`' among the characters that
+// do NOT lose their special meaning between double quotes, and node "Command
+// Substitution" gives $(command) as one of the two substitution forms. The
+// installed ev body is exactly
+//   ev(){ echo "$(date -u +%FT%TZ) $*" >> $D/events.log; }
+// so ONE double-quoted word has to carry a command substitution, inert text and
+// the positional-all expansion as its parts, with nothing inserted between them
+// -- the separator belongs to a command's word list, never to a quoted word's
+// parts. This is the shape the srv1 container command needs and the reason the
+// quoted word is modeled as parts rather than as one wrapped literal.
+data ev_echo_argument_golden: String = "echo \"$(date -u +%FT%TZ) $*\"\n"
+
+fn ev_echo_argument_word() -> Optional<Node> {
+  // bash_build_word_cmdsubst is TOTAL: it wraps a body that was already checked
+  // by its own builder, so there is no refusal to inspect here. The checked
+  // constructors whose input can actually be bad -- the inert text, the
+  // positional-all selector and the quoted word itself -- are the ones matched.
+  match bash_build_quoted_text(text: " ") {
+    Absent => Absent
+    Present { value: space } =>
+      match bash_build_word_positional_all(which: "*") {
+        Absent => Absent
+        Present { value: every_positional } =>
+          bash_build_word_double_quoted(parts: [
+            bash_build_word_cmdsubst(
+              body: command([word("date"), word("-u"), word("+%FT%TZ")])
+            ),
+            space,
+            every_positional
+          ])
+      }
+  }
+}
+
+test fn double_quoted_word_carries_a_command_substitution() -> Bool {
+  match ev_echo_argument_word() {
+    Absent => false
+    Present { value: quoted_argument } =>
+      emits(stmt: command([word("echo"), quoted_argument]), golden: ev_echo_argument_golden)
+  }
+}
+
 // RED: '$' is not inert between double quotes — it expands.
 test fn quoted_text_refuses_a_dollar() -> Bool {
   match bash_build_quoted_text(text: "cost $1") {
@@ -633,5 +684,208 @@ test fn bare_word_refuses_bytes_that_would_split_or_expand() -> Bool {
         Present { value: _ } => false
       }
     Present { value: _ } => false
+  }
+}
+
+// ── bracket-test operators ─────────────────────────────────────────────────
+// Bash manual, node "Bash Conditional Expressions": a conditional expression is
+// built from operator tokens -- = == != -eq -ne -lt -le -gt -ge -nt -ot -ef =~
+// and the unary primaries -- and those tokens only carry their meaning UNQUOTED.
+// `[ "a" != "b" ]` tests inequality; `[ "a" "!=" "b" ]` compares the string "!="
+// and is true for every pair. The lane therefore models the operator as its own
+// word kind with a closed set, rather than as a bare word (whose alphabet has no
+// '!') or as a quoted literal (which would silently stop being an operator).
+
+data test_comparison_golden: String = "[ \"a\" != \"b\" ]\n"
+
+fn quoted_literal(text: String) -> Optional<Node> {
+  match bash_build_quoted_text(text: text) {
+    Absent => Absent
+    Present { value: inert } => bash_build_word_double_quoted(parts: [inert])
+  }
+}
+
+fn test_comparison_statement() -> Node {
+  match quoted_literal(text: "a") {
+    Absent => command([word("unreachable")])
+    Present { value: left } =>
+      match quoted_literal(text: "b") {
+        Absent => command([word("unreachable")])
+        Present { value: right } =>
+          bash_build_test_comparison(left: left, op: "!=", right: right, spelling: BracketBare)
+      }
+  }
+}
+
+test fn bracket_test_with_operator_serializes_installed_shape() -> Bool {
+  emits(stmt: test_comparison_statement(), golden: test_comparison_golden)
+}
+
+// RED: an operator the manual's node does not name is refused by the constructor.
+// '-ia' is one character off a real primary, which is exactly the text a hand
+// -built script would let through and bash would read as a filename argument.
+test fn test_operator_refuses_an_unlisted_operator() -> Bool {
+  match bash_build_word_test_operator(op: "-ia") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED: the four operators the closed set leaves out on purpose. '!' and the
+// parentheses are negation and grouping -- constructs the lane already models --
+// and '<' '>' compare strings inside the brackets and redirect outside them, so
+// a word cannot carry them safely without a bracket-typed context to tell the
+// two apart. Refusing them is the difference between a checked constructor and
+// a string with a name on it.
+test fn test_operator_refuses_the_operators_that_are_not_words() -> Bool {
+  match bash_build_word_test_operator(op: "!") {
+    Absent =>
+      match bash_build_word_test_operator(op: "<") {
+        Absent =>
+          match bash_build_word_test_operator(op: ">") {
+            Absent =>
+              match bash_build_word_test_operator(op: "(") {
+                Absent => true
+                Present { value: _ } => false
+              }
+            Present { value: _ } => false
+          }
+        Present { value: _ } => false
+      }
+    Present { value: _ } => false
+  }
+}
+
+// RED, and the fail-closed half: the check is not only on the way IN. A node
+// carrying the operator kind with text the set does not name -- the shape a
+// forged or stale node would have -- is refused by the EMITTER, with the reason
+// naming what was refused. Nothing reaches the byte stream that has no row.
+test fn test_operator_unlisted_is_refused_by_the_emitter() -> Bool {
+  match bash_emit_stmts(
+    statements: [command([
+      word("["),
+      bash_build_word_kinded(kind: ^bash_fold_word_kind_test_operator, value: "-ia"),
+      word("b"),
+      word("]")
+    ])],
+    set_e: false
+  ) {
+    Rejected { diagnostics: d } =>
+      diagnostics_reason_lexemes(diagnostics: d) == "bash_fold_serialize_test_operator_unlisted"
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED: the operator word and the quoted literal must not agree. If the quoted
+// form ever emitted the operator's bytes, the closed set would be decorating a
+// duplication; if the operator form ever quoted, the test would stop being a
+// test. Both sides are built through the SAME bracket builder, so the only
+// difference between the two spellings is the operator word itself.
+test fn quoted_operator_is_not_the_operator() -> Bool {
+  match bash_emit_stmts(
+    statements: [bash_build_test_bracket(words: [word("a"), bash_build_word_lit(text: "!="), word("b")], spelling: BracketBare)],
+    set_e: false
+  ) {
+    Accepted { value: quoted_spelling, diagnostics: _ } =>
+      match bash_emit_stmts(statements: [test_comparison_statement()], set_e: false) {
+        Accepted { value: operator_spelling, diagnostics: _ } =>
+          quoted_spelling != operator_spelling && operator_spelling == test_comparison_golden
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ── the exit-status special parameter, `$?` ────────────────────────────────
+// Bash manual, node "Special Parameters": `$?` is the exit status of the most recently
+// executed foreground pipeline. It is not a name, so it is not a variable. The row exists
+// because the CI floor-attempt wrapper (dag/gunbc/ci/ci_failure_class.dag) needs exactly
+// this text and had been asking the VARIABLE row for it, which the checked constructor
+// refuses; a refused word inside the wrapper made the whole program fail to serialize and
+// the caller swapped in its error-script fallback -- a floor that never ran its command.
+// dag/test/claim/ci/ci_failure_class_witness.dag's
+// witness_posix_shell_reserved_exits_are_infra_not_subject reads the wrapper's bytes;
+// these keep the row itself honest.
+
+data exit_status_assign_golden: String = "GUNBC_FLOOR_EXIT=\"$?\"\n"
+
+fn exit_status_assign_stmt() -> Node {
+  bash_build_assign(
+    name: "GUNBC_FLOOR_EXIT",
+    value: bash_build_word_exit_status()
+  )
+}
+
+test fn exit_status_parameter_serializes_the_installed_shape() -> Bool {
+  emits(stmt: exit_status_assign_stmt(), golden: exit_status_assign_golden)
+}
+
+// RED: the emitter re-checks the value, so a node fabricated under this kind with any
+// other text is refused with the reason naming what it refused. `$` plus arbitrary text
+// must not be reachable by fabricating a node.
+test fn exit_status_refuses_a_forged_value_at_the_emitter() -> Bool {
+  match bash_emit_stmts(
+    statements: [command([
+      bash_build_word_kinded(kind: ^bash_fold_word_kind_exit_status, value: "0")
+    ])],
+    set_e: false
+  ) {
+    Rejected { diagnostics: d } =>
+      diagnostics_reason_lexemes(diagnostics: d) == "bash_fold_serialize_exit_status_unsafe"
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// RED: `?` is still not a variable name. If the variable row ever grew an exception for
+// it, this row would be dead code and `$?` would again be spelled by a builder that
+// claims `?` names a variable.
+test fn var_row_still_refuses_the_exit_status_question_mark() -> Bool {
+  match bash_build_word_var_bare(name: "?") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE TEST BRACKET, ONE RULE, TWO SPELLINGS -- pinned. BracketQuoted is the spelling the
+// committed CI artifacts hold: `'[' "$status" '=' '0' ']'` at .github/workflows/
+// instrument-dispatch.yml line 250, `'[' "$?" '=' '1' ']'` at .github/workflows/witnesses.yml
+// line 306. BracketBare is the spelling srv1's installed
+// /usr/local/sbin/lil-replica-launch holds (sha256 c4ef7314…, line 24:
+// `[ -s /root/engine.args ] || { ev "START …"; exit 3; }`). Bash manual, nodes "Simple
+// Command Expansion" and "Quote Removal": the quotes on a word in command position are
+// removed before command lookup, so both spellings run the same test with the same status --
+// the parameter chooses bytes, and a red golden here is a byte move, not a semantics change.
+test fn test_bracket_quoted_spelling_holds_the_committed_ci_bytes() -> Bool {
+  emits(
+    stmt: bash_build_test_bracket(
+      words: [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")],
+      spelling: BracketQuoted
+    ),
+    golden: "'[' '-s' '/root/engine.args' ']'\n"
+  )
+}
+
+test fn test_bracket_bare_spelling_holds_the_installed_host_bytes() -> Bool {
+  emits(
+    stmt: bash_build_test_bracket(
+      words: [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")],
+      spelling: BracketBare
+    ),
+    golden: "[ '-s' '/root/engine.args' ]\n"
+  )
+}
+
+test fn the_two_bracket_spellings_differ_only_in_the_brackets() -> Bool {
+  let words = [bash_build_word_lit(text: "-s"), bash_build_word_lit(text: "/root/engine.args")]
+  match bash_emit_stmts(statements: [bash_build_test_bracket(words: words, spelling: BracketQuoted)], set_e: false) {
+    Accepted { value: quoted, diagnostics: _ } =>
+      match bash_emit_stmts(statements: [bash_build_test_bracket(words: words, spelling: BracketBare)], set_e: false) {
+        Accepted { value: bare, diagnostics: _ } =>
+          quoted != bare
+            && string_contains(s: quoted, pattern: "'-s' '/root/engine.args'")
+            && string_contains(s: bare, pattern: "'-s' '/root/engine.args'")
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }

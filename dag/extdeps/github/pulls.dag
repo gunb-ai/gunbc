@@ -5,7 +5,7 @@ import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.serialization { WireFormat, Text }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.github.pulls_contracts {
@@ -17,12 +17,25 @@ import extdeps.github.pulls_contracts {
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/pulls/pulls"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.pulls",
+      decl_name: "github.Pulls",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data github_cli_pull_merge_authority: ExternalAuthority = ExternalAuthority {

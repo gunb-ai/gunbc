@@ -4,7 +4,9 @@ import std.types { NonEmptyStr, String, Secret }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization { AuthorizationRequest }
 import std.optional { Present, Absent }
-import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.approved_gcp_access { approved_gcp_admission_for_request, ApprovedGcpAdmitted, ApprovedGcpDenied }
+import gunbc.auth.gcp_iam_bootstrap_federation { gcp_iam_bootstrap_wif_provider_resource, iam_bootstrap_service_account }
+import gunbc.auth.gcp_fleet_impersonation { fleet_impersonated_credential_at_use, FleetCredentialPresented, FleetCredentialRefused }
 import gunbc.auth.gcp_iam_converge_run { observe_token, request_and_wait_as }
 import gunbc.auth.approval_run_identity { run_attempt }
 import gunbc.auth.gcp_iam_bootstrap_delta {
@@ -31,8 +33,6 @@ import gunbc.auth.gcp_iam_bootstrap_delta_route {
 // never starts, so no absent identity is met as a raw authentication failure.
 // The approval is enforced by this reviewed code until a custom protection rule answered only on a
 // redeemed capability gates the environment (gunbc.rung_drop gcp_iam_bootstrap_approval_in_reviewed_code).
-
-data iam_bootstrap_token_env: NonEmptyStr = "IAM_BOOTSTRAP_ACCESS_TOKEN"
 
 data gcp_iam_bootstrap_delta_approved_output: String = "bootstrap_approved"
 
@@ -82,14 +82,32 @@ fn gcp_iam_bootstrap_delta_apply_wet() -> ProcessExit
     Present { value: observe } => match bootstrap_delta_step(delta: observe_bootstrap_delta(token: observe)) {
       BootstrapNothingToDo => exit_failure(reason: concat(bootstrap_label, ": the delta emptied between the tap and the apply; the iam-bootstrap token is unused"))
       BootstrapStepRefused { reason } => exit_failure(reason: join([bootstrap_label, ": ", reason], ""))
-      BootstrapStepRequest { request } => match approved_gcp_access_for_request(request: request, token_variable: iam_bootstrap_token_env) {
-        ApprovedGcpAccessRefused { reason } => exit_failure(reason: join([bootstrap_label, ": nothing applied: ", reason], ""))
-        ApprovedGcpAccessReady { authorization: _, token } => {
-          match apply_approved_subjects(subjects: request.subject.subjects, digest: bootstrap_delta_digest_hex(b: request.subject), token: token) {
-            ApprovedSubjectRefused { key, reason } => exit_failure(reason: join([bootstrap_label, ": an approved subject refused; nothing after it was applied: ", key, ": ", reason as String], ""))
-            AllApprovedSubjectsApplied => ExitSuccess
+      BootstrapStepRequest { request } => match approved_gcp_admission_for_request(request: request) {
+        ApprovedGcpDenied { reason } => exit_failure(reason: join([bootstrap_label, ": nothing applied: ", reason], ""))
+        ApprovedGcpAdmitted { authorization: _ } =>
+          // MINT AT USE, THEN SPEND AT THE ADAPTER. The iam-bootstrap token is minted HERE (this wet apply
+          // entry, after the compile and after the approval is re-admitted), never read from the deleted
+          // wif_auth_iam_bootstrap step output -- the 600 s token that step federated ~11 min before first
+          // use was the ACCESS_TOKEN_EXPIRED class. The mint and the presentation are the ONE fleet sequence
+          // (gunbc.auth.gcp_fleet_impersonation), handed only the iam-bootstrap identity; the federation
+          // underneath is the single shared authority gunbc.auth.federated_workload_credential.
+          match fleet_impersonated_credential_at_use(
+            wif_provider: gcp_iam_bootstrap_wif_provider_resource(),
+            service_account: iam_bootstrap_service_account,
+            label: bootstrap_label,
+          ) {
+            FleetCredentialRefused { reason } => exit_failure(reason: reason)
+            // THE EXPIRY WAS CONSUMED IN THAT CALL, AT THE SPEND: it judged the credential against the SAME
+            // service account and scope it was minted for and released it into this arm only -- the
+            // approved-cell apply below, invoked in this same arm (the language refuses a generic helper taking
+            // the operation; gunbc.integration_concern).
+            FleetCredentialPresented { credential: token } => {
+              match apply_approved_subjects(subjects: request.subject.subjects, digest: bootstrap_delta_digest_hex(b: request.subject), token: token) {
+                ApprovedSubjectRefused { key, reason } => exit_failure(reason: join([bootstrap_label, ": an approved subject refused; nothing after it was applied: ", key, ": ", reason as String], ""))
+                AllApprovedSubjectsApplied => ExitSuccess
+              }
+            }
           }
-        }
       }
     }
   }

@@ -1,0 +1,83 @@
+module test.claim.tailscale_acl_reported_reconcile_witness
+
+// Scope-1: bring the ACL MODEL up to the policy the operator reported after the 2026-11-18 admin-console
+// hand changes, and show the emitted policy equals a FIXTURE transcribed from that report (there is no live
+// policy read -- this is model-equals-the-reported-report, not model-equals-live).
+//
+// This module is self-contained with EXPLICIT imports (it does not rely on bare-name proximity
+// resolution -- see gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution).
+//
+// REPORTED FACT (operator report, 2026-11-18, not a live read): the operator added, in the admin console,
+//   - tagOwners: tag:serving -> [autogroup:admin]
+//   - grant: src [tag:dashboard] -> dst [tag:serving], ip [tcp:18081-18083]
+// The model now carries both. The dashboard->serving port list is declared once as
+// extdeps.tailscale.acl::tailscale_serving_port_grants, which also fixes the dangling
+// tailscale_serving_port_grants citation in gunbc.tailscale_fleet_auth_key.
+
+import std.logic { Bool }
+import std.algebra { length }
+import std.types { NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tailscale.acl {
+  operator_tailscale_acl_policy,
+  sel_tag_dashboard,
+  sel_tag_serving,
+  sel_wildcard,
+  sel_proto_port,
+  tailscale_serving_port_grants,
+  tag_serving,
+}
+import gunbc.tailscale_acl_phase2_credential { acl_diff_from_authority, PoliciesMatch, PoliciesDiffer }
+
+// The policy the operator REPORTED on 2026-11-18 is recorded byte-for-byte in this reference fixture,
+// transcribed by hand from that report. The diff-print route reports PoliciesMatch against this fixture; it
+// is NOT read from the live tailnet. The model matching this fixture shows the model matches the report.
+data tailscale_acl_reported_reference_path: String = "dag/test/fixture/tailscale_acl_reference.json"
+
+// THE SERVING TAG IS ADMIN-OWNED in the model, matching the tagOwners row the operator reported. Internal red control:
+// a row that instead put autogroup:member on tag:serving fails the second conjunct.
+test fn a_operator_acl_serving_tag_is_admin_owned() -> Bool {
+  let admin_rows = filter(operator_tailscale_acl_policy.tag_owners, r =>
+    (r.tag == tag_serving)
+      && (length(r.owners) == 1)
+      && (length(filter(r.owners, o => o == ("autogroup:admin" as NonEmptyStr))) == 1))
+  let member_rows = filter(operator_tailscale_acl_policy.tag_owners, r =>
+    (r.tag == tag_serving)
+      && (length(filter(r.owners, o => o == ("autogroup:member" as NonEmptyStr))) == 1))
+  (length(admin_rows) == 1) && (length(member_rows) == 0)
+}
+
+// THE DASHBOARD -> SERVING GRANT IS IN THE MODEL, exactly once, on the declared ports, with no wildcard
+// source reaching tag:serving. The ports come from the single tailscale_serving_port_grants declaration.
+// Internal red control: a second tag:serving row, a wildcard source, or wrong ports fails it.
+test fn a_operator_acl_has_dashboard_to_serving_port_grant() -> Bool {
+  let serving_rows = filter(operator_tailscale_acl_policy.grants, g => g.dst == [sel_tag_serving()])
+  let dashboard_on_declared_ports = filter(serving_rows, g =>
+    (g.src == [sel_tag_dashboard()])
+      && (g.ip == map(tailscale_serving_port_grants, p => sel_proto_port(spec: p))))
+  let wildcard_src = filter(serving_rows, g => g.src == [sel_wildcard()])
+  (length(serving_rows) == 1)
+    && (length(dashboard_on_declared_ports) == 1)
+    && (length(wildcard_src) == 0)
+}
+
+// THE EMITTED POLICY EQUALS THE OPERATOR-REPORTED REFERENCE FIXTURE, shown through the read-only
+// diff-print route (gunbc.tailscale_acl_phase2_credential::acl_diff_from_authority). The fixture is a hand
+// transcription of the operator's 2026-11-18 report, NOT a live ACL read, so this proves model-equals-report.
+// The upsert wet shape is DiffPrintOnly, so this never writes -- it is a read-only proof. Internal red control
+// (the "blind" check): the same route against a snapshot that is NOT the emitted policy (the empty string)
+// must come back PoliciesDiffer, so PoliciesMatch cannot be green by construction.
+test fn a_acl_diff_print_route_matches_reported_fixture_and_is_not_blind() -> Bool {
+  let read = Filesystem.Read(path: tailscale_acl_reported_reference_path)
+  let fixture_match = acl_diff_from_authority(live_json: read.content)
+  let blind_control = acl_diff_from_authority(live_json: "")
+  read.success
+    && (match fixture_match {
+         PoliciesMatch => true
+         PoliciesDiffer { emitted: _, live: _ } => false
+       })
+    && (match blind_control {
+         PoliciesMatch => false
+         PoliciesDiffer { emitted: _, live: _ } => true
+       })
+}

@@ -1,0 +1,289 @@
+module gunbc.live_deploy.deploy_artifact_closure
+
+// Roadmap node: deploy-intent-owns-artifact-closure (node://adhoc-3e6e9bfb-d59, identity rn_Z0G9G30XDNQJG7QYJ0M6NAVY0T,
+//   dag/gunbc/roadmap/roadmap_authority.dag, landed by #16504).
+//   Node boundary: "the closure is read from each unit's own declaration, and the refusal is produced by the same
+//   closure, never skipped."
+//   Red_control 2: "A deploy whose intent omits an artifact a unit reads refuses before any unit is enabled;
+//   RED for each artifact the closure does not yet own."
+// This module is that same closure and the refusal computed from it. It is a check-first primitive: an evaluation
+// that decides whether a deploy may proceed, and it is deliberately NOT a mutating actuator (no install, no write,
+// no unit state change).
+
+import std.types { List }
+import std.algebra { fold_list, list_map, Empty, list_append }
+import std.list { list_member }
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// SCOPE — what this module is, and what it is NOT yet
+//
+//   WHAT THIS PR DELIVERS: the artifact-closure PRIMITIVE — the read-of-record, the
+//   per-row classification, the three-valued verdict, and the inventory of units by
+//   closure status. It is GENERIC over enable rows, so any enable authority can feed
+//   it; it knows nothing about the deploy model or the fleet.
+//
+//   NAMED CONSUMER (landed, #16587): gunbc.live_deploy.apply_legs deploy_artifact_closure_gate
+//   feeds this closure from the apply chain — it resolves the plan's steps through
+//   deployment_artifact_read_set, folds this run's writes, the release plan's KEPT members and
+//   the fleet custody roster's declared reads into the covered population, and REFUSES
+//   (ApplyPlanRefused) before any enable leg runs. So "the refusal is produced, never skipped"
+//   is now a property of a live deploy: the srv1 full-plan witness control drives the real
+//   apply route through this closure. The primitive stays check-first and non-mutating (no
+//   install, no write, no unit state change).
+//
+//   GENERICS (single_authority, minimize_redundancy): the roster is not a second unit
+//   list kept here. The live-deploy enable authority is gunbc.live_deploy.spec
+//   deployment_owned_steps; gunbc.live_deploy.spec derives each step's read-set via
+//   deployment_artifact_read_set (a total match over step.kind, placed exactly like the
+//   existing owned_artifact_teardown_disposition precedent — the model owns per-kind
+//   facts, the consumer stays generic, a new kind cannot inherit an answer by omission).
+//   THIS module holds only the generic verdict machinery over already-resolved rows, so
+//   the fleet-converge actuation path can later feed its OWN enable rows against the same
+//   closure. Each enabled unit's read set is declared by its OWN module (or by the model's
+//   total match sourced from it) and reaches the closure through deployment_artifact_read_set;
+//   this module never re-spells a unit or a path. A follow-up adds one module fn + flips one
+//   match arm in the model; nothing in this module changes.
+//
+//   EVIDENCE: run provenance is a receipt and lives in the pull request, not here. The bug-6
+//   first-slice reading (red_control 1: two installs of one tree at one revision must produce one
+//   receipt digest) is computed by test.claim.host.approval_broker_tree_install_witness
+//   two_installs_of_one_tree_reproduce_one_receipt_digest, which compares two tree_receipt_body
+//   outputs at the revision threaded into them.
+//
+//   BeltExitDrain is a live enabled unit (BeltEventPathUnit is in deployment_owned_steps),
+//   so it is classified like any other enabled unit — a missing artifact under it is a real
+//   outage. It is excluded only by removal from the enable authority, at which point it
+//   simply is not in the roster. There is no separate Excluded concept here.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// READ-OF-RECORD — what an enabled unit declares it reads
+//
+//   ArtifactReadSet is a unit's read declaration, sourced from the unit's OWN module (or
+//   the model's total match over kinds, sourced from each unit module). Declared carries
+//   concrete artifact paths; NotYetModeled is a typed, located, countable "unknown" — it
+//   is NOT silently treated as allowed (fail_closed: "Failing to compute the answer is a
+//   different outcome from computing a conservative one", and "every degradation is typed,
+//   located and countable"). NoReadOfRecord is a nullary, POSITIVE assertion — it carries NO
+//   free-form reason, because a String whose only purpose is commentary must not be what lets a
+//   deploy proceed (source_annotations; fail_closed). The allow rests on the CONSTRUCTION PATH:
+//   it is produced only by a kind's OWN module from a DERIVED, total match over that kind's
+//   modeled facts (e.g. gunbc.tailscale_serve_scope matching TailscaleServeService), so the
+//   assertion cannot survive the realization lying. It is NOT a default or fallback and is NEVER
+//   produced for a merely-unmodeled kind: the adapter enumerates every kind explicitly, so a kind
+//   with no explicit arm is a compile error, never an implicit NoReadOfRecord.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// HOW A READ IS SATISFIED -- matched on (kind, path), never on the path string alone (manager ruling):
+//   FileContent          an executable/file CONTENT; covered by an install-file leg's typed dest.
+//   DirectoryExists a directory's EXISTENCE; covered by an install-directory leg's typed dest.
+//   TreeContent     the CONTENTS of a converged tree at a root; covered ONLY by a ConvergedBy owner
+//                   (an enabled converger unit whose declared output is that root) -- an install-directory
+//                   mkdir does NOT satisfy it (mkdir proves existence, not content: a silent widen).
+type ReadKind
+  = FileContent
+  | DirectoryExists
+  | TreeContent
+
+type DeclaredRead
+  {
+  path: String
+  kind: ReadKind
+}
+
+// An artifact a realized leg WRITES, with the kind of read it is authorized to satisfy. The gate
+// matches a DeclaredRead against the owned set by (kind, path).
+type OwnedArtifact
+  {
+  path: String
+  kind: ReadKind
+}
+
+fn read_kind_eq(a: ReadKind, b: ReadKind) -> Bool {
+  match a {
+    FileContent => match b { FileContent => true, DirectoryExists => false, TreeContent => false }
+    DirectoryExists => match b { FileContent => false, DirectoryExists => true, TreeContent => false }
+    TreeContent => match b { FileContent => false, DirectoryExists => false, TreeContent => true }
+  }
+}
+
+// Build a DeclaredRead. The read-set adapter uses these so each path carries HOW it is read.
+fn declared_path(path: String, kind: ReadKind) -> DeclaredRead {
+  DeclaredRead { path: path, kind: kind }
+}
+
+fn declared_paths(paths: List<String>, kind: ReadKind) -> List<DeclaredRead> {
+  list_map(xs: paths, f: fn(p) { DeclaredRead { path: p, kind: kind } })
+}
+
+type ArtifactReadSet
+  = Declared { reads: List<DeclaredRead> }
+  | NoReadOfRecord
+  // A tailscale serve ROUTE MAPPING (ServeCli or fabric): its dependency is a listening ENDPOINT, not a
+  // filesystem artifact. It imposes no file read on the gate, but -- unlike a bare NoReadOfRecord -- it NAMES
+  // the endpoint it depends on, so the "no filesystem read" is a located, honest claim about what the mapping
+  // needs (a running endpoint), not an unexplained pass. One arm serves both the ServeCli and fabric mappings
+  // (manager ruling): they differ only in which endpoint they name, not in filesystem obligation (none).
+  | EndpointDependency { endpoint: String }
+  // A NON-EXECUTABLE artifact the deploy INSTALLS (e.g. an OIDC config document). It is not a unit and performs
+  // no read of record — it is the thing OTHER units declare reading. The gate's population is the enable legs
+  // (executable units), so this arm is NEVER consulted by the gate; it is truthful bookkeeping, not the false
+  // "unit whose reads aren't modeled yet" that NotYetModeled means. (manager: never leave a non-unit NotYetModeled.)
+  | InstalledArtifact
+  | NotYetModeled { reason: String }
+
+// A resolved enable row: `located` is where the unit lives (its owned path / identity),
+// `reads` is what that unit's own declaration says it reads. Rows are produced by an
+// enable authority (for the deploy path: gunbc.live_deploy.spec deployment_artifact_read_rows).
+type DeployReadRow
+  = ReadRow { located: String, reads: ArtifactReadSet }
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// THE HALTS A GATE REFUSES ON -- allow / refuse / unclosed collapse into a CAUSE LIST.
+//
+//   A Declared read whose (kind, path) is not covered by an installed artifact => MissingArtifact
+//     (names the artifact and the reader unit).
+//   A row whose reads are NotYetModeled                                          => UnclosedRead
+//     (names the reader unit; the gate cannot confirm any install leg provides the read).
+//
+//   The obligation that an Unclosed read halts the deploy is NOT carried by this comment: deploy_gate
+//   folds EVERY cause through deploy_closure_halts and maps a NON-EMPTY cause list to Halt -- there is
+//   no Proceed arm that an Unclosed read can fall through, so it is unrepresentable for an uncheckable
+//   read to pass the gate. The controls unclosed_reads_halt_the_deploy_gate_never_proceeds and
+//   allowed_reads_proceed_and_missing_read_halts keep that total. The apply_legs gate
+//   (deploy_artifact_closure_gate) calls deploy_gate before any enable step and refuses on Halt for
+//   either cause; there is no "warn and continue" arm.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+type DeployHaltCause
+  = MissingArtifact { located: String, artifact: String, kind: ReadKind }
+  | UnclosedRead { located: String }
+  | ConvergerKindUnknown { unit: String }
+
+type DeployGateDecision
+  = Proceed
+  | Halt { causes: List<DeployHaltCause> }
+
+fn render_read_kind(kind: ReadKind) -> String {
+  match kind {
+    FileContent => "executable/file content"
+    DirectoryExists => "directory existence"
+    TreeContent => "converged tree content"
+  }
+}
+
+// Render one halt cause, naming the read KIND and how it is satisfied. The TreeContent wording is
+// deliberately honest about the rung it establishes (guarantee_ladder): a converger that runs this deploy
+// proves a converger unit RUNS for the tree, NOT that the tree content is present when a reader starts;
+// reader ordering (each reader After=/Requires= its converger) is a separate obligation this gate does not
+// establish. A ConvergerKindUnknown names the converger whose [Service] kind could not be decided from a
+// unit of record: the gate refuses it fail-closed rather than assuming a kind.
+fn render_deploy_halt_cause(cause: DeployHaltCause) -> String {
+  match cause {
+    MissingArtifact { located: loc, artifact: art, kind: k } =>
+      match k {
+        FileContent => join(["missing artifact [", art, "] read by [", loc, "]: no install-file leg writes it"], "")
+        DirectoryExists => join(["missing directory [", art, "] read by [", loc, "]: no install-directory leg creates it"], "")
+        TreeContent => join(["tree content at [", art, "] read by [", loc, "]: no enabled converger unit declares producing this tree (a covered TreeContent proves a converger is ENABLED for the tree, NOT that its content is present when a reader starts)"], "")
+      }
+    UnclosedRead { located: loc } => join(["unclosed read by [", loc, "]: its read set is not yet modeled, so the gate cannot confirm any install leg provides it"], "")
+    ConvergerKindUnknown { unit: u } => join(["converger [", u, "]: no unit of record, so its [Service] kind cannot be decided; the tree-content ownership it would confer is refused (fail-closed), never assumed"], "")
+  }
+}
+
+// Render EVERY halt cause, so a single refusal names ALL uncovered reads at once. A first-halt gate makes
+// each remaining gap cost another round trip; the deployer (and the PROCEEDS probe) need the whole list
+// in one pass to see whether the gaps are one class or several.
+fn render_deploy_halt_causes(causes: List<DeployHaltCause>) -> String {
+  join(list_map(causes, fn(c) { render_deploy_halt_cause(cause: c) }), "; ")
+}
+
+fn deploy_gate(rows: List<DeployReadRow>, installed: List<OwnedArtifact>) -> DeployGateDecision {
+  match deploy_closure_halts(rows: rows, installed: installed) {
+    Empty => Proceed
+    hs => Halt { causes: hs }
+  }
+}
+
+// Does the owned set cover a declared read? Matched on (kind, path): a FileContent read is satisfied only
+// by an owned FileContent at the same path, DirectoryExists only by an owned DirectoryExists, TreeContent
+// only by an owned TreeContent (a ConvergedBy converger). A path present under the WRONG kind does NOT
+// cover the read -- this is what stops an install-directory mkdir from silently satisfying a TreeContent read.
+fn owned_covers(owned: List<OwnedArtifact>, want: DeclaredRead) -> Bool {
+  fold_list(
+    xs: owned,
+    empty: false,
+    cons: fn(acc, o) { acc || (o.path == want.path && read_kind_eq(a: o.kind, b: want.kind)) }
+  )
+}
+
+// All declared reads not covered by the owned set, in declaration order.
+fn all_uncovered(declared: List<DeclaredRead>, owned: List<OwnedArtifact>) -> List<DeclaredRead> {
+  fold_list(
+    xs: declared,
+    empty: Empty {  },
+    cons: fn(acc, r) { if owned_covers(owned: owned, want: r) { acc } else { list_append(left: acc, right: [r]) } }
+  )
+}
+
+// Every halt cause a single row produces: one MissingArtifact per unowned declared path, or one
+// UnclosedRead for an unmodeled read set; none for a positive no-read assertion or a non-unit artifact.
+fn row_halt_causes(row: DeployReadRow, installed: List<OwnedArtifact>) -> List<DeployHaltCause> {
+  match row {
+    ReadRow { located: loc, reads: Declared { reads: reads } } =>
+      list_map(all_uncovered(declared: reads, owned: installed), fn(r) { MissingArtifact { located: loc, artifact: r.path, kind: r.kind } })
+    ReadRow { located: loc, reads: NotYetModeled { reason: _ } } => [ UnclosedRead { located: loc } ]
+    ReadRow { reads: NoReadOfRecord } => Empty {  }
+    ReadRow { reads: EndpointDependency { endpoint: _ } } => Empty {  }
+    ReadRow { reads: InstalledArtifact } => Empty {  }
+  }
+}
+
+// Concatenate every row's halt causes. This is the ONE closure decider: production (deploy_gate, via
+// the apply_legs deploy_artifact_closure_gate) and the witnesses both read closure through it, so there
+// is exactly one fold from rows to "what is ALL wrong" -- no second verdict API to drift from it
+// (gunbc.design_argument::replacement_migration).
+fn deploy_closure_halts(rows: List<DeployReadRow>, installed: List<OwnedArtifact>) -> List<DeployHaltCause> {
+  fold_list(xs: rows, empty: Empty {  }, cons: fn(acc, row) { list_append(left: acc, right: row_halt_causes(row: row, installed: installed)) })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// INVENTORY — every row classified by what its read declaration says
+//
+//   The inventory is DERIVED from each row's own read declaration (fail_closed: no uncounted
+//   unit). It is produced FROM the mechanism, not a hand-typed list beside it: it walks the
+//   rows, and each row's classification reads that row's reads — a re-spelled list beside the
+//   unit cannot appear, so the population can never disagree with the mechanism the controls
+//   verify over.
+// ─────────────────────────────────────────────────────────────────────────────────
+
+// The closure states, mirrored from ArtifactReadSet:
+//   DerivedRow     — the unit's read set is declared, so the closure can check it.
+//   NoReadRow      — the unit's own module DERIVED (total match, not prose) that it reads no installed
+//                    artifact; located and countable, carrying no free-form reason (the allow is not
+//                    justified by a String).
+//   UnclosedRow    — the unit's read set is not yet declared (a typed, located degradation).
+//   InstalledArtifactRow — a non-executable artifact the deploy installs; never in the gate population (enable
+//                    legs only), recorded here only so it is countable and located, not a silent extra.
+type ArtifactInventoryRow
+  = DerivedRow { located: String, artifacts: List<String> }
+  | NoReadRow { located: String }
+  | InstalledArtifactRow { located: String }
+  | UnclosedRow { located: String, reason: String }
+
+fn deploy_artifact_inventory_row(row: DeployReadRow) -> ArtifactInventoryRow {
+  match row {
+    ReadRow { located: loc, reads: Declared { reads: reads } } => DerivedRow { located: loc, artifacts: list_map(xs: reads, f: fn(r) { r.path }) }
+    ReadRow { located: loc, reads: NoReadOfRecord } => NoReadRow { located: loc }
+    ReadRow { located: loc, reads: EndpointDependency { endpoint: _ } } => NoReadRow { located: loc }
+    ReadRow { located: loc, reads: InstalledArtifact } => InstalledArtifactRow { located: loc }
+    ReadRow { located: loc, reads: NotYetModeled { reason: r } } => UnclosedRow { located: loc, reason: r }
+  }
+}
+
+// deploy_artifact_inventory classifies every row in the roster. It maps over the enable rows
+// (from deployment_owned_steps), so the population it reports is the population the deploy
+// actually enables — never a separately maintained list.
+fn deploy_artifact_inventory(rows: List<DeployReadRow>) -> List<ArtifactInventoryRow> {
+  list_map(xs: rows, f: fn(row) { deploy_artifact_inventory_row(row: row) })
+}

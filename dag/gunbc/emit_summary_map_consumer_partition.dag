@@ -9,7 +9,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // SUBJECT. `v1.compiler.infer_emit_info` `build_emit_graph_info` folds every module in the closure
 // into one Map<String, TypeSummary> keyed on the BARE AUTHORED DECLARATION NAME, with no collision
 // arm: two declarations sharing a spelling resolve last-write-wins in fold order. That map is the
-// denominator gunbc.bare_name_identity_consumer_census ranks first, and this carrier is the
+// denominator the retired bare-name identity census ranked first (deleted with the census
+// retirement, gunbc.design_ruling bad_process_is_worse_than_no_process), and this carrier is the
 // measurement that must precede re-keying it.
 //
 // THE TWO COLUMNS, AND WHY ONE IS NOT ENOUGH. Whether a consumer HOLDS a resolved node at the
@@ -18,8 +19,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // not repaired by an identity-keyed map: it looks up correctly, then throws the identity away one
 // line later. Scoring only the ask would have sized this lane as "most sites are fine".
 //
-// NOTHING HERE IS REPAIRED. Per the sequencing rule gunbc.bare_name_identity_consumer_census states
-// for its own roster, the sweep precedes the refusal; a refusal landed ahead of its population
+// NOTHING HERE IS REPAIRED. The sweep precedes the refusal; a refusal landed ahead of its population
 // trades an uncounted silence for an uncounted red.
 
 // WHAT THE CONSUMER HOLDS AT THE ASK.

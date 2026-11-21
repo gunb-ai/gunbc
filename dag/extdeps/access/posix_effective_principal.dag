@@ -3,14 +3,27 @@ module extdeps.access.posix_effective_principal
 import std.algebra { trim }
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/whoami.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.access.posix_effective_principal",
+      decl_name: "EffectivePosixPrincipalRead",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // Read the effective POSIX user name (whoami utility semantics). Interface shape and result decoding live here; typed argv transport lives in extdeps.access.posix_effective_principal_read_op at the realization edge. EffectivePosixPrincipalName is opaque outside this authority, so downstream principal projections can consume only a successful, non-empty decoded read observation rather than pairing the request token with an authored name.

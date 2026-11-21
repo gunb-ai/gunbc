@@ -1,0 +1,294 @@
+module test.claim.compute.remote_build_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id }
+import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry, BuildGunbcBinaries }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.compute.remote_build {
+  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims,
+  RemoteBuildSourceRef, remote_build_source_ref, remote_build_source_ref_name,
+  RemoteBuildRequest, remote_build_request_text, remote_build_decode_request,
+  RemoteBuildRequestDecode, RemoteBuildRequestDecoded, RemoteBuildRequestRefused,
+  RemoteBuildRequestRefusal, RequestNotThisProtocol, RequestWordNotPortable, RequestTooShort,
+  RequestCommitNotAnObjectId, RequestSourceRefInvalid, RequestOperationUnknown, RequestEntryOutsideCorpus,
+  RequestCompileTakesOneEntry, RequestClaimsNameNoFunction,
+  remote_build_work_operation,
+  RemoteBuildSourceAdmission, RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
+  RemoteBuildHostRow, RemoteBuildHostStanding, RemoteBuildHostAdmitted, RemoteBuildHostWithoutStore, remote_build_host_standing,
+  RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance,
+  RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostCapacityFull, HostUnreachable, HostRefusedRequest,
+  RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable,
+  remote_build_next_step,
+}
+
+// HERMETIC CONTROLS for the remote-build contract (gunbc.compute.remote_build). They establish the
+// wire codec, the source admission, the roster's store rule and the host order. They do NOT establish
+// that any host serves a request: the SSH transport and the serving entry are later changes, and
+// their wet controls are owed there.
+
+data w_commit_hex: String = "0123456789abcdef0123456789abcdef01234567"
+data w_other_commit_hex: String = "89abcdef0123456789abcdef0123456789abcdef"
+
+fn w_commit() -> GitObjectId {
+  match git_object_id_from_untagged_hex(hex: w_commit_hex) {
+    Present { value: c } => c
+    Absent => git_null_sha1_object_id
+  }
+}
+
+// The probe id is admitted, so every request below is Present; an Absent one reds the claim using it.
+fn w_request(op: RemoteBuildOperation) -> RemoteBuildRequest? {
+  match remote_build_source_ref(id: "clever-raven-401.1") {
+    Present { value: source } => Present { value: RemoteBuildRequest { commit: w_commit(), source: source, operation: op } }
+    Absent => none
+  }
+}
+
+data w_claims_op: RemoteBuildOperation = RemoteRunClaims { entry: "dag/test/claim/compute/remote_build_witness.dag", functions: ["first_claim", "second_claim"] }
+data w_compile_op: RemoteBuildOperation = RemoteCompileEntry { entry: "dag/gunbc/compute/remote_build.dag" }
+
+fn w_refusal_of(text: String) -> RemoteBuildRequestRefusal? {
+  match remote_build_decode_request(text: text) {
+    RemoteBuildRequestDecoded { request: _ } => none
+    RemoteBuildRequestRefused { cause } => Present { value: cause }
+  }
+}
+
+// ── the codec ────────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_claims_request_reads_back_as_itself() -> Bool {
+  match w_request(op: w_claims_op) {
+    Absent => false
+    Present { value: req } => {
+      let text = remote_build_request_text(r: req)
+      text == concat("remote-build-v1 ", w_commit_hex, " clever-raven-401.1 claims dag/test/claim/compute/remote_build_witness.dag first_claim second_claim")
+        && match remote_build_decode_request(text: text) {
+          RemoteBuildRequestRefused { cause: _ } => false
+          RemoteBuildRequestDecoded { request } => remote_build_request_text(r: request) == text
+        }
+    }
+  }
+}
+
+test fn a_compile_request_reads_back_as_itself() -> Bool {
+  match w_request(op: w_compile_op) {
+    Absent => false
+    Present { value: req } =>
+      match remote_build_decode_request(text: remote_build_request_text(r: req)) {
+        RemoteBuildRequestRefused { cause: _ } => false
+        RemoteBuildRequestDecoded { request } =>
+          remote_build_request_text(r: request) == remote_build_request_text(r: req)
+            && match request.operation {
+              RemoteCompileEntry { entry } => entry as String == "dag/gunbc/compute/remote_build.dag"
+              RemoteRunClaims { entry: _, functions: _ } => false
+              // A gate request is a different operation; a compile request must not read back as one.
+              RemoteGateSubject { label: _ } => false
+            }
+      }
+  }
+}
+
+// The wall the forced command rests on: a shell metacharacter in any word refuses before anything is
+// read from it. Admitting ';' here would let a request smuggle a second command to any consumer that
+// ever handed the text to a shell.
+test fn a_shell_metacharacter_refuses_the_whole_request() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " id compile dag/x.dag;reboot")) {
+    Present { value: RequestWordNotPortable { word } } => word == "dag/x.dag;reboot"
+    _ => false
+  }
+}
+
+test fn an_entry_that_climbs_out_of_the_corpus_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " id compile dag/../etc/x.dag")) {
+    Present { value: RequestEntryOutsideCorpus { entry } } => entry == "dag/../etc/x.dag"
+    _ => false
+  }
+}
+
+test fn an_entry_outside_dag_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " id compile src/v2/x.dag")) {
+    Present { value: RequestEntryOutsideCorpus { entry: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_source_ref_id_with_a_slash_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " heads/main compile dag/x.dag")) {
+    Present { value: RequestSourceRefInvalid { text } } => text == "heads/main"
+    _ => false
+  }
+}
+
+test fn a_source_ref_names_one_level_under_its_namespace() -> Bool {
+  match remote_build_source_ref(id: "clever-raven-401.1") {
+    Absent => false
+    Present { value: r } =>
+      remote_build_source_ref_name(r: r) as String == "refs/remote-build/clever-raven-401.1"
+        && match remote_build_source_ref(id: "..") { Present { value: _ } => false  Absent => true }
+  }
+}
+
+test fn a_commit_that_is_not_an_object_id_refuses() -> Bool {
+  match w_refusal_of(text: "remote-build-v1 HEAD id compile dag/x.dag") {
+    Present { value: RequestCommitNotAnObjectId { text } } => text == "HEAD"
+    _ => false
+  }
+}
+
+test fn another_protocol_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v2 ", w_commit_hex, " id compile dag/x.dag")) {
+    Present { value: RequestNotThisProtocol { first_word } } => first_word == "remote-build-v2"
+    _ => false
+  }
+}
+
+test fn a_claims_request_with_no_function_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " id claims dag/x.dag")) {
+    Present { value: RequestClaimsNameNoFunction } => true
+    _ => false
+  }
+}
+
+test fn compile_with_extra_words_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " id compile dag/x.dag dag/y.dag")) {
+    Present { value: RequestCompileTakesOneEntry { word_count } } => word_count == 3
+    _ => false
+  }
+}
+
+test fn an_unknown_operation_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex, " id build dag/x.dag")) {
+    Present { value: RequestOperationUnknown { word } } => word == "build"
+    _ => false
+  }
+}
+
+test fn a_truncated_request_refuses() -> Bool {
+  match w_refusal_of(text: concat("remote-build-v1 ", w_commit_hex)) {
+    Present { value: RequestTooShort { word_count } } => word_count == 2
+    _ => false
+  }
+}
+
+// ── what the provider is handed ─────────────────────────────────────────────────────────────────────
+
+test fn a_claims_request_reaches_the_provider_as_the_local_route_sends_it() -> Bool {
+  match remote_build_work_operation(op: w_claims_op) {
+    RunClaims { entry, functions, hermetic, window } =>
+      entry as String == "dag/test/claim/compute/remote_build_witness.dag"
+        && functions as String == "first_claim,second_claim"
+        && hermetic
+        && match window { Present { value: _ } => false  Absent => true }
+    CompileEntry { entry: _ } => false
+    BuildGunbcBinaries { profile: _, bins: _ } => false
+    // The gate operation reaches the provider as an ADMISSION, not as an attached binary: there is no
+    // binary in it to name, and any arm that claimed one would be describing the dependent route this
+    // operation is not allowed to take.
+    TestGateSubject { label: _ } => false
+  }
+}
+
+// ── the source ──────────────────────────────────────────────────────────────────────────────────────
+
+test fn a_ref_that_moved_is_not_run() -> Bool {
+  match git_object_id_from_untagged_hex(hex: w_other_commit_hex) {
+    Absent => false
+    Present { value: moved } =>
+      match w_request(op: w_compile_op) {
+        Absent => false
+        Present { value: req } =>
+          match remote_build_admit_fetched_source(request: req, fetched: moved) {
+            RemoteBuildSourceMatches => false
+            RemoteBuildSourceMoved { requested, fetched } => requested as String == w_commit_hex && fetched as String == w_other_commit_hex
+          }
+      }
+  }
+}
+
+test fn the_requested_commit_is_admitted() -> Bool {
+  match w_request(op: w_compile_op) {
+    Absent => false
+    Present { value: req } =>
+      match remote_build_admit_fetched_source(request: req, fetched: w_commit()) {
+        RemoteBuildSourceMatches => true
+        RemoteBuildSourceMoved { requested: _, fetched: _ } => false
+      }
+  }
+}
+
+// ── the roster ──────────────────────────────────────────────────────────────────────────────────────
+
+// An instance with no store cannot run the provider, so the roster refuses it. srv1's lab instance is
+// a real store-less instance; regressing the standing to admit it reds this.
+test fn a_storeless_instance_is_not_a_candidate() -> Bool {
+  match remote_build_host_standing(row: RemoteBuildHostRow { instance: srv1_lab_dashboard_instance() }) {
+    RemoteBuildHostAdmitted { candidate: _ } => false
+    RemoteBuildHostWithoutStore { host, instance_id: _ } => host as String == "srv1"
+  }
+}
+
+test fn every_candidate_has_a_store() -> Bool {
+  count(remote_build_candidates()) > 0
+    && remote_build_candidates() |> all(c => match c.instance.materialization_store_root { Present { value: _ } => true  Absent => false })
+}
+
+// ── the host order ──────────────────────────────────────────────────────────────────────────────────
+
+// THE ORDER IS A FOLD OVER WHATEVER CANDIDATES IT IS GIVEN, so its claims supply two serving instances
+// rather than read the live roster, which has one host today. The roster's own claims are above.
+fn w_candidates() -> List<RemoteBuildCandidate> {
+  [
+    RemoteBuildCandidate { host: "srv1" as HostIdentity, instance: remote_build_serving_instance(host: "srv1" as HostIdentity) },
+    RemoteBuildCandidate { host: "srv-b" as HostIdentity, instance: remote_build_serving_instance(host: "srv-b" as HostIdentity) },
+  ]
+}
+
+fn w_host(i: Int) -> String {
+  match w_candidates() |> skip(n: i) |> first {
+    Present { value: c } => c.host as String
+    Absent => ""
+  }
+}
+
+test fn the_first_candidate_is_tried_first() -> Bool {
+  match remote_build_next_step(candidates: w_candidates(), attempts: []) {
+    RemoteBuildTryHost { candidate } => candidate.host as String == w_host(i: 0)
+    _ => false
+  }
+}
+
+test fn a_full_host_sends_the_request_to_the_next() -> Bool {
+  let full = RemoteBuildAttempt { host: w_host(i: 0) as NonEmptyStr, answer: HostCapacityFull { detail: "pool full" } }
+  match remote_build_next_step(candidates: w_candidates(), attempts: [full]) {
+    RemoteBuildTryHost { candidate } => candidate.host as String == w_host(i: 1)
+    _ => false
+  }
+}
+
+// A failing compile is the work's own answer; trying it elsewhere would fail the same way and hide
+// the first receipt.
+test fn a_work_failure_is_the_answer_and_is_not_retried() -> Bool {
+  let failed = RemoteBuildAttempt { host: w_host(i: 0) as NonEmptyStr, answer: HostWorkFailed { receipt: "{}" } }
+  match remote_build_next_step(candidates: w_candidates(), attempts: [failed]) {
+    RemoteBuildAnswered { host, answer: HostWorkFailed { receipt: _ } } => host as String == w_host(i: 0)
+    _ => false
+  }
+}
+
+test fn a_refused_request_is_not_retried() -> Bool {
+  let refused = RemoteBuildAttempt { host: w_host(i: 0) as NonEmptyStr, answer: HostRefusedRequest { detail: "entry outside corpus" } }
+  match remote_build_next_step(candidates: w_candidates(), attempts: [refused]) {
+    RemoteBuildAnswered { host: _, answer: HostRefusedRequest { detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn every_host_full_or_unreachable_is_a_typed_refusal_carrying_each_attempt() -> Bool {
+  let attempts = w_candidates() |> map(c => RemoteBuildAttempt { host: c.host, answer: HostUnreachable { detail: "no route" } })
+  match remote_build_next_step(candidates: w_candidates(), attempts: attempts) {
+    RemoteBuildNoHostAvailable { attempts: carried } => count(carried) == count(w_candidates())
+    _ => false
+  }
+}

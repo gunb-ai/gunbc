@@ -3,7 +3,8 @@ module test.claim.runner.runner_host_cap_bracket_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings, filesystem_operation, file_step, fs_read, fs_list, fs_write, fs_delete, fs_resolved }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units, runner_host_cap_plan_under_withdrawal }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -13,11 +14,19 @@ import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
 import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin, operation_input_text }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
+import extdeps.systemd { Active, Inactive, Deactivating, Failed }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
 import gunbc.wall_clock_model { ModeledWallClock, wall_clock_bindings }
-import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
+import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed, runner_unit_name_of_registration }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_live_read }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_slot_allocation { gunbc_runner_committed_width, RunnerWidthDerived, RunnerWidthUnresolved }
+import gunbc.runner.runner_slot_population_census { desired_unit_names_range }
+import gunbc.runner.runner_width_transition { required_retirees_for_host, RetireesKnown, RetireesUnresolved }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
+import gunbc.runner.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner.runner_slot_retirement { HostDrainAuthorization, HostDrainNamed, HostDrainUnnamed, host_drain_interruption_authorization }
 import gunbc.fleet.fleet_runner_connectivity { OrganizationRunnerRosterEvidence, RosterObserved, RosterObservedPartial, RosterReadUnavailable }
 import gunbc.runner.runner_host_cap_bracket { cap_write_gate_of, CapWriteGate, CapWriteAdmitted, CapWriteRefused, runner_host_cap_admission_closure, read_slot_drain_pass_over, ListenerNoLongerRunning, ListenerStopRefused, listener_restart_residual_wire, release_envelope_wire, listener_restart_residual, listener_reregistration_frontier, UpstreamAtomicBusyRefusingAdmissionClose, LongLivedSlotReregistrationRoute }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
@@ -25,10 +34,12 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import std.measure { second, second_count }
 import gunbc.runner.runner_disk_reclaim { SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.runner.runner_slot_actuation { SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_actuation_reading_of, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, slot_activity_of_listing, slot_registration_file_command, read_slot_registration_over, RegistrationIdentityRead, SlotRegistrationUnreadable }
+import gunbc.runner.runner_slot_actuation { SlotActuationNoop, slot_actuation_settled, SlotRead, SlotReadRefused, slot_activation_plan, ActivationSteps, ActivationRefused, ActivationAlreadyActive, SlotActuationOutcome, SlotActivated, SlotActuationRefused, slot_actuation_reading_of, SlotReadingTyped, SlotReadingUnknownWord, SlotReadOutcome, slot_activity_of_listing, slot_registration_file_command, read_slot_registration_over, RegistrationIdentityRead, SlotRegistrationUnreadable, SlotActivationHeldByWithdrawal, slot_actuation_outcome_wire }
 import gunbc.runner.runner_host_cap_bracket {
   AdmissionMaskOnly,
   SlotDrainReading,
+  carry_stop_causes, drain_action_of, DrainAction, ActionAwaitLiveJob, ActionStopListener, ActionHold, drain_actions_apply_over,
+  RunWorkerLive, RunStopping,
   AdmissionClosedByMask,
   AdmissionOpen,
   RunStopped,
@@ -109,6 +120,8 @@ import gunbc.runner.runner_host_cap_bracket {
   bracket_holder_unit_of_leaf,
   bracket_units_to_bracket,
 }
+import gunbc.runner.runner_host_withdraw_record { HostWithdrawalHeld, HostNotWithdrawn, HostWithdrawalUnreadable, activation_held_by_withdrawal }
+import gunbc.runner.runner_slot_cap_converge { HostCapsDrainWriteRestart, HostCapsWriteInPlace, HostCapsWithheld, CapFilesDiffer, CapFilesSettled }
 
 // THE CONTROLS FOR THE DRAIN BRACKET'S DECISIONS, over supplied readings (the boundary these claims
 // discriminate at). The wet driver's route is the remote run against a fleet host.
@@ -122,10 +135,10 @@ fn idle_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: 
 fn unreadable(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionClosedByMask, run: RunUnobserved { cause: "ps exit=1" as NonEmptyStr } } }
 fn unmasked(n: String) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionOpen, run: RunStopped } }
 
-fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained { certified: _ } => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained { certified: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls, causes: _ } => length(ls) == 1 BracketDrained { certified: _ } => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _ } => false } }
-fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p } => length(b) == busy && length(p) == unproven BracketDrained { certified: _ } => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false } }
+fn is_drained(s: BracketWaitStep) -> Bool { match s { BracketDrained { certified: _ } => true BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _, stop_causes: _ } => false } }
+fn is_waiting(s: BracketWaitStep) -> Bool { match s { BracketWaiting { ticks_left: _ } => true BracketDrained { certified: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false BracketBoundExceeded { busy: _, unproven: _, stop_causes: _ } => false } }
+fn is_not_closed(s: BracketWaitStep) -> Bool { match s { BracketAdmissionNotClosed { listeners: ls, causes: _ } => length(ls) == 1 BracketDrained { certified: _ } => false BracketWaiting { ticks_left: _ } => false BracketBoundExceeded { busy: _, unproven: _, stop_causes: _ } => false } }
+fn exceeded(s: BracketWaitStep, busy: Int, unproven: Int) -> Bool { match s { BracketBoundExceeded { busy: b, unproven: p, stop_causes: _ } => length(b) == busy && length(p) == unproven BracketDrained { certified: _ } => false BracketWaiting { ticks_left: _ } => false BracketAdmissionNotClosed { listeners: _, causes: _ } => false } }
 
 // the bound is a declared policy row that yields a positive tick count
 test fn the_declared_bound_yields_positive_ticks() -> Bool { host_cap_drain_ticks(policy: runner_host_cap_drain_policy) > 0 }
@@ -193,7 +206,7 @@ test fn no_readmit_reading_is_not_admitting() -> Bool {
 // THE REAL PROJECTION, FROM SHOW TEXT AND A PS LISTING, INTO THE BRACKET DECISION. The earlier controls
 // supply a SlotDrainReading and so cannot see a loss in the projection: a deactivating unit with a live
 // Runner.Worker was read as idle there. These start where the wet reader starts.
-fn show_masked_with(active: String) -> String { concat("Id=", u(n: "01") as String, "\nLoadState=masked\nUnitFileState=masked\nActiveState=", active, "\n") }
+fn show_masked_with(active: String) -> String { systemctl_show_fixture(n: "01", load: "masked", file: "masked", active: active) }
 fn listing_worker() -> String { concat(u(n: "01") as String, " Runner.Worker\n") }
 fn listing_listener_only() -> String { concat(u(n: "01") as String, " Runner.Listener\n") }
 
@@ -283,14 +296,31 @@ test fn a_unit_left_masked_by_an_interrupted_bracket_is_planned_back_in_service(
 
 // THE OWNED SET EXCLUDES FABRIC SLOTS BY CONSTRUCTION: the release acts on subject.desired_units, and a
 // slot the model gave to fabric (declared masked) is never among them, so release leaves it masked.
+// HERE IS THE POSITIVE EVIDENCE, AND THE POPULATION IS READ FROM ITS AUTHORITY, NOT SAMPLED ON A NAMED
+// HOST: gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci (2026-11-09, #16137) retired srv3's and
+// srv4's fabric execution slots — every committed slot on either host now serves GitHub Actions — so the
+// host this control used to name carries no fabric member at all, and its population test failed on a
+// host the ruling had emptied rather than on the release it claims to check. gunbc.runner.
+// runner_slot_allocation fabric_execution_slot_identities is the authority for which slots are lent to
+// fabric execution, and what that roster holds today is its business and not this control's, so it
+// picks the subject here: a control that must be re-picked by hand every time the operator moves a slot
+// is a stale control, not a check. AN EMPTY POPULATION WITNESSES NOTHING AND REFUSES — with no fabric
+// member there is no unit to keep out of the released set, and the disjointness below would be vacuously
+// true over a population that does not exist. An emptied roster is a finding, not a pass.
 test fn a_fabric_slot_is_never_in_the_released_set() -> Bool {
-  match runner_host_file_subject(host: "srv3" as HostIdentity) {
-    RunnerHostFileSubjectRefused { cause: _ } => false
-    RunnerHostFileSubjectAdmitted { subject: sj } =>
-      length(runner_host_fabric_member_units(host: "srv3" as HostIdentity)) > 0
-        && all(runner_host_fabric_member_units(host: "srv3" as HostIdentity), f => !any(sj.desired_units, d => (d as String) == (f as String)))
-  }
+  let roster = fabric_execution_slot_identities()
+  length(roster) > 0
+    && all(
+      roster,
+      m => match runner_host_file_subject(host: m.host) {
+        RunnerHostFileSubjectRefused { cause: _ } => false
+        RunnerHostFileSubjectAdmitted { subject: sj } =>
+          length(runner_host_fabric_member_units(host: m.host)) > 0
+            && all(runner_host_fabric_member_units(host: m.host), f => !any(sj.desired_units, d => (d as String) == (f as String)))
+      },
+    )
 }
+
 
 fn okey() -> String { bracket_obligation_key(run_id: "7", attempt: "1", host: "srv3") }
 fn held_text() -> String { bracket_obligation_text(o: BracketObligation { key: okey(), units: [u(n: "01")] }, discharged: false) }
@@ -640,16 +670,43 @@ fn bracket_run_over<T>(legs: List<Leg>, roster: List<RosterAt>, environment: Lis
   }
 }
 
-fn show_text(n: String, load: String, file: String, active: String) -> String {
-  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nNeedDaemonReload=no\n")
+// THE ONE FAITHFUL `systemctl show` FIXTURE for this witness. A real
+// `systemctl show --properties=Id,LoadState,UnitFileState,ActiveState,Result,MainPID` answers ALL SIX
+// words on any unit, and the production reader gunbc.runner.runner_slot_actuation.slot_actuation_reading_of
+// refuses a block that omits ANY of them (Absent -> SlotReadRefused), so both the bracket readbacks
+// (show_text) and the drain projections (show_masked_with) MUST come from here or their controls read
+// 0 masks / unproven by accident instead of executing the decision. Per-state values mirror what
+// systemd actually reports: a running unit (ActiveState=active) and a stop in progress (deactivating)
+// still have their main process (MainPID nonzero); a stopped unit (inactive) and a failed one have no
+// main process (MainPID 0). Result carries WHY the last run ended -- a cleanly stopped or running unit
+// reports success, while a unit that ended failed reports a non-success word (exit-code); systemd never
+// answers Result=failed, so a failed unit's Result is exit-code, not a word the classifier would reject.
+fn systemctl_show_fixture(n: String, load: String, file: String, active: String) -> String {
+  let main_pid = if active == "active" || active == "deactivating" { "424242" } else { "0" }
+  let result = if active == "failed" { "exit-code" } else { "success" }
+  concat("Id=", u(n: n) as String, "\nLoadState=", load, "\nUnitFileState=", file, "\nActiveState=", active, "\nResult=", result, "\nMainPID=", main_pid, "\nNeedDaemonReload=no\n")
 }
+fn show_text(n: String, load: String, file: String, active: String) -> String { systemctl_show_fixture(n: n, load: load, file: file, active: active) }
 fn show_leg(n: String, load: String, file: String, active: String) -> Leg { Leg { needle: "systemctl show", answer: shell_ok(stdout: show_text(n: n, load: load, file: file, active: active)) } }
 fn step_leg(verb: String) -> Leg { Leg { needle: concat(" ", verb, " "), answer: shell_ok(stdout: "") } }
 fn ps_leg(listing: String) -> Leg { Leg { needle: "ps -e", answer: shell_ok(stdout: listing) } }
 
 fn ledger_of<T>(r: BracketRun<T>) -> List<String> { match r { BracketRunReturned { value: _, legs: l, calls: _ } => l BracketRunEnded { cause: _ } => [] } }
 fn outcomes_of(r: BracketRun<List<SlotActuationOutcome>>) -> List<SlotActuationOutcome> { match r { BracketRunReturned { value: v, legs: _, calls: _ } => v BracketRunEnded { cause: _ } => [] } }
-fn all_settled(os: List<SlotActuationOutcome>) -> Bool { all(os, o => slot_actuation_settled(o: o)) }
+// EMPTY IS NOT SETTLED. outcomes_of maps a BracketRunEnded (a refused frame, a refused host subject, an
+// unsealable context) to []. `all` over [] is vacuously true, so the old definition read a run that never
+// installed its frame -- never acted at all -- as "every slot settled": a fail-open, the same direction as
+// witness_evaluation's evaluate_in_witness_frame fabricated-success defect. A release that settled nothing
+// is not all-settled, so empty means false.
+fn all_settled(os: List<SlotActuationOutcome>) -> Bool { length(os) > 0 && all(os, o => slot_actuation_settled(o: o)) }
+
+// THE FAIL-OPEN CONTROL. A frame that refused produces no outcomes (outcomes_of maps it to []), so a claim
+// built on all_settled must then FAIL, not pass vacuously. Both the pure empty list and a real BracketRun
+// that issued nothing must read as not-all-settled. RED before the empty-means-false fix (all over [] == true),
+// GREEN after. Regression control for the fail-open the node's scope work uncovered.
+test fn a_release_that_settles_nothing_is_never_read_as_all_settled() -> Bool {
+  !all_settled(os: []) && !all_settled(os: outcomes_of(r: release_run(legs: [], ns: [])))
+}
 fn activated(o: SlotActuationOutcome) -> Bool { match o { SlotActivated { unit: _ } => true _ => false } }
 fn noop(o: SlotActuationOutcome) -> Bool { match o { SlotActuationNoop { unit: _, state: _ } => true _ => false } }
 fn refused(o: SlotActuationOutcome) -> Bool { match o { SlotActuationRefused { unit: _, step: _, reason: _ } => true _ => false } }
@@ -699,8 +756,16 @@ test fn a_failed_first_read_refuses_the_release_and_issues_no_mutating_argv() ->
 
 // a failed start AFTER the unmask: the three argv ran, the readback shows failed, the host stays drained
 test fn a_failed_start_after_unmask_leaves_the_host_drained() -> Bool {
-  let r = release_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), step_leg(verb: "unmask"), step_leg(verb: "enable"), step_leg(verb: "start"), show_leg(n: "01", load: "loaded", file: "enabled", active: "failed")], ns: ["01"])
-  length(ledger_of(r: r)) == 6 && any(outcomes_of(r: r), o => refused(o: o))
+  // The start was issued and the FIRST read-back reads failed, so activation takes its settled second
+  // read -- gunbc.runner.runner_slot_actuation.activate_runner_slot_over sleeps once then re-reads, it
+  // never samples once. Both reads say failed (a unit whose ExecStart cannot run), so the release
+  // refuses on the second read-back and the host is left drained. The ledger therefore holds EIGHT
+  // legs, not the six a start that comes up clean would: read, read, unmask, enable, start, read-back,
+  // the settle sleep, read-back. (This control was earlier under-specified at six legs; the now-faithful
+  // show fixture is what let it reach the settle path it always meant to exercise.)
+  let r = release_run(legs: [show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), show_leg(n: "01", load: "masked", file: "masked", active: "inactive"), step_leg(verb: "unmask"), step_leg(verb: "enable"), step_leg(verb: "start"), show_leg(n: "01", load: "loaded", file: "enabled", active: "failed"), Leg { needle: "sleep", answer: shell_ok(stdout: "") }, show_leg(n: "01", load: "loaded", file: "enabled", active: "failed")], ns: ["01"])
+  length(ledger_of(r: r)) == 8 && any(outcomes_of(r: r), o => refused(o: o))
+    && count_containing(legs: ledger_of(r: r), needle: " start ") == 1
     && !admitting(l: host_left_of_readmit(units: [u(n: "01")], outcomes: outcomes_of(r: r)))
 }
 
@@ -711,8 +776,10 @@ test fn a_transport_with_no_answer_refuses_the_release() -> Bool {
 
 // BLOCKER 1, THROUGH PRODUCTION COMPOSITION: acquisition reads (read_slot_drain_over), owned_set_of, the mask of
 // OWNED units only (mask_slot_only_over), the re-read, and the wait judgment (bracket_wait_step), over a host where
-// unit 01 is masked by someone else and still running a worker (NeedDaemonReload=no) and unit 02 is open. Only 02
-// is owned and masked; 01 is never touched; 01's worker still blocks the write.
+// unit 01 is masked by someone else and still running a worker (NeedDaemonReload=no) and unit 02 is an open STOPPED
+// unit. Only 02 is owned and masked (02 is proven stopped, so masking is the safe leg); 01 is never touched; 01's
+// worker still blocks the write. The running-owned case is covered by a_cap_bracket_pass_never_masks_a_running_runner_unit,
+// not here: the bracket must never mask a unit that is still running (node fleet-cap-bracket-keeps-running-units).
 type MixedDrain {
   owned: List<NonEmptyStr>
   step: BracketWaitStep
@@ -720,11 +787,11 @@ type MixedDrain {
 
 fn mixed_drain(ns: List<String>) -> BracketRun<MixedDrain> {
   bracket_run(legs: [
-    // acquisition reads: 01 masked + running (ps), 02 open + active (ps)
+    // acquisition reads: 01 masked + running (ps), 02 open + STOPPED (no worker to read)
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "02") as String, " Runner.Listener\n")),
-    // mask the one owned unit: read, then the elevated mask
-    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"), step_leg(verb: "mask"),
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "inactive"),
+    // mask the one owned unit: read (still stopped), then the elevated mask
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "inactive"), step_leg(verb: "mask"),
     // re-read: 01 unchanged, 02 now masked and stopped
     show_leg(n: "01", load: "masked", file: "masked", active: "active"), ps_leg(listing: concat(u(n: "01") as String, " Runner.Worker\n")),
     show_leg(n: "02", load: "masked", file: "masked", active: "inactive"),
@@ -774,6 +841,38 @@ test fn a_foreign_masked_stopped_unit_does_not_block_and_is_never_masked() -> Bo
     BracketRunEnded { cause: _ } => false
     BracketRunReturned { value: v, legs: l, calls: _ } => v.owned == [u(n: "02")] && is_drained(s: v.step) && count_containing(legs: l, needle: concat(" mask ", u(n: "01") as String)) == 0
   }
+}
+
+// RED_CONTROL (node fleet-cap-bracket-keeps-running-units): the cap bracket's masking pass must issue NO mask for a
+// unit that is still RUNNING, and MUST still mask a proven-STOPPED one. mask_slot_only_over is the single site in the
+// bracket that dispatches systemctl mask; on main it masks any unmasked owned unit regardless of run state -- the
+// invalid state named by recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload (the
+// mask's reload drops a live unit's drop-ins, and the bracket's mask-then-wait holds that state for the whole wait).
+// RED on main: unit 02 is systemd-active, so main dispatches "systemctl mask 02" and running_masks is 1, not 0. The
+// stopped control (03, inactive) keeps the claim honest -- it proves the bracket still masks a proven-stopped unit,
+// so this cannot pass vacuously by never masking anything. It mirrors runner_slot_actuation's NeverMaskARunningUnit.
+fn masks_issued_over(legs: List<Leg>, unit: NonEmptyStr) -> Int {
+  match bracket_run(legs: legs, body: fn(target, context) {
+    let _m = mask_slot_only_over(target: target, context: context, unit: unit)
+    0
+  }) {
+    BracketRunReturned { value: _, legs: l, calls: _ } => count_containing(legs: l, needle: concat(" mask ", unit as String))
+    BracketRunEnded { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_cap_bracket_pass_never_masks_a_running_runner_unit() -> Bool {
+  // owned unit 02: systemd-active -- a running runner unit. No mask may be issued for it.
+  let running_masks = masks_issued_over(legs: [
+    show_leg(n: "02", load: "loaded", file: "enabled", active: "active"),
+    step_leg(verb: "mask"),
+  ], unit: u(n: "02"))
+  // owned unit 03: proven stopped (inactive) -- the positive control, masking is still the safe leg.
+  let stopped_masks = masks_issued_over(legs: [
+    show_leg(n: "03", load: "loaded", file: "enabled", active: "inactive"),
+    step_leg(verb: "mask"),
+  ], unit: u(n: "03"))
+  running_masks == 0 && stopped_masks == 1
 }
 
 // an empty owned set owes nothing: no obligation is written (the decoder would reject an empty held list)
@@ -841,7 +940,7 @@ fn step_word(r: BracketRun<BracketWaitStep>) -> String {
         else { join(["drained:", to_string(length(cs)), " certified=", join(map(cs, c => certified_listener_line(c: c)), ",")], "") }
       BracketWaiting { ticks_left: _ } => "waiting"
       BracketAdmissionNotClosed { listeners: _, causes: cs } => concat("not-closed: ", join(cs, " | "))
-      BracketBoundExceeded { busy: b, unproven: p } => concat("exceeded:", to_string(length(b)), ":", to_string(length(p)))
+      BracketBoundExceeded { busy: b, unproven: p, stop_causes: _ } => concat("exceeded:", to_string(length(b)), ":", to_string(length(p)))
     }
   }
 }
@@ -1281,7 +1380,13 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
       // gated or foreign sets these controls read. The holder claims themselves run against the judgment
       // layer (slot_cap_holder_verdict) in runner_slot_cap_converge_witness, where every read-back shape
       // is a control rather than a leg sequence.
-      holder: HolderIdentified { unit: u(n: "02") })
+      holder: HolderIdentified { unit: u(n: "02") },
+      // No slot tree is queued for first-install in these re-convergence scenarios (the subject above carries
+      // slot_trees: [] too), so cap_bracket_units excludes nothing on that basis. `trees` is the argument the
+      // shared cap_phase_after_drain_over route gained for the first-install exclusion; this pre-existing test
+      // call predated that parameter and omitted it, which broke resolution of the whole witness file. Fixing it
+      // here (node fleet-cap-bracket-keeps-running-units) is what lets the cap-bracket controls in this file resolve.
+      trees: [])
   })
 }
 
@@ -1422,4 +1527,334 @@ test fn a_malformed_instance_leaf_refuses_naming_the_leaf() -> Bool {
 test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
   bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
     && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
+}
+
+// The bracket controls decide by READING the unit through the production slot reader
+// (gunbc.runner.runner_slot_actuation.slot_actuation_reading_of), which refuses a reading that is
+// missing any property it requests -- including Result and MainPID. This guard pins the FIXTURE to
+// that contract: if a future edit to show_text drops a required property, the reading goes Absent
+// and THIS control goes red at the fixture, instead of the bracket controls silently losing their
+// mask step (a SlotReadRefused that makes running==0 pass by accident).
+test fn the_show_fixture_parses_through_the_slot_reader() -> Bool {
+  // Every ActiveState word this witness feeds the reader must resolve as a real systemctl show would:
+  // a recognized state parses to a typed reading carrying that state, and an unknown word is refused
+  // -- never silently dropped. Covers BOTH fixtures (show_text for the bracket readbacks, show_masked_with
+  // for the drain projections) over every state the file uses: active, deactivating, failed, inactive,
+  // and the unknown word wedged. If a future edit drops a required property from the shared builder, a
+  // state stops parsing and this control goes red at the fixture instead of the bracket controls losing
+  // their mask step and passing by accident.
+  let typed_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "active")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Active
+    _ => false
+  }
+  let deact_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "deactivating")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Deactivating
+    _ => false
+  }
+  let failed_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "failed")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Failed
+    _ => false
+  }
+  let stopped_ok = match slot_actuation_reading_of(unit: u(n: "03"), show_stdout: show_text(n: "03", load: "loaded", file: "enabled", active: "inactive")) {
+    Present { value: SlotReadingTyped { reading: r } } => r.active == Inactive
+    _ => false
+  }
+  let masked_deact_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "deactivating")) {
+    SlotRead { reading: r } => r.active == Deactivating
+    _ => false
+  }
+  let masked_stopped_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "inactive")) {
+    SlotRead { reading: r } => r.active == Inactive
+    _ => false
+  }
+  let unknown_refused_ok = match slot_read_outcome_of(unit: u(n: "01"), show_stdout: show_masked_with(active: "wedged")) {
+    SlotReadRefused { reason: _ } => true
+    _ => false
+  }
+  typed_ok && deact_ok && failed_ok && stopped_ok && masked_deact_ok && masked_stopped_ok && unknown_refused_ok
+}
+
+// ── THE STOP LEG ───────────────────────────────────────────────────────────────────────────────
+// THE DRAIN HAD NO STOP, AND ON A LIVE CI HOST THAT IS THE WHOLE DEADLOCK: mask_slot_only masks only a
+// unit PROVEN stopped, and a runner's listener never stops by itself -- it exits when its own job ends and
+// the unit brings it back -- so srv4 run 44232633417 timed out after 5415s naming 13 open slots, 0 busy.
+// What ends the cycle is `systemctl stop`, which the unit's Restart= path does not undo: systemd.service(5)
+// says that when the death of a process is the result of a systemd operation such as a service stop, the
+// service is not restarted. The mask still does the rest afterwards; nothing here touches Restart=.
+//
+// THE CLAIMS ARE ON THE DECISION POINT (drain_action_of) AND ON THE LEG ITSELF. The decision point is where
+// the two-population rule and the operator's enumerated scope live, so it is tested directly; the leg is
+// tested through the transport, because what makes a stop safe is that it re-takes its own reading and can
+// be refused by it. RED, with the leg stubbed back to the pre-fix hold: the stop never appears in the
+// ledger and the claims below that expect one fail.
+fn srv3_drain() -> HostDrainAuthorization { host_drain_interruption_authorization(host: operator_host_srv3) }
+fn open_listener(n: String, roster: ListenerRosterReading) -> SlotDrainReading { SlotDrainReading { unit: u(n: n), admission: AdmissionOpen, run: RunListenerIdle { roster: roster } } }
+
+test fn an_open_idle_listener_the_roster_certifies_is_stopped() -> Bool {
+  match drain_action_of(r: open_listener(n: "01", roster: RosterNotBusy { joined: minted_ne(n: "01", tag: slot_current_mint_tag) }), drain: srv3_drain()) {
+    ActionStopListener { unit: un } => un == u(n: "01")
+    _ => false
+  }
+}
+
+// A live Runner.Worker, and a registration the roster says is busy even though its cgroup shows no worker:
+// both are waited on, never stopped, and the mask leg refuses to mask them either. The reading that says a
+// job is running outranks the reading that says none is.
+test fn a_live_worker_or_a_busy_registration_is_waited_on_and_never_stopped() -> Bool {
+  let readings = [
+    SlotDrainReading { unit: u(n: "02"), admission: AdmissionOpen, run: RunWorkerLive },
+    open_listener(n: "12", roster: RosterBusy { joined: minted_ne(n: "12", tag: slot_current_mint_tag) }),
+    SlotDrainReading { unit: u(n: "13"), admission: AdmissionClosedByMask, run: RunWorkerLive },
+  ]
+  all(readings, r => match drain_action_of(r: r, drain: srv3_drain()) {
+    ActionStopListener { unit: _ } => false
+    ActionAwaitLiveJob { unit: un } => un == r.unit
+    _ => false
+  })
+}
+
+// A stopped unit is the mask leg's work, not the stop leg's; a deactivating unit's cgroup may still hold the
+// listener; and a run this module cannot read is never read as idle.
+test fn a_stopped_stopping_or_unread_run_is_held_for_the_mask_leg_or_refused() -> Bool {
+  let readings = [
+    SlotDrainReading { unit: u(n: "03"), admission: AdmissionOpen, run: RunStopped },
+    SlotDrainReading { unit: u(n: "04"), admission: AdmissionOpen, run: RunStopping },
+    SlotDrainReading { unit: u(n: "05"), admission: AdmissionOpen, run: RunUnobserved { cause: "the process listing attributed nothing to the unit" } },
+  ]
+  all(readings, r => match drain_action_of(r: r, drain: srv3_drain()) {
+    ActionStopListener { unit: _ } => false
+    ActionHold { unit: un } => un == r.unit
+    _ => false
+  })
+}
+
+// THE SCOPE OF THE OPERATOR'S DECISION, AS A RED CONTROL. srv3-03 is inside
+// srv3_host_drain_interruption_authorization; srv3-14 is not -- the width-cut row names it, the drain row
+// does not, and the drain does not read that row. Same reading, opposite action. And with no row for the
+// host at all, even the inside unit is held: a host whose operator never permitted a drain keeps the
+// behaviour that has no stop leg.
+test fn the_drain_stop_reaches_only_the_units_the_operator_enumerated() -> Bool {
+  let inside = open_listener(n: "03", roster: RosterUnread { cause: "the org roster does not list a JIT registration" })
+  let outside = open_listener(n: "14", roster: RosterUnread { cause: "the org roster does not list a JIT registration" })
+  (match drain_action_of(r: inside, drain: srv3_drain()) { ActionStopListener { unit: un } => un == u(n: "03") _ => false })
+    && (match drain_action_of(r: outside, drain: srv3_drain()) { ActionStopListener { unit: _ } => false ActionHold { unit: un } => un == u(n: "14") _ => false })
+    && (match drain_action_of(r: inside, drain: HostDrainUnnamed) { ActionStopListener { unit: _ } => false ActionHold { unit: _ } => true _ => false })
+}
+
+// ── THE STOP LEG THROUGH THE TRANSPORT ───────────────────────────────────────────────────────────
+// The legs of an unmasked, enabled, active slot holding an idle listener -- the shape a live CI runner
+// actually has, and the shape run 44232633417 refused to mask for exactly this reason.
+fn open_listener_read_legs(n: String) -> List<Leg> {
+  [show_leg(n: n, load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: n) as String, " Runner.Listener\n"))]
+}
+
+fn drain_stop_run(legs: List<Leg>, host: String, readings: List<SlotDrainReading>, ns: List<String>) -> BracketRun<List<String>> {
+  bracket_run(legs: legs, body: fn(target, context) { drain_actions_apply_over(target: target, context: context, host: host, readings: readings, owned: map(ns, n => u(n: n))) })
+}
+
+fn causes_of(r: BracketRun<List<String>>) -> String {
+  match r {
+    BracketRunEnded { cause: c } => concat("ended: ", c)
+    BracketRunReturned { value: cs, legs: _, calls: _ } => join(map(cs, c => c), "; ")
+  }
+}
+
+// POSITIVE: reading, re-reading, one elevated stop, and nothing else. The stop is not followed by a mask in
+// the same leg -- the mask is a separate leg and only ever lands on a unit the NEXT reading proves stopped.
+test fn an_open_idle_listener_inside_the_drain_row_is_stopped_once_and_never_masked_by_the_leg() -> Bool {
+  let r = drain_stop_run(
+    legs: concat(open_listener_read_legs(n: "03"), [step_leg(verb: "stop")]),
+    host: "srv3",
+    readings: [open_listener(n: "03", roster: RosterUnread { cause: "the org roster does not list a JIT registration" })],
+    ns: ["03"],
+  )
+  stops_in(r: r) == 1 && length(ledger_of(r: r)) == 3
+    && count_containing(legs: ledger_of(r: r), needle: " mask ") == 0
+    && count_containing(legs: ledger_of(r: r), needle: " start ") == 0
+}
+
+// RED: a Runner.Worker is in the cgroup at the STOP LEG'S OWN re-read, though the pass reading said idle --
+// the window the declared residual names, narrowed by re-reading. No stop, and the cause is carried.
+test fn a_job_that_landed_by_the_stop_leg_s_own_reading_is_not_stopped() -> Bool {
+  let r = drain_stop_run(
+    legs: [show_leg(n: "03", load: "loaded", file: "enabled", active: "active"), ps_leg(listing: concat(u(n: "03") as String, " Runner.Worker\n")), step_leg(verb: "stop")],
+    host: "srv3",
+    readings: [open_listener(n: "03", roster: RosterUnread { cause: "the org roster does not list a JIT registration" })],
+    ns: ["03"],
+  )
+  stops_in(r: r) == 0 && length(ledger_of(r: r)) == 2 && string_contains(s: causes_of(r: r), pattern: "a job is on")
+}
+
+// RED, AND THE SCOPE CLAIM THROUGH THE TRANSPORT: srv3-14 is not in the drain row, so the pass reading
+// yields a hold and the leg does not even re-read the unit -- the host answers nothing at all, on a slot
+// that is sitting there idle and enabled.
+test fn a_unit_the_drain_row_does_not_reach_issues_no_stop_at_all() -> Bool {
+  let r = drain_stop_run(
+    legs: concat(open_listener_read_legs(n: "14"), [step_leg(verb: "stop")]),
+    host: "srv3",
+    readings: [open_listener(n: "14", roster: RosterUnread { cause: "the org roster does not list a JIT registration" })],
+    ns: ["14"],
+  )
+  stops_in(r: r) == 0 && length(ledger_of(r: r)) == 0
+}
+
+// RED: the same slot, on a host with no drain row at all. The model's row is what permits the stop, and a
+// bracket that cannot name one acts on nothing -- whatever sudo on the host would have allowed.
+test fn a_host_with_no_drain_row_issues_no_stop_at_all() -> Bool {
+  let r = drain_stop_run(
+    legs: concat(open_listener_read_legs(n: "03"), [step_leg(verb: "stop")]),
+    host: "srv2",
+    readings: [open_listener(n: "03", roster: RosterUnread { cause: "the org roster does not list a JIT registration" })],
+    ns: ["03"],
+  )
+  stops_in(r: r) == 0 && length(ledger_of(r: r)) == 0
+}
+
+// ── THE DRAIN SCOPE IS THE MODEL'S POPULATION, NOT A TYPED LIST ────────────────────────────────
+// The operator authorized a host drain at HOST grain -- "yeah you can drain the hosts, np" -- so the drain
+// row names its host and its scope is the committed population the width authority derives. These are the
+// drift controls: a slot the derived population does not cover is never stopped even though the host row
+// exists, and if the width moves the drained set moves with it without an edit anywhere
+// (gunbc.design_argument::single_authority -- no second place may decide which slots a host keeps).
+fn srv4_drain() -> HostDrainAuthorization { host_drain_interruption_authorization(host: operator_host_srv4) }
+fn u4(n: String) -> NonEmptyStr { concat("actions-runner@srv4-", n, ".service") as NonEmptyStr }
+fn srv4_open_listener(n: String) -> SlotDrainReading { SlotDrainReading { unit: u4(n: n), admission: AdmissionOpen, run: RunListenerIdle { roster: RosterUnread { cause: "the org roster does not list a JIT registration" } } } }
+fn srv4_committed_slot_count() -> Int { match gunbc_runner_committed_width(host: operator_host_srv4) { RunnerWidthDerived { slots: w } => w  RunnerWidthUnresolved { cause: _ } => 0 } }
+fn srv4_required_retiree_units() -> List<NonEmptyStr> { match required_retirees_for_host(host: operator_host_srv4) { RetireesKnown { units: us } => us  RetireesUnresolved { host: _, cause: _ } => [] as List<NonEmptyStr> } }
+
+test fn a_slot_the_host_drain_row_covers_is_stopped_on_srv4() -> Bool {
+  match drain_action_of(r: srv4_open_listener(n: "03"), drain: srv4_drain()) {
+    ActionStopListener { unit: un } => un == u4(n: "03")
+    _ => false
+  }
+}
+
+// srv4-21 is a required retiree: the retire path owns it, the drain row does not reach it, and a surplus
+// slot is never stopped by a permission that was written for the kept population.
+test fn a_surplus_slot_outside_the_drained_population_is_held_not_stopped() -> Bool {
+  match drain_action_of(r: srv4_open_listener(n: "21"), drain: srv4_drain()) {
+    ActionStopListener { unit: _ } => false
+    ActionHold { unit: un } => un == u4(n: "21")
+    _ => false
+  }
+}
+
+// THE SCOPE EQUALS THE DERIVED POPULATION, BOTH WAYS ROUND: same count as the committed width, every unit
+// the width range names is in it, and no required retiree is in it. A hand-written list that went stale at
+// the next width cut fails this control, which is exactly how srv4's mask grants went stale (roadmap node
+// fleet-mask-grants-cover-slots-the-model-keeps).
+test fn the_drained_set_follows_the_width_authority_with_no_edit() -> Bool {
+  let w = srv4_committed_slot_count()
+  match host_drain_interruption_authorization(host: operator_host_srv4) {
+    HostDrainUnnamed => false
+    HostDrainNamed { authorization: a } =>
+      w > 0
+        && length(a.scope) == w
+        && all(desired_unit_names_range(host: operator_host_srv4, slot: 1, limit: w), d => any(a.scope, x => (x as String) == d))
+        && all(srv4_required_retiree_units(), r => !any(a.scope, x => (x as String) == (r as String)))
+  }
+}
+
+// ── A REFUSED STOP IS NAMED, NOT ABSORBED INTO A UNIT NAME ─────────────────────────────────────
+// srv4 run 44232633417 arrived as 13 unproven unit names and no cause, so a sudo refusal and an idle
+// listener that simply never stopped were indistinguishable in the log. carry_stop_causes is the leg that
+// keeps them apart, and it is checked here rather than only in a run.
+test fn a_refused_stop_rides_into_the_bound_exceeded_verdict() -> Bool {
+  let told = carry_stop_causes(step: BracketBoundExceeded { busy: [], unproven: [u(n: "03")], stop_causes: [] }, causes: ["stop failed on actions-runner@srv3-03.service: sudo has no word for systemctl stop"])
+  match told {
+    BracketBoundExceeded { busy: _, unproven: up, stop_causes: sc } => length(up) == 1 && length(sc) == 1 && any(sc, c => string_contains(s: c, pattern: "srv3-03") && string_contains(s: c, pattern: "sudo"))
+    _ => false
+  }
+}
+
+test fn a_refused_stop_adds_to_an_admission_not_closed_cause_list() -> Bool {
+  let told = carry_stop_causes(step: BracketAdmissionNotClosed { listeners: [u(n: "03")], causes: ["the readings show an open listener"] }, causes: ["a job is on actions-runner@srv3-03.service at the stop leg's own reading"])
+  match told {
+    BracketAdmissionNotClosed { listeners: ls, causes: cs } => length(ls) == 1 && length(cs) == 2 && any(cs, c => string_contains(s: c, pattern: "stop leg"))
+    _ => false
+  }
+}
+
+// A verdict that SETTLED is not decorated with a refusal it did not have: a slot whose stop failed is not
+// certified, and a certified host carries no stop refusal backwards.
+test fn a_settled_verdict_takes_no_refused_stop() -> Bool {
+  match carry_stop_causes(step: BracketDrained { certified: [] }, causes: ["stop failed on actions-runner@srv3-03.service: sudo has no word"]) {
+    BracketDrained { certified: _ } => true
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// A WITHDRAWN HOST IS NOT RE-OPENED BY THE NEXT CONVERGE.
+// srv4, 2026-11-19: the withdraw certified state=withdrawn at 01:32:34Z over all 15 kept units, and the very
+// next converge (run 44438184186) printed 'activated-and-read-back' for every one of them 18 minutes later,
+// because its activation leg reads the UNITS -- which a withdrawal has just stopped and masked -- and decided
+// from that. Four slots re-registered as JIT runners at 01:50:17Z-01:51:04Z and served CI from 02:06Z to
+// 02:59Z, on a host the model was simultaneously reporting as withdrawn (state=inconsistent, withdrawn=
+// unproven). The legs that could open a slot now read the withdrawn RECORD, and the receipt says the
+// activation was withheld rather than reporting an inconsistency after the fact.
+// (gunbc.recurring_failure_mode.a_withdrawal_undone_by_the_next_converge.)
+// ---------------------------------------------------------------------------------------
+
+test fn a_withdrawn_host_holds_every_activation_of_the_converge_leg() -> Bool {
+  match activation_held_by_withdrawal(standing: HostWithdrawalHeld { at: "2026-11-19T01:32:34Z" }) {
+    Present { value: why } => string_contains(s: why as String, pattern: "withdrawn record") && string_contains(s: why as String, pattern: "2026-11-19T01:32:34Z")
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL: the same leg on a host with no record standing admits activation, exactly as before.
+test fn an_open_host_admits_the_same_activation_leg() -> Bool {
+  match activation_held_by_withdrawal(standing: HostNotWithdrawn) {
+    Absent => true
+    Present { value: why } => false
+  }
+}
+
+// An UNREADABLE record is not an absent one: the holder cannot prove the host is back in admission, so the
+// leg holds and names why, rather than starting 15 units on the strength of a failed read.
+test fn an_unread_withdrawn_record_holds_the_activation_leg_too() -> Bool {
+  match activation_held_by_withdrawal(standing: HostWithdrawalUnreadable { cause: "the state document could not be read" }) {
+    Present { value: why } => string_contains(s: why as String, pattern: "could not be read")
+    Absent => false
+  }
+}
+
+// The held activation is REPORTED and is NOT SETTLED: a converge that withheld the activation of a withdrawn
+// host is not claiming that host is at its live desired population.
+test fn the_held_activation_is_reported_and_is_not_settled() -> Bool {
+  let held = SlotActivationHeldByWithdrawal { unit: u(n: "03"), cause: "the withdrawn record stands, written at 2026-11-19T01:32:34Z" as NonEmptyStr }
+  !slot_actuation_settled(o: held) && string_contains(s: slot_actuation_outcome_wire(o: held), pattern: "ACTIVATION-HELD-BY-WITHDRAWAL") && string_contains(s: slot_actuation_outcome_wire(o: held), pattern: "srv3-03")
+}
+
+// THE CAP BRACKET DOES NOT OPEN A WITHDRAWN HOST. The cap plan may name the bracket -- drain, write, unmask,
+// start, read back -- because it decides from the cap standings, which on a withdrawn host are the
+// withdrawal's own doing. The gate replaces that arm with the in-place write: the fleet's cap rows land on
+// the inert units and the manager reloads, and no unit is unmasked or started by a converge.
+test fn a_withdrawn_host_does_not_enter_the_cap_bracket_arm() -> Bool {
+  let gated = runner_host_cap_plan_under_withdrawal(plan: HostCapsDrainWriteRestart, standing: HostWithdrawalHeld { at: "2026-11-19T01:32:34Z" }, files: CapFilesDiffer { paths: ["/etc/systemd/system/gunbc-runner.slice.d/20-fleet-width.conf" as NonEmptyStr] })
+  match gated {
+    HostCapsWriteInPlace { paths: ps } => length(ps) == 1
+    _ => false
+  }
+}
+
+// Where the cap rows are already on disk, the withheld cause names what remains and who moves it, so the
+// refusal is not the blind 'a live cap value differs' that cost the srv4 diagnosis its time.
+test fn a_withdrawn_host_with_its_cap_rows_on_disk_is_told_what_moves_them() -> Bool {
+  let gated = runner_host_cap_plan_under_withdrawal(plan: HostCapsDrainWriteRestart, standing: HostWithdrawalHeld { at: "2026-11-19T01:32:34Z" }, files: CapFilesSettled)
+  match gated {
+    HostCapsWithheld { cause: c } => string_contains(s: c, pattern: "restore") && string_contains(s: c, pattern: "withdrawn record")
+    _ => false
+  }
+}
+
+// THE OTHER POSITIVE CONTROL: on a host with no record the bracket arm stands exactly as host_cap_plan chose
+// it; the gate adds no refusal of its own.
+test fn the_cap_bracket_arm_stands_on_a_host_that_is_not_withdrawn() -> Bool {
+  let gated = runner_host_cap_plan_under_withdrawal(plan: HostCapsDrainWriteRestart, standing: HostNotWithdrawn, files: CapFilesSettled)
+  match gated {
+    HostCapsDrainWriteRestart => true
+    _ => false
+  }
 }

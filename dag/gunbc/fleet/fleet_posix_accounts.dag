@@ -8,6 +8,7 @@ import extdeps.ssh.keys { SshPublicKey }
 import extdeps.netfilter.nfct { nfct_installed_path }
 import extdeps.tools.conntrack { conntrack_installed_path }
 import extdeps.sudo.visudo { visudo_binary_path }
+import extdeps.shadow.account_creation { useradd_binary_path, usermod_binary_path }
 import extdeps.netfilter.iptables_legacy { iptables_legacy_save_installed_path }
 import extdeps.nftables.ruleset { nft_installed_path }
 import std.content_hash { Fnv1a64Structural }
@@ -240,6 +241,52 @@ data fleet_srv1_observed_numeric_ids: List<Int> = [1000, 1001, 1002, 995, 985, 9
 // frontier whose arrival makes this a host-level guarantee.
 data fleet_posix_worker_supplementary_groups: List<NonEmptyStr> = [fleet_posix_worker_shared_group_name]
 
+// THE REMOTE-BUILD ACCOUNT: the identity the remote-build key's forced command runs as on a serving host
+// (gunbc.compute.remote_build_serve), so a build of a session's snapshot runs as neither the operator nor
+// root (operator, 2026-11-15: "yes thats fine thanks, just make sure its modeled"). Like the worker
+// account it holds no root-equivalent group and no sudoers line. Unlike it, its shell is a real shell:
+// sshd runs a forced command through the account's login shell, so a nologin shell would make the key
+// authenticate and then refuse every request (extdeps.access.posix posix_shell_permits_command_execution).
+// It owns its own checkout, store and toolchain under its home (gunbc.compute.remote_build
+// remote_build_serving_instance); the one directory it shares with the operator is the host's compute
+// capacity ledger, through the group below.
+//
+// CONVERGER: none in the model yet, as for the worker account. The account and group are created by hand
+// on each serving host to match these rows exactly, and the serving entry reads its own principal back on
+// every request (remote_build_serve_principal) and refuses to serve as any other uid or from a
+// root-equivalent group. The fleet account converge reading back its own result is the capability that
+// retires the hand step (gunbc.recurring_failure_mode
+// a_foreign_uid_is_handed_a_path_it_cannot_reach_or_a_manager_creates_one_its_consumer_cannot_use).
+//
+// IDS: 1005 and 1006 are free on srv1 by the 2026-10-17 reading (fleet_srv1_observed_numeric_ids, plus
+// 1003 and 1004 declared above). A serving host whose ids are taken refuses at the principal check rather
+// than serving as whoever holds them.
+data fleet_posix_remote_build_user: PosixUser = PosixUser {
+  name: "gunbc-build",
+  uid: 1005,
+  gid: 1005,
+  shell: LoginShellObserved { path: "/bin/bash" },
+}
+
+// THE ACCOUNT'S HOME, DERIVED FROM ITS NAME AND DECLARED ONCE: `useradd -m` makes /home/<name>, and every
+// path the account owns -- its checkout and rustup homes (gunbc.compute.remote_build) and its persistent
+// instance root (gunbc.persistent_instance_roots) -- is read from here, so renaming the account or moving
+// its home moves all of them together (review 95579).
+fn fleet_posix_remote_build_home() -> String {
+  join(["/home/", fleet_posix_remote_build_user.name as String], "")
+}
+
+// THE HOST'S COMPUTE LEDGER GROUP: the service user and the remote-build account are its only members.
+// It groups the capacity ledger's directories (gunbc.compute.host_capacity compute_capacity_directories)
+// on a host that serves remote builds, so both principals reserve memory in the ONE ledger the host has
+// rather than each in its own.
+data fleet_posix_compute_ledger_group_name: NonEmptyStr = "gunbc-compute"
+
+data fleet_posix_compute_ledger_group_gid: Int = 1006
+
+// The remote-build account's supplementary groups, closed: the ledger group alone.
+data fleet_posix_remote_build_supplementary_groups: List<NonEmptyStr> = [fleet_posix_compute_ledger_group_name]
+
 
 data fleet_posix_srv3_host_administrator_user: PosixUser = PosixUser {
   name: "ubuntu",
@@ -401,8 +448,8 @@ fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> NonEmptyStr {
     SudoSystemctl => fleet_systemctl_binary_path
     SudoTailscale => fleet_tailscale_binary_path
     SudoRm => fleet_rm_binary_path
-    SudoUseradd => fleet_useradd_binary_path
-    SudoUsermod => fleet_usermod_binary_path
+    SudoUseradd => useradd_binary_path
+    SudoUsermod => usermod_binary_path
     SudoNft => fleet_nft_binary_path
     SudoConntrack => fleet_conntrack_binary_path
     SudoIptablesLegacySave => fleet_iptables_legacy_save_binary_path
@@ -475,8 +522,6 @@ data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstal
 // a_preflight_demands_the_grant_its_gated_step_installs.
 data ci_runner_sudoers_install_binaries: List<CiRunnerSudoBinary> = [SudoVisudo, SudoInstall]
 
-data fleet_useradd_binary_path: NonEmptyStr = "/usr/sbin/useradd"
-data fleet_usermod_binary_path: NonEmptyStr = "/usr/sbin/usermod"
 
 data fleet_posix_nologin_shell_path: NonEmptyStr = "/usr/sbin/nologin"
 
@@ -771,7 +816,7 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
     // It is a service identity, not a login account and not the CI job user -- the listener accepts the
     // job, the job user (ghrunner) does the work -- so it holds NO sudo of its own. Its login name is THIS
     // module's authority, fleet_posix_runner_listener_login
-    // (@ref(gunbc.fleet.fleet_posix_accounts::fleet_posix_runner_listener_login)), which
+    // (#gunbc.fleet.fleet_posix_accounts::fleet_posix_runner_listener_login), which
     // gunbc.runner.runner_host_medium re-exports as runner_host_medium_runner_account -- never a second
     // literal; the account is host-assigned, so it carries policy and no operating-system label, exactly as
     // the automation and service identities already do.

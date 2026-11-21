@@ -1,0 +1,117 @@
+module test.claim.fleet.site_pxe_edge_receipt_download_witness
+
+import std.types { Bool, String, Int, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import std.algebra { string_contains }
+import std.content_hash { sha256_hex_of_text }
+import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_hash_of_hex }
+import gunbc.fleet.fleet_converge_plan_revision { RunPointerAdmitted, RunPointerArtifactAbsent }
+import gunbc.fleet.site_pxe_edge_live_receipt { SitePxeEdgeLiveReading, site_pxe_edge_live_receipt_encode, site_pxe_edge_live_receipt_artifact_name }
+import gunbc.fleet.site_pxe_edge_receipt_download {
+  EdgeArtifactDownloadReport, DownloadedArtifactMinted, DownloadedArtifactNotMinted, mint_downloaded_artifact_identity,
+  EdgeReceiptCited, EdgeReceiptNotCited, cite_downloaded_edge_receipt, edge_receipt_citation_text,
+}
+
+// THE DOWNLOADED IDENTITY IS MINTED FROM THE DOWNLOAD'S OWN REPORT, AND THE CITATION REFUSES ANY BYTES WHOSE IDENTITY IS NOT THE ADMITTED ONE. The interface
+// is gunbc.fleet.site_pxe_edge_receipt_download's pure pair: the admission, the download report and the bytes are SUPPLIED, so no claim reaches the network
+// or the workflow. The emitted steps that produce the report (artifact-ids from the admit step, run-id from the dispatch field, download-path from the
+// download itself) are read off the boot job in test.claim.machine_intake.mtcollins1_boot_run_witness
+// the_boot_job_downloads_the_edge_record_by_id_after_admission_and_before_any_credential.
+
+fn report(run_id: String, artifact_id: String, path: String) -> EdgeArtifactDownloadReport {
+  EdgeArtifactDownloadReport { run_id: run_id, artifact_id: artifact_id, download_path: path }
+}
+
+fn admitted() -> RunPointerAdmitted {
+  RunPointerAdmitted { run_id: "424242", head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", artifact_name: site_pxe_edge_live_receipt_artifact_name, artifact_id: 77 }
+}
+
+fn minted_as(r: EdgeArtifactDownloadReport, run_id: String, artifact_id: Int) -> Bool {
+  match mint_downloaded_artifact_identity(report: r) {
+    DownloadedArtifactMinted { identity: i, path: _ } => i.run_id == run_id && i.artifact_id == artifact_id
+    DownloadedArtifactNotMinted { reason: _ } => false
+  }
+}
+
+fn not_minted_saying(r: EdgeArtifactDownloadReport, pattern: String) -> Bool {
+  match mint_downloaded_artifact_identity(report: r) {
+    DownloadedArtifactMinted { identity: _, path: _ } => false
+    DownloadedArtifactNotMinted { reason: why } => string_contains(s: why, pattern: pattern)
+  }
+}
+
+// THE MINT. A completed download (a download-path) names the run and artifact it was asked for; no path, no identity, whatever ids it was given. RED: an
+// empty path minted, or an id that is not a positive decimal accepted.
+test fn the_identity_is_minted_only_from_a_completed_download_of_a_decimal_id() -> Bool {
+  minted_as(r: report(run_id: "424242", artifact_id: "77", path: "/w/target/dl"), run_id: "424242", artifact_id: 77)
+    && not_minted_saying(r: report(run_id: "424242", artifact_id: "77", path: ""), pattern: "did not complete")
+    && not_minted_saying(r: report(run_id: "x42", artifact_id: "77", path: "/w/target/dl"), pattern: "not a workflow run id")
+    && not_minted_saying(r: report(run_id: "424242", artifact_id: "seventy", path: "/w/target/dl"), pattern: "not a decimal id")
+    && not_minted_saying(r: report(run_id: "424242", artifact_id: "0", path: "/w/target/dl"), pattern: "not positive")
+}
+
+fn a_record() -> String? {
+  match parse_mac_address(text: "52:54:00:12:34:56") {
+    MacParseFailed { error: _ } => none
+    MacParsed { address: mac } =>
+      match site_pxe_edge_live_hash_of_hex(hex: "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr) {
+        Absent => none
+        Present { value: h } => Present { value: site_pxe_edge_live_receipt_encode(readings: [SitePxeEdgeLiveReading { mac: mac, iso: h, kernel: h, initrd: h }]) }
+      }
+  }
+}
+
+fn cited_with(r: EdgeArtifactDownloadReport, bytes: String?) -> Bool {
+  match cite_downloaded_edge_receipt(admission: admitted(), report: r, bytes: bytes) {
+    EdgeReceiptCited { identity: i, cited: c } =>
+      i.run_id == "424242" && i.artifact_id == 77 && c.run_id == "424242"
+        && (match bytes { Present { value: t } => c.record_digest == sha256_hex_of_text(text: t)  Absent => false })
+    EdgeReceiptNotCited { reason: _ } => false
+  }
+}
+
+fn refused_with(r: EdgeArtifactDownloadReport, bytes: String?, pattern: String) -> Bool {
+  match cite_downloaded_edge_receipt(admission: admitted(), report: r, bytes: bytes) {
+    EdgeReceiptCited { identity: _, cited: _ } => false
+    EdgeReceiptNotCited { reason: why } => string_contains(s: why, pattern: pattern)
+  }
+}
+
+// THE CITATION. The admitted record, fetched by its own id from its own run, is cited with the digest of the bytes read. The same canonical bytes are refused
+// when the download names another artifact id or another run (what a by-name fetch of a re-run's same-named artifact would be), when the download did not
+// complete, when the file could not be read, and when the pointer was not admitted. RED: cite_edge_live_receipt's identity check removed, or the mint
+// ignoring the download path.
+test fn only_the_admitted_artifact_fetched_by_id_is_cited() -> Bool {
+  match a_record() {
+    Absent => false
+    Present { value: text } => {
+      let bytes: String? = Present { value: text }
+      let unread: String? = none
+      cited_with(r: report(run_id: "424242", artifact_id: "77", path: "/w/target/dl"), bytes: bytes)
+        && refused_with(r: report(run_id: "424242", artifact_id: "78", path: "/w/target/dl"), bytes: bytes, pattern: "not the admitted run 424242 artifact 77")
+        && refused_with(r: report(run_id: "424243", artifact_id: "77", path: "/w/target/dl"), bytes: bytes, pattern: "not the admitted run 424242 artifact 77")
+        && refused_with(r: report(run_id: "424242", artifact_id: "77", path: ""), bytes: bytes, pattern: "did not complete")
+        && refused_with(r: report(run_id: "424242", artifact_id: "77", path: "/w/target/dl"), bytes: unread, pattern: "could not be read")
+        && (match cite_downloaded_edge_receipt(admission: RunPointerArtifactAbsent { run_id: "424242", artifact: site_pxe_edge_live_receipt_artifact_name }, report: report(run_id: "424242", artifact_id: "77", path: "/w/target/dl"), bytes: bytes) {
+          EdgeReceiptCited { identity: _, cited: _ } => false
+          EdgeReceiptNotCited { reason: _ } => true
+        })
+    }
+  }
+}
+
+// THE RECEIPT LINE names the cited run, the downloaded artifact id and the record digest, or says why nothing was cited.
+test fn the_cite_receipt_names_the_run_the_artifact_id_and_the_record_digest() -> Bool {
+  match a_record() {
+    Absent => false
+    Present { value: text } => {
+      let bytes: String? = Present { value: text }
+      let cited = edge_receipt_citation_text(c: cite_downloaded_edge_receipt(admission: admitted(), report: report(run_id: "424242", artifact_id: "77", path: "/w/target/dl"), bytes: bytes))
+      let refused = edge_receipt_citation_text(c: cite_downloaded_edge_receipt(admission: admitted(), report: report(run_id: "424242", artifact_id: "78", path: "/w/target/dl"), bytes: bytes))
+      string_contains(s: cited, pattern: "cited: run 424242 artifact 77 at bbbb")
+        && string_contains(s: cited, pattern: concat("record sha256:", sha256_hex_of_text(text: text)))
+        && string_contains(s: refused, pattern: "not cited:")
+    }
+  }
+}

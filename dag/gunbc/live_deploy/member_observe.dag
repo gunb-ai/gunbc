@@ -7,6 +7,7 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
+import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.crypto.hash
 import extdeps.systemd { systemd_unit_property_wire, parse_systemd_unit_active_state, ActiveState, NeedDaemonReload, Active, SystemdUnitActiveState }
 import extdeps.systemd.systemctl
@@ -14,10 +15,13 @@ import extdeps.git.inspect
 import extdeps.shell
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, filesystem_listing_observation, filesystem_entry_presence, filesystem_read_outcome, filesystem_file_observation,
-  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  Filesystem, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
+  FilesystemEntryLookup, FilesystemEntryPresentByLookup, FilesystemEntryAbsentByLookup, FilesystemEntryUnobservable,
+  filesystem_entry_lookup_reading_of_exit,
 }
+import extdeps.tools.ls { ls_long_numeric_entries_command }
+import std.env_binding { EnvSet }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
 import gunbc.host.host_effect_realize { run_typed_argv_transport }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -28,7 +32,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, ListDirectoryEntries, ReadDirectoryIdentity, executor_privileged_operation_elevated_command, executor_privileged_operation_elevated_argv }
 import gunbc.command_runner { run_shell_command_observe_outcome }
-import extdeps.exec.command { LocalExec }
+import extdeps.exec.command { LocalExec, ArgvCommand, argv_words, env_prefixed_command }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.ensure { EnsureMayApply, EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible }
 import std.upsert_decision { Noop, Apply, Refuse }
@@ -99,16 +103,36 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 // argv builders and the operations spell one invocation each; that pair is the extdeps seam every
 // shell-transported operation carries today, and it folds when an operation's transport row can be
 // read back.
+// WHOSE privilege the parent-listing leg reads. TYPED, not a bare Bool, because this arm is shared
+// by more than a dozen legs (sha256, cat, systemctl, git, stat, rm, ...) and a Bool invited a caller
+// to believe an "elevated" arm elevates THOSE too (review 94925): the type itself says elevation is
+// the LISTING question's and nothing else's.
+type ListingPrivilege = BareListing | ElevatedListing
+
 type ObservationArm
   = OnTheHostItself
-  | OverTransport { transport: HostEffectTransport }
+  | OverTransport { transport: HostEffectTransport, listing: ListingPrivilege }
 
 fn observation_arm(transport: HostEffectTransport) -> ObservationArm {
   match transport {
     LocalShell => OnTheHostItself
-    SshShell { ssh_host: _ } => OverTransport { transport: transport }
-    FleetSsh { target: _, context: _ } => OverTransport { transport: transport }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => OverTransport { transport: transport }
+    SshShell { ssh_host: _ } => OverTransport { transport: transport, listing: BareListing }
+    FleetSsh { target: _, context: _ } => OverTransport { transport: transport, listing: BareListing }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => OverTransport { transport: transport, listing: BareListing }
+  }
+}
+
+// THE ARM WHOSE PARENT-LISTING LEG RUNS ELEVATED (sudo -n, extdeps.sudo.elevation -- the same
+// elevation every privileged leg of the fleet converges carries). The bootstrap principal cannot
+// list a root:root 0750 parent: the fresh host's /etc/sudoers.d on srv14 proved it (runner-host-file
+// converge run 43387068589 -- the sudoers row's absence could never be established and the file
+// plan refused fail-closed). ELEVATION BELONGS TO THE LISTING QUESTION ONLY -- it rides as the
+// typed listing privilege on the transport arm, and every other leg of this arm reads the bare
+// bootstrap principal. The walk, the argv and the membership read stay one authority.
+fn observation_arm_elevated_listing(transport: HostEffectTransport) -> ObservationArm {
+  match observation_arm(transport: transport) {
+    OverTransport { transport: t, listing: _ } => OverTransport { transport: t, listing: ElevatedListing }
+    OnTheHostItself => OnTheHostItself
   }
 }
 
@@ -165,11 +189,18 @@ fn path_basename(path: String) -> String {
 }
 
 // THE TWO PURE HALVES OF A TRANSPORT LISTING, named so a caller that must supply its OWN transport
-// consumes them rather than re-minting them. The elevated arms of the fleet converges cannot use
-// entry_presence itself -- it reaches the far side as the bootstrap principal, and a root:root 0700
-// parent refuses that listing -- but the argv and the membership read are the same facts whichever
-// principal runs them, and two copies of a membership predicate can drift into two answers about
-// one question (gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention).
+// consumes them rather than re-minting them: gunbc.runner.runner_host_file_converge's tree-presence
+// read and gunbc.fleet.host_credential_custody_converge's custody read both dial THESE two, over
+// their own transports. The argv and the membership read are the same facts whichever principal runs
+// them, and two copies of a membership predicate can drift into two answers about one question
+// (gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention).
+//
+// Whether ONE NAMED ENTRY is present is not this route's question any more -- entry_presence_in_parent
+// asks extdeps.filesystem.filesystem_io's lookup, which needs the parent's search bit and not its read
+// bit -- so the privileged parent-listing leg that used to serve it is deleted with the arm it served
+// (gunbc.design_argument::consumption: a declaration with no consumer over an executing route is
+// dangling, and a witness alone does not feed it). The elevation an arm carries still rides every
+// reading leg that remains, below.
 fn parent_listing_argv(parent: String) -> List<String> {
   ["ls", "-1", "-A", "--", parent]
 }
@@ -178,24 +209,101 @@ fn listing_contains_entry(stdout: String, name: String) -> Bool {
   any(split(s: stdout, delimiter: "\n"), entry => entry == name)
 }
 
+// THE ONE ELEVATION EVERY READING LEG OF AN ARM USES. A leg that reads a path the bootstrap principal
+// cannot read (the parent of a named entry under a root:root 0750 directory; a root-only file for a
+// digest, a document or a metadata read) wraps its argv in the SAME elevation the writes use --
+// extdeps.sudo.elevation, spelled once. A bare arm reads exactly as before; an elevated arm elevates
+// every READING leg, not one of them, because the fresh srv14 host proved the whole class at once: the
+// sudoers listing refused (run 43387068589) AND the metadata readback find refused right after its own
+// successful write (run 43448221797). Refused elevation still answers a refusal -- Indeterminate for
+// presence, the leg's own refusal otherwise -- never a fabricated absence or match. Its production
+// consumers build the arm with observation_arm_elevated_listing: gunbc.runner.runner_host_file_converge
+// does so for its artifact and file presence reads over FleetSsh, which arrive here as the lookup leg.
+fn elevated_leg_argv(privilege: ListingPrivilege, argv: List<String>) -> List<String> {
+  match privilege {
+    BareListing => argv
+    ElevatedListing => sudo_elevate_argv(command: argv)
+  }
+}
+
+// THE DIGEST AND DOCUMENT LEGS OF AN ARM NAME THEIR OWN ARGV DECISION, so a witness asserts the
+// ROUTE and not only the answer (gunbc.design_argument::witness_one_interface): an elevated arm's
+// sha256 and cat run through the one elevation, a bare arm's run exactly as they always did.
+fn sha256_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: sha256sum_argv(path: path))
+}
+
+fn unit_document_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: ["cat", "--", path])
+}
+
+// THE ONE LOOKUP LEG AN ARM RIDES: `ls -l -n -d -- <path>` under `LC_ALL=C`. The words are the
+// utility's own (extdeps.tools.ls, whose comment commits to this shape: one entry's metadata with no
+// format word, because the `%` a `stat -c` needs is refused at the fleet SSH edge), the binding is the
+// modelled one so the failure text is the errno the reader admits, and the leg rides the arm's own
+// transport and the arm's own elevation -- the same wrapper the listing arm has, so a lookup of a
+// root-owned directory answers for an elevated arm exactly as its listing does. ONE leg, because ONE
+// question is asked. The `test -L` / `test -e` / `test -x` trio this replaced asked three questions and
+// still could not answer the one: `test`'s exit 1 does not distinguish an entry that is absent from one
+// that could not be stat'ed, and a probe of the parent's search bit cannot recover what the entry's own
+// observation threw away -- it only adds a window in which the parent's mode can change between legs.
+
+fn entry_lookup_command(path: String) -> ArgvCommand {
+  env_prefixed_command(bindings: [EnvSet { name: "LC_ALL", value: "C" }], command: ls_long_numeric_entries_command(paths: [path]))
+}
+
+fn entry_lookup_leg_argv(path: String, privilege: ListingPrivilege) -> List<String> {
+  elevated_leg_argv(privilege: privilege, argv: argv_words(command: entry_lookup_command(path: path)))
+}
+
+// ONE LEG ON THE HOST ARM: run locally, with the spawn kept as a value -- a utility that could not be
+// spawned is an unreadable answer, not a status, and certainly not a false.
+fn host_entry_lookup_reading(path: String) -> FilesystemEntryLookup {
+  match run_shell_command_observe_outcome(command: entry_lookup_command(path: path), transport: LocalExec) {
+    ProcessRan { observation: observation } => filesystem_entry_lookup_reading_of_exit(path: path, exit_code: observation.exit_code, stdout: observation.stdout, stderr: observation.stderr)
+    ProcessNotSpawned { program: program, cause: cause } => FilesystemEntryUnobservable { path: path, cause: join([program, " did not spawn: ", cause], "") }
+  }
+}
+
+// ONE LEG ON THE PEER ARM, as every other peer leg goes: through the typed argv transport. A transport
+// that could not carry the leg is an unreadable answer, never a false -- no process ran, and an exit
+// status for it would be a fabricated observation (gunbc.design_argument::fail_closed).
+fn peer_entry_lookup_reading(transport: HostEffectTransport, path: String, privilege: ListingPrivilege) -> FilesystemEntryLookup {
+  match run_typed_argv_transport(argv: entry_lookup_leg_argv(path: path, privilege: privilege), transport: transport) {
+    TypedArgvExecRefused { reason: reason } => FilesystemEntryUnobservable { path: path, cause: join(["the lookup leg could not be carried to the peer: ", reason], "") }
+    TypedArgvExecConverged { result: result } => filesystem_entry_lookup_reading_of_exit(path: path, exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr)
+  }
+}
+
 fn entry_presence_in_parent(arm: ObservationArm, parent: String, name: String) -> EntryPresence {
   match arm {
-    OnTheHostItself => {
-      let listing = Filesystem.List(path: parent)
-      match filesystem_entry_presence(
-        listing: filesystem_listing_observation(directory: parent, success: listing.success, entries: listing.entries, error: listing.error),
-        name: name,
-      ) {
-        FilesystemEntryAbsent(_) => EntryAbsent
-        FilesystemEntryListed { directory: _, name: _ } => EntryPresent
-        FilesystemEntryPresenceIndeterminate { cause } => EntryPresenceIndeterminate { cause: cause }
-        FilesystemEntrySubjectRefused { directory: _, name: _, cause } => EntryPresenceIndeterminate { cause: cause }
-      }
-    }
-    OverTransport { transport } => match remote_leg(transport: transport, argv: parent_listing_argv(parent: parent), leg: join(["listing ", parent], "")) {
-      LegRefused { cause } => EntryPresenceIndeterminate { cause: cause }
-      LegOut { stdout } => if listing_contains_entry(stdout: stdout, name: name) { EntryPresent } else { EntryAbsent }
-    }
+    OnTheHostItself => host_entry_presence_in_parent(parent: parent, name: name)
+    OverTransport { transport: t, listing: p } =>
+      peer_entry_presence_in_parent(transport: t, privilege: p, parent: parent, name: name)
+  }
+}
+
+// THE HOST ARM ASKS THE HOST. Unprivileged, on purpose: what presence needs from the observing
+// principal is the search bit it already holds on the parent, never a read it was deliberately denied,
+// and asking for more here would be the widening this whole route exists to avoid.
+fn host_entry_presence_in_parent(parent: String, name: String) -> EntryPresence {
+  entry_lookup_to_presence(lookup: host_entry_lookup_reading(path: join([parent, "/", name], "")))
+}
+
+// THE PEER ARM ASKS THE PEER, through the typed argv transport every other peer leg rides and under the
+// same elevation, so both arms answer the same question about the same name by the same route and any
+// asymmetry between them is a real difference on the hosts rather than an artifact of the model.
+fn peer_entry_presence_in_parent(transport: HostEffectTransport, privilege: ListingPrivilege, parent: String, name: String) -> EntryPresence {
+  entry_lookup_to_presence(lookup: peer_entry_lookup_reading(transport: transport, path: join([parent, "/", name], ""), privilege: privilege))
+}
+
+// The owner's answer in this module's vocabulary: one arm per carrier, and the cause of an unobservable
+// answer is the host's own words, carried unchanged.
+fn entry_lookup_to_presence(lookup: FilesystemEntryLookup) -> EntryPresence {
+  match lookup {
+    FilesystemEntryPresentByLookup { path: _ } => EntryPresent
+    FilesystemEntryAbsentByLookup { path: _, cause: _ } => EntryAbsent
+    FilesystemEntryUnobservable { path: _, cause: cause } => EntryPresenceIndeterminate { cause: cause }
   }
 }
 
@@ -232,7 +340,7 @@ fn sha256_leg(arm: ObservationArm, path: String) -> Leg {
       let r = crypto.Sha256Sum.File(path: path)
       leg_of(success: r.success, stdout: r.line, stderr: r.stderr, leg: join(["sha256sum ", path], ""))
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: sha256sum_argv(path: path), leg: join(["sha256sum ", path], ""))
+    OverTransport { transport: transport, listing: privilege } => remote_leg(transport: transport, argv: sha256_leg_argv(path: path, privilege: privilege), leg: join(["sha256sum ", path], ""))
   }
 }
 
@@ -307,7 +415,7 @@ fn unit_document_leg(arm: ObservationArm, path: String, absent: UnitDocumentAbse
         }
       }
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["cat", "--", path], leg: join(["reading ", path], ""))
+    OverTransport { transport: transport, listing: privilege } => remote_leg(transport: transport, argv: unit_document_leg_argv(path: path, privilege: privilege), leg: join(["reading ", path], ""))
   }
 }
 
@@ -371,7 +479,7 @@ fn manager_standing_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
       let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: NeedDaemonReload))
       leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=NeedDaemonReload", "--value"], leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=NeedDaemonReload", "--value"], leg: join(["systemctl show NeedDaemonReload ", unit as String], ""))
   }
 }
 
@@ -402,7 +510,7 @@ fn active_state_leg(arm: ObservationArm, unit: NonEmptyStr) -> Leg {
       let r = systemd.Systemctl.ShowProperty(unit: unit, property: systemd_unit_property_wire(property: ActiveState))
       leg_of(success: r.success, stdout: r.value, stderr: "systemctl show failed", leg: join(["systemctl show ActiveState ", unit as String], ""))
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=ActiveState", "--value"], leg: join(["systemctl show ActiveState ", unit as String], ""))
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: ["systemctl", "show", unit as String, "--property=ActiveState", "--value"], leg: join(["systemctl show ActiveState ", unit as String], ""))
   }
 }
 
@@ -473,7 +581,7 @@ fn head_leg(arm: ObservationArm, repo: String) -> Leg {
       let r = git.Inspect.HeadCommitIn(repository_path: repo)
       leg_of(success: r.success, stdout: r.sha, stderr: r.stderr, leg: "head")
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_revision_argv(repo: repo as NonEmptyStr), leg: "head")
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_revision_argv(repo: repo as NonEmptyStr), leg: "head")
   }
 }
 
@@ -489,7 +597,7 @@ fn scratch_index(arm: ObservationArm) -> ScratchPath {
       let r = shell.Mktemp.FileInDirectory(dir: scratch_index_directory as FilePath)
       if r.success { ScratchAt { path: trim(s: r.path as String) } } else { ScratchRefused { cause: "mktemp for the scratch index failed" } }
     }
-    OverTransport { transport } => match remote_leg(transport: transport, argv: ["mktemp", "-p", scratch_index_directory], leg: "scratch index") {
+    OverTransport { transport: transport, listing: _ } => match remote_leg(transport: transport, argv: ["mktemp", "-p", scratch_index_directory], leg: "scratch index") {
       LegRefused { cause } => ScratchRefused { cause: cause }
       LegOut { stdout } => ScratchAt { path: trim(s: stdout) }
     }
@@ -502,7 +610,7 @@ fn scratch_release(arm: ObservationArm, path: String) -> Leg {
       let r = Filesystem.Delete(path: path)
       leg_of(success: r.success, stdout: "", stderr: r.error, leg: join(["scratch index removal ", path], ""))
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: coreutils_rm_force_argv(paths: [path]), leg: join(["scratch index removal ", path], ""))
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: coreutils_rm_force_argv(paths: [path]), leg: join(["scratch index removal ", path], ""))
   }
 }
 
@@ -512,7 +620,7 @@ fn read_tree_leg(arm: ObservationArm, repo: NonEmptyStr, revision_hex: String, i
       let r = git.Inspect.ReadTreeIntoIndex(repository_path: repo as String, revision_hex: revision_hex, index_path: index_path)
       leg_of(success: r.success, stdout: "", stderr: r.stderr, leg: "index materialization")
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_read_tree_argv(repo: repo, revision_hex: revision_hex, index_path: index_path), leg: "index materialization")
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_read_tree_argv(repo: repo, revision_hex: revision_hex, index_path: index_path), leg: "index materialization")
   }
 }
 
@@ -522,7 +630,7 @@ fn status_leg(arm: ObservationArm, repo: NonEmptyStr, index_path: String) -> Leg
       let r = git.Inspect.StatusAgainstIndex(repository_path: repo as String, index_path: index_path)
       leg_of(success: r.success, stdout: r.entries_nul, stderr: r.stderr, leg: "worktree comparison")
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_status_argv(repo: repo, index_path: index_path), leg: "worktree comparison")
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_status_argv(repo: repo, index_path: index_path), leg: "worktree comparison")
   }
 }
 
@@ -532,7 +640,7 @@ fn ignored_leg(arm: ObservationArm, repo: NonEmptyStr, index_path: String) -> Le
       let r = git.Inspect.IgnoredAgainstIndex(repository_path: repo as String, index_path: index_path)
       leg_of(success: r.success, stdout: r.paths_nul, stderr: r.stderr, leg: "ignored deployed paths")
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: deployed_tree_ignored_argv(repo: repo, index_path: index_path), leg: "ignored deployed paths")
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_ignored_argv(repo: repo, index_path: index_path), leg: "ignored deployed paths")
   }
 }
 
@@ -728,7 +836,7 @@ fn subtree_readback_leg(arm: ObservationArm, instance: HostDashboardInstance, ch
         ProcessNotSpawned { program: _, cause } => SubtreeReadUnobservable { cause: cause as String }
         ProcessRan { observation: o } => SubtreeReadOut { receipt: o.stdout }
       }
-    OverTransport { transport } =>
+    OverTransport { transport: transport, listing: _ } =>
       match run_typed_argv_transport(argv: command.arguments, transport: transport) {
         TypedArgvExecRefused { reason } => SubtreeReadUnobservable { cause: reason }
         TypedArgvExecConverged { result: r } => SubtreeReadOut { receipt: r.stdout }
@@ -834,7 +942,7 @@ fn posture_config_leg(arm: ObservationArm, repo: FilePath, key: NonEmptyStr) -> 
           else if o.exit_code == 1 { PostureConfigPair { key: key, value: posture_missing_sentinel } }
           else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(o.exit_code)], "") } }
       }
-    OverTransport { transport } =>
+    OverTransport { transport: transport, listing: _ } =>
       match run_typed_argv_transport(argv: command.arguments, transport: transport) {
         TypedArgvExecRefused { reason } => PostureConfigUnobservable { cause: join([read_failure_cause, ": ", reason], "") }
         TypedArgvExecConverged { result: r } =>
@@ -926,7 +1034,7 @@ fn privileged_directory_read(arm: ObservationArm, op: ExecutorPrivilegedOperatio
           if o.exit_code == 0 { ObserverReadOut { stdout: o.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: o.exit_code, stderr: o.stderr } } }
       }
-    OverTransport { transport } =>
+    OverTransport { transport: transport, listing: _ } =>
       match run_typed_argv_transport(argv: executor_privileged_operation_elevated_argv(op: op), transport: transport) {
         TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
         TypedArgvExecConverged { result: r } =>

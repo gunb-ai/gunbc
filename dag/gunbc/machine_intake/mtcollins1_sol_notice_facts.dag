@@ -5,7 +5,7 @@ import std.measure { Second, second }
 
 // THE SOL-NOTICE / SOL-CAPTURE FACTS THIS UNIT'S OBSERVERS READ. These leaf facts live on the mtcollins1
 // row, not in the boot procedure: the SOL-notice watcher (gunbc.machine_intake.mtcollins1_sol_notice
-// mtcollins1_sol_notice_wet) and the boot step's shell (gunbc.ci.ci_spec) read them beside the capture,
+// mtcollins1_sol_notice_wet) and the boot step's shell (gunbc.machine_intake.mtcollins1_boot_step) read them beside the capture,
 // and the watcher is a SEPARATE PROCESS that must resolve cheaply. Importing the 3006-line boot module
 // (gunbc.machine_intake.mtcollins1_boot_run) just for these constants dragged that module's whole
 // 1288-module closure into the watcher process and refused the slot's memory envelope (runs
@@ -29,7 +29,7 @@ fn mtcollins1_sol_client_diagnostic_path(capture_path: String) -> String {
 // Where a lost observation channel is frozen the moment it is observed (mtcollins1_sol_loss_freeze).
 // Bound to the attempt with the capture, so an earlier attempt's incident is never read as this one's.
 // THIS FILE IS THE OPERATOR ROUTE'S SOURCE (operator ruling 2026-09-27: no ntfy, no new credential):
-// the boot step (gunbc.ci.ci_spec gunbc_ci_mtcollins1_boot_invoke) watches it and,
+// the boot step (gunbc.machine_intake.mtcollins1_boot_step gunbc_ci_mtcollins1_boot_invoke) watches it and,
 // within a second of it becoming non-empty, prints it as one Actions `::error::` annotation in the
 // live run log and appends it to the step summary -- so the notice leaves the runner while the watch
 // is still returning, before any enrichment read, teardown or diagnostic bundle. The suffix is one
@@ -46,7 +46,7 @@ data mtcollins1_sol_workflow_suffix: String = ".workflow"
 
 data mtcollins1_sol_client_suffix: String = ".client"
 
-// Where the step's watcher records every notice delivery outcome (gunbc.ci.ci_spec), beside the capture.
+// Where the step's watcher records every notice delivery outcome (gunbc.machine_intake.mtcollins1_boot_step), beside the capture.
 data mtcollins1_sol_delivery_suffix: String = ".delivery"
 
 // Every line the workflow writes to its events file starts with this, so a reader -- the step's exit

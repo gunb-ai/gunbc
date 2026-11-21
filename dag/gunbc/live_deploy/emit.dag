@@ -21,7 +21,7 @@ import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import gunbc.runner.runner_microvm_cell_readiness_location { cell_readiness_store_location }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_root }
-import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
+import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop, belt_standings_refresh_backstop, belt_pair_delivery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path, AdmittedFixedServeBinary, AdmittedServeBinarySource, SeedBuiltAtRevision, SourceUndeclared }
@@ -69,6 +69,7 @@ import extdeps.tailscale.serve {
 }
 import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
+  systemctl_restart_argv,
   systemctl_show_load_state_argv,
   systemctl_user_daemon_reload_argv,
 }
@@ -76,9 +77,11 @@ import extdeps.systemd { systemd_unit_load_state_not_found_wire, systemd_time_sp
 import gunbc.live_deploy.repository_convergence_placement {
   ConvergenceOneshot,
   convergence_oneshot_unit_text,
+  convergence_oneshot_service_unit_file_if_admitted,
   convergence_receipt_path,
   convergence_unit_doc,
   convergence_placement_entry_path,
+  tree_sync_convergence_oneshot,
 }
 import extdeps.git.inspect {
   git_config_get_exit_unset,
@@ -182,7 +185,7 @@ import gunbc.live_deploy.srv1_worker_slice_receipt {
   attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check,
 }
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryManaged, OwnedDirectoryDeclared,
   owned_directory_path, owned_directory_member, owned_directory_install_plan_of, owned_directory_install_argv,
@@ -238,6 +241,10 @@ import gunbc.live_deploy.spec {
   deployment_belt_exit_path_unit_name, deployment_belt_exit_drain_service_unit_name, deployment_belt_answer_path_unit_name, deployment_belt_discovery_service_unit_name,
   deployment_belt_credential_recovery_unit_name, deployment_belt_credential_recovery_unit_path,
   deployment_belt_credential_recovery_timer_unit_name, deployment_belt_credential_recovery_timer_unit_path,
+  deployment_belt_standings_refresh_unit_name,
+  deployment_pair_delivery_unit_name,
+  release_pair_deliver_base_root_env,
+  release_pair_deliver_serve_unit_env, release_pair_deliver_repo_root_env,
   deployment_belt_exit_drain_service_unit_path, deployment_belt_answer_path_unit_path, deployment_belt_discovery_service_unit_path,
   deployment_belt_service_unit_path, deployment_belt_unit_install_target,
   deployment_publication_service_unit_name,
@@ -532,6 +539,22 @@ fn live_deploy_oidc_unit_env_at(spec: DeploymentSpec, now_epoch: Second) -> Live
   live_deploy_oidc_unit_env_for(spec: spec, now_epoch: Present { value: now_epoch })
 }
 
+// THE CLOSURE VIEW OF THE OIDC UNIT ENV. A deployment step's closure view must equal the file the
+// deploy EMITS (deploy intent owns every artifact its units read), so the door closure accessors
+// below install exactly the directives the admitted emission installs — the one Environment
+// directive the reader's PLACEMENT AUTHORITY projects (tracker_web_oidc_serve_placement's Ready
+// config, the same cfg tracker_web_oidc_serve_standing answers ServeConfigured with). An
+// unassigned or unbound placement receives no OIDC Environment and the closure view carries none;
+// a missing-realization placement is refused before any file exists, so no comparison arises.
+fn live_deploy_oidc_unit_env_from_placement(spec: DeploymentSpec) -> List<SystemdServiceDirective> {
+  match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
+    TrackerWebOidcServeReady { config: cfg } => [Environment { assignment: tracker_web_oidc_env_assignment(cfg: cfg) }]
+    TrackerWebOidcPlacementUnassigned { instance_id: _ } => []
+    TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => []
+    TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => []
+  }
+}
+
 // The belt-B unit: ExecStart is `gunbc run` on the roadmap's ingress binding (gunbc.roadmap.roadmap_ingress;
 // the seed binary answering every request through the ONE .dag handler gunbc.roadmap.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch).
 // User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane
@@ -631,6 +654,32 @@ type LiveDeployTailnetDoorUnitEmission
   | LiveDeployTailnetDoorUnitNotDeployed
   | LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: NonEmptyStr }
 
+// THE FILE ITSELF is built by live_deploy_tailnet_door_serve_unit_file (the shared core), so the
+// closure accessor below and the emitted unit cannot spell argv[0]/WorkingDirectory apart.
+fn live_deploy_tailnet_door_serve_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>, socket: String,
+) -> SystemdUnitFile {
+  live_deploy_serve_unit_file_over_listener(
+    spec: spec, revision: revision, oidc_env: oidc_env,
+    description: "gunbc roadmap tailnet door (gunbc run, ingress binding)" as NonEmptyStr,
+    function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
+    listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
+  )
+}
+
+// THE CLOSURE VIEW of the tailnet door's unit file: the SAME core the deploy emits through, carrying
+// the SAME OIDC Environment the admitted emission installs (live_deploy_oidc_unit_env_from_placement
+// — the closure view equals what is emitted; it no longer strips the env). argv[0] and
+// WorkingDirectory come from `svc` inside over_listener, never from the OIDC directives; a control
+// asserts the view equals the Emitted file's on an admitted fixture. Absent when the spec carries no
+// tailnet-door demand (not an enabled unit), the same condition as the producer's NotDeployed.
+fn live_deploy_tailnet_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
+  match deployment_tailnet_door_socket(names: spec.names) {
+    Absent => none
+    Present { value: socket } => Present { value: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec), socket: socket) }
+  }
+}
+
 fn live_deploy_tailnet_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployTailnetDoorUnitEmission {
@@ -641,12 +690,7 @@ fn live_deploy_tailnet_door_unit_file(
       match deployment_tailnet_door_socket(names: spec.names) {
         Absent => LiveDeployTailnetDoorUnitNotDeployed
         Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
-          file: live_deploy_serve_unit_file_over_listener(
-            spec: spec, revision: revision, oidc_env: directives,
-            description: "gunbc roadmap tailnet door (gunbc run, ingress binding)" as NonEmptyStr,
-            function: concat(spec.service.serve_function as String, deployment_tailnet_door_function_suffix) as NonEmptyStr,
-            listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
-          )
+          file: live_deploy_tailnet_door_serve_unit_file(spec: spec, revision: revision, oidc_env: directives, socket: socket)
         }
       }
   }
@@ -655,6 +699,28 @@ fn live_deploy_tailnet_door_unit_file(
 // THE LAB AGENT'S DOOR UNIT: the same server on the agent-door entry, bound to the socket the
 // spec's agent-door directory demand names. Emitted only for a spec that carries that demand; the
 // emission type is the tailnet door's, because the three outcomes are the same.
+fn live_deploy_agent_door_serve_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>, socket: String,
+) -> SystemdUnitFile {
+  live_deploy_serve_unit_file_over_listener(
+    spec: spec, revision: revision, oidc_env: oidc_env,
+    description: "gunbc roadmap lab agent door (gunbc run, ingress binding)" as NonEmptyStr,
+    function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
+    listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
+  )
+}
+
+// THE CLOSURE VIEW of the agent door's unit file: same core, and the SAME OIDC Environment the admitted
+// emission installs (live_deploy_oidc_unit_env_from_placement) — the closure view equals what is
+// emitted; it no longer strips the env. A control asserts WHOLE equality with the Emitted file's
+// directives on an admitted fixture.
+fn live_deploy_agent_door_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile? {
+  match deployment_agent_door_socket_of(spec: spec) {
+    Absent => none
+    Present { value: socket } => Present { value: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: live_deploy_oidc_unit_env_from_placement(spec: spec), socket: socket) }
+  }
+}
+
 fn live_deploy_agent_door_unit_file(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, now_epoch: Second?,
 ) -> LiveDeployTailnetDoorUnitEmission {
@@ -665,12 +731,7 @@ fn live_deploy_agent_door_unit_file(
       match deployment_agent_door_socket_of(spec: spec) {
         Absent => LiveDeployTailnetDoorUnitNotDeployed
         Present { value: socket } => LiveDeployTailnetDoorUnitEmitted {
-          file: live_deploy_serve_unit_file_over_listener(
-            spec: spec, revision: revision, oidc_env: directives,
-            description: "gunbc roadmap lab agent door (gunbc run, ingress binding)" as NonEmptyStr,
-            function: concat(spec.service.serve_function as String, deployment_agent_door_function_suffix) as NonEmptyStr,
-            listener: HttpIngressUnixSocket { path: socket, mode: http_ingress_unix_socket_mode },
-          )
+          file: live_deploy_agent_door_serve_unit_file(spec: spec, revision: revision, oidc_env: directives, socket: socket)
         }
       }
   }
@@ -744,8 +805,19 @@ fn approval_broker_slice_unit_file() -> SystemdUnitFile {
 // Restart=on-failure and a distinct MainPID are the other half of the availability property: a
 // broker that dies is restarted by systemd on its own lifecycle, rather than waiting for whoever
 // notices the dashboard is down.
-fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
-  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port)
+fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> SystemdUnitFile {
+  live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url)
+}
+
+// THE CLOSURE VIEW of the approval-broker unit file: the SAME shared core the deploy emits through, so
+// argv[0] (the serve binary) and WorkingDirectory (the release dir) are the unit's own declaration. The
+// base-url Environment directive is the ONLY thing the deploy adds that the closure does not need, so the
+// closure passes an EMPTY environment to the core — it never fabricates a base URL (fail_closed: "no
+// plausible output is fabricated"). Same shape as the tailnet/agent door closure accessors, which pass
+// oidc_env: []. A control asserts this file's argv[0]/WorkingDirectory equal the real emitted file's.
+// The broker is an always-enabled role singleton.
+fn live_deploy_approval_broker_unit_file_for_closure(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  live_deploy_approval_broker_serve_unit_file(spec: spec, revision: revision, port: spec.approval_broker.listen.port, environment: [] as List<SystemdServiceDirective>)
 }
 
 // THE PORT IS AN ARGUMENT SO THE DARK STAGE IS THE SAME UNIT, NOT A SECOND ONE. Stage 1 of
@@ -753,10 +825,32 @@ fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: Release
 // installs it on the serving port; if those were two unit producers, the process measured at stage
 // 2 would not be the process routed to at stage 5, and every reading taken would be about a build
 // nobody ran. One producer, one argument.
+// THE BROKER UNIT ON A GIVEN PORT WITH ITS REAL BASE-URL ENVIRONMENT. The one producer the deploy emits
+// through (apply_legs, the cutover stages). Delegates to the shared core with the base-url Environment
+// directive, so the real unit and the closure view are built by the SAME code.
 fn live_deploy_approval_broker_unit_file_on(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
   port: Port,
+  broker_base_url: NonEmptyStr,
+) -> SystemdUnitFile {
+  live_deploy_approval_broker_serve_unit_file(
+    spec: spec, revision: revision, port: port,
+    environment: approval_broker_base_url_environment(broker_base_url: broker_base_url),
+  )
+}
+
+// THE SHARED BROKER UNIT PRODUCER. The Environment directive list is a PARAMETER, so the closure view
+// (which reads only argv[0]/WorkingDirectory) can build the SAME unit with no environment rather than
+// being handed a fabricated base URL — the tailnet/agent doors take the same core shape, with the
+// OIDC Environment they are emitted WITH (live_deploy_oidc_unit_env_from_placement), so their closure
+// view equals what is emitted. Every non-environment directive — ExecStart argv[0], WorkingDirectory, slice,
+// user, EnvironmentFile, sidecar deps — is identical across the deploy and the closure view.
+fn live_deploy_approval_broker_serve_unit_file(
+  spec: DeploymentSpec,
+  revision: ReleaseRevisionBinding,
+  port: Port,
+  environment: List<SystemdServiceDirective>,
 ) -> SystemdUnitFile {
   let svc = spec.approval_broker
   let release_dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
@@ -766,24 +860,30 @@ fn live_deploy_approval_broker_unit_file_on(
       After { target: join(["network-online.target tailscaled.service ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
       Wants { target: join(["network-online.target ", gunbc_device_crypto_sidecar_unit_name as String], "") as NonEmptyStr },
     ],
-    service: [
-      ServiceType { mode: SimpleMode },
-      ServiceUser { name: svc.service_user },
-      ServiceGroup { name: svc.service_user },
-      ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
-      WorkingDirectory { path: release_dir as NonEmptyStr },
-      EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
-      release_locus_workspace_root_environment(release_dir: release_dir),
-      approval_broker_base_url_environment(spec: spec),
-      ExecStart { command: live_deploy_ingress_execstart(
-        binary: serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
-        entry: svc.serve_entry, binding_function: approval_broker_ingress_function, handler: svc.serve_function,
-        listener: HttpIngressTcp { host: svc.listen.host, port: port as Int },
-        revision: revision,
-        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
-      ) },
-      Restart { policy: "on-failure" as NonEmptyStr },
-    ],
+    service: concat(
+      [
+        ServiceType { mode: SimpleMode },
+        ServiceUser { name: svc.service_user },
+        ServiceGroup { name: svc.service_user },
+        ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
+        WorkingDirectory { path: release_dir as NonEmptyStr },
+        EnvironmentFile { path: device_crypto_deployed_digest_env_file_path(root: svc.repo_root as String, revision: revision) as NonEmptyStr },
+        release_locus_workspace_root_environment(release_dir: release_dir),
+      ],
+      concat(
+        environment,
+        [
+          ExecStart { command: live_deploy_ingress_execstart(
+            binary: serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision),
+            entry: svc.serve_entry, binding_function: approval_broker_ingress_function, handler: svc.serve_function,
+            listener: HttpIngressTcp { host: svc.listen.host, port: port as Int },
+            revision: revision,
+            cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
+          ) },
+          Restart { policy: "on-failure" as NonEmptyStr },
+        ]
+      )
+    ),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
@@ -835,8 +935,8 @@ fn emit_device_crypto_sidecar_unit_doc(spec: DeploymentSpec, revision: ReleaseRe
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_device_crypto_sidecar_unit_file(spec: spec, revision: revision)))
 }
 
-fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
+fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision, broker_base_url: broker_base_url)))
 }
 
 fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
@@ -921,6 +1021,13 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
 // retired timer's cadence (belt_tick_cadence). A quarantine write is the re-ask: PathChanged on
 // refused/ starts belt discovery, which re-enqueues PublishObligation. The residual stall after
 // the bound is gunbc.rung_drop publication_path_unbounded_retrigger.
+// THE PUBLICATION HELPER .path unit's read of record: the directories it watches for non-empty (the request
+// roles' spool dirs). One authority for both the unit file (below) and the closure read row, so a control can
+// compare them as one list without going through the same helper both sides call.
+fn live_deploy_publication_path_read_paths(spec: DeploymentSpec) -> List<String> {
+  spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication))
+}
+
 fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
     unit: [
@@ -931,7 +1038,7 @@ fn live_deploy_publication_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFi
     path: concat(
       concat(
         [PathUnit { target: deployment_publication_service_unit_name(names: spec.names) }],
-        map(spool_role_dirs(kind: SpoolPublication, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolPublication)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+        map(live_deploy_publication_path_read_paths(spec: spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
       ),
       [
         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
@@ -1148,13 +1255,121 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
   }
 }
 
+// THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16. It reuses `belt_observe_once_cli` — the SAME
+// zero-arg entry the operator runs by hand to force one observation pass — which runs exactly
+// `served_observation_observe_and_write_for_instance` (the fold) and nothing else: no spawn, no
+// launch, no teardown. This is deliberately NOT the retired belt timer (the event-units ruling heads
+// gunbc.live_deploy.spec::deployment_belt_exit_path_unit_name, "event-driven, not timer-driven"): that one
+// re-walked the frontier; this one fires a single read-only fold and stops. It is the credential-
+// recovery backstop's shape for a different law-with-no-trigger: the fold that republishes
+// /standings.json is otherwise produced ONLY by a belt tick, and a tick fires ONLY on a worker exit
+// or an operator action, so an idle host freezes the standings while still answering 200. Both the
+// timer and an event-driven tick can run the fold: the fold reads the carrier through a PRIVATE
+// snapshot worktree (roadmap_event_carrier::roadmap_event_private_snapshot — every operation owns
+// its worktree) and every body read is digest-verified, so the two are idempotent by construction and
+// cannot corrupt one another; whichever runs last leaves the same-or-newer document.
+// Its TimeoutStartSec is the fold's bounded runtime, `belt_tick_run_bound` (2700 s, a cold fold
+// measures 13-16 min) — NOT a standings-specific copy. The staleness gate's horizon is derived from
+// that SAME constant (gunbc.live_deploy.belt_cadence::belt_standings_refresh_staleness_horizon =
+// 2 * belt_standings_refresh_backstop + belt_tick_run_bound), so the fold budget the unit enforces
+// and the staleness the route tolerates can never drift apart: widening the unit's timeout
+// automatically widens the tolerated staleness so a healthy long fold is never 409'd (defect: a
+// horizon shorter than the cycle refused fresh data). Reused through the shared event-service row, so
+// the emitted timeout is single-authored on belt_tick_run_bound.
+fn live_deploy_belt_standings_refresh_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  live_deploy_belt_event_service_unit_file(
+    spec: spec,
+    description: "gunbc roadmap belt standings refresh (runs the served-observation fold from its own unit; does not depend on the belt continuing to tick)",
+    function: "belt_observe_once_cli",
+    gates: [],
+    install: NotInstallable)
+}
+
+fn live_deploy_belt_standings_refresh_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap standings refresh backstop (republishes the served observation every ~10 minutes; does not depend on the belt continuing to tick)" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_belt_standings_refresh_unit_name(names: spec.names) },
+      OnBootSec { duration: systemd_time_span_of_seconds(d: belt_standings_refresh_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_standings_refresh_backstop) },
+      AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
+
+// THE PAIR-DELIVERY unit + timer (node://lab-converges-release-pair): the EXECUTING consumer of the staged wet
+// delivery CLI. The service oneshot runs release_pair_deliver_once_cli (its OWN run performs the delivery —
+// fetch -> observed build-key verify -> fold -> place + restart — not a hand step); the timer re-arms it on the
+// pair cadence. The install registration (apply_legs) now lands with this deploy: the source-side observation
+// (review 96121) that makes the fold's guard check real work is real, so the install and enable legs are gated on
+// the instance's PairDelivered declaration (see spec.dag::PairDelivery). Witnessed in the emission oracle.
+// Built DIRECTLY (not via the belt-event helper) because this entry lives in a different module than the belt tick
+// CLI, and its own environment is supplied here: the release locus root, the serve unit to restart, and the repo root,
+// all DERIVED from spec authorities (no literals in the unit).
+fn live_deploy_belt_pair_delivery_unit_file(spec: DeploymentSpec, base_root: NonEmptyStr) -> SystemdUnitFile {
+  let svc = spec.service
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc paired release delivery (runs the staged wet delivery from its own unit: fetch, observed build-key verify, fold, place at the per-revision locus, restart)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: concat([
+      ServiceType { mode: OneshotMode },
+      TimeoutStartSec { duration: systemd_time_span_of_seconds(d: belt_tick_run_bound) },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      WorkingDirectory { path: svc.repo_root },
+      Environment { assignment: join([
+        release_pair_deliver_base_root_env as String, "=", base_root as String,
+      ], "") as NonEmptyStr },
+      Environment { assignment: join([
+        release_pair_deliver_serve_unit_env as String, "=", spec.names.unit_name as String,
+      ], "") as NonEmptyStr },
+      Environment { assignment: join([
+        release_pair_deliver_repo_root_env as String, "=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
+      ExecStart { command: join([
+        fixed_serve_binary_path(binary: svc.serve_binary),
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/live_deploy/release_pair_deliver_cli.dag --function release_pair_deliver_once_cli",
+      ], "") as NonEmptyStr },
+    ])),
+    install: NotInstallable,
+  }
+}
+
+fn live_deploy_belt_pair_delivery_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [Description { text: "gunbc paired release delivery timer (re-arms the wet pair-delivery on its own cadence; keeps the served pair at origin/main)" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_pair_delivery_unit_name(names: spec.names) },
+      OnBootSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
+      OnUnitInactiveSec { duration: systemd_time_span_of_seconds(d: belt_pair_delivery_backstop) },
+      AccuracySec { duration: systemd_time_span_of_seconds(d: belt_tick_cadence) },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
+
+// THE BELT EXIT .path unit's read of record: the directories it watches for non-empty (the attempt-exit
+// request roles' spool dirs). One authority for both the unit file (below) and the closure read row, so a
+// control can compare them as one list without going through the same helper both sides call.
+fn live_deploy_belt_event_path_read_paths(spec: DeploymentSpec) -> List<String> {
+  spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit))
+}
+
 fn live_deploy_belt_exit_path_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   PathUnitFile {
     unit: [Description { text: "gunbc roadmap belt: a unit exit was recorded" as NonEmptyStr }],
     path: concat(
       concat(
         [PathUnit { target: deployment_belt_exit_drain_service_unit_name(names: spec.names) }],
-        map(spool_role_dirs(kind: SpoolAttemptExit, instance_root: spec.service.instance_root as String, roles: spool_watched_roles(kind: SpoolAttemptExit)), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
+        map(live_deploy_belt_event_path_read_paths(spec: spec), d => DirectoryNotEmpty { path: d as NonEmptyStr }),
       ),
       [
         TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
@@ -1231,6 +1446,30 @@ fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
   doc_text(text: convergence_oneshot_unit_text(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec)))
 }
 
+// The deployed-tree-remote unit's TYPED unit file, from the SAME placement authority that renders its host text —
+// present only when the convergence slice is admitted (via the one placement helper; emit does NOT re-match slice
+// admission). The deploy-artifact closure classifies THIS unit file through the unit_standing classifier, so the
+// tree-remote read is derived from the same unit the deploy emits — not a hand-kept path beside it.
+fn live_deploy_tree_remote_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
+  convergence_oneshot_service_unit_file_if_admitted(spec: spec, oneshot: tree_remote_convergence_oneshot(spec: spec))
+}
+
+// THE TREE-SYNC UNIT FILE FOR CLOSURE: the tree-sync converger's unit, from the same placement authority that
+// renders its host text. TreeContent coverage comes from tree-sync (the tree PUBLICATION — it fetches and
+// checks out the source tree), NOT from tree-remote (whose ensure_deployed_tree_remote only sets the origin URL).
+// The gate classifies THIS unit file to decide whether a tree-sync restart covers the TreeContent read.
+fn live_deploy_tree_sync_unit_file_for_closure(spec: DeploymentSpec) -> SystemdUnitFile? {
+  convergence_oneshot_service_unit_file_if_admitted(
+    spec: spec,
+    oneshot: tree_sync_convergence_oneshot(
+      spec: spec,
+      candidate: "gate-converger-kind-probe",
+      receipt_path: convergence_receipt_path(instance_root: spec.service.instance_root as String),
+      working_directory: spec.service.repo_root as String,
+    )
+  )
+}
+
 // apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile
 // (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members,
 // observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed =
@@ -1277,8 +1516,8 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
         TailscaleServeMapping => none
         DeployedTreeRemoteUnit => none
         PublicationHelperPathUnit => none
-        AttemptUnitDrainPathUnit => none
-        ApprovalBrokerFrontDoor => none
+        AttemptUnitDrainPathUnit => Present { value: DirectoryRoot { path: art.path } }
+        ApprovalBrokerFrontDoor => Present { value: DirectoryRoot { path: art.path } }
       }
       ComposeOwned { kind: ck } => match ck {
         SystemdUnit => Present { value: UnitFile }
@@ -1391,39 +1630,49 @@ type UserWorkSliceUnitFile
   = UserWorkSliceUnitFileReady { file: SystemdUnitFile }
   | UserWorkSliceUnitFileRefused { cause: String }
 
-fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
-  match user_work_pool_slots() {
-    UserWorkPoolSlotsDerived { slots } => {
-      let max = user_work_slice_memory_max_of(slots: slots)
-      match user_work_cgroup_peak_check(bound: max) {
-        PeakBoundExceeded { excess: _ } =>
-          UserWorkSliceUnitFileRefused {
-            cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
-          }
-        PeakBoundHolds { margin: _ } =>
-      match user_work_slice_memory_high_of(memory_max: max) {
-        UserWorkSliceHighGapExceedsMax =>
-          UserWorkSliceUnitFileRefused {
-            cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
-          }
-        UserWorkSliceHighDerived { bytes: high } =>
-          UserWorkSliceUnitFileReady {
-            file: SliceUnitFile {
-              unit: [
-                Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
-              ],
-              slice: [
-                slice_memory_max(bytes: max),
-                slice_memory_high(bytes: high),
-                slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
-              ],
-              install: NotInstallable,
-            },
-          }
+// THE SHARED RENDER BODY. Both the srv1 route and the per-host route below funnel the derived
+// MemoryMax through HERE, so MemoryHigh (user_work_slice_memory_high_of) and MemorySwapMax
+// (user_work_slice_memory_swap_max = 0) are computed identically for every host -- an inhabitance
+// claim that exercises one route is an inhabitance of the relation, not of a private copy.
+fn render_user_work_slice_from_max(max: ByteSize) -> UserWorkSliceUnitFile {
+  match user_work_slice_memory_high_of(memory_max: max) {
+    UserWorkSliceHighGapExceedsMax =>
+      UserWorkSliceUnitFileRefused {
+        cause: "user-work MemoryMax is below the declared High gap, so MemoryHigh cannot be derived",
       }
+    UserWorkSliceHighDerived { bytes: high } =>
+      UserWorkSliceUnitFileReady {
+        file: SliceUnitFile {
+          unit: [
+            Description { text: "gunbc user-manager cgroup bound for --user transients (attempts, reviews, audit, supervisor, compute, gunbc test/run scopes)" as NonEmptyStr },
+          ],
+          slice: [
+            slice_memory_max(bytes: max),
+            slice_memory_high(bytes: high),
+            slice_memory_swap_max(bytes: user_work_slice_memory_swap_max),
+          ],
+          install: NotInstallable,
+        },
       }
-    }
   }
+}
+
+// THE PER-HOST RENDER (node adhoc-c0a6f401-440). The remote-build serve-converge leg and the
+// live-deploy apply plan BOTH render the
+// gunbc-user-work.slice for the host it is acting on, with the ceiling read from the carve
+// (gunbc.compute.host_capacity user_work_slice_memory_max_for_host) and passed here as a number, so
+// emit keeps a single import surface and never imports compute. It SHARES render_user_work_slice_from_max
+// with the srv1 route, so MemoryHigh/MemorySwapMax derive identically; an inhabitance claim on this entry
+// goes through the SAME code the srv1 receipt attests. The renderer itself does NOT apply srv1's recorded
+// cgroup peak check: that receipt is srv1's OWN observed user-work peak (its standing 2 x 22 GiB pool),
+// which is the wrong bound for a carved host whose ceiling is its reservation-derived appropriation. The
+// host's bound is the ceiling the caller read from the reservation row. The fail-closed guarantees differ by
+// caller and live OUTSIDE this renderer: the serve-converge leg settles only when MemoryMax and
+// MemorySwapMax=0 read back equal, and the live-deploy apply plan applies the srv1 recorded-peak admission
+// (refuse, never widen) gated to the uncarved branch (gunbc.live_deploy.apply_legs
+// deploy_apply_user_work_slice_unit_file).
+fn user_work_slice_unit_file_for_host_ceiling(memory_max: ByteSize) -> UserWorkSliceUnitFile {
+  render_user_work_slice_from_max(max: memory_max)
 }
 
 type AttemptWorkerSliceUnitFile
@@ -1462,23 +1711,36 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
 
 // gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
 // landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
-// restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
-// error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
-// unit's own journal, unreachable from this refusal (gunbc.design_argument::fail_closed — a stopped, typed, but unlocated
-// line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
-// is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert
-// runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that
-// never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command,
-// gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
-// failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
-// escape hatch (gunbc.design_argument::fail_closed forbids proceeding as if the refusal had not fired).
+// restart' stderr never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
+// unit's own journal. This restart is SYNCHRONOUS, ahead of the poll-based unit_diagnosis capture
+// entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own diagnosis
+// rather than waiting on one that never runs.
+//
+// WHAT THIS ROW RETIRES (dp-m2-shell-residue-retired). It used to splice the diagnosis onto the
+// command string as a `|| { echo ... >&2; ... >&2; exit 1; }` brace-group -- the shell control words
+// (||, ;, &&) this row exists to retire. It cannot survive that way: a single Do-effect leaf
+// (v2.std.orchestration.Run) carries ONE command and cannot hold a failure branch, and splicing one
+// onto the command string is exactly the anemic-leaf residue the node dissolves. So the step now
+// realizes ONE typed privileged argv -- the words from systemd.systemctl's own systemctl_restart_argv
+// row, elevated through the one seam (extdeps.sudo.elevation.sudo_elevate_argv) and rendered by the
+// shared argv serializer's structural quoting (never a format string, never the privileged
+// shell-text builder). Emitted as its own step under the apply plan's FailFast policy it STILL halts
+// the script when the restart fails -- a privileged command fails the pipeline just as firmly as the
+// brace-group did, so the failure is never masked (gunbc.design_argument::fail_closed: a restart that
+// fails must not proceed as if the refusal had not fired). What is gone is only the diagnosis that
+// rode on the command as text: the unit-status diagnosis survives as DATA on the apply plan's typed
+// leg (gunbc.live_deploy.apply_legs ApplyLegDiagnosedCommand.diagnosis = sudo_elevate_command(command:
+// systemctl_status_argv(unit: ...))), where an observation's exit code belongs as a value the plan
+// reads -- not as bytes appended to the command that failed.
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: join([
-    deploy_effect_command(inv: systemctl_restart_effect(unit: spec.names.tree_sync_unit_name)),
-    " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
-    live_deploy_unit_status_tail_command(unit: spec.names.tree_sync_unit_name),
-    " >&2; exit 1; }",
-  ], ""))
+  Do {
+    run: Run {
+      command: shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_restart_argv(unit: spec.names.tree_sync_unit_name))),
+      env: Empty,
+      redirect: Absent,
+      capture: Absent,
+    }
+  }
 }
 
 // THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve
@@ -1494,9 +1756,21 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
 // and the teardown cannot disagree about the flags — which is the property the upstream `off` form
 // actually requires.
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
-  deploy_raw(command: shell_privileged_command_text_of_argv(
-    argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
-  ))
+  // ONE typed privileged argv as a single Do-effect leaf: the serve words come from
+  // extdeps.tailscale.serve, elevation goes through the one seam
+  // (extdeps.sudo.elevation.sudo_elevate_argv -- the same pattern this file's
+  // deployment_serve_route_command already carries), and the command text is the shared argv
+  // serializer's structural quoting. The privileged shell-text builder
+  // (shell_privileged_command_text_of_argv) and the deploy_raw escape hatch are both retired on this
+  // step (dp-m2-shell-residue-retired); the words reaching exec are identical, minus the extra layer.
+  Do {
+    run: Run {
+      command: shell_command_text_of_argv(argv: sudo_elevate_argv(command: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)))),
+      env: Empty,
+      redirect: Absent,
+      capture: Absent,
+    }
+  }
 }
 
 // THE BINARY PATH BECAME A PARAMETER AND ITS PARENT DIRECTORY DID NOT (review 45197). This PR
@@ -1598,13 +1872,13 @@ type InstallRefusalCause
 // traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
 // surface's point is that its output embeds inertly (gunbc.design_argument::fail_closed correctness-by-construction: downstream code
 // only ever sees the carrier or a refusal, never a raw unchecked path).
-type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: String }
+type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: NonEmptyStr }
 
 fn shell_inert_absolute_path(path: String) -> Optional<ShellInertAbsolutePath> {
   if path == "" { Absent }
   else if !starts_with(s: path, prefix: "/") { Absent }
   else if any(unsafe_install_fragments, u => string_contains(s: path, pattern: u)) { Absent }
-  else { Present { value: ShellInertAbsolutePath { raw: path } } }
+  else { Present { value: ShellInertAbsolutePath { raw: path as NonEmptyStr } } }
 }
 
 data unsafe_install_fragments: List<String> = [
@@ -1731,8 +2005,9 @@ fn owned_directory_will_install(spec: DeploymentSpec, plan: ReleaseEffectPlan, t
 // restart-looped: the same symptom as the missing tree, from the other half of the pair.
 //
 // THE CANDIDATE BINARY WAS ALREADY ON THE HOST AND NOTHING WAS POINTING AT IT (operator ruling
-// 2026-09-20). The dark-install job carries its OWN download and verify steps -- gunbc.ci.ci_spec
-// ci_release_bins_download_step and ci_release_bins_unpack_verify_step, listed by
+// 2026-09-20). The dark-install job carries its OWN download and verify steps -- the release-bins
+// steps ci_release_bins_download_step and ci_release_bins_unpack_verify_step (gunbc.fleet.fleet_release_bins_key),
+// listed by
 // gunbc.fleet.fleet_converge_workflow fleet_converge_approval_broker_dark_install_job immediately before
 // the install step -- so release-bins.tgz is unpacked into $ROOT/target/release and every member is
 // put through claim_executor --verify-build-artifacts in this job, not inherited from some earlier
@@ -1776,19 +2051,40 @@ data approval_broker_release_retention_note: String = "The broker's release locu
 // from a directory that is not a git checkout, and a locus is not one -- measured on srv1
 // 2026-09-21, where both the broker's serve unit and the microVM slot unit exited 101 in
 // workspace_root before any stage ran. One row feeds both units.
-// THE BROKER IS GIVEN ITS PUBLIC BASE URL, built from the holder token the spec carries
-// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder), so the serving broker
-// reads where it runs instead of resolving it. A spec holding no role never reaches a broker unit
-// write (apply_approval_broker_unit_write_steps is empty for it); if one is rendered anyway the
-// binding is a refusal marker the broker's address read rejects as a non-URL, never a guessed host.
-data approval_broker_base_url_unbound_marker: String = "__GUNBC_DEPLOY_REFUSED__no-prod-role-holder"
+// THE BROKER UNIT'S EMISSION IS DECIDED IN ONE PLACE (single authority) from the holder the spec carries
+// (gunbc.auth.approval_broker_placement approval_broker_base_url_of_holder): BrokerUnitBound carries the
+// resolved public base URL the emitter is allowed to render; BrokerUnitRefused carries WHY an owned broker's
+// address cannot be resolved (an unregistered machine, an undeclared tailnet domain) -- the deploy must
+// REFUSE rather than emit a unit whose Environment= line silently vanishes; BrokerUnitNoUnit means the spec
+// holds no role, so there is no broker unit to install at all. Both routes gate on this and never hand the
+// emitter anything but a Bound url: the apply route (gunbc.live_deploy.apply_legs deploy_apply_unit_plan)
+// turns Refused into a typed ApplyPlanRefused before any leg runs, and the dark cutover route
+// (gunbc.host.host_effect_realize dark_stage_broker_unit) turns it into a typed DarkInstallRefused -- so an
+// unresolvable broker is counted on every path and a stale unit is never restarted under a run that reports
+// success (gunbc.design_argument::fail_closed: refuse, never widen; every degradation typed, located, countable).
+type BrokerUnitEmission
+  = BrokerUnitBound { url: NonEmptyStr }
+  | BrokerUnitRefused { detail: String }
+  | BrokerUnitNoUnit
 
-fn approval_broker_base_url_environment(spec: DeploymentSpec) -> SystemdServiceDirective {
-  let value = match spec.role_singletons {
-    HoldsProdRoleSingletons { holder } => approval_broker_base_url_of_holder(holder: holder) as String
-    HoldsNoRoleSingleton => approval_broker_base_url_unbound_marker
+fn approval_broker_unit_emission(spec: DeploymentSpec) -> BrokerUnitEmission {
+  match spec.role_singletons {
+    HoldsProdRoleSingletons { holder } =>
+      match approval_broker_base_url_of_holder(holder: holder) {
+        ApprovalBrokerAddressResolved { value: url } => BrokerUnitBound { url: url }
+        ApprovalBrokerAddressRefused { detail: d } => BrokerUnitRefused { detail: d as String }
+      }
+    HoldsNoRoleSingleton => BrokerUnitNoUnit
   }
-  Environment { assignment: join([approval_broker_base_url_env_name as String, "=", value], "") as NonEmptyStr }
+}
+
+// THE ONE EMITTER OF THE BROKER'S Environment= line. It renders an ALREADY-RESOLVED base URL, so it cannot be
+// handed an unresolvable or role-less address: every caller has gated on approval_broker_unit_emission and
+// passes a Bound url (or refuses outright). There is deliberately NO refused/no-role arm here -- that was the
+// silent '=> []' that let an owned broker install/enable/restart with no Environment= line (review 94210);
+// making the emitter take the resolved address makes the refused case structurally unable to reach it.
+fn approval_broker_base_url_environment(broker_base_url: NonEmptyStr) -> List<SystemdServiceDirective> {
+  [ Environment { assignment: join([approval_broker_base_url_env_name as String, "=", broker_base_url as String], "") as NonEmptyStr } ]
 }
 
 fn release_locus_workspace_root_environment(release_dir: String) -> SystemdServiceDirective {

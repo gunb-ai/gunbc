@@ -138,3 +138,15 @@ fn dpkg_query_status_command(package:NonEmptyStr) -> ArgvCommand {
  argv_command(program:uncataloged_program(invocation:dpkg_query_program),arguments:dpkg_query_status_argv(package:package).skip(n:1))
 }
 
+
+// THE HOST'S OWN DEBIAN ARCHITECTURE. `dpkg --print-architecture` prints the dpkg architecture id
+// (amd64, arm64, ...) that apt keys the package index by. It is a read-only query -- no package manager
+// state is changed -- and it is the sanctioned way to learn a host's arch rather than pinning one: the
+// fleet is mixed (aarch64 and x86_64 hosts exist), so a repository row's architecture is supplied by the
+// host, read the way the serving model reads host.arch (gunbc.compute.remote_build_serving_converge),
+// never a constant that would silently bind the row to the one host it was written on.
+data dpkg_program: NonEmptyStr = "dpkg"
+
+fn dpkg_print_architecture_command() -> ArgvCommand {
+  argv_command(program: uncataloged_program(invocation: dpkg_program), arguments: ["--print-architecture"])
+}

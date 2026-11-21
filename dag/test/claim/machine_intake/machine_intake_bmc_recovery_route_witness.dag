@@ -18,13 +18,18 @@ import gunbc.machine_intake.bmc_inband_recovery_receipts {
   asrock_altrad8ud_openbmc_3_22_00_published_factory_password_write_policy,
   asrock_altrad8ud_published_factory_password_write_policy_for,
   asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog,
+  recovery_inband_channel_instant,
 }
+// AN OBSERVATION'S TIME IS A BAND. The carrier and the fold that reads its bounds live in the clock
+// authority; this witness imports them rather than restating either (single_authority).
+import extdeps.clock { captured_instant_band }
+import std.interval { interval_high, interval_low }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_06_00_capabilities, asrock_altrad8ud_openbmc_3_22_00_capabilities,
 }
-import gunbc.auth.privileged_effect_census {
+import gunbc.auth.privileged_effect_registry {
   SiteVerdict, Conforms, Diverges, DivergesWithReason, SiteNotDecidable,
-  census_verdicts, recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
+  registry_verdicts, recovery_in_band_set_user_password_effect, recovery_manager_reset_to_defaults_effect,
 }
 import gunbc.auth.authorization_pattern_selection {
   PatternSelected, OperatorApprovedCapability, ReversibleByReapply, IrreversibleEffect, MintsNoCredential, MintsResourceScopedCredential,
@@ -34,7 +39,7 @@ import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigg
 import std.roster_frontier {
   DeclSubject, FrontierRow, PathSubject,
 }
-import gunbc.auth.privileged_effect_census {
+import gunbc.auth.privileged_effect_registry {
   PrivilegedEffectInterlock, privileged_effect_interlocks,
 }
 import gunbc.machine_intake.bmc_recovery_route_frontier {
@@ -50,11 +55,15 @@ import gunbc.source_layout { layout_module_storage_path }
 import std.filesystem { path_parent_directory }
 import gunbc.machine_intake.bmc_recovery_route {
   ExecutedWithoutByteCapture, recovery_write_was_attempted, recovery_rescue_host_address, recovery_reset_actuation, InBandTemporaryAdministratorPassword, RecoveryRouteUnavailable, RecoveryControllerNeverMeasured, RecoveryCatalogIndexesDisagree, NoReachableRescueHost, NoRescueHostAddressResponded, RecoveryReadbackInconclusive, recovery_test_route, recovery_measured_identity, recovery_unmeasured_identity, converge_in_band_recovery, recovery_convergence_steps, recovery_proof_requires, recovery_route_next_action, recovery_in_band_write_record, recovery_reset_write_record, recovery_factory_credential_readback, recovery_admitted_in_band_write, recovery_admitted_reset_write,
+  recovery_test_controller_observation,
 }
 import gunbc.machine_intake.arrival_converge {
-  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref, read_mtjade1_current_manager_read,
+  ArrivalStepRefusal, AccessDiscoverCredentialUnknownRecoveryRouteAvailable, access_discover, access_discover_step_ref,
 }
-import gunbc.fleet.convergence_fold { step_instance_key, ConvergenceRunId, StepSubjectKey }
+import gunbc.machine_intake.mtjade1_access_observation {
+  read_mtjade1_current_manager_read,
+}
+import gunbc.fleet.convergence_fold { step_instance_key, step_outcome_refusal, ConvergenceRunId, StepSubjectKey }
 import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -66,7 +75,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // extdeps.boards.asrock_rack (it is a vendor-build fact, not an OpenBMC fact, and the route only ever
 // ASKS the catalog for it), the completion code belongs to extdeps.bmc.ipmi (a byte out of the IPMI
 // specification's completion-code list, with the English kept as its description), and the
-// authorization pattern belongs to gunbc.auth.privileged_effect_census -- which is the module that
+// authorization pattern belongs to gunbc.auth.privileged_effect_registry -- which is the module that
 // answers which pattern a write is admitted under. Asserting any of them inside
 // gunbc.machine_intake.bmc_recovery_route would make the route vouch for its own upstream, which is
 // exactly how a firmware policy stops being a measured fact and starts being an assumption. Each test
@@ -246,7 +255,7 @@ test fn a_duplicated_catalog_reports_ambiguity_and_never_blames_the_measurement(
 // ── 2. BOTH WRITES ARE CENSUSED, AND THE DESTRUCTIVE ONE CANNOT DODGE OPERATOR APPROVAL ───────
 //
 // The route claims its two writes run through gunbc.auth.authorization_pattern_selection with
-// gunbc.auth.privileged_effect_census rows. Claimed is not done: these tests read the CENSUS and
+// gunbc.auth.privileged_effect_registry rows. Claimed is not done: these tests read the CENSUS and
 // require the rows to exist, to conform, and -- for the reset -- to have selection land on
 // OperatorApprovedCapability. The pattern is what the effect's characteristics force, so a row cannot
 // realize a friendlier pattern than its own effect permits.
@@ -257,14 +266,14 @@ data recovery_reset_site_name: String = "gunbc.machine_intake.bmc_recovery_route
 
 fn recovery_site_verdicts() -> List<SiteVerdict> {
   filter(
-    census_verdicts(),
+    registry_verdicts(),
     v => declaration_ref_display_key(v.site) == recovery_in_band_site_name
       || declaration_ref_display_key(v.site) == recovery_reset_site_name,
   )
 }
 
 fn verdict_for(wanted: String) -> SiteVerdict? {
-  filter(census_verdicts(), v => declaration_ref_display_key(v.site) == wanted) |> first()
+  filter(registry_verdicts(), v => declaration_ref_display_key(v.site) == wanted) |> first()
 }
 
 test fn both_in_band_recovery_writes_are_rostered_sites_of_the_census() -> Bool {
@@ -787,5 +796,30 @@ test fn the_reset_interlock_rosters_no_root_the_fold_cannot_show() -> Bool {
              Present { value: h } => (h.decl_name as String) == "UnitHoldProof"
            })
         && length(xs: bmc_recovery_route_pairing_frontier_rows()) == 1
+  }
+}
+
+// A NOTEBOOK BAND REACHING A POINT POSITION REFUSES, AND NOTHING NARROWS IT BEHIND THE FIELD.
+// bmc_recovery_route used to write the recapture window -- 06:50:00 to 06:59:59, the span the capture
+// README licenses -- into BmcAccessObservation.observed_at, which was typed EpochMs: one instant. The
+// declared-type wall refused the write, and the honest reading of that refusal is that the FIELD was the
+// unjustified boundary: an EpochMs there claims a millisecond the notebook never recorded ("no accessor
+// hands out one instant"). The field now carries extdeps.clock::CapturedInstant, and this claim holds the
+// two halves of what that must mean for the in-band route's controller reading: the observation's time IS
+// the licensed window, bound for bound, and it is a window -- its bounds differ, so no point can be read
+// out of it and no reader may quietly collapse the nine minutes to a second.
+// RED before the field was widened: the writing was refused, so the observation could not be built at all.
+test fn the_recovery_controller_observation_carries_the_window_and_no_instant() -> Bool {
+  let observation_band = captured_instant_band(instant: recovery_test_controller_observation().observed_at)
+  let licensed_band = captured_instant_band(instant: recovery_inband_channel_instant())
+  match observation_band {
+    Present { value: held } => match licensed_band {
+      Present { value: wanted } =>
+        interval_low(interval: held) == interval_low(interval: wanted)
+        && interval_high(interval: held) == interval_high(interval: wanted)
+        && interval_low(interval: held) != interval_high(interval: held)
+      Absent => false
+    }
+    Absent => false
   }
 }

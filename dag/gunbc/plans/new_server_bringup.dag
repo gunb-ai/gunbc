@@ -1,0 +1,91 @@
+module gunbc.plans.new_server_bringup
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, h3, p, li, ul, ol, quote }
+
+fn new_server_bringup_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal:** one reusable machine lifecycle that accepts an observed machine, decides how to install it, installs it safely, admits it, converges its roles and makes verified runner capacity out of it -- with srv4 carrying the site's boot and management edge so that no host's path depends on a hand tending mtcollins1."),
+      p(text: "**What this carrier holds:** the direction, why it is worth doing, and done-when. It holds no phase list, no owner, no item status and no done mark; those are the realization, downstream and redrawn whenever work is picked up (section 4), and they live as work items under site-boot-and-management-edge in gunbc.roadmap.roadmap_authority."),
+      p(text: "**Read at:** gunbc main `00cacc14979`; butch and srv4's edge read live 2026-11-10. The carrier was landed on 2026-11-20 from branch session/smart-crane-730-plan (head c623b01ef18), which had no pull request and so had never been checked against main or against *Plans are intentions*; what it carried there -- a PR sequence with owners and states, out-of-repo actions and a status vocabulary -- is where the work items and the event log carry it now."),
+    ]),
+
+    h2(text: "1. The decisions this intention stands on, and where each is recorded"),
+    p(text: "An intention does not hold its operator's decisions (DESIGN.md, *Plans are intentions*: a decision it needs from the operator is recorded in `gunbc.design_ruling` and cited, never kept in the plan or the pull request alone). What follows cites each decision's home rather than restating it; the wording they were recorded under is the carrier's section 1 on branch session/smart-crane-730-plan (head c623b01ef18), which had no pull request, so until this change no row in the repository carried them."),
+    ul(items: [
+      li(text: "PXE is the default installation path for every eligible physical machine, BMC virtual media stays a fallback needing an explicit evidenced reason, and an install is one-shot -- never a standing authorization to erase a disk: ruling gunbc.design_ruling::pxe_default_install_and_no_standing_erase_2026_11_10, whose model side is gunbc.network_boot_delivery::uefi_pxe_admitted_architectures and gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_no_install_requests."),
+      li(text: "Runner capacity is a completion condition, not a declaration: ruling gunbc.design_ruling::runner_capacity_counts_only_when_observed_2026_11_10, modelled by the per-host specs at gunbc.runner.runner_host_deploy."),
+      li(text: "The PXE witnesses carry no required CI check: ruling gunbc.design_ruling::pxe_witnesses_need_no_required_ci_2026_11_10."),
+      li(text: "butch (srv14) is CI-only with no interactive sessions, its two Strata engines priced against its capacity before its CI width is derived: modelled at gunbc.runner.runner_host_deploy (the already-installed CI-only host) and priced in gunbc.serving.serving_host_memory; its executor-route-only narrowing rests on gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign."),
+      li(text: "bobo (srv15) stops at CI and access for now, its GPUs modelled when the operator installs them: gunbc.serving.serving_host_memory carries no GPU claim for it until a read exists."),
+      li(text: "One fleet access policy with explicit access relationships per principal, gunbc-runner as the systemd listener everywhere: gunbc.fleet.fleet_ssh_access."),
+      li(text: "srv1-srv4 move to gunbc-runner one host at a time, keeping working capacity and a rollback, sequenced with the rename program's host flips: the srv1 fleet-migration work items in the roadmap, each with its own rollback obligation."),
+      li(text: "The board BR80S6102300049 has one current identity, srv13 retired, its 2026-10-07 observations keeping their original provenance rather than being rewritten as srv15 captures: gunbc.fleet.fleet_host_identity."),
+      li(text: "A run-scoped service account reading only bmc-srv15-admin may be created through gcp_iam_converge: gunbc.auth.srv15_arrival_federation_provision."),
+      li(text: "h11-a16 (host-6ce85c) enters convergence through the same contract, answering the operator's 'yes please' of 2026-11-12: the host-6ce85c rulings in gunbc.design_ruling, with its tag question settled by gunbc.design_ruling::ken_dan_both_participation_carries_ci_and_serving_tags_2026_11_18."),
+    ]),
+    h2(text: "2. Findings that shaped the plan"),
+    ul(items: [
+      li(text: "Nothing had ever been installed over PXE. butch was installed 2026-10-30 over its BMC's USB virtual media (installer block device Linux File-Stor_Gadget, ds=nocloud from /cdrom)."),
+      li(text: "The edge could not serve an install. Ubuntu's signed network GRUB loads only $prefix/grub.cfg. The edge served each install as grub.cfg-01-<mac> and made grub.cfg exit. srv15 reached GRUB three times on 2026-10-29/30 and left each time (artifacts/pxe/srv15-pxe-attempt-2026-10-30)."),
+      li(text: "The edge converge only wrote desired files. Withdrawing a binding from the model left its served files on disk, so a withdrawal proved nothing about the edge."),
+      li(text: "The edge held a wiping install binding for butch, an installed host. The installer uses StoragePolicyDirectLayout, which does not pin a target disk."),
+      li(text: "The edge witness file had not compiled since 2026-10-30 (#15291), so all 68 of its witnesses were red outside the required gate."),
+      li(text: "Every BMC boot or intake route is one host's leaf. gunbc.srv3.srv3_boot_once_cd is srv3-only, CD-only, has an expired source-declared grant and no workflow. The mtcollins1 boot and its run-scoped federation are MegaRAC/IPMI-only. gunbc.machine_intake.arrival_subject is mtjade1-only."),
+      li(text: "srv15 is not a managed host. Its rotated credential has been in custody since 2026-10-29, but none of the read-only admission evidence exists."),
+      li(text: "fleet_enrollment derives hosts from its population, but downstream consumers have not generalized. gunbc.runner.runner_capacity_plan takes srv3_width and srv4_width and returns exactly those two plans, and gunbc.runner.runner_capacity_realize is a scaffold whose runner-add can return RunnerCapacityApplyScaffold instead of provisioning a runner."),
+      li(text: "OwnedOsDelivery has no network-install arm, and the assimilation program selects install phases for virtual-media delivery only."),
+    ]),
+
+    h2(text: "3. The lifecycle contract"),
+    ol(items: [
+      li(text: "**Observed.** Board identity, boot NIC, controller access and capabilities, storage inventory. Observations come from capability-specific producers (Redfish/OpenBMC, MegaRAC/IPMI, BMC-less) feeding one identity-binding admission."),
+      li(text: "**Install method decided.** PXE where the site's capabilities permit it; otherwise an evidenced refusal that names the missing capability, and only then a justified fallback."),
+      li(text: "**One-shot install authorization,** bound to the physical identity, the boot NIC, the current target-disk identity (read before actuation and pinned in the installer's storage section), the image and the attempt. It refuses if any of them no longer matches."),
+      li(text: "**Stage, boot once, install.** The edge serves exactly the admitted binding. The override is Once and UEFI and is read back before the reset. The binding is withdrawn by the same workflow once the install is observed, so a second destructive boot cannot happen even if no later PR lands."),
+      li(text: "**Verify the installed system.** Disk identity, installer receipt (ds=nocloud-net from the edge), OS boot and SSH reachability with the fleet key."),
+      li(text: "**Admit, converge, register.** Managed-host admission, fleet convergence, runner registration, then verified runnable slots against measured available resources."),
+    ]),
+
+    h2(text: "4. Sequence, staffing and state are downstream of this intention"),
+    p(text: "What has to happen, in what order, who picks it up and how far each piece has got is a selection made against this intention (DESIGN.md, *Plans are intentions*: a work item names the intention it serves; the intention does not list its work items). It lives as work items under site-boot-and-management-edge in gunbc.roadmap.roadmap_authority -- the install lane from the arrival door through the dispatch, butch's route, the srv4 edge trio with its Apply gate, ken's strata re-read, and mtcollins1's boot legs and their retirement -- with their prerequisite edges carrying the order and their own updates threads carrying what a live read said and when. That selection may be redrawn whenever work is picked up, without this carrier changing; nothing here records a phase, an owner or a state, and a merged pull request is not done (gunbc.design_ruling::work_item_acceptance_is_the_managers_or_an_escalation)."),
+
+    h2(text: "5. Fleet completion condition"),
+    p(text: "Done means every enrolled or identified machine has an established standing, derived as a fold over the enrolled and identified population rather than kept as a hand list: a host that is not yet installed, a runner that is disabled and a capacity admission that has not resolved each stay visible until its outcome is recorded, and the census is not complete while any of the three is missing. Which machines are in that population, and what each one's standing is today, is decided by the fleet model rows and the work items under site-boot-and-management-edge, not here. srv1, srv2, srv3, srv4, srv9, srv10, srv11, srv12, srv14, srv15, mtcollins1, mtjade1 and host-6ce85c are named only so no machine is quietly absent from the fold; a name here carries no standing, and no standing is recorded here, because a standing read from this page would be a second place deciding it."),
+
+    h2(text: "6. Acceptance"),
+    p(text: "Done means a recorded live run or readback per item. Merged PRs, green witnesses or a row saying a host is enrolled are not enough."),
+    ul(items: [
+      li(text: "**srv15 installed by workflow.** A managed_host_network_install run on main boots srv15 over PXE. The edge-log receipt shows grub/install/9c:6b:00:e7:ca:63.cfg, the kernel and initrd, the ISO and its seed. srv15 answers SSH as ubuntu with the fleet key, and its installer log reads ds=nocloud-net from srv4 on the pinned disk. Its binding is withdrawn by that run. A second dispatch refuses before any BMC write, and so does a dispatch for a host with no binding. An installed, unbound client (butch) booted over PXE starts no installer."),
+      li(text: "**Leaves deleted.** The srv3 boot-once, the mtjade1-only arrival row, the mtcollins1-only boot account and srv13 are gone, with the historical observations' provenance kept."),
+      li(text: "**butch and srv15 in the fleet.** fleet-converge plan and apply run green with each as subject; fleet_health_check passes with their fan rows; authorized_keys equals the roster's relationships for each principal; host keys are enrolled; the BMC fan converge works for each."),
+      li(text: "**Runner capacity.** butch's and srv15's runners appear in the org runner roster with their labels, are healthy, and have each run a real CI job. Width is derived after serving reservations. srv1-srv4 run as gunbc-runner with CI green after each host's cutover. The fleet completion condition holds: no enrolled or identified machine is without a standing."),
+      li(text: "**butch GPUs and serving.** Four A2 device readings are recorded; after a reboot each UUID reads back a 35 W cap; a request through srv1's OpenResty reaches both engines (18081, 18082); the router rows carry butch with a recorded throughput reading; the post-deploy capacity reconciliation shows no oversubscription."),
+      li(text: "**h11-a16 in the fleet.** fleet-converge plan and apply run green with h11-a16 as subject, its access template is applied, and its serving memory is Read, with no step added for it alone."),
+    ]),
+
+    h2(text: "7. Decided: no required CI for the PXE witnesses"),
+    p(text: "Recorded, not restated: ruling gunbc.design_ruling::pxe_witnesses_need_no_required_ci_2026_11_10 settles that the floor-reading PXE witnesses do not join required CI, and narrows gunbc.design_argument::conformance for that class only. It costs nothing in rigour: each witness still has to go RED against its plant and GREEN against its fix on a post-wall binary before the work item that owes it can be accepted."),
+
+
+    h2(text: "8. Risks"),
+    ul(items: [
+      li(text: "An install binding can wipe the disk of any client that reaches it. The mitigation is that no binding stands: one workflow binds the install to a single client identity and to a disk identity read in that same run, then withdraws the binding and removes the served files before it finishes, so there is never a standing request left that a later boot could answer by erasing a disk."),
+      li(text: "srv13 and srv15 have two credential histories for one controller (2026-10-07 forced rotation, 2026-10-29 in-band rotation). The route pins secret version v1 and refuses if the managed probe fails."),
+      li(text: "A Redfish boot override that is not Once and UEFI, or not read back, is not trusted. Legacy is a silent no-op on arm64."),
+      li(text: "Migrating gunbc-runner and renaming the same host in one window doubles the rollback surface. Each host needs a rollback witness over both changes and a separately verified management path before it is drained."),
+    ]),
+
+  ]
+}
+
+data new_server_bringup_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "new-server-bringup",
+  title: "New server bring-up: one machine lifecycle, PXE-first, to verified runner capacity",
+  body: new_server_bringup_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "srv15 was installed over PXE by managed_host_network_install under a one-shot authorization and its binding withdrawn by that run; butch and srv15 are enrolled runner hosts with healthy runners that have each run a real CI job; srv1-srv4 run as gunbc-runner; runner_capacity_plan is a fold over the eligible population and runner_capacity_realize is no scaffold; the fleet completion census leaves no machine without a standing; butch serves both Strata engines through the router; and the srv3/mtcollins1/mtjade1 boot and intake leaves are deleted in favor of host-generic routes.") },
+}

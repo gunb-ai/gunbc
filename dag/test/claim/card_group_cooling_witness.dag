@@ -5,15 +5,16 @@ import std.optional { Present, Absent }
 import std.algebra { FreeSemigroup }
 import std.measure { micrometer, micrometer_count, watt, millilitre_per_second, celsius_delta }
 import product.printed_chassis.card_end_interface {
-  CardEndInterface, EndFaceFeature, FaceConnector, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, a16_card_end, a2_card_end,
+  CardEndInterface, EndFaceFeature, FaceConnector, EdgeOverhang, FeaturePresent, FeatureAbsentObserved, FeatureNotObserved, a16_card_end, a2_card_end, t10_card_end,
 }
 import product.printed_chassis.gpu_duct { screwed_end_cap_of, ScrewedEndCap, ScrewedEndCapMissing }
-import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card }
+import product.printed_chassis.duct_card_catalog { DuctCard, EndFaceRead, a2_duct_card, a16_duct_card, t10_duct_card }
 import product.printed_chassis.group_duct {
   GroupDuctPlan, GroupFitPlateAdmission, a2_altra_row_plan, admit_group_fit_plate, GroupFitPlateAdmitted, GroupPartitionRefused, GroupMemberConnectorNotClear,
-  GroupMembersNotSideBySide, admit_group_duct, GroupDuctAdmitted, GroupBlowerUnfit,
+  GroupMembersNotSideBySide, admit_group_duct, GroupDuctAdmitted, GroupBlowerUnfit, GroupMemberFaceUnfit, t10_h11ssl_slot4_plan,
 }
-import product.printed_chassis.assembly_geometry { Printed, Clearance, M5FanScrewIntoBlowerLug }
+import product.printed_chassis.assembly_geometry { Printed, Clearance, M5FanScrewIntoBlowerLug, AssemblyPart, Primitive, Block }
+import std.affine_space { signed_frame_component_count }
 import product.printed_chassis.printable_assembly { CardGroupRoot, GroupFitPlate, PrintableAssemblyReady, PrintableAssemblyRefused }
 import product.printed_chassis.printable_assembly_selection { group_fit_plate_selection }
 import product.printed_chassis.card_installation {
@@ -21,7 +22,7 @@ import product.printed_chassis.card_installation {
   PartitionMemberMissing, PartitionMemberRepeated, PartitionMemberUnknown, PartitionGroupEmpty, PartitionSizesDoNotCover,
   PartitionInstallationRefused, SlotShared,
   partition_installation, partition_by_sizes, group_ids, card_separation, installation_refusals, SlotCoveredByNeighbour,
-  a2_altra_installation, a16_installation, altra_slot,
+  a2_altra_installation, a16_installation, altra_slot, t10_h11ssl_installation, h11ssl_slot, SlotCountUnread, installed_card,
 }
 import product.printed_chassis.group_cooling_plan {
   MemberDemand, MemberDemandEstimated, MemberFlowObservation, FailureResponseDeclared, FailureResponseUndeclared,
@@ -109,6 +110,7 @@ fn face_with(inserts_absent: Bool) -> CardEndInterface {
     fin_setback: micrometer(count: 1000),
     inserts: if inserts_absent { FeatureAbsentObserved } else { FeatureNotObserved { read_obligation: "supplied: not looked for" } },
     connector: FeatureAbsentObserved,
+    overhang: FeatureAbsentObserved,
   }
 }
 
@@ -151,7 +153,7 @@ test fn a_group_total_does_not_qualify_a_starved_card() -> Bool {
 // w_the_a2_row_fit_plate_selects_through_the_same_function.
 
 fn supplied_plan(cards: List<InstalledCard>) -> GroupDuctPlan {
-  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
+  GroupDuctPlan { id: "supplied", installation: installation(cards: cards), sizes: [length(list: cards)], group: 0, fit_record: "supplied", face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 100) }
 }
 
 fn selects(p: GroupDuctPlan) -> Bool {
@@ -175,28 +177,33 @@ test fn a_fit_plate_is_refused_for_two_cards_in_one_slot() -> Bool {
     && selects(p: supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_at(id: "b", designator: "PCIE5")]))
 }
 
-// THE PLATE COVERS THE WHOLE FACE, so a header must be observed ABSENT: the A2's own reading selects; the
-// same face with a header present, or with the header not looked for, refuses by name.
+// THE PLATE COVERS THE WHOLE FACE, so a header must be observed: absent, the A2's own reading selects; present,
+// the fit plate selects with the header's keep-out cut out of it and declared, while the duct (whose plenum
+// has no keep-out) refuses it by name; not looked for, both refuse by name.
 fn a2_with_connector(id: NonEmptyStr, designator: NonEmptyStr, connector: EndFaceFeature<FaceConnector>) -> InstalledCard {
   let f = a2_card_end
   let face = CardEndInterface {
     source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
     window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
-    fin_setback: f.fin_setback, inserts: f.inserts, connector: connector,
+    fin_setback: f.fin_setback, inserts: f.inserts, connector: connector, overhang: f.overhang,
   }
-  InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face } } }, slot: altra_slot(designator: designator) }
+  InstalledCard { instance: CardInstance { id: id, card: DuctCard { row: a2_duct_card.row, end_face: EndFaceRead { face: face }, observed_slot_count: Absent } }, slot: altra_slot(designator: designator) }
 }
 
 fn connector_plan(c: EndFaceFeature<FaceConnector>) -> GroupDuctPlan {
   supplied_plan(cards: [a2_at(id: "a", designator: "PCIE4"), a2_with_connector(id: "b", designator: "PCIE5", connector: c)])
 }
 
-test fn a_fit_plate_needs_each_header_observed_absent() -> Bool {
+test fn a_fit_plate_keeps_out_of_a_present_header_and_refuses_an_unread_one() -> Bool {
   let present = connector_plan(c: FeaturePresent { value: FaceConnector { from_top: micrometer(count: 2560) } })
   let unread = connector_plan(c: FeatureNotObserved { read_obligation: "supplied: not looked for" })
-  let named = match admit_group_fit_plate(p: present) { GroupMemberConnectorNotClear { instance: i, reason: _ } => i == "b" _ => false }
-  selects(p: connector_plan(c: FeatureAbsentObserved))
-    && named && refusal_says(p: present, pattern: "b: the end face carries a power header")
+  let kept = match admit_group_fit_plate(p: present) {
+    GroupFitPlateAdmitted { parts: ps, interfaces: _ } => count(filter(ps, x => match x.kind { Clearance => true _ => false })) == 1 && any(ps, x => x.id == "FIT-PLATE" && length(list: x.cuts) == 3)
+    _ => false
+  }
+  let duct_named = match admit_group_duct(p: present) { GroupMemberConnectorNotClear { instance: i, reason: r } => i == "b" && string_contains(s: r, pattern: "no keep-out for it") _ => false }
+  selects(p: connector_plan(c: FeatureAbsentObserved)) && selects(p: present)
+    && kept && duct_named
     && refusal_says(p: unread, pattern: "b: whether the end face carries a power header was not observed")
 }
 
@@ -237,11 +244,92 @@ test fn the_a2_row_duct_carries_one_flat_blower_and_its_screw() -> Bool {
 // THE BOARD'S COIN CELL IS A KEEP-OUT OF THE REAL A2 DUCT, and a plan that has not read how high the cards'
 // faces stand above the board cannot place it, so its blower stage refuses rather than drawing without it.
 test fn the_a2_row_duct_keeps_out_of_the_coin_cell_and_refuses_without_the_board_height() -> Bool {
-  let unread = GroupDuctPlan { id: "a2-unread-height", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: "supplied", face_bottom_above_board: Absent }
+  let unread = GroupDuctPlan { id: "a2-unread-height", installation: a2_altra_installation, sizes: [4], group: 0, fit_record: "supplied", face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 100) }
   let kept = match admit_group_duct(p: a2_altra_row_plan) {
     GroupDuctAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "KEEPOUT-PCIE4" && match x.kind { Clearance => true _ => false })
     _ => false
   }
   let refused = match admit_group_duct(p: unread) { GroupBlowerUnfit { reason: r } => string_contains(s: r, pattern: "coin cell") _ => false }
   kept && refused
+}
+
+// ═══ THE T10 SLEEVE COUPON ═══
+
+// THE REAL T10 PLAN: one T10 end alone. The printed part is the plate and its sleeve (five adds); its cuts are
+// the read opening, the 8-pin window and the backplate strip's two end-wall slots; the header's keep-out is a
+// declared clearance; the card's envelope is drawn because its length is unread only as far as the sleeve.
+test fn the_t10_sleeve_coupon_cuts_the_header_window_and_the_strip_slots() -> Bool {
+  match admit_group_fit_plate(p: t10_h11ssl_slot4_plan) {
+    GroupFitPlateAdmitted { parts: ps, interfaces: _ } =>
+      any(ps, x => x.id == "FIT-PLATE" && length(list: x.adds) == 5 && length(list: x.cuts) == 4)
+        && any(ps, x => x.id == "POWER-KEEPOUT-1" && match x.kind { Clearance => true _ => false })
+        && any(ps, x => x.id == "CARD-1" && string_contains(s: x.notes, pattern: "length is unread"))
+    _ => false
+  }
+}
+
+// THE COUPON IS NOT MIRRORED (the first one was: product.printed_chassis.fit_observations t10_sleeve_coupon_fit).
+// The 8-pin is 10.2 mm below the face's top end; on a plate-down fit plate the top end is at -X, so the header's
+// window and its declared keep-out sit on the -X side of the plate. Its sleeve stands 0.3 mm per side clear
+// across the face (the plan's figure) and 0.1 mm along it.
+fn t10_coupon_plate() -> List<AssemblyPart> {
+  match admit_group_fit_plate(p: t10_h11ssl_slot4_plan) { GroupFitPlateAdmitted { parts: ps, interfaces: _ } => ps _ => [] }
+}
+fn block_x(p: Primitive) -> Int { match p { Block { size: _, center: c } => signed_frame_component_count(c: c.x) _ => 0 } }
+fn block_size_y(p: Primitive) -> Int { match p { Block { size: s, center: _ } => micrometer_count(m: s.size_y) as Int _ => 0 } }
+test fn the_t10_coupon_puts_the_header_window_at_the_top_end() -> Bool {
+  let ps = t10_coupon_plate()
+  let face_y = micrometer_count(m: t10_card_end.face_thickness) as Int
+  any(ps, x => x.id == "POWER-KEEPOUT-1" && any(x.adds, b => block_x(p: b) < 0))
+    && any(ps, x => x.id == "FIT-PLATE" && any(x.cuts, b => block_size_y(p: b) == face_y + 600 && block_x(p: b) < 0))
+    && any(ps, x => x.id == "FIT-PLATE" && any(x.adds, b => block_size_y(p: b) == face_y + 600 + 2 * 2000))
+}
+
+// ITS BLOWER STAGE REFUSES the header by name: the coupon is printable and the duct is not, until the stage
+// carries a keep-out.
+test fn the_t10_duct_refuses_the_header_its_plenum_would_cover() -> Bool {
+  match admit_group_duct(p: t10_h11ssl_slot4_plan) { GroupMemberConnectorNotClear { instance: i, reason: _ } => i == "t10@SLOT4" _ => false }
+}
+
+// A STRIP NOBODY LOOKED FOR REFUSES (red control): the T10's own face with its overhang unread gets no plate,
+// and the refusal names the reading.
+fn t10_with_overhang(o: EndFaceFeature<EdgeOverhang>) -> GroupDuctPlan {
+  let f = t10_card_end
+  let face = CardEndInterface {
+    source: f.source, face_length: f.face_length, face_thickness: f.face_thickness,
+    window_length: f.window_length, window_depth: f.window_depth, window_from_top: f.window_from_top, window_from_back: f.window_from_back,
+    fin_setback: f.fin_setback, inserts: f.inserts, connector: f.connector, overhang: o,
+  }
+  let card = DuctCard { row: t10_duct_card.row, end_face: EndFaceRead { face: face }, observed_slot_count: t10_duct_card.observed_slot_count }
+  supplied_plan(cards: [InstalledCard { instance: CardInstance { id: "t", card: card }, slot: h11ssl_slot(designator: "SLOT4") }])
+}
+
+test fn a_t10_plate_needs_its_backplate_strip_observed() -> Bool {
+  let unread = t10_with_overhang(o: FeatureNotObserved { read_obligation: "supplied: not looked for" })
+  let refused = match admit_group_fit_plate(p: unread) { GroupMemberFaceUnfit { instance: i, reason: r } => i == "t" && string_contains(s: r, pattern: "was not observed") _ => false }
+  let absent_has_no_slots = match admit_group_fit_plate(p: t10_with_overhang(o: FeatureAbsentObserved)) { GroupFitPlateAdmitted { parts: ps, interfaces: _ } => any(ps, x => x.id == "FIT-PLATE" && length(list: x.cuts) == 2) _ => false }
+  refused && absent_has_no_slots && refusal_says(p: unread, pattern: "t: whether a plate runs past")
+}
+
+// THE T10 PAIR INSTALLATION IS VALID ONLY ON THE OBSERVED SLOT COUNT: SLOT4 and SLOT6 sit 40.64 mm apart (two CEM
+// slot widths), and the pair is NOT one group (SLOT5 is empty between them). The same installation with no
+// slot count read refuses (the vendor row has none).
+test fn the_t10_pair_stands_on_the_observed_slot_count_and_is_not_side_by_side() -> Bool {
+  let unread_card = DuctCard { row: t10_duct_card.row, end_face: t10_duct_card.end_face, observed_slot_count: Absent }
+  let unread = installation(cards: [
+    InstalledCard { instance: CardInstance { id: "a", card: unread_card }, slot: h11ssl_slot(designator: "SLOT4") },
+    InstalledCard { instance: CardInstance { id: "b", card: unread_card }, slot: h11ssl_slot(designator: "SLOT6") },
+  ])
+  let sep = match installed_card(inst: t10_h11ssl_installation, id: "t10@SLOT4") {
+    Present { value: a } => match installed_card(inst: t10_h11ssl_installation, id: "t10@SLOT6") {
+      Present { value: b } => match card_separation(from: a, to: b) { Present { value: s } => micrometer_count(m: s.across) == 40640 Absent => false }
+      Absent => false
+    }
+    Absent => false
+  }
+  let pair = GroupDuctPlan { id: "t10-pair", installation: t10_h11ssl_installation, sizes: [2], group: 0, fit_record: "supplied", face_bottom_above_board: Absent, sleeve_clearance_across: micrometer(count: 100) }
+  count(installation_refusals(inst: t10_h11ssl_installation)) == 0
+    && any(installation_refusals(inst: unread), r => match r { SlotCountUnread { instance: i } => i == "a" _ => false })
+    && sep
+    && match admit_group_fit_plate(p: pair) { GroupMembersNotSideBySide { reason: _ } => true _ => false }
 }

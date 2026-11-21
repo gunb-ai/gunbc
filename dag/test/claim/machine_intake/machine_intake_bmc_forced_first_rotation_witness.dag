@@ -273,7 +273,7 @@ data srv13_witness_firmware_manifest: FirmwareManifest = FirmwareManifest {
 // frontier: gunbc.machine_intake.arrival_converge forced_change_arrival_route_frontier).
 fn srv13_intake_subject(attempt: AttemptIdentity) -> MachineIntakeSubject {
   MachineIntakeSubject {
-    subject: qualification_subject_of(unit_key: "srv13" as UnitKey, assembly: srv13_witness_assembly, firmware: srv13_witness_firmware_manifest),
+    subject: qualification_subject_of(unit_key: UnitKey { kind: BoardUnitKey, value: "srv13" }, assembly: srv13_witness_assembly, firmware: srv13_witness_firmware_manifest),
     attempt_id: (attempt as NonEmptyStr) as IntakeAttemptId,
   }
 }

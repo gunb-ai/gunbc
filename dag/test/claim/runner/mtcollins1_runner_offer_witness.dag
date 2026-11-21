@@ -9,7 +9,7 @@ import gunbc.ci.ci_fleet {
   mtcollins1_socket0_cpu_part_standing, cpu_bios_line_names_part,
 }
 import extdeps.external_authority { ObservedByReceipt, observed_receipt_ref }
-import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total }
+import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, compute_host_ram_bytes_total, HostRamMeasured, HostRamCensusUnread, host_hardware_census_of, MemoryUnread, MemorySurveyed }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_srv3 }
 import gunbc.host.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound, fleet_converge_policy_from }
 import gunbc.ci.ci_runner_placement {
@@ -33,9 +33,9 @@ import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsI
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max_bytes }
 import gunbc.runner.runner_slot_allocation {
-  HostWidthFacts, host_width_facts, CpuWidthDerived,
+  HostWidthFacts, host_width_facts, CpuWidthDerived, CpuWidthOfferAbsent, CpuWidthCensusAbsent, CpuWidthOverCommitted,
   compute_host_cpu_admitted_width, committed_width_of, gunbc_runner_committed_width,
-  RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent,
+  RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent, WidthCpuCensusAbsent,
 }
 import gunbc.ci.ci_runner_placement {
   HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
@@ -118,8 +118,12 @@ test fn census_meminfo_RED_non_reads_refuse_by_cause() -> Bool {
       "MemAvailable:   127000000 kB\n----EXIT meminfo: 0\n"))), expected: "unparsed")
 }
 
+// THE STANDINGS ARE PER AXIS (review 96379). This host's row lists a CPU and no DIMM row, so its processor axis is
+// read and its MEMORY AXIS IS UNREAD: nobody measured zero DIMMs here. The RAM read therefore refuses rather than
+// answering byte_size(0) -- the same claim this row always made, now carried by the type instead of by an absence a
+// reader could fold away: the nominal DRAM reaches neither the offer nor any reader.
 test fn mtcollins1_RED_nominal_dram_total_reaches_neither_offer_nor_reader() -> Bool {
-  byte_size_count(b: compute_host_ram_bytes_total(host: mtcollins1_offer.supply.physical)) == 0
+  host_ram_axis_unread(host: mtcollins1_offer.supply.physical)
     && refusal_is(a: host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: concat(meminfo_argv,
       "dram_total: 134217728 kB\n----EXIT meminfo: 0\n"))), expected: "unparsed")
 }
@@ -164,8 +168,21 @@ test fn mtcollins1_RED_missing_lscpu_refuses_the_cpu_reading_with_its_own_cause_
   ram_ok && cpu_cause_ok
 }
 
+// The offered CPU slots as an Int. compute_host_cpu_admitted_width is now typed (HostCpuWidthResolution); a real
+// offer derives slots, while an absent offer or the over-commit refusal yields a negative sentinel no slot count
+// equals, so `width == 80` fails loudly rather than reading a fabricated zero. mtcollins1 has no serving reservation,
+// so it always derives.
+fn mtcollins_cpu_slots(host: ComputeHost) -> Int {
+  match compute_host_cpu_admitted_width(host: host) {
+    CpuWidthDerived { slots: n } => n
+    CpuWidthOfferAbsent { host: _ } => 0 - 1
+    CpuWidthCensusAbsent { host: _ } => 0 - 1
+    CpuWidthOverCommitted { host: _, threads: _, withheld: _ } => 0 - 1
+  }
+}
+
 test fn mtcollins1_offer_cpu_width_equals_the_measured_one_socket_reading() -> Bool {
-  let width = compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical)
+  let width = mtcollins_cpu_slots(mtcollins1_offer.supply.physical)
   (mtcollins1_offer.supply.physical.identity as String) == (operator_host_mtcollins1 as String)
     && mtcollins1_offer.supply.physical.processors.length() == 1
     && width == 80
@@ -182,7 +199,7 @@ test fn mtcollins1_RED_both_sockets_disagrees_with_the_measured_reading() -> Boo
     storage: mtcollins1_runner_host.storage,
     network_interfaces: mtcollins1_runner_host.network_interfaces,
   }
-  let width = compute_host_cpu_admitted_width(host: both)
+  let width = mtcollins_cpu_slots(both)
   width == 160
     && all(mtcollins1_socket1_investigation_boots, b => match b.host {
       Absent => true
@@ -286,11 +303,17 @@ test fn mtcollins1_RED_unread_receipt_is_not_an_unbegun_capture() -> Bool {
 }
 
 // Through fleet_intent_offers, with no supplied offer: enrolling the host is what moved its committed width
-// off WidthComputeOfferAbsent. The figure is the one mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots
-// derives from supplied values; this is its pairing inhabitance claim over the production route.
+// off WidthComputeOfferAbsent. This is its pairing inhabitance claim over the production route, and the honest
+// committed width is FOUR slots, not five. The fold is
+//   committed_width = min(by_cpu=13, floor(envelope / gunbc_runner_slot_memory_max_bytes))
+//   envelope = MemAvailable - MemTotal/16  (usable - overhead - oomd_actuation_floor; session/control_plane/served_deployment = 0)
+// read from census capture run 39010930690 (MemTotal 131177152 kB, MemAvailable 129094344 kB), MemoryMax = 26843545600 (25 GiB):
+// floor((129094344kB - 131177152kB/16) / 25GiB) = 4; a fifth slot needs ~9.8 GiB more MemAvailable than the host reports.
+// Introduced at #15335 asserting 5, but 5 was never derivable from the census (the model and capture predate it) -- corrected to
+// the derived value with its derivation shown, not patched to hide a model defect.
 test fn mtcollins1_production_committed_width_is_derived_through_the_enrolled_offer() -> Bool {
   match gunbc_runner_committed_width(host: operator_host_mtcollins1) {
-    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthDerived { slots: n } => n == 4
     RunnerWidthUnresolved { cause: _ } => false
   }
 }
@@ -321,7 +344,7 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
   let real = host_width_facts(host: operator_host_mtcollins1)
   HostWidthFacts {
     host: real.host,
-    cpu: CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical) },
+    cpu: compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical),
     usable_ram: ram,
     fixed_overhead: overhead,
     session: real.session,
@@ -332,10 +355,15 @@ fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) ->
   }
 }
 
-test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_five_slots() -> Bool {
+// The width over the enrolled offer's CPU and the census RAM, taken from the REAL host facts: FOUR slots.
+// min(by_cpu=13, floor((MemAvailable - MemTotal/16) / 25 GiB)) = min(13, floor((129094344kB - 131177152kB/16) / 25GiB)) = 4,
+// from census capture run 39010930690 (MemTotal 131177152 kB, MemAvailable 129094344 kB), MemoryMax = 26843545600 (25 GiB).
+// Introduced at #15335 as *_is_five_slots asserting 5; 5 was never derivable from the census. Renamed to _is_four_slots and
+// corrected to the derived value -- the honest number, not a value patched to match a model bug.
+test fn mtcollins1_committed_width_over_offer_cpu_and_census_ram_is_four_slots() -> Bool {
   let real = host_width_facts(host: operator_host_mtcollins1)
   match committed_width_of(f: mtcollins1_supplied_facts(ram: real.usable_ram, overhead: real.fixed_overhead)) {
-    RunnerWidthDerived { slots: n } => n == 5
+    RunnerWidthDerived { slots: n } => n == 4
     RunnerWidthUnresolved { cause: _ } => false
   }
 }
@@ -461,10 +489,26 @@ test fn an_unenrolled_host_still_refuses_as_not_enrolled() -> Bool {
   }
 }
 
-// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host.
+// The capacity plan keeps mtcollins1: CI capacity readers do not drop an image-baked host. Its runner_count is the committed
+// width (host_standing_with_session_slice -> committed_width_of; no authored runner_count row for mtcollins1) = FOUR slots:
+// floor((MemAvailable - MemTotal/16) / 25 GiB) from census capture run 39010930690 (MemAvailable 129094344 kB, MemTotal
+// 131177152 kB), MemoryMax 26843545600. Introduced at #15335 at 5; corrected to the derived value.
 test fn the_fleet_capacity_plan_carries_the_ram_image_host() -> Bool {
   match runner_host_deployment_for(p: runner_fleet_capacity_plan(), host: operator_host_mtcollins1) {
-    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 5
+    HostRunnerDeploymentDerived { deployment: d } => d.runner_count == 4
     _ => false
+  }
+}
+
+// THE MEMORY AXIS WAS NEVER READ, so the RAM read refuses; and the axis standing says so directly, which is what
+// stops a future reader from "fixing" the refusal by folding the empty list.
+fn host_ram_axis_unread(host: ComputeHost) -> Bool {
+  match host_hardware_census_of(host: host).memory {
+    MemoryUnread =>
+      match compute_host_ram_bytes_total(host: host) {
+        HostRamCensusUnread { host: _ } => true
+        HostRamMeasured { bytes: _ } => false
+      }
+    MemorySurveyed { rows: _ } => false
   }
 }

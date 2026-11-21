@@ -1,0 +1,37 @@
+module gunbc.runner.runner_qualification_ci_step
+
+// THE CI RUN-STEP LEAF OF THE RUNNER QUALIFICATION DOMAIN: the `gunbc run` target and invoke
+// of the qualification_attempt step, beside the domain whose entry module it invokes
+// (gunbc.runner.runner_qualification_attempt_run). NO import of that entry module, and none
+// is needed: gunbc_ci_qualification_attempt_target names its entry and function as strings.
+// It would cycle — gunbc.runner.runner_qualification_attempt_run reaches the roster module
+// through gunbc.runner.runner_qualification_dispatch and
+// gunbc.fleet.fleet_converge_workflow, and gunbc.instruments.ci_run_step_roster imports this module's target.
+// A step module imports the shared machinery, never the roster.
+
+import std.types { String }
+import v2.workflow.gunbc_invoke_step_emit {
+  gunbc_run_step_script_for_target,
+}
+import gunbc.ci.ci_run_step_target {
+  gunbc_run_step_target,
+  GunbcRunStepTarget,
+}
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+
+data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = gunbc_run_step_target(
+  module: "gunbc.runner.runner_qualification_attempt_run",
+  function: "qualification_attempt_wet",
+)
+
+// NO SHELL PRELUDE: the sweep stages the gunbai-ci App key itself from Secret Manager under the run's
+// WIF_ACCESS_TOKEN (gunbc.github_effect_perform stage_controller_app_key), so no credential is
+// minted, exported or traced in shell.
+fn gunbc_ci_qualification_attempt_invoke() -> String {
+  gunbc_run_step_script_for_target(
+    source_roots: witness_layer_roots,
+    target: gunbc_ci_qualification_attempt_target,
+    claim_run: false,
+    receipt_rel: none
+  )
+}

@@ -1,0 +1,83 @@
+module gunbc.instruments.native_serve_roadmap_probe
+
+import std.types { String, Int, List }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve_probe_plan {
+  NativeServePhase, native_serve_phase_refusals, native_serve_wire_parse, native_serve_probe_launch,
+}
+
+// THE READER FOR `gunbc test //gunbc/instruments:native-serve-roadmap` (roadmap node
+// demand-serve-program-image, Route B). The seed host emits and builds the natively emitted serve
+// program gunbc.roadmap.roadmap_native_ingress (std.compiler_entry NativeIngressDriver, handler
+// gunbc.roadmap.roadmap_serve -- the handler production serves on main), starts it on an OS-chosen
+// loopback port, writes the fixed requests below to a real TCP connection and hands back what came
+// off the wire, unjudged.
+//
+// FIRST SLICE SCOPE (manager crisp-dove-117): name each refusal between running natively and serving.
+// So this first reader only establishes that the emitted program BUILDS, STARTS (the door prints its
+// listening announcement before it binds) and ANSWERS the two fixed requests with parseable 2xx responses -- the emit/build/start
+// refusals (R0 resolved; R3 the per-request repo read not being a route-admitted native effect; R4 any
+// missing emit fold) surface in the run log BEFORE this verdict ever runs. Exact response parity with
+// the interpreted serve (red_control 1) is the next slice and is deliberately NOT asserted here yet.
+//
+// NO PHASES: no peer, no refused-launch/deadline/unix arm is owed beyond the door's own (the fixture
+// row judges those). The declared phase set is empty, so native_serve_probe_phases agrees.
+fn native_serve_probe_phases() -> List<NativeServePhase> { [] }
+
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
+  native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
+}
+
+// The binding constructor validates a release_revision of exactly 40 lowercase hex digits (a git
+// object name); the handler does not depend on it resolving to a real commit. A well-formed revision is
+// a deployment fact, not a compiler concern.
+fn native_serve_probe_release_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
+fn native_serve_probe_launch_argv() -> List<String> {
+  native_serve_probe_launch(
+    handler: "roadmap_serve_handle",
+    release_revision: native_serve_probe_release_revision(),
+    cpu_limit_ms: 30000, wall_limit_ms: 30000,
+  )
+}
+
+// The fixed request set for the first slice: the dashboard's live-readiness route and its root.
+// (The red_control-1 parity set -- every route compared byte-for-byte to the interpreted serve at the
+// same revision -- is the next slice and will be added here.)
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  ["GET /livez HTTP/1.1\r\nHost: probe\r\n\r\n",
+   "GET / HTTP/1.1\r\nHost: probe\r\n\r\n"]
+}
+
+// First-slice standing: the door started (its listening announcement precedes the bind) and answered
+// both fixed requests with a 2xx status. If the emitted program refuses to build/emit/start, the run is
+// red in the log before this is reached -- that refusal is the deliverable. The verdict itself is not
+// permissive: a response that is unparseable or carries a non-2xx status (a 5xx handler error) is red.
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int,
+  responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
+  if !starts_with(s: announcement, prefix: "native-serve listening on 127.0.0.1:") {
+    return ExitFailure { code: 2, reason: "roadmap native serve did not start listening (emit/build/start refusal precedes serving)" }
+  }
+  if count(responses) != 2 {
+    return ExitFailure { code: 3, reason: "roadmap native serve did not answer both fixed requests" }
+  }
+  // Every response must be a well-formed status line off the wire (not a closed connection).
+  if !all(responses, response => match native_serve_wire_parse(response: response) {
+    Present { value: _ } => true
+    Absent => false
+  }) {
+    return ExitFailure { code: 1, reason: "roadmap native serve returned an unparseable wire response" }
+  }
+  // The claim is that the door SERVED the fixed request set, so every response is 2xx. A 5xx handler
+  // error (or any non-2xx) is RED, not green -- a door that answers 500 has not served (review 95743;
+  // the previous <600 range read a 500 as success). Discriminated by
+  // test.claim.native_serve_roadmap_probe_witness (a canned 500 must go red).
+  if all(responses, response => match native_serve_wire_parse(response: response) {
+    Present { value: wire } => wire.status >= 200 && wire.status < 300
+    Absent => false
+  }) { ExitSuccess }
+  else { ExitFailure { code: 4, reason: "roadmap native serve did not answer a 2xx status (a 5xx handler error is red)" } }
+}

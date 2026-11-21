@@ -3,15 +3,23 @@ module extdeps.package_managers.apt
 import std.types { String, NonEmptyStr, FilePath, Bool, List, Unit }
 import std.operation_argv { operation_argv_bind_text }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command {
   ArgvCommand,
+  argv_command,
   operation_row_argv_command,
   OperationRowArgvCommandReady,
   OperationRowArgvCommandRefused,
 }
 import std.resources { Network }
+import std.algebra { list_head, skip }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_directory_argv,
+  coreutils_rm_force_recursive_flags,
+  rm_program,
+}
+import extdeps.access.posix { FileMode, PermissionBits }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -181,4 +189,317 @@ fn apt_remove_command(package: NonEmptyStr) -> AptGetInstallCommand {
     OperationRowArgvCommandReady { command: command } => AptGetInstallCommandReady { command: command }
     OperationRowArgvCommandRefused { cause: cause } => AptGetInstallCommandRefused { cause: cause }
   }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// A THIRD-PARTY APT REPOSITORY, MODELLED ONCE.
+//
+// WHY IT LIVES HERE: a vendor that serves a package over its own apt repository (tailscale today; the fleet
+// already carries two leaves of this rule -- extdeps.container.docker_ce DockerCeAptRepo and
+// extdeps.container.nvidia_container_toolkit NvidiaContainerToolkitAptRepo, each with its own source line,
+// keyring path and install script) needs four facts stated together and verified together: the repository URI,
+// its suite, its components, its architecture, the path its signing key is written to and PINNED at, and the
+// fingerprint that key must match. Repeating that shape per vendor is the fork Single Authority forbids; the
+// two existing leaves are named in
+// gunbc.integration_concern.integration_concern_third_party_apt_repo_leaves_unified, and the trigger is the
+// next edit to either -- moving them onto this shape is that concern's job, not this row's. This is the ONE
+// general shape: a new vendor is a ROW (see extdeps.tailscale.apt_repo::tailscale_apt_repo_noble), not a new
+// module.
+//
+// THE PUBLISHED KEY IS PINNED, NOT TRUSTED. `keyring_fingerprint` is a `PinnedAptKeyFingerprint`: a value plus
+// its standing. The install script verifies the fetched key against the value and REFUSES on mismatch, before
+// anything is written under the keyring directory as a trusted `signed-by=`: a key fetched by blind curl and
+// trusted is a supply-chain fail-open (gunbc.design_argument::fail_closed). A wrong fingerprint means the route
+// stops, it does not install. But the RUNTIME check is not the PIN's trust: a fingerprint transcribed from the
+// same URL the route fetches proves only that the key did not change since someone read it, so such a row says
+// so with `TranscribedUncited` and names the independent read that would ground it -- it is not presented as
+// authenticated.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A PINNED SIGNING-KEY FINGERPRINT, WITH ITS EPISTEMIC STANDING STATED. A fingerprint is a value AND a claim
+// about where it came from, and collapsing the two lets a value transcribed from the very URL the route later
+// fetches pass as authenticated when it only proves the key did not change since someone looked. So the
+// standing travels with the value (gunbc.design_argument::external_upstreams,
+// extdeps.external_authority::CitedFigureStanding).
+type PinnedAptKeyFingerprint {
+  value: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+type ThirdPartyAptRepo {
+  // The armored signing key, fetched unprivileged and verified against `keyring_fingerprint` before dearmor.
+  keyring_url: NonEmptyStr
+  // Where the dearmored key lands, and the target of the source line's `signed-by=`.
+  keyring_path: NonEmptyStr
+  // The primary-key fingerprint the fetched key must carry, or the route refuses -- with its standing.
+  keyring_fingerprint: PinnedAptKeyFingerprint
+  // The repository URI, as apt spells it in the `deb` line (e.g. https://pkgs.tailscale.com/stable/ubuntu).
+  repo_base: NonEmptyStr
+  // The distribution codename (e.g. noble).
+  suite: NonEmptyStr
+  // The repository components (e.g. ["main"]); joined into the deb line in order.
+  components: List<NonEmptyStr>
+  // The dpkg architecture pinned into the line's `arch=`. A FIELD, not a constant, because the fleet is mixed
+  // (aarch64 and x86_64 hosts exist): the caller supplies the host's own architecture, read the way the
+  // serving model reads host.arch (gunbc.compute.remote_build_serving_converge), never a guessed pin.
+  arch: NonEmptyStr
+  // The sources file this repository's line is written to (e.g. /etc/apt/sources.list.d/tailscale.list).
+  sources_list_path: NonEmptyStr
+}
+
+// The keyrings directory is created 0755, as every vendor's install guide states it. Rendered through
+// extdeps.tools.gnu_coreutils (whose operand carries the set-id bits) rather than copied as four digits.
+data apt_keyrings_directory: NonEmptyStr = "/etc/apt/keyrings"
+
+data apt_third_party_keyrings_directory_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: true },
+  group: PermissionBits { read: true, write: false, execute: true },
+  other: PermissionBits { read: true, write: false, execute: true },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+// ONE ARGV TOKEN of an install leg: a literal argument, or the host's per-run STAGING DIRECTORY (the path
+// `mktemp -d` printed) joined with a suffix. A token is never a magic string like "@dir" that a later pass
+// re-reads -- the staging directory is a SUM, so it cannot be confused with a literal, cannot survive into
+// argv unresolved, and is refused if a leg needs it before Mktemp has produced it. Every token resolves to a
+// portable word (no spaces or metacharacters), so a leg crosses the far-side shell re-parse allowlist word by
+// word; anything that carries spaces -- the apt sources line -- travels as a leg's stdin, never as a token.
+type AptRepoInstallArgvToken
+  = AptRepoArgvLiteral { value: String }
+  | AptRepoArgvStagingDir { suffix: String }
+
+// THE NINE RUN-LEG KINDS of the install sequence, each one a leg the walker runs elevated. The tenth step, the
+// keyring Guard, is NOT a leg -- it is its own arm of AptRepoInstallStep. These names are the contract the
+// step-order witness asserts, so the sequence the walker runs and the sequence the model states cannot drift.
+type AptRepoInstallLegKind
+  = AptRepoLegKeyringDir
+  | AptRepoLegMktemp
+  | AptRepoLegFetch
+  | AptRepoLegShowKeys
+  | AptRepoLegDearmor
+  | AptRepoLegSourceLine
+  | AptRepoLegUpdate
+  | AptRepoLegInstall
+  | AptRepoLegCleanup
+
+// ONE STEP of the third-party apt repository install sequence. A step is either a LEG to run elevated -- its
+// argv tokens plus an OPTIONAL stdin payload (Present for the sources.list tee, which carries spaces and so can
+// only ever be stdin; Absent for every command that reads no stdin -- no empty-string sentinel) -- or the
+// keyring GUARD, which runs nothing and is modelled as its own arm rather than a leg with an empty argv.
+type AptRepoInstallStep
+  = AptRepoLeg { kind: AptRepoInstallLegKind, argv: List<AptRepoInstallArgvToken>, stdin: String? }
+  | AptRepoGuard
+
+// The arm name of a leg kind, so a refusal and the step-order witness both name the step from its one data
+// value rather than from a string re-spelled at each call site.
+fn apt_repo_install_leg_kind_name(kind: AptRepoInstallLegKind) -> String {
+  match kind {
+    AptRepoLegKeyringDir => "KeyringDir"
+    AptRepoLegMktemp => "Mktemp"
+    AptRepoLegFetch => "Fetch"
+    AptRepoLegShowKeys => "ShowKeys"
+    AptRepoLegDearmor => "Dearmor"
+    AptRepoLegSourceLine => "SourceLine"
+    AptRepoLegUpdate => "Update"
+    AptRepoLegInstall => "Install"
+    AptRepoLegCleanup => "Cleanup"
+  }
+}
+
+// The arm name of a step: a leg names its kind, the Guard names itself. The step-order witness maps the plan
+// through this and compares the ten names to the order the security property depends on.
+fn apt_repo_install_step_kind_name(step: AptRepoInstallStep) -> String {
+  match step {
+    AptRepoGuard => "Guard"
+    AptRepoLeg { kind: kind, argv: _, stdin: _ } => apt_repo_install_leg_kind_name(kind: kind)
+  }
+}
+
+// THE ONE INSTALL ROUTE, as an ordered list of steps -- the single authority for how a third-party apt
+// repository reaches a host. gunbc.tailscale_join_converge walks this list and runs each leg elevated
+// (gunbc.fleet.host_credential_custody_converge::run_elevated_leg, which elevates internally), capturing the
+// staging directory from Mktemp and the key listing from ShowKeys; it re-spells none of these argv lines and
+// carries no shell. The ORDER is the contract, and the order is the security property: the keyrings directory
+// exists before anything is written under it; the armored key is fetched into a FRESH PRIVATE DIRECTORY
+// (mktemp -d, 0700 under umask, root-owned under sudo -- a fixed name in world-writable /tmp is fail-open, a
+// local user could pre-create it or swap its bytes) and its fingerprint GUARDED before it is ever dearmored
+// (verify-before-trust); the dearmored keyring is in place before the sources.list line names it; apt updates
+// and installs only once that line is present; and the private staging directory is removed last -- on both the
+// success path and the refusal path, which the walker issues itself.
+fn apt_third_party_repo_install_plan(
+  repo: ThirdPartyAptRepo,
+  packages: List<NonEmptyStr>,
+) -> List<AptRepoInstallStep> {
+  let no_stdin: String? = none
+  let armored = "/key.armored"
+  [
+    AptRepoLeg {
+      kind: AptRepoLegKeyringDir,
+      argv: map(
+        coreutils_install_directory_argv(
+          mode: apt_third_party_keyrings_directory_mode,
+          path: apt_keyrings_directory as String,
+        ),
+        fn(w) { AptRepoArgvLiteral { value: w } },
+      ),
+      stdin: no_stdin,
+    },
+    AptRepoLeg {
+      kind: AptRepoLegMktemp,
+      argv: [AptRepoArgvLiteral { value: "mktemp" }, AptRepoArgvLiteral { value: "-d" }],
+      stdin: no_stdin,
+    },
+    AptRepoLeg {
+      kind: AptRepoLegFetch,
+      argv: concat(
+        [
+          AptRepoArgvLiteral { value: "curl" },
+          AptRepoArgvLiteral { value: "-fsSL" },
+          AptRepoArgvLiteral { value: repo.keyring_url as String },
+          AptRepoArgvLiteral { value: "-o" },
+        ],
+        [AptRepoArgvStagingDir { suffix: armored }],
+      ),
+      stdin: no_stdin,
+    },
+    AptRepoLeg {
+      kind: AptRepoLegShowKeys,
+      argv: concat(
+        [
+          AptRepoArgvLiteral { value: "gpg" },
+          AptRepoArgvLiteral { value: "--show-keys" },
+          AptRepoArgvLiteral { value: "--with-colons" },
+        ],
+        [AptRepoArgvStagingDir { suffix: armored }],
+      ),
+      stdin: no_stdin,
+    },
+    AptRepoGuard,
+    AptRepoLeg {
+      kind: AptRepoLegDearmor,
+      argv: concat(
+        [
+          AptRepoArgvLiteral { value: "gpg" },
+          AptRepoArgvLiteral { value: "--dearmor" },
+          AptRepoArgvLiteral { value: "--yes" },
+          AptRepoArgvLiteral { value: "-o" },
+          AptRepoArgvLiteral { value: repo.keyring_path as String },
+        ],
+        [AptRepoArgvStagingDir { suffix: armored }],
+      ),
+      stdin: no_stdin,
+    },
+    AptRepoLeg {
+      kind: AptRepoLegSourceLine,
+      argv: [AptRepoArgvLiteral { value: "tee" }, AptRepoArgvLiteral { value: repo.sources_list_path as String }],
+      stdin: Present { value: apt_third_party_repo_source_line(repo: repo) },
+    },
+    AptRepoLeg {
+      kind: AptRepoLegUpdate,
+      argv: [
+        AptRepoArgvLiteral { value: "apt-get" },
+        AptRepoArgvLiteral { value: "update" },
+        AptRepoArgvLiteral { value: "-q" },
+      ],
+      stdin: no_stdin,
+    },
+    AptRepoLeg {
+      kind: AptRepoLegInstall,
+      argv: concat(
+        [
+          AptRepoArgvLiteral { value: "apt-get" },
+          AptRepoArgvLiteral { value: "install" },
+          AptRepoArgvLiteral { value: "-y" },
+          AptRepoArgvLiteral { value: "-q" },
+        ],
+        map(packages, fn(p) { AptRepoArgvLiteral { value: p as String } }),
+      ),
+      stdin: no_stdin,
+    },
+    AptRepoLeg {
+      kind: AptRepoLegCleanup,
+      argv: concat(
+        [
+          AptRepoArgvLiteral { value: rm_program().invocation as String },
+          AptRepoArgvLiteral { value: coreutils_rm_force_recursive_flags as String },
+        ],
+        [AptRepoArgvStagingDir { suffix: "" }],
+      ),
+      stdin: no_stdin,
+    },
+  ]
+}
+
+// One ':'-separated FIELD of a machine record, read EXACTLY. This language has no nth/tail, so the index is
+// reached by skipping and the head read as an Optional; a record with fewer fields than `index` yields none
+// rather than a substring or a guess. In `gpg --show-keys --with-colons` index 0 is the record type and index 9
+// the key fingerprint (gpg(1), MACHINE-PARSABLE LISTING).
+fn apt_colon_field(record: String, index: Int) -> String? {
+  match list_head(xs: skip(xs: split(s: record, delimiter: ":"), n: index)) {
+    Present { value: v } => Present { value: v }
+    Absent => none
+  }
+}
+
+// THE KEYRING GUARD, AS PURE DATA -- no shell, no subprocess, nothing a shell could re-split and nothing a
+// second key could hide from. `gpg --show-keys --with-colons` prints one record per line, ':'-separated: exactly
+// one `pub` record per key, each followed by its `fpr` records. The pin is accepted iff BOTH
+//   * EXACTLY ONE record is a `pub` record (its first ':' field is "pub"). The exactly-one count is the wall
+//     against the MULTI-KEY BYPASS: a listing that smuggles a second, untrusted key beside the pinned one must
+//     REFUSE even though the pin is present somewhere in it -- one `pub` and no more; and
+//   * the FIRST `fpr` record's field at index 9 -- the key-fingerprint field of the listing format -- EQUALS the
+//     pinned fingerprint, field for field.
+// Every comparison is on one WHOLE field (apt_colon_field), never a substring: a substring match would accept a
+// pin buried inside another field or inside an untrusted record, which is exactly the hole the multi-key count
+// is here to close. If there is no `fpr` record at all the guard refuses -- there is no key to trust.
+fn apt_third_party_keyring_colons_are_pinned(
+  colons: String,
+  pinned: PinnedAptKeyFingerprint,
+) -> Bool {
+  let records = split(s: colons, delimiter: "\n")
+  let pub_count = filter(
+    records,
+    line => match apt_colon_field(record: line, index: 0) {
+      Present { value: f0 } => f0 == "pub"
+      Absent => false
+    },
+  ).count()
+  let fpr_records = filter(
+    records,
+    line => match apt_colon_field(record: line, index: 0) {
+      Present { value: f0 } => f0 == "fpr"
+      Absent => false
+    },
+  )
+  let first_fpr_field = match list_head(xs: fpr_records) {
+    Present { value: line } => apt_colon_field(record: line, index: 9)
+    Absent => none
+  }
+  match first_fpr_field {
+    Present { value: got } => pub_count == 1 && got == (pinned.value as String)
+    Absent => false
+  }
+}
+
+// THE ONE SOURCE-LINE RENDERER. `deb [arch=X signed-by=Y] BASE SUITE COMP...` -- the apt line shape every
+// third-party repository documents, rendered from the row so no vendor re-spells it and no caller hand-builds
+// an apt line. Components are joined in order because the row owns their order.
+fn apt_third_party_repo_source_line(repo: ThirdPartyAptRepo) -> String {
+  join(
+    [
+      "deb [arch=",
+      repo.arch as String,
+      " signed-by=",
+      repo.keyring_path as String,
+      "] ",
+      repo.repo_base as String,
+      " ",
+      repo.suite as String,
+      " ",
+      join(map(repo.components, c => c as String), " "),
+    ],
+    "",
+  )
 }

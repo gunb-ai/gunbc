@@ -2,7 +2,7 @@ module extdeps.cloud.gcp.iam_admin
 import std.types { Bearer }
 
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, WifPoolWire, WifProviderWire, WifProviderListWire, GcpOperation, GoogleRpcStatus }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpPermissionProbeWire }
@@ -10,12 +10,25 @@ import std.types { Bool, Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "cloud.google.com/iam/docs/reference/rest"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.gcp.iam_admin",
+      decl_name: "gcp.IamAdmin",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE TWO SERVICE-ACCOUNT POLICY OPERATIONS READ AND WRITE WHO MAY ACT AS AN ACCOUNT, which is a

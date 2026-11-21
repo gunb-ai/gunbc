@@ -23,6 +23,7 @@ import gunbc.host_command_binding { LocalCommandHost, HostCommandDone, HostComma
 import gunbc.secret_provision_actuator { observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_privkey_secret }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
+import gunbc.ci.ci_run_step_target { gunbc_run_step_target, GunbcRunStepTarget }
 
 // ── THE ONE POLICY FOR MINTING A FLEET KEYPAIR ────────────────────────────────────────────────────
 //
@@ -108,12 +109,19 @@ type FleetKeypairMintSubject {
   comment: String,
   mint_dir: String,
   key_file_name: NonEmptyStr,
-  // THE ENTRY THE DISPATCH RUNS, and where the receipt lands. These are row fields rather than a lookup in
-  // gunbc.ci.ci_spec, because a mode that selects a subject and then runs a FIXED entry is a mode where the
-  // input can disagree with what ran -- the exact shape of "I minted the host key" printed by a run that
+  // THE RUN-TIME TARGET THE DISPATCH RUNS, and where the receipt lands. It is a TYPED GunbcRunStepTarget,
+  // built at the row with gunbc.ci.ci_run_step_target gunbc_run_step_target(module:, function:) string
+  // literals — the MODULE NAME, not a path: the entry path the dispatch runs is DERIVED from the target's
+  // DeclarationRef by that same constructor through gunbc.source_layout
+  // (gunbc.design_argument::single_authority), so a row cannot author a path that disagrees with the module it
+  // names. Typing it (rather than two loose mint_module/mint_function strings a wrapper could re-assemble)
+  // puts this entry on the SAME rung as every other run-step target: the required reference check
+  // (v2.cli.reference_check) resolves the (module, function) pair to a real declaration, so a typo refuses at
+  // PR time, not at CI run time. These are row fields rather than a lookup in the dissolved central spec
+  // module gunbc.ci.ci_spec, because a mode that selects a subject and then runs a FIXED entry is a mode where
+  // the input can disagree with what ran -- the exact shape of "I minted the host key" printed by a run that
   // minted the reader key. Read from the row by the step that gates on the same row, they cannot disagree.
-  mint_entry: String,
-  mint_function: String,
+  mint_target: GunbcRunStepTarget,
   receipt_path: String,
   // THE WORD THE RECEIPT OPENS WITH ("reader_key=minted", "host_key=outcome unknown"), so the receipt
   // renderer is core code over row data: a second key brings a row, not a module with its own receipt arms.
@@ -128,8 +136,10 @@ data boot_medium_reader_keypair_mint_subject: FleetKeypairMintSubject = FleetKey
   comment: "boot-medium-reader",
   mint_dir: "/dev/shm/gunbc-boot-medium-reader-key-mint",
   key_file_name: "key" as NonEmptyStr,
-  mint_entry: "dag/gunbc/host/boot_medium_reader_key_mint.dag",
-  mint_function: "boot_medium_reader_key_mint_wet",
+  mint_target: gunbc_run_step_target(
+    module: "gunbc.host.boot_medium_reader_key_mint",
+    function: "boot_medium_reader_key_mint_wet",
+  ),
   receipt_path: "target/boot-medium-reader-key-mint.txt",
   receipt_prefix: "reader_key" as NonEmptyStr,
 }
@@ -140,8 +150,10 @@ data mtcollins1_host_keypair_mint_subject: FleetKeypairMintSubject = FleetKeypai
   comment: "mtcollins1-ssh-host-key",
   mint_dir: "/dev/shm/gunbc-mtcollins1-ssh-host-key-mint",
   key_file_name: "key" as NonEmptyStr,
-  mint_entry: "dag/gunbc/host/mtcollins1_ssh_host_key_mint.dag",
-  mint_function: "mtcollins1_host_key_mint_wet",
+  mint_target: gunbc_run_step_target(
+    module: "gunbc.host.mtcollins1_ssh_host_key_mint",
+    function: "mtcollins1_host_key_mint_wet",
+  ),
   receipt_path: "target/mtcollins1-ssh-host-key-mint.txt",
   receipt_prefix: "host_key" as NonEmptyStr,
 }

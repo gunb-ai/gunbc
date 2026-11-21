@@ -1941,7 +1941,7 @@ fn refusals_in_order(gaps: List<UnansweredAxis>) -> List<FirmwareReadRefusal> {
     empty: [] as List<FirmwareReadRefusal>,
     cons: fn(acc, gap) {
       match refusal_of_gap(gap: gap) {
-        Present { value: refusal } => list_append(left: acc, right: refusal)
+        Present { value: refusal } => list_append(left: acc, right: [refusal])
         Absent => acc
       }
     },

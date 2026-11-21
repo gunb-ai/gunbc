@@ -561,32 +561,82 @@ fn codex_press_account_trip_program(lock: CodexTripLock?) -> String {
   }
 }
 
-fn codex_press_account_trip_invocation(
+// THE TRIP ARGV WORDS are the env-prefixed child (CODEX_HOME=<home>, the projected executable
+// invoked `app-server --stdio`), optionally wrapped in the turn's flock. These are the WORDS that
+// reach shell.Exec.RunArgvStdin, and the single authority for them -- the witness-pinned projection
+// and the shell-safety admission below both read this one builder, so nothing interpolates the
+// codex_home twice.
+fn codex_press_account_trip_argv_words(
   executable: FilePath,
   codex_home: FilePath,
   lock: CodexTripLock?,
-) -> ProcessArgvExpansion {
+) -> List<String> {
   let env_args = env_prefixed_args(
     bindings: [EnvSet { name: "CODEX_HOME", value: codex_home as String }],
     command_argv: [executable as String, "app-server", "--stdio"],
   )
-  process_argv_expansion(
-    surface: cli_surface_of_literal_words(
-      words: match lock {
-        Absent => env_args
-        Present { value: l } =>
-          skip(
-            flock_exclusive_nonblocking_words(
-              lock_path: l.lock_path,
-              conflict_exit_code: l.conflict_exit_code,
-              command: concat([env_path_resolved_program().invocation as String], env_args),
-            ),
-            1,
-          )
-      },
-    ),
-  )
+  match lock {
+    Absent => env_args
+    Present { value: l } =>
+      skip(
+        flock_exclusive_nonblocking_words(
+          lock_path: l.lock_path,
+          conflict_exit_code: l.conflict_exit_code,
+          command: concat([env_path_resolved_program().invocation as String], env_args),
+        ),
+        1,
+      )
+  }
 }
+
+// THIS IS A DIRECT-EXEC SEAM, NOT A SHELL. The trip's argv is handed to shell.Exec.RunArgvStdin -- an
+// execve of argv [program, arguments] with the request payload on stdin. No shell sits between the
+// carrier and the process and no word splitting happens, so a codex_home carrying `;` or a space
+// arrives as ONE argv element with its bytes intact and cannot re-parse into a second command. That is
+// the whole difference from shell.Exec.Run, whose transport renders argv to quoted text and hands it to
+// `bash -s`: a STRING the remote shell re-parses, which is exactly where
+// gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv earns its keep -- the ssh portable-word
+// wall admits [A-Za-z0-9._-/@:=] because a word outside that set could be reinterpreted downstream.
+// Here there is no downstream re-parse, so the wall would only restrict which pathnames are writable
+// while preventing no injection -- a check that does not say what it is for (gunbc.design_argument::
+// source_annotations). The ssh wall is therefore NOT applied at this seam; this transition is the
+// subject of the gunbc.roadmap.roadmap_authority node dp-m2-codex-direct-argv-policy, whose authority
+// it carries rather than the worker's.
+//
+// What the seam OWES is structural and is carried by the types, not by an alphabet: program is a
+// NonEmptyStr and the arguments are a ProcessArgvExpansion that always carries argv[0], so there is no
+// admitted/refused fork left to take and no spawnable bare-`env` value to make unwritable
+// (gunbc.design_argument::fail_closed -- the construction that could have run a bare `env` no longer
+// has any representation at all).
+
+// THE SINGLE PRODUCTION CONSTRUCTION of the trip's typed argv: it mints the words' CliSurface EXACTLY
+// ONCE and expands it to the ProcessArgvExpansion the direct-exec seam consumes. Both production
+// callers (codex_app_server_press.observe_codex_account_preflight and
+// worker_turn_standing.codex_observed_standing_for_instance) hand the returned ProcessArgvExpansion
+// straight to shell.Exec.RunArgvStdin -- they never discard it and rebuild it beside the call
+// (gunbc.design_argument::single_authority). The mint lives here (declared in the
+// cli_surface_of_literal_words admit_callers roster) precisely so the argv is produced by the
+// construction and not re-derived beside it.
+fn codex_press_account_trip_argv_admission(
+  executable: FilePath,
+  codex_home: FilePath,
+  lock: CodexTripLock?,
+) -> ProcessArgvExpansion {
+  let words = codex_press_account_trip_argv_words(
+    executable: executable,
+    codex_home: codex_home,
+    lock: lock,
+  )
+  process_argv_expansion(surface: cli_surface_of_literal_words(words: words))
+}
+
+// The trip's typed argv has ONE construction and ONE minter: codex_press_account_trip_argv_admission,
+// above. There is deliberately NO separate "invocation" projection fn -- the test-only projection that
+// once existed returned a fabricated empty ProcessArgvExpansion (a spawnable bare-`env` value:
+// gunbc.design_argument::fail_closed) and held a second cli_surface_of_literal_words mint on the roster
+// (a fork: gunbc.design_argument::single_authority). Both witnesses render the surface straight from
+// the ProcessArgvExpansion the single construction returns.
+
 
 fn json_rpc_id_as_int(v: JsonValue) -> Int? {
   match v {
@@ -1633,15 +1683,16 @@ fn observe_codex_account_preflight(
           },
         }
       } else {
-        let run = shell.Exec.RunArgvStdin(
-          program: env_path_resolved_program().invocation,
-          arguments: codex_press_account_trip_invocation(
-            executable: projected.executable.path,
-            codex_home: codex_home,
-            lock: none,
-          ),
-          stdin_payload: codex_press_account_trip_request_lines(),
+        let arguments = codex_press_account_trip_argv_admission(
+          executable: projected.executable.path,
+          codex_home: codex_home,
+          lock: none,
         )
+            let run = shell.Exec.RunArgvStdin(
+              program: env_path_resolved_program().invocation,
+              arguments: arguments,
+              stdin_payload: codex_press_account_trip_request_lines(),
+            )
         let wire_capture = retain_provider_wire_capture(
           evidence_root: evidence_root,
           stdout: run.stdout,

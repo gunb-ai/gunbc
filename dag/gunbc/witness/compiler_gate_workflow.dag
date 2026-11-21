@@ -25,7 +25,7 @@ module gunbc.witness.compiler_gate_workflow
 // passes native_product_reuse_env_name=fresh, under which the runner refuses a restored hit rather
 // than serving it. That is the one use the ruling leaves the seed. The one run that does NOT emit is a
 // pull request the planning fast lane covers (gunbc.read_set_restore, admitted by
-// @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)): its subject steps are skipped, not
+// #gunbc.design_ruling::seed_read_set_receipt_is_admitted): its subject steps are skipped, not
 // served from a store, and the job says so -- it reuses the verdict main's run reached at the restored
 // ancestor and runs the whole-tree checks with the binary that run built, labelled as reused. A verdict this gate gains from
 // here is a row of emitted_subject_build_rows judged by a binary built from that emission, not a
@@ -74,6 +74,7 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
+  BracketQuoted,
   bash_build_command_from_lits,
   bash_build_command_with_words,
   bash_build_exit,
@@ -426,7 +427,7 @@ fn compiler_gate_compose_caller_statements(c: CallerTreeComposition) -> List<Nod
   let caller_tree = join([c.caller_checkout, "/", c.tree_directory], "")
   [
     bash_build_if_from_stmts(
-      cond: bash_build_negation(inner: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), bash_build_word_lit(text: caller_tree)])),
+      cond: bash_build_negation(inner: bash_build_test_bracket(words: [bash_build_word_lit(text: "-d"), bash_build_word_lit(text: caller_tree)], spelling: BracketQuoted)),
       then_stmts: [
         compiler_gate_compose_caller_echo(words: [bash_build_word_lit(text: "::error::the calling repository has no dag/ directory, so there is nothing to compose")]),
         bash_build_exit(code: "1")
@@ -893,11 +894,41 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
     concat(
       concat(
         list_map(xs: compiler_gate_emit_build_subject_bound_steps(), f: fn(b) { compiler_gate_fast_lane_guarded(b: b) }),
-        compiler_gate_fast_lane_check_bound_steps(),
+        compiler_gate_fast_lane_publish_bound_steps(),
       ),
-      compiler_gate_emit_build_tail_bound_steps(),
+      concat(
+        compiler_gate_fast_lane_check_bound_steps(),
+        compiler_gate_emit_build_tail_bound_steps(),
+      ),
     ),
   )
+}
+
+// THE UNIT IS PUBLISHED AS SOON AS ITS MEMBERS EXIST. The stage and save sit right after the emit boundary
+// that produces all three of them (both emit steps append `gunbc-read-set.txt`; the native CLI and its
+// compiler identity are the native-CLI step's outputs). Their old position was behind the parse-population
+// walk, a step that writes none of the three, so every merge made the unit wait ~9 minutes more than it
+// needed to and each pull request based on that merge paid the full lane while it waited. The trust the old
+// position implied by ORDER ("everything earlier in the job was green") is now a condition on the steps
+// themselves: gunbc.read_set_publish fast_lane_publish_gate runs them only when both emit steps are green on
+// a default-branch push. A main run that fails the walk afterwards still reddens the required check on main,
+// still publishes no fresh parse-verdict receipts (that save stays behind the walk), and every pull request
+// re-runs parse-population with the CLI it restored, so a walk the unit's own CLI fails goes red on the
+// consumer. These steps stay OUT of the qualification floor below, which admits only prelude and subject
+// steps and no step that can run past a failure.
+fn compiler_gate_fast_lane_publish_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: fast_lane_stage_step(),
+      role: capability_neutral,
+      step_name: fast_lane_stage_step_name,
+    },
+    CompilerGateBoundStep {
+      step: read_set_publish_save_step(),
+      role: capability_neutral,
+      step_name: read_set_save_step_name(),
+    },
+  ]
 }
 
 // THE FLOOR A QUALIFICATION RUNS IS THIS JOB'S OWN WORK, NOT A SECOND SPELLING OF IT: the prelude and the subject
@@ -978,16 +1009,6 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
         step: parse_verdict_publish_save_step(),
         role: capability_neutral,
         step_name: parse_verdict_save_step_name(),
-      },
-      CompilerGateBoundStep {
-        step: fast_lane_stage_step(),
-        role: capability_neutral,
-        step_name: fast_lane_stage_step_name,
-      },
-      CompilerGateBoundStep {
-        step: read_set_publish_save_step(),
-        role: capability_neutral,
-        step_name: read_set_save_step_name(),
       },
       CompilerGateBoundStep {
         step: compiler_gate_emit_build_notice_step(),

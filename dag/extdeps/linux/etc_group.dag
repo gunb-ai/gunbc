@@ -30,9 +30,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [],
 }
 
+// user_list is the group's SUPPLEMENTARY members, comma-separated (group(5)); an account whose primary
+// group this is need not appear in it, so a member list answers "is this account listed", not "is
+// this account in the group by any route".
 type EtcGroupEntry {
   name: NonEmptyStr
   gid: Int
+  members: List<NonEmptyStr>
 }
 
 fn etc_group_entry(line: String) -> EtcGroupEntry? {
@@ -46,12 +50,20 @@ fn etc_group_entry(line: String) -> EtcGroupEntry? {
             Absent => none
             Present { value: g } => match parse_int(s: trim(s: g)) {
               Absent => none
-              Present { value: gid } => if gid < 0 { none } else { Present { value: EtcGroupEntry { name: name as NonEmptyStr, gid: gid } } }
+              Present { value: gid } => if gid < 0 { none } else { Present { value: EtcGroupEntry { name: name as NonEmptyStr, gid: gid, members: etc_group_user_list(field: etc_group_fourth_field(fields: fields)) } } }
             }
           }
         }
     }
   }
+}
+
+fn etc_group_fourth_field(fields: List<String>) -> String {
+  match first(fields |> skip(n: 3)) { Absent => "", Present { value: f } => f }
+}
+
+fn etc_group_user_list(field: String) -> List<NonEmptyStr> {
+  flat_map(split(s: trim(s: field), delimiter: ","), m => if trim(s: m) == "" { [] as List<NonEmptyStr> } else { [trim(s: m) as NonEmptyStr] })
 }
 
 // Comment and blank lines are not entries; any other line that is not an entry is skipped too, since
@@ -64,4 +76,8 @@ fn etc_group_entries(text: String) -> List<EtcGroupEntry> {
 
 fn etc_group_name_of(entries: List<EtcGroupEntry>, gid: Int) -> NonEmptyStr? {
   match first(entries |> filter(e => e.gid == gid)) { Absent => none, Present { value: e } => Present { value: e.name } }
+}
+
+fn etc_group_entry_named(entries: List<EtcGroupEntry>, name: NonEmptyStr) -> EtcGroupEntry? {
+  first(entries |> filter(e => e.name as String == name as String))
 }

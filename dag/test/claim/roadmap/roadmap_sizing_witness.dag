@@ -46,7 +46,7 @@ fn fixture_node() -> RoadmapNode {
     centering: Absent,
     identity: "rnfx_SIZING000000000000000001" as RoadmapNodeIdentity,
     node: "sizing-fixture" as RoadmapNodeId,
-    line: TicketLine { done: false, ticket: fixture_ticket() },
+    line: TicketLine { ticket: fixture_ticket() },
     carriers: [],
     dispatch: Dispatchable { repo: "gunbc", acceptance: PrsMerged },
     execution: ExecutionContractUnspecified,

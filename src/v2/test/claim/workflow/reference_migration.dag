@@ -147,8 +147,8 @@ test fn a_proposed_edit_applies_and_the_result_carries_the_replacement_holds() -
   let before = "// The multiply kernel is described in DESIGN §3.\n"
   let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
   plan_edit_count(plan: plan) == 1
-    && plan_reports(plan: plan, fragment: "EDIT -> @ref(" + coordinate_target() + ")")
-    && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")", expected: "// The multiply kernel is described in @ref(" + coordinate_target() + ").\n")
+    && plan_reports(plan: plan, fragment: "EDIT -> #" + coordinate_target())
+    && applied_carries(plan: plan, replacement: "#" + coordinate_target(), expected: "// The multiply kernel is described in #" + coordinate_target() + ".\n")
 }
 
 
@@ -377,7 +377,7 @@ fn apply_refuses_generated(plan: Optional<MigrationPlan>, ownership: MigrationOw
 
 fn valid_edit_on(path_of: String, population: List<MigrationFile>) -> MigrationEdit {
   let file = file_at(path_of: path_of, population: population)
-  MigrationEdit { id: "hand-built-on-generated", file: path_of, digest: file.digest, start: 0, end: 2, expected: "//", replacement: "@ref(gunbc.migration_cited::migration_cited_function)", target: Absent }
+  MigrationEdit { id: "hand-built-on-generated", file: path_of, digest: file.digest, start: 0, end: 2, expected: "//", replacement: "#gunbc.migration_cited::migration_cited_function", target: Absent }
 }
 
 fn file_at(path_of: String, population: List<MigrationFile>) -> MigrationFile {
@@ -473,7 +473,7 @@ test fn an_unlexable_authored_file_is_reported_not_certified_holds() -> Bool {
 
 // A malformed marker stays the checker's finding; the migration never rewrites what it could not read.
 test fn a_malformed_marker_is_reported_and_never_edited_holds() -> Bool {
-  let before = "// see @ref(gunbc.migration_cited::migration_cited_function and DESIGN §3\n"
+  let before = "// see #gunbc.migration_cited:: and DESIGN §3\n"
   let plan = plan_of(content: before, rules: [migration_rule_for_citation(document: "DESIGN", label: "3", coordinate: coordinate_target())], ownership: migration_ownership_authored())
   match plan {
     Absent => false
@@ -572,7 +572,7 @@ test fn the_bound_plan_entry_threads_ownership_to_every_file_it_plans_holds() ->
         && string_contains(s: plan_text(plan: Present { value: plan }), pattern: "src/v2/workflow/migration_consumer.dag")
         && string_contains(s: plan_text(plan: Present { value: plan }), pattern: "dag/gunbc/migration_generated.dag")
         && string_contains(s: plan_text(plan: Present { value: plan }), pattern: "PRODUCER CHANGE REQUIRED")
-        && string_contains(s: plan_text(plan: Present { value: plan }), pattern: "EDIT -> @ref(" + coordinate_target() + ")")
+        && string_contains(s: plan_text(plan: Present { value: plan }), pattern: "EDIT -> #" + coordinate_target())
   }
 }
 
@@ -601,7 +601,7 @@ test fn a_backticked_spelling_takes_both_backticks_holds() -> Bool {
   // Both backticks belong to the extent: the post-image keeps the sentence and loses the quoted
   // spelling whole, backticks and all.
   plan_edit_count(plan: plan) == 1
-    && applied_carries(plan: plan, replacement: "@ref(" + coordinate_target() + ")", expected: "// @ref(" + coordinate_target() + ") is the old spelling\n")
+    && applied_carries(plan: plan, replacement: "#" + coordinate_target(), expected: "// #" + coordinate_target() + " is the old spelling\n")
 }
 
 // The two deletion authorities that are not an occurrence's own extent: a rule chooses the sentence or
@@ -666,7 +666,7 @@ test fn an_external_specification_is_a_non_citation_holds() -> Bool {
 // non-citation, even in a paragraph that declares itself an example, and the checker — not this
 // surface — judges whether it resolves.
 test fn a_marked_reference_in_an_example_paragraph_is_still_edited_holds() -> Bool {
-  let before = "// spellings:\n//   @ref(gunbc.migration_cited::migration_cited_other)\n"
+  let before = "// spellings:\n//   #gunbc.migration_cited::migration_cited_other\n"
   match migration_reference_from_coordinate(coordinate: "gunbc.migration_cited::migration_cited_other") {
     Absent => false
     Present { value: marked } =>
@@ -733,7 +733,7 @@ test fn a_keyword_suggests_candidates_and_applies_nothing_holds() -> Bool {
 
 // An unmapped marked reference is not this migration's subject at all: check-references judges it.
 test fn an_unmapped_marked_reference_makes_no_finding_holds() -> Bool {
-  let plan = plan_of(content: "// see @ref(gunbc.migration_cited::migration_cited_function) here\n", rules: [], ownership: migration_ownership_authored())
+  let plan = plan_of(content: "// see #gunbc.migration_cited::migration_cited_function here\n", rules: [], ownership: migration_ownership_authored())
   match plan {
     Absent => false
     Present { value: p } => length(xs: p.findings) == 0 && length(xs: p.malformed) == 0 && length(xs: p.unread) == 0

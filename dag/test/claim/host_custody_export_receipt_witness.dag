@@ -25,32 +25,11 @@ import gunbc.worker_turn_snapshot_custody {
 import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
 import gunbc.claude_code_credential { claude_code_oauth_harness_host_path }
 import gunbc.typed_remote_file_write { TypedRemoteFileConvergenceRefused }
+import gunbc.fleet.host_credential_custody_roster {
+  HostCredentialCustodyRow, CursorWorkerTurnApiKey, ClaudeCodeOauthHarnessToken, CodexWorkerTurnAuth, ControllerAppKey, host_credential_custody_row, CustodyExportReceiptOwed, CustodyExportReceiptNotOwed, CustodyOnlyOnHost
+}
 import gunbc.fleet.host_credential_custody_converge {
-  HostCredentialCustodyRow,
-  CursorWorkerTurnApiKey,
-  ClaudeCodeOauthHarnessToken,
-  CodexWorkerTurnAuth,
-  ControllerAppKey,
-  host_credential_custody_row,
-  CustodyExportReceiptOwed,
-  CustodyExportReceiptNotOwed,
-  host_custody_export_receipt_from_row,
-  plan_host_custody_export,
-  CustodyExportNotOwed,
-  CustodyExportWithheld,
-  CustodyExportUnplannable,
-  CustodyExportPublication,
-  classify_host_custody_export,
-  custody_export_after_bytes_landed,
-  CustodyExportRefused,
-  CustodyExportPublished,
-  CustodyExportNotOwedStanding,
-  CustodyExportWithheldStanding,
-  custody_file_legs,
-  custody_dir_legs,
-  CustodyPathAsDeclared,
-  CustodyPathUnobservable,
-  CustodyOnlyOnHost,
+  host_custody_export_receipt_from_row, plan_host_custody_export, CustodyExportNotOwed, CustodyExportWithheld, CustodyExportUnplannable, CustodyExportPublication, classify_host_custody_export, custody_export_after_bytes_landed, CustodyExportRefused, CustodyExportPublished, CustodyExportNotOwedStanding, CustodyExportWithheldStanding, custody_file_legs, custody_dir_legs, CustodyPathAsDeclared, CustodyPathUnobservable
 }
 import std.content_hash { sha256_hex_of_text }
 

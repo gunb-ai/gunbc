@@ -119,6 +119,7 @@ fn evidence(readback_read: Bool, readback: String) -> MegaRacDetachEvidence {
   MegaRacDetachEvidence {
     stale_image: runner_desired as String,
     media_index: "0",
+    share_cycle_start: none,
     command: megarac_write_answer(exit_code: 0, body: "{}", stderr: ""),
     readback_read: readback_read,
     readback: readback,

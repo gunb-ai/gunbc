@@ -5,7 +5,7 @@ import std.types {String, List}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import gunbc.auth.access_token_source {WorkloadIdentityToken,OperatorSuppliedToken,GcloudPrintToken}
-import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
+import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, MintAtUseCredentialSource, HostCustodyCredentialSource }
 import gunbc.actions_run_binding {actions_variable_trimmed}
 import gunbc.fleet.printer_workflow_artifact {printer_workflow_receipt_path}
 import extdeps.filesystem.filesystem_io {Filesystem}
@@ -20,12 +20,18 @@ fn run_identity_members(credential_source: PrinterCredentialSource) -> List<Json
       json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
       json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
     ]
+    MintAtUseCredentialSource { mint: _ } => [
+      json_kv(key: "run_id", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ID"))),
+      json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
+      json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
+    ]
     HostCustodyCredentialSource { run_id: id } => [json_kv(key: "run_id", value: json_string(s: id))]
   }
 }
 fn execution_source(credential_source:PrinterCredentialSource) -> String {
  match credential_source {
   SecretManagerCredentialSource {token_source:t} => match t { WorkloadIdentityToken=>"github-actions" OperatorSuppliedToken {token:_}=>"operator-token-file" GcloudPrintToken=>"operator-gcloud" }
+  MintAtUseCredentialSource { mint: _ } => "github-actions"
   HostCustodyCredentialSource { run_id: _ } => "srv1-shell-custody"
  }
 }

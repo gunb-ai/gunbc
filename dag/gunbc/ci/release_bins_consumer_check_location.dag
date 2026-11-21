@@ -1,0 +1,12 @@
+module gunbc.ci.release_bins_consumer_check_location
+
+import std.types { String }
+
+// WHERE THE RELEASE-BINS CONSUMER CHECK SCRIPT IS COMMITTED. Twelve fleet-converge jobs verify the
+// handed-off release bins with one script; inlining it in each job made the workflow file approach the
+// size GitHub will start (gunbc.recurring_failure_mode::a_generated_workflow_grows_past_the_size_github_will_start),
+// so the script is one committed generated file the steps invoke. Both the artifact registry
+// (gunbc.generated_artifact) and the invoking step (gunbc.fleet.fleet_workflow_steps) read the location
+// here, so it has one spelling and neither imports the other.
+data release_bins_consumer_check_script_directory: String = ".github/scripts"
+data release_bins_consumer_check_script_name: String = "release-bins-consumer-check.sh"

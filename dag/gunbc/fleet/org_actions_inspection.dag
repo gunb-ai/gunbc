@@ -342,7 +342,7 @@ fn org_actions_receipt_text(organization: NonEmptyStr, assessment: GoalAssessmen
 fn org_actions_inspect_wet() -> ProcessExit {
   let credential = env_credential(env_var: org_admin_token_env_name)
   match credential.token {
-    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.ci.ci_spec gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
+    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent -- the org-actions workflow step mints it in-run from the gunbai-ci App key (gunbc.auth.github_app_credential_step gunbc_ci_org_admin_app_token_prelude); outside that step there is no credential to read")
     Present { value: _ } => match first_absent_gh_cli_operation_host_cli_dependency() {
       Present { value: a } =>
         exit_failure(reason: concat("OrgActionsExecutorPrerequisiteAbsent: ", host_dependency_absent_wire(tool: a.tool, hint: a.hint)))

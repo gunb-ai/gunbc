@@ -182,7 +182,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ── the synthetic lab unit ──────────────────────────────────────────────────────────────────────
 
-data lab_unit: UnitKey = "LAB-O1B-0001" as UnitKey
+data lab_unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "LAB-O1B-0001" }
 
 data lab_assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-LAB-O1B",

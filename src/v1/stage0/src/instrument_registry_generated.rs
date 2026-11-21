@@ -40,13 +40,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "evaluation-store-address-exact-head".to_string(),
-            },
-            TargetProducer::EvaluationStoreAddressExactHead,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "typed-graph-exclusive-bytes".to_string(),
             },
             TargetProducer::TypedGraphExclusiveBytes,
@@ -350,15 +343,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "native-xl2-rehearsal".to_string(),
-            },
-            TargetProducer::NativeClaimProgram {
-                entry: "src/v2/workflow/namespace_xl2_rehearsal_native.dag",
-            },
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "value-position-block-nests".to_string(),
             },
             TargetProducer::NativeClaimProgram {
@@ -399,6 +383,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             },
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/auth/approval_device_crypto_ingress.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "native-serve-roadmap".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/roadmap/roadmap_native_ingress.dag",
             },
         ),
         (

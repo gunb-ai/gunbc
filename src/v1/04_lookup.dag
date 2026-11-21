@@ -54,7 +54,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name, census_declaration_type_env, declared_module_owner, declaration_substitution_basis,
   is_recursive_type, lookup_type, lookup_type_for,
   GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, global_bare_declarer_in_scope, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
-  listed_import_required_bare_call_blocked
+  listed_import_required_bare_call_blocked, import_visible_name
 }
 
 import v1.compiler.infer_resolve { fn_type_param_names, expand_nominal_alias_rhs }
@@ -322,7 +322,14 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // regression after pool_qualified_fill deletion: bare `map`/`join` as InternalError not-found,
 // plus borrowed generic T field misses).
 fn census_declaration_identity(type_env: TypeEnv, func_name: String) -> BorrowedCensusDecl? {
-  if algebra_method_template_name(name: func_name) {
+  // The method-template gate keeps a receiver-dispatched name (bare `map`/`join`) from binding to a
+  // census declaration and short-circuiting the known-method bridge. It must NOT suppress a name the
+  // calling module has *listed-imported* as a free function: under namespace-only resolution imports
+  // are not carried in the func env, so a bare call to such an imported function is answered only by
+  // this census authority, and blanket-bailing on the method-template spelling left it with no callee
+  // identity (the effect join then refused for `skip`, a std.algebra free fn that is also a method
+  // template name). Yield the gate exactly when the name is import-visible.
+  if algebra_method_template_name(name: func_name) && !import_visible_name(env: type_env, name: func_name) {
     Absent
   } else {
   match borrowed_census_decl(type_env: type_env, name: func_name) {
@@ -740,7 +747,10 @@ fn declaring_module_for_local_binding(type_env: TypeEnv, name: String) -> String
 }
 
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
-  if algebra_method_template_name(name: name) {
+  // Mirror of the census_declaration_identity gate: a method-template name that the module has
+  // listed-imported as a free function is a genuine declaration and must be answered here, not left
+  // unresolved for the method bridge. Non-imported method-template names (`map`/`join`) still yield.
+  if algebra_method_template_name(name: name) && !import_visible_name(env: type_env, name: name) {
     FuncSigUnresolved
   } else {
   match infer_builtin_call_type(name: name) {

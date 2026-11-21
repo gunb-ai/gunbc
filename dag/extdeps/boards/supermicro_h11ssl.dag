@@ -25,7 +25,7 @@ import extdeps.uri { Uri, Https }
 import std.algebra { FreeSemigroup }
 import extdeps.board_soc { BoardSocEdge }
 import extdeps.cpu.amd { amd_epyc_7001_soc_family, amd_epyc_7002_soc_family }
-import extdeps.boards.types { BoardStandardLocationCorrespondence, board_location_correspondence, HoleCorrespondenceInferred, HoleNotObservedInDrawing, BoardStandardLocationRoster, board_standard_location_roster }
+import extdeps.boards.types { BoardExpansionSlot, BoardExpansionSlots, BoardStandardLocationCorrespondence, board_location_correspondence, HoleCorrespondenceInferred, HoleNotObservedInDrawing, BoardStandardLocationRoster, board_standard_location_roster }
 import extdeps.standards.motherboard_mounting_grid { Atx22MountingGrid }
 import extdeps.standards.motherboard_mounting_location { LocA, LocC, LocF, LocG, LocH, LocJ, LocK, LocL, LocM }
 
@@ -364,6 +364,25 @@ data supermicro_h11ssl_pcie_slots: List<PcieSlot> = [
 // obligation here rather than being assumed from the numbering.
 data supermicro_h11ssl_slot_geometry_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "Read the physical order of SLOT1-SLOT6 and their pitch from the rendered layout figure (pp.12-13) or a measured unit; the text layer carries names and widths only.",
+}
+
+// SLOT4 TO SLOT6 AS POSITIONS ALONG THE REAR EDGE, read on a unit rather than the drawing (operator,
+// 2026-11-16, the new H11SSL-i carrying two T10s): SLOT6 is the x16 nearest the CPU, then the x8 SLOT5, then
+// the x16 SLOT4, and the cards in SLOT4 and SLOT6 sit 40.64 mm apart, which is two CEM slot pitches
+// (extdeps.standards.pcie_cem cem_slot_width, 20.32 mm). So the three are consecutive positions; the numbers are
+// the designators' own so the order reads directly. SLOT1-SLOT3 are not placed: their order and pitch are
+// still supermicro_h11ssl_slot_geometry_standing's obligation. No lane obstacle past a card's end has been
+// read on this board, so the list is empty because nothing was looked for, not because nothing is there.
+data supermicro_h11ssl_expansion_slots: BoardExpansionSlots = BoardExpansionSlots {
+  lane_obstacles: [],
+  slots: [
+    BoardExpansionSlot { designator: "SLOT4", position: 4 },
+    BoardExpansionSlot { designator: "SLOT5", position: 5 },
+    BoardExpansionSlot { designator: "SLOT6", position: 6 },
+  ],
+  positions: TranscribedUncited {
+    read_obligation: "SLOT4-SLOT6 order and the 40.64 mm SLOT4-to-SLOT6 card pitch are the operator's reading of one unit (2026-11-16); ground them in the manual's rendered layout figure (pp.12-13) or a caliper read across the brackets, and read SLOT1-SLOT3 and any component standing proud in a slot lane past a card's end (the coin cell, headers) before a blower stage is placed against this board",
+  },
 }
 
 // The BIOS bifurcation menu (p.75) labels the slots 'CPU2 SLOT1' and 'CPU1 SLOT2' through 'CPU1 SLOT6',

@@ -5,7 +5,7 @@ import std.algebra { list_head }
 
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, LaunchEnvironment }
 
-import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied, AwaitingCapability }
+import gunbc.fleet.fleet_converge_terminal { FullyApplied, PartiallyApplied, AwaitingCapability, OwedReportContradiction }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.measure { second_count }
@@ -35,7 +35,7 @@ import gunbc.live_deploy.apply_receipt {
 }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedRootTreeStanding, DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedRootTreeScopeDiverged, DeployedRootTreeUnobserved,
-  deployed_root_tree_standing_text,
+  deployed_root_tree_standing_text, deployed_tree_unobservable_text,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding, ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed, ReleaseBindingUnobserved,
@@ -687,10 +687,14 @@ fn apply_outcome_blockers(s: RoadmapLaunchDeploymentSubject, f: ApplyReceiptFact
       concat(
         match a.terminal {
           FullyApplied => []
-          PartiallyApplied { refused_axis_count: n, detail: d } =>
+          PartiallyApplied { refused_axis_count: n, owed: _, detail: d } =>
             blocker(member: "apply_receipt", detail: join(["fleet apply terminal is PartiallyApplied (", to_string(n), " refused axes): ", d], ""))
           AwaitingCapability { capability: c } =>
             blocker(member: "apply_receipt", detail: join(["fleet apply terminal is AwaitingCapability: ", c], ""))
+          // A contradiction in the apply's own owed report is a blocker like any other unmet terminal, and
+          // it is NOT reported as a capability to wait for: no grant lifts it.
+          OwedReportContradiction { detail: d } =>
+            blocker(member: "apply_receipt", detail: join(["fleet apply terminal is OwedReportContradiction: ", d], ""))
         },
         if a.expected_revision_admitted != s.revision {
           blocker(member: "apply_receipt", detail: join(["apply admitted expected revision ", a.expected_revision_admitted, ", not R=", s.revision], ""))
@@ -941,7 +945,7 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
       DeployedRootTreeMatches { tree_hex: h } => fact_arm(arm: "matches", members: [json_kv(key: "tree_hex", value: json_string(s: h))])
       DeployedRootTreeMismatch { candidate_hex: c, deployed_hex: d } => fact_arm(arm: "mismatch", members: [json_kv(key: "candidate_hex", value: json_string(s: c)), json_kv(key: "deployed_hex", value: json_string(s: d))])
       DeployedRootTreeScopeDiverged { tree_hex: h, changed_paths: ps } => fact_arm(arm: "scope_diverged", members: [json_kv(key: "tree_hex", value: json_string(s: h)), json_kv(key: "changed_paths", value: json_string(s: ps as String))])
-      DeployedRootTreeUnobserved { cause: c } => fact_arm(arm: "unobserved", members: [json_kv(key: "cause", value: json_string(s: c))])
+      DeployedRootTreeUnobserved { cause: c } => fact_arm(arm: "unobserved", members: [json_kv(key: "cause", value: json_string(s: deployed_tree_unobservable_text(cause: c)))])
     }),
     json_kv(key: "release_binding", value: match f.release_binding {
       ReleaseBoundToTree { revision: r, surface: sf } => fact_arm(arm: "bound", members: [json_kv(key: "revision", value: json_string(s: git_object_id_wire_hex(oid: r))), json_kv(key: "surface", value: json_string(s: sf.digest as String))])
@@ -1093,3 +1097,8 @@ fn belt_event_path_standing_json(s: BeltEventPathStanding) -> JsonValue {
     BeltEventPathRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
   }
 }
+
+// The receipt's COMMITTED LOCATION — where the wet CLI stages it and under what artifact name the
+// workflow publishes it — is a fact about the artifact, not about the record this module renders. It
+// lives in gunbc.roadmap.roadmap_launch_deployment_receipt_location, which the CLI, the CI run step and
+// the workflow all read directly; nothing here imports it, because no fact of the record depends on it.

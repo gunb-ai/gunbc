@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.an_applied_generic_argument_reaching_a_routed_carrier_refuses_derived_equality
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, BelowCeiling }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// AN APPLIED-GENERIC ARGUMENT THAT REACHES A ROUTED DECLARATION LEAVES THE ENCLOSING DATA
+// TYPE WITHOUT A REALIZABLE `==`, AND RESOLVE REFUSES IT. This is a new error class (a resolve
+// refusal introduced by the equality wall of gunbc#15175), not a fork or a capability
+// reconciliation, so it is recorded here rather than in gunbc.integration_concern. The class is
+// distinct from gunbc.integration_concern::qualified_corpus_reference_minted_as_kernel: the failing
+// argument here is a plain cross-module nominal type name, not a qualified corpus reference minted
+// as a kernel, and no kernel identity is involved on the path. See the receipts for the datum.
+
+data an_applied_generic_argument_reaching_a_routed_carrier_refuses_derived_equality: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_applied_generic_argument_reaching_a_routed_carrier_refuses_derived_equality" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the (a-prime) climb: give each routed declaration a PartialEq whose body calls its own route fn, and let the equality argument rule admit a routed argument that has a route. The blocking control's premise is that the argument lacks PartialEq; a route-backed impl removes that premise, so the climb inverts that control into a positive control that also compiles, while the fn-value and unresolved-name red controls are kept. Reaching it is buildable now and unbuilt; the leaf fix (route the carrier that wants `==`) does not remove the class, only its one observed instance."
+    }
+  },
+
+  receipts: [
+    "THE CLASS. `==` on a data type whose member is an applied generic whose argument is a ROUTED declaration is refused at resolve, not admitted. A routed declaration (one named in v1.compiler.infer::equality_route_declarations) is compared by a hand-written route fn and is given NO derived PartialEq, so when it appears as the argument of a generic carrier, the emitted `impl<T: PartialEq> PartialEq for Carrier<T>` cannot be satisfied at that instantiation. The equality walk v1.compiler.infer::equality_resolved_declaration_structure judges each applied argument via v1.compiler.infer::equality_arguments_by_target, which maps each through v1.compiler.infer::equality_argument_by_target; there the arm `match equality_route_for(identity) { Present { value: _ } => false }` returns false for a routed argument, so the walk refuses with the located cause `a routed member inside a generic application whose shape the equality plan does not model`. The refusal is fail-closed: it never admits a wrong `==`, it refuses a comparison whose backing it cannot see. The cost is over-refusal.",
+
+    "THE SPECIMEN, found 2026-11-11. The claim files src/v2/test/claim/emit/arrow_scope_atom_refuses_unresolved.dag, src/v2/test/claim/match_binder/match_binder_typing.dag and src/v2/test/claim/compiler/branch_slot_readers.dag compare a diagnostic head locus with `d.head.at == node_locus(...)`, i.e. `==` on v2.std.diagnostic::Locus. Locus is a coproduct whose NodeLocus variant carries LocusAnchor<NodeOccurrence>; LocusAnchor<T> { at: T } is a generic whose single member is T, and NodeOccurrence is routed. So `==` on Locus reaches the applied generic LocusAnchor<NodeOccurrence> whose argument NodeOccurrence is routed, and refuses. Symbol arguments of LocusAnchor pass (a kernel type); NodeOccurrence is the failing argument. On main the claim-file sites are arrow_scope_atom_refuses_unresolved.dag:148,182,201,253, match_binder_typing.dag:260,262, and branch_slot_readers.dag:268 -- seven sites, all the same refusal.",
+
+    "THE BISECT AND THE INSTRUMENT. The refusal is a REGRESSION introduced by gunbc#15175 (the equality wall). A/B on the claim corpus: at the parent of #15175 arrow_scope_atom_refuses_unresolved passed 11 of 11 and match_binder_typing passed 20 of 20; at #15175 both are resolve-refused with the byte-identical message. (branch_slot_readers was already refused at the parent by an UNRELATED, since-fixed effect-summary error in src/v2/program.dag naming runtime_value_equality, so it did not pass at the parent either; that is a separate cause, not this class.) The #15175 merge routed Node, Edge and NodeOccurrence to provenance-ignoring eq fns in v2.std.node (node_equal_ignoring_provenance, node_edge_equal_ignoring_provenance, node_occurrence_eq) but left v2.std.diagnostic::Locus -- the data coproduct that callers actually compare with `==` -- unrouted, so Locus lost the only thing that could back its derived equality once its member became routed. A resolve-site instrument on the stage0 emit read the deciding arm directly: for the applied argument the peel of the alias src/v2/std/diagnostic.dag::NodeOccurrence expands to src/v2/std/node.dag::NodeOccurrence, whose equality_route_for is Present, so the ROUTE_PRESENT arm returns false; is_kernel_type, is_unit_variant_phantom_argument and equality_argument_is_enclosing_type_parameter are all false on both steps. The same run logged 31 LocusAnchor refusals across the whole resolve closure (plus other-type refusals for Node reached through ReadinessLayer and the Activation carriers, and for ByteSize, Time and Nanosecond reached elsewhere); only these seven surfaced as claim_batch errors.",
+
+    "THE CONTROL THAT IS THE BUG, which is why this is a rung question and not a one-line fix. The refusal is not incidental -- it is asserted by an executing BLOCKING control, test.claim.self_host_equality_admission_witness::nested_routed_argument_equality_still_refuses_blocking, whose red source is a record Carrier { outer: Outer<Node>, tag: String } with Outer<K> { inner: Inner<K> } and Inner<K> { key: K }. That source is structurally identical to LocusAnchor<NodeOccurrence>: a generic carrier whose member is a generic applied to a routed argument. Its green twin nested_structural_argument_equality_admits_at_the_use uses the same shape with a structural (non-routed) argument and admits. So the wall's rule is about the ARGUMENT, not a stateful carrier: the carrier admits and the routed argument refuses. Fixing the class by widening that rule retires the BLOCKING control that IS the refusal -- a declared widening, not a silent one.",
+
+    "THE REPAIR AND THE CLIMB. The leaf fix applied is to ROUTE THE CARRIER THAT WANTS `==`: add Locus to v1.compiler.infer::equality_route_declarations with admitted_at_root true, routed to its EXISTING hand-written v2.std.diagnostic::locus_eq, which already compares matching variants and delegates to node_occurrence_eq for the NodeLocus anchor and to extent_eq and Symbol equality for the others. locus_eq was already the authority other callers used to compare a Locus; the wall simply never connected a raw `==` to it. Reusing it rather than minting a new comparison keeps one equality authority for Locus. Because Locus then has a route admitted at the root, `==` on Locus admits at the top and the walk never descends into LocusAnchor<NodeOccurrence>, so the argument rule and every wall control are untouched. locus_eq restates Locus variant shape and is dissolved by the (a-prime) climb named on the rung: give each routed declaration a PartialEq backed by its own route fn, then a routed applied argument satisfies the emitted bound and the argument rule can admit it, inverting the BLOCKING control into a positive control that compiles while keeping the fn-value and unresolved-name red controls. locus_eq is the leaf; the climb is what removes the class.",
+
+    "WHY IT WENT UNNOTICED. No executing lane runs these src/v2/test/claim files, so a regression that turns an admitted `==` into a resolve refusal is silent: it does not fail v2-bootstrap (which does not load the claim corpus) and no CI claim witness covers these files, so the wall stayed red for these three files from #15175 until an offline claim_batch read found it. The gap named here is the CAPABILITY that resolve-time equality refusals in the self-host claim corpus reach an executing lane at all; the routing of that lane is left to the integration manager (the job roster is closed, so this names the gap and does not prescribe a job).",
+  ],
+
+  evidence: [],
+}

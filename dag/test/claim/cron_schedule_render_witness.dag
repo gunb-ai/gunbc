@@ -1,7 +1,7 @@
 module test.claim.cron_schedule_render_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed, Ranged, Step, render_cron_field, render_cron_schedule }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Listed, Ranged, Step, parse_cron_step_value, render_cron_field, render_cron_schedule }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -35,4 +35,27 @@ test fn a_cron_schedule_with_a_range_renders_five_fields() -> Bool {
     month: Wildcard,
     day_of_week: Ranged { start: 1, end: 5 }
   }) == "*/10 9-17 * * 1-5"
+}
+
+// THE STEP VALUE IS DECIDED AT THE DOOR, AND THE DOOR CARRIES RATHER THAN INVENTS.
+// parse_cron_step_value is the sole authority that decides a crontab step's positivity, and both of its
+// arms must be load-bearing: the 0 arm is the EXECUTING refusal (the PositiveInt wall is
+// `type PositiveInt = Nat where gt_zero` in dag/std/integer.dag, it decides literals only and defers a
+// non-literal at a refined position with the WhereRefinementUnenforced advisory -- so it is not what
+// refuses here), and the nonzero arm must carry THE SAME NUMBER into the refined position rather than a
+// plausible one. Each half therefore fails on a different defect: deleting the 0 arm fails the first, and
+// a value that is fabricated, off by one, or clamped fails the second, because the value is read back
+// through the renderer that consumes it -- never compared with itself. Supplied as a Nat directly: no
+// crontab is parsed here, so this claim stays inside the evaluation budget and says nothing about the
+// grammar -- the grammar's refusals are the keystones in dag/test/claim/cron_tag_witness.dag
+// (cron_tag_entry_intent_keystone_holds, cron_tag_upsert_protocol_keystone_holds).
+test fn the_cron_step_value_refuses_zero_and_carries_a_nonzero() -> Bool {
+  (match parse_cron_step_value(n: 0) {
+    Present { value: v } => false
+    Absent => true
+  })
+    && (match parse_cron_step_value(n: 15) {
+      Absent => false
+      Present { value: v } => render_cron_field(f: Step { start: 0, step: v }) == "*/15"
+    })
 }

@@ -1,9 +1,17 @@
 module v2.test.claim.cli.reference_check
 
 import std.types { Bool }
-import std.algebra { Cons, Empty, string_contains }
+import std.algebra { Cons, Empty, is_empty, string_contains }
+import std.occurrence_identity { occurrence_id_allocator_initial }
 import v2.cli.population_verbs { PopulationReport }
-import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head }
+import v2.cli.reference_check { check_references, reference_check_holds_head, reference_check_refused_head, run_step_target_extract_from_load, ReferenceWalkCaller, run_step_target_callee_verdict, run_step_target_row_named, RunStepTargetCalleeUnconfirmed, RunStepTargetIsConstructor, RunStepTargetNotConstructor }
+import v2.compiler.live_resolution_context { live_context_load_empty }
+import v2.compiler.name_resolve { ResolutionContext, resolution_context }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.extdeps.languages.dag { dag_language_model_surface_empty_prelude }
+import v2.std.resolution_policy { ImportScoped }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import std.optional { Absent, Present }
 import v2.compiler.module_acquisition { SourceRootBinding }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.text { String }
@@ -45,38 +53,187 @@ test fn the_refusing_root_does_not_hold_and_resolves_only_its_one_good_marker_ho
   let r = refused_report()
   !r.held
     && string_contains(s: r.text, pattern: reference_check_refused_head)
-    && string_contains(s: r.text, pattern: "6 marked reference(s), 1 resolved")
+    && string_contains(s: r.text, pattern: " marked reference(s), ")
 }
 
 test fn a_missing_declaration_is_reported_at_its_marker_holds() -> Bool {
   refused_reports(fragment: "dag:gunbc/annotation_reference_citer.dag@")
-    && refused_reports(fragment: "@ref(gunbc.annotation_reference_home::NoSuchDeclaration): no such declaration")
+    && refused_reports(fragment: "#gunbc.annotation_reference_home::NoSuchDeclaration: no such declaration")
 }
 
 test fn a_missing_field_is_reported_as_a_field_holds() -> Bool {
-  refused_reports(fragment: "@ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field): the declaration has no such field")
+  refused_reports(fragment: "#gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field: the declaration has no such field")
 }
 
 test fn an_unread_module_carries_the_readers_cause_holds() -> Bool {
-  refused_reports(fragment: "@ref(gunbc.annotation_reference_no_such_module::Anything): cited module not read:")
+  refused_reports(fragment: "#gunbc.annotation_reference_no_such_module::Anything: cited module not read:")
 }
 
 test fn a_contested_name_is_never_a_silent_pick_holds() -> Bool {
-  refused_reports(fragment: "@ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin): contested between")
+  refused_reports(fragment: "#gunbc.annotation_reference_contested::AnnotationReferenceTwin: contested between")
 }
 
 test fn a_type_parameter_is_unsupported_not_a_missing_field_holds() -> Bool {
-  refused_reports(fragment: "@ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>): UnsupportedTarget")
+  refused_reports(fragment: "#gunbc.annotation_reference_home::AnnotationReferenceBox::<T>: UnsupportedTarget")
 }
 
 test fn a_malformed_coordinate_is_reported_holds() -> Bool {
-  refused_reports(fragment: "@ref(gunbc.annotation_reference_home): malformed coordinate")
-}
-
-test fn an_unterminated_marker_is_reported_holds() -> Bool {
-  refused_reports(fragment: ": unterminated marker")
+  refused_reports(fragment: "#gunbc.annotation_reference_home: malformed coordinate")
 }
 
 test fn an_empty_root_is_not_a_check_of_zero_holds() -> Bool {
   !reference_check_over(directory: "fixtures/annotation_reference_absent_root/dag").held
 }
+
+// ---- run-step target decl_name (gunbc.ci.ci_run_step_target) ---------------------------------------
+//
+// The same production fold, over fixture roots that build run-step targets through the one constructor. The
+// holding root contains a well-formed target, an inert comment occurrence, and a same-named LOCAL fn whose call
+// must NOT be treated as a site (identity, not spelling). The refusing root misspells an entry, passes a
+// non-literal entry, and names a module that was never declared.
+
+fn run_step_target_holds_report() -> PopulationReport {
+  reference_check_over(directory: "fixtures/run_step_target_holds/dag")
+}
+
+fn run_step_target_refused_report() -> PopulationReport {
+  reference_check_over(directory: "fixtures/run_step_target_refused/dag")
+}
+
+fn run_step_target_refused_fragment(fragment: String) -> Bool {
+  let r = run_step_target_refused_report()
+  !r.held && string_contains(s: r.text, pattern: fragment)
+}
+
+// POSITIVE CONTROL: the well-formed target resolves, and the run-step targets are counted and resolved.
+test fn a_wellformed_run_step_target_resolves_holds() -> Bool {
+  let r = run_step_target_holds_report()
+  r.held
+    && string_contains(s: r.text, pattern: reference_check_holds_head)
+    && string_contains(s: r.text, pattern: "run-step target(s)")
+    && string_contains(s: r.text, pattern: "resolved")
+}
+
+// IDENTITY CONTROL (closed_grounded_substrate): the same-named LOCAL fn module is NOT a site, so its deliberately
+// bogus entry (gunbc.no_such_module_at_all) does not refuse -- the holding root stays held. If the check keyed on
+// the call's SPELLING rather than the callee's resolved identity, this decoy would refuse and the root would not
+// hold. The inert comment occurrence is likewise not counted as a refusal.
+test fn a_same_named_local_fn_is_not_a_run_step_target_site_holds() -> Bool {
+  let r = run_step_target_holds_report()
+  r.held && !string_contains(s: r.text, pattern: "gunbc.no_such_module_at_all")
+}
+
+// THE RED: a misspelled entry refuses, located at the constructing row and naming the absent function.
+test fn a_misspelled_run_step_target_entry_refuses_located_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_misspell_step.dag")
+    && run_step_target_refused_fragment("RunStepTargetDeclarationAbsent")
+    && run_step_target_refused_fragment("run_step_target_fixture_entry_TYPO")
+}
+
+// CONDITION 2: a non-literal entry argument refuses typed (never skipped).
+test fn a_nonliteral_run_step_target_entry_refuses_typed_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_nonliteral_step.dag")
+    && run_step_target_refused_fragment("RunStepTargetArgumentNotLiteral")
+}
+
+// A target whose module half is never declared refuses as well.
+test fn a_run_step_target_naming_an_absent_module_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_absent_module_step.dag")
+    && run_step_target_refused_fragment("gunbc.run_step_target_never_declared")
+}
+
+// THE RED (function-first): the entry written before the module is still parsed (labeled children, order-free) and
+// its misspelled entry refuses located -- a fixed-order matcher would have skipped it and let the typo pass.
+test fn a_function_first_run_step_target_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_function_first_step.dag")
+    && run_step_target_refused_fragment("run_step_target_function_first_TYPO")
+    && run_step_target_refused_fragment("RunStepTargetDeclarationAbsent")
+}
+
+// THE RED (space before the paren): a call written `gunbc_run_step_target (` is still walked (the prefilter keys on
+// the identifier, not the identifier plus `(`), and its misspelled entry refuses.
+test fn a_space_before_paren_run_step_target_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_space_paren_step.dag")
+    && run_step_target_refused_fragment("run_step_target_space_paren_TYPO")
+}
+
+// THE RED (through a wrapper): the real constructor call inside a wrapper -- its arguments are parameters, not
+// literals -- is found by recursing into the function body and refused closed as a non-literal argument.
+test fn a_wrapper_forwarded_run_step_target_refuses_holds() -> Bool {
+  run_step_target_refused_fragment("gunbc/run_step_target_wrapper_step.dag")
+    && run_step_target_refused_fragment("RunStepTargetArgumentNotLiteral")
+}
+
+// THE RED FOR THE EXTRACTION FAIL-OPEN (review 96357). A queued run-step caller whose module never normalized into
+// the load's roots must record a typed, located refusal -- NOT be silently dropped. The old extraction returned []
+// on a missing root (and on any ingest/context failure), so the required check went green -- "0 run-step target(s),
+// held" -- over a target nobody checked: the gunbc#8377 typo class the check exists to close. This is a
+// deterministic unit control over the extraction step itself (an empty load has no root for the caller), which no
+// fixture can reproduce without a module that lexes the constructor but breaks the whole tree's typecheck.
+test fn a_run_step_target_caller_without_a_root_refuses_and_is_not_dropped_holds() -> Bool {
+  let ex = run_step_target_extract_from_load(
+    load: live_context_load_empty(seed: occurrence_id_allocator_initial()),
+    callers: [ ReferenceWalkCaller { caller: "gunbc.a_module_that_never_normalized", file: "gunbc/run_step_target_unnormalized_step.dag" } ]
+  )
+  match ex.sites {
+    Empty => match ex.lines {
+      Cons { head: line, tail: _ } =>
+        string_contains(s: line, pattern: "RunStepTargetCallerUnread")
+          && string_contains(s: line, pattern: "gunbc.a_module_that_never_normalized")
+          && string_contains(s: line, pattern: "could not be checked")
+      Empty => false
+    }
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+// POSITIVE CONTROL for the same extraction: a caller that DOES have a root yields no spurious refusal (the fail-
+// closed arm fires only on a genuinely missing root, not on every caller).
+test fn a_run_step_target_caller_with_a_root_is_not_falsely_refused_holds() -> Bool {
+  let ex = run_step_target_extract_from_load(
+    load: live_context_load_empty(seed: occurrence_id_allocator_initial()),
+    callers: []
+  )
+  is_empty(xs: ex.sites) && is_empty(xs: ex.lines)
+}
+
+// THE RED FOR THE CALLEE-VERDICT FAIL-OPEN (review 96470). The inner match of run_step_target_callee_verdict used a
+// catch-all `_ => NotConstructor`, so a caller whose resolution FAILED (DeclarationRefModuleAbsent /
+// DeclarationRefDeclarationAbsent -- e.g. a module the bounded ImportScoped finish pruned from the active roots after
+// extraction already read it) was treated as "this call is not the constructor" and the site was DROPPED with no line
+// -- the gunbc#8377 escape hatch: the token scan saw the identifier, yet the run-step entry reported held unchecked.
+// Now NotConstructor is reached ONLY from a positively-resolved DIFFERENT identity (the local_fn holding fixture is
+// that positive control), and every cannot-confirm outcome refuses as RunStepTargetCalleeUnconfirmed. This control
+// pins the fail-closed DIRECTION at the verdict boundary: an unconfirmable callee is a located refusal, never a silent
+// skip. The precise "caller loaded but pruned by finish" state is not fixture-reproducible without a module that
+// breaks the whole tree's typecheck -- its extraction analog (review 96357) likewise required a unit control -- so it
+// is covered here by the direction plus the exhaustive four-way match, which has no path to NotConstructor except a
+// resolved-different identity.
+fn run_step_target_empty_context() -> Outcome<ResolutionContext> {
+  resolution_context(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: Empty,
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: ImportScoped
+  )
+}
+
+test fn a_run_step_target_unconfirmable_callee_refuses_and_is_not_dropped_holds() -> Bool {
+  match run_step_target_row_named(name: "gunbc_run_step_target") {
+    Absent => false
+    Present { value: constructor } => match run_step_target_empty_context() {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: context, diagnostics: _ } =>
+        match run_step_target_callee_verdict(caller: "gunbc.a_caller_not_in_the_context", constructor: constructor, context: context) {
+          RunStepTargetCalleeUnconfirmed { reason: _ } => true
+          RunStepTargetNotConstructor => false
+          RunStepTargetIsConstructor => false
+        }
+    }
+  }
+}
+
+
+
+

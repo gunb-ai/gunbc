@@ -454,7 +454,7 @@ type WetScheduleDuplicateSweep {
 // v2.test.claim.local_repo_wet_terminal, above the roster claims): the memo's premise -- "not
 // made linear by any construction available -- the substrate offers no set and no sort over String"
 // -- is falsified by std.algebra's HAMT map: empty_map/map_insert/map_lookup, used in production
-// through fold_list by v2.lens.text_string_importer_census (map_over_paths) and
+// through fold_list by v2.lens.text_string_importer_census (map_over_paths, retired 2026-11-10) and
 // v2.lens.module_impact_query (build_impact_pool_index). This fold is two linear passes; no O(n^2)
 // scan is involved.
 // The emitted order is FIRST-OCCURRENCE order of the schedule (the second pass walks scheduled and

@@ -1,0 +1,22 @@
+module test.claim.host.host_bmc_paths_witness
+
+// W2's name half for the /etc/gunbc per-host BMC paths (gunbc.plans.fleet_machine_authority 2.3, 4.4).
+// These paths name files on a MACHINE, so they are minted from the machine's human name read out of
+// gunbc.hostname_allocation.fleet_machine_registry through the real producers -- never from the handle
+// cast (D12). Renaming a fleet machine in the registry must move these paths and nothing may keep an old
+// form; a machine the registry does not know mints NO path (the Absent arm), so no site can fall back to
+// a substituted path (gunbc.design_argument::fail_closed). With today's names the minted path is exactly
+// the historical string, which is the byte-identical check.
+
+import std.logic { Bool }
+import std.optional { Present }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.host.host_layout { bmc_identity_path, bmc_known_hosts_path }
+
+test fn bmc_known_hosts_path_is_the_registry_name_through_the_producer() -> Bool
+  = bmc_known_hosts_path(machine: operator_host_srv3) == Present { value: "/etc/gunbc/bmc-known-hosts/srv3" }
+    && bmc_known_hosts_path(machine: operator_host_srv4) == Present { value: "/etc/gunbc/bmc-known-hosts/srv4" }
+
+test fn bmc_identity_path_is_the_registry_name_through_the_producer() -> Bool
+  = bmc_identity_path(machine: operator_host_srv3) == Present { value: "/etc/gunbc/bmc-identities/srv3-machine-id" }
+    && bmc_identity_path(machine: operator_host_srv4) == Present { value: "/etc/gunbc/bmc-identities/srv4-machine-id" }

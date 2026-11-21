@@ -6,7 +6,9 @@ import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapStandings, RoadmapEventEnvelope }
+import gunbc.roadmap.roadmap_standings_document { roadmap_standings_document_json, roadmap_standings_document_refusal_json, ServedReleaseIdentity }
 import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_standings_at_head_read, StandingsAtHead, StandingsAtHeadUnobserved,
   roadmap_event_carrier_layout_for_instance, roadmap_standings_read, roadmap_events_read_all,
   CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
@@ -30,7 +32,13 @@ import extdeps.time.rfc3339 {
   Rfc3339Timestamp, Rfc3339Comparison,
   Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable,
   rfc3339_is_canonically_spelled, rfc3339_compare,
+  Rfc3339InstantParse, Rfc3339InstantParsed, Rfc3339InstantRefused,
+  rfc3339_parse_instant, rfc3339_instant_unix_seconds,
 }
+import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read, epoch_secs_of_millis }
+import std.measure { Second, second_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import gunbc.live_deploy.belt_cadence { belt_standings_refresh_staleness_horizon }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
@@ -47,7 +55,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.auth.profile_store_root { profile_store }
 import gunbc.auth.profile_projection { profile_store_roster, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile }
 import gunbc.roadmap.roadmap_page { roadmap_daily_workspace_page_for_projection_observed, roadmap_daily_workspace_page_for_projection_observed_stale }
-import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection }
+import gunbc.roadmap.roadmap_authority { RoadmapAuthorityProjection, declared_roadmap_nodes }
 import gunbc.roadmap.roadmap_site_surface_render { site_artifact_digest }
 
 import gunbc.roadmap.roadmap_launch_admission {
@@ -101,6 +109,7 @@ type ServedObservationKind
   | WorkflowJson
   | SessionsJson
   | IssueQueryRows
+  | StandingsJson
 
 type ServedObservationSurface {
   kind: ServedObservationKind
@@ -159,6 +168,7 @@ fn served_observation_kind_key(kind: ServedObservationKind) -> String {
     WorkflowJson => "workflow_json"
     IssueQueryRows => "issue_query_rows"
     SessionsJson => "sessions_json"
+    StandingsJson => "standings_json"
   }
 }
 
@@ -169,6 +179,7 @@ fn served_observation_kind_url_path(kind: ServedObservationKind) -> String {
     WorkflowJson => "/workflow.json"
     IssueQueryRows => "/issues/query"
     SessionsJson => "/sessions.json"
+    StandingsJson => "/standings.json"
   }
 }
 
@@ -179,6 +190,7 @@ fn served_observation_kind_media_type(kind: ServedObservationKind, status: Int) 
     WorkflowJson => application_json_utf8
     IssueQueryRows => text_plain_utf8
     SessionsJson => application_json_utf8
+    StandingsJson => application_json_utf8
   }
 }
 
@@ -192,6 +204,7 @@ fn served_observation_kind_of_key(key: String) -> ServedObservationKindDecode {
   else if key == "workflow_json" { ServedObservationKindDecoded { kind: WorkflowJson } }
   else if key == "issue_query_rows" { ServedObservationKindDecoded { kind: IssueQueryRows } }
   else if key == "sessions_json" { ServedObservationKindDecoded { kind: SessionsJson } }
+  else if key == "standings_json" { ServedObservationKindDecoded { kind: StandingsJson } }
   else { ServedObservationKindUnknown { key: key } }
 }
 
@@ -328,6 +341,29 @@ fn served_observation_workflow_surface_for_instance(instance: HostDashboardInsta
   }
 }
 
+// /standings.json: every declared node's standing and the log head the fold read
+// (gunbc.roadmap.roadmap_standings_document), each row marked with whether the issue route renders
+// it under THIS tick's plan -- the plan the daily surface beside it renders from. Rendered at the tick like every other surface, so a
+// request reads finished bytes; a log that cannot be read is a 503 carrying the located refusal.
+// ITS FRESHNESS IS THE TICK'S: the document exists and moves only while the belt tick
+// (roadmap_belt_tick_cli's served-observation pass) runs. A tick that has stopped is answered 409
+// stale or 503 unread by the freshness law, never served as current.
+// The snapshot's close standing has no surface here, as for the page's own standings read
+// (served_standings_after_snapshot_close); a leaked snapshot is listed by the instance's census.
+fn served_observation_standings_surface_for_instance(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, identity: ServedReleaseIdentity) -> ServedObservationSurface {
+  let read = roadmap_standings_at_head_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
+  match read.result {
+    StandingsAtHead { head, rows } => ServedObservationSurface {
+      kind: StandingsJson, status: 200,
+      body: serialize_json(v: roadmap_standings_document_json(log_head: head, observed_at: observed_at, declared: declared_roadmap_nodes(), rows: rows, plan: plan, identity: identity)),
+    }
+    StandingsAtHeadUnobserved { step, reason } => ServedObservationSurface {
+      kind: StandingsJson, status: 503,
+      body: serialize_json(v: roadmap_standings_document_refusal_json(observed_at: observed_at, step: step, reason: reason)),
+    }
+  }
+}
+
 fn served_observation_sessions_surface_for_instance(instance: HostDashboardInstance) -> ServedObservationSurface {
   let o = belt_sessions_observe_for_instance(instance: instance)
   ServedObservationSurface { kind: SessionsJson, status: belt_sessions_http_status(o: o), body: belt_sessions_observed_json(o: o) }
@@ -337,7 +373,7 @@ fn served_observation_sessions_surface_for_instance(instance: HostDashboardInsta
 // (one observing authority, several projections), so the walk over dispatch worktrees happens
 // once; the launch host standing is read once as well and handed to the three surfaces that read
 // it, rather than read again by each.
-fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> ServedObservationSnapshot {
+fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, identity: ServedReleaseIdentity) -> ServedObservationSnapshot {
   let observed = belt_workflow_attempts_observe_for_instance(instance: instance)
   let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
   ServedObservationSnapshot {
@@ -348,6 +384,7 @@ fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, pla
       served_observation_attempts_surface_for_instance(instance: instance),
       served_observation_workflow_surface_for_instance(instance: instance, observed: observed, launch: launch),
       served_observation_sessions_surface_for_instance(instance: instance),
+      served_observation_standings_surface_for_instance(instance: instance, plan: plan, observed_at: observed_at, identity: identity),
     ],
   }
 }
@@ -598,18 +635,19 @@ fn served_observation_write_for_instance(instance: HostDashboardInstance, snapsh
   }
 }
 
-fn served_observation_observe_and_write_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> BeltPassOutcome {
+fn served_observation_observe_and_write_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String, identity: ServedReleaseIdentity) -> BeltPassOutcome {
   served_observation_write_for_instance(
     instance: instance,
-    snapshot: served_observation_snapshot_observe_over(instance: instance, plan: plan, observed_at: observed_at),
+    snapshot: served_observation_snapshot_observe_over(instance: instance, plan: plan, observed_at: observed_at, identity: identity),
   )
 }
 
-fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String) -> BeltPassOutcome {
+fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String, identity: ServedReleaseIdentity) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
     plan: roadmap_plan_projection(),
     observed_at: observed_at,
+    identity: identity,
   )
 }
 
@@ -742,6 +780,8 @@ fn served_observation_entry_for(read: ServedObservationRead, kind: ServedObserva
 type ServedObservationFreshness
   = ObservationCurrent
   | ObservationStale { observed_at: String, newest_event_at: String }
+  | ObservationStaleByAge { observed_at: String, horizon: Second }
+  | ObservationUnparseable { observed_at: String }
   | ObservationFreshnessUnread { reason: String }
 
 type ServedObservationNewestInstant
@@ -862,20 +902,114 @@ fn served_observation_apply_freshness(response: ServeHttpResponse, freshness: Se
         body: response.body,
         headers: response.headers,
       }
+    ObservationStaleByAge { observed_at: _, horizon: _ } =>
+      ServeHttpResponse {
+        status: 409,
+        content_type: response.content_type,
+        body: response.body,
+        headers: response.headers,
+      }
+    ObservationUnparseable { observed_at: _ } =>
+      ServeHttpResponse {
+        status: 409,
+        content_type: response.content_type,
+        body: response.body,
+        headers: response.headers,
+      }
     ObservationFreshnessUnread { reason } =>
       served_observation_refusal_response(refusal: "ServedObservationFreshnessUnread", detail: reason)
+  }
+}
+
+// THE STALE-BY-AGE 409 GATE (condition 2 of node://adhoc-5752c35f-e54; the operator ruling
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). The freshness law above compares observed_at
+// against the newest EVENT, so a stopped refresh whose carrier also cannot advance its log reads as
+// CURRENT and is served 200 — the silent-stale hole the periodic timer closes on the write side and
+// this closes on the read side. For /standings.json ONLY (the document ctrl admits roadmap work
+// items against), compare the stored observed_at against the wall clock AT READ TIME: if the last
+// refresh is older than belt_standings_refresh_staleness_horizon, answer 409 (the same stale status
+// ctrl's parseStandingsResponse already refuses admission on). Fail CLOSED on every degenerate
+// reading, never served as current:
+//   - an unreadable clock → refused (ObservationFreshnessUnread → 503);
+//   - an unparseable observed_at → stale: it is not the document the belt wrote, so it cannot pass;
+//   - a FUTURE-DATED observed_at (age negative — clock skew or a hand-written index) → refused: a
+//     reading from the future is not proof of freshness, it is an unreadable clock. Serving it as
+//     current would keep the gate green until that future instant plus the horizon, exactly the
+//     silent-stale this gate exists to close.
+// The age is compared in the Second carrier (second_count on both sides), never by re-typing the
+// epoch diff as a bare Int against a bare Int — gunbc.design_argument::minimize_redundancy keeps the
+// duration on std.measure, its single authority.
+// PURE by design (gunbc.design_argument::witness_one_interface: a witness's inputs are SUPPLIED VALUES
+// at its boundary): `now_secs` is a supplied epoch-second value, so a witness pins the clock and drives
+// every arm — current, stale-by-age, future-dated, unparseable — including the comparison direction and
+// which side of the subtraction is taken. The wall clock is read only in served_observation_age_staleness
+// below. The age is compared in the Second carrier (second_count on both sides), never by re-typing the
+// epoch diff as a bare Int against a bare Int — gunbc.design_argument::minimize_redundancy keeps the
+// duration on std.measure, its single authority.
+fn served_observation_age_verdict(observed_at: String, now_secs: Int) -> ServedObservationFreshness {
+  match rfc3339_parse_instant(text: observed_at) {
+    // An unparseable observed_at is its own verdict: the document is not the one the belt wrote,
+    // so it is refused as unparseable — NOT reported as stale-by-age with a fabricated field.
+    Rfc3339InstantRefused { cause: _ } =>
+      ObservationUnparseable { observed_at: observed_at }
+    Rfc3339InstantParsed { instant: i, spelling: _ } => {
+      let age_secs = now_secs - rfc3339_instant_unix_seconds(i: i)
+      if age_secs < 0 {
+        // Future-dated: the observation claims a time after the supplied now. That is an unreadable
+        // clock or a forged index, not freshness — refuse rather than serve 200.
+        ObservationFreshnessUnread { reason: join(["the observation is dated after the present clock: ", observed_at], "") }
+      } else {
+        match checked_int_to_nat(n: age_secs) {
+          Absent => ObservationFreshnessUnread { reason: "the observation age could not be measured" }
+          Present { value } =>
+            if value > second_count(s: belt_standings_refresh_staleness_horizon) {
+              ObservationStaleByAge { observed_at: observed_at, horizon: belt_standings_refresh_staleness_horizon }
+            } else {
+              ObservationCurrent
+            }
+        }
+      }
+    }
+  }
+}
+
+// The clock boundary: read the wall clock ONCE and hand the supplied value to the pure verdict. An
+// unreadable clock is refused (fail closed), so the route never serves frozen bytes as current.
+fn served_observation_age_staleness(observed_at: String) -> ServedObservationFreshness {
+  match clock_unix_millis_read() {
+    ClockUnixMillisRefused { detail } =>
+      ObservationFreshnessUnread { reason: join(["the refresh-age clock could not be read: ", detail], "") }
+    ClockUnixMillisObserved { millis } =>
+      served_observation_age_verdict(observed_at: observed_at, now_secs: epoch_secs_of_millis(millis: millis) as Int)
   }
 }
 
 fn served_observation_surface_response_for_instance(instance: HostDashboardInstance, kind: ServedObservationKind) -> ServeHttpResponse {
   let read = served_observation_read_for_instance(instance: instance)
   let freshness = served_observation_freshness_for_read(read: read, events: served_observation_events_for_instance(instance: instance))
+  // The age gate applies only to /standings.json and only once the event comparison has NOT already
+  // refused: a 503 (log unreadable) or a 409 (newer events) stays the answer — this only ADDS the
+  // "and it is also too old" verdict to a document the event law alone would have served 200. An
+  // unreadable clock (ObservationFreshnessUnread) is FAIL CLOSED: apply_freshness turns it into a
+  // 503 refusal, never a silent current.
+  let standing = match freshness {
+    ObservationCurrent =>
+      match read {
+        ServedObservationPresent { index } =>
+          match kind {
+            StandingsJson => served_observation_age_staleness(observed_at: index.observed_at)
+            _ => freshness
+          }
+        _ => freshness
+      }
+    _ => freshness
+  }
   match served_observation_entry_for(read: read, kind: kind) {
     ServedObservationEntryMissing => served_observation_index_refusal(read: read, kind: kind)
     ServedObservationEntryFound { entry } =>
       served_observation_apply_freshness(
         response: served_observation_body_response(entry: entry, body: served_observation_body_read_for_instance(instance: instance, entry: entry)),
-        freshness: freshness,
+        freshness: standing,
       )
   }
 }
@@ -915,6 +1049,8 @@ fn served_observation_freshness_standing_word(freshness: ServedObservationFreshn
   match freshness {
     ObservationCurrent => "present"
     ObservationStale { observed_at: _, newest_event_at: _ } => "stale"
+    ObservationStaleByAge { observed_at: _, horizon: _ } => "stale_by_age"
+    ObservationUnparseable { observed_at: _ } => "unparseable"
     ObservationFreshnessUnread { reason: _ } => "freshness_unreadable"
   }
 }
@@ -924,6 +1060,12 @@ fn served_observation_freshness_standing_members(freshness: ServedObservationFre
     ObservationCurrent => []
     ObservationStale { observed_at: _, newest_event_at } =>
       [json_kv(key: "newest_event_at", value: json_string(s: newest_event_at))]
+    ObservationStaleByAge { observed_at: _, horizon: horizon } =>
+      // observed_at is already an outer standing member; only the horizon is new here.
+      [json_kv(key: "stale_by_age_horizon_secs", value: json_string(s: to_string(second_count(s: horizon))))]
+    ObservationUnparseable { observed_at: _ } =>
+      // observed_at is already an outer standing member; the standing word carries the verdict.
+      []
     ObservationFreshnessUnread { reason } =>
       [json_kv(key: "reason", value: json_string(s: reason))]
   }
@@ -937,6 +1079,8 @@ fn served_observation_standing_http_status(read: ServedObservationRead, freshnes
       match freshness {
         ObservationCurrent => 200
         ObservationStale { observed_at: _, newest_event_at: _ } => 200
+        ObservationStaleByAge { observed_at: _, horizon: _ } => 200
+        ObservationUnparseable { observed_at: _ } => 200
         ObservationFreshnessUnread { reason: _ } => 503
       }
   }

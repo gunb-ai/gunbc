@@ -41,7 +41,7 @@ import gunbc.machine_intake.bmc_account_state_capture {
 }
 
 // ── lab context (the srv15 row, as DATA -- no per-host literal inside the reader) ──────────────────
-data lab_unit: UnitKey = "LAB-ROOT-0001" as UnitKey
+data lab_unit: UnitKey = UnitKey { kind: BoardUnitKey, value: "LAB-ROOT-0001" }
 data lab_assembly: AssemblyManifest = AssemblyManifest {
   chassis_part_number: "CH-LAB-ROOT",
   components: [ComponentIdentity { kind: DimmComponent, slot: "dimm0", identity: "SPD-LAB-ROOT-0" }],
