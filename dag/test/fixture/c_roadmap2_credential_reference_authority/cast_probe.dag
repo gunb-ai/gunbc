@@ -1,0 +1,15 @@
+module test.fixture.c_roadmap2_credential_reference_authority.cast_probe
+
+// TEMPORARY PROBE (not committed): does the checker admit `<sole_constructor record> as String`
+// from a foreign module? Companion to car_definer.dag. If the module compiles, the render is admitted.
+
+import std.types { Bool, String }
+import test.fixture.c_roadmap2_credential_reference_authority.car_definer { CredentialAttemptReference }
+
+fn render_the_carrier(reference: CredentialAttemptReference) -> String {
+  reference as String
+}
+
+fn probe_compiles() -> Bool {
+  true
+}
