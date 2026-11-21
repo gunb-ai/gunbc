@@ -66,7 +66,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   EdgeFileLeftInPlace, EdgeFileNotApplied, EdgeFileWrittenAndReadBack, EdgeFileWriteRefused,
   FleetSshExecutionContext, InstallAdmitted, InstallWithheld, SitePxeEdgeApply, SitePxeEdgeFileResult,
   SitePxeEdgeInstallRequest, SitePxeEdgeInstallStanding, SitePxeEdgeRun, SshTarget,
-  run_site_pxe_edge, site_pxe_edge_stale_settled,
+  run_site_pxe_edge, site_pxe_edge_ci_install_requests, site_pxe_edge_stale_settled,
 }
 import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, render_mac_address }
 
@@ -329,7 +329,10 @@ fn network_install_store_binding_withdraw(
     target: target,
     context: context,
     mode: SitePxeEdgeApply,
-    install_requests: [],
+    // The one source: the same committed empty row the wet entry passes. The withdraw step must
+    // serve nothing through the SAME row, or a second caller could re-create the installer behind
+    // the run's back and the standing-witness would never see that route.
+    install_requests: site_pxe_edge_ci_install_requests(),
     decided_at: decided_at,
   )
   site_pxe_edge_stale_settled(standing: run.stale_install_files)
