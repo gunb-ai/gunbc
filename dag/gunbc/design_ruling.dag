@@ -51,6 +51,13 @@ data butch_serving_retirement_is_operator_handled_2026_11_21: DesignRuling = Des
   provenance: "Operator, 2026-11-21, to session clever-raven-401. Asked about retiring the serving engines on butch (srv14) so its memory goes to remote builds, the operator said, verbatim: \"yes, you can retire the butch stuff, or actually i'll do that separatley, you can record it now\". In the same message the operator set the priority, verbatim: \"i need to get maximum remote build bandwidth asap, because we're fiarly behind\". DECIDED: the operator retires butch's serving engines personally, outside this repository's converge route, so the fleet-converge host_unit_retirement mode proposed in PR 16831 is not the route for this retirement. INTERPRETATION (mine, not the operator's words): this ruling records who performs the retirement, not that it has happened; butch's admission as a remote-build host still waits on a read of the host showing the serving units gone and its memory envelope measured (fleet-converge host_memory_observe), and on the roster and capacity rows that read grounds. Until that read, nothing in the model treats butch's serving reservation as released.",
 }
 
+data butch_tailnet_join_is_operator_handled_2026_11_21: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "butch_tailnet_join_is_operator_handled_2026_11_21"),
+  decided: "2026-11-21",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
+  provenance: "Operator, 2026-11-21, to session clever-raven-401, later the same day as gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21. Asked whether butch's (srv14) tailnet join is also operator-handled or waits on the parked modelled join route (PR 16820, held behind the fleet-converge budget question), the operator said, verbatim: \"I will do the tailnet join + engine retirement now\", and then, verbatim: \"but you'll need to record/model that in the repo\". DECIDED: the operator joins butch to the tailnet by hand, so PR 16820's join route is not the route for butch, and the repository must model the result. INTERPRETATION (mine, not the operator's words): the obligations are that butch's tailnet identity becomes its fleet anchor and its desired state stops declaring the serving engines the operator retired, so a later converge cannot bring them back; both are grounded in reads of the host, never in this row, and this row records who performs the join, not that it has happened.",
+}
+
 data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
   decided: "2026-11-08",
@@ -329,6 +336,16 @@ data srv15_versions_read_backstop_admitted: DesignRuling = DesignRuling {
   decided: "2026-11-19",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator chat to smart-crane-730, 2026-11-19T02:35Z (typed directly in the Claude Code chat of smart-crane-730; no dashboard message id). QUESTION as the manager put it: '#16640: raise the gcp-iam-bootstrap-request job's time limit from 284 to 299 minutes?' Context given: the request step stays at its derived 259, and the +15 covers exactly the three 5-minute srv15 versions-read steps moving into that job. OPERATOR'S WORDS, verbatim: '1. OK'. RULED, in those words: this raise -- the gcp-iam-bootstrap-request job backstop 284 -> 299 in fleet-converge, with the request step kept at its derived 259 (approval_poll_step_timeout_minutes over the converge file window; no undocumented subtraction) and the +15 being the three 5-minute modeled steps (mint, read, upload of the srv15 BMC secret-versions receipt, each at gunbc_ci_aux_step_timeout_minutes) moved into that job ahead of the approval gate, the fix for the deadlock of run 44134741714 -- is admitted. The admission covers exactly this job, this delta and this reason; it is not a general budget release.",
+}
+
+// An operator-approved CI time-budget raise of ONE fold, kept as its own row (design_ruling is the
+// event log). This is the row that satisfies gunbc.design_ruling::ci_job_budgets_closed_to_growth's
+// REQUIREMENT -- a raise lands only with a ruling row recording the operator's explicit approval.
+data srv1_dashboard_deploy_step_timeout_raised: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_dashboard_deploy_step_timeout_raised"),
+  decided: "2026-11-21",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-21, on escalation msg_0a75dc85-1070-4799-98cc-65ac30c4deb4, answered by the operator in msg_35ef1b77-8cbb-445b-8e26-8bda69f0ac05 around 21:5xZ -- AN EXPLICIT OPERATOR ANSWER, NOT A TIMEOUT DEFAULT. QUESTION, verbatim: \"srv1 deploy now passes step 74 but hits the 30-min step timeout (21-min compile + per-file source installs). Raise the dashboard-deploy step timeout to 60 min?\" OPERATOR'S WORDS, verbatim: \"A: yes, raise dashboard-deploy step timeout 30->60 min, then redeploy\". RULED, in those words: this raise -- the dashboard deploy fold (gunbc.fleet.fleet_converge_workflow::fleet_converge_dashboard_deploy_step, the \"Deploy dashboard to srv1\" step) moving off the shared 30-minute live-deploy tier (gunbc.fleet.fleet_workflow_steps::gunbc_ci_live_deploy_step_timeout_minutes) onto its own 60-minute budget (gunbc.fleet.fleet_workflow_steps::gunbc_ci_dashboard_deploy_step_timeout_minutes) -- is admitted as a CI time-budget increase under gunbc.design_ruling::ci_job_budgets_closed_to_growth, which closes CI time and memory budgets to growth without the operator's explicit sign-off. The admission covers exactly this step, this value and this reason; it is not a general budget release. WHY THE JOB MOVED TOO, part of the SAME approval: the dashboard-deploy job's backstop (gunbc.fleet.fleet_workflow_steps::gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes) is derived to cover every fold in that job, so it must admit the 60-minute step; its bound rises 314 -> 344 and is recorded here rather than granted silently. The frame was split so that no OTHER job moves: the instance-scope deploy, the microVM controller install and its tenancy admission, and the approval-ntfy retire keep the shared 30-minute tier and their job bounds are UNCHANGED; no job is added, and no other timeout is touched. WHAT THIS DOES NOT FIX, named so it is not mistaken for done: run 44947639071 (job 136980921499) was killed by the 30-minute ceiling after its compile.reconcile ran 18 minutes (resolve_entry_graph_inclusive 1279122 ms over a 1909-file closure) and the fold then spent about 9 minutes installing the source trees one RunArgv per file. THOSE TWO ARE OPEN ROOT-CAUSE FOLLOW-UPS, NOT DONE here: the 18-minute compile reconcile and the per-file source installs. The raise buys wall-clock so srv1's gunbc-roadmap can deploy; it funds an EXISTING cost (the same 18-minute reconcile had already shown in the 2026-11-20 run), it does not make the fold faster, and a slower fold is what the next raise would be asked for unless the two follow-ups are taken.",
 }
 
 data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
@@ -1416,11 +1433,13 @@ fn design_rulings() -> List<DesignRuling> {
     remote_build_ssh_dispatch_is_an_admitted_scaffold,
     hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
     butch_serving_retirement_is_operator_handled_2026_11_21,
+    butch_tailnet_join_is_operator_handled_2026_11_21,
     srv15_arrival_reviewer_selected_by_operator,
     // The srv15 versions-read backstop row (#16640) was missing from the roster, so
     // documentary_refs never checked its citation or what it governs (manager ruling
     // msg_482f43bc, 2026-11-19). Listed with its budget-row neighbours above.
     srv15_versions_read_backstop_admitted,
+    srv1_dashboard_deploy_step_timeout_raised,
     codex_app_server_trip_pinned_oracle_repointed_to_typed_refusal,
     pair_delivery_shell_as_medium_steps_admitted,
     codex_app_server_trip_pinned_oracle_repointed_to_direct_argv,

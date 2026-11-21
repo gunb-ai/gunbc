@@ -99,7 +99,7 @@ jobs:
           oauth-client-id: kNQLY8UpZK11CNTRL
           oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci-dispatch
-          args: --accept-dns=false --ephemeral=true
+          args: ''
       - name: "Plumbing proof: remote_test_cli over the plumbing-proof pattern"
         id: remote-build-plumbing-proof
         run: |
