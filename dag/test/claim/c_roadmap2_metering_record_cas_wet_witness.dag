@@ -452,6 +452,30 @@ test fn an_entry_that_names_the_worker_is_refused_by_name_and_the_roster_refuses
 // migration refusal. The live ledger here is empty, so every INDEXED attempt is departed, and the index
 // admit is the spawn pass's own production route. The persist inside the pass then observes the adopted
 // Final head and answers AlreadyFinal -- the pass's own idempotence arm.
+// A TRAVERSAL-SHAPED INDEX KEY IS REFUSED BY THE ADMIT, BEFORE ANY EFFECT (side-chat follow-up,
+// review of 348c1e3b059). The admit's convention is Present{value: cause} = refused -- its store-unready
+// arm and its create-refused arm answer the same way -- and its two callers rely on it:
+// gunbc.roadmap.roadmap_belt_actuate's per-attempt metering persist maps Present to MeteringPersistRefused
+// (deriving no path), and the departed pass above proceeds only on Absent. The fx store here is READY (the
+// sealed attempt directory exists, as the pass's own claim establishes), so a refusal whose cause names
+// the segment law can only come from the member-name guard -- a '../x' or 'a/b' attempt key is refused and
+// no index member name, hence no path, is ever derived from it.
+test fn an_unsafe_index_key_is_refused_by_the_admit() -> Bool {
+  let dir = fx_root("index-guard")
+  let instance = fx_instance("index-guard", dir)
+  let key = fx_key("index-guard")
+  let sealed = fx_sealed_attempt(instance: instance, key: key)
+  sealed
+    && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: "../x") {
+         Present { value: e } => string_contains(s: e, p: "safe path segment")
+         Absent => false
+       }
+    && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: "a/b") {
+         Present { value: e } => string_contains(s: e, p: "safe path segment")
+         Absent => false
+       }
+}
+
 test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> Bool {
   let dir = fx_root("departed-adopt")
   let instance = fx_instance("departed-adopt", dir)
