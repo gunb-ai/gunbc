@@ -1780,7 +1780,7 @@ fn metering_roster_seal_under_hold(instance: HostDashboardInstance, node_id: Roa
     RosterSealed { launches: _, digest: _ } => RosterRefused { cause: "unreachable: an open listing returned a seal" }
     RosterOpen { launches: ls } =>
       match attempt_metering_declared_member_name(member: AttemptMeteringRosterSealed) {
-        Absent => Present { value: "the sealed roster member name is not one safe path segment; the seal is refused" }
+        Absent => RosterRefused { cause: "the sealed roster member name is not one safe path segment; the seal is refused" }
         Present { value: mname } =>
       match metering_attempt_create_once_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: mname, content: metering_roster_seal_json(node_id: node_id as String, attempt_key: attempt_key, launches: ls)) {
         Present { value: e } => RosterRefused { cause: join(["the roster seal could not be written: ", e], "") }
@@ -1834,7 +1834,7 @@ fn metering_attempt_index_admit(instance: HostDashboardInstance, node_id: String
   match attempt_metering_index_store(instance: instance) {
     AttemptMeteringIndexStoreUnready { detail } => Present { value: detail }
     AttemptMeteringIndexStoreReady { store } => match attempt_metering_member_name(raw: metering_attempt_index_name(node_id: node_id, attempt_key: attempt_key)) {
-      Absent => MeteringIndexRefused { cause: "the index member name is not one safe path segment; the index write is refused" }
+      Absent => Present { value: "the index member name is not one safe path segment; the index write is refused" }
       Present { value: mname } => match attempt_metering_index_create_once(store: store, entry: mname, content: metering_attempt_index_json(node_id: node_id, attempt_key: attempt_key)) {
       AttemptMeteringCreated => none
       AttemptMeteringAlreadyPresent => none
@@ -2034,7 +2034,7 @@ fn attempt_metering_adopt_pre_seal_record(
         AdoptRefused { error: join(["the metering record slot is not readable, so nothing can be adopted into it: ", cas_unreadable_slot_detail(cause: c)], "") }
       CasObservedReadable { readable: CasReadableAbsent } =>
       match attempt_metering_member_name(raw: metering_record_slot_key()) {
-        Absent => OptionalFileRefused { cause: "the metering record slot key is not one safe path segment; the record is refused" }
+        Absent => AdoptRefused { error: "the metering record slot key is not one safe path segment; the record is refused" }
         Present { value: mkey } =>
       match attempt_metering_read(store: store, entry: mkey) {
         OptionalFileAbsent => AdoptNothingToAdopt
