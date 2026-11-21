@@ -10,6 +10,11 @@ import extdeps.ssh.known_hosts { known_hosts_host_field }
 import gunbc.compute.remote_build {
   RemoteBuildSourceRef, remote_build_source_ref_name, RemoteCompileEntry,
   HostServed, HostWorkFailed, HostCapacityFull, RemoteBuildAnswered, RemoteBuildNoHostAvailable, RemoteBuildAttempt,
+  remote_build_candidates, RemoteBuildCandidate,
+  RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
+}
+import gunbc.compute.remote_build_hosts {
+  remote_build_serving_hosts, remote_build_serving_candidate_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate,
 }
 import gunbc.compute.remote_build_client {
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
@@ -158,4 +163,73 @@ test fn red_a_job_root_of_unreadable_principal_refuses() -> Bool {
 // emit the one comparable representation the decision relies on.
 test fn the_real_readback_admits_a_directory_the_principal_owns() -> Bool {
   w_job_root_ready(r: materialize_remote_build_client_job_root(root: "."))
+}
+
+// THE HOST PIN -- the operator's/runner's choice to send ONE request to ONE named host. These pin
+// the pure decision (gunbc.compute.remote_build.remote_build_host_pin / _pinned_candidates /
+// _pin_refusal) that remote_build_run applies before any effect; the drive then walks exactly what
+// it returns, so the route is settled here without a live socket.
+
+// THE ROUTE, asserted. Pinning the SECOND roster host (srv4) narrows the walk to exactly one
+// candidate -- srv4 itself -- not the whole roster and never srv3-first. The unpinned walk really
+// does hold two hosts, so "exactly one" is a real narrowing, not a degenerate roster.
+test fn a_rostered_pin_walks_exactly_that_one_host() -> Bool {
+  let pin = remote_build_host_pin(text: "srv4")
+  count(remote_build_candidates()) == 2
+    && match pin {
+         Absent => false
+         Present { value: carrier } => match carrier {
+           PinRostered { host } =>
+             host == "srv4" as HostIdentity
+               && remote_build_pinned_candidates(pin: pin) |> map(c => c.host as String) == ["srv4"]
+           PinOffRoster { pin: _, roster: _ } => false
+         }
+       }
+}
+
+// NO PIN is the ordinary roster walk, UNCHANGED: the whole roster in order, identical to the
+// unpinned candidates the existing selection claims already rely on. Green here means the pin did
+// not disturb the path every request without a --arg host= still takes.
+test fn no_pin_walks_the_whole_roster_in_order() -> Bool {
+  let walked = remote_build_pinned_candidates(pin: none) |> map(c => c.host as String)
+  let full = remote_build_candidates() |> map(c => c.host as String)
+  walked == ["srv3", "srv4"] && walked == full
+}
+
+// THE RED CONTROL. srv1 is provisioned as a serving CANDIDATE (remote_build_serving_candidate_hosts)
+// yet is NOT on the DISPATCH roster -- the only gate that admits a dispatch. Pinning it must REFUSE,
+// the refusal must name BOTH the refused pin AND the roster checked, and the walk must contact
+// NOTHING: a candidate-only host is never a silent fall-through to srv3/srv4.
+test fn a_candidate_only_pin_refuses_naming_the_pin_and_the_roster() -> Bool {
+  let pin = remote_build_host_pin(text: "srv1")
+  remote_build_host_is_serving_candidate(host: "srv1" as HostIdentity)
+    && !remote_build_host_is_serving(host: "srv1" as HostIdentity)
+    && match pin {
+         Absent => false
+         Present { value: carrier } => match carrier {
+           PinRostered { host: _ } => false
+           PinOffRoster { pin: p, roster } =>
+             p == "srv1"
+               && (roster |> map(h => h as String)) == (remote_build_serving_hosts() |> map(h => h as String))
+               && contains(haystack: remote_build_pin_refusal(pin: p, roster: roster), needle: "srv1")
+               && contains(haystack: remote_build_pin_refusal(pin: p, roster: roster), needle: "srv3")
+               && contains(haystack: remote_build_pin_refusal(pin: p, roster: roster), needle: "srv4")
+         }
+       }
+    && count(remote_build_pinned_candidates(pin: pin)) == 0
+}
+
+// CLOSURE. A name on NEITHER roster -- a typo, a host that does not exist -- is refused the same way
+// and its pinned walk is empty, so a pin is a closed decision on the DISPATCH roster alone rather
+// than a lookup that could widen to some other host source.
+test fn an_unrostered_host_pin_is_refused_and_walks_nothing() -> Bool {
+  let pin = remote_build_host_pin(text: "srv-not-a-rostered-host")
+  match pin {
+    Absent => false
+    Present { value: carrier } => match carrier {
+      PinRostered { host: _ } => false
+      PinOffRoster { pin: p, roster: _ } =>
+        p == "srv-not-a-rostered-host" && count(remote_build_pinned_candidates(pin: pin)) == 0
+    }
+  }
 }
