@@ -75,7 +75,7 @@ jobs:
           trap cleanup EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
           rm -f "$KEY_FILE"
-          curl -fsSL -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/remote-build-ci-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode("utf-8"))' > "$KEY_FILE"
+          curl -fsSL -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/remote-build-ci-ssh-key/versions/2:access" | python3 -c 'import sys,json,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode("utf-8"))' > "$KEY_FILE"
           chmod 600 "$KEY_FILE"
           ACTUAL_FP="$(ssh-keygen -lf "$KEY_FILE" | awk '{print $2}')"
           EXPECTED_FP="SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM"
