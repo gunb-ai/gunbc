@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // std.host_text text_of_chars IS chars' DECLARED INVERSE (operator ruling H4; ruling
 // text_crossings_go_through_the_unfold): chars then text_of_chars returns the original host text, through
 // the imported declarations and so through their realizations (the interpreter's std.host_text bridge for
-// chars, the kernel slice writer over the whole list for text_of_chars). Each non-ASCII case separates the
+// chars and the declared whole-list writer for text_of_chars). Each non-ASCII case separates the
 // scalar reading from a near miss: a byte-wise inverse would decode octets, a UTF-16 one would need a
 // surrogate pair for the astral scalar, a grapheme one would merge the decomposed accent.
 
