@@ -2692,6 +2692,25 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
   // THE ROUTE REFUSES, AND THE EFFECT DOES NOT HAPPEN ANYWHERE ELSE.
   let route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: planted_key, image: named)
   let escape_stayed_empty = away != "" && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  // THE STAGING NAME ITSELF, PLANTED. The receipt writer stages under the admitted instance root at a name
+  // built from the stage key, and "that is under the root, so it is safe" is exactly the reasoning the base
+  // guard could never carry: a link standing at that name takes the receipt's bytes out of the supplied tree
+  // while the destination set above it -- every one of them admitted -- keeps passing. This is the RED for the
+  // writer admitting its own staging path before it writes it: the predicate refuses the name, the route
+  // refuses, and the planted target stays empty.
+  let staged_key = "staged-link"
+  let stage_away = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-locus-stage-escape-XXXXXX" as NonEmptyStr,
+  ))
+  let stage_name = join([inst.instance_root as String, "/.gunbc-locus-write-hand-receipt-", staged_key], "")
+  let stage_linked = wet_ok(command: ln_symbolic_force_command(target: stage_away, link_name: stage_name))
+  let stage_arms_split = stage_away != ""
+    && stage_linked
+    && witness_locus_destinations_are_admitted(instance: inst, locus_key: staged_key)
+    && !witness_locus_destination_is_admitted(candidate: stage_name)
+  let stage_route_refused = !wet_stage_locus_by_hand(instance: inst, locus_key: staged_key, image: named)
+  let stage_escape_stayed_empty = stage_away != ""
+    && wet_out(command: ls_almost_all_one_per_line_command(path: stage_away)) == ""
   let recorded = wet_stage_trail_contains(
       needle: join([witness_locus_destination_refused_stage as String, planted_key], ""),
     )
@@ -2700,8 +2719,9 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
     )
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && ordinary_ok && arms_split && route_refused && escape_stayed_empty && recorded,
-    roots: [root as NonEmptyStr, away as NonEmptyStr],
+      && root != "" && ordinary_ok && arms_split && route_refused && escape_stayed_empty && recorded
+      && stage_arms_split && stage_route_refused && stage_escape_stayed_empty,
+    roots: [root as NonEmptyStr, away as NonEmptyStr, stage_away as NonEmptyStr],
   )
 }
 

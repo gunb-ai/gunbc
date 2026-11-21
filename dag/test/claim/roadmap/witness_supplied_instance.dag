@@ -1053,10 +1053,19 @@ fn witness_write_locus_file(instance: HostDashboardInstance, destination: String
   if !witness_locus_destination_is_admitted(candidate: destination) {
     false
   } else {
+  // THE STAGING FILE IS A DESTINATION TOO. It sits under the admitted instance root by CONSTRUCTION, which is
+  // exactly the shape the base guard could never see: a link planted earlier at this very name takes the bytes
+  // outside the supplied tree while every guard above it keeps reporting the base is fine. So it is admitted
+  // here, by the same predicate and before `Filesystem.Write` runs -- and it is admitted on both routes, not
+  // only the elevated one that creates it, because which route runs is a fact about the host and this is the
+  // one place that decides what these bytes may touch.
+  let stage = join([instance.instance_root as String, "/.gunbc-locus-write-", stage_key], "")
+  if !witness_locus_destination_is_admitted(candidate: stage) {
+    false
+  } else {
   let written = if witness_sudo_elevation_available() {
     // Stage where the claim principal can write (its own root, off the live host by the supplied-root guard),
     // then copy it in through the SAME elevated route the install used, at the mode the fold installs at.
-    let stage = join([instance.instance_root as String, "/.gunbc-locus-write-", stage_key], "")
     Filesystem.Write(path: stage, content: content).success
       && wet_argv_ok(
         program: sudo_elevate_command(command: ["/usr/bin/install", "-m", "0444", "--", stage, destination]).program.invocation as NonEmptyStr,
@@ -1067,6 +1076,7 @@ fn witness_write_locus_file(instance: HostDashboardInstance, destination: String
   }
   let back = Filesystem.Read(path: destination)
   written && back.success && back.content == content
+  }
 }
   }
 
