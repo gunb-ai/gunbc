@@ -468,6 +468,57 @@ fn remote_build_admitted_candidates(standing: RemoteBuildHostStanding) -> List<R
   }
 }
 
+// THE HOST PIN -- an operator's or a hosted runner's choice to send ONE request to ONE named
+// host, rather than letting the walk pick. It is a typed refusal carrier: resolving a pin either
+// lands the host on the DISPATCH roster (remote_build_serving_hosts -- the live dispatch gate,
+// gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold) or it does not, and a
+// host that is NOT on that roster is refused by name -- NEVER silently widened back out to the
+// whole roster. A host that is only on the CANDIDATE row (remote_build_serving_candidate_hosts)
+// is exactly such a refusal: it may hold a checkout, but the dispatch gate does not admit it, so
+// pinning to it must stop AT the pin rather than fall through to srv3/srv4.
+type RemoteBuildHostPin
+  = PinRostered { host: HostIdentity }
+  | PinOffRoster { pin: String, roster: List<HostIdentity> }
+
+// Resolve an optional `--arg host=` against the DISPATCH roster, the ONLY authority that says a
+// host may be dispatched to. Absent text means no pin -- the ordinary roster walk. A host the
+// roster admits becomes PinRostered so exactly it is tried; anything else -- a candidate-only host
+// (srv1/srv2/ken), a typo, a name not on the roster at all -- is PinOffRoster, which the caller
+// turns into a self-explaining refusal. It is a carrier, not a throw: the caller must handle both.
+fn remote_build_host_pin(text: String?) -> RemoteBuildHostPin? {
+  match text {
+    Absent => none
+    Present { value: pinned } =>
+      let roster = remote_build_serving_hosts()
+      match roster |> filter(h => h as String == pinned) |> first {
+        Present { value: admitted } => Present { value: PinRostered { host: admitted } }
+        Absent => Present { value: PinOffRoster { pin: pinned, roster: roster } }
+      }
+  }
+}
+
+// THE ROSTER WALKED FOR ONE REQUEST. No pin walks the whole roster, in roster order -- identical
+// to remote_build_candidates(), so the existing selection claims keep their route. A rostered pin
+// walks EXACTLY that one host (never the whole roster, never a second host); an off-roster pin
+// walks nothing at all, so even if a caller forgot to refuse it first the walk can never dispatch.
+fn remote_build_pinned_candidates(pin: RemoteBuildHostPin?) -> List<RemoteBuildCandidate> {
+  let roster = remote_build_candidates()
+  match pin {
+    Absent => roster
+    Present { value: PinRostered { host } } => roster |> filter(c => c.host == host)
+    Present { value: PinOffRoster { pin: _, roster: _ } } => []
+  }
+}
+
+// THE REFUSAL, self-explaining on the receipt: it names BOTH the pin that was refused AND the
+// roster that was checked, so a reader sees which host was asked for and against which gate it
+// failed -- without having to re-derive the roster from the source.
+fn remote_build_pin_refusal(pin: String, roster: List<HostIdentity>) -> String {
+  let names = roster |> map(h => h as String) |> join(", ")
+  join(["host pin \"", pin, "\" is not on the remote-build DISPATCH roster (", names,
+        "); a pinned host must be on the roster itself -- pinning never falls through to the whole roster"], "")
+}
+
 // ── WHICH HOST NEXT ──────────────────────────────────────────────────────────────────────────────────
 //
 // What one host answered. A full pool, a host that cannot serve (its checkout, store or toolchain) and
