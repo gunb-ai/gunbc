@@ -28,7 +28,7 @@ import extdeps.tools.gh {
   gh_main_head_command, gh_release_bins_run_list_command, gh_run_download_command,
 }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds, ProcessRan, ProcessNotSpawned }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
@@ -378,7 +378,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
           // Is the dedicated delivery clone seeded? git itself answers; only a ProcessOutputPresent (a printed head) counts,
           // never a wildcard (review 96360). Any other ProcessOutcome is "not seeded / not readable" -> PlacementCloneMissing.
           let clone_present = release_pair_delivery_clone_present(
-            outcome: run_shell_command_capture(
+            outcome: run_shell_command_observe_outcome(
               command: git_rev_parse_head_command(repository_dir: delivery_repo),
               transport: LocalExec,
             ),
@@ -424,7 +424,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                   // Fetch the head into the clone; a REFUSED fetch refuses with its OWN reason (never a misleading
                   // 'unobservable' / 'other head' from the later observe). Exit-0 (stdout present or absent) is progress.
                   match release_pair_source_fetch_verdict(
-                    outcome: run_shell_command_capture(
+                    outcome: run_shell_command_observe_outcome(
                       command: git_fetch_shallow_revision_command(
                         repository_dir: delivery_repo,
                         remote: "origin",
@@ -439,7 +439,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                     ActionPlaced =>
                       // Hang the detached worktree; a REFUSED add refuses with its OWN reason (review 96360).
                       match release_pair_source_add_verdict(
-                        outcome: run_shell_command_capture(
+                        outcome: run_shell_command_observe_outcome(
                           command: git_worktree_add_detached_command(
                             repository_dir: delivery_repo,
                             path: source_dir,
@@ -594,11 +594,15 @@ fn release_pair_source_placement_decision(
 // There is NO wildcard success: ProcessOutputAbsent (exit 0 but no stdout) and ProcessRefused (nonzero exit) are BOTH
 // "not seeded / not readable" and route to PlacementCloneMissing (review 96360). ProcessOutcome's variants, from source
 // (gunbc.command_runner): ProcessOutputPresent { text: String } | ProcessOutputAbsent | ProcessRefused { exit_code: Int, stderr: String }.
-fn release_pair_delivery_clone_present(outcome: ProcessOutcome) -> Bool {
+fn release_pair_delivery_clone_present(outcome: ProcessRunOutcome) -> Bool {
   match outcome {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => false
-    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessRan { observation: observation } =>
+      match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+        ProcessOutputPresent { text: _ } => true
+        ProcessOutputAbsent => false
+        ProcessRefused { exit_code: _, stderr: _ } => false
+      }
+    ProcessNotSpawned { program: _, cause: _ } => false
   }
 }
 
@@ -611,21 +615,31 @@ type PlacementActionVerdict
   = ActionPlaced
   | ActionRefused { reason: NonEmptyStr }
 
-fn release_pair_source_fetch_verdict(outcome: ProcessOutcome, rev: String) -> PlacementActionVerdict {
+fn release_pair_source_fetch_verdict(outcome: ProcessRunOutcome, rev: String) -> PlacementActionVerdict {
   match outcome {
-    ProcessOutputPresent { text: _ } => ActionPlaced
-    ProcessOutputAbsent => ActionPlaced
-    ProcessRefused { exit_code: _, stderr: e } =>
-      ActionRefused { reason: join(["fetch of ", rev, " refused: ", e], "") as NonEmptyStr }
+    ProcessRan { observation: observation } =>
+      match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+        ProcessOutputPresent { text: _ } => ActionPlaced
+        ProcessOutputAbsent => ActionPlaced
+        ProcessRefused { exit_code: _, stderr: e } =>
+          ActionRefused { reason: join(["fetch of ", rev, " refused: ", e], "") as NonEmptyStr }
+      }
+    ProcessNotSpawned { program: _, cause: c } =>
+      ActionRefused { reason: join(["fetch of ", rev, " not spawned: ", c], "") as NonEmptyStr }
   }
 }
 
-fn release_pair_source_add_verdict(outcome: ProcessOutcome) -> PlacementActionVerdict {
+fn release_pair_source_add_verdict(outcome: ProcessRunOutcome) -> PlacementActionVerdict {
   match outcome {
-    ProcessOutputPresent { text: _ } => ActionPlaced
-    ProcessOutputAbsent => ActionPlaced
-    ProcessRefused { exit_code: _, stderr: e } =>
-      ActionRefused { reason: join(["worktree add refused: ", e], "") as NonEmptyStr }
+    ProcessRan { observation: observation } =>
+      match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+        ProcessOutputPresent { text: _ } => ActionPlaced
+        ProcessOutputAbsent => ActionPlaced
+        ProcessRefused { exit_code: _, stderr: e } =>
+          ActionRefused { reason: join(["worktree add refused: ", e], "") as NonEmptyStr }
+      }
+    ProcessNotSpawned { program: _, cause: c } =>
+      ActionRefused { reason: join(["worktree add not spawned: ", c], "") as NonEmptyStr }
   }
 }
 

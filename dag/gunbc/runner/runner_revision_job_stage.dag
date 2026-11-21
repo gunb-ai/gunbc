@@ -6,7 +6,7 @@ import std.algebra { FreeSemigroup, trim }
 import std.measure { ByteSize, byte_size_count }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.tar { tar_extract_command, tar_create_reproducible_command, TarOverwriteDir }
@@ -20,7 +20,7 @@ import extdeps.rust.cargo_build { cargo_vendor_command, cargo_version_command }
 import extdeps.bazel.label { Label, render_label }
 import extdeps.tools.coreutils_truncate
 import gunbc.runner.runner_microvm { newline_padded_to_whole_sectors }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.fabric.fabric_witness_run {
   VerifiedGitCommitTree, GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
 }
@@ -84,10 +84,14 @@ type RevisionJobStage
   | RevisionJobStageRefused { refusal: RevisionJobStageRefusal }
 
 fn stage_output(step: NonEmptyStr, command: ArgvCommand) -> RevisionJobStageStep {
-  match run_shell_command_capture(command: command, transport: LocalExec) {
-    ProcessOutputPresent { text: t } => StageStepOk { output: trim(s: t) }
-    ProcessOutputAbsent => StageStepOk { output: "" }
-    ProcessRefused { exit_code: c, stderr: e } => StageStepRefused { refusal: StageStepFailed { step: step, detail: join(["exit ", to_string(c), ": ", trim(s: e)], "") } }
+  match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+    ProcessRan { observation: observation } =>
+      if observation.exit_code == 0 {
+        StageStepOk { output: trim(s: observation.stdout) }
+      } else {
+        StageStepRefused { refusal: StageStepFailed { step: step, detail: join(["exit ", to_string(observation.exit_code), ": ", trim(s: observation.stderr)], "") } }
+      }
+    ProcessNotSpawned { program: p, cause: c } => StageStepRefused { refusal: StageStepFailed { step: step, detail: join(["not spawned ", p, ": ", trim(s: c)], "") } }
   }
 }
 

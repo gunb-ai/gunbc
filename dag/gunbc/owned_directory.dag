@@ -2,6 +2,7 @@ module gunbc.owned_directory
 
 import std.types { String, NonEmptyStr, Bool, List, Int, FilePath }
 import std.algebra { trim, list_at_optional }
+import std.filesystem { path_basename }
 import std.optional { Optional, Present, Absent }
 
 import extdeps.access.posix { FileMode, file_mode_octal, file_mode_of_octal_text }
@@ -286,7 +287,7 @@ fn owned_directory_parent(path: FilePath) -> FilePath {
 }
 
 fn owned_directory_basename(path: FilePath) -> String {
-  fold(split(s: path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+  path_basename(path: path as String)
 }
 
 // EVERY DIRECTORY WHOSE LISTING CAN BE ASKED WHILE OBSERVING `path`: its parent and each ancestor up to
