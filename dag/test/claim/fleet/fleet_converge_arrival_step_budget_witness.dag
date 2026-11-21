@@ -32,7 +32,7 @@ import gunbc.fleet.fleet_workflow_steps {
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
 import gunbc.machine_intake.arrival_run {
   arrival_candidate_channel_numbers, arrival_threshold_read_legs, arrival_counted_census_ops,
-  arrival_ipmi_leg_bound, arrival_wet_ipmi_legs_bound,
+  arrival_ipmi_leg_bound, arrival_wet_ipmi_legs_bound, arrival_hpm_check_leg_bound,
 }
 import gunbc.machine_intake.prior_life_capture_live {
   live_prior_life_ipmi_legs, live_prior_life_redfish_single_call_legs, live_ipmi_leg_bound,
@@ -96,11 +96,13 @@ fn arrival_job_timeout_minutes(job: Job) -> Int {
 
 // THE FOLD IS THE PHASES IT DECLARES -- a reading of the function, not of the shipped job, so it holds
 // whether or not the raise has been admitted. Every term is a declared row: the Secret Manager read bound,
-// the door's IPMI legs, the prior-life capture's legs, and the generic fold that adds the resolve allowance.
+// the door's IPMI legs, the hpm check leg, the prior-life capture's legs, and the generic fold that adds the
+// resolve allowance. The hpm phase was added with the leg itself (the hpm-leg PR), not absorbed silently.
 test fn the_step_fold_is_the_phases_it_declares() -> Bool {
   fleet_converge_arrival_converge_step_timeout_minutes()
-    == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()])
+    == fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), arrival_hpm_check_leg_bound(), live_prior_life_legs_bound()])
     && fleet_converge_arrival_converge_step_timeout_minutes() > gunbc_ci_aux_step_timeout_minutes
+    && second_count(s: arrival_hpm_check_leg_bound()) > 0
 }
 
 // THE SHIPPED FIGURE IS THE FOLD. Read off the job that runs it, not off a copy of the number: the step's
@@ -153,6 +155,7 @@ test fn the_step_fold_covers_the_resolve_allowance_and_every_declared_leg() -> B
   let seconds = (gunbc_ci_gunbc_run_resolve_step_timeout_minutes * 60)
     + (second_count(s: gunbc_ci_sm_max_time) as Int)
     + (second_count(s: arrival_wet_ipmi_legs_bound()) as Int)
+    + (second_count(s: arrival_hpm_check_leg_bound()) as Int)
     + (second_count(s: live_prior_life_legs_bound()) as Int)
   (fleet_converge_arrival_converge_step_timeout_minutes() * 60) >= seconds
 }

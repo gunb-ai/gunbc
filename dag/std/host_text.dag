@@ -42,16 +42,23 @@ fn chars(text: HostText) -> List<Char> {
 // value (std.types Char), so every list has exactly one host text; a value outside that range is a
 // broken representation invariant, which the realization refuses rather than dropping or substituting.
 //
-// NOT A SEAM, BY DECISION (tidy-ant-251, 2026-10-25): the body is the kernel's linear slice writer over
-// the WHOLE list. That is a realization binding at one window, NOT an identity: chars_to_string is a
-// different, windowed operation that production callers use at arbitrary windows, it clamps an
-// out-of-range window and panics on a non-scalar Int, and its own authority is unestablished
-// (gunbc.primitive_egress.dispositions_text, row chars_to_string). Its window [0, count) is always inside [0, count), so the writer's clamp of an
-// out-of-range window never fires here, and this declaration does not rely on it. A .dag fold over
-// from_code_point and concat would copy its accumulator, quadratic in the text length (DESIGN section
-// 6, bare minimum cost), so the kernel writer stays the realization. It keeps its ambient name for the
-// namespace wave to home; this declaration and nothing else calls it for a text crossing (std.coercion
-// unicode_scalar_fold, the conversion plan's route, calls this).
+// HOST-REALIZED BY DECLARATION IDENTITY (operator ruling
+// gunbc.design_ruling::text_of_chars_is_a_whole_list_host_realization, superseding the 2026-10-25
+// NOT A SEAM decision). The primitive_projection row binds this whole-list contract to the linear
+// host writer through resolved_declaration_call_target. The seed selects the declaration before
+// ambient dispatch; its bridge checks the selected node's owner, not the closure-wide spelling
+// registry (gunbc.recurring_failure_mode::host_seam_realization_is_keyed_by_primitive_spelling).
+// The existing body remains solely for base-mirror bootstrap: the generator built from main
+// predates this projection row, as in the adjacent string_length and substring admissions.
+// Trigger for replacing it with text_of_chars(scalars: scalars): the projection and resolved-target
+// evaluation are on main and bootstrap regeneration has converged. Keeping this admission body
+// does not itself remove the native resolver's chars_to_string dependency; the staged self-call
+// and a fresh native prepare execution are still owed after admission.
+// chars_to_string remains a DIFFERENT, arbitrary-window operation with clamping and Int inputs;
+// this row neither aliases it nor imports its window semantics. Every element here is a Char.
+// A .dag fold over from_code_point and concat would copy its accumulator and is not an admissible
+// realization (gunbc.design_argument::how_to_work). std.coercion::unicode_scalar_fold consumes this
+// declared crossing, whose empty, ASCII, non-ASCII and supplementary-scalar round trips are witnessed.
 fn text_of_chars(scalars: List<Char>) -> HostText {
   chars_to_string(chars: scalars, start: 0, end: scalars |> count)
 }

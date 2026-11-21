@@ -1,0 +1,77 @@
+module test.claim.host.host_authorized_keys_reconcile_node_orch_out_of_band_witness
+
+// Behavioral witnesses for the srv1/srv2 node-orch operator-account authorized_keys out-of-band entries
+// (work item node://adhoc-6c04fd94-d2d), recorded as observed fixtures inside gunbc.host.host_authorized_keys_reconcile.
+// These exercise the consumer that makes the record non-dangling: node_orch_operator_out_of_band_preserved()
+// runs each recorded key through authorized_key_ownership -- the route the membership spine uses to decide a
+// teardown -- so a key the fleet does not own resolves none (Absent) and is REFUSED for removal. The from=
+// and forwarding checks read the TYPED facts (NetworkEndpoint subject host identity, AuthorizedKeyOption via
+// its canonical renderer), compared against the fleet's OWN authority rows, not copied string literals.
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.network_topology { NetworkEndpointSubject, EndpointHost, EndpointSubjectUnregistered }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet.fleet_ssh_access { node_orch_ssh_key }
+import gunbc.host.host_authorized_keys_reconcile {
+  authorized_key_ownership,
+  srv2_operator_observed_node_orch_srv1_key,
+  node_orch_operator_out_of_band_preserved,
+  srv1_operator_node_orch_out_of_band_entry,
+  srv2_operator_node_orch_out_of_band_entry,
+}
+import extdeps.ssh.keys { authorized_key_option_text }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The core no-silent-undo route. srv2's node-orch@srv1 line is the one the fleet does not own: it must be
+// the one the ownership wall preserves (resolves Absent -> refused). srv1's node-orch@srv2 line IS fleet-owned
+// and therefore must NOT appear in the preserved set.
+test fn the_unowned_srv2_line_is_preserved_by_the_reconcile_ownership_wall() -> Bool {
+  any(
+    map(node_orch_operator_out_of_band_preserved(), e => e.host),
+    h => host_identity_eq(a: h, b: operator_host_srv2)
+  )
+    && !any(
+      map(node_orch_operator_out_of_band_preserved(), e => e.host),
+      h => host_identity_eq(a: h, b: operator_host_srv1)
+    )
+}
+
+// The two out-of-band keys resolve to opposite ownership verdicts through the reconcile's own decision:
+// srv2's out-of-band key (srv1's node-orch@srv1) is not-owned (the wall protects it); the fleet-owned
+// node-orch key (node-orch@srv2, node_orch_ssh_key) is owned by the fleet (srv1's out-of-band line carries
+// that same key, so it is protected only by the absence of an operator-account converge, per its retirement).
+test fn srv1_key_is_unowned_and_node_orch_srv2_is_fleet_owned() -> Bool {
+  authorized_key_ownership(srv2_operator_observed_node_orch_srv1_key) == none
+    && authorized_key_ownership(node_orch_ssh_key) != none
+}
+
+// The forwarding posture each line carries is the one its named consumer needs -- checked by reading the
+// typed AuthorizedKeyOption values through the module's own renderer: srv2's line keeps no-port-forwarding
+// (its consumer performs none), srv1's line omits it (srv2's srv1-docker-tunnel stream-local -L needs it).
+test fn the_forwarding_posture_agrees_with_the_named_consumer() -> Bool {
+  any(srv2_operator_node_orch_out_of_band_entry.current_options, o => authorized_key_option_text(o: o) == "no-port-forwarding")
+    && !any(srv1_operator_node_orch_out_of_band_entry.current_options, o => authorized_key_option_text(o: o) == "no-port-forwarding")
+}
+
+// The widened from= tailnet source points at the OPPOSITE host's tailnet endpoint authority, read via the
+// endpoint's typed subject and compared to the fleet host identity: srv1's from= peer is srv2 (not srv1),
+// srv2's from= peer is srv1. This exercises the address authorities, not a grep of a copied address string.
+test fn the_from_source_tailnets_point_at_the_opposite_host_authority() -> Bool {
+  any(srv1_operator_node_orch_out_of_band_entry.from_source_tailnets, e =>
+    match e.subject {
+      EndpointHost { host: h } => host_identity_eq(a: h, b: operator_host_srv2)
+      _ => false
+    })
+    && any(srv2_operator_node_orch_out_of_band_entry.from_source_tailnets, e =>
+      match e.subject {
+        EndpointHost { host: h } => host_identity_eq(a: h, b: operator_host_srv1)
+        _ => false
+      })
+    && !any(srv1_operator_node_orch_out_of_band_entry.from_source_tailnets, e =>
+      match e.subject {
+        EndpointHost { host: h } => host_identity_eq(a: h, b: operator_host_srv1)
+        _ => false
+      })
+}
