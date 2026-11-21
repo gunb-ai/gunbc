@@ -22,6 +22,7 @@ import gunbc.plans.factory_dogfood { factory_dogfood_plan }
 import gunbc.plans.debt_payoff { debt_payoff_plan }
 import gunbc.plans.names_without_imports { names_without_imports_plan }
 import gunbc.plans.first_customer_service { first_customer_service_plan }
+import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -48,4 +49,5 @@ data all_plans: List<Plan> = [
   planning_consolidation_plan, declaration_acquisition_plan, v2_self_host_plan,
   factory_dogfood_plan, debt_payoff_plan, names_without_imports_plan, first_customer_service_plan,
   new_server_bringup_plan,
+  derived_types_keep_their_name_plan,
 ]

@@ -5663,6 +5663,60 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The estimates the planning page prices with: an edge graph whose prerequisites cannot contradict the containment the same authority derives, so authoring refuses what only the Gantt read used to catch."),
     ),
+    // ---- gunbc.plans.derived_types_keep_their_name (sharp-stag-549, 2026-11-19) ------------
+    // The how the intention holds out of itself. Four selections against it; the binding in
+    // roadmap_intention_binding links each to the intention. Carriers point at the plan module.
+    roadmap_node(
+      identity: "rn_47NBQ2XDRDLSB56VT99NDAOO4D",
+      id: "derived-type-argument-inhabitance-root",
+      owner: "nominal-typing",
+      carriers: carrier(path: "dag/gunbc/plans/derived_types_keep_their_name.dag"),
+      line: ticket(t: fields(
+        headline: "One root inhabitance rule refuses a base value at a derived-type argument",
+        boundary: "Serves gunbc.plans.derived_types_keep_their_name, section 1. In v2 04_infer's application obligation check (src/v2/std/inhabitance.dag, application_argument_does_not_inhabit) ONE rule with the symbol table decides base<->derived at an argument, replacing per-call-site alias-identity fallbacks (root_generalization failure (a)). v1.compiler.infer declared_type_inhabitance mirrors it only as the v2 parity gate, and only under the gunbc.v1.v1_maintenance_standing::v1_seed_standing purpose test (teaching the seed a refusal for its own sake is refused as SeedFeatureCompletion). NOT authoring the checked constructors, NOT removing nickname aliases, NOT touching parameterized abbreviations or Compose/phantom.",
+        displaced_cost: "Today a plain String reaches a NonEmptyStr, branded, nickname or even nominal_opaque parameter with zero blocking diagnostics (probe suite probe.alias_interchange), so a name like PathSegment or CommitSha carries no enforced guarantee on the path that judges code.",
+        first_slice: "Run the v2 REAL-PATH String-at-NonEmptyStr verdict over v2.std.* (not two-declaration stand-ins) -- the OWED unknown the recurring failure mode records -- and carry the four-case probe suite onto the required path. If v2 already refuses it, the remaining work is the v1 mirror under the purpose test; the verdict decides which.",
+        red_control: "The probe suite probe.alias_interchange turns green as a discriminating RED: a String-typed VARIABLE at a where-refinement (NonEmptyStr), at a brand (PathSegment), at a bare nickname (type MyStr = String), and at a nominal_opaque (type MySecret nominal_opaque = String) EACH refuses with a blocking row, while base-at-base, derived-at-derived, Int-at-a-declared-record, String-at-a-declared-record and Int-at-String controls stay as they are (clean or refused respectively). Decided by the one rule, not a site-by-site fallback.",
+        out_of_scope: "The checked constructors for NonEmptyStr/brands; retiring nickname aliases; refusing parameterized-abbreviation or Compose/phantom aliases; making the seed refuse for its own sake outside the purpose test.",
+        handback: "The four-case RED green on the required path with its receipts, and the v2 real-path String-at-NonEmptyStr verdict recorded, closing the OWED v2 claim on the recurring failure mode."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "A derived type keeps its name at the argument: the one root inhabitance rule refuses a base value standing in for it."),
+    ),
+    roadmap_node(
+      identity: "rn_KUYADI8UNNQF12O7TCOWBFG3L0",
+      id: "nonempty-str-becomes-a-checked-nominal",
+      owner: "nominal-typing",
+      carriers: carrier(path: "dag/std/types.dag"),
+      line: ticket(t: fields(
+        headline: "NonEmptyStr reached only through a checked constructor, never a where-predicate",
+        boundary: "Serves gunbc.plans.derived_types_keep_their_name. Author std.types non_empty_str(s: String) -> NonEmptyStr? plus expected-type literal introduction; remove type NonEmptyStr = String where string_non_empty (gunbc.design_ruling::where_refinements_retire_for_checked_constructors, gunbc.design_ruling::nonemptiness_is_constructed_or_proved); retire gunbc.design_ruling::literal_only_refinement_judgment_is_interim. Boundary v2 frontier + std; the v1 seed std mirrors only under the v1_seed_standing purpose test.",
+        displaced_cost: "NonEmptyStr is a String with a predicate the checker does not enforce at the argument, and construction runs through the as coercion, so non-emptiness is neither constructed nor proved -- it is assumed by a name.",
+        first_slice: "Measure the literal-versus-variable split of the roughly 28,826 as NonEmptyStr sites -- the OWED unknown that bounds the migration cost. Literals are absorbed by the literal rule; only the variable sites migrate to the checked constructor. Report the split before bulk edits.",
+        red_control: "A String-typed VARIABLE at a NonEmptyStr parameter refuses; non_empty_str(\"x\") is Present and non_empty_str(\"\") is Absent; a bare string literal at a NonEmptyStr expected position still admits via the literal rule; and a non-checked value coerced as NonEmptyStr refuses.",
+        out_of_scope: "Branded types and nickname aliases; refusing parameterized abbreviations or Compose/phantom; any change to the literal-only interim admission beyond replacing it with expected-type literal introduction.",
+        handback: "The checked constructor with its Present/Absent witness, the four-case argument RED still green, and the measured literal/variable split of the as NonEmptyStr surface."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "The hottest derived type reached only by a checked constructor, so its non-emptiness is constructed, not assumed."),
+    ),
+    roadmap_node(
+      identity: "rn_ZD5REPL430O15K4AVE4I82JSD7",
+      id: "brands-reached-by-checked-constructors",
+      owner: "nominal-typing",
+      carriers: carrier(path: "dag/std/types.dag"),
+      line: ticket(t: fields(
+        headline: "Branded derived types reached by checked constructors, dropping the where brand",
+        boundary: "Serves gunbc.plans.derived_types_keep_their_name. For each ruled brand (PathSegment, CommitSha, FilePath, the Int where range brand widths) give a checked constructor returning Optional and drop its where brand(...) (gunbc.design_ruling::where_refinements_retire_for_checked_constructors). Start where the as surface is smallest. Boundary v2 frontier + std; seed std mirrors only under v1_seed_standing.",
+        displaced_cost: "PathSegment, CommitSha and FilePath claim a guarantee the checker never enforces at the argument, so a wrong segment or sha flows through the gate as a plain String.",
+        first_slice: "PathSegment first (the smallest as surface, about 23 sites): author checked_path_segment(s: String) -> PathSegment?, remove type PathSegment = NonEmptyStr where brand(\"PathSegment\"), and migrate its call sites.",
+        red_control: "A plain String at each branded parameter (PathSegment, CommitSha, FilePath) refuses and a plain Int at each width brand refuses; the checked constructor yields Present on valid input and Absent otherwise; the four-case argument RED from derived-type-argument-inhabitance-root stays green.",
+        out_of_scope: "NonEmptyStr itself (its own node); nickname aliases; parameterized abbreviations and Compose/phantom (gunbc.design_ruling::machine_width_composition_has_an_intersection_carrier keeps the intersection forms).",
+        handback: "A checked constructor per brand with its Present/Absent witness and the per-brand argument refusal green, ordered smallest-surface first."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Every branded carrier name is reached by a checked constructor, so the brand means something the checker enforces."),
+    ),
     // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
     // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
     // Nothing in the authority covered it: no boot row, no PXE-install row, no mtcollins1
@@ -6314,6 +6368,13 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "mtcollins1-boot-duty-retirement", parent: "srv4-site-pxe-edge-live-source-row"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "mtcollins1-boot-later-work"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "bobo-pxe-install-dispatch"),
+    // The derived-types-keep-their-name cut (sharp-stag-549, 2026-11-19), child waits on parent, the direction
+    // the binding witness reads (binding_on_a_path walks the terminal up its parent chain): the argument-inhabitance
+    // root is first, NonEmptyStr's checked nominal waits on it, and the brands (the intention's terminal) wait on
+    // NonEmptyStr. This makes each of the three bound nodes an ancestor of the terminal and keeps the terminal a
+    // true leaf; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
+    edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
+    edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
   ], guarantee_ladder_edges())
 }
 
