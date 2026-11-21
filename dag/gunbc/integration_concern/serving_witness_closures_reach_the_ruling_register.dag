@@ -1,0 +1,64 @@
+module gunbc.integration_concern.serving_witness_closures_reach_the_ruling_register
+
+// One row of the integration-concern register. The roster derives the row from this file (module
+// gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Present }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+// SERVING WITNESS CLOSURES REACH THE RULING REGISTER THEY DO NOT JUDGE. Recorded 2026-11-21 while the
+// remote-build lane was being written down, so the cost of editing that lane's citations is on the record
+// beside the lane rather than rediscovered by whoever edits a ruling row next. It is a cost-and-reach
+// observation, not a gate: both witnesses are green today.
+data serving_witness_closures_reach_the_ruling_register: IntegrationConcern = IntegrationConcern {
+  identity: "serving_witness_closures_reach_the_ruling_register",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.design_argument", decl_name: "witness_one_interface"),
+    requirement: "an edit to a row of the ruling register re-tallies the witnesses whose one interface is that register, and not every witness whose closure reaches the register through an import that has nothing to do with what it asserts",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "witness_one_interface") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "the_receipt_body_names_the_host_and_the_drift"),
+    tail: [
+      decl_ref(module_path: "test.claim.compute.remote_build_serve_witness", decl_name: "every_ending_reads_back_as_its_own_answer"),
+      decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "ruled_zero_ci_widths"),
+      decl_ref(module_path: "gunbc.design_ruling", decl_name: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign"),
+    ],
+  },
+  question: "What would let a witness's tally cost follow the interface it discriminates at instead of its whole import closure? Both serving witnesses pull gunbc.design_ruling into their closures -- the converge witness through gunbc.runner.runner_slot_allocation, which cites the register to price its own zero-CI widths, the serve witness through the fleet model -- and neither witness asserts anything about the register. So every edit to a ruling row, including the rows the remote-build plan cites, costs a re-tally of both serving witnesses. Either the reach a witness actually judges is stated where the cost is paid, or the ruling rows neither serving witness judges come out of the closures they are currently carried by.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "6c621077717331cfeaf25a675fcf44bea582f75a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_argument", decl_name: "witness_one_interface") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_slot_allocation", decl_name: "ruled_zero_ci_widths") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign") },
+        ],
+      },
+      account: "Measured at this revision by walking each module's import list transitively: test.claim.compute.remote_build_serving_converge_witness closes over 1,833 modules and test.claim.compute.remote_build_serve_witness over 857, and gunbc.design_ruling is present in both. In the converge closure it arrives through gunbc.runner.runner_slot_allocation, which imports the register for the ruling its zero-CI widths quote; in the serve closure it arrives through the fleet model. Neither witness's claims judge the register. The lane measures a re-tally of the pair at roughly one hour, and the closures have grown from 870 to 1,838 files across recent merges, which leaves both serving witnesses near the memory ceiling of the container they run in. The reach is not the witnesses' subject, so the cost is charged to a question nobody is answering -- the shape the witness-one-interface row warns about, seen on the cost side rather than the assertion side.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.design_argument", decl_name: "witness_one_interface") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "the_receipt_body_names_the_host_and_the_drift"),
+        control: Present { value: decl_ref(module_path: "test.claim.compute.remote_build_serving_converge_witness", decl_name: "the_receipt_body_names_the_host_and_the_drift") },
+        statement: "whatever narrows the reach, the converge witness keeps executing the real converge path and reading the receipt body back; a cheaper tally that stopped executing the path is not a saving",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "test.claim.compute.remote_build_serve_witness", decl_name: "every_ending_reads_back_as_its_own_answer"),
+        control: Present { value: decl_ref(module_path: "test.claim.compute.remote_build_serve_witness", decl_name: "every_ending_reads_back_as_its_own_answer") },
+        statement: "the serve witness keeps every ending reading back as its own answer; narrowing a closure may not merge two endings into one claim",
+      },
+    ],
+    next: climbs_when(capability: "the reach a serving witness actually judges is stated where its tally cost is paid, or the ruling rows neither serving witness judges leave their closures; this row closes as integrated when a ruling-row edit re-tallies only the witnesses that judge the register"),
+  },
+}
