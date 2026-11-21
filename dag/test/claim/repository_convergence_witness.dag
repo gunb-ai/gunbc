@@ -1,6 +1,7 @@
 module test.claim.repository_convergence_witness
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, Int }
+import std.algebra { list_push }
 import extdeps.git.enumeration {
   GitRefSetObservation, GitRefSetReadRefused, git_ref_set_observation_of,
 }
@@ -822,4 +823,91 @@ test fn git_text_or_empty_yields_observed_text() -> Bool {
 
 test fn git_text_or_empty_is_empty_on_unreadable() -> Bool {
   git_text_or_empty(observation: unreadable_head) == ""
+}
+
+// AN EXECUTED CONTROL AT RUNNER REF SCALE. The 4-ref fixtures above cannot reach the regime that took
+// srv1's tree-sync unit down: a long-lived runner checkout carries thousands of remote-tracking refs
+// (srv1 had 5820, 5786 of them refs/remotes/origin/*, growing with CI), and comparing the pre- and
+// post-transition ref SETS is a set join over that population. The first cut joined it with nested
+// membership scans -- O(refs_before * refs_after) -- and at srv1's size that was ~1.3e8 interpreter
+// closure calls, 15 CPU-minutes, starved past the unit's start timeout. This control adjudicates a
+// transition over a runner-sized ref set and must report Completed with every ref preserved.
+//
+// WHY THIS AND NOT A CLOCK. The fold is hermetic: it models host effects rather than performing them
+// (see the mtcollins1 boot matrix), so a wall/step reading inside a `test fn` is not authoritative and
+// a bound built on one would be decoration. The wall bound is therefore applied where this module is
+// EXECUTED: `gunbc run --claim-run` of this module completes in well under a minute over the fixed
+// indexed join, and under the old nested-scan join this same run does not finish in minutes -- the
+// recorded wall bound, before and after, is carried on the PR so a regression that reintroduces the
+// quadratic is caught by the run not completing, not by a faked timer.
+data scale_ref_oid: String = "4444444444444444444444444444444444444444"
+
+// Left-pad a decimal string with zeros to a fixed width, using only the prelude (`to_string` on an
+// Int, `String.length()`, `concat`) so this file keeps the same import surface as the rest of the
+// witness and does not pull std.algebra -- whose own `Cons` variant would shadow the builtin list
+// constructor this control uses to assemble the ref population.
+fn scale_pad_to_width(s: String, width: Int) -> String {
+  if s.length() >= width { s } else { scale_pad_to_width(concat("0", s), width) }
+}
+
+// A REMOTE-TRACKING REFNAME AT AN INDEX, zero-padded so the lexicographic order the decoder enforces
+// matches numeric order and the population is strictly increasing (for-each-ref's own emission order).
+fn scale_branch_name(index: Int) -> String {
+  concat("refs/remotes/origin/branch-", scale_pad_to_width(to_string(index), 5))
+}
+
+// Accumulate by appending (list_push is FreeMonoid's single-item snoc, amortized O(log n)) from the
+// lowest index upward so the finished list is ascending in refname -- the order `git for-each-ref`
+// emits and the decoder refuses otherwise.
+fn scale_add_branches(j: Int, n: Int, oid: String, acc: List<String>) -> List<String> {
+  if j >= n {
+    acc
+  } else {
+    scale_add_branches(
+      j + 1,
+      n,
+      oid,
+      list_push(xs: acc, item: concat(ref_record(name: scale_branch_name(index: j), oid: oid), "\n")),
+    )
+  }
+}
+
+// The whole ref set of one side, in ascending refname order: the dispatch and attached-branch refs the
+// transition touches, then the thousands of untouched remote-tracking refs, then the base ref -- the
+// population a runner carries.
+fn scale_refs(side_sha: String, oid: String, size: Int) -> List<String> {
+  let s0 = list_push(xs: [], item: dispatch_ref_record())
+  let s1 = list_push(xs: s0, item: heads_dispatch_record())
+  let s2 = list_push(xs: s1, item: heads_main_record(oid: side_sha))
+  let s3 = scale_add_branches(0, size, oid, s2)
+  list_push(xs: s3, item: base_ref_record(oid: side_sha))
+}
+
+// A runner-sized clean transition: every remote-tracking ref identical across before and after (so the
+// join must confirm each is preserved), the base ref and the attached primary branch advancing to the
+// candidate exactly as fetch + reset --hard leave them. refs_before carries dispatch + heads/dispatch +
+// heads/main + `size` remote refs + base = size + 4, all of which must survive the join.
+test fn a_runner_sized_ref_set_converges_with_every_ref_preserved() -> Bool {
+  let size = 6000
+  let before = RepositoryState {
+    refs: refs_wire(records: scale_refs(side_sha: old_sha, oid: scale_ref_oid, size: size)),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()]),
+    head: GitTextObserved { text: old_sha },
+    reflog: GitTextObserved { text: "old-reflog" },
+    untracked: clean_tree(),
+    coherence: RepositoryCoherenceObserved { index_tree: "old-tree", candidate_tree: "new-tree", tracked_paths: "" },
+  }
+  let after = RepositoryState {
+    refs: refs_wire(records: scale_refs(side_sha: new_sha, oid: scale_ref_oid, size: size)),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: GitTextObserved { text: new_sha },
+    reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
+    untracked: clean_tree(),
+    coherence: RepositoryCoherenceObserved { index_tree: "new-tree", candidate_tree: "new-tree", tracked_paths: "" },
+  }
+  match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
+    ConvergenceCompleted { candidate: c, refs_preserved: rp, worktrees_preserved: _ } =>
+      c == new_sha && rp == size + 4
+    _ => false
+  }
 }

@@ -376,6 +376,11 @@ data credential_consolidation_base_revision: CommitSha = "1e27f7cffc81586c8b1449
 // carries.
 data credential_p2b_base_revision: CommitSha = "230ec4869280e4d33e7aff973d32341d80f851f0"
 
+// The main revision the shadow-gate PR-time capability gap was filed against (the head the WIF
+// switch #gunbc.design_ruling::hosted_ci_credentials_federate_over_wif_dispatch_only was authored on;
+// the row is gunbc.integration_concern.shadow_gate_pr_time_remote_build_capability_gap).
+data shadow_gate_pr_time_sighting_revision: CommitSha = "5b5622226d70da1b7f11c524e7b9fd35cf725554"
+
 // CREDENTIAL CONSOLIDATION, the gh disposition (plan review 2, section 4): a gh CLI route authenticates
 // from gh's own ambient login and issues its own HTTP sends inside the subprocess, so the
 // presentation path (std.credential_admission present_credential) cannot admit them. They are retained

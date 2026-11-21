@@ -10,6 +10,7 @@ import extdeps.network.ipv4 { ipv4_address }
 // resolve on main. Restoring it lets the uniqueness claims over fleet_host_key_enrollments -- which
 // the butch row this PR adds must satisfy -- actually run.
 import extdeps.network.mac { mac_address }
+import gunbc.fleet.fleet_intent_network { host_lan_address }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow,
   ScannedFirstContact,
@@ -22,7 +23,7 @@ import gunbc.fleet.fleet_host_key_enrollment {
   LanEndpointHostKey,
   lan_endpoint_host_keys,
   lan_endpoint_host_key_row,
-  known_host_row_field,
+  known_host_row_field, first_contact_lan_keys, srv14_first_contact_key,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import gunbc.host.host_reach_identity_probe {
@@ -194,7 +195,15 @@ test fn every_lan_endpoint_key_derives_its_row() -> Bool {
     Present { value: _ } => true
     Absent => false
   })
-    && any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String) && known_host_row_field(k: k) == "192.168.1.205")
+    && any(first_contact_lan_keys, k => (k.host as String) == (operator_host_srv14 as String))
+    && !any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String))
+    && match lan_endpoint_host_key_row(observation: srv14_first_contact_key) {
+      Present { value: r } => match host_lan_address(host: operator_host_srv14) {
+        Present { value: a } => known_host_row_field(k: r) == (a as String)
+        Absent => false
+      }
+      Absent => false
+    }
     && match lan_endpoint_host_key_row(observation: unaddressed) {
       Present { value: _ } => false
       Absent => true

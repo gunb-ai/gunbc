@@ -36,7 +36,10 @@ import gunbc.runner.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14 }
-import gunbc.fleet.fleet_intent_network { host_lan_address }
+import extdeps.network.endpoint { render_network_host }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_name }
+import gunbc.fleet.fleet_host_key_enrollment { fleet_name_at_ssh_port }
+import gunbc.hostname_allocation { fleet_machine_registry, canonical_hostname_in_roster }
 import gunbc.fleet.fleet_posix_accounts {
   DeployRunnerPrincipal,
   fleet_posix_root_user,
@@ -344,19 +347,53 @@ data srv4_runner_host_spec: RunnerHostSpec = RunnerHostSpec {
 // them). It is a fn, not a datum, precisely so it can REFUSE (Absent) when the fleet records no LAN address
 // for the host, rather than silently borrowing a literal (fail_closed). Its listener is the new gunbc-runner
 // account from the start; creating that OS account on the host is B3b/B3d (the named consumers).
+// BUTCH'S SSH TARGET IS HIS IDENTITY, NOT A REACHABLE ADDRESS: the tailnet name, DERIVED from the
+// machine allocation through hostname_allocation + fleet_tailnet (never a literal, never a lease). The
+// spec is modeling data and exists before the join; whether anything may DIAL srv14 is decided only by
+// the reach functions in gunbc.fleet.fleet_known_hosts_anchor -- before srv14 joins there is no anchored
+// row, so every anchored mode (runner converge included) REFUSES it, and only the two join-making modes
+// reach it, over the admission-gated first-contact hop at its lease (FirstContactAdmission;
+// witnesses there). The lease address appears in NO spec row, so no consumer can dial it by reading the
+// spec (review 96260: fail-closed -- a silent widen is a hard reject).
 fn srv14_runner_host_spec() -> RunnerHostSpec? {
-  match host_lan_address(host: operator_host_srv14) {
+  match runner_host_ssh_identity(host: operator_host_srv14) {
+    Present { value: identity } => Present { value: srv14_runner_spec(ssh_target_host: identity) }
     Absent => Absent
-    Present { value: address } => Present { value: RunnerHostSpec {
-      host_label: "srv14",
-      ssh_target: join(["ubuntu@", address as String], "") as NonEmptyStr,
-      runner_user: "ubuntu",
-      unit_user: gunbc_runner_listener_principal.unit_user,
-      job_user: gunbc_runner_listener_principal.job_user,
-      app: gunbc_ci_github_app,
-    } }
   }
 }
+
+// THE HOST'S SSH IDENTITY (reusable by every host's deploy spec -- ken's follow-up builds on this,
+// msg from still-fox-404). REVIEW 96429 (single_authority + fail_closed): the name is NOT glued here.
+// The registry lookup goes through the ADMISSION (canonical_hostname_in_roster -- a colliding registry
+// serves no identity rather than a winner), and the name is the ONE tailnet composition
+// (fleet_tailnet_name -> tailnet_host_labels) rendered through the same address constructor the
+// enrollment row uses (fleet_name_at_ssh_port), so spec and anchor can never name different machines.
+// This is IDENTITY, not reachability: dialing decisions are made only by anchored_ssh_target /
+// first_contact_ssh_target in fleet_known_hosts_anchor, never by reading a spec. A host the roster
+// refuses or does not know has no identity and no spec: consumers refuse it closed.
+fn runner_host_ssh_identity(host: HostIdentity) -> String? {
+  match canonical_hostname_in_roster(allocations: fleet_machine_registry, fleet_slot: host) {
+    Absent => Absent
+    Present { value: _ } =>
+      match filter(fleet_machine_registry, m => (m.fleet_slot as String) == (host as String)).first() {
+        Absent => Absent
+        Present { value: machine } =>
+          Present { value: render_network_host(host: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: machine)).host) as String }
+      }
+  }
+}
+
+fn srv14_runner_spec(ssh_target_host: String) -> RunnerHostSpec {
+  RunnerHostSpec {
+    host_label: "srv14",
+    ssh_target: join(["ubuntu@", ssh_target_host], "") as NonEmptyStr,
+    runner_user: "ubuntu",
+    unit_user: gunbc_runner_listener_principal.unit_user,
+    job_user: gunbc_runner_listener_principal.job_user,
+    app: gunbc_ci_github_app,
+  }
+}
+
 
 // THE RUNNER PRINCIPAL FOR A HOST lives in ONE place: that host's RunnerHostSpec row -- its unit_user is the
 // listener login, its job_user the CI job account. The deploy reads the spec directly, and the converge plan
