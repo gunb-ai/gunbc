@@ -16,11 +16,13 @@ import extdeps.shell
 // classification of its own -- the wall is the single authority (consumption; fail_closed).
 //
 // PARTIAL CALLER MIGRATION, NOT AN ENFORCED BOUNDARY. `RunArgv` itself still accepts any program, so
-// this route is the sanctioned path, not yet the only one. Other workdir-free git-to-`RunArgv` sites
-// remain unmigrated: the #16625-owned `roadmap_event_carrier_fixture`'s `roadmap_event_carrier_run_git`
-// (adopts the route after #16625 lands, per that PR's owner), and git commands dispatched through
-// `gunbc.command_runner`'s workdir-less `ArgvCommand` seam (e.g. the git-subtree witness). The five
-// witnesses this change migrates route EVERY git step through this function. An ENFORCED boundary -- a
+// this route is the sanctioned path, not yet the only one. The #16625-owned `roadmap_event_carrier_fixture`'s
+// `roadmap_event_carrier_run_git` has since adopted it (#16625 merged; the fixture now routes EVERY provision git
+// step through this function, its bare-origin init dressed `-C <instance_root>` with an absolute destination so
+// the wall admits it). The one workdir-free
+// git-to-`RunArgv` site that remains unmigrated is git dispatched through `gunbc.command_runner`'s workdir-less
+// `ArgvCommand` seam (e.g. the git-subtree witness); that seam needs the wall applied to its own command shape,
+// which is its own change. An ENFORCED boundary -- a
 // gate `RunArgv` cannot be bypassed for git, or a census witness over the git-to-`RunArgv` call sites --
 // is the named follow-up, triggered by that enforcement item; it is deliberately NOT claimed here
 // (consumption: the route is consumed by real executing callers, but is not yet the sole path).

@@ -13,7 +13,7 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, RunnerSpec, HostedRunner, Bash,
   WorkflowTrigger, PullRequest, MergeGroup, WorkflowDispatch, DispatchInput, InputString,
   PullRequestActivity, Opened, Synchronize, Reopened,
-  WorkflowPermissions, PermRead, Ubuntu2404,
+  WorkflowPermissions, PermRead, PermWrite, Ubuntu2404,
 }
 import extdeps.tailscale.github_action { tailscale_github_action_v4_4_0 }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description}
@@ -31,12 +31,25 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_client { remote_gate_exit_code, GateNoHostAdmitted }
+import std.integer { int_to_decimal_string }
 import gunbc.generated_artifact { HostedRunnerShadowGateYamlArtifact }
 import gunbc.generated_workflow_provenance { generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
 import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.tailscale_ci_oauth_client {
-  ci_oauth_client_id_github_secret, ci_oauth_client_secret_github_secret, ci_oauth_client_tags,
+  ci_oauth_client_id, ci_oauth_client_tags, tailscale_oauth_client_secret_ref,
 }
+import gunbc.compute.remote_build { remote_build_ci_ssh_privkey_secret, remote_build_client_key_ci }
+import gunbc.auth.hosted_ci_secrets_federation {
+  hosted_ci_secrets_provider_resource,
+  hosted_ci_secrets_service_account,
+  hosted_ci_ssh_key_secret_version,
+  tailscale_oauth_client_secret_version,
+}
+import gunbc.secret_provision { secret_ref_pin_version }
+import gunbc.auth.bearer_header_file { gunbc_ci_auth_header_file_write_command_to }
+import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_for }
+import extdeps.cloud.gcp.secret_ref { secret_ref_access_url }
 
 // THE HOSTED-RUNNER SHADOW GATE: a NON-required GitHub Actions job on a standard GitHub-hosted
 // runner that joins the tailnet and drives the gunbc remote build for every required-gate row.
@@ -58,11 +71,12 @@ import gunbc.tailscale_ci_oauth_client {
 // account admits the CI key, so the blast radius is the remote-build gate operation and nothing
 // else on the host. Even if a host ran Tailscale SSH, no ssh rule names tag:ci-dispatch.
 //
-// THE CONFIG-CHECK ARM (manager ruling 2026-11-19): when the required secrets are absent (the
-// operator has not yet set them), the config-check step prints ::notice::not configured:: and all
-// downstream steps skip via if_condition. The job is not green-as-passed (it reports the gate was
-// not attempted) and not red. Red control: when secrets ARE present and the remote gate fails, the
-// step's exit code propagates and the job goes red.
+// THE CONFIG-CHECK ARMS (manager ruling 2026-11-19, re-armed for WIF by review 97115): the job
+// branches on the EVENT, not on secret presence -- the credentials federate or the fetch step goes
+// red. Only a dispatch at the default branch runs remote legs; a dispatch elsewhere is a verdict
+// request that cannot federate and goes red; pull_request/merge_group report the typed skip and
+// cite the concern row. Red control: when the federation works and the remote gate fails, the
+// gate step's exit code propagates and the job goes red.
 //
 // THE HAND-SHELL GATE (ctrl review policy): the run: fields build shell as strings. This is a
 // scaffold; the dissolution trigger below names the capability that would replace it — the
@@ -147,33 +161,55 @@ data shadow_gate_fork_guard: String = "github.event_name == 'merge_group' || git
 
 // ── THE SECRETS ──────────────────────────────────────────────────────────────────────────────────
 //
-// THE THREE SECRETS THIS JOB NEEDS. The two OAuth names have their single home in
-// gunbc.tailscale_ci_oauth_client (the OAuth credential model, @ref
-// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign); the
-// SSH key name has its single home here because it is this job's fact, not a credential fact.
-//   TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET: the Tailscale OAuth application (operator-configured);
-//   GUNBC_REMOTE_BUILD_CI_SSH_KEY: the private half of the CI-specific SSH key for the gunbc-build
-//     forced-command account. The public half is admitted through the remote-build authorized-keys
-//     roster (gunbc.compute.remote_build, the same mechanism as the operator's session key).
+// THE CREDENTIALS ARE NOT GITHUB SECRETS (operator decision, 2026-11-20, relayed by clever-raven-401
+// and gentle-crab-832): the SSH private half (#gunbc.compute.remote_build::remote_build_ci_ssh_privkey_secret)
+// and the Tailscale OAuth client secret (#gunbc.tailscale_ci_oauth_client::tailscale_oauth_client_secret_ref)
+// live in GCP Secret Manager and the runner reads them over workload identity federation as a dedicated
+// low-privilege service account (#gunbc.auth.hosted_ci_secrets_federation::hosted_ci_secrets_federation).
+// The federation is PINNED by OIDC claim -- this repository id, this owner id, THIS workflow file at
+// refs/heads/main, event workflow_dispatch, ref refs/heads/main -- so only dispatches of the reviewed
+// main copy of this workflow can ever mint the token. That pin is why the remote legs run on
+// dispatch-at-main ONLY: pull_request and merge_group runs cannot federate, and the config job says so
+// with a typed notice instead of pretending to shadow. The gap that leaves against the operator's goal
+// (hosted PR jobs driving remote builds) is recorded as an open capability concern at
+// #gunbc.integration_concern.shadow_gate_pr_time_remote_build_capability_gap::shadow_gate_pr_time_remote_build_capability_gap: a PR job must reach the
+// remote build without PR-authored code ever holding the key, which needs the build host to verify a
+// PR-scoped GitHub OIDC token and build that commit isolated -- not this pin relaxed.
+// The OAuth client ID itself is PUBLIC (a model constant: #gunbc.tailscale_ci_oauth_client::ci_oauth_client_id);
+// only the client SECRET and the SSH private half are fetched over WIF.
 
-data shadow_gate_secret_ci_ssh_key: String = "GUNBC_REMOTE_BUILD_CI_SSH_KEY"
+// Where the fetched SSH private half lives for the duration of the job: the runner's own temp
+// directory, mode 0600, wiped on step exit. Every gate step names it explicitly through the
+// client's identity_file parameter -- no HOME default.
+data shadow_gate_ci_ssh_key_file: String = "$RUNNER_TEMP/remote-build-ci-ssh-key"
 
-fn shadow_gate_secret_ref(name: String) -> String {
-  join(["${{ secrets.", name, " }}"], "")
-}
+// The fetched Tailscale OAuth client SECRET reaches the tailscale action's step through this env
+// name. $GITHUB_ENV alone does NOT mask: the fetch step registers the value with ::add-mask::
+// first, and only then appends it, so every later log redacts it.
+data shadow_gate_oauth_secret_env: String = "TS_OAUTH_SECRET"
 
-// The config-check script: one ||-chain of -z tests, each naming a secret through
-// shadow_gate_secret_ref so the secret names have exactly one home (the OAuth credential model and
-// this module's SSH-key row). A rename edits the rows, never this script.
+// The config-check script no longer probes secrets -- the credentials are not GitHub secrets and
+// cannot be listed from the job. What it checks is the EVENT ARM, and the arms are typed
+// (gunbc.design_argument::fail_closed):
+// - workflow_dispatch at refs/heads/main: configured=true. This is the ONLY arm the pinned WIF
+//   provider federates, so it is the only arm with remote legs (the pin:
+//   #gunbc.auth.hosted_ci_secrets_federation::hosted_ci_secrets_attribute_condition).
+// - workflow_dispatch at any other ref: ::error:: + exit 1 (never green). A dispatch IS an
+//   explicit verdict request, and one this arm cannot honour -- the pin refuses the credentials
+//   for an unreviewed copy -- fails with a located diagnostic. Green-with-a-notice would be
+//   green-by-default on the one event where someone asked for a verdict (review 97115).
+// - pull_request / merge_group: typed notice + configured=false. The provider refuses these
+//   events' claims; the remote legs are skipped and the event-concern that records the gap is
+//   cited in the notice text.
 fn shadow_gate_config_check_script() -> String {
   join([
-    "if [ -z \"",
-    shadow_gate_secret_ref(name: ci_oauth_client_id_github_secret),
-    "\" ] || [ -z \"",
-    shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret),
-    "\" ] || [ -z \"",
-    shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key),
-    "\" ]; then\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  if [ \"$GITHUB_EVENT_NAME\" = \"merge_group\" ] || [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n    echo \"::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass\"\n    exit 1\n  fi\n  echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'\nelse\n  echo 'configured=true' >> $GITHUB_OUTPUT\nfi\n",
+    "if [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ] && [ \"$GITHUB_REF\" = \"refs/heads/",
+    gunbc_default_branch_name,
+    "\" ]; then\n  echo 'configured=true' >> $GITHUB_OUTPUT\nelif [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n  echo '::error::not a dispatch at refs/heads/",
+    gunbc_default_branch_name,
+    ": the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; a dispatched verdict request that cannot federate fails rather than passing green'\n  exit 1\nelse\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::remote legs run only on workflow_dispatch at refs/heads/",
+    gunbc_default_branch_name,
+    ": the pinned WIF provider refuses pull_request/merge_group claims, so the remote build is not shadowed on this event; see gunbc.integration_concern::shadow_gate_pr_time_remote_build_capability_gap'\nfi\n",
   ], "")
 }
 
@@ -252,8 +288,14 @@ fn shadow_gate_tailscale_join_step() -> Step {
     id: none,
     uses: tailscale_github_action_v4_4_0,
     with: Present { value: [
-      kv(key: "oauth-client-id", value: yaml_string(s: shadow_gate_secret_ref(name: ci_oauth_client_id_github_secret))),
-      kv(key: "oauth-secret", value: yaml_string(s: shadow_gate_secret_ref(name: ci_oauth_client_secret_github_secret))),
+      // The client ID is PUBLIC: the model constant, not a fetched secret. (The operator also
+      // mirrors it as the `tailscale-oauth-client-id` annotation on the Secret Manager secret --
+      // #gunbc.tailscale_ci_oauth_client::tailscale_oauth_client_secret_ref; the annotation is where
+      // an operator reads the id, not a second source the job resolves.)
+      kv(key: "oauth-client-id", value: yaml_string(s: ci_oauth_client_id)),
+      // The fetched secret reaches this step as job env: the fetch step registers it with
+      // ::add-mask:: before appending it to $GITHUB_ENV, so every later log redacts it.
+      kv(key: "oauth-secret", value: yaml_string(s: concat("${{ env.", shadow_gate_oauth_secret_env, " }}"))),
       kv(key: "tags", value: yaml_string(s: shadow_gate_tailscale_tags)),
       kv(key: "args", value: yaml_string(s: shadow_gate_tailscale_args)),
     ] },
@@ -264,33 +306,94 @@ fn shadow_gate_tailscale_join_step() -> Step {
   }
 }
 
-// ── THE SSH IDENTITY ─────────────────────────────────────────────────────────────────────────────
+// ── THE CREDENTIAL FETCH OVER WIF ────────────────────────────────────────────────────────────────
 //
 // A CI-specific key for the gunbc-build forced-command account, admitted through the remote-build
 // authorized-keys line in gunbc.compute.remote_build. NOT the operator's personal key. The private
-// half is the GUNBC_REMOTE_BUILD_CI_SSH_KEY secret; this step writes it to the runner's filesystem
-// with the permissions ssh requires (600) and registers it in ssh-agent.
+// half lives in Secret Manager (#gunbc.compute.remote_build::remote_build_ci_ssh_privkey_secret);
+// the job mints the pinned provider's token (google-github-actions/auth through
+// #gunbc.fleet.fleet_workflow_steps::ci_wif_auth_step_for -- the same route fleet-converge takes)
+// and reads the secret material with it. THE SHAPE OF THE FETCH MIRRORS THE FLEET KEY AGENT
+// (gunbc.fleet.fleet_key_agent): the bearer header reaches curl through a 0600 FILE, so the token
+// never becomes an argv word (#gunbc.auth.bearer_header_file::gunbc_ci_auth_header_file_write_command_to,
+// held by test.claim.credential_argv_exposure_witness); the fetched key STAYS a 0600 file rather
+// than joining an agent and being wiped, because the remote-build client reads and verifies the
+// identity file itself, and every gate step names it through the client's identity_file parameter.
+// The fetched key's FINGERPRINT is pinned from the model (#gunbc.compute.remote_build::remote_build_client_key_ci)
+// BEFORE any host sees it: wrong secret material cannot connect anywhere.
 
-fn shadow_gate_ssh_setup_step() -> Step {
+fn shadow_gate_ssh_key_access_url() -> String {
+  secret_ref_access_url(secret_ref_pin_version(ref: remote_build_ci_ssh_privkey_secret, version: hosted_ci_ssh_key_secret_version))
+}
+
+fn shadow_gate_oauth_secret_access_url() -> String {
+  secret_ref_access_url(secret_ref_pin_version(ref: tailscale_oauth_client_secret_ref, version: tailscale_oauth_client_secret_version))
+}
+
+// The fetch, as one bash script (shell text under this module's HAND-SHELL GATE marker, same
+// dissolution as every other run: here -- v2.workflow.bash_emit, #5828).
+fn shadow_gate_ci_credentials_fetch_script() -> String {
+  join([
+    "set -euo pipefail\n",
+    "umask 077\n",
+    "HDR_FILE=\"$RUNNER_TEMP/shadow-gate-auth-header\"\n",
+    "VAL_FILE=\"$RUNNER_TEMP/shadow-gate-oauth-val\"\n",
+    // The path comes from ONE constant, shadow_gate_ci_ssh_key_file -- the same value the ssh -i
+    // probe and every --arg identity_file= gate step read (review 97138). It is assigned HERE, in
+    // the script, not in the step's env block: env values are literal strings GitHub pastes
+    // unchanged, and only the script's own bash expands $RUNNER_TEMP (review 97111 finding 2).
+    concat("KEY_FILE=\"", shadow_gate_ci_ssh_key_file, "\"\n"),
+    "cleanup() { rm -f \"$HDR_FILE\" \"$VAL_FILE\"; }\n",
+    "trap cleanup EXIT\n",
+    gunbc_ci_auth_header_file_write_command_to(header_file: "HDR_FILE"),
+    "\n",
+    // THE SSH PRIVATE HALF. Pin the version (never 'latest': the fetch must name what the model
+    // named), decode the base64 payload into $KEY_FILE (0600), then verify the fingerprint the
+    // model holds BEFORE any ssh uses it. The file persists for the job's later steps; the runner
+    // is ephemeral and $RUNNER_TEMP dies with it.
+    "rm -f \"$KEY_FILE\"\n",
+    "curl -fsSL -H @\"$HDR_FILE\" \"",
+    shadow_gate_ssh_key_access_url(),
+    "\" | python3 -c 'import sys,json,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]).decode(\"utf-8\"))' > \"$KEY_FILE\"\n",
+    "chmod 600 \"$KEY_FILE\"\n",
+    "ACTUAL_FP=\"$(ssh-keygen -lf \"$KEY_FILE\" | awk '\{print $2}')\"\n",
+    "EXPECTED_FP=\"",
+    remote_build_client_key_ci.fingerprint,
+    "\"\n",
+    "if [ \"$ACTUAL_FP\" != \"$EXPECTED_FP\" ]; then\n  rm -f \"$KEY_FILE\"\n  echo \"::error::fetched remote-build CI SSH key fingerprint $ACTUAL_FP != the modeled $EXPECTED_FP; refusing to connect with it\" >&2\n  exit 1\nfi\n",
+    // THE TAILSCALE OAUTH CLIENT SECRET. The header file is deleted only AFTER BOTH fetches -- one
+    // mint, two reads (review 97111 finding 1: an rm between them made the second curl impossible).
+    // The value is registered with ::add-mask:: BEFORE it joins $GITHUB_ENV: appending to
+    // $GITHUB_ENV alone does NOT mask (review 97111 finding 3) -- add-mask is what makes every
+    // later log redact it. The tailscale step reads it as env, never as a secret-context reference.
+    "curl -fsSL -H @\"$HDR_FILE\" \"",
+    shadow_gate_oauth_secret_access_url(),
+    "\" | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]).decode(\"utf-8\"), end=\"\")' > \"$VAL_FILE\"\n",
+    "rm -f \"$HDR_FILE\"\n",
+    "VAL=\"$(cat \"$VAL_FILE\")\"\n",
+    "echo \"::add-mask::$VAL\"\n",
+    "printf '%s=%s\\n' \"",
+    shadow_gate_oauth_secret_env,
+    "\" \"$VAL\" >> \"$GITHUB_ENV\"\n",
+    "rm -f \"$VAL_FILE\"\n",
+  ], "")
+}
+
+// The fetch step: the pinned provider's token in as env (google-github-actions/auth's
+// access_token output), the two credentials out as a 0600 file and a masked job env.
+fn shadow_gate_ci_credentials_fetch_step() -> Step {
   RunStep {
-    name: Present { value: "Write the CI SSH key" },
-    id: Present { value: "ssh-setup" },
-    run: concat(
-      join([
-        "mkdir -p ~/.ssh && chmod 700 ~/.ssh",
-        concat("printf '%s\\n' \"", shadow_gate_secret_ref(name: shadow_gate_secret_ci_ssh_key), "\" > ~/.ssh/id_ed25519"),
-        "chmod 600 ~/.ssh/id_ed25519",
-        "eval \"$(ssh-agent -s)\"",
-        "ssh-add ~/.ssh/id_ed25519",
-      ], " && "),
-      "\n",
-    ),
+    name: Present { value: "Fetch CI credentials over WIF (SM pinned versions -> 0600 file + masked env, fingerprint-pinned)" },
+    id: Present { value: "fetch-credentials" },
+    run: shadow_gate_ci_credentials_fetch_script(),
     shell: Present { value: Bash },
     working_directory: none,
-    env: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: none,
   }
 }
 
@@ -315,15 +418,37 @@ data shadow_gate_remote_user: String = "gunbc-build"
 // first serving host from remote_build_serving_hosts(); if it is unreachable, the client refuses
 // that host and the step fails (shadow behavior). The model does NOT filter by reachability:
 // reachability is a runtime fact (a host's tailnet membership changes when it is joined), not a
-// model invariant. Today only srv1 resolves; srv3/srv4/butch are queued for joining.
+// model invariant. As of 2026-11-20 the roster is srv3 and srv4, both joined on the tailnet and
+// converged by the serving converger; srv1 left the roster that day (its pinned checkout predates
+// the gate-subject verb, and its build pool holds a seat whose holder recorded no exit) and returns
+// on a serving converge at or after 2387c5493bb9 -- gunbc.compute.remote_build_hosts
+// remote_build_serving_hosts carries the rule at the row. When the roster names no host the step REFUSES:
+// shadow_gate_first_serving_host answers Absent and shadow_gate_no_host_run is what runs -- the step never
+// names a host from memory.
 
-// The first serving host (the client's own roster ordering; the gate CLI picks by capacity).
-fn shadow_gate_first_serving_host() -> String {
+// The first serving host (the client's own roster ordering; the gate CLI picks by capacity), or Absent when
+// the roster names none. The caller refuses on Absent. A remembered literal is a fabricated default
+// (gunbc.design_argument::fail_closed: "no plausible output is fabricated"), and the host this lane just
+// removed -- for judging requests with a grammar it no longer has -- is exactly the one memory supplies.
+fn shadow_gate_first_serving_host() -> String? {
   match list_head(xs: remote_build_serving_hosts()) {
-    Present { value: h } => h as String
-    Absent => "srv1"
+    Present { value: h } => Present { value: h as String }
+    Absent => Absent
   }
 }
+
+// WHAT THE PLUMBING-PROOF STEP DOES WHEN THE ROSTER NAMES NO HOST: it says so and exits with the code the
+// client uses when no host admitted the work, so an undispatched proof is red and countable, never green by
+// construction.
+// SCAFFOLD MARKER (hand-shell gate policy): this row is a hand-assembled run: string; it joins the other
+// hand-assembled strings in this workflow rather than starting a new lane, and they dissolve together at the
+// orchestration-to-shell capability v2.workflow.bash_emit / bash_emit_stmts (tracking #5828), where this
+// refusal is authored as a modeled Node. The carrier-level marker on shadow_gate_dissolution names that same
+// trigger. The exit number is not retyped here: it is RENDERED from the client's own exit authority
+// (gunbc.compute.remote_build_client remote_gate_exit_code, the GateNoHostAdmitted arm), so the step and the
+// client cannot drift apart -- a step whose refusal exit disagreed with the client's would be a second path
+// beside a modeled route.
+data shadow_gate_no_host_run: String = join(["set -euo pipefail && echo '::error::remote_build_serving_hosts names no serving host: the plumbing proof cannot be dispatched, and this step refuses to name one from memory' && exit ", int_to_decimal_string(value: remote_gate_exit_code(o: GateNoHostAdmitted))], "")
 
 // The tailnet name for a host identity (the standard pattern from gunbc.fleet.fleet_tailnet).
 fn shadow_gate_host_tailnet_name(host: String) -> String {
@@ -341,24 +466,7 @@ fn shadow_gate_remote_build_step() -> Step {
   RunStep {
     name: Present { value: "Plumbing proof: remote_test_cli over the plumbing-proof pattern" },
     id: Present { value: "remote-build-plumbing-proof" },
-    run: concat(
-      concat(
-        join([
-          "set -euo pipefail",
-          "echo '--- remote gate step ---'",
-          concat("ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ", concat(shadow_gate_remote_user, concat("@", concat(shadow_gate_host_tailnet_name(host: shadow_gate_first_serving_host()), " true")))),
-        ], " && "),
-        "\n"
-      ),
-      concat(
-        join([
-          "set -euo pipefail",
-          concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json"),
-          "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
-        ], " && "),
-        "\n"
-      )
-    ),
+    run: shadow_gate_plumbing_proof_run(),
     shell: Present { value: Bash },
     working_directory: none,
     env: Present { value: [
@@ -369,6 +477,37 @@ fn shadow_gate_remote_build_step() -> Step {
     timeout_minutes: none
   }
 }
+// THE PLUMBING PROOF'S COMMAND, one place: when the roster names a host, an ssh liveness probe of that
+// host and then the client invocation against it; when the roster names none, the typed refusal, which is
+// the only honest thing a job can print before it has dispatched anything at all.
+fn shadow_gate_plumbing_proof_run() -> String {
+  match shadow_gate_first_serving_host() {
+    Absent => shadow_gate_no_host_run
+    Present { value: host } =>
+      concat(
+      concat(
+        join([
+          "set -euo pipefail",
+          "echo '--- remote gate step ---'",
+          // the fetched CI key is NOT loaded into an agent -- the WIF route replaced the ssh-setup
+          // step -- so the probe names the key file explicitly (review 97131). The host comes from
+          // the Present side of the typed roster, never from a literal (PR #16801).
+          concat(concat(concat(concat("ssh -i \"", shadow_gate_ci_ssh_key_file), "\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "), shadow_gate_remote_user), concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true"))),
+        ], " && "),
+        "\n"
+      ),
+      concat(
+        join([
+          "set -euo pipefail",
+          concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
+          "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
+        ], " && "),
+        "\n"
+      )
+    )
+  }
+}
+
 
 // THE PER-ROW GATE STEP (agreed shape with gunbc.compute.remote_build_client's remote_gate_cli,
 // sibling lane adhoc-7d2186ce-2c3): one step per emitted_subject_build_rows row, invoked with the
@@ -391,7 +530,7 @@ fn shadow_gate_remote_gate_step(row: EmittedSubjectBuildRow) -> Step {
       join([
         "set -uo pipefail",
         "rc=0",
-        concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" || rc=$?"),
+        concat(concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" --arg identity_file="), shadow_gate_ci_ssh_key_file), " || rc=$?"),
         concat(concat("cat \"$RUNNER_TEMP/gate-", row.step_id), ".json\" || true"),
         "case \"$rc\" in",
         "  0) exit 0;;",
@@ -468,7 +607,15 @@ fn shadow_gate_job() -> Job {
     if_condition: Present { value: shadow_gate_main_job_if },
     needs: shadow_gate_main_job_needs,
     outputs: none,
-    permissions: none,
+    // contents: read feeds checkout; id-token: write belongs to exactly one step -- the WIF auth
+    // step -- and the pin (hosted_ci_secrets_attribute_condition) bounds who can answer it.
+    permissions: Present { value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: Present { value: PermWrite },
+    }},
     concurrency: none,
     timeout_minutes: Present { value: shadow_gate_timeout_minutes },
     continue_on_error: none,
@@ -476,14 +623,21 @@ fn shadow_gate_job() -> Job {
   }
 }
 
-// The steps in order: checkout, build, tailscale join, SSH setup, remote gate per row.
+// The steps in order: checkout, build, WIF auth, credential fetch, tailscale join, remote gate per row.
 fn shadow_gate_all_steps() -> List<Step> {
   list_append(
     left: [
       shadow_gate_checkout_step(),
       shadow_gate_build_step(),
+      // Credentials FIRST: the tailscale join needs the fetched OAuth secret, and every remote
+      // step needs the fetched SSH key. The auth step's id is wif_auth (the fleet-converge shape).
+      ci_wif_auth_step_for(
+        name: concat("Federate to the hosted-CI service account (pinned: this workflow at refs/heads/", gunbc_default_branch_name, ", dispatch only)"),
+        provider_resource: hosted_ci_secrets_provider_resource(),
+        service_account: hosted_ci_secrets_service_account,
+      ),
+      shadow_gate_ci_credentials_fetch_step(),
       shadow_gate_tailscale_join_step(),
-      shadow_gate_ssh_setup_step(),
     ],
     right: shadow_gate_remote_build_steps()
   )

@@ -1,0 +1,83 @@
+module gunbc.integration_concern.converge_modes_naming_a_target_without_a_subject_rule
+
+// CONVERGE MODES THAT ACT ON A MACHINE OTHER THAN THE ONE THEY RUN FROM, WITHOUT NAMING IT AS A SUBJECT
+// (filed 2026-11-20 on manager direction, from the bounded audit taken while working out how to fold the
+// tailscale join arm -- that fold is a separate change, not this one).
+// What was inspected, so the scope is repeatable: every github.event.inputs.* name in
+// gunbc.fleet.fleet_converge_workflow -- host 33 times, subject_host 10, target 7, sweep_host 4,
+// reset_observer 4, arrival_subject 4, and no other name denotes a machine -- then the step function that
+// passes each one, then the entry module that reads the env that key-value sets, looking for a dial
+// (fleet_ssh_target_at_standard_port, anchored_ssh_target, typed_argv_exec_over_fleet_ssh). Seven modes
+// pass the filter: the six spark steps (SPARK_CONVERGE_TARGET -- spark/managed_access_apply's
+// managed_principal_leg and privileged_leg, spark/grant_privileged_operation's spark_grant_install_target)
+// and managed_host_network_install (arrival_subject -- host/network_install_ci reads that env at its line
+// 233 and resolves an SshTarget in network_install_ci_edge_target). Their facts rows declare
+// SubjectRuleNotApplicable with ExecutorDomain, so the split gate never sees them and their runner lane is
+// chosen by the executor's own label. Two other shapes the same audit found are already carried: hostname
+// converge (its target input, SubjectRequiredAndDistinct, TargetHostDomain) and the two serving modes
+// (subject_host, may_be_executors_own, with srv4 run 44822470270 as the refusal receipt); the tailscale
+// join fold is its own change, filed after this row. Two shapes are excluded honestly rather than by
+// silence: the two sweeps name a roster entry and a capture path uploaded by another run, and neither
+// runner_lost_boot_sweep_run nor runner_jit_dead_sweep_run contains a dial; host_reset_return's
+// reset_observer is a runner LABEL expression for the observer job, not a machine to act on; and
+// arrival_converge, which also passes arrival_subject, is excluded on its own evidence -- its facts row
+// declares FleetSshKeyNotConsumed and SubjectRuleNotApplicable with its job's runner labels hard-coded to
+// operator_host_srv1 (fleet_converge_arrival_converge_job), and gunbc.machine_intake.arrival_run contains
+// no dial. The machine that row names is acted on by the separate managed_host_network_install mode, which
+// IS affected here.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data converge_modes_naming_a_target_without_a_subject_rule: IntegrationConcern = IntegrationConcern {
+  identity: "converge_modes_naming_a_target_without_a_subject_rule",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts"),
+    requirement: "a fleet-converge mode whose act reaches a machine other than the one its job runs from names that machine as a subject on its facts row (a subject rule and a target-host mutation domain), so the lane the run is granted and the machine it changes cannot silently diverge",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_executor_subject_split", decl_name: "fleet_converge_install_subject_decision") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_grants_step"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_bootstrap_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_serving_apply_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_native_serving_apply_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_runtime_image_probe_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_wireless_link_converge_step"),
+      decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_managed_host_network_install_step"),
+      decl_ref(module_path: "gunbc.spark.managed_access_apply", decl_name: "privileged_leg"),
+      decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_edge_target"),
+    ],
+  },
+  question: "How does a converge mode whose act lands on a machine other than its executor name that machine in a form the split gate can see -- a subject input plus a rule declared on the facts row -- instead of binding the executor's own label to both the lane and the target, and does any of these seven want the MAY-BE-ITS-OWN-MACHINE rule rather than the distinct one?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "d4d5088c216cb93fb83bf286ed0ef08e3c646be7",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_wireless_link_converge_step") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_executor_subject_split_gate_step") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.host.network_install_ci", decl_name: "network_install_ci_edge_target") },
+        ],
+      },
+      account: "Reading the join arm to make butch reachable, the same two-field question arises for seven other modes: they dial a machine named by a dispatch input while their facts row declares no subject rule, so the gate that refuses a run whose acted-on machine is its own executor never admits them and their lane comes from the executor's label. The join arm showed what that costs when the binding is only half-moved: the step bound github.event.inputs.host to BOTH the runner label and TAILSCALE_JOIN_HOST, so flipping the arm's domain without moving the binding would have joined the executor instead of the requested host. No fold is made here; the six spark modes and the network-install mode are named, unowned, and left as they are. arrival_converge was examined and excluded on its own row: ssh_key_demand FleetSshKeyNotConsumed, its job's runner labels hard-coded to operator_host_srv1, and no dial anywhere in gunbc.machine_intake.arrival_run -- the machine its arrival_subject names is acted on by managed_host_network_install, which is affected.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_facts") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_spark_serving_apply_step"),
+        control: Absent,
+        statement: "a spark apply run reaches the machine its dispatch named, and no other: after any fold the emitted step still passes that machine under the shared subject input name and its entry resolves the acted-on target from that input, with today's behaviour readable against the target resolution in spark/managed_access_apply's privileged_leg",
+      },
+    ],
+    next: climbs_when(capability: "each of the seven facts rows states a subject rule and a target-host mutation domain, its step passes the machine under the shared subject input name, and its entry resolves the acted-on host through the same rule-aware read the serving entries use -- measured at this revision, a mutation of the rule for these seven modes reddens nothing, because none of them is in the gated roster"),
+  },
+}

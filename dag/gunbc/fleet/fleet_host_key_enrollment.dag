@@ -213,14 +213,28 @@ type LanEndpointHostKey {
   provenance: HostKeyEnrollmentProvenance
 }
 
-data lan_endpoint_host_keys: List<LanEndpointHostKey> = [
-  LanEndpointHostKey {
-    host: operator_host_srv14,
-    key_type: "ssh-ed25519",
-    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
-    sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
-    provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519_key.pub` and `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on 192.168.1.205 over ssh opened with StrictHostKeyChecking=accept-new (key material + fingerprint reproduced by that command). The ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority." as NonEmptyStr },
-  },
+data lan_endpoint_host_keys: List<LanEndpointHostKey> = []
+
+// srv14's key LEFT this registry on 2026-11-17: hosts are REACHED BY THEIR TAILNET NAME (operator
+// ruling msg_0ac59f6c), so no lease address may ANCHOR an actuation. The key is kept -- unchanged
+// from #16276's scan, RE-VERIFIED by the operator's session at the .238 lease on 2026-11-17T22:36Z --
+// as the ENROLLED key of the FIRST-CONTACT hop below, which only hostname_converge and
+// tailscale_join_converge may dial, and only until srv14's tailnet anchor row lands (then the
+// anchor wins and the hop admits nothing; gunbc.fleet.fleet_known_hosts_anchor).
+data srv14_first_contact_key: LanEndpointHostKey = LanEndpointHostKey {
+  host: operator_host_srv14,
+  key_type: "ssh-ed25519",
+  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
+  sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
+  provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519_key.pub` and `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on 192.168.1.205 over ssh opened with StrictHostKeyChecking=accept-new (key material + fingerprint reproduced by that command). The ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority. 2026-11-17T22:36Z: the operator session re-verified this exact key at the MOVED lease 192.168.1.238 (msg_0ac59f6c) -- host keys are transport-independent; the tailnet row of the flip PR carries this same key." as NonEmptyStr },
+}
+
+// THE ENROLLED KEYS THE FIRST-CONTACT HOP MAY PRESENT, keyed by host. A row here is NOT an anchor:
+// anchored_host_key_row refuses to land on it (gunbc.fleet.fleet_known_hosts_anchor), which is what
+// makes runner converge REFUSE srv14 until the tailnet row exists. The address is never restated --
+// it derives from the host's lease observation in gunbc.fleet.fleet_intent_network (host_lan_address).
+data first_contact_lan_keys: List<LanEndpointHostKey> = [
+  srv14_first_contact_key,
 ]
 
 // THE ROW AT THE HOST'S LAN ENDPOINT, or Absent when the host has no HostOperatingSystem LAN endpoint or

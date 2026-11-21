@@ -25,7 +25,8 @@ import gunbc.compute.host_capacity {
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
   compute_capacity_root,
 }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
 import gunbc.compute.remote_build_serve {
@@ -193,6 +194,22 @@ test fn the_shared_ledger_grants_exactly_its_two_areas() -> Bool {
     && count(live |> filter(t => w_area_is_group_shared(t: t))) == 2
     && count(other |> filter(t => w_area_is_group_shared(t: t))) == 0
     && count(other |> filter(t => w_area_is_service_only(t: t, instance: deploy))) == 3
+}
+
+// A SUSPENDED DISPATCH STANDING IS NOT A WITHDRAWN SERVING ROUTE. The two questions now have separate rows to
+// answer (gunbc.compute.remote_build_hosts: remote_build_serving_hosts is the live dispatch gate,
+// remote_build_serving_candidate_hosts is where the serving route is provisioned), and srv1 sits on one and not
+// the other. Both halves asserted, because a reader who conflates them re-keys the ledger posture and silently
+// rewrites a live host's permissions: the account, the capacity home and an unsettled seat are still on that
+// disk, and the remote-build account still has to reach its own ledger. The claim above is this one's red
+// control -- key the posture back to the dispatch gate and srv1's areas stop being group-shared.
+test fn a_suspended_host_is_still_a_provisioned_candidate() -> Bool {
+  !remote_build_host_is_serving(host: operator_host_srv1)
+    && remote_build_host_is_serving_candidate(host: operator_host_srv1)
+    && match compute_ledger_sharing(instance: srv1_live_dashboard_instance()) {
+      ComputeLedgerSharedWithRemoteBuild => true
+      ComputeLedgerServiceOnly => false
+    }
 }
 
 // THE LEDGER MUST BE REACHABLE BY AN ACCOUNT THAT IS NOT ITS OWNER, and a ledger inside another
