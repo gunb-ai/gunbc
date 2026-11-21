@@ -209,6 +209,19 @@ fn posix_command_v_check_argv(command: NonEmptyStr) -> List<String> {
 // shared temporary directory is safe to allocate in at all. It is a different question from the
 // mode digits and gets its own operation rather than being parsed out of them.
 service shell.Test {
+  // Each `is_*`/`executable`/`nonempty`/`sticky`/`writable` below is a Bool `from "exit_success"`
+  // whose declared `exit` rows are INERT FOR THE RETURN VALUE (@ref(extdeps.git::ls_remote_carries_no_exit_block_note):
+  // the dispatch never consults them, never raises on nonzero) -- so a declared `1 => "missing or not a
+  // directory"` READS like a per-exit value it is not, and the `✗ ... (exit=N)` trace is diagnostic only.
+  // Worse, `test` collapses "absent" with "present but the wrong kind", and `-e`/`-f`/`-d` also collapse
+  // "couldn't stat" (an I/O or ACL denial) into that same exit 1 -- so `!is_directory`/`!is_file` cannot
+  // certify a path is GONE, and an `exit_code` output would not fix it (only exit >= 2 is instrument
+  // failure). Presence and absence belong to ONE authority:
+  // @ref(gunbc.filesystem_file_observe::filesystem_entry_presence_of_path), returning the typed
+  // @ref(extdeps.filesystem.filesystem_io::FilesystemEntryPresence) -- Absent for a genuine missing entry,
+  // Indeterminate/SubjectRefused when the host could not look. A collapsing `test` probe cannot tell a
+  // genuine missing entry (ENOENT) from a stat it was refused (EACCES); only the authority's separate
+  // arms keep those apart, so a claim that must prove absence reads the arm, not an exit code.
   operation IsExecutable {
     requires none
     input { path: FilePath }
@@ -245,6 +258,12 @@ service shell.Test {
     }
   }
 
+  // `is_directory` answers exactly one question: is this a directory. `!is_directory` does NOT certify
+  // absence -- `test -d` exits 1 for a missing path, for a present non-directory, and for a path it could
+  // not stat. Certify absence through
+  // @ref(gunbc.filesystem_file_observe::filesystem_entry_presence_of_path); the full invariant (inert
+  // exit arms, the collapse, the authority's Indeterminate/SubjectRefused arms) is the note at the top of
+  // this service.
   operation IsDirectory {
     requires none
     input { path: FilePath }
