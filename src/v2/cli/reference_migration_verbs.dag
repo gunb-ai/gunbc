@@ -168,6 +168,17 @@ fn reference_migration_decide(env: AcquisitionEnv, paths: List<String>, rules: L
           held: true,
           detail: int_to_decimal_string(value: length(xs: reference_migration_written_files(written: written))) + " file(s) written",
         }
+      // PARTIAL: some files stand rewritten and a later write refused. The run does not hold --
+      // the plan is not complete and the untouched files still carry their citations -- and the
+      // report names both halves, never the fiction that nothing was written (operator side-chat
+      // review, F1). The verdict word stays INCOMPLETE so the CI reader keeps parsing one
+      // vocabulary; the detail carries "PARTIAL:".
+      PartiallyApplied { written: written, refusals: refusals } =>
+        PopulationReport {
+          text: label + reference_migration_head(plan: plan, verdict: "INCOMPLETE", written: written) + body,
+          held: false,
+          detail: "PARTIAL: " + int_to_decimal_string(value: length(xs: reference_migration_written_files(written: written))) + " file(s) written before a write refused: " + reference_migration_join(lines: list_map(xs: refusals, f: fn(refusal) { refusal.id + ": " + refusal.reason })),
+        }
     }
   } else {
     PopulationReport {

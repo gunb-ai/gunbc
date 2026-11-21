@@ -175,6 +175,7 @@ fn applied_carries(plan: Optional<MigrationPlan>, replacement: String, expected:
           let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
           match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
             Refused { refusals: _ } => false
+            PartiallyApplied { written: _, refusals: _ } => false
             Applied { written: written, contents: contents } =>
               // EXACT bytes, against the post-image each caller states: a splice that reorders or drops
               // the UNTOUCHED surrounding text can still leave a resolvable reference behind, and that
@@ -214,6 +215,7 @@ test fn a_changed_preimage_refuses_and_writes_nothing_holds() -> Bool {
           let drifted = list_map(xs: p.population, f: fn(f) { migration_file(path: f.path, content: f.content + "\n") })
           match reference_migration_apply(request: request, plan: p, current: drifted, selected: selected) {
             Applied { written: _, contents: _ } => false
+            PartiallyApplied { written: _, refusals: _ } => false
             Refused { refusals: refusals } => !is_empty(xs: refusals) && string_contains(s: refusals_text(refusals: refusals), pattern: "digest")
           }
       }
@@ -241,6 +243,7 @@ test fn overlapping_selected_extents_refuse_holds() -> Bool {
           let second = overlapping_of(first: first)
           match reference_migration_apply(request: request, plan: plan_with_extra_edit(plan: p, extra: second), current: p.population, selected: [first.id, second.id]) {
             Applied { written: _, contents: _ } => false
+            PartiallyApplied { written: _, refusals: _ } => false
             Refused { refusals: refusals } => !is_empty(xs: refusals) && string_contains(s: refusals_text(refusals: refusals), pattern: "overlapping")
           }
       }
@@ -274,6 +277,7 @@ test fn an_edit_whose_file_left_the_population_refuses_and_writes_nothing_holds(
           let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
           match reference_migration_apply(request: request, plan: p, current: [], selected: selected) {
             Applied { written: _, contents: _ } => false
+            PartiallyApplied { written: _, refusals: _ } => false
             Refused { refusals: refusals } => !is_empty(xs: refusals)
               && string_contains(s: refusals_text(refusals: refusals), pattern: "no longer in the population")
           }
@@ -294,6 +298,7 @@ test fn the_write_boundary_refuses_a_missing_row_instead_of_inventing_one_holds(
       let edit = first_edit(edits: migration_plan_edits(plan: p))
       match migration_write_outcome(chosen: [edit], current: [], touched: [edit.file]) {
         Applied { written: _, contents: _ } => false
+        PartiallyApplied { written: _, refusals: _ } => false
         Refused { refusals: refusals } => length(xs: refusals) == 1
           && string_contains(s: refusals_text(refusals: refusals), pattern: "no longer in the population")
           && string_contains(s: refusals_text(refusals: refusals), pattern: edit.file)
@@ -363,6 +368,7 @@ fn apply_refuses_generated(plan: Optional<MigrationPlan>, ownership: MigrationOw
           let edit = valid_edit_on(path_of: "fixtures/reference_migration/subject.dag", population: p.population)
           match reference_migration_apply_with_ownership(env: env, population: p.population, rules: [], policy: migration_context_policy_design(), ownership: ownership, plan: plan_with_extra_edit(plan: p, extra: edit), selected: [edit.id]) {
             Applied { written: _, contents: _ } => false
+            PartiallyApplied { written: _, refusals: _ } => false
             Refused { refusals: refusals } => !is_empty(xs: refusals) && string_contains(s: refusals_text(refusals: refusals), pattern: "generated")
           }
       }
@@ -413,6 +419,7 @@ test fn replanning_an_applied_population_proposes_zero_edits_and_keeps_the_rest_
           let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
           match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
             Refused { refusals: _ } => false
+            PartiallyApplied { written: _, refusals: _ } => false
             Applied { written: _, contents: contents } =>
               let after = reference_migration_plan(request: migration_request(env: env, population: contents, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design()))
               migration_plan_edit_count(plan: after) == 0 && migration_plan_open_count(plan: after) == 1
@@ -628,6 +635,7 @@ fn applied_text(plan: Optional<MigrationPlan>) -> String {
           let selected = list_map(xs: migration_plan_edits(plan: p), f: fn(e) { e.id })
           match reference_migration_apply(request: request, plan: p, current: p.population, selected: selected) {
             Refused { refusals: _ } => "REFUSED"
+            PartiallyApplied { written: _, refusals: _ } => "PARTIAL"
             Applied { written: _, contents: contents } => content_of(contents: contents, path: "fixtures/reference_migration/subject.dag")
           }
       }
@@ -820,6 +828,7 @@ fn dense_apply_leaves_nothing_to_edit(rules: List<MigrationRule>, plan: Migratio
       let selected = list_map(xs: migration_plan_edits(plan: plan), f: fn(e) { e.id })
       match reference_migration_apply(request: request, plan: plan, current: plan.population, selected: selected) {
         Refused { refusals: _ } => false
+        PartiallyApplied { written: _, refusals: _ } => false
         Applied { written: _, contents: contents } =>
           let applied = content_of(contents: contents, path: "fixtures/reference_migration/subject.dag")
           let after = reference_migration_plan(request: migration_request(env: env, population: contents, rules: rules, ownership: migration_ownership_authored(), policy: migration_context_policy_design()))

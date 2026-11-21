@@ -2077,6 +2077,12 @@ type MigrationApplyRefusal {
 type MigrationApplyOutcome
   = Applied { written: List<String>, contents: List<MigrationFile> }
   | Refused { refusals: List<MigrationApplyRefusal> }
+  // PARTIAL APPLICATION, recorded not concealed (operator side-chat review, F1): the host writes
+  // happen one file at a time and cannot be rolled back, so when an early file is written and a
+  // later one refuses, the outcome names BOTH halves -- which files stand rewritten and which
+  // refused, with the host reason. Returning a bare Refused there would describe a world where
+  // nothing happened, which is false.
+  | PartiallyApplied { written: List<String>, refusals: List<MigrationApplyRefusal> }
 
 fn migration_refusal(id: String, reason: String) -> MigrationApplyOutcome {
   Refused { refusals: [MigrationApplyRefusal { id: id, reason: reason }] }
@@ -2245,6 +2251,10 @@ fn migration_write_outcome(chosen: List<MigrationEdit>, current: List<MigrationF
   let refused = list_reverse(xs: fold_list(xs: outcomes, empty: Empty, cons: fn(acc, outcome) {
     match outcome {
       Refused { refusals: r } => fold_list(xs: r, empty: acc, cons: fn(inner, refusal) { Cons { head: refusal, tail: inner } })
+      // The per-file path above only ever returns Applied or Refused (a partial batch is a
+      // property of the HOST write loop, not of a single file's splice); the arm keeps the
+      // match honest and folds refusals the same way if that shape ever appears.
+      PartiallyApplied { written: _, refusals: r } => fold_list(xs: r, empty: acc, cons: fn(inner, refusal) { Cons { head: refusal, tail: inner } })
       Applied { written: _, contents: _ } => acc
     }
   }))
@@ -2419,6 +2429,11 @@ fn reference_migration_apply_bound(env: AcquisitionEnv, paths: List<String>, rul
   // per-file ownership the guards consult). What a file's BYTES are is decided by the re-read inside
   // apply, which refuses by name if a touched file will not read — so a path missing from this read
   // can never be written on the strength of a default.
+  // The apply verdict is EXPLICITLY SCOPED to the accepted plan's touched files: Applied{written}
+  // lists exactly the files this run rewrote, and a file outside the touched set -- read or unread
+  // by this request -- has no effect from this run and is never written. Dropping the first read's
+  // unread list is therefore a scope statement, not a silent loss (operator side-chat review, F1):
+  // any file that MATTERS to the verdict is accounted for by the re-read, which refuses by name.
   let read = migration_read_population(paths: paths)
   reference_migration_apply_files(request: migration_request_resolved(env: env, population: read.files, rules: rules, ownership: migration_ownership_from_registry(), policy: policy, resolutions: resolutions), plan: plan, selected: selected)
 }
@@ -2450,6 +2465,9 @@ fn reference_migration_apply_files(request: MigrationRequest, plan: MigrationPla
     let outcome = reference_migration_apply(request: request, plan: plan, current: reread.files, selected: selected)
     match outcome {
       Refused { refusals: refusals } => Refused { refusals: refusals }
+      // The pure apply only yields Applied or Refused; the pass-through keeps the match total
+      // and would carry a partial batch forward unchanged if it ever existed.
+      PartiallyApplied { written: written, refusals: refusals } => PartiallyApplied { written: written, refusals: refusals }
       Applied { written: written, contents: contents } => migration_write(contents: contents, paths: written)
     }
   }
@@ -2493,18 +2511,43 @@ fn migration_reread_outcome(acc: MigrationReread, path: String, outcome: Filesys
   }
 }
 
+// The write loop's accumulator: which files were written and which refused, in call order.
+type MigrationWriteAcc {
+  wrote: List<String>
+  failed: List<MigrationApplyRefusal>
+}
+
 fn migration_write(contents: List<MigrationFile>, paths: List<String>) -> MigrationApplyOutcome {
-  let failed = list_reverse(xs: fold_list(xs: contents, empty: Empty, cons: fn(acc, file) {
+  // Writes are per-file host side effects with no rollback, so the fold RECORDS both halves: the
+  // files that were written and the files whose write refused. An all-success batch is Applied;
+  // an all-refused batch is Refused (nothing happened, and the outcome says so); a mixed batch is
+  // PartiallyApplied, naming the written files and the refusals (operator side-chat review, F1:
+  // a Refused after earlier successes described a world where nothing happened, which was false).
+  let acc = fold_list(xs: contents, empty: MigrationWriteAcc { wrote: Empty, failed: Empty }, cons: fn(pair, file) {
     let wrote = Filesystem.Write(path: file.path, content: file.content)
     match filesystem_write_outcome(path: file.path, success: wrote.success, error: wrote.error) {
-      FilesystemWritten { path: _ } => acc
-      FilesystemWriteRefused { path: path, error: error } => Cons {
-        head: MigrationApplyRefusal { id: path, reason: "the write was refused (" + migration_host_reason(error: error) + ")" },
-        tail: acc,
+      FilesystemWritten { path: _ } => MigrationWriteAcc {
+        wrote: Cons { head: file.path, tail: pair.wrote },
+        failed: pair.failed,
+      }
+      FilesystemWriteRefused { path: path, error: error } => MigrationWriteAcc {
+        wrote: pair.wrote,
+        failed: Cons {
+          head: MigrationApplyRefusal { id: path, reason: "the write was refused (" + migration_host_reason(error: error) + ")" },
+          tail: pair.failed,
+        },
       }
     }
-  }))
-  if !is_empty(xs: failed) { Refused { refusals: failed } } else { Applied { written: paths, contents: contents } }
+  })
+  let wrote = list_reverse(xs: acc.wrote)
+  let failed = list_reverse(xs: acc.failed)
+  if is_empty(xs: failed) {
+    Applied { written: paths, contents: contents }
+  } else if is_empty(xs: wrote) {
+    Refused { refusals: failed }
+  } else {
+    PartiallyApplied { written: wrote, refusals: failed }
+  }
 }
 
 // ============================================================ RUN INPUT: THE RULES FILE
