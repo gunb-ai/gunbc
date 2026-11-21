@@ -15,6 +15,7 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
   ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
 }
+import gunbc.roadmap.roadmap_metering_closing_provision { metering_closing_writer_unit_name }
 
 // THE BELT'S WORK AS OBLIGATIONS, NOT PHASES (dogfood interventions #6 and #4, gunbc#13124; the
 // "belt demoted" owner ruling of 2026-09-22 in docs/plans/harness-work-lifecycle.md).
@@ -223,7 +224,13 @@ fn belt_attempt_next_after(ran: BeltAttemptObligationKind, outstanding: List<Bel
 // is refused by the manager rather than reinterpreted.
 
 fn belt_instance_obligation_unit_name(instance_id: String, kind: BeltInstanceObligationKind) -> NonEmptyStr {
-  join(["gunbc-obligation-", instance_id, "-", belt_instance_obligation_kind_key(kind: kind), ".service"], "") as NonEmptyStr
+  // THE METERING UNIT NAME HAS ONE DEFINITION: metering_closing_writer_unit_name in
+  // gunbc.roadmap.roadmap_metering_closing_provision, which the dashboard's closing-marker fence
+  // rows are built from too (review 96140: one authority, no restated formula beside it).
+  match kind {
+    MeteringObligation => metering_closing_writer_unit_name(instance_id: instance_id)
+    _ => join(["gunbc-obligation-", instance_id, "-", belt_instance_obligation_kind_key(kind: kind), ".service"], "") as NonEmptyStr
+  }
 }
 
 // WHAT ONE ENQUEUE DID. Started: the unit was handed the obligation and owns it now. Held: a unit of

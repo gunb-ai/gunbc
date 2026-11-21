@@ -1,0 +1,32 @@
+module gunbc.roadmap.roadmap_attempt_metering_slots
+
+import std.types { NonEmptyStr }
+import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
+
+// THE ATTEMPT METERING STORE'S ENTRY NAMES, in a leaf that imports no instance so both the attempt-state
+// member rows (gunbc.roadmap.roadmap_attempt_state_store) and the store itself
+// (gunbc.roadmap.roadmap_attempt_metering) can read them without a cycle through either. One place spells
+// each name; the member rows and every read, write and listing below go through this declaration, which is
+// what replaces the four basename literals the pre-seal store carried.
+//
+// THE RECORD, the roster's closing marker, the roster's seal and the per-role launch entries all live in the
+// attempt's own directory, the same shared parent the append-log store scopes by name
+// (jolly-swift-832's lane). Each is a member row of its own in the attempt-state declaration; the mint lists
+// the directory it owns and never judges an entry outside the names declared here.
+type AttemptMeteringSlotsDeclaration {
+  mode: DeclaredDirectoryMode
+  record_basename: NonEmptyStr
+  roster_closing_basename: NonEmptyStr
+  roster_sealed_basename: NonEmptyStr
+  launch_prefix: NonEmptyStr
+  launch_suffix: NonEmptyStr
+}
+
+data attempt_metering_slots: AttemptMeteringSlotsDeclaration = AttemptMeteringSlotsDeclaration {
+  mode: DirectoryOwnerOnly,
+  record_basename: "metering.json" as NonEmptyStr,
+  roster_closing_basename: "metering-roster-closing" as NonEmptyStr,
+  roster_sealed_basename: "metering-roster-sealed.json" as NonEmptyStr,
+  launch_prefix: "metering-launch." as NonEmptyStr,
+  launch_suffix: ".json" as NonEmptyStr,
+}

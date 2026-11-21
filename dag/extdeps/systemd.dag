@@ -13,6 +13,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
 import std.host_text { chars }
+import std.decimal { decimal_digits_only }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -348,6 +349,38 @@ fn parse_systemd_unit_load_state(raw: String) -> SystemdUnitLoadState? {
   else { if raw == "error" { Present { value: UnitLoadError } }
   else { if raw == (systemd_unit_load_state_masked_wire as String) { Present { value: UnitLoadMasked } }
   else { none } } } } }
+}
+
+// MAINPID AS SYSTEMD ANSWERS IT. org.freedesktop.systemd1(5) Unit.MainPID is a uint32 and systemd.service(5)
+// gives a unit with no main process the value 0, so `systemctl show -p MainPID` answering `MainPID=0` is a
+// POSITIVE answer: nothing is running as that unit's main process. An empty answer, or one that is not
+// decimal, is not an answer -- the read failed, the property was not printed, or there was no unit to ask
+// about. Those two are different facts and a gate that treats a failed read as "no process" opens on the
+// exact failure that means "we do not know", so the reading is a sum with its own unreadable case.
+type SystemdMainPidReading
+  = MainPidRunning { pid: Int }
+  | MainPidNoneEstablished
+  | MainPidUnreadable { raw: String }
+
+fn parse_systemd_main_pid_show(raw: String) -> SystemdMainPidReading {
+  let text = trim(s: raw)
+  if text == "" {
+    MainPidUnreadable { raw: raw }
+  // Decimal-only, checked before the numeric parse: parse_int on "12a" is not something this parser
+  // should have an opinion about, and a MainPID carrying a stray character is a corrupt read, not a pid
+  // with noise. THE RULE IS std.decimal decimal_digits_only -- this module does not re-spell "only digits
+  // 0-9" (review 91843); that rule is true of the empty text as well, and the non-empty case is stated
+  // BESIDE it by the text == "" branch above, exactly as decimal_digits_only's own comment requires.
+  } else if decimal_digits_only(s: text) {
+    match parse_int(s: text) {
+      Absent => MainPidUnreadable { raw: raw }
+      Present { value: n } =>
+        if n == 0 { MainPidNoneEstablished }
+        else { if n < 0 { MainPidUnreadable { raw: raw } } else { MainPidRunning { pid: n } } }
+    }
+  } else {
+    MainPidUnreadable { raw: raw }
+  }
 }
 
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)

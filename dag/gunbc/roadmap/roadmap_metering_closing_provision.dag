@@ -1,0 +1,37 @@
+module gunbc.roadmap.roadmap_metering_closing_provision
+
+import std.types { String, NonEmptyStr }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit }
+
+// THE ONE DEFINITION OF THE METERING OBLIGATION UNIT NAME (review 96140).
+// gunbc.roadmap.roadmap_belt_obligation's belt_instance_obligation_unit_name derives its metering
+// branch from metering_closing_writer_unit_name here, and the dashboard's closing-marker fence rows
+// are built from it too -- so the fence names exactly the unit the obligation runner launches, with
+// no formula restated beside the authority. This module is the BOTTOM of that name: it imports only
+// std.types and the fence shapes in gunbc.roadmap.roadmap_attempt_state_layout_move, so the belt can
+// import it without reaching anything above it (the import graph stays acyclic; the dashboard must
+// never import gunbc.roadmap.roadmap_belt_obligation, whose path through live_deploy.slice_bounds and
+// runner.runner_slot_desired closes back onto the dashboard).
+
+fn metering_closing_writer_unit_name(instance_id: String) -> NonEmptyStr {
+  join(["gunbc-obligation-", instance_id, "-metering.service"], "") as NonEmptyStr
+}
+
+fn metering_closing_writer_fence_row(instance_id: NonEmptyStr) -> LegacyWriterFenceRow {
+  LegacyWriterFenceRow {
+    instance_id: instance_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      // The obligation unit is TRANSIENT: the belt creates it through the manager, so its definition
+      // lives under /run/systemd/system, not /etc -- and nothing here deletes or rolls back a fragment
+      // (the closing gate observes exclusion and masks; retirement of this unit is a later change).
+      // LegacyWriterUnits grew etc_fragment and rollback_store on main; the /run spelling states where
+      // this unit's file actually is rather than inventing an /etc path that does not exist.
+      units: [LegacyWriterUnit {
+        name: metering_closing_writer_unit_name(instance_id: instance_id as String),
+        etc_fragment: join(["/run/systemd/system/", metering_closing_writer_unit_name(instance_id: instance_id as String)], "") as NonEmptyStr,
+      }],
+      rollback_store: "/run/systemd/system" as NonEmptyStr,
+    },
+  }
+}

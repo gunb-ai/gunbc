@@ -1,0 +1,31 @@
+module gunbc.integration_concern.roadmap_metering_closing_plain_writer_retired
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern }
+
+data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_metering_closing_plain_writer_retired",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
+    requirement: "the closing cutover no longer creates plain metering.json; systemd-run --collect unit_type=exec writing metering.json is retired as a dead route, the census enumerates sealed slot generations for the closing sweep, and the gate observes the metering writer unit inactive with no process before sweeping",
+    standing: RequirementUnestablished { decided_by: "nothing; this row records a retirement, not a gap to reopen -- the sealed slot is the only metering record store" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
+    tail: [],
+  },
+  question: "Any surviving route that writes a plain metering.json during closing? None: the transient-unit write is removed and the census that guards closing enumerates slot generations instead; the residual is an out-of-band unmask of the writer unit, documented and refused by the gate's observation.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate") },
+        tail: [],
+      },
+      account: "masking gunbc-obligation-<instance>-metering.service on srv2 refused the belt's transient-unit creation (executed observation, relayed as the blocker-2(b) receipt), so the retired writer is enforceable by unit mask and the gate observes unit-inactive plus no-process before the sweep.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
