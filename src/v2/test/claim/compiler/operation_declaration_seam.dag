@@ -422,3 +422,31 @@ test fn a_pure_seam_declares_no_resource_access_and_no_host_row_does_holds() -> 
     }
   )
 }
+
+// Host representation is not host observation: the crossings and scalar windows use only their
+// arguments. Read the real declaration-keyed seam arm and settle a caller through D13. Deleting a
+// row, losing its projection, or classifying it as resource-dependent makes this control red.
+test fn host_text_crossings_and_windows_settle_without_resource_demand_holds() -> Bool {
+  fold_list(
+    xs: [
+      qualified_name_from_dotted_string(dotted: "std.host_text.chars"),
+      qualified_name_from_dotted_string(dotted: "std.host_text.text_of_chars"),
+      qualified_name_from_dotted_string(dotted: "std.host_text.string_length"),
+      qualified_name_from_dotted_string(dotted: "std.host_text.char_at"),
+      qualified_name_from_dotted_string(dotted: "std.host_text.substring")
+    ],
+    empty: true,
+    cons: fn(ok, path) {
+      ok && demand_facts_declaration_is_host_seam(path: path)
+        && match operation_declaration_for_path(path: path) {
+          Absent => false
+          Present { value: row } =>
+            row.semantics == Pure && row.shape == NoResourceAccess
+              && demand_equal(
+                left: caller_demand_over(callee: path),
+                right: DemandDerived { resources: resource_set_of(paths: []) }
+              )
+        }
+    }
+  )
+}

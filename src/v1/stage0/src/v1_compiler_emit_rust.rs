@@ -7884,7 +7884,7 @@ pub fn emitted_inline_path_edges(
                 .cloned()
                 {
                     if {
-                        let t = crate::std_algebra::trim(line.clone());
+                        let t = v1_rt::trim(line.clone());
                         (!v1_rt::starts_with(t.clone(), "//".to_string())
                             && !rust_line_is_use_declaration(t.clone()))
                     } {
@@ -9884,7 +9884,7 @@ pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
                     .iter()
                     .cloned()
                     {
-                        __result.push(crate::std_algebra::trim(s.clone()));
+                        __result.push(v1_rt::trim(s.clone()));
                     }
                     __result
                 })
@@ -10103,7 +10103,7 @@ pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
                 .iter()
                 .cloned()
                 {
-                    __result.push(crate::std_algebra::trim(t.clone()));
+                    __result.push(v1_rt::trim(t.clone()));
                 }
                 __result
             })

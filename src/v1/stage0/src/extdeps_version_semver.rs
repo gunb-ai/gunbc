@@ -282,7 +282,7 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 pub fn semver_core_of_dotted(text: String) -> Option<Rc<SemVerVersion>> {
     {
         let parts = Rc::new(
-            crate::std_algebra::trim(text)
+            v1_rt::trim(text)
                 .split(&".".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
@@ -334,7 +334,7 @@ pub fn semver_dotted_part(parts: Rc<Vec<String>>, index: i64) -> Option<Rc<SemVe
 
 pub fn semver_minimum_of_constraint(constraint: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
     {
-        let c = crate::std_algebra::trim(constraint.clone());
+        let c = v1_rt::trim(constraint.clone());
         if v1_rt::starts_with(c.clone(), ">=".to_string()) {
             semver_core_of_dotted(v1_rt::substring(&c, 2, v1_rt::string_length(&c)))
         } else {
