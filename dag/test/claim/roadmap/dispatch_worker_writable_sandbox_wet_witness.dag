@@ -2708,6 +2708,62 @@ test fn the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_a
   )
 }
 
+
+// A BROKEN LOCUS IS REFUSED AS A LOCUS, BEFORE ANY ROOT-LAUNCHER EXCUSE. This is the ordering fix made
+// testable: with the sudo test first, a leg whose locus failed for a reason THIS lane owns -- here, the
+// inadmissible destination the fold now refuses -- reached a sudo-less host and answered with the
+// root-launcher not-observed line, laundering a real defect into a host fact the S1 rule forgives. The host
+// cannot be varied from inside a claim, but the locus can be broken deterministically, so the claim plants
+// the link and asks the two questions the ordering decides: the refusal must name the locus, and no
+// root-launcher capability line may be recorded for this claim. On a host WITH elevation the same pair holds
+// -- the locus arm is reached first either way -- so the claim does not depend on which host runs it.
+test fn a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse() -> Bool {
+  let root = wet_claim_root(tag: "locus-before-launcher" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let claim = "a_broken_locus_is_refused_as_a_locus_before_any_root_launcher_excuse"
+  let unit_key = "locus-order-probe"
+  let away = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-locus-order-XXXXXX" as NonEmptyStr,
+  ))
+  let planted_dir = witness_locus_dir_text(instance: inst, locus_key: unit_key as NonEmptyStr)
+  let linked = wet_ok(command: ln_symbolic_force_command(target: away, link_name: planted_dir))
+  let outcome = wet_worker_unit_start(
+    instance: inst,
+    unit_key: unit_key,
+    inner: launcher_touch_inner_argv(instance: inst, path: join([root, "/probe-target"], "")),
+    root: root,
+    claim: claim,
+  )
+  // THE REFUSAL NAMES THE LOCUS, and not the launcher or the image.
+  let named_the_locus = match outcome {
+    WetRootLaunchRan { exit_code: _ } => false
+    WetRootLaunchRefused { cause: cause } => string_contains(s: cause, pattern: "release locus is not installed")
+  }
+  // THE EXCUSE THAT MUST NOT BE THERE, checked on the run's own trail with this claim's name in the needle
+  // so a line some other claim earned cannot satisfy or spoil it.
+  let no_launcher_excuse = !wet_stage_trail_contains(
+    needle: join(
+      [
+        "[witness] not-observed: ",
+        claim,
+        " capability=",
+        wet_capability_root_launcher as String,
+      ],
+      "",
+    ),
+  )
+  let locus_refusal_recorded = wet_stage_trail_contains(
+    needle: join(["claim-locus-refused:", unit_key], ""),
+  )
+  let escape_stayed_empty = away != "" && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && away != "" && linked && named_the_locus && no_launcher_excuse
+      && locus_refusal_recorded && escape_stayed_empty,
+    roots: [root as NonEmptyStr, away as NonEmptyStr],
+  )
+}
+
 test fn the_locus_base_that_spells_its_way_into_the_live_lab_root_never_reaches_the_fold() -> Bool {
   let root = wet_claim_root(tag: "locus-base-traversal" as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
