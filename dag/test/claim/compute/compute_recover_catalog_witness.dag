@@ -4,7 +4,7 @@ module test.claim.compute.compute_recover_catalog_witness
 //
 // gunbc.compute.work_provider_local compute_recover_catalog is the reading a DECLARED FUTURE caller plans
 // from -- the serving converge's recovery leg, which is this roadmap node's next increment and whose trigger
-// is the serve route resolving again (#16816); this change ships no such leg. The reading walks
+// is the serve route resolving again (done by #16828); this change ships no such leg. The reading walks
 // every seat directory the host owns, lists each one's attempt slots, and renders
 // for each reference the answer gunbc.compute.attempt_lifecycle recovery_write_authorization returns for
 // that record against the unit's live

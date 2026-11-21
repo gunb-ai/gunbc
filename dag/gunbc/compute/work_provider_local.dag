@@ -3897,7 +3897,8 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // would act on, and it has to know that BEFORE it plans. DECLARED FRONTIER, not a present consumer: the
 // caller this is built for is the serving converge's recovery leg (ConvergeAction RecoverStaleSeat), which
 // THIS change does not ship -- it is the next increment of the same roadmap node, and its trigger is the
-// serve route resolving again (the compute_seat_ensure repair, #16816), because until that entry resolves
+// serve route resolving again (done by #16828, which cut compute_seat_ensure out of that route), because
+// until that entry resolves
 // the converge's own witnesses cannot be run. Today the routes that RUN this reading are this module's
 // witness (compute_recover_catalog_witness, over real slot stores it creates) and the attempt-door witnesses
 // that read the same authorization; nothing here dispatches a host effect. Reading the census before
@@ -4009,7 +4010,8 @@ fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
 // DECLARED FRONTIER, not a present consumer: the caller this is shaped for is the serving converge's
 // recovery leg (its action kind RecoverStaleSeat, at the rank after RecordServeIdentity, gated on that
 // identity leg being Met), which does NOT ship in this change; the trigger for that leg is the serve route
-// resolving again (the compute_seat_ensure repair, #16816), since until that entry resolves the converge's
+// resolving again (done by #16828, which cut compute_seat_ensure out of that route), since until that entry
+// resolves the converge's
 // witnesses cannot be run. Today the only route that runs this door is compute_recover_catalog_witness,
 // which calls the reading it renders and refuses on both exits.
 fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
