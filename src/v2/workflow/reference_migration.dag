@@ -821,13 +821,29 @@ fn migration_program_step(acc: MigrationProgramScan, file: MigrationFile, octets
   }
 }
 
+type MigrationLexemeScan {
+  octet: Int
+  result: Int
+}
+
 fn migration_lexeme_octet_from(content: String, octets: MigrationOctetTable, lexeme: String, width: Int, index: Int) -> Int {
+  // Host-bounded fold over the file's scalars: the scan used to take one interpreter frame per
+  // octet from `index`, once per program-text token — depth and O(n-squared) work on files with
+  // long strings. Every octet index at or after `index` is still tested with the same octet-slice
+  // comparison, first match wins, -1 when none does.
   if width == 0 || index > octets.octet_total - width {
     -1
-  } else if migration_octet_slice(content: content, octets: octets, start: index, end: index + width) == lexeme {
-    index
   } else {
-    migration_lexeme_octet_from(content: content, octets: octets, lexeme: lexeme, width: width, index: index + 1)
+    let scan = fold_list(xs: unicode_scalar_unfold(s: content), empty: MigrationLexemeScan { octet: 0, result: -1 }, cons: fn(acc, c) {
+      if acc.result >= 0 {
+        acc
+      } else if acc.octet >= index && migration_octet_slice(content: content, octets: octets, start: acc.octet, end: acc.octet + width) == lexeme {
+        MigrationLexemeScan { octet: acc.octet + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c)), result: acc.octet }
+      } else {
+        MigrationLexemeScan { octet: acc.octet + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c)), result: -1 }
+      }
+    })
+    scan.result
   }
 }
 
@@ -1110,10 +1126,11 @@ fn migration_tail_gap(text: String, words: List<MigrationWord>, scalar_total: In
 }
 
 fn migration_last_word_scalar_end(words: List<MigrationWord>, seen: Int) -> Int {
-  match words {
-    Cons { head: h, tail: t } => migration_last_word_scalar_end(words: t, seen: h.scalar_end)
-    Empty => seen
-  }
+  // A host-bounded fold, not a per-word frame: this runs once per span over the WHOLE file's word
+  // list, and its recursion depth used to grow with the word count (red witness: 1.1 MB authored
+  // file, CallDepthExceeded at CALL_DEPTH_LIMIT here). The fold visits head-first, so the last
+  // applied value is the last word's scalar_end -- the same answer the recursion gave.
+  fold_list(xs: words, empty: seen, cons: fn(acc, w) { w.scalar_end })
 }
 
 fn migration_citation_step(acc: MigrationCitationState, word: MigrationWord, text: String, policy: MigrationContextPolicy, documents: List<String>) -> MigrationCitationState {
@@ -1314,10 +1331,9 @@ fn migration_gap_trim(gap: String) -> String {
 }
 
 fn migration_last_code(codes: List<Int>, seen: Int) -> Int {
-  match codes {
-    Cons { head: h, tail: t } => migration_last_code(codes: t, seen: h)
-    Empty => seen
-  }
+  // Host-bounded fold: the tail-gap list can be as long as the file (a file ending in a non-word
+  // run used to recurse one frame per code). Head-first visit => last applied value wins.
+  fold_list(xs: codes, empty: seen, cons: fn(acc, h) { h })
 }
 
 fn migration_first_code(codes: List<Int>) -> Int {
@@ -1429,11 +1445,25 @@ fn migration_line_index_of(lines: List<MigrationLine>, at: Int) -> Int {
   migration_line_index_go(lines: lines, at: at, position: 0)
 }
 
+type MigrationLineIndexScan {
+  position: Int
+  result: Int
+}
+
 fn migration_line_index_go(lines: List<MigrationLine>, at: Int, position: Int) -> Int {
-  match lines {
-    Cons { head: h, tail: t } => if at >= h.start && at < h.end { position } else { migration_line_index_go(lines: t, at: at, position: position + 1) }
-    Empty => 0 - 1
-  }
+  // Host-bounded fold: the scan used to take one interpreter frame per line, so files with many
+  // lines (or paragraph walks that start this scan often) grew depth with file length. The fold
+  // visits head-first; the guard keeps the first covering line, as the recursion did.
+  let scan = fold_list(xs: lines, empty: MigrationLineIndexScan { position: position, result: 0 - 1 }, cons: fn(acc, h) {
+    if acc.result >= 0 {
+      acc
+    } else if at >= h.start && at < h.end {
+      MigrationLineIndexScan { position: acc.position + 1, result: acc.position }
+    } else {
+      MigrationLineIndexScan { position: acc.position + 1, result: 0 - 1 }
+    }
+  })
+  scan.result
 }
 
 // The paragraph's octet extent: up from the occurrence's line while lines carry text, down the same
@@ -1456,18 +1486,55 @@ fn migration_paragraph_extent(lines: List<MigrationLine>, index: Int) -> Optiona
   }
 }
 
+type MigrationTopWalk {
+  position: Int
+  current: Optional<MigrationLine>
+}
+
 fn migration_paragraph_top(lines: List<MigrationLine>, index: Int, seen: MigrationLine) -> Optional<MigrationLine> {
-  match migration_line_at(lines: lines, index: index) {
+  // Host-bounded fold over the prefix lines[0..=index]: the first non-blank of the run that covers
+  // `index` — the same value the upward walk (one frame per line, and one O(lines) line_at per step)
+  // used to return. A blank at `index` leaves `current` empty, so `seen` answers, as before.
+  let walk = fold_list(xs: lines, empty: MigrationTopWalk { position: 0, current: Absent }, cons: fn(acc, h) {
+    if acc.position > index {
+      acc
+    } else if h.blank {
+      MigrationTopWalk { position: acc.position + 1, current: Absent }
+    } else {
+      let next = match acc.current {
+        Absent => Present { value: h }
+        Present { value: c } => Present { value: c }
+      }
+      MigrationTopWalk { position: acc.position + 1, current: next }
+    }
+  })
+  match walk.current {
     Absent => Present { value: seen }
-    Present { value: line } => if line.blank { Present { value: seen } } else { migration_paragraph_top(lines: lines, index: index - 1, seen: line) }
+    Present { value: c } => Present { value: c }
   }
 }
 
+type MigrationBottomWalk {
+  position: Int
+  stopped: Bool
+  seen: MigrationLine
+}
+
 fn migration_paragraph_bottom(lines: List<MigrationLine>, index: Int, seen: MigrationLine) -> Optional<MigrationLine> {
-  match migration_line_at(lines: lines, index: index) {
-    Absent => Present { value: seen }
-    Present { value: line } => if line.blank { Present { value: seen } } else { migration_paragraph_bottom(lines: lines, index: index + 1, seen: line) }
-  }
+  // Host-bounded fold over the suffix lines[index+1..]: the last non-blank before the first blank
+  // (or the file end) — the same value the downward walk returned, one frame per line.
+  let walk = fold_list(xs: lines, empty: MigrationBottomWalk { position: 0, stopped: false, seen: seen }, cons: fn(acc, h) {
+    if acc.stopped {
+      acc
+    } else if acc.position <= index {
+      MigrationBottomWalk { position: acc.position + 1, stopped: false, seen: acc.seen }
+    } else if h.blank {
+      MigrationBottomWalk { position: acc.position + 1, stopped: true, seen: acc.seen }
+    } else {
+      MigrationBottomWalk { position: acc.position + 1, stopped: false, seen: h }
+    }
+  })
+  Present { value: walk.seen }
 }
 
 fn migration_paragraph_text(lines: List<MigrationLine>, at: Int, content: String, octets: MigrationOctetTable) -> Optional<String> {
@@ -1509,20 +1576,28 @@ fn migration_sentence(lines: List<MigrationLine>, at: Int, content: String, octe
   }
 }
 
+type MigrationSentenceWalk {
+  position: Int
+  pending: Int
+  boundaries: List<Int>
+}
+
 fn migration_sentence_bounds(codes: List<Char>, position: Int, pending: Int, boundaries: List<Int>) -> List<Int> {
-  match codes {
-    Empty => Cons { head: position, tail: boundaries }
-    Cons { head: h, tail: t } =>
-      let code = unicode_char_code_point(c: h)
-      let width = migration_code_width(code: code)
-      if code == 46 || code == 33 || code == 63 {
-        migration_sentence_bounds(codes: t, position: position + width, pending: position + width, boundaries: boundaries)
-      } else if migration_code_is_space(code: code) && pending == position {
-        migration_sentence_bounds(codes: t, position: position + width, pending: 0 - 1, boundaries: Cons { head: position, tail: boundaries })
-      } else {
-        migration_sentence_bounds(codes: t, position: position + width, pending: 0 - 1, boundaries: boundaries)
-      }
-  }
+  // Host-bounded fold: the walk used to take one frame per character, so a paragraph with no break
+  // (a giant comment line, a giant string) grew depth with its own length. Boundaries are still
+  // pushed at the head, so the descending order the callers document is unchanged.
+  let walk = fold_list(xs: codes, empty: MigrationSentenceWalk { position: position, pending: pending, boundaries: boundaries }, cons: fn(acc, h) {
+    let code = unicode_char_code_point(c: h)
+    let width = migration_code_width(code: code)
+    if code == 46 || code == 33 || code == 63 {
+      MigrationSentenceWalk { position: acc.position + width, pending: acc.position + width, boundaries: acc.boundaries }
+    } else if migration_code_is_space(code: code) && acc.pending == acc.position {
+      MigrationSentenceWalk { position: acc.position + width, pending: 0 - 1, boundaries: Cons { head: acc.position, tail: acc.boundaries } }
+    } else {
+      MigrationSentenceWalk { position: acc.position + width, pending: 0 - 1, boundaries: acc.boundaries }
+    }
+  })
+  Cons { head: walk.position, tail: walk.boundaries }
 }
 
 fn migration_sentence_of(bounds: List<Int>, at: Int, paragraph_end: Int) -> Optional<MigrationExtent> {

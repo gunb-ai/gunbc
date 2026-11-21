@@ -1,7 +1,7 @@
 module v2.test.claim.workflow.reference_migration
 
 import std.types { Bool, Int, List, String }
-import std.algebra { Cons, Empty, contains, fold_list, is_empty, length, list_map, string_contains }
+import std.algebra { Cons, Empty, contains, fold_list, is_empty, length, list_map, list_reverse, string_contains }
 import v2.std.text { string_eq }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome }
@@ -72,6 +72,15 @@ import v2.workflow.reference_migration {
   reference_migration_env,
   reference_migration_plan,
   reference_migration_plan_with_ownership,
+  MigrationLine,
+  MigrationWord,
+  migration_last_code,
+  migration_last_word_scalar_end,
+  migration_lexeme_octet_from,
+  migration_line_index_go,
+  migration_paragraph_bottom,
+  migration_paragraph_top,
+  migration_sentence_bounds,
 }
 
 // THE MIGRATION'S OWN CONTROLS. Every fixture here is DAG TEXT, supplied to the plan as content rather
@@ -1140,3 +1149,68 @@ test fn a_section_sign_clause_continues_the_citation_it_follows_holds() -> Bool 
     && plan_reports(plan: attributed, fragment: "RFC 3339 §2.3")
     && plan_edit_count(plan: designed) == 1
 }
+
+// CONTROL (RED for the reader cost defect, PR 3, 2026-11-21). The word reader's helpers used to be
+// self-recursions of one interpreter frame per word / code / line / octet, so planning a large
+// authored file crossed CALL_DEPTH_LIMIT=100000 and died CallDepthExceeded (`closure application`
+// trace, red witness: `migration_last_word_scalar_end` on a 1.1 MB authored file; eval.dag and
+// body_lowering_fold.dag were the live population cases). The fix converts each helper to a
+// host-bounded fold. The inputs here are built by doubling plus host folds, so ONLY the helper
+// under test can exceed the depth: before the fix this control is RED at the interpreter limit,
+// after it, it answers in seconds. Exact sentence/paragraph semantics stay pinned by the
+// context-selection controls above; this control pins depth survival and the answered values.
+type CostWords {
+  count: Int
+  words: List<MigrationWord>
+}
+
+type CostLines {
+  count: Int
+  lines: List<MigrationLine>
+}
+
+type CostInts {
+  count: Int
+  codes: List<Int>
+}
+
+fn cost_double(seed: String, n: Int) -> String {
+  if n <= 0 { seed } else { cost_double(seed: seed + seed, n: n - 1) }
+}
+
+fn cost_words(text: String) -> CostWords {
+  fold_list(xs: unicode_scalar_unfold(s: text), empty: CostWords { count: 0, words: Empty }, cons: fn(acc, _) {
+    CostWords { count: acc.count + 1, words: Cons { head: MigrationWord { start: acc.count, end: acc.count + 1, gap_start: acc.count, soft_before: false, scalar_start: acc.count, scalar_end: acc.count, gap_scalar_start: acc.count }, tail: acc.words } }
+  })
+}
+
+fn cost_lines(text: String) -> CostLines {
+  fold_list(xs: unicode_scalar_unfold(s: text), empty: CostLines { count: 0, lines: Empty }, cons: fn(acc, _) {
+    CostLines { count: acc.count + 1, lines: Cons { head: MigrationLine { start: acc.count * 4, end: acc.count * 4 + 4, blank: false }, tail: acc.lines } }
+  })
+}
+
+fn cost_codes(text: String) -> CostInts {
+  fold_list(xs: unicode_scalar_unfold(s: text), empty: CostInts { count: 0, codes: Empty }, cons: fn(acc, _) {
+    CostInts { count: acc.count + 1, codes: Cons { head: 97, tail: acc.codes } }
+  })
+}
+
+test fn reader_cost_helpers_survive_131072_element_inputs_holds() -> Bool {
+  let text = cost_double(seed: "word ", n: 17)
+  let words = list_reverse(xs: cost_words(text: text).words)
+  let lines = list_reverse(xs: cost_lines(text: text).lines)
+  let codes = list_reverse(xs: cost_codes(text: text).codes)
+  let table = migration_octet_table_of(octets: codes)
+  let hay = cost_double(seed: "x", n: 17)
+  let table_hay = migration_octet_table_of(octets: cost_codes(text: hay + "needle").codes)
+  migration_last_word_scalar_end(words: words, seen: 0 - 7) == 131071
+    && migration_last_code(codes: codes, seen: 0 - 7) == 97
+    && migration_line_index_go(lines: lines, at: 131071 * 4 + 1, position: 0) == 131071
+    && migration_line_index_go(lines: lines, at: 131071 * 4 + 9, position: 0) == 0 - 1
+    && migration_paragraph_top(lines: lines, index: 131071, seen: MigrationLine { start: 0, end: 0, blank: false }) == Present { value: MigrationLine { start: 0, end: 4, blank: false } }
+    && migration_paragraph_bottom(lines: lines, index: 0, seen: MigrationLine { start: 0, end: 4, blank: false }) == Present { value: MigrationLine { start: 131071 * 4, end: 131071 * 4 + 4, blank: false } }
+    && migration_lexeme_octet_from(content: hay + "needle", octets: table_hay, lexeme: "needle", width: 6, index: 0) == 131072
+    && migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty) == migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty)
+}
+
