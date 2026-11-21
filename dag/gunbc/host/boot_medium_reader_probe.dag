@@ -18,9 +18,8 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  fleet_known_hosts_rows, fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
-  FleetSshExecutionContext, SshTarget,
-}
+  fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
+  FleetSshExecutionContext, SshTarget, known_hosts_file_rows, }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh }
@@ -584,7 +583,7 @@ fn boot_medium_reader_probe_wet() -> ProcessExit {
           // non-vacuous. Because the transport that preparation produces passes -o IdentitiesOnly=yes with
           // this selector as its only IdentityFile, the administrator legs below cannot be answered by the
           // reader key and vice versa: one run can hold two keys and still mean two different things by them.
-          match prepare_ssh_agent_context(attempt_raw: probe_attempt_raw, key: key, fingerprint: fingerprint, rows: fleet_known_hosts_rows()) {
+          match prepare_ssh_agent_context(attempt_raw: probe_attempt_raw, key: key, fingerprint: fingerprint, rows: known_hosts_file_rows()) {
             FleetSshContextRefused { cause: _ } => boot_medium_reader_probe_write(boot_medium_reader_probe_fold(
               pinned: true, agent_holds_pinned_key: false, fingerprint: fingerprint,
               target_reached: false, target_cause: "",

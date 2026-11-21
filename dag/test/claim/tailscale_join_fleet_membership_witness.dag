@@ -63,6 +63,8 @@ import extdeps.tailscale.join {
   tailscale_self_tags_include,
   tailscale_ping_verdict,
   PingAnswered,
+  TailscaleUpJoinCommandBuilt,
+  TailscaleUpJoinCommandRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from }
@@ -71,6 +73,10 @@ import gunbc.fleet.fleet_enrollment {
   both_participation_enrollment_participation,
 }
 import gunbc.output_policy { ExpectSuccess }
+import extdeps.exec.command { argv_words }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import std.list { list_member, first_where }
+
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -105,6 +111,7 @@ import gunbc.tailscale_join_converge {
   tailscale_join_plan,
   tailscale_join_run_settled,
   tailscale_ping_pong_is_expected,
+  tailscale_join_up_command,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -769,5 +776,30 @@ test fn w_a_pong_from_a_different_node_still_refuses_the_read_back() -> Bool {
         _ => false
       }
     _ => false
+  }
+}
+
+// THE JOIN CANNOT ENABLE THE HOST-SIDE TAILSCALE-SSH HALF. The host-side decision (RunSSH=false on
+// srv1/srv2 as of 2026-11-20; srv3/srv4 plain OpenSSH) is recorded at
+// #gunbc.design_ruling::tailscale_ssh_off_on_fleet_build_hosts_2026_11_20. What this claim discriminates
+// is the join half: #extdeps.tailscale.join::tailscale_up_join_argv carries no --ssh flag in ANY
+// spelling (bare, --ssh=true), so no join can bring a host up answering ssh on tailscale-ssh instead
+// of sshd-with-forced-command -- if a --ssh word ever enters the argv, THIS claim goes red.
+test fn w_the_fleet_join_argv_never_enables_tailscale_ssh() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv1) {
+    Present { value: name } =>
+      match tailscale_join_up_command(hostname: name) {
+        TailscaleUpJoinCommandBuilt { command: command } =>
+          match first_where(
+            xs: argv_words(command: command),
+            keep: word => string_contains(s: word, pattern: "--ssh")
+          ) {
+            // Any word CARRYING --ssh (bare, --ssh=true, any spelling) would enable the host-side half.
+            Absent => true
+            Present { value: _ } => false
+          }
+        TailscaleUpJoinCommandRefused { cause: _ } => false
+      }
+    Absent => false
   }
 }

@@ -515,7 +515,7 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 // would erase it again, with nothing in any journal to stop it. So an install request belongs to the ONE RUN that
 // stages it, and the standing SitePxeEdgeConverge mode serves NO install file: `run_site_pxe_edge` takes its
 // requests as an input, and the mode's own entry passes the empty list. That makes the standing converge the
-// WITHDRAWAL by construction — the removal path d5d8218a2ca added is the only thing it can do with install files.
+// WITHDRAWAL by construction — the removal path #gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_remove_stale added is the only thing it can do with install files.
 // A run that stages a binding is gunbc.host.network_install (PXE 2c), which builds the request from the unit's
 // install-client NIC and its dated target-disk row (network_install_requests_for) and withdraws it in the same
 // run; its own witness file owns the "srv15's request binds exactly once" claim. srv15's request lived here until
@@ -3397,6 +3397,23 @@ fn site_pxe_edge_run_text(run: SitePxeEdgeRun, overall_succeeded: Bool) -> Strin
 data site_pxe_edge_converge_attempt_raw: String = "site-pxe-edge-converge-ci"
 
 
+// WHAT THE WITHDRAWAL PUSHES AT THE EDGE: nothing. The standing SitePxeEdgeConverge mode serves no install
+// binding, and this run's withdraw step converges with this same empty list, which is the only route to the
+// removal path #gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_remove_stale added. Stating it once, HERE — beside the request type it carries — is what keeps
+// a second caller from "helpfully" passing a standing list and re-creating the file behind the run's back.
+// The wet entry and the standing-witness reach this row only through site_pxe_edge_ci_install_requests, so entry
+// and witness share one source (relayed finding, #16503 side review: the entry used to pass a bare literal
+// while the witness read another module's row — two sources, one green). Nothing else in the tree defines an
+// empty install-request list; gunbc.host.network_install no longer carries a copy, and the import runs only
+// converge -> network_install, never back (gunbc.design_argument::single_authority, acyclicity).
+data site_pxe_edge_no_install_requests: List<SitePxeEdgeInstallRequest> = []
+
+// THE ENTRY ARGUMENT SITE (review 95644 on #16532): the wet entry and the standing-witness both read the
+// install-request list ONLY through here, so "what the entry passes" is one call site, not a convention.
+fn site_pxe_edge_ci_install_requests() -> List<SitePxeEdgeInstallRequest> {
+  site_pxe_edge_no_install_requests
+}
+
 fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
@@ -3419,7 +3436,7 @@ fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
               ObserverClockObserved { instant: instant } => {
                 let decided_at = observer_instant_millis(instant: instant)
                 let run = run_site_pxe_edge(
-                  target: target, context: context, mode: mode, install_requests: [], decided_at: decided_at
+                  target: target, context: context, mode: mode, install_requests: site_pxe_edge_ci_install_requests(), decided_at: decided_at
                 )
                 let client_requests = site_pxe_edge_client_requests_for_mode(mode: mode, target: target, context: context, decided_at: decided_at)
                 let overall_succeeded = site_pxe_edge_overall_succeeded(run: run, requests: client_requests)

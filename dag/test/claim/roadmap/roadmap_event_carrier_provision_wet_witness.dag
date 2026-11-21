@@ -1,0 +1,122 @@
+module test.claim.roadmap.roadmap_event_carrier_provision_wet_witness
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  A WET CONSUMER OF THE FIXTURE'S PROVISION PATH. It exists to make two claims by EXECUTION, not by
+//  reading the source: (1) `roadmap_event_carrier_provision` stands the carrier up — all seven steps, the
+//  in-repo `-C` steps and the dressed bare-origin create — through `gunbc.git_workdir_free_route` and
+//  reaches `RoadmapEventCarrierReady`; and (2) the bare-origin create does NOT leak into the ambient
+//  working directory. The second is the regression the first version of the adoption shipped with: dressing
+//  the create as `--git-dir <dir> init --bare` passes the route's wall but leaves the spawned git's cwd at
+//  the ambient directory, so a cwd-relative `GIT_OBJECT_DIRECTORY` wrote its object directory (with info/
+//  and pack/) OUTSIDE the scratch — into the very tree the route exists to leave untouched, and outside the
+//  reach of the sweep (which reclaims only the scratch). The create is therefore dressed `-C <instance_root>`
+//  with an absolute destination, which both satisfies the wall and moves the spawned cwd inside the scratch.
+//
+//  The ambient-leak control spawns the fixture's OWN emitted argv (read back from
+//  `roadmap_event_carrier_provision_steps`, so a regression in the step is caught, not just in the shape)
+//  through `env --chdir <owned ambient dir> GIT_OBJECT_DIRECTORY=…`, pinning the child's cwd to a minted
+//  owned directory that is neither the interpreter's real cwd nor the scenario scratch — so a cwd-relative
+//  object directory, if the dressing ever failed to move the cwd, would land in that reclaimable directory
+//  rather than the real cwd. Both minted directories are swept on pass and fail. The control asserts the
+//  residue landed INSIDE the origin AND that the ambient directory stayed clean. The route inherits the
+//  interpreter process env and the DSL cannot set a child's environment (only `shell.Env.Get`), hence `env`.
+//  It is run wet: `claim_batch --wet --source-root dag --source-root src/v2 --entry
+//  dag/test/claim/roadmap/roadmap_event_carrier_provision_wet_witness.dag --functions <name>`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.shell
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance }
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
+import test.claim.roadmap.roadmap_event_carrier_fixture {
+  RoadmapCarrierScopedMintRefused,
+  RoadmapCarrierScopedRan,
+  RoadmapEventCarrierReady,
+  RoadmapEventCarrierRefused,
+  roadmap_carrier_path_is_absent,
+  roadmap_carrier_path_is_present,
+  roadmap_event_carrier_provision,
+  roadmap_event_carrier_provision_steps,
+  roadmap_event_carrier_run_scoped,
+}
+
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+// The provision sequence, executed end-to-end through the sanctioned workdir-free route, reaches Ready.
+fn provision_reaches_ready() -> Bool {
+  match roadmap_event_carrier_run_scoped(
+    template: "/tmp/gunbc_provision_wet.XXXXXX" as NonEmptyStr,
+    body: fn(scratch) {
+      let instance = fabric_fixture_instance(root: scratch.path)
+      match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+        RoadmapEventCarrierReady { instance: _, layout: _, scratch: _ } => true
+        RoadmapEventCarrierRefused { step: _, detail: _ } => false
+      }
+    }
+  ) {
+    RoadmapCarrierScopedMintRefused { detail: _ } => false
+    RoadmapCarrierScopedRan { judged: judged, sweep: _, root: _, torn_down: torn_down } => judged && torn_down
+  }
+}
+
+// The bare-origin create keeps a cwd-relative object directory INSIDE the scratch. It spawns the
+// fixture's OWN bare-origin argv (read back from the emitted steps, so a regression in the step is caught,
+// not just in the shape) through `env`, with the CHILD cwd pinned to a minted OWNED directory that is
+// neither the interpreter's real cwd nor the scenario scratch. So if the dressing ever fails to move the
+// cwd — the `--git-dir <origin> init --bare` shape this adoption first used, or a bare `init --bare` — the
+// probe object directory lands in that owned ambient directory (reclaimed on pass and fail) and NOT in the
+// real cwd, where a later run would trip over the leftover. The control asserts BOTH sides of the guarantee:
+// the residue landed INSIDE the bare origin (`<origin>/gunbc_probe_objdir` and its `info/` + `pack/`), and
+// the ambient directory stayed clean.
+fn bare_origin_keeps_ambient_clean() -> Bool {
+  // The OUTER scoped run mints the simulated ambient cwd; the INNER one mints the scenario scratch the
+  // carrier lives in. Each scoped run sweeps its own minted directory whatever its body returns, so BOTH
+  // are reclaimed on pass AND on fail — nothing is left in /tmp for the next run to read.
+  match roadmap_event_carrier_run_scoped(
+    template: "/tmp/gunbc_ambient_wet.XXXXXX" as NonEmptyStr,
+    body: fn(ambient) {
+      match roadmap_event_carrier_run_scoped(
+        template: "/tmp/gunbc_objdir_wet.XXXXXX" as NonEmptyStr,
+        body: fn(scratch) {
+          let instance = fabric_fixture_instance(root: scratch.path)
+          let layout: RoadmapEventCarrierLayout = roadmap_event_carrier_layout_for_instance(instance: instance)
+          let argv = fold(
+            roadmap_event_carrier_provision_steps(instance: instance, layout: layout),
+            init: [],
+            f: (acc, step) => if step.name == "git-init-bare-origin" { step.arguments } else { acc }
+          )
+          // The child's cwd is the owned ambient dir, so a relative GIT_OBJECT_DIRECTORY resolves against it
+          // unless the dressing moves the cwd (which `-C <instance_root> ... <absolute origin>` does).
+          let spawn = shell.Exec.RunArgv(
+            program: "env" as NonEmptyStr,
+            arguments: concat(
+              ["--chdir", ambient.path as String, "GIT_OBJECT_DIRECTORY=gunbc_probe_objdir", "git"],
+              argv
+            )
+          )
+          let origin_probe = concat(instance.local_origin_root as String, "/gunbc_probe_objdir")
+          spawn.exit_code == 0
+            && roadmap_carrier_path_is_present(path: instance.local_origin_root as String)
+            && roadmap_carrier_path_is_present(path: origin_probe)
+            && roadmap_carrier_path_is_present(path: concat(origin_probe, "/info"))
+            && roadmap_carrier_path_is_present(path: concat(origin_probe, "/pack"))
+            && roadmap_carrier_path_is_absent(path: concat(ambient.path as String, "/gunbc_probe_objdir"))
+        }
+      ) {
+        RoadmapCarrierScopedMintRefused { detail: _ } => false
+        RoadmapCarrierScopedRan { judged: judged, sweep: _, root: _, torn_down: torn_down } => judged && torn_down
+      }
+    }
+  ) {
+    RoadmapCarrierScopedMintRefused { detail: _ } => false
+    RoadmapCarrierScopedRan { judged: judged, sweep: _, root: _, torn_down: torn_down } => judged && torn_down
+  }
+}
+
+test fn roadmap_event_carrier_provision_reaches_ready_through_the_route() -> Bool {
+  claim("provision reaches Ready through the sanctioned workdir-free route", provision_reaches_ready())
+}
+
+test fn roadmap_event_carrier_bare_origin_keeps_relative_object_directory_out_of_the_ambient_cwd() -> Bool {
+  claim("the dressed bare-origin create leaves no relative object directory in the ambient cwd", bare_origin_keeps_ambient_clean())
+}

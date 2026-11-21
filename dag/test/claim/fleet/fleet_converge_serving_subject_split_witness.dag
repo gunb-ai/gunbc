@@ -46,6 +46,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_remote_build_serving_observe_step,
   fleet_converge_runner_host_file_observe_step,
   fleet_converge_subject_host_input_name,
+  fleet_converge_job_work_steps,
   fleet_converge_arm_domain_clause,
   hostname_converge_target_input_name,
   step_condition_text,
@@ -137,12 +138,14 @@ test fn the_gate_step_binds_the_rule_and_the_script_tests_the_rule_not_the_mode(
 // keys on (fleet-converge.yml's `fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host))`)
 // and what the job's own facts describe; `subject_host` is the machine served. Control: the executor half
 // missing, or the two bindings collapsing to one, makes the label and the acted-on machine the same variable
-// again -- which is the conflation this whole routing removes.
+// again -- which is the conflation this whole routing removes. The third key is the mode's own rule, which the
+// entry reads to decide whether the served machine may be the executor's own: srv4 run 44822470270 is what
+// happens when the role split travels and the rule does not.
 test fn the_serving_steps_carry_the_subject_and_keep_the_executor_separate() -> Bool {
   let observe = fleet_converge_remote_build_serving_observe_step()
   let converge = fleet_converge_remote_build_serving_converge_step()
   all([observe, converge], s =>
-    env_keys(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name]
+    env_keys(step: s) == [fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name, fleet_converge_subject_rule_env_name]
       && env_text(step: s, key: fleet_converge_subject_host_env_name) == concat("${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")
       && env_text(step: s, key: fleet_converge_expected_host_env_name) == "${{ github.event.inputs.host }}"
   )
@@ -277,16 +280,26 @@ test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
 // (10) A SERVING SUBJECT MUST RESOLVE TO AN ADDRESS THE ANCHOR NAMES. The legs dial the anchored address of
 // the subject (gunbc.fleet.fleet_known_hosts_anchor::anchored_ssh_target), so a subject the anchor does not
 // know refuses there instead of connecting somewhere guessed. Red control: a name no anchor row carries.
-// Positive: srv14 IS anchored today, which is why butch's admission is not blocked on
-// gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for resolving registry hosts to their tailnet names
-// (#16762, tidy-pike-449, still open) or on butch's stale .205 anchor being retired (#16655). Reach by
-// tailnet name is that pair's fact to land; what this claim holds is that no leg may dial an unanchored name.
+// Positive: a host the registry DOES carry (srv1, LAN and tailnet rows) resolves.
+// srv14 DOES NOT resolve, and that is the model's standing since 2026-11-17: its key left the anchor
+// registry for the first-contact hop (gunbc.fleet.fleet_host_key_enrollment.srv14_first_contact_key;
+// operator ruling msg_0ac59f6c -- hosts are reached by their tailnet name), and gunbc.fleet.fleet_host_registry
+// #16655 left it there. So NO anchored leg may dial butch until butch joins the tailnet and its tailnet
+// anchor row lands -- which is exactly why the srv14 serving-engine retirement (the frontier's trigger one,
+// gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier) is chained behind
+// the tailscale join, and why hostname_converge and tailscale_join_converge alone may reach it through
+// the hop. Before #16655 this claim asserted the opposite, off butch's stale .205 anchor row, and went
+// red when that row left the registry: the honest reading is that a host mutation cannot ssh butch yet.
 test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
   match anchored_ssh_target(host: "srv-not-in-the-registry" as HostIdentity, principal: executor_bootstrap_principal.login) {
     SshTargetRefused { endpoint: _, refusal: why } => string_contains(s: ssh_target_refusal_text(endpoint: "srv-not-in-the-registry", refusal: why), pattern: "anchor row")
     _ => false
   }
     && match anchored_ssh_target(host: "srv14" as HostIdentity, principal: executor_bootstrap_principal.login) {
+      SshTargetRefused { endpoint: _, refusal: why } => string_contains(s: ssh_target_refusal_text(endpoint: "srv14", refusal: why), pattern: "anchor row")
+      _ => false
+    }
+    && match anchored_ssh_target(host: "srv1" as HostIdentity, principal: executor_bootstrap_principal.login) {
       SshTargetResolved { target: t } => ssh_target_wire(target: t) as String != ""
       _ => false
     }
@@ -308,6 +321,64 @@ test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
     && all(drain_half, w => w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
     && all(install_half, w => w == "remote_build_serving_observe" || w == "remote_build_serving_converge")
     && !any(roster, w => w == "runner_host_file_observe")
+}
+
+// (13) EVERY STEP WHOSE ENTRY READS THE RULE CARRIES THE RULE, spelled exactly as its facts row declares
+// it. srv4 run 44822470270 (mode=remote_build_serving_converge, host=srv4) is the receipt for the hole this
+// pins: the rule reached the GATE step and never the mode step, so the entry read an empty FLEET_CONVERGE_SUBJECT_RULE,
+// mapped empty to SubjectRuleNotApplicable, and refused with InstallModeDeclaresNoSubject -- a dispatch whose
+// facts row declares may_be_executors_own was told it named no machine. This is an IDENTITY JOIN, not a grep:
+// the left side is the facts table itself (every roster mode on the install half), each mode is looked up in
+// the emitted step list BY ITS OWN WIRE, and the value compared is that same row's rule rendering. A mode
+// whose step is missing from the list fails the join; a step that carries a different spelling fails the
+// equality; a rule renamed in the table moves both sides together, which is the point.
+// The drain half is deliberately NOT asserted here: its entry asks the rule-free precheck with explicit
+// arguments (gunbc.runner.runner_host_withdraw::withdraw_host_over -> fleet_converge_split_precheck), so a
+// rule env on those steps would be an env no consumer reads. Their rule is decided once, in the gate.
+test fn every_mode_step_whose_entry_reads_the_rule_carries_the_rule_its_facts_row_declares() -> Bool {
+  let install_modes = filter(
+    fleet_converge_modes_naming_a_subject(),
+    m => match fleet_converge_mode_facts(mode: m).subject_rule {
+      SubjectMayBeTheExecutorsOwnMachine => true
+      _ => false
+    }
+  )
+  let steps = fleet_converge_job_work_steps()
+  length(install_modes) > 0
+    && all(install_modes, m =>
+      match first_where(xs: steps, keep: s => step_id_text(step: s) == fleet_converge_workflow_mode_wire(mode: m)) {
+        Present { value: s } =>
+          env_text(step: s, key: fleet_converge_subject_rule_env_name)
+            == fleet_converge_split_rule_wire(rule: fleet_converge_mode_facts(mode: m).subject_rule)
+        Absent => false
+      }
+    )
+    // The pair goes where a consumer reads it, and nowhere else: the observe of the same family names no
+    // subject at all (claim 11), so an env carrying a rule there would be a declaration with no reader.
+    && env_text(step: fleet_converge_runner_host_file_observe_step(), key: fleet_converge_subject_rule_env_name) == ""
+    // The entry refuses the empty rendering rather than defaulting, which is what made the hole loud
+    // instead of silent -- the same refusal the run above printed.
+    && match fleet_converge_install_subject_decision(rule: fleet_converge_split_rule_of_wire(wire: ""), executor_runner_name: "srv1-03-1764067000-4213", named_subject: "srv14", own_host: "srv1") {
+      InstallSubjectRefused { reason: why } => match why { InstallModeDeclaresNoSubject => true  _ => false }
+      _ => false
+    }
+}
+
+// (14) THE GATE RUNS BEFORE EVERY STEP THAT NAMES A SUBJECT, in the emitted order. A precondition that runs
+// after the acts it guards can only contradict them after the fact: in the run above the entry refused and
+// the gate never spoke. The list is the emitted job's own step order, so this claim is about what the
+// runner executes, not about where the source happens to mention a function.
+test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Bool {
+  let names = map(fleet_converge_job_work_steps(), s => step_id_text(step: s))
+  let gate = step_id_text(step: fleet_converge_executor_subject_split_gate_step())
+  let gated = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
+  gate != ""
+    && length(gated) == 5
+    && length(filter(names, n => n == gate)) == 1
+    // appears_before alone would let a gated mode off free: if its step is renamed away, the gate is trivially
+    // "first". So every gated wire must have a step in the emitted list before the order means anything.
+    && all(gated, w => any(names, n => n == w))
+    && all(gated, w => appears_before(names: names, before: gate, after: w))
 }
 
 // ---------------------------------------------------------------- helpers
@@ -388,5 +459,28 @@ fn value_text(v: YamlValue) -> String {
   match v {
     YamlString { value: s } => s as String
     _ => ""
+  }
+}
+
+fn step_id_text(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i {
+      Present { value: s } => s as String
+      Absent => ""
+    }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i {
+      Present { value: s } => s as String
+      Absent => ""
+    }
+  }
+}
+
+// Which of two named steps the runner reaches first: the first of the pair to appear in the emitted order
+// decides. Note what this helper does NOT do -- if `after` is absent from the list it reports the pair as
+// ordered, so any claim using it must assert the second name exists. The claim above does.
+fn appears_before(names: List<String>, before: String, after: String) -> Bool {
+  match first_where(xs: names, keep: n => n == before || n == after) {
+    Present { value: n } => n == before
+    Absent => false
   }
 }

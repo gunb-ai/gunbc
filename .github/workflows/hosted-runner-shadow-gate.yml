@@ -25,15 +25,14 @@ jobs:
       - name: Check secrets
         id: check
         run: |
-          if [ -z "${{ secrets.TS_OAUTH_CLIENT_ID }}" ] || [ -z "${{ secrets.TS_OAUTH_SECRET }}" ] || [ -z "${{ secrets.GUNBC_REMOTE_BUILD_CI_SSH_KEY }}" ]; then
-            echo 'configured=false' >> $GITHUB_OUTPUT
-            if [ "$GITHUB_EVENT_NAME" = "merge_group" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-              echo "::error::not configured: required secret absent on $GITHUB_EVENT_NAME; the shadow gate refuses to silently pass"
-              exit 1
-            fi
-            echo '::notice::not configured: required secret absent; shadow gate skipped (pull_request arm: fork PRs get no secrets by design, and the pre-cutover case)'
-          else
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
             echo 'configured=true' >> $GITHUB_OUTPUT
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo '::error::not a dispatch at refs/heads/main: the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; a dispatched verdict request that cannot federate fails rather than passing green'
+            exit 1
+          else
+            echo 'configured=false' >> $GITHUB_OUTPUT
+            echo '::notice::remote legs run only on workflow_dispatch at refs/heads/main: the pinned WIF provider refuses pull_request/merge_group claims, so the remote build is not shadowed on this event; see gunbc.integration_concern::shadow_gate_pr_time_remote_build_capability_gap'
           fi
         shell: bash
   remote-build-shadow:
@@ -42,6 +41,9 @@ jobs:
     needs: [shadow-gate-config]
     timeout-minutes: 30
     if: needs.shadow-gate-config.outputs.configured == 'true'
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -52,23 +54,57 @@ jobs:
         run: |
           cargo build --release --bin gunbc
         shell: bash
+      - name: "Federate to the hosted-CI service account (pinned: this workflow at refs/heads/main, dispatch only)"
+        id: wif_auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-hosted-shadow-gate/providers/github-hosted-shadow-gate-oidc
+          service_account: hosted-ci-secrets@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: Fetch CI credentials over WIF (SM pinned versions -> 0600 file + masked env, fingerprint-pinned)
+        id: fetch-credentials
+        run: |
+          set -euo pipefail
+          umask 077
+          HDR_FILE="$RUNNER_TEMP/shadow-gate-auth-header"
+          VAL_FILE="$RUNNER_TEMP/shadow-gate-oauth-val"
+          KEY_FILE="$RUNNER_TEMP/remote-build-ci-ssh-key"
+          cleanup() { rm -f "$HDR_FILE" "$VAL_FILE"; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          rm -f "$KEY_FILE"
+          curl -fsSL -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/remote-build-ci-ssh-key/versions/2:access" | python3 -c 'import sys,json,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode("utf-8"))' > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          ACTUAL_FP="$(ssh-keygen -lf "$KEY_FILE" | awk '{print $2}')"
+          EXPECTED_FP="SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM"
+          if [ "$ACTUAL_FP" != "$EXPECTED_FP" ]; then
+            rm -f "$KEY_FILE"
+            echo "::error::fetched remote-build CI SSH key fingerprint $ACTUAL_FP != the modeled $EXPECTED_FP; refusing to connect with it" >&2
+            exit 1
+          fi
+          curl -fsSL -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/tailscale-oauth-client-secret/versions/1:access" | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)["payload"]["data"]).decode("utf-8"), end="")' > "$VAL_FILE"
+          rm -f "$HDR_FILE"
+          VAL="$(cat "$VAL_FILE")"
+          echo "::add-mask::$VAL"
+          printf '%s=%s\n' "TS_OAUTH_SECRET" "$VAL" >> "$GITHUB_ENV"
+          rm -f "$VAL_FILE"
+        shell: bash
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
       - name: Join tailnet (ephemeral, tag:ci-dispatch)
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          oauth-client-id: kNQLY8UpZK11CNTRL
+          oauth-secret: ${{ env.TS_OAUTH_SECRET }}
           tags: tag:ci-dispatch
           args: --accept-dns=false --ephemeral=true
-      - name: Write the CI SSH key
-        id: ssh-setup
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\n' "${{ secrets.GUNBC_REMOTE_BUILD_CI_SSH_KEY }}" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519 && eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519
-        shell: bash
       - name: "Plumbing proof: remote_test_cli over the plumbing-proof pattern"
         id: remote-build-plumbing-proof
         run: |
-          set -euo pipefail && echo '--- remote gate step ---' && ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv1.tailecbe08.ts.net true
-          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json && cat /tmp/shadow-gate-receipt-plumbing-proof.json
+          set -euo pipefail && echo '--- remote gate step ---' && ssh -i "$RUNNER_TEMP/remote-build-ci-ssh-key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 gunbc-build@srv3.tailecbe08.ts.net true
+          set -euo pipefail && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key && cat /tmp/shadow-gate-receipt-plumbing-proof.json
         shell: bash
         env:
           GUNBC_GATE_PATTERN: ${{ inputs.pattern }}
@@ -77,7 +113,7 @@ jobs:
         run: |
           set -uo pipefail
           rc=0
-          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_self_host.json" || rc=$?
+          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_self_host.json" --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key || rc=$?
           cat "$RUNNER_TEMP/gate-emit_build_self_host.json" || true
           case "$rc" in
             0) exit 0;;
@@ -93,7 +129,7 @@ jobs:
         run: |
           set -uo pipefail
           rc=0
-          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || rc=$?
+          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key || rc=$?
           cat "$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || true
           case "$rc" in
             0) exit 0;;

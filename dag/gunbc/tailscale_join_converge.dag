@@ -64,6 +64,7 @@ module gunbc.tailscale_join_converge
 // render the router's upstream configuration, which is held for its own read-only diff.
 
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.fleet.fleet_converge_mode_wires { tailscale_join_converge_wire }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.package_managers.apt { package_tailscale }
 import gunbc.fleet.apt_third_party_repo_converge {
@@ -138,7 +139,8 @@ import gunbc.file_access { FileTreeScope }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
+  FleetSshExecutionContext, FirstContactAdmission,
+  first_contact_admission_for_tailscale_join_mode,
   SshTarget,
   SshTargetResolution,
   SshTargetRefused,
@@ -818,6 +820,12 @@ type TailscaleJoinOutcome
       observed_tags: List<String>,
     }
 
+// The wire name of THIS mode, in one place. fleet_converge_workflow's mode facts reference it. The
+// first-contact hop admits this mode through its TOKEN (FirstContactAdmission.TailscaleJoinMode, held
+// at tailscale_join_host's custody call below) -- join is one of the two modes allowed to dial a host
+// that has no tailnet anchor yet.
+data tailscale_join_converge_mode: NonEmptyStr = tailscale_join_converge_wire
+
 fn tailscale_join_host(
   host: HostIdentity,
   context: FleetSshExecutionContext,
@@ -831,7 +839,7 @@ fn tailscale_join_host(
     SshTargetRefused { endpoint: endpoint, refusal: _ } =>
       JoinRefused { host: host, cause: concat("srv1 is not an ssh target this converge can use: ", endpoint) }
     SshTargetResolved { target: router } =>
-      match custody_host(host: host) {
+      match custody_host(host: host, admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
         // The custody subject is the same admission every other credential placement on this host goes
         // through: a host with no runner spec is not a host a converge may write a credential onto.
         CustodyHostSubjectRefused { cause: cause } => JoinRefused { host: host, cause: cause }

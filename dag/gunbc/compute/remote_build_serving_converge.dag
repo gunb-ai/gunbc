@@ -1657,7 +1657,17 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
   let _clone = converge_as_user(target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
   let fetch = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
   let detach = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
-  converge_checkout_step(fetch: fetch, detach: detach)
+  match converge_checkout_step(fetch: fetch, detach: detach) {
+    // The detach's zero exit is not the proof — a detached HEAD can land somewhere other than the pin.
+    // Read HEAD back AS the serving account and require it to equal the pin, the same read-back-equality
+    // the binary install applies to its sha256; a HEAD that did not reach the pin is a StepFailed write.
+    StepDone => converge_readback_step(
+      what: "checkout HEAD",
+      read: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: dir, owner: usr),
+      want: rev,
+    )
+    StepFailed { cause: c } => StepFailed { cause: c }
+  }
 }
 
 // The execute path, and the only consumer of a plan's writes. Its parameter is the PLAN arm's

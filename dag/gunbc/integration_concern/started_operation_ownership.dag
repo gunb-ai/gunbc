@@ -1,0 +1,31 @@
+module gunbc.integration_concern.started_operation_ownership
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, duct_print_plate, duct_print_source_revision }
+
+data started_operation_ownership: IntegrationConcern = IntegrationConcern {
+  identity: "started_operation_ownership",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    requirement: "a started physical operation has an owner through terminal observation and handoff that survives the initiating session and the temporary access it used",
+    standing: RequirementUnestablished { decided_by: "reading whether the in-band converge_print route already carries a started print to terminal observation without its initiating session, and whether physical-machine boot has the same gap" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    tail: [decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate")],
+  },
+  question: "Who owns a started physical operation until it is observed to finish and handed off, and does that hold for operations started outside the fleet route?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate") }],
+      },
+      account: "On operator direction the duct was prepared through prepare_request_plate and started on printer-01 outside the fleet route, so no fleet print record exists. The starting session read the printer's access code with an operator-supplied short-lived token; once it expired the session could not observe the job and handed observation back to the operator.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
