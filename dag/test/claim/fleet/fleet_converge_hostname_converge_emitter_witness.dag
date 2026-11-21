@@ -490,6 +490,31 @@ test fn the_emitted_job_needs_the_release_pack_producer() -> Bool {
   }
 }
 
+// IDENTITY JOIN (review 97086). GitHub's `needs` context exposes ONLY a job's DIRECT dependencies, so a job
+// whose runs-on interpolates `needs.<producer>.outputs.*` MUST list <producer> as a direct need -- otherwise
+// the interpolation is empty, runs-on resolves to an unlabelled runner, and the job queues forever: a SILENT
+// hang, exactly what gunbc.design_argument::fail_closed forbids. This is the claim that would have caught the
+// seven host-pinned jobs (DashboardDeploy, DesiredInstanceDeploy, MicrovmControllerInstall,
+// ApprovalBrokerDarkInstall, ApprovalNtfyRetire, RlmLaunchDeploymentReceipt, NamecheapObserve) reading
+// `needs.plan-revision.outputs.arch` while listing only `build`. It derives the truth INDEPENDENTLY of the
+// fleet_converge_job_needs fold and its roster: it reads the EMITTED runs-on strings against the EMITTED
+// needs, so a job that reads a producer's output without needing it reddens no matter how the fold is written.
+// Producers are enumerated as the jobs that actually declare outputs, so the rule is general over every
+// producer, not hard-wired to plan-revision.
+test fn every_runs_on_needs_output_reference_lists_its_producer_as_a_direct_need() -> Bool {
+  let jobs = emitted_jobs()
+  let producers = filter(jobs, j => match j.outputs {
+    Present { value: os } => any(os, kv => true)
+    Absent => false
+  })
+  all(jobs, job =>
+    all(producers, p =>
+      !(string_contains(s: runs_on_text(job: job), pattern: join(["needs.", p.id, ".outputs"], "")))
+        || any(job.needs, n => n == p.id)
+    )
+  )
+}
+
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 // THE STEP ENV IS PART OF THE MODE'S CONTRACT (review 93449).

@@ -1336,10 +1336,14 @@ data fleet_converge_host_runner_expression: String = join(["${{ ", fleet_converg
 // THE DEPLOY SLOT'S SELECTOR, for the one host that has such a slot. Selection is set membership, so
 // srv1's selector adds the deploy label to the host's and every other host keeps its own selector
 // unchanged; the restricted group (gunbc.ci.deploy_slot_tenancy), not this expression, is the wall
-// that refuses a pull request workflow the slot.
+// that refuses a pull request workflow the slot. srv1's arch is the PUBLISHED arch (needs.plan-revision
+// .outputs.arch), read the same way the host selector reads it -- never a hard-coded "arm64". srv1 is
+// arm64 today because its board says so, not because this string says so; a host whose board changed
+// would change the runner here too (review 97086; gunbc.design_argument::fail_closed -- an empty arch
+// here must fail at the identity-join claim, not silently queue an unlabelled runner).
 data fleet_converge_deploy_slot_runner_expression: String = join([
-  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON('[\"self-hosted\",\"linux\",\"arm64\",\"",
-  runner_host_label(host: operator_host_srv1) as String, "\",\"", deploy_slot_runner_group_name as String, "\"]') || ",
+  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\",\"{2}\"]', needs.plan-revision.outputs.arch, \"",
+  runner_host_label(host: operator_host_srv1) as String, "\",\"", deploy_slot_runner_group_name as String, "\")) || ",
   fleet_converge_host_runner_expression_body, " }}",
 ], "")
 
@@ -6909,6 +6913,30 @@ data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
   fleet_converge_plan_revision_job_id as String,
 ]
 
+// THE PLAN-REVISION-OUTPUT-READING JOBS: every job whose runner `runs-on` interpolates a
+// `needs.plan-revision.outputs.*` value -- the host-selector jobs (fleet_converge_host_pinned_runner_spec
+// reads `.arch`; MicrovmControllerInstall via fleet_converge_administrator_edge_runner_spec reads `.arch`
+// too) and the `build` job (reads `.build_runner`). Because GitHub's `needs` context exposes ONLY DIRECT
+// dependencies, each of these MUST list plan-revision directly or its `runs-on` value is empty and the job
+// queues forever on an unlabelled/undefined runner -- a silent hang, exactly what
+// gunbc.design_argument::fail_closed forbids. This roster drives that dependency DERIVED in
+// fleet_converge_job_needs (one rule, not seven hand-edited edge rows); the identity-join claim in
+// test.claim.fleet.machine_board_witness is the independent guard: it derives the truth from the EMITTED
+// runs-on strings, so a job that reads a needs output its edge was not given reddens the claim even if
+// this roster is wrong. `build` and `shared` already carry plan-revision in their edge; listed for
+// uniformity, distinct_by_key removes the duplicate.
+data fleet_converge_plan_revision_runner_consumer_job_ids: List<String> = [
+  fleet_converge_shared_job_id as String,
+  fleet_converge_release_bins_job_id as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(DashboardDeploy)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(DesiredInstanceDeploy)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(MicrovmControllerInstall)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalBrokerDarkInstall)) as String,
+  fleet_converge_mode_job_id(mode: Srv1RootMutation(ApprovalNtfyRetire)) as String,
+  fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt) as String,
+  fleet_converge_mode_job_id(mode: NamecheapObserve) as String,
+]
+
 // EVERY JOB THAT TOUCHES A HOST HAS A DECLARED SOURCE FOR ITS BINARIES: it waits for `build`, the
 // producer of the release pack, or it is rostered in fleet_converge_in_job_compiler_pair_jobs and
 // builds the compiler pair itself. `build`, the rostered jobs, the grant wait and the reader key mint --
@@ -6960,7 +6988,19 @@ fn fleet_converge_job_edge_lookup(id: NonEmptyStr) -> FleetConvergeJobEdgeLookup
 
 fn fleet_converge_job_needs(id: NonEmptyStr) -> List<String> {
   match fleet_converge_job_edge_lookup(id: id) {
-    FleetConvergeJobEdgeFound { edge: e } => e.needs
+    FleetConvergeJobEdgeFound { edge: e } =>
+      // A job whose runner reads a plan-revision output gets plan-revision as a DIRECT need, derived here
+      // once (GitHub's needs context only exposes direct dependencies, so an indirect one leaves runs-on
+      // reading an empty value and the job hangs on an unlabelled runner). distinct_by_key collapses the
+      // duplicate where an edge already declared it (build, shared).
+      distinct_by_key(
+        xs: if any(fleet_converge_plan_revision_runner_consumer_job_ids, j => j == (id as String)) {
+          concat(e.needs, [fleet_converge_plan_revision_job_id as String])
+        } else {
+          e.needs
+        },
+        key: n => n,
+      )
     FleetConvergeJobEdgeAbsent { id: missing } =>
       [join(["REFUSED gunbc.fleet.fleet_converge_workflow: ", missing as String, " is not a row of fleet_converge_job_edges, so its dependency edges are unknown and no needs list may be invented for it"], "")]
   }
