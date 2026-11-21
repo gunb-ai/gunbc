@@ -1663,7 +1663,7 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
     // the binary install applies to its sha256; a HEAD that did not reach the pin is a StepFailed write.
     StepDone => converge_readback_step(
       what: "checkout HEAD",
-      read: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: dir, owner: usr).attempt,
+      read: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: dir, owner: usr),
       want: rev,
     )
     StepFailed { cause: c } => StepFailed { cause: c }
