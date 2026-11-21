@@ -140,50 +140,25 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // is data. There is NO transport parameter to misread: the name says local, and the ssh leg would
 // forward the payload to a remote shell session -- admitting that is its own change with its own
 // analysis, and until it exists a caller wanting that gets a compile error, not a runtime refusal.
-// DECLARED-UNCHECKED RESIDUAL for git (gunbc.design_argument::guarantee_ladder / fail_closed): this
-// entry reaches shell.Exec.RunArgvStdin WITHOUT the git route wall gate, so a recognized bare mutating
-// git argv forwarded here would not be refused. No git caller routes through it today; the trigger to
-// gate it is the first one that does -- until then this bypass is counted here, not concealed.
+// THE GIT ROUTE WALL GATE (gunbc.design_argument::fail_closed). ProcessExit is this operation's own
+// outcome, so a refusal is the module's typed ProcessExit refusal -- exit_failure with a reason (a
+// ProcessExit carrying WHY nothing ran), NOT an observed child exit code. The gate runs before
+// command_over_transport so it classifies the INNER ArgvCommand, not the transport-wrapped one.
 fn run_shell_command_stdin_local(command: ArgvCommand, stdin_payload: String) -> ProcessExit
 {
-  match command_over_transport(command: command, transport: LocalExec) {
-    CommandOverTransportRefused { cause: c } =>
-      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
-    CommandOverTransportBuilt { command: over } => {
-      let run = shell.Exec.RunArgvStdin(
-        program: over.program.invocation,
-        arguments: process_argv_expansion(
-          surface: cli_surface_of_literal_words(words: over.arguments)
-        ),
-        stdin_payload: stdin_payload,
-      )
-      if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
-        ExitSuccess
-      } else {
-        exit_failure(reason: concat("command failed: ", run.stderr))
-      }
-    }
-  }
-}
-
-// DECLARED-UNCHECKED RESIDUAL for git (gunbc.design_argument::guarantee_ladder / fail_closed): this
-// entry returns ProcessExit and reaches shell.Exec.RunArgv WITHOUT the git route wall gate, so a
-// recognized bare mutating git argv forwarded here would not be refused (a refusal cannot ride the
-// ProcessExit return without fabricating an exit code). A grep for git callers of THIS entry is empty
-// today; the trigger to gate it (which needs a typed not-spawned result, i.e. the observe_outcome
-// signature) is the first git caller that appears -- until then this bypass is counted here, not concealed.
-fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
-{
-  match command_over_transport(command: command, transport: transport) {
-    CommandOverTransportRefused { cause: c } =>
-      exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
-    CommandOverTransportBuilt { command: over } =>
-      {
-        let run = shell.Exec.RunArgv(
+  if !git_route_wall_admits(command: command) {
+    git_route_wall_refusal_exit(command: command)
+  } else {
+    match command_over_transport(command: command, transport: LocalExec) {
+      CommandOverTransportRefused { cause: c } =>
+        exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+      CommandOverTransportBuilt { command: over } => {
+        let run = shell.Exec.RunArgvStdin(
           program: over.program.invocation,
           arguments: process_argv_expansion(
             surface: cli_surface_of_literal_words(words: over.arguments)
           ),
+          stdin_payload: stdin_payload,
         )
         if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
           ExitSuccess
@@ -191,6 +166,39 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
           exit_failure(reason: concat("command failed: ", run.stderr))
         }
       }
+    }
+  }
+}
+
+// THE GIT ROUTE WALL GATE (gunbc.design_argument::fail_closed), BOTH arms. ProcessExit is this
+// operation's own outcome, so a refusal is the module's typed ProcessExit refusal -- exit_failure with a
+// reason (a ProcessExit carrying WHY nothing ran), NOT an observed child exit code. The gate runs before
+// command_over_transport so it classifies the INNER ArgvCommand and refuses a bare mutating git on the
+// LOCAL and the SSH arm alike (a remote `git commit` with no in-repo dressing would run in the SSH
+// session's ambient CWD, the same hazard the wall guards, since the caller does not control that CWD).
+fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
+{
+  if !git_route_wall_admits(command: command) {
+    git_route_wall_refusal_exit(command: command)
+  } else {
+    match command_over_transport(command: command, transport: transport) {
+      CommandOverTransportRefused { cause: c } =>
+        exit_failure(reason: concat("command_over_transport refused: ", command_over_transport_refusal_reason(cause: c)))
+      CommandOverTransportBuilt { command: over } =>
+        {
+          let run = shell.Exec.RunArgv(
+            program: over.program.invocation,
+            arguments: process_argv_expansion(
+              surface: cli_surface_of_literal_words(words: over.arguments)
+            ),
+          )
+          if process_exit_is_admitted(policy: ExitZeroSucceeds, exit_code: run.exit_code) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: concat("command failed: ", run.stderr))
+          }
+        }
+    }
   }
 }
 
@@ -273,17 +281,21 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 // So this returns the triple and lets the caller decide, rather than widening ProcessOutcome for
 // every consumer in the fleet. Two different questions, two functions; the classifier is untouched
 // and no existing caller changes.
-// DECLARED-UNCHECKED RESIDUAL for git (gunbc.design_argument::guarantee_ladder / fail_closed): this
-// entry returns ProcessObservation and reaches shell.Exec.RunArgv WITHOUT the git route wall gate. Its
-// one git caller, worker_git_subtree_apply_spawn_wet_witness wre3_gate_observation (a read-only
-// `rev-parse --absolute-git-dir` premise), sits HERE and so is never inspected by the wall. Note: even
-// though that argv leads with `-c safe.directory=...`, its verb `rev-parse` IS on the wall's
-// read-only allowlist, so if it WERE routed through the gate it would be admitted via the read-only
-// verb (the leading-subcommand walk correctly skips the `-c`/`--git-dir` operands and lands on
-// `rev-parse`) -- it does not need `-C`-first reordering. It is left on the unchecked observe route
-// (the migration scope was git-through-capture; observe was left unchecked); the trigger to gate it is
-// the same as run_shell_command's -- a git caller that needs a typed not-spawned result. Counted here,
-// not concealed.
+// DECLARED-UNCHECKED RESIDUAL for git (gunbc.design_argument::guarantee_ladder / fail_closed), stated at
+// its true rung. The wall gate runs in observe_outcome, run_shell_command and run_shell_command_stdin_local;
+// THIS entry (and run_shell_command_capture, which delegates to it) is left ungated for a TRUE reason, NOT
+// "a refusal cannot ride": the only refusal arm ProcessObservation offers is process_observation(exit_code:
+// 0 - 1, ...) -- the command_over_transport-refused arm below -- and ProcessObservation is the OBSERVED
+// child result, so that -1 is a FABRICATED observed exit code. That sentinel is a pre-existing fail_closed
+// defect (a plausible exit fabricated where none was observed); capture turns it into ProcessRefused{exit_code:
+// -1}. Routing the wall through it would SPREAD the fabrication, so the wall does NOT ride it here. The
+// repair (and the TRIGGER to gate this entry) is a typed not-spawned result -- migrate these
+// callers/signatures to ProcessRunOutcome, which carries ProcessNotSpawned. Its one git caller,
+// worker_git_subtree_apply_spawn_wet_witness wre3_gate_observation (read-only `rev-parse --absolute-git-dir`),
+// sits here and is never inspected by the wall; its verb `rev-parse` IS on the wall's read-only allowlist, so
+// if it were gated (post-migration) it would be admitted via the read-only verb -- the leading-subcommand
+// walk skips the `-c`/`--git-dir` operands and lands on `rev-parse`, no `-C`-first reordering needed. Counted
+// here, not concealed.
 fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
 {
   match command_over_transport(command: command, transport: transport) {
@@ -311,15 +323,17 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
 // THE GIT ROUTE WALL GATE. Before any transport wrapping, classify whether the inner ArgvCommand's
 // program is git (by basename, not exact spelling) and if so, consult the route wall.
 // SCOPE OF THE GUARANTEE, stated at its real rung (gunbc.design_argument::guarantee_ladder): this gate
-// makes the wall compulsory ONLY for RECOGNIZED DIRECT-GIT argvs routed through run_shell_command_observe_outcome.
-// The other entries in this module that reach a spawn -- run_shell_command, run_shell_command_observe,
-// run_shell_command_stdin_local, run_shell_command_capture -- do NOT consult the wall; each carries its
-// own declared-unchecked-residual comment naming it, so the bypass is counted, not concealed
-// (gunbc.design_argument::fail_closed). A recognized bare mutating git argv handed to THIS entry is
-// refused on BOTH arms (local AND SSH): command_runner is the only module turning an ArgvCommand into a
-// local process, and the gate runs before command_over_transport, so a remote `git commit -m x` without
-// in-repo dressing -- which would run in the SSH session's ambient CWD, the same hazard the wall guards
-// since the caller does not control that CWD -- is refused just as the local one is.
+// (git_route_wall_admits + refusal surfaces git_route_wall_refusal / git_route_wall_refusal_exit) is
+// compulsory for RECOGNIZED DIRECT-GIT argvs routed through run_shell_command_observe_outcome,
+// run_shell_command and run_shell_command_stdin_local. Two entries that reach a spawn --
+// run_shell_command_observe and run_shell_command_capture -- do NOT consult the wall; each carries its own
+// declared-unchecked-residual comment naming its TRUE reason (their only refusal arm is the fabricated
+// exit_code: 0 - 1 sentinel, whose repair is a typed not-spawned ProcessRunOutcome result -- the trigger),
+// so the residual is counted, not concealed (gunbc.design_argument::fail_closed). A recognized bare mutating
+// git argv handed to a gated entry is refused on BOTH arms (local AND SSH): command_runner is the only
+// module turning an ArgvCommand into a local process, and the gate runs before command_over_transport, so a
+// remote `git commit -m x` without in-repo dressing -- which would run in the SSH session's ambient CWD, the
+// same hazard the wall guards since the caller does not control that CWD -- is refused just as the local one is.
 // COVERAGE LIMITATION, counted: a git invocation wrapped by extdeps.git::env_prefixed_command (the
 // config writers and maintenance helpers) has program `env`, so is_git_program does not classify it and
 // the wall never inspects the git tail inside it. Those builders are `-C`-dressed at their tail today,
@@ -343,6 +357,15 @@ fn git_route_wall_refusal(command: ArgvCommand) -> ProcessRunOutcome {
     program: command.program.invocation,
     cause: "git route wall: bare mutating argv refused at workdir-free route; use gunbc.git_workdir_free_route" as NonEmptyStr,
   }
+}
+
+// THE TYPED REFUSAL FOR A ProcessExit-RETURNING ENTRY (run_shell_command, run_shell_command_stdin_local).
+// ProcessExit IS the operation's own outcome, so the honest refusal is the module's existing typed
+// ProcessExit refusal -- exit_failure with a reason (a ProcessExit carrying WHY nothing ran). Its code is
+// the general-error sentinel, NOT an observed child exit, so no observation is fabricated
+// (gunbc.design_argument::fail_closed); the reason is what a caller/red control reads back.
+fn git_route_wall_refusal_exit(command: ArgvCommand) -> ProcessExit {
+  exit_failure(reason: concat("git route wall: bare mutating argv refused at workdir-free route for program ", concat(command.program.invocation, "; use gunbc.git_workdir_free_route")))
 }
 
 // THE TYPED REFUSAL SURFACE: ProcessRunOutcome is the one meaning of "nothing ran". A transport that
@@ -378,20 +401,19 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
 }
 
 // THE UNCHECKED ROUTE, declared. Capture's product is stdout, so it returns ProcessOutcome (the three
-// output arms) via run_shell_command_observe (the ProcessObservation record path). It carries NO git
-// route wall gate: a bare mutating git argv forwarded here would reach RunArgv un-walled. MOST git
-// callers have been migrated onto run_shell_command_observe_outcome (gated), but ONE live caller
-// remains on capture, declared here as a bounded residual (gunbc.design_argument::fail_closed):
+// output arms) via run_shell_command_observe (the ProcessObservation record path). The wall gate runs in
+// observe_outcome, run_shell_command and run_shell_command_stdin_local; capture is left ungated for the SAME
+// TRUE reason as run_shell_command_observe (which it delegates to), NOT "a refusal cannot ride": the only
+// refusal its ProcessOutcome can express today is ProcessRefused{exit_code: -1}, reached from observe's
+// process_observation(exit_code: 0 - 1, ...) sentinel -- a FABRICATED observed exit code, a pre-existing
+// fail_closed defect that routing the wall would spread. It also cannot redeclare ProcessNotSpawned (the
+// compiler rejects a second same-named variant in this module, where it already lives on ProcessRunOutcome).
+// The repair (and the TRIGGER to gate capture) is migrating its callers/signature to a typed not-spawned
+// ProcessRunOutcome result. ONE live git caller remains here, named precisely:
 //   gunbc.runner.runner_revision_job_guest::revision_job_tree_steps (git init / add / snapshot commit /
 //   diff-tree, L100-110) is executed through capture by test/claim/runner/runner_revision_job_guest_
-//   wet_witness::run_all. It is DEFERRED onto the unchecked capture route (not the accepted PR-1
-//   migration scope) because it reads only the run/did-run Bool via classify_process_observation, not
-//   stdout, and its commands are all `-C`-dressed (the shipped builders), so it is the sanctioned
-//   pattern -- leaving it is a counted gap, not a concealed one. TRIGGER to gate capture (which needs a
-//   typed not-spawned result -- a refusal cannot ride ProcessOutcome without fabricating an exit code,
-//   and it cannot redeclare ProcessNotSpawned: the compiler rejects a second same-named variant in this
-//   module, where it already lives on ProcessRunOutcome): the first capture-on-git caller that reads
-//   stdout off a git command, or a bare (undressed) mutating git argv reaching capture.
+//   wet_witness::run_all. Its commands are all `-C`-dressed (the shipped builders), so the wall would ADMIT
+//   them -- leaving it on the unchecked capture route is a counted gap, not a concealed one.
 fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
 {
   classify_process_observation(

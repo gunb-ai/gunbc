@@ -18,10 +18,13 @@ module test.claim.git_command_runner_route_wall_witness
 // THE MUTATION CONTROL (documented, not inlined).
 // Forcing git_route_wall_admits to always-admit (disabling the gate) makes test_refused_bare_mutating_local,
 // test_refused_bare_mutating_local_add, test_refused_absolute_path_local, test_refused_deep_absolute_path_local,
-// test_refused_bare_mutating_ssh and test_refused_bare_mutating_ssh_absolute STOP yielding the
-// ProcessNotSpawned arm -- they proceed to RunArgv -- and test_bare_mutating_git_yields_the_single_not_spawned_arm
-// goes false. Reverting the mutation makes them refuse again: this proves the gate is load-bearing. (Run
-// and reverted in-PR; the head has the gate live.)
+// test_refused_bare_mutating_ssh, test_refused_bare_mutating_ssh_absolute, test_refused_bare_mutating_run_shell_command,
+// test_refused_absolute_run_shell_command, test_refused_bare_mutating_run_shell_command_ssh,
+// test_refused_bare_mutating_stdin_local and test_refused_absolute_stdin_local STOP yielding the refusal --
+// they proceed to RunArgv/RunArgvStdin and never carry the wall reason (and, with no mock response, STOP at
+// HostEffectRefused{RunArgvOutcome, NoMockResponse}) -- and test_bare_mutating_git_yields_the_single_not_spawned_arm
+// goes false. Reverting the mutation makes them refuse again: this proves the gate is load-bearing on BOTH the
+// ProcessRunOutcome entry AND the two ProcessExit entries. (Run and reverted in-PR; the head has the gate live.)
 //
 // THE COMMIT-BUILDER AND EXIT-ZERO CONTROLS (side-chat blockers 1 and 2).
 // test_admitted_commit_snapshot_builder_passes_gate consumes the shipped git_commit_snapshot_command
@@ -30,6 +33,7 @@ module test.claim.git_command_runner_route_wall_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.filesystem { path_basename }
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, SshExec, argv_command }
 import extdeps.git {
@@ -40,7 +44,7 @@ import extdeps.git {
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.tools.ls { ls_program }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, process_observation }
-import gunbc.command_runner { run_shell_command_observe_outcome, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command, run_shell_command_stdin_local, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
 import gunbc.remote_shell_command { openssh_login_shell_interpretation }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +180,51 @@ fn test_refused_bare_mutating_ssh_absolute() -> Bool {
       string_contains(s: c, pattern: "git route wall")
     ProcessRan { observation: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE TYPED-REFUSAL READBACK for the ProcessExit-returning gated entries (run_shell_command,
+// run_shell_command_stdin_local). ProcessExit is the operation's own outcome, so a wall refusal is the
+// module's typed exit_failure(reason: "git route wall: ..."). We match the ExitFailure variant and read
+// its reason; the code field is the shared general-error sentinel (NEVER an observed child exit), so the
+// reason is the honest thing to assert. An admitted command would instead proceed to RunArgv, so these
+// red controls are only satisfiable when the gate actually fired.
+// ---------------------------------------------------------------------------
+
+fn process_exit_is_wall_refusal(result: ProcessExit) -> Bool {
+  match result {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "git route wall: bare mutating argv refused")
+    ExitSuccess => false
+  }
+}
+
+fn witness_stdin_command(command: ArgvCommand) -> ProcessExit {
+  run_shell_command_stdin_local(command: command, stdin_payload: "")
+}
+
+// RED CONTROL 4: run_shell_command (a ProcessExit entry) refuses bare mutating git -- the refusal rides the
+// module's typed ProcessExit refusal (exit_failure with the wall reason), never a fabricated child exit.
+fn test_refused_bare_mutating_run_shell_command() -> Bool {
+  process_exit_is_wall_refusal(result: run_shell_command(command: argv_bare_commit(), transport: LocalExec))
+}
+
+fn test_refused_absolute_run_shell_command() -> Bool {
+  process_exit_is_wall_refusal(result: run_shell_command(command: argv_absolute_commit(), transport: LocalExec))
+}
+
+// RED CONTROL 5: the SSH arm of run_shell_command is refused (a remote bare mutation has the same
+// ambient-CWD hazard, so the gate fires on the SSH arm too).
+fn test_refused_bare_mutating_run_shell_command_ssh() -> Bool {
+  process_exit_is_wall_refusal(result: run_shell_command(command: argv_bare_commit(), transport: test_ssh_transport))
+}
+
+// RED CONTROL 6: run_shell_command_stdin_local (the other ProcessExit entry) refuses the same bare mutation.
+fn test_refused_bare_mutating_stdin_local() -> Bool {
+  process_exit_is_wall_refusal(result: witness_stdin_command(command: argv_bare_commit()))
+}
+
+fn test_refused_absolute_stdin_local() -> Bool {
+  process_exit_is_wall_refusal(result: witness_stdin_command(command: argv_absolute_commit()))
 }
 
 // ---------------------------------------------------------------------------
