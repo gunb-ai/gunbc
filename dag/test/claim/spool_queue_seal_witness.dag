@@ -21,6 +21,10 @@ import gunbc.spool_queue {
   spool_defer_assess, spool_undefer_assess, ParkEligible, ParkNotApplicable, ParkNotDeclared, ClaimParked,
    SpoolClaimNotDone, SpoolCompleteNotDone, SpoolRequeueNotDone, EntryObservationUnavailable, CompleteRefused,
 }
+import gunbc.spool_queue { SpoolComputeExit, partitioned_spool_base_dir, partitioned_spool_uid_dir, partitioned_spool_done_dir }
+import std.nat { Nat, Zero, Succ }
+import gunbc.compute.host_capacity { PartitionedSpoolStore, attempt_exit_spool_uid_policy, AttemptExitSpoolUidPolicy, AttemptExitSpoolUidRoot, AttemptExitSpoolUidAdmissible }
+import std.nat { Nat, Zero, Succ }
 
 // THE QUEUE CONTRACT FOR THE THREE CROSS-PRIVILEGE SPOOLS (gunbc.spool_queue). Every claim here is a permanent
 // control. The effects RESOLVE (their stripped twins are the MissingExport probes for the operations that must not
@@ -72,6 +76,34 @@ data twin_defer_source: String = "module probe_spool_queue_twin_defer\nimport st
 
 data lawful_defer_source: String = "module probe_spool_queue_lawful_defer\nimport std.types { String }\nimport gunbc.spool_queue { SpoolAttemptUnit, SpoolStore, spool_queue_defer, spool_entry_key_of_name, SpoolKeyMinted, SpoolKeyRefused }\nfn f(store: SpoolStore, name: String) -> String {\n  match spool_entry_key_of_name(kind: SpoolAttemptUnit, name: name) {\n    SpoolKeyMinted { key } => match spool_queue_defer(store: store, key: key) {\n      _ => \"parked\"\n    }\n    SpoolKeyRefused { detail: d } => d\n  }\n}\n"
 
+// THE PARTITIONED SPOOL STORE SEAL (SpoolComputeExit -- its OWN PartitionedSpoolKind). A PartitionedSpoolStore
+// is a SEPARATE sealed type from the keyed SpoolStore (review 93215 finding 1: keyed and partitioned stores have
+// different contracts, so they are two types, not two arms of one sum). It carries the principal uid that fences
+// a seat's exit record off from every other uid, so it is the seal boundary. The record is sealed against foreign
+// construction. The sole mint -- host_capacity compute_attempt_exit_spool_open -- takes a HostDashboardInstance and
+// derives the spool layout relative to that supplied instance, using the process's effective UID; it refuses root
+// uid 0. Caller-selected instance roots and foreign field reads remain the existing RFM routes 3 and 2 in
+// gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module. RED: a foreign literal is a
+// sole-constructor violation. STRIPPED
+// TWIN: the identical literal over test.fixture.spool_queue_seal.unsealed PartitionedSpoolStore (same fields,
+// sole_constructor removed) is admitted with zero TOTAL blocking diagnostics -- it compiles clean -- so the refusal
+// is the keyword, not the shape or the uid. POSITIVE
+// CONTROL: a foreign module that INVOKES the real mint compute_attempt_exit_spool_open(instance) and handles every verdict arm carries zero sole-constructor violations AND adds zero blocking diagnostics over its own same-imports closure (a discriminating delta, the keyed corpus's approved accepted-positive-control form -- the real store's host_capacity closure carries an inherent 6 blocking rows, so absolute total==0 is unreachable).
+
+data forged_partitioned_store_source: String = "module probe_spool_queue_forged_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport gunbc.compute.host_capacity { PartitionedSpoolStore }\nfn f() -> PartitionedSpoolStore {\n  PartitionedSpoolStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
+
+
+data twin_partitioned_store_source: String = "module probe_spool_queue_twin_partitioned_store\nimport gunbc.spool_queue { SpoolComputeExit }\nimport test.fixture.spool_queue_seal.unsealed { PartitionedSpoolStore }\nfn f() -> PartitionedSpoolStore {\n  PartitionedSpoolStore { kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000 }\n}\n"
+
+data minted_partitioned_store_source: String = "module probe_spool_queue_minted_partitioned_store\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_open, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(instance: HostDashboardInstance) -> String {\n  match compute_attempt_exit_spool_open(instance: instance) {\n    SpoolOpenReady { store: _ } => \"ready\"\n    SpoolOpenUidUnreadable => \"unreadable\"\n    SpoolOpenUidRoot => \"root\"\n  }\n}\n"
+
+data minted_partitioned_store_safe_source: String = "module probe_spool_queue_minted_partitioned_safe\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_open, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot }\nimport gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\nfn f(instance: HostDashboardInstance) -> String {\n  \"no-mint\"\n}\n"
+
+// CONTROL: there is NO path-taking store mint left to aim at a foreign tree (review 95668). A module that tries
+// to reach the deleted spool_queue path-mint spool_open_uid -- the route that used to accept an arbitrary root +
+// uid -- is refused (MissingExport). This is the foreign-module RED for the path-to-store route.
+data path_taking_route_source: String = "module probe_spool_queue_path_taking_route\nimport std.types { String }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid }\nfn f() -> String {\n  \"path-taking-route probe: importing the deleted path-taking mint resolves to a MissingExport keyed on spool_open_uid\"\n}\n"
+
 test fn a_forged_key_cannot_defer_an_entry() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
 }
@@ -97,6 +129,100 @@ test fn the_lawful_entry_key_mint_is_admitted() -> ProcessExit {
     blocking_delta(hostile: lawful_mint_source, safe: baseline_source, holds: fn(n) { n <= 0 }),
     census_verdict(census: seal_violations(source: lawful_mint_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 0 }),
   ])
+}
+
+// PARTITIONED SPOOL STORE SEAL (SpoolComputeExit). A foreign module cannot spell a PartitionedSpoolStore -- it is
+// declared sole_constructor in gunbc.compute.host_capacity and produced ONLY by compute_attempt_exit_spool_open
+// (which admits the instance root and the process's own uid, never a caller-supplied path). The keyed spool_open
+// never even accepts a partitioned kind (disjoint type), so no keyed operation can carry one. RED: a foreign
+// literal is a sole-constructor violation naming PartitionedSpoolStore.
+test fn a_foreign_module_cannot_construct_a_partitioned_spool_store() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_partitioned_store_source, subject: "PartitionedSpoolStore"), holds: fn(n) { n == 1 }))
+}
+
+// STRIPPED TWIN: the identical forged PartitionedSpoolStore, over the unsealed fixture (same fields, names,
+// sole_constructor removed), is admitted with ZERO TOTAL blocking diagnostics -- it compiles clean -- so the
+// refusal above is the sole_constructor keyword alone, not the shape, the field types or the uid.
+test fn the_same_forged_partitioned_store_passes_against_the_seal_stripped_twin() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: twin_partitioned_store_source, subject: "PartitionedSpoolStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: twin_partitioned_store_source), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// POSITIVE CONTROL (DESIGN 4b rung honesty -- an ACCEPTED, discriminating positive control): a foreign module that
+// INVOKES the real mint compute_attempt_exit_spool_open(instance) and handles every verdict arm carries zero
+// sole-constructor seal violations (it never spells the store literal; it gets it from the mint), AND adds zero
+// blocking diagnostics OVER its own imported closure. The census counts the imported modules and their closure
+// (compile_diagnostic_census.dag:105), and the sealed store's home -- host_capacity, whose mint reads the effective
+// uid via posix -- carries an inherent 6 blocking rows (verified: a same-imports no-mint baseline scores the same 6),
+// so an ABSOLUTE total==0 is unreachable for any probe of the real store. This mirrors the keyed side's approved
+// the_lawful_entry_key_mint_is_admitted: total_blocking is scored as a DELTA against a same-imports baseline, so a
+// broken / ill-typed mint raises the probe over the baseline and turns this RED, while a lawful mint scores 0.
+test fn a_minted_partitioned_store_has_no_seal_violation() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: minted_partitioned_store_source, subject: "PartitionedSpoolStore"), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: minted_partitioned_store_source, safe: minted_partitioned_store_safe_source, holds: fn(n) { n <= 0 }),
+  ])
+}
+
+// NO PATH-TAKING ROUTE SURVIVES (review 95668): the former public mint `spool_open_uid` (a caller-chosen instance_root
+// string + an arbitrary uid) is DELETED -- a module that still imports it hits a missing export. So there is NO direct
+// path-or-uid mint: the full-privilege ExecStopPost hook and the reader's listing are reachable only through a sealed
+// store whose layout is FIXED relative to the supplied instance, admitted ONLY through
+// compute_attempt_exit_spool_open(instance) (caller-chosen instance roots remain the accepted route-3 residual).
+// RED unless the path-taking route is gone.
+test fn no_path_taking_mint_survives_in_spool_queue() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_subject_census(source: path_taking_route_source, wanted_class: "MissingExport", wanted_subject: "spool_open_uid"), holds: fn(n) { n >= 1 }))
+}
+
+// FRESHNESS PAIR for the compute exit spool realization: a reader that reaches the done directory THROUGH the
+// sealed derivation (partitioned_spool_done_dir, business key in, path derived inside) carries NO blocking
+// diagnostic; the reader that instead hand-joins the done path via the deleted compute_attempt_exit_spool_done_dir
+// is refused (review 92698: provisioning and the hook/door must build the path through ONE sealed function, never
+// by hand). present -> 0, hand-joined -> RED. This is the pairing that proves the reader claim is fresh, not vacuous.
+data partitioned_reader_twin_source: String = "module probe_partitioned_reader_twin\nimport std.types { String }\nimport gunbc.spool_queue { SpoolComputeExit, partitioned_spool_done_dir }\nfn f() -> String {\n  partitioned_spool_done_dir(kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000)\n}\n"
+
+data partitioned_reader_handjoined_source: String = "module probe_partitioned_reader_handjoined\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_done_dir }\nfn f() -> String {\n  compute_attempt_exit_spool_done_dir(\"/tmp/compute/root\", 1000)\n}\n"
+
+test fn the_partitioned_reader_reaches_the_realization_and_the_handjoined_reader_is_refused() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: total_blocking_census(source: partitioned_reader_twin_source), holds: fn(n) { n == 0 }),
+    blocking_delta(hostile: partitioned_reader_handjoined_source, safe: partitioned_reader_twin_source, holds: fn(n) { n >= 1 }),
+  ])
+}
+
+// HOST POLICY, asserted (review 92698 / jolly-hawk-60): a seat's exit partition is keyed by the PRINCIPAL uid that
+// ran the seat, and seats run under unprivileged principals, so root (uid 0) must never own one. The admitted mint
+// derives the uid from the process (a Nat via the checked crossing) and refuses Zero. This policy choice lives in
+// the closed predicate attempt_exit_spool_uid_policy, asserted here directly so dropping it is a witnessed RED: it
+// is a policy fact, not a type fact, so it must be observed.
+test fn a_partitioned_store_mint_refuses_the_root_uid_and_admits_a_real_uid() -> ProcessExit {
+  match attempt_exit_spool_uid_policy(uid: Zero) {
+    AttemptExitSpoolUidRoot =>
+      match attempt_exit_spool_uid_policy(uid: Succ { prev: Zero }) {
+        AttemptExitSpoolUidAdmissible => ExitSuccess
+        AttemptExitSpoolUidRoot => exit_failure(reason: "a real principal uid (1) was refused")
+      }
+    AttemptExitSpoolUidAdmissible => exit_failure(reason: "root (uid 0) was admitted as a seat exit partition owner")
+  }
+}
+
+// REALIZATION WITNESS (the "RED when the realization is broken" claim, durable): the sealed reader resolves the
+// compute exit spool's done directory to EXACTLY <instance_root>/attempt-exit-spool/<uid>/done. This one assertion
+// turns RED on every realization defect the brief names: drop the uid segment -> ".../attempt-exit-spool/done";
+// drop provisioning/root_name -> the segment "attempt-exit-spool" is gone from partitioned_spool_base_dir; drop the
+// done_directory segment -> ".../attempt-exit-spool/1". It is a positive control that must stay green AND is the
+// witness that goes RED if the sealed derivation is broken -- not a one-off mutation, so it runs every time.
+test fn the_partitioned_done_directory_is_derived_under_the_uid_segment() -> ProcessExit {
+  let base = partitioned_spool_base_dir(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root")
+  let uid_dir = partitioned_spool_uid_dir(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero })
+  let p = partitioned_spool_done_dir(kind: SpoolComputeExit {}, instance_root: "/tmp/compute/root", uid: Succ { prev: Zero })
+  if base == "/tmp/compute/root/attempt-exit-spool" && uid_dir == "/tmp/compute/root/attempt-exit-spool/1" && p == "/tmp/compute/root/attempt-exit-spool/1/done" {
+    ExitSuccess
+  } else {
+    exit_failure(reason: p)
+  }
 }
 
 test fn a_claim_over_a_pending_entry_is_eligible() -> ProcessExit {
@@ -406,6 +532,27 @@ test fn the_typed_path_result_consumer_compiles_clean() -> ProcessExit {
 
 test fn the_host_spool_stage_enum_is_gone() -> ProcessExit {
   census_exit(census_verdict(census: blocking_subject_census(source: raw_host_spool_stage_source, wanted_class: "MissingExport", wanted_subject: "HostSpoolStage"), holds: fn(n) { n == 1 }))
+}
+
+// DELETE-FIRST (DESIGN.md §3): the compute exit spool's old path-taking functions and its declaration row are
+// deleted -- not kept beside the sealed mint. A module that imports each by name is refused with exactly one
+// MissingExport, mirroring the_host_spool_stage_enum_is_gone. Spelling the shared root by hand (the hand-joined
+// path review 92698 flagged) is likewise refused: the path exists only inside the sealed derivation.
+data deleted_spool_root_source: String = "module probe_deleted_spool_root\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_root }\nfn f() -> String { \"gone\" }\n"
+
+data deleted_spool_uid_dir_source: String = "module probe_deleted_spool_uid_dir\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_uid_dir }\nfn f() -> String { \"gone\" }\n"
+
+data deleted_spool_done_dir_source: String = "module probe_deleted_spool_done_dir\nimport std.types { String }\nimport gunbc.compute.host_capacity { compute_attempt_exit_spool_done_dir }\nfn f() -> String { \"gone\" }\n"
+
+data deleted_spool_declaration_source: String = "module probe_deleted_spool_declaration\nimport std.types { String }\nimport gunbc.compute.host_capacity { ComputeAttemptExitSpoolDeclaration }\nfn f() -> String { \"gone\" }\n"
+
+test fn the_compute_exit_spool_path_functions_are_gone() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: blocking_subject_census(source: deleted_spool_root_source, wanted_class: "MissingExport", wanted_subject: "compute_attempt_exit_spool_root"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: deleted_spool_uid_dir_source, wanted_class: "MissingExport", wanted_subject: "compute_attempt_exit_spool_uid_dir"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: deleted_spool_done_dir_source, wanted_class: "MissingExport", wanted_subject: "compute_attempt_exit_spool_done_dir"), holds: fn(n) { n == 1 }),
+    census_verdict(census: blocking_subject_census(source: deleted_spool_declaration_source, wanted_class: "MissingExport", wanted_subject: "ComputeAttemptExitSpoolDeclaration"), holds: fn(n) { n == 1 }),
+  ])
 }
 
 test fn every_declared_spool_has_a_wellformed_stage_graph() -> ProcessExit {
