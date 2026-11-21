@@ -82,7 +82,11 @@ import gunbc.runner.runner_capacity_plan {
   GitHubSlotPopulationDuplicateRegistration,
   GitHubSlotPopulationForeignRegistration,
 }
-import gunbc.integration_concern { concern_declarations, h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home }
+import gunbc.integration_concern { concern_declarations }
+// The row moved with the one-concern-per-file split (#16338): a concern row is declared in its own module,
+// and the register keeps only the shared types and the revision data its importers name. Importing the row
+// from the register no longer resolves -- that is the split's dissolution, not a compatibility shim.
+import gunbc.integration_concern.h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home { h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
