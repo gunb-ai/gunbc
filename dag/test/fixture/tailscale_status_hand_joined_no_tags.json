@@ -1,0 +1,16 @@
+{
+  "Version": "1.88.3",
+  "BackendState": "Running",
+  "MagicDNSSuffix": "tailecbe08.ts.net",
+  "CurrentTailnet": { "MagicDNSSuffix": "tailecbe08.ts.net" },
+  "Self": {
+    "ID": "n000000000FIXTURE",
+    "HostName": "ken",
+    "DNSName": "ken.tailecbe08.ts.net.",
+    "OS": "linux",
+    "TailscaleIPs": ["100.100.100.2"],
+    "Online": true,
+    "InNetworkMap": true
+  },
+  "Peer": {}
+}

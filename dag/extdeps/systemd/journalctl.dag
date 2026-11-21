@@ -100,6 +100,14 @@ fn journalctl_unit_current_boot_argv(unit: NonEmptyStr) -> List<String> {
   ["journalctl", "-u", unit as String, "-b", "--no-pager", "-o", "short-unix"]
 }
 
+// ONE UNIT'S JOURNAL OVER AN EXPLICIT TIME WINDOW, AS AN ARGV. journalctl(1): `--since` and `--until` bound the entries shown,
+// and systemd.time(7) accepts `@` followed by seconds since the epoch, so both bounds are spelled as the integers the caller holds, never
+// as a locale-dependent date. No `-n` and no `-b`: the window is the whole bound, so an entry inside it is never cut by a cap and a window
+// that spans a reboot is read whole.
+fn journalctl_unit_window_argv(unit: NonEmptyStr, since_epoch_seconds: Int, until_epoch_seconds: Int) -> List<String> {
+  ["journalctl", "-u", unit as String, "--since", concat("@", to_string(since_epoch_seconds)), "--until", concat("@", to_string(until_epoch_seconds)), "--no-pager", "-o", "short-unix"]
+}
+
 // A USER MANAGER'S UNIT JOURNAL, READ BY ROOT. journalctl(1) -M names a local CONTAINER, not a
 // `UID@` user manager, so the systemctl `--machine=UID@` connector has no journalctl spelling. What
 // does select a user unit is `--user-unit=` (matches _SYSTEMD_USER_UNIT and USER_UNIT, per

@@ -36,14 +36,14 @@ module gunbc.tailscale_machine_name_converge
 // hostname half -- the sibling hostname-converge mode's write, not this module's -- lands first, and this mode is
 // only ever owed its `set` from the state where `hostname -s` already answers the target. It enforces that instead
 // of trusting the window to be sequenced correctly: every device state whose OS half is behind is a refusal, with a
-// cause that names the missing half, before any write (@ref(gunbc.design_argument::fail_closed)).
+// cause that names the missing half, before any write (#gunbc.design_argument::fail_closed).
 //
 // WHY THE OBSERVE COMES FIRST. The same extdeps module records that whether a device's machine name
 // follows an OS hostname change on its own is a per-device pref (upstream: auto-generation is on by
 // default, updates land "the next time Tailscale is started up", and "to avoid these automatic name
 // changes, uncheck this box"), and that a de-duplicated name sticks. No reading of the documentation
 // says what THIS device is doing. So the mode does not assume: it reads, and the write happens only if
-// the read disagrees. That is @ref(gunbc.design_argument::epistemic_humility) -- the unknown is recorded at the
+// the read disagrees. That is #gunbc.design_argument::epistemic_humility -- the unknown is recorded at the
 // edge that would have acted on it.
 //
 // THE REVERSE DIRECTION IS NOT A SECOND MODE. A rename window's rollback is this same mode pointed at the old
@@ -108,17 +108,18 @@ import gunbc.fleet.fleet_ssh_locus {
 }
 import gunbc.hostname_allocation {
   AllocatedHostName,
-  OperatorHostFound,
-  OperatorHostLookup,
-  OperatorHostNotRegistered,
-  OperatorHostRegistryRefused,
   DrawnHumanName,
+  HostSelectorAmbiguous,
+  HostSelectorRegistryRefused,
+  HostSelectorResolved,
+  HostSelectorResolution,
+  HostSelectorUnknown,
   LegacyHostname,
   canonical_hostname_for_fleet_slot,
+  host_selector_refusal_text,
   human_name_canonical_hostname,
   next_name_for_fleet_slot,
-  operator_host_lookup,
-  operator_host_lookup_refusal,
+  resolve_host_selector,
 }
 import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
@@ -302,7 +303,7 @@ type TailscaleMachineNameDeviceNames
 // asks it before a write and the read-back asks it after one, and both get the same verdict from the same
 // function -- a second place that decides convergence is a fork, and the fork here would be visible as a run
 // that reports a device converged in exactly the state a later start un-converges
-// (@ref(gunbc.design_argument::single_authority), @ref(gunbc.design_argument::fail_closed)).
+// (#gunbc.design_argument::single_authority, #gunbc.design_argument::fail_closed).
 //
 // THE TWO HALVES ARE NOT SYMMETRIC, and the asymmetry is forced by upstream: the tailnet name is re-derived from
 // the OS hostname the next time Tailscale starts. So the OS half decides whether this mode's write can hold, and
@@ -447,7 +448,7 @@ fn tailscale_machine_name_mode_wire(mode: TailscaleMachineNameMode) -> String {
 // same raw itself rather than handing over that capture, and the hostname-converge lane builds its OS half on that
 // carrier. Today both reduce to trim plus non-empty, so the two halves of the window step agree; that agreement is
 // a coincidence of two parsers until the carrier passes the capture through, which is the hostname lane's file to
-// change (@ref(gunbc.design_argument::single_authority)).
+// change (#gunbc.design_argument::single_authority).
 
 fn tailscale_machine_name_device_names_reading(
   status_document: String,
@@ -914,7 +915,7 @@ fn converge_tailscale_machine_name(
 // ── THE ENTRIES ────────────────────────────────────────────────────────────────────────────────
 //
 // The subject arrives as the operator's label from the dispatch's split preconditions and is ADMITTED through
-// the fleet machine registry (`operator_host_lookup`) before any leg runs: a label the admitted registry does not
+// the fleet machine registry (`resolve_host_selector`) before any leg runs: a spelling the admitted registry does not
 // carry admits no machine, so nothing is read from or written to a host, and a registry that fails its own
 // admission admits nothing either -- including a machine outside the collision (gunbc.plans.fleet_machine_authority
 // A1). No host is named here, and the stage claim is read from tailscale_machine_name_stage_env_name, so the
@@ -926,20 +927,20 @@ fn tailscale_machine_name_entry(mode: TailscaleMachineNameMode) -> ProcessExit {
     SplitOk { executor_runner_name: _, subject_host: subject_host } =>
       tailscale_machine_name_entry_over(
         mode: mode,
-        lookup: operator_host_lookup(label: subject_host)
+        resolution: resolve_host_selector(selector: subject_host)
       )
   }
 }
 
-// THE ENTRY OVER AN ALREADY-TAKEN REGISTRY LOOKUP, so a witness can hand it a refused registry and see the entry
-// refuse before a single leg runs. The two refusal arms print the registry's own sentence, prefixed with this
+// THE ENTRY OVER AN ALREADY-TAKEN SELECTOR RESOLUTION, so a witness can hand it a refused registry and see the entry
+// refuse before a single leg runs. The refusal arms print the registry's own sentence, prefixed with this
 // lane's name once, rather than each entry writing its own story about an unadmitted host.
 fn tailscale_machine_name_entry_over(
   mode: TailscaleMachineNameMode,
-  lookup: OperatorHostLookup,
+  resolution: HostSelectorResolution,
 ) -> ProcessExit {
-  match lookup {
-    OperatorHostFound { host: host } =>
+  match resolution {
+    HostSelectorResolved { host: host } =>
       // THE STAGE CLAIM IS READ ONCE, after the host is admitted and before any leg, and carried into both the run
       // and the receipt: a receipt whose stage was re-read afterwards could disagree with the run it reports. An
       // unadmitted host never reads the stage at all, because it runs nothing.
@@ -966,15 +967,17 @@ fn tailscale_machine_name_entry_over(
               )
           }
       }
-    OperatorHostNotRegistered { label: label } =>
-      tailscale_machine_name_host_not_admitted(lookup: lookup, label: label)
-    OperatorHostRegistryRefused { key: key } =>
-      tailscale_machine_name_host_not_admitted(lookup: lookup, label: key)
+    HostSelectorUnknown { selector: selector } =>
+      tailscale_machine_name_host_not_admitted(resolution: resolution, label: selector)
+    HostSelectorAmbiguous { selector: selector, candidates: _ } =>
+      tailscale_machine_name_host_not_admitted(resolution: resolution, label: selector)
+    HostSelectorRegistryRefused { key: key } =>
+      tailscale_machine_name_host_not_admitted(resolution: resolution, label: key)
   }
 }
 
-fn tailscale_machine_name_host_not_admitted(lookup: OperatorHostLookup, label: String) -> ProcessExit {
-  match operator_host_lookup_refusal(lookup: lookup) {
+fn tailscale_machine_name_host_not_admitted(resolution: HostSelectorResolution, label: String) -> ProcessExit {
+  match host_selector_refusal_text(resolution: resolution) {
     Present { value: why } =>
       exit_failure(reason: join(["tailscale_machine_name_converge: ", why, " (", label, ")"], ""))
     Absent =>

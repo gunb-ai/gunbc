@@ -10,12 +10,16 @@ module test.claim.runner.srv14_runner_capacity_witness
 // read at 0 instead of a negative.
 //
 // WHY THESE AND NOT "the width is N": the width is derived by gunbc.runner.runner_slot_allocation
-// gunbc_runner_committed_width over every axis, and the serving term is B4a's (#16266) -- until that
-// lands there is no charge to pin, and after it lands butch's width FAILS CLOSED until B4b reads the
-// engines' ceilings from the box. Pinning a number here would either be a hand width wearing a
-// derived name or a claim that flips under another lane's merge. What must not move regardless of who
-// lands what: butch's own MemTotal, butch's base-only overhead, the engine subtraction, no session
-// charge (the operator ruled butch CI-only), and butch standing in the fleet's own offer catalog.
+// gunbc_runner_committed_width over every axis, and the serving term is B4a's (#16266). B4b read the two engine
+// units read-only over ssh: they were UNCAPPED (MemoryMax=infinity) at 2026-11-12T03:29:30Z, then the operator
+// decision msg_5b61137b installed a hand drop-in 60-memory-cap.conf capping each at MemoryMax=96G (MemoryHigh=88G,
+// MemorySwapMax=0), re-read 2026-11-12T03:48:46Z. So gunbc.serving.serving_host_memory butch_a/b_strata_engine_memory
+// .memory_max are now ServingMemoryRead and srv14's width RESOLVES (it is admitted at the derived width, asserted in
+// runner_slot_allocation_witness -- not pinned as a hand number here). Pinning a width in THIS witness would be a
+// hand width wearing a derived name that flips under another lane's merge. What must not move regardless of who lands
+// what: butch's own MemTotal, butch's base-only overhead, the engine subtraction (the engines' charge is their
+// ceiling above, never the overhead -- so no double-count), no session charge (the operator ruled butch CI-only), and
+// butch standing in the fleet's own offer catalog.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }

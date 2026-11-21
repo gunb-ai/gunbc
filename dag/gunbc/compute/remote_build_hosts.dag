@@ -1,0 +1,68 @@
+module gunbc.compute.remote_build_hosts
+
+import std.types { Bool, List }
+import product.host_identity { HostIdentity }
+
+// THE HOSTS THAT SERVE REMOTE BUILDS, AS THE ONE ROW BOTH SIDES OF THE SHARE READ. A serving host runs
+// the remote-build account (gunbc.fleet.fleet_posix_accounts fleet_posix_remote_build_user) beside the
+// operator's service user, and both reserve memory in the host's ONE capacity ledger. So two facts
+// follow from membership here, and both are derived from this list rather than restated:
+//   - gunbc.compute.host_capacity groups that host's ledger directories to the ledger group, so the
+//     remote-build account can write them (compute_ledger_sharing); AND
+//   - gunbc.compute.host_capacity host_capacity_home_for_host resolves that host's ledger to the
+//     host-scoped home instead of walking a dashboard instance, and gunbc.compute.remote_build puts the
+//     host's serving instance on the roster.
+// It sits below both modules because host_capacity cannot import the roster (the roster reaches the
+// provider, which reaches host_capacity).
+//
+// ADMISSION IS FAIL-CLOSED: A HOST IS ON THIS LIST ONLY WHEN ITS LEDGER HOME ALREADY EXISTS ON DISK,
+// created and read back. gunbc.design_argument::fail_closed ("every path succeeds fully or fails with a
+// typed, located diagnostic") and gunbc.design_argument::replacement_migration ("atomic describes the
+// authority transition"): if a host were listed before its /opt/gunbc/compute/capacity existed, dispatch
+// would resolve a ledger in a directory nothing made, and -- worse -- the host's OWN dashboard instances
+// would start resolving their ledger to /opt/gunbc via host_capacity_home_for_host and the host's live
+// compute provider would refuse, because the host home is not there yet. So the row and the directory
+// are landed in ONE change: the converger that CREATES and READS BACK the home is the thing that adds
+// the row. That converger is remote-build PR 5 (a separate child, gunbc.compute-serve-setup); it adopts
+// srv1's existing home and creates the others.
+//
+// WHO IS LISTED, AND ON WHAT EVIDENCE. srv1 -- its home already existed (its dashboard instance lives at
+// /opt/gunbc, so it does not migrate). srv3 and srv4 -- admitted once the serving converger
+// (gunbc.compute.remote_build_serving_converge) had created their account, ledger home, store, checkout,
+// rustup, toolchain and serve binary and re-observed each host settled. Listing them carves one CI runner
+// slot on each into its build pool (gunbc.runner.runner_slot_desired host_build_pool_reservation): they
+// carry no dashboard instance to hold their own reservation. srv2 is NOT listed: its runner is down and its
+// serving setup is unobserved. Its ledger switch from /home/briansrls to the host home is the converger's
+// actuation -- no in-flight reservation carries across the switch, so it should happen when srv2 has no
+// builds in flight.
+//
+// FOLLOW-UP, NOT INVENTED HERE. butch (srv14) and bobo (srv15) have the operator's interest but not yet a
+// place on this list, and the new Supermicro is being modeled in another lane (still-fox-404):
+//   - bobo (srv15): the next step is its OS, not its key.
+//     #gunbc.fleet.fleet_intent_network::host_lan_address answers nothing for srv15 and it has no row in
+//     #gunbc.fleet.fleet_enrollment::fleet_enrollments, so it is outside
+//     #gunbc.fleet.fleet_enrollment::runner_executor_hosts -- no address to dial, no host a run could be
+//     pinned to. A scanned row joins
+//     #gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments once an installed bobo has an
+//     address and a live runner, and not before.
+//   - butch (srv14): its pool figure asks for no authoring, because
+//     #gunbc.runner.runner_slot_desired::host_build_pool_reservation derives it for a host on this list;
+//     what keeps the host off is the serving charge held by
+//     #gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier. It joins after
+//     that frontier dissolves: candidate row
+//     (#gunbc.compute.remote_build_serving_setup::remote_build_serving_candidate_hosts), observe, converge,
+//     this row -- the order srv3 and srv4 took.
+//   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
+// Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool
+// figure -- never before.
+fn remote_build_serving_hosts() -> List<HostIdentity> {
+  [
+    "srv1" as HostIdentity,
+    "srv3" as HostIdentity,
+    "srv4" as HostIdentity,
+  ]
+}
+
+fn remote_build_host_is_serving(host: HostIdentity) -> Bool {
+  remote_build_serving_hosts() |> any(h => h as String == host as String)
+}

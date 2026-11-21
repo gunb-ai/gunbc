@@ -72,6 +72,7 @@ import gunbc.compute.unit_bounds {
 import gunbc.runner.runner_unit { runner_unit_prefix }
 import gunbc.gunbc_cli_command { gunbc_test_user_work_scope_command }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance, srv1_live_dashboard_instance }
 import gunbc.host.host_converge {
   user_manager_backstop_for, UserManagerBackstopNotOwed, UserManagerBackstopDerived,
@@ -202,7 +203,7 @@ test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {
 
 test fn the_reviewer_launch_binds_the_declared_slice_once() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
+  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr, launch_route: UnitRunOnUserManager)
   !has_property(props: props, needle: slice_needle())
     && match gunbc_user_work_transient_command(unit: "gunbc-review-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
       SystemdRunCommandRefused { cause: _ } => false

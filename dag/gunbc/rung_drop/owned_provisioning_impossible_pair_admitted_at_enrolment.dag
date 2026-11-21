@@ -2,16 +2,22 @@ module gunbc.rung_drop.owned_provisioning_impossible_pair_admitted_at_enrolment
 
 import std.types { NonEmptyStr }
 import std.algebra { FreeSemigroup }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, RetiredTypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyImpossible, MechanicallyPreventable }
 
 // THE DECLARED RUNG DROP for an owned machine whose OS is installed over virtual media with no BMC (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // The old fused OwnedProvisioning arms made that state unwritable: BmcVirtualMediaInstall implied the BMC. The
 // ruling to decompose control route from OS delivery (merry-fox-82, 2026-10-22) made them two independent
-// fields, so the pair is now spellable and `gunbc.fleet.fleet_enrollment admit_enrollment` (one call of
-// `gunbc.fleet.fleet_host_backing admit_owned_provisioning`) refuses it at the enrollment boundary instead.
-// The trigger is a capability: the delivery medium becomes a capability of the control route, so a delivery
+// fields, so the pair was spellable and `gunbc.fleet.fleet_enrollment admit_enrollment` (one call of
+// `gunbc.fleet.fleet_host_backing admit_owned_provisioning`) refused it at the enrollment boundary instead.
+// The trigger was a capability: the delivery medium becomes a capability of the control route, so a delivery
 // cannot name a medium its route lacks. Splitting the medium out of delivery alone does not restore it.
+//
+// RETIRED 2026-11-11, at the trigger the row named: the first non-BMC delivery medium (PXE, PXE 2c
+// node adhoc-b521cbf4-5c4) was landing, and a per-arm refusal table would have been a fourth arm on a check that only
+// had to be a type. The restoration is structural (see trigger_fired), and the refusal machinery it obsoleted
+// is deleted with it, per gunbc.design_argument::guarantee_ladder (dissolution on climb). LANE: session
+// valiant-wolf-326, node adhoc-515d38e2-d78.
 data owned_provisioning_impossible_pair_admitted_at_enrolment: RungDrop = RungDrop {
   identity: "owned_provisioning_impossible_pair_admitted_at_enrolment" as NonEmptyStr,
 
@@ -19,11 +25,13 @@ data owned_provisioning_impossible_pair_admitted_at_enrolment: RungDrop = RungDr
 
   declared: "2026-10-23",
 
-  standing: Standing { declaration: TypedDeclaration {
+  standing: Retired { trigger_fired: "2026-11-11 -- gunbc#16320. THE CAPABILITY, EXECUTED: OwnedProvisioning (gunbc.fleet.fleet_host_backing) is sole_constructor and the pairings the fleet can have are exported constructors, each named for the route whose capability the medium needs -- provisioning_over_bmc_via_virtual_media, provisioning_over_bmc_via_ram_image, provisioning_self_installed_from_appliance_image, provisioning_self_booted_ram_image. A route's constructors ARE its media capability: the pairing \{NoOutOfBand, InstalledViaVirtualMedia\} has no constructor and no writable literal outside its own module, and the readers of the pair's two facts are owned_provisioning_control and owned_provisioning_delivery, which gunbc.host.host_assimilation_program host_phase_status and gunbc.host.host_control_route now use instead of destructuring the pair. WHY NOT A TYPED DELIVERY: a per-route delivery coproduct was probed first and refused by the language, not by preference -- a file's constructor namespace is flat over every coproduct type it owns or imports, so two delivery domains admissible to different routes cannot both name RamImageBoot, which both routes can have; the split would name one fact twice and re-fuse the axis the decomposition ruling separated. THE LOWER RUNG, DISSOLVED ON THE CLIMB: admit_owned_provisioning and OwnedProvisioningAdmission (gunbc.fleet.fleet_host_backing), admit_enrollment with admitted_enrollments, refused_enrollments and fleet_enrollment_refusals (gunbc.fleet.fleet_enrollment, whose roster is now the single list fleet_enrollments), and FleetConvergenceVerdict::FleetEnrollmentRefused with the collector's render line and the verdict route's case -- each existed only to carry a pairing that can no longer be written. DISCRIMINATING RED, SEEN RED ON THE ACCEPTANCE PATH (test.claim.fleet.owned_provisioning_pair_witness, evaluated by claim_batch over test.probe.compile_census_probe): fixture source that imports gunbc.fleet.fleet_host_backing and writes OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia } is refused exactly once, class SoleConstructorViolation at subject OwnedProvisioning; the GENERAL form -- a function taking an OwnedControlRoute and an OwnedOsDelivery and pairing them -- is refused exactly the same, which is what makes this RED about the pair and not about one literal; asking the route-free side for a virtual-media constructor is refused on the NAME, which is the capability claim. POSITIVE CONTROL, SAME PATH: the BMC route's virtual-media pairing, written from a foreign module through provisioning_over_bmc_via_virtual_media(), reports no refusal of either class, so the guarantee cannot be bought by sealing away the pairings the fleet runs. EVALUATED, SAME WITNESS: the constructor table read back through the pair's accessors is exactly \{bmc:virtual-media, bmc:ram-image, no-out-of-band:appliance-image, no-out-of-band:ram-image\}, holds no pairing twice, and yields no no-out-of-band:virtual-media. RESIDUAL LIMIT, CARRIED NOT HIDDEN: the seal's exemption is file-scoped, so a pair literal remains writable inside gunbc.fleet.fleet_host_backing; the constructor table there is the one audit point.",
+    declaration: RetiredTypedDeclaration {
     previous: StructurallyImpossible,
     temporary: MechanicallyPreventable,
     reason: ReplacementStaged { replacement: "OwnedProvisioning decomposed into OwnedControlRoute and OwnedOsDelivery (ruling merry-fox-82, 2026-10-22); the pair is refused by admit_owned_provisioning at gunbc.fleet.fleet_enrollment admit_enrollment, the one call site" },
-    population: Enumerated { members: FreeSemigroup { head: "OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia }", tail: [] } },
+    population_at_retirement: Enumerated { members: FreeSemigroup { head: "OwnedProvisioning { control: NoOutOfBand, delivery: InstalledViaVirtualMedia }", tail: [] } },
     restoration_trigger: "the delivery medium becomes a capability of the control route, so a delivery cannot name a medium its route lacks and the pair has no constructor; owed at the first non-BMC delivery medium (PXE, the network-boot cut). Splitting the medium out of delivery alone is not sufficient. No writer of the pair exists today: the admission refuses it, and fleet_enrollment_refusals is gated empty by host_control_route_witness."
-  } }
+  }
+  }
 }

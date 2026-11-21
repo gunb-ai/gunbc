@@ -1,7 +1,7 @@
 module test.claim.approve_ios_project_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, List, NonEmptyStr, Port }
+import std.types { String, Bool, List, Port }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue, YamlString, YamlSequence, YamlMapping,
   YamlKeyLookup, YamlKeyPresent, YamlKeyAbsent, yaml_lookup, kv, yaml_string, yaml_mapping, yaml_sequence
@@ -11,11 +11,10 @@ import extdeps.apple.xcode { XcodeRelease, xcode_26_6, xcode_release_text }
 import extdeps.xcodegen.project_spec { xcodegen_last_upgrade_check }
 import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequiredLane, approve_ios_build_unexecuted_frontier }
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, approve_ios_project_yml_from, ApproveIosProjectGeneration, ApproveIosProjectGenerated, ApproveIosProjectRefused }
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_on }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_on, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
+import product.host_identity { HostIdentity }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { prod_role_realization }
-import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -249,23 +248,12 @@ test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
   }
 }
 
-// THE DISCRIMINATING CLAIM: the tailnet domain row decides the generated host. A different domain
-// yields that domain's host and not the committed one.
-test fn changing_the_tailnet_domain_changes_the_generated_host() -> Bool {
-  match generated_server_host(g: approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: none)) {
-    Present { value: h } => (h == join([operator_host_srv1 as String, ".other-tailnet.example"], ""))
-      && (concat("https://", h) != approval_broker_base_url_text())
-    Absent => false
-  }
-}
-
-// An undeclared tailnet domain projects the unroutable RFC 2606 host, never a plausible one.
-test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool {
-  match generated_server_host(g: approve_ios_project_yml_from(domain: none, port: none)) {
-    Present { value: h } => string_contains(s: h, pattern: ".invalid") && !string_contains(s: h, pattern: operator_host_srv1 as String)
-    Absent => false
-  }
-}
+// THE TAILNET HOST IS NO LONGER A CALLER INPUT, so there is no "supply a different domain / supply no
+// domain" claim to make here: the generated host comes from the single tailnet_host_labels composition over
+// the declared zone (review 94196 F2). The committed host-equality above (`the_committed_projection_names_
+// the_brokers_public_host`) is the byte claim; the fail_closed guarantee -- an unresolvable machine yields
+// NO host, never a fabricated RFC 2606 one -- is asserted at the producer in
+// test.claim.fleet.fleet_tailnet_name_witness::an_unregistered_machine_has_no_tailnet_host.
 
 // ServerConfig carries no port, so a broker published off the default TLS listener refuses the
 // projection rather than emitting a host the app would dial on 443. The fixture is a port the
@@ -274,7 +262,7 @@ test fn an_undeclared_tailnet_domain_projects_an_unroutable_host() -> Bool {
 data fx_non_default_public_port: Port = 8443
 
 test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
-  match approve_ios_project_yml_from(domain: Present { value: "other-tailnet.example" as NonEmptyStr }, port: Present { value: fx_non_default_public_port }) {
+  match approve_ios_project_yml_from(port: Present { value: fx_non_default_public_port }) {
     ApproveIosProjectRefused { reason: r } => string_contains(s: r, pattern: to_string(fx_non_default_public_port))
     ApproveIosProjectGenerated { content: _ } => false
   }
@@ -284,7 +272,11 @@ test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
 // fails every equality.
 fn approval_broker_base_url_text() -> String {
   match approval_broker_host_under(realization: prod_role_realization()) {
-    ApprovalBrokerHostResolved { host } => approval_broker_base_url_on(host: host, domain: fleet_tailnet_domain) as String
+    ApprovalBrokerHostResolved { host } =>
+      match approval_broker_base_url_on(machine: host as HostIdentity) {
+        ApprovalBrokerAddressResolved { value: url } => url as String
+        ApprovalBrokerAddressRefused { detail: _ } => ""
+      }
     ApprovalBrokerHostRefused { cause: _ } => ""
   }
 }

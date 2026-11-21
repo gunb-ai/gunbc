@@ -1,6 +1,8 @@
 module gunbc.machine_intake.mtcollins1_census_image
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { list_append }
+import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelKeyValue }
 import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import extdeps.kmod.libkmod { libkmod_log_priority_env_name, libkmod_log_priority_info }
 import extdeps.systemd.udevd { udevd_log_level_cmdline_key, systemd_log_level_debug, systemd_log_target_env_name, systemd_log_target_kmsg }
@@ -58,10 +60,10 @@ data mtcollins1_census_console_baud: Bandwidth = bandwidth(count: 115200)
 
 data mtcollins1_census_console_device: NonEmptyStr = concat("/dev/", mtcollins1_census_console_tty as String) as NonEmptyStr
 
-data mtcollins1_census_console_arg: NonEmptyStr = concat(
-  "console=", mtcollins1_census_console_tty as String, ",",
-  nat_to_decimal_string(value: bandwidth_count(b: mtcollins1_census_console_baud)),
-) as NonEmptyStr
+data mtcollins1_census_console_arg: KernelCmdlineArg = KernelKeyValue {
+  key: "console",
+  value: concat(mtcollins1_census_console_tty as String, ",", nat_to_decimal_string(value: bandwidth_count(b: mtcollins1_census_console_baud))),
+}
 
 // THE MODULE-IDENTITY INSTRUMENT (gunbc.machine_intake.kernel_module_decompression_observation).
 // The kernel's "ZSTD-decompression failed" line names no module; the loader's record does, and in
@@ -79,12 +81,12 @@ data mtcollins1_census_console_arg: NonEmptyStr = concat(
 // ignore_loglevel would flood the 115200 line and perturb the timing of a possible race).
 // It is a build input like any other: changing it changes the build key and the digest, so the
 // image is republished, read back and repinned; nothing edits GRUB by hand.
-data mtcollins1_census_module_identity_args: NonEmptyStr = join([
-  concat(libkmod_log_priority_env_name as String, "=", libkmod_log_priority_info as String),
-  concat(udevd_log_level_cmdline_key as String, "=", systemd_log_level_debug as String),
-  concat(systemd_log_target_env_name as String, "=", systemd_log_target_kmsg as String),
-  linux_printk_devkmsg_on_cmdline_arg as String,
-], " ") as NonEmptyStr
+data mtcollins1_census_module_identity_args: List<KernelCmdlineArg> = [
+  KernelKeyValue { key: libkmod_log_priority_env_name, value: libkmod_log_priority_info as String },
+  KernelKeyValue { key: udevd_log_level_cmdline_key, value: systemd_log_level_debug as String },
+  KernelKeyValue { key: systemd_log_target_env_name, value: systemd_log_target_kmsg as String },
+  linux_printk_devkmsg_on_cmdline_arg,
+]
 
 // The seed directory the earlier census booted with (its /proc/cmdline in attempt=3 reads
 // ds=nocloud;s=/cdrom/gunbc-census/), kept so the two captures are comparable.
@@ -153,17 +155,15 @@ data mtcollins1_census_live_commands: UbuntuAutoinstallLiveCommands = census_liv
 // the fleet-SSH publish first rebuilds the pinned-input derivation on srv2 and requires its hermetic
 // digest and the stock boot chain before it publishes anything
 // (gunbc.machine_intake.mtcollins1_census_image_publish census_srv2_regression).
-data mtcollins1_census_pinned_grub_cmdline: NonEmptyStr = concat(
-  ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: mtcollins1_census_nocloud_dir) as String,
-  " ",
-  mtcollins1_census_console_arg as String,
-) as NonEmptyStr
+data mtcollins1_census_pinned_grub_cmdline: List<KernelCmdlineArg> = list_append(
+  left: ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: mtcollins1_census_nocloud_dir),
+  right: [mtcollins1_census_console_arg],
+)
 
-data mtcollins1_census_grub_cmdline: NonEmptyStr = concat(
-  mtcollins1_census_pinned_grub_cmdline as String,
-  " ",
-  mtcollins1_census_module_identity_args as String,
-) as NonEmptyStr
+data mtcollins1_census_grub_cmdline: List<KernelCmdlineArg> = list_append(
+  left: mtcollins1_census_pinned_grub_cmdline,
+  right: mtcollins1_census_module_identity_args,
+)
 
 // THE CENSUS IMAGE INPUT: the stock 24.04.3 arm64 live-server medium with a NoCloud seed that carries
 // the census capture program. Every subject fact is a PARAMETER -- the image stem, the volume id, the
@@ -175,7 +175,7 @@ fn census_seeded_image_input(
   image_stem: NonEmptyStr,
   volume_id: NonEmptyStr,
   user_data_body: NonEmptyStr,
-  grub_kernel_cmdline: NonEmptyStr,
+  grub_kernel_cmdline: List<KernelCmdlineArg>,
   nocloud_dir: NonEmptyStr,
   program_file: NonEmptyStr,
   program_content: NonEmptyStr,
@@ -227,7 +227,7 @@ fn census_image_derivation(
   halt_command: NonEmptyStr,
   image_stem: NonEmptyStr,
   volume_id: NonEmptyStr,
-  grub_kernel_cmdline: NonEmptyStr,
+  grub_kernel_cmdline: List<KernelCmdlineArg>,
   nocloud_dir: NonEmptyStr,
   program_file: NonEmptyStr,
 ) -> CensusImage {

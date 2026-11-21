@@ -1,16 +1,36 @@
 module gunbc.auth.approval_broker_ingress
 
-import std.types { String, Int }
-import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
+import std.types { String, Int, List }
+import gunbc.http_ingress {
+  HttpIngressAdmission, http_ingress_binding, http_ingress_serves_declared_handler,
+  http_ingress_undeclared_handler_reason,
+}
 import gunbc.auth.approval_broker_serve { approval_broker_handle }
 
-// THE DEPLOYMENT BINDING OF the approval broker (gunbc.http_ingress, gunbc.plans.converged_ingress (deleted 2026-11-08)).
-// The handler stays an ordinary entry; this module is where serving it is declared. The import above
-// is what puts the handler's module in the run's closure, and `handler` names which of its entries
-// this process serves. gunbc.live_deploy.emit renders the per-host values as `gunbc run --arg`s.
+// THE HANDLERS THIS ENTRY MAY SERVE: the broker handler named as `serve_function` by the approval
+// broker's DeploymentServiceConfig (gunbc.live_deploy.spec, the srv1 approval-broker instance), which
+// gunbc.live_deploy.emit renders into the unit's `gunbc run --arg handler=`. `handler` is runtime data
+// and a demanded run realizes only what a demanded declaration names (#16069,
+// gunbc.design_ruling::run_realizes_only_demanded_declarations), so this row -- seeded through the
+// runtime-key registry (src/v1/04_infer.dag runtime_key_readers, instance
+// loaded_index_runtime_named_handler_approval_broker) -- is what lets the host's loaded index hold it; without it the
+// unit refuses at startup the way the roadmap and fabric storage units measured doing so
+// (REFUSED: runtime-keyed reads not realized by this execution's loaded index). The admission rule and
+// the refusal are gunbc.http_ingress's, spelled once for every entry that serves a runtime-named handler.
+data approval_broker_ingress_served_handlers: List<String> = [
+  "approval_broker_handle",
+]
+
+// THE BROKER'S DEPLOYMENT BINDING: the handler is an ordinary entry (gunbc.auth.approval_broker_serve);
+// this module is where serving it is declared. Same shape as gunbc.roadmap.roadmap_ingress: the argv
+// handler is admitted against the declared row before the binding is constructed.
 fn approval_broker_ingress(handler: String, listener: String, release_revision: String, cpu_limit_ms: Int, wall_limit_ms: Int) -> HttpIngressAdmission {
-  http_ingress_binding(
-    handler_module: "gunbc.auth.approval_broker_serve", handler: handler, listener: listener,
-    release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
-  )
+  if !http_ingress_serves_declared_handler(served_handlers: approval_broker_ingress_served_handlers, handler: handler) {
+    HttpIngressRefused { reason: http_ingress_undeclared_handler_reason(entry: "approval_broker_ingress", row: "approval_broker_ingress_served_handlers", handler: handler) }
+  } else {
+    http_ingress_binding(
+      handler_module: "gunbc.auth.approval_broker_serve", handler: handler, listener: listener,
+      release_revision: release_revision, cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms,
+    )
+  }
 }

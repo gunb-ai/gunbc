@@ -100,6 +100,7 @@ test fn an_apply_run_with_an_unsettled_package_does_not_succeed() -> Bool {
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: PostActivationDigestHeld,
     http: HttpLegNotNeeded,
+    live_evidence: [],
   }) == false
 }
 
@@ -117,5 +118,6 @@ test fn an_observe_run_with_an_undecidable_package_does_not_succeed() -> Bool {
     unit_active: SitePxeEdgeProbeHeld,
     post_activation: PostActivationNotRead { reason: "observe-only" },
     http: HttpLegNotNeeded,
+    live_evidence: [],
   }) == false
 }

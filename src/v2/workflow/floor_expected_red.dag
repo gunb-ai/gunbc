@@ -361,8 +361,12 @@ fn floor_expected_red_chunk_03() -> List<String> {
   Cons { head: "test.claim.host.host_effect_apply_witness.witness_converged_is_settled", tail: Cons { head: "test.claim.host.host_effect_apply_witness.witness_ssh_shell_unreachable_fails_closed", tail: Cons { head: "test.claim.host.host_effect_apply_witness.witness_typed_read_on_host_success_converges", tail: Cons { head: "test.claim.host.host_effect_plan_real_execution_witness.host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution", tail: Cons { head: "test.claim.host.host_effect_plan_real_execution_witness.host_effect_plan_typed_read_witness_holds_by_real_execution", tail: Empty {} } } } } }
 }
 
+// ONE ROW LEFT WITH ITS WITNESS (census retirement, gunbc.design_ruling
+// bad_process_is_worse_than_no_process): test.claim.observation_raw_print_retirement_acceptance
+// observation_emit_frontier_is_zero counted gunbc.observation_emit_census, which was deleted
+// without a successor; the census and its acceptance module left the tree together.
 fn floor_expected_red_chunk_04() -> List<String> {
-     Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.observation_raw_print_retirement_acceptance.observation_emit_frontier_is_zero", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail:           Empty {} } } }
+  Cons { head: "test.claim.namespace_reference_derived_closure_acceptance.witness_namespace_reference_derived_closure_closing_contract_holds", tail: Cons { head: "test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller", tail: Empty {} } }
 }
 
 // shell-typed-invocation's acceptance oracle. It was RED until the node's slice landed (2026-09-29):
@@ -1106,21 +1110,24 @@ fn floor_expected_red_chunk_disjoint_refinement_chains() -> List<String> {
   Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses", tail: Empty {} }
 }
 
-// SHELL-DAG-CRON-ENTRY-LINE-BUILDER'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the same
-// admission shape as chunk_05 (shell-typed-invocation's oracle): the roadmap node's acceptance
-// witness is planted and enrolled BEFORE dispatch, so launch admission can pin a red oracle and
-// the dispatched worker is forbidden to edit it. Five identities from
-// dag/test/claim/shell/shell_dag_cron_entry_line_builder_witness.dag: the four
-// adversarial-field arms (schedule/command/log_path/tag each planting a shell control word into
-// gunbc.tools.cron_tag build_cron_entry_line) and the acceptance conjunction that feeds the
-// node's execution contract. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
-// module's two positive controls pass on the same run, and today's string concat interpolates
-// every hazard raw into the crontab line. The worker rebinds the builder onto the typed
-// cron-entry intent; when the arms pass, this roster's self-emptying arm names them for removal,
-// and the witnesses stay as permanent regression controls (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
-fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_schedule_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_command_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_log_path_field_renders_no_shell_control_word", tail: Cons { head: "test.claim.shell.shell_dag_cron_entry_line_builder_witness.adversarial_tag_field_renders_no_shell_control_word", tail: Empty {} } } } }
-}
+// SHELL-DAG-CRON-ENTRY-LINE-BUILDER'S ACCEPTANCE ORACLE: WITHDRAWN. The chunk named the four
+// red-by-design arms over the rendered crontab line of gunbc.tools.cron_tag build_cron_entry_line
+// (the schedule, command, log_path and tag fields each planting a shell control word). The builder is
+// no longer a concat: the format string is deleted, the schedule is PARSED into extdeps.cron.schedule_model
+// CronSchedule via parse_cron_schedule and rendered by render_cron_schedule, the command + redirect is
+// realized as one bash statement through the rows of v2.workflow.orchestration_bash_emit_support
+// (a single Do{Run{redirect: ToFile}} emitted by orch_bash_emit_pipeline), the command/path/tag words are
+// admitted by gunbc.typed_argv_exec's portable-argv wall, and the line is composed by the cron medium's
+// render_cron_entry_line -- so each adversarial field is refused before any line is produced (the refusal
+// returns a non-empty sentinel, never the empty-string stub the node forbids) and the four arms green at
+// the same names in the same file; the two positive controls still render the declared schedule, command
+// and marker in full, so the builder is not a whole-builder stub. A listing whose claim was
+// that the probes fail does not outlive its red (gunbc.design_argument::guarantee_ladder (dissolution on climb)): the probes stay enrolled
+// as permanent regression controls; the listing is withdrawn in that same motion, and the roadmap
+// contract still binds build_cron_entry_line and cron_tag_marker, so the node's acceptance surface is
+// unchanged.
+
+
 
 // SHELL-DAG-CI-FMT-GATE-LINE, SHELL-DAG-CI-DEPLOY-INVOKE-PRELUDE AND SHELL-DAG-CI-HEAL-REGEN-INVOKE'S
 // ACCEPTANCE ORACLES: WITHDRAWN. Their subjects (gunbc.ci.ci_spec ci_fmt_gate_line,
@@ -1138,45 +1145,6 @@ fn floor_expected_red_chunk_shell_dag_cron_entry_line_builder() -> List<String> 
 // (gunbc.design_argument::guarantee_ladder (dissolution on climb)): the probes stay enrolled as permanent regression controls; the listing is
 // withdrawn in that same motion, and the roadmap contract still binds the file's four function
 // names, so the node's acceptance surface is unchanged.
-
-// SHELL-DAG-CODEX-APP-SERVER-TRIP-SCRIPT'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
-// cron-entry chunk above states the admission shape. Four identities from
-// dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness.dag: the three red arms
-// over the rendered trip surface (shell control words, the literal stdio sentinels, an adversarial
-// codex_home) and the acceptance conjunction. Each reaches its subject and answers Bool(false) on
-// BEHAVIOR — the module's positive control passes on the same run. The worker realizes the trip as
-// a typed ArgvCommand with the payload on stdin and separate stream capture; when the arms pass,
-// this roster's self-emptying arm names them for removal (gunbc.design_argument::guarantee_ladder (dissolution on climb)). gunbc#12973 landed the
-// typed argv realization on main; with the witness re-pointed at it, the control-word and sentinel
-// arms pass and leave this chunk. The adversarial codex_home arm still answers false: the
-// separator travels as argv data, but the rendered surface text still contains it.
-fn floor_expected_red_chunk_shell_dag_codex_app_server_trip_script() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_codex_app_server_trip_script_witness.adversarial_codex_home_renders_no_shell_control_word", tail: Empty {} }
-}
-
-// SHELL-DAG-LIVE-DEPLOY-INSTALL-OWNED'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the cron-entry
-// chunk above states the admission shape. Two identities from
-// dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness.dag: the red arm (an
-// install path carrying a command separator, rendered into the privileged install line) and the
-// acceptance conjunction. Each reaches its subject and answers Bool(false) on BEHAVIOR — the
-// module's two positive controls pass on the same run. The worker realizes the install-owned
-// leaves as a typed filesystem write plus a typed ownership effect; when the arm passes, this
-// roster's self-emptying arm names it for removal (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
-fn floor_expected_red_chunk_shell_dag_live_deploy_install_owned() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_live_deploy_install_owned_witness.adversarial_install_path_renders_no_shell_control_word", tail: Empty {} }
-}
-
-// SHELL-DAG-LIVE-DEPLOY-RESTART-TAILSCALE'S ACCEPTANCE ORACLE, AUTHORED RED BY DESIGN — the
-// cron-entry chunk above states the admission shape. Two identities from
-// dag/test/claim/shell/shell_dag_live_deploy_restart_tailscale_witness.dag: the red arm (the
-// tree-sync restart step's diagnosis appended as shell text — a `||` fallback arm with `;`
-// separators) and the acceptance conjunction. Each reaches its subject and answers Bool(false) on
-// BEHAVIOR — the module's three positive controls pass on the same run. The worker rebinds both
-// steps to sudo_elevate_argv typed privileged argv; when the arm passes, this roster's
-// self-emptying arm names it for removal (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
-fn floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale() -> List<String> {
-  Cons { head: "test.claim.shell.shell_dag_live_deploy_restart_tailscale_witness.tree_sync_restart_step_renders_no_shell_control_word", tail: Empty {} }
-}
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
   Cons { head: "test.claim.argument_shape_at_a_declared_position_probe.an_unapplied_function_at_a_concrete_position_is_refused", tail: Cons { head: "test.claim.argument_shape_at_a_declared_position_probe.a_string_at_a_generic_position_is_refused", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability.doc_graph_is_clean", tail: Cons { head: "v2.test.claim.manual.test_migration_debt.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.claim.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
@@ -1320,7 +1288,7 @@ fn floor_expected_red_chunk_inferred_collection_key_census() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_inferred_collection_key_census(), tail: Cons { head: floor_expected_red_chunk_append_log_store(), tail: Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_shell_dag_cron_entry_line_builder(), tail: Cons { head: floor_expected_red_chunk_shell_dag_codex_app_server_trip_script(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_install_owned(), tail: Cons { head: floor_expected_red_chunk_shell_dag_live_deploy_restart_tailscale(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_expected_red_chunk_required_lane_materialized_workflow_red(), tail: Cons { head: floor_expected_red_chunk_inferred_collection_key_census(), tail: Cons { head: floor_expected_red_chunk_append_log_store(), tail: Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } }  } } } } } } } } } } } } } } } } } } } } } } } } } } 
 }
 
 // THE TWO CONSTRUCTOR-TAG QUARANTINE PROBES THAT ARE LIVE REDS, enrolled as expected reds. These are
@@ -1351,6 +1319,27 @@ fn floor_expected_red_chunks() -> List<List<String>> {
 // of rotting.
 fn floor_expected_red_chunk_constructor_tag_route_probe_red() -> List<String> {
   Cons { head: "test.claim.constructor_tag_route_probe_red.same_arm_one_t_two_coproducts_must_refuse", tail: Cons { head: "v2.test.claim.manual.constructor_tag_route_probe_red.same_arm_one_t_two_coproducts_must_refuse", tail: Empty {} } }
+}
+
+// THE MATERIALIZED-WORKFLOW DISAGREEMENT (node adhoc-3808adaf-cb0, 2026-11-15).
+// `required_lane_claim_agreement_witness` carries a row that reads `required_lanes_roster()` against the
+// job-id set `gunbc.witness.compiler_gate_workflow` actually renders. It is RED at this head: the roster
+// still rosters `required-witnesses-build` and `required-witnesses-floor`, neither of which is in the
+// materialized single-job (`v2-bootstrap`) required workflow since the v1-withdrawal. The row states a
+// property that is genuinely false today and refuses for the right reason -- an expected RED like the other
+// chunks' rows, not a skip. The disagreement between roster and emitted workflow is `gunbc.rung_drop`
+// `v1_required_lanes_withdrawn`'s declared standing: the roster is the guarantee ladder's TARGET population,
+// `compiler_gate_workflow` renders the jobs that gate TODAY; reconciling the two (retiring the drop) is the
+// operator's act, not this row's, so this row neither consolidates nor retires anything. It does NOT restore
+// the withdrawn lanes -- re-adding `required-witnesses-build`/`-floor` as corpus-to-v1-interpreter lanes is
+// the path DESIGN forbids (Reference: building and checks: a new verdict joins as a row judged by a binary
+// built from the seed's emission, never a lane handing the corpus to the v1 interpreter). WHAT RETIRES THIS
+// CHUNK is carried on a typed carrier, not stated here: the `gunbc.guarantee_stall` record
+// `gunbc.guarantee_stall.required_lane_materialized_workflow_stall` cross-references this chunk and names the
+// capability that dissolves it -- deliberately NOT asserted as a prose dissolution condition here
+// (gunbc.design_argument::source_annotations: a dissolution condition belongs in a typed carrier).
+fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<String> {
+  Cons { head: "test.claim.required_lane_claim_agreement_witness.w_every_rostered_lane_appears_as_an_emitted_workflow_job", tail: Empty {} }
 }
 
 // The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run

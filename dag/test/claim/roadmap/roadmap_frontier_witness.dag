@@ -9,14 +9,16 @@ import gunbc.roadmap.roadmap_model {
   AdmittedRoot,
 }
 import std.types { NonEmptyStr }
-import gunbc.roadmap.roadmap_status { DerivableLine, SupersededLine }
+import gunbc.roadmap.roadmap_status { DerivableLine }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap.roadmap_spawner { spawn_frontier, next_spawnable }
+import gunbc.roadmap.roadmap_spawner { spawn_frontier, next_spawnable, SpawnFrontier }
 import gunbc.roadmap.roadmap_page { workspace_markup, daily_row_activity, daily_row_rounds, page_launch_context }
 import gunbc.site.document { site_header }
-import gunbc.roadmap.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_workspace_view, observation_impact_view }
+import gunbc.roadmap.roadmap_presentation {
+  DailyWorkspaceView, WorkBandEntry, BandRow, BandFamily, BandProject,
+  work_row_view, daily_workspace_view, observation_impact_view }
 import gunbc.roadmap.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes, doc_all_edges }
 import gunbc.roadmap.roadmap_authority { authored_merged_prs }
@@ -39,23 +41,6 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     owner: "",
     parent: Present { value: AdmittedRoot },
     centering: Present { value: "fixture centering plan" as NonEmptyStr },
-  }
-}
-
-// A CLOSED parent inside the plan. A node definition carries no acceptance: an accepted node and
-// its edges leave the document through the acceptance history before the frontier is computed, so
-// the closed shape a definition can still state is a superseded line (it closes dependency edges).
-fn closed_node(base: RoadmapNode) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_QBNJEXMAX2KQWS838BE3" as RoadmapNodeIdentity,
-    node: base.node,
-    line: SupersededLine { by: "successor-lane", content: "closed" },
-    carriers: base.carriers,
-    dispatch: base.dispatch,
-    execution: base.execution,
-    owner: base.owner,
-    parent: none,
-    centering: none,
   }
 }
 
@@ -88,13 +73,15 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
   }
 }
 
+// THE FRONTIER AND THE DISPATCHER AGREE, from the same document. The parent is in the plan, so it
+// is a parent the child waits on; the child's own readiness is decided the same way by both readers.
 test fn witness_ready_matches_next_spawnable() -> Bool {
-  let node_a = closed_node(base: sized_derivable(id: "parent-done", prs: [100], title: "Parent"))
+  let node_a = sized_derivable(id: "parent-active", prs: [100], title: "Parent")
   let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
-  let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "child-ready"), parent: roadmap_frontier_nid(s: "parent-done") }]
+  let edges: List<RoadmapEdge> = []
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [100])
-  let spawnable = next_spawnable(doc: doc, merged: [100])
+  let frontier = spawn_frontier(doc: doc, merged: [100], accepted: [], withheld: [])
+  let spawnable = next_spawnable(doc: doc, merged: [100], accepted: [], withheld: [])
   count(frontier.ready) == count(spawnable)
     && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "child-ready"))
 }
@@ -104,7 +91,7 @@ test fn witness_upcoming_is_blocked_sized_node() -> Bool {
   let node_b = sized_derivable(id: "child-blocked", prs: [200], title: "Child Blocked")
   let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "child-blocked"), parent: roadmap_frontier_nid(s: "parent-open") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let frontier = spawn_frontier(doc: doc, merged: [], accepted: [], withheld: [])
   any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "child-blocked"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "child-blocked"))
 }
@@ -112,7 +99,7 @@ test fn witness_upcoming_is_blocked_sized_node() -> Bool {
 test fn witness_merged_unsigned_node_stays_ready_for_acceptance() -> Bool {
   let node = sized_derivable(id: "review-node", prs: [999], title: "Review Node")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [999])
+  let frontier = spawn_frontier(doc: doc, merged: [999], accepted: [], withheld: [])
   any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "review-node"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "review-node"))
 }
@@ -123,28 +110,38 @@ test fn witness_merged_unsigned_parent_does_not_unblock_child() -> Bool {
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   let frontier = spawn_frontier(
     doc: fixture_doc(nodes: [parent, child], edges: [edge]),
-    merged: [999])
+    merged: [999], accepted: [], withheld: [])
   any(frontier.ready, n => n.node == parent.node)
     && any(frontier.upcoming, n => n.node == child.node)
     && !any(frontier.ready, n => n.node == child.node)
 }
 
-test fn witness_closed_parent_unblocks_child() -> Bool {
-  let parent = closed_node(base: sized_derivable(id: "closed-parent", prs: [700], title: "Closed Parent"))
+// THE CLOSURE IS THE WITHDRAWAL, NOT A ROW'S WORD. When the log ends a node — an acceptance, or a
+// retirement — the node leaves the plan and its edges stop gating, so the child is left with nothing
+// to wait on. The two asks below are the same document and the same merged set; the only difference
+// is what the log has taken off the plan, which is what makes the pair mean withdrawal rather than a
+// fixture that never had a parent.
+test fn witness_withdrawn_parent_leaves_the_child_ready() -> Bool {
+  let parent = sized_derivable(id: "closing-parent", prs: [700], title: "Closing Parent")
   let child = sized_derivable(id: "after-close", prs: [701], title: "After Close")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
-  let frontier = spawn_frontier(
-    doc: fixture_doc(nodes: [parent, child], edges: [edge]),
-    merged: [])
-  any(frontier.superseded, n => n.node == parent.node)
-    && !any(frontier.ready, n => n.node == parent.node)
-    && any(frontier.ready, n => n.node == child.node)
+  let doc = fixture_doc(nodes: [parent, child], edges: [edge])
+  let while_open = spawn_frontier(
+    doc: doc, merged: [700], accepted: [], withheld: [],
+  )
+  let after_the_log = spawn_frontier(
+    doc: doc, merged: [700], accepted: [], withheld: [parent.node],
+  )
+  any(while_open.upcoming, n => n.node == child.node)
+    && !any(while_open.ready, n => n.node == child.node)
+    && any(after_the_log.ready, n => n.node == child.node)
+    && count(after_the_log.upcoming) == 0
 }
 
 test fn witness_unsized_excluded_from_frontier() -> Bool {
   let node = undispatchable_derivable(id: "unsized-open", prs: [], title: "NotDispatchable")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [])
+  let frontier = spawn_frontier(doc: doc, merged: [], accepted: [], withheld: [])
   count(frontier.ready) == 0
     && count(frontier.upcoming) == 0
 }
@@ -152,15 +149,16 @@ test fn witness_unsized_excluded_from_frontier() -> Bool {
 test fn witness_buckets_are_disjoint() -> Bool {
   let node_a = sized_derivable(id: "a-open", prs: [100], title: "A")
   let node_b = sized_derivable(id: "b-blocked", prs: [200], title: "B")
-  let node_c = closed_node(base: sized_derivable(id: "c-done", prs: [300], title: "C"))
+  let node_c = sized_derivable(id: "c-alone", prs: [300], title: "C")
   let edges = [RoadmapEdge { child: roadmap_frontier_nid(s: "b-blocked"), parent: roadmap_frontier_nid(s: "a-open") }]
   let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
-  let frontier = spawn_frontier(doc: doc, merged: [300])
+  let frontier = spawn_frontier(doc: doc, merged: [300], accepted: [], withheld: [])
   any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "a-open"))
+    && any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "c-alone"))
     && any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "b-blocked"))
-    && any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "c-done"))
     && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "b-blocked"))
     && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "a-open"))
+    && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "c-alone"))
 }
 
 // THE BAND BOUNDARY, SUPPLIED: the workspace view built from the document's rows by the same
@@ -168,20 +166,37 @@ test fn witness_buckets_are_disjoint() -> Bool {
 // live family roster (whole-authority reads that cost ~190k steps and carry nothing about bands),
 // then serialized through workspace_markup -- the fragment the page embeds. The page composition
 // itself is exercised by the page witnesses; these claims are about which band a row lands in.
-fn fixture_workspace_view(doc: RoadmapDocument, merged: List<Int>) -> DailyWorkspaceView {
+// The fixture states the event log's decision and hands the SAME two lists to both producers in the view: the
+// launch context and the rows. Passing literals to one of the two would let the page's launch cells and its
+// readiness cells answer from different populations, which is the split this witness now also checks.
+fn fixture_workspace_view(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
-  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch_host_unobserved_static_render())
+  let ctx = page_launch_context(
+    doc: doc, merged: merged, accepted: accepted, withheld: withheld,
+    launch: launch_host_unobserved_static_render())
   let rows = map(nodes, rn => work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
     activity: daily_row_activity(node_id: rn.node as String, attempts: [], attempts_refused: none),
     rounds: daily_row_rounds(node_id: rn.node as String, attempts: [], attempts_refused: none),
-    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: []))
+    worker_alive: false, standing: none, launch: ctx, attempt_stale: false, profiles: [],
+    accepted: accepted, withheld: withheld))
   daily_workspace_view(rows: rows, edges: edges, program: none, observation: observation_impact_view(workflow_refused: none), families: [], members: [], memberships: [])
 }
 
-fn workspace_band_html(doc: RoadmapDocument, merged: List<Int>) -> String {
-  match try_serialize_html_source(node: workspace_markup(ws: fixture_workspace_view(doc: doc, merged: merged), edges: doc_all_edges(doc: doc), memberships: [])) {
+fn workspace_band_html(
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  accepted: List<RoadmapNodeId>,
+  withheld: List<RoadmapNodeId>,
+) -> String {
+  match try_serialize_html_source(node: workspace_markup(ws: fixture_workspace_view(
+      doc: doc, merged: merged, accepted: accepted, withheld: withheld), edges: doc_all_edges(doc: doc), memberships: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
@@ -204,7 +219,7 @@ fn daily_workspace_header_html() -> String {
 test fn witness_page_renders_four_buckets() -> Bool {
   let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
   let doc = fixture_doc(nodes: [node_a], edges: [])
-  let h = workspace_band_html(doc: doc, merged: [])
+  let h = workspace_band_html(doc: doc, merged: [], accepted: [], withheld: [])
   string_contains(s: daily_workspace_header_html(), pattern: "<h1>daily workspace</h1>")
     && string_contains(s: h, pattern: "<section class=\"roadmap-frontier\">")
     && !string_contains(s: h, pattern: "frontier-bucket")
@@ -213,48 +228,12 @@ test fn witness_page_renders_four_buckets() -> Bool {
     && string_contains(s: h, pattern: "data-band-chip=\"ready\"")
     && string_contains(s: h, pattern: "data-band-chip=\"not-ready\"")
     && string_contains(s: h, pattern: "data-band-chip=\"done\"")
-    && string_contains(s: h, pattern: "data-band-chip=\"superseded\"")
-}
-
-fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_7WGSEGZK2FRN2VY0DWFC" as RoadmapNodeIdentity,
-    node: roadmap_frontier_nid(s: id),
-    line: SupersededLine { by: by, content: "Old Row" },
-    carriers: [],
-    dispatch: NotDispatchable,
-    execution: ExecutionContractUnspecified,
-    owner: "",
-    parent: none,
-    centering: none,
-  }
-}
-
-test fn witness_superseded_bucket_holds_superseded_only() -> Bool {
-  let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
-  let node_open = sized_derivable(id: "open-row", prs: [10], title: "Open Row")
-  let doc = fixture_doc(nodes: [node_old, node_open], edges: [])
-  let frontier = spawn_frontier(doc: doc, merged: [])
-  any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "old-row"))
-    && !any(frontier.superseded, n => n.node == roadmap_frontier_nid(s: "open-row"))
-    && !any(frontier.ready, n => n.node == roadmap_frontier_nid(s: "old-row"))
-    && !any(frontier.upcoming, n => n.node == roadmap_frontier_nid(s: "old-row"))
-}
-
-test fn witness_page_places_superseded_node_in_superseded_bucket() -> Bool {
-  let node_old = superseded_node_fixture(id: "old-row", by: "successor-lane")
-  let doc = fixture_doc(nodes: [node_old], edges: [])
-  let h = workspace_band_html(doc: doc, merged: [])
-  string_contains(s: h, pattern: "Old Row")
-    && string_contains(s: h, pattern: "data-band=\"superseded\"")
-    && !string_contains(s: h, pattern: "frontier-bucket")
-    && !string_contains(s: h, pattern: "<button class=\"dispatch-btn")
 }
 
 test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
   let node = sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
   let doc = fixture_doc(nodes: [node], edges: [])
-  let h = workspace_band_html(doc: doc, merged: [])
+  let h = workspace_band_html(doc: doc, merged: [], accepted: [], withheld: [])
   string_contains(s: h, pattern: "Spawn Me Now")
     && string_contains(s: h, pattern: "data-band=\"ready\"")
     && string_contains(s: h, pattern: "data-node=\"spawn-me\"")
@@ -262,3 +241,155 @@ test fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
     && !string_contains(s: h, pattern: "class=\"status status-open\"")
 }
 
+// Every band entry carries its node ids, whatever shape it has: a family or a project tree is not a place a
+// row can hide, so asking a band whether it holds a node asks all three variants.
+fn band_row_ids(e: WorkBandEntry) -> List<String> {
+  match e {
+    BandRow { row: r } => [r.node_id]
+    BandFamily { family: f } => map(f.rows, r => r.node_id)
+    BandProject { project: p } => append([p.row.node_id], items: map(p.chain, r => r.node_id))
+  }
+}
+
+fn band_has(entries: List<WorkBandEntry>, id: String) -> Bool {
+  any(entries, e => any(band_row_ids(e), k => k == id))
+}
+
+// THE PAGE'S BANDS AND THE FRONTIER MOVE A CHILD ON THE SAME DECISION. This is the page-bucket sibling of
+// gunbc.roadmap.roadmap_spawner's claim that the spawner and the row scheduler answer from one population:
+// that one compares per-row scheduling against next_spawnable, this one compares the page's OWN typed buckets
+// (DailyWorkspaceView.ready / .not_ready, which is what the bands are made of) against spawn_frontier, and it
+// moves a parent between open and accepted — the standing no other claim here pairs with the page. It exists
+// because the readiness graph the bands came from used to subtract accepted parents on its own, and no claim
+// joined what the page printed to what the frontier said.
+//
+// THE FIXTURE, ONCE. Both readers are handed the SAME document and the SAME accepted list, so the only thing
+// that can differ between them is what they decide. The accepted list is taken FROM the document rather than
+// rebuilt: the node the log accepts has to be the node the page and the frontier are reading, and a fixture
+// reconstructed per arm is a fixture that starts disagreeing with itself by accident.
+fn page_pair_doc() -> RoadmapDocument {
+  fixture_doc(
+    nodes: [
+      sized_derivable(id: "page-parent", prs: [700], title: "Page Parent"),
+      sized_derivable(id: "page-child", prs: [701], title: "Page Child"),
+    ],
+    edges: [RoadmapEdge { child: roadmap_frontier_nid(s: "page-child"), parent: roadmap_frontier_nid(s: "page-parent") }],
+  )
+}
+
+// ONLY THE PARENT'S PR IS MERGED, and that is the whole point of the line. The page's band is the dispatcher's
+// readiness (gunbc.roadmap.roadmap_presentation: "READY IS THE DISPATCHER'S READINESS … the same value the
+// launch admission refuses with"), and readiness_state_gaps (gunbc.roadmap.roadmap_readiness) turns a
+// DerivableLine whose PRs are all merged into GapInReview — a row whose code is written is not waiting for a
+// worker. The frontier keeps that same row in `ready`, which is established model behavior, not an accident:
+// witness_merged_unsigned_node_stays_ready_for_acceptance above is green on exactly that. So a child with a
+// MERGED PR answers a different question than the one this pair is asked — the two readers legitimately differ
+// there (item_is_done, gunbc.roadmap.roadmap_status.dag:108) — and the claim would report that difference as if
+// the log's acceptance had failed to move the page. With the child's PR unmerged, its six gap sources are clear
+// except its parent, so the ONLY thing that can move it between the bands is the event log's accepted set: which
+// is the decision this claim exists to pair.
+fn page_pair_merged() -> List<Int> { [700] }
+
+fn page_pair_parent_accepted() -> List<RoadmapNodeId> {
+  map(
+    filter(doc_all_nodes(doc: page_pair_doc()), n => n.node == roadmap_frontier_nid(s: "page-parent")),
+    n => n.node,
+  )
+}
+
+fn page_pair_view(accepted: List<RoadmapNodeId>) -> DailyWorkspaceView {
+  fixture_workspace_view(
+    doc: page_pair_doc(), merged: page_pair_merged(), accepted: accepted, withheld: [],
+  )
+}
+
+fn page_pair_frontier(accepted: List<RoadmapNodeId>) -> SpawnFrontier {
+  spawn_frontier(
+    doc: page_pair_doc(), merged: page_pair_merged(), accepted: accepted, withheld: [],
+  )
+}
+
+// Compared by node identity through the file's own coercion, never by a cast: RoadmapNodeId is a String brand
+// (gunbc.roadmap.roadmap_model), and 'x as String' on anything that is not one is a compile error.
+fn frontier_ready_has(f: SpawnFrontier, id: String) -> Bool {
+  any(f.ready, n => n.node == roadmap_frontier_nid(s: id))
+}
+
+fn frontier_upcoming_has(f: SpawnFrontier, id: String) -> Bool {
+  any(f.upcoming, n => n.node == roadmap_frontier_nid(s: id))
+}
+
+// ONE DECISION PER CLAIM, then the conjunction. The eight conjuncts were written inline in one claim, and when
+// it went false the runner could only report the WHOLE fact false — which reader, at which standing, was
+// unknowable from the output. Each arm below is one reader at one standing, so a failure says whether it is the
+// page's band or the frontier that disagrees before anybody reaches for a model change. The combined claim
+// stays, because "one event moves both surfaces" is itself the fact this file exists to hold.
+//
+// A body's FIRST item carries no '&&'. A line that begins with '&&' is glued by the parser onto the statement
+// above it, so a chain written entirely with leading '&&' silently became the initializer of the 'let' above it
+// and read the name that let was binding — the compiler said 'undefined variable' at a line that looks
+// innocent, under a 'let' that looks innocent. This is the file's own shape (see
+// witness_merged_unsigned_parent_does_not_unblock_child): one expression, then indented '&&' lines.
+fn page_band_holds_the_child_back() -> Bool {
+  band_has(entries: page_pair_view(accepted: []).not_ready, id: "page-child")
+    && !band_has(entries: page_pair_view(accepted: []).ready, id: "page-child")
+}
+
+fn frontier_holds_the_child_back() -> Bool {
+  frontier_upcoming_has(f: page_pair_frontier(accepted: []), id: "page-child")
+    && !frontier_ready_has(f: page_pair_frontier(accepted: []), id: "page-child")
+}
+
+fn page_band_moves_the_child_when_its_parent_is_accepted() -> Bool {
+  band_has(entries: page_pair_view(accepted: page_pair_parent_accepted()).ready, id: "page-child")
+    && !band_has(entries: page_pair_view(accepted: page_pair_parent_accepted()).not_ready, id: "page-child")
+}
+
+fn frontier_moves_the_child_when_its_parent_is_accepted() -> Bool {
+  frontier_ready_has(f: page_pair_frontier(accepted: page_pair_parent_accepted()), id: "page-child")
+    && count(page_pair_frontier(accepted: page_pair_parent_accepted()).upcoming) == 0
+}
+
+test fn witness_page_band_holds_the_child_back_while_its_parent_stands_open() -> Bool {
+  page_band_holds_the_child_back()
+}
+
+test fn witness_frontier_holds_the_child_back_while_its_parent_stands_open() -> Bool {
+  frontier_holds_the_child_back()
+}
+
+test fn witness_page_band_moves_the_child_when_its_parent_is_accepted() -> Bool {
+  page_band_moves_the_child_when_its_parent_is_accepted()
+}
+
+test fn witness_frontier_moves_the_child_when_its_parent_is_accepted() -> Bool {
+  frontier_moves_the_child_when_its_parent_is_accepted()
+}
+
+// THE DIFFERENCE THIS PAIR MUST NOT COLLAPSE, pinned instead of assumed. With the parent accepted and the
+// child's PR MERGED, the frontier calls the child ready and the page puts it in not-ready — and that is right on
+// both sides: the frontier's `ready` is "the next thing to act on", which includes a row waiting to be accepted
+// (witness_merged_unsigned_node_stays_ready_for_acceptance), while the page's band is the dispatcher's readiness,
+// where a row whose code is already written answers GapInReview (readiness_state_gaps over item_is_done,
+// gunbc.roadmap.roadmap_status.dag:108) and must not be handed a worker. Pinning it here is what keeps the claim
+// above honest: it is the confound that arm holds constant, and if anyone later unifies the two `ready`s, this
+// claim is the one that has to be deleted on purpose, with the reason written down.
+test fn witness_a_merged_row_is_in_review_for_the_page_and_ready_to_the_frontier() -> Bool {
+  let accepted = page_pair_parent_accepted()
+  let ws = fixture_workspace_view(
+    doc: page_pair_doc(), merged: [700, 701], accepted: accepted, withheld: [],
+  )
+  let f = spawn_frontier(doc: page_pair_doc(), merged: [700, 701], accepted: accepted, withheld: [])
+  any(f.ready, n => n.node == roadmap_frontier_nid(s: "page-child"))
+    && !band_has(entries: ws.ready, id: "page-child")
+    && band_has(entries: ws.not_ready, id: "page-child")
+}
+
+// A child rendered nowhere at all would pass a "not in ready" test for the wrong reason, so each blocked arm
+// asks for it BY NAME in the band it must be in — absence is never the evidence.
+test fn witness_page_buckets_and_frontier_move_a_child_on_the_same_decision() -> Bool {
+  page_band_holds_the_child_back()
+    && frontier_holds_the_child_back()
+    && page_band_moves_the_child_when_its_parent_is_accepted()
+    && frontier_moves_the_child_when_its_parent_is_accepted()
+}

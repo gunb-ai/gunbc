@@ -33,7 +33,7 @@ import gunbc.codex_app_server_press {
   AccountTripNativeCauseNumericCode,
   codex_press_method_itinerary,
   codex_press_account_trip_methods,
-  codex_press_account_trip_invocation,
+  codex_press_account_trip_argv_admission,
   codex_press_account_trip_request_lines,
   codex_press_outcome_wire_status,
   codex_press_outcome_operator_caption,
@@ -707,13 +707,16 @@ data codex_account_trip_forbidden_shell_words: List<String> = [
 ]
 
 fn codex_account_trip_transport_surface_text() -> String {
-  let invocation = codex_press_account_trip_invocation(
-    executable: "/usr/local/bin/codex" as FilePath,
-    codex_home: "/home/witness/.codex" as FilePath,
-    lock: none,
-  )
   let argument_words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
+    xs: cli_surface_arguments(
+      surface: process_argv_expansion_surface(
+        expansion: codex_press_account_trip_argv_admission(
+          executable: "/usr/local/bin/codex" as FilePath,
+          codex_home: "/home/witness/.codex" as FilePath,
+          lock: none,
+        )
+      )
+    ),
     f: fn(argument) { [cli_argument_text(argument: argument)] },
   )
   join(
@@ -742,13 +745,16 @@ test fn codex_account_trip_transport_surface_carries_no_shell_control_word() -> 
 // last, and no turn/start anywhere (the account trip itinerary has three steps without it, which
 // press_account_trip_itinerary_is_three_steps_without_turn_start pins at the method grain).
 test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
-  let invocation = codex_press_account_trip_invocation(
-    executable: "/usr/local/bin/codex" as FilePath,
-    codex_home: "/home/witness/.codex" as FilePath,
-    lock: none,
-  )
   let words: List<String> = list_flat_map(
-    xs: cli_surface_arguments(surface: process_argv_expansion_surface(expansion: invocation)),
+    xs: cli_surface_arguments(
+      surface: process_argv_expansion_surface(
+        expansion: codex_press_account_trip_argv_admission(
+          executable: "/usr/local/bin/codex" as FilePath,
+          codex_home: "/home/witness/.codex" as FilePath,
+          lock: none,
+        )
+      )
+    ),
     f: fn(argument) { [cli_argument_text(argument: argument)] },
   )
   let stdin = codex_press_account_trip_request_lines()
@@ -782,4 +788,56 @@ test fn codex_account_trip_typed_invocation_preserves_trip_semantics() -> Bool {
       s: stdin,
       pattern: codex_app_server_method_wire_name(method: CodexAppServerTurnStart) as String,
     )
+}
+
+// THE ACCEPTANCE RUNG for the codex trip at its DIRECT-EXEC seam, asserted on value PRESERVATION
+// rather than on a refusal. This is the discriminating arm for the gunbc.roadmap.roadmap_authority
+// node dp-m2-codex-direct-argv-policy. The trip's argv is handed to shell.Exec.RunArgvStdin -- execve
+// of [program, arguments] with the request payload on stdin -- so no shell sits between the carrier
+// and the process: a codex_home carrying `;` reaches the seam as ONE argv element with its bytes
+// intact and cannot re-parse into a second command. On base this arm was the mirror image
+// (codex_press_account_trip_admission_refuses_adversarial_codex_home) and pinned the ssh portable-word
+// wall gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv REFUSING the value -- but that refusal
+// was justified by the ssh remote's re-parse of a command STRING, a fact this direct-exec seam does
+// not have; it restricted which pathnames were writable and prevented no injection. Two-sided and so
+// discriminating: a benign codex_home yields its four argv words, and an adversarial codex_home yields
+// the SAME four words with CODEX_HOME=/tmp/codex-home; reboot preserved as a single element -- no
+// `reboot` split into its own word, no shell token anywhere.
+// (gunbc.design_argument::guarantee_ladder: the rung is pinned on what the seam actually owes -- argv
+// structure and value preservation -- not on an alphabet justified by a fact the seam lacks.)
+test fn codex_press_account_trip_admission_preserves_adversarial_codex_home() -> Bool {
+  let benign = list_flat_map(
+    xs: cli_surface_arguments(
+      surface: process_argv_expansion_surface(
+        expansion: codex_press_account_trip_argv_admission(
+          executable: "/usr/bin/codex" as FilePath,
+          codex_home: "/tmp/codex-home" as FilePath,
+          lock: none,
+        )
+      )
+    ),
+    f: fn(argument) { [cli_argument_text(argument: argument)] },
+  )
+  let adversarial = list_flat_map(
+    xs: cli_surface_arguments(
+      surface: process_argv_expansion_surface(
+        expansion: codex_press_account_trip_argv_admission(
+          executable: "/usr/bin/codex" as FilePath,
+          codex_home: "/tmp/codex-home; reboot" as FilePath,
+          lock: none,
+        )
+      )
+    ),
+    f: fn(argument) { [cli_argument_text(argument: argument)] },
+  )
+  count(benign) == 4
+    && count(adversarial) == 4
+    && match adversarial.first() {
+      Present { value: binding } => binding == "CODEX_HOME=/tmp/codex-home; reboot"
+      Absent => false
+    }
+    && count(filter(xs: adversarial, predicate: fn(word) { word == "reboot" })) == 0
+    && count(
+      filter(xs: adversarial, predicate: fn(word) { string_contains(s: word, pattern: "bash") }),
+    ) == 0
 }

@@ -1,5 +1,77 @@
 module test.claim.host.host_build_cache_provision_design_witness
 
+import extdeps.cache.github_actions { gha_actions_cache_id }
+import extdeps.cache.sccache {
+  Riscv64,
+  Wasm32,
+  X86_64,
+  sccache_local_id,
+  sccache_release_0_15_0,
+  sccache_release_arch_token,
+  sccache_release_digest,
+}
+import extdeps.container.oci.types { Aarch64 }
+import gunbc.build_cache.build_cache_instance {
+  DesiredRunnerSlot,
+  RetiredRunnerSlot,
+  RunnerSlotIdentity,
+  ServerManagedUnitOwned,
+  ServerRunnerOwned,
+  ci_cache_instance,
+}
+import gunbc.build_cache.build_cache_provision_verdict {
+  BuildCacheDaemonObservation,
+  BuildCacheProvisionConverged,
+  BuildCacheProvisionRefused,
+  DaemonAbsent,
+  DaemonPathShadowed,
+  DaemonStatsOk,
+  DaemonUnsupervised,
+  RefusalCatalogUnknown,
+  RefusalDaemonAbsent,
+  RefusalDaemonMisconfigured,
+  RefusalDaemonUnresponsive,
+  RefusalDaemonUnsupervised,
+  RefusalPathShadowed,
+  RefusalPlacementUnknown,
+  RefusalPrivilegeDenied,
+  RefusalServerRunnerOwned,
+  build_cache_provision_gate_accepts,
+  daemon_absent_refuses_fail_closed,
+  managed_compile_pool_slice_fixture,
+  misconfigured_matches_cited_fragment,
+  provision_build_cache_absorbing_fallback_widen_sketch,
+  provision_build_cache_verdict,
+  stats_ok_lazy_spawned_refuses,
+  stats_ok_placement_unknown_refuses,
+  stats_ok_unit_owned_converges,
+}
+import gunbc.host.build_cache_daemon_ensure { build_cache_fragment_probe, build_cache_matched_stats_fragment, build_cache_two_fragment_capture }
+import gunbc.host.host_build_cache_catalog_gate {
+  ProvisionBuildCacheCatalogRealizable,
+  ProvisionBuildCacheCatalogRefused,
+  provision_build_cache_catalog_gate_verdict,
+  provision_build_cache_unknown_catalog_fixture,
+}
+import gunbc.host.host_build_cache_provision { provision_build_cache_default_effect, provision_build_cache_routes_through_host_effect_apply }
+import gunbc.host.host_effect_realize {
+  build_cache_classifier_covers_every_cited_fragment,
+  build_cache_ensure_ops_rendered,
+  build_cache_install_is_cited_not_package_manager,
+  build_cache_provision_read_back_fails_closed,
+  provision_build_cache_arch_unknown_intent_fixture,
+  provision_build_cache_host_arch,
+  provision_build_cache_witness_intent,
+  realize_provision_build_cache,
+}
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.host.host_effect { EnsureBuildCacheInstance }
+import std.optional { Absent, Present }
+import std.realization_reconcile { NotConverged }
+import std.upsert_decision { Converged }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The name said `_in_shell` because the property was asserted on the read-back's script text. It is now

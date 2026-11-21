@@ -9,6 +9,7 @@ import gunbc.machine_intake.mtjade1_access_observation {
 import gunbc.machine_intake.subject {
   BoardSerialAbsent,
   UnitIdentityInputs,
+  BmcObserved,
   UnitKeyBound,
   UnitKeyRefused,
   bind_unit_key,
@@ -20,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_bmc_only_bind_without_serials_is_absent_not_a_fabricated_key() -> Bool {
   match bind_unit_key(
-    inputs: UnitIdentityInputs {
+    inputs: BmcObserved {
       bmc_endpoint: BmcEndpoint { host: "fixture-jade-bmc", protocol: Ipmi },
       board_serial_observations: [],
     },

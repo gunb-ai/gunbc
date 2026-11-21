@@ -7,6 +7,7 @@ import extdeps.systemd {
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
 }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_name, dispatch_attempt_unit_name_resumed }
 
 fn a_repeat(n: Int) -> String {
   if n <= 0 {
@@ -72,6 +73,37 @@ test fn a_stem_at_the_255_character_ceiling_is_admitted() -> Bool {
   match systemd_service_unit_name(stem: stem) {
     SystemdUnitNameAdmitted { name } =>
       string_length(s: systemd_unit_name_wire(name: name) as String) == systemd_unit_name_max_length
+    SystemdUnitNameStemEmpty => false
+    SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+    SystemdUnitNameOverlong { length: _ } => false
+  }
+}
+
+// RED (gunbc#15804 continuation resume placements, gap #1): a RESUMED attempt must obtain a fresh placement,
+// which is only possible because its worker unit carries the resume ordinal. But the FIRST (ordinal-0) worker
+// unit must render BYTE-IDENTICALLY to the exact string every record an OLD build wrote is read by -- the
+// reboot-dead pair's seat-ledger entries and the boot-after-hold proof both key on THIS name (gunbc gap #2),
+// so the resume feature must not perturb it. This is discriminating at the real record shape: it uses a real
+// reboot-dead node/attempt (shell-dag-live-deploy-install-owned / 5560c2c576724b67), not an invented one.
+// If the base name ever grows a suffix, or the resume suffix is dropped (so a resume collides with its own
+// released slot/seat), this witness fails.
+test fn the_first_worker_unit_is_byte_identical_and_a_resumed_unit_carries_the_resume_ordinal() -> Bool {
+  let node_id = "shell-dag-live-deploy-install-owned"
+  let attempt_key = "5560c2c576724b67"
+  let base = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
+  let resumed = dispatch_attempt_unit_name_resumed(
+    node_id: node_id, attempt_key: attempt_key, resume_segment: "worker-resumed-2")
+  match base {
+    SystemdUnitNameAdmitted { name: b } =>
+      match resumed {
+        SystemdUnitNameAdmitted { name: r } =>
+          (systemd_unit_name_wire(name: b) as String) == "gunbc-attempt-shell-dag-live-deploy-install-owned-5560c2c576724b67.service"
+          && (systemd_unit_name_wire(name: r) as String) == "gunbc-attempt-shell-dag-live-deploy-install-owned-5560c2c576724b67-worker-resumed-2.service"
+          && (systemd_unit_name_wire(name: b) as String) != (systemd_unit_name_wire(name: r) as String)
+        SystemdUnitNameStemEmpty => false
+        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+        SystemdUnitNameOverlong { length: _ } => false
+      }
     SystemdUnitNameStemEmpty => false
     SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
     SystemdUnitNameOverlong { length: _ } => false

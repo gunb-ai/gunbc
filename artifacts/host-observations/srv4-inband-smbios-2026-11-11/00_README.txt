@@ -98,9 +98,11 @@ WHY THE HOST THAT ANSWERED IS srv4 — AND WHAT THIS DOES NOT PROVE
   of the same board is the second source, and it is OWED, not agreed: no bmc-srv4-admin credential was reachable
   from this session (no gcloud / Secret Manager client here). A2 admits on one admitted reading, so the owed read
   does not gate srv4's flip. The debt is carried by DATA and a FUNCTION OF THAT DATA and nothing else:
-  gunbc.fleet.fleet_host_smbios_observation::srv4_bmc_fru_board_serial_observations is EMPTY, and
-  srv4_bmc_fru_second_source_status(list) reads DissolutionPending while the list carries no BmcFru item and
-  DissolutionFired once one is in it, with srv4_bmc_fru_second_source_capability naming what would restore it. An
+  gunbc.fleet.fleet_host_smbios_observation::srv4_bmc_fru_second_source carries srv4's out-of-band arm, and its
+  board_serial_observations list is EMPTY. bmc_fru_second_source_status(owed) reads DissolutionPending while that
+  list carries no BmcFru item and DissolutionFired once one is in it, with
+  bmc_fru_second_source_capability(owed) naming what would restore it -- one rule, written once, and srv1's owedness
+  is the same functions applied to srv1's record rather than a second copy of the rule. An
   earlier shape keyed the debt on a BoundDissolution pointing at a separate declaration the read "would add", which
   was a second place deciding the same fact -- the observation could be appended to the list, A2 could start
   cross-checking both arms, and that trigger would still read Pending; the declaration could also be added with the

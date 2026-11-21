@@ -336,8 +336,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // fleet host, and the two disks that collide are named by serial alone.
 // ---------------------------------------------------------------------------
 
-data unit_a_key: UnitKey = "altra-unit-a" as UnitKey
-data unit_b_key: UnitKey = "altra-unit-b" as UnitKey
+data unit_a_key: UnitKey = UnitKey { kind: BoardUnitKey, value: "altra-unit-a" }
+data unit_b_key: UnitKey = UnitKey { kind: BoardUnitKey, value: "altra-unit-b" }
 data attempt_one: IntakeAttemptId = "intake-20261017-0001" as IntakeAttemptId
 data attempt_two: IntakeAttemptId = "intake-20261017-0002" as IntakeAttemptId
 

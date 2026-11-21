@@ -244,6 +244,119 @@ fn withheld_diagnostic_line(message: String) -> String {
   )
 }
 
+// THE MARKER IS THE SCRIPT'S OWN WORD FOR AN EFFECT IT DECLINES TO PRODUCE, and the receipt counts
+// these lines -- so it is ONE spelling in ONE place. Before this it was a literal repeated in four
+// message builders, and a plan-side count of "what did the script refuse to do" had no name to ask for.
+data converge_withheld_marker: String = "__GUNBC_CONVERGE_WITHHELD__"
+
+// A line the rendered script will echo INSTEAD of acting. This is the predicate the converge terminal
+// counts with; it is defined next to the builder so the two cannot drift apart.
+fn converge_line_is_withheld(line: String) -> Bool {
+  string_contains(s: line, pattern: converge_withheld_marker)
+}
+
+// ONE MEMBER REMOVAL, AS THE RENDERER DECIDES IT. The renderer of the teardown section and the receipt
+// that counts withheld rows both read this row, so a plan cannot render a deletion the terminal then
+// counts as withheld, or the reverse: the script text and the count are two projections of one match
+// over `slot_removal_realization`, which is the shape gunbc.design_argument::single_authority asks for.
+//
+// WHY THE CAUSE TRAVELS IN THE ROW. The withheld line is the operator's only record of WHAT the plan is
+// waiting on (retirement evidence, an actuation on this pass, a refused interruption); a count without
+// it would tell an operator to dispatch again with no clue that dispatching again changes nothing.
+type SlotTeardownRow
+  = TeardownAdmitted { unit: String, script: String }
+  | TeardownWithheld { unit: String, cause: String, script: String }
+
+fn slot_teardown_row_script(row: SlotTeardownRow) -> String {
+  match row {
+    TeardownAdmitted { unit: _, script: s } => s
+    TeardownWithheld { unit: _, cause: _, script: s } => s
+  }
+}
+
+// THE ROW IS WHERE THE REALIZATION DECISION LANDS. Same four dispositions as the old inline match, but
+// the authorized arm and the three withheld arms produce a typed row instead of a bare script string.
+fn slot_removal_teardown_row(
+  evidence: SlotRetirementEvidence,
+  member: RunnerSlotMember,
+) -> SlotTeardownRow {
+  match slot_removal_realization(evidence: evidence, unit: slot_member_unit_name(m: member) as String) {
+    RemovalTeardownAuthorized { unit: u } =>
+      TeardownAdmitted {
+        unit: u,
+        script: executor_privileged_operation_shell_command(op: RemoveDirectoryTree { path: member.slot_dir }),
+      }
+    RemovalActuationRequired { unit: u } =>
+      TeardownWithheld {
+        unit: u,
+        cause: "retirement was actuated on this pass; the postcondition is observed independently on the next one",
+        script: slot_removal_withheld_line(unit: u, tree: member.slot_dir, cause: "retirement was actuated on this pass; the postcondition is observed independently on the next one"),
+      }
+    RemovalRetirementPending { unit: u, cause: c } =>
+      TeardownWithheld {
+        unit: u,
+        cause: c,
+        script: slot_removal_withheld_line(unit: u, tree: member.slot_dir, cause: c),
+      }
+    RemovalRetirementRefused { unit: u, cause: c } =>
+      TeardownWithheld {
+        unit: u,
+        cause: c,
+        script: slot_removal_withheld_line(unit: u, tree: member.slot_dir, cause: c),
+      }
+  }
+}
+
+// THE PLAN ROWS THE SCRIPT WILL NOT PERFORM, COUNTED FROM THE LIST THAT NAMES THEM -- one reading of one
+// list, so the number on the receipt cannot disagree with the units a control puts next to the script.
+fn runner_slot_provision_membership_withheld_count(plan: RunnerSlotProvisionPlan) -> Int {
+  count(runner_slot_provision_membership_withheld_units(plan: plan))
+}
+
+// WHICH UNITS, NOT MERELY HOW MANY. The receipt's count says four; this says which four, so a control can
+// put the plan's rows next to the lines the script echoes and check they name the SAME units rather than
+// merely the same number -- the difference between a count that means something and a count that happens
+// to add up.
+fn runner_slot_provision_membership_withheld_units(plan: RunnerSlotProvisionPlan) -> List<String> {
+  flat_map(plan.teardown_rows, r =>
+  match r {
+    TeardownAdmitted { unit: _, script: _ } => []
+    TeardownWithheld { unit: u, cause: _, script: _ } => [u]
+  }
+  )
+}
+
+// THE WITHHELD LINES THE RENDERED SCRIPT ACTUALLY ECHOES. Both sections the apply shell emits for this
+// family are counted -- retirement inhibition and tree removal -- because that pair is what an operator
+// reads when they ask "what did the plan not do". Counting only the teardown section would have called
+// the srv1 run 4 withholds, not 43.
+fn runner_slot_provision_withheld_line_count(plan: RunnerSlotProvisionPlan) -> Int {
+  count(
+    filter(
+      concat(plan.retirement_scripts, plan.teardown_scripts),
+      l => converge_line_is_withheld(line: l),
+    ),
+  )
+}
+
+// WITHHELD LINES WITH NO PLAN ROW BEHIND THEM -- the gap the srv1 receipt hid, COUNTED FROM THE SCRIPT
+// RATHER THAN SUBTRACTED FROM THE OTHER TWO. Subtracting is what the first cut did, and it bought a
+// tautology: `lines == rows + beyond` then held by construction, so the reconciliation the terminal claims
+// to check could never fail, and a renderer that dropped a withheld line (or emitted a row that echoed
+// nothing) would have printed numbers that added up anyway. This reads the script's own lines and asks of
+// each one whether it is the echo of any plan row -- a second, independent reading of a different artifact
+// from the one the row count reads. The equality is now a fact about the renderer that can go false, and
+// `fleet_converge_owed_work_reconciles` is where it is enforced: at the mint, and again on the wire.
+fn runner_slot_provision_withheld_beyond_plan_rows_count(plan: RunnerSlotProvisionPlan) -> Int {
+  let row_scripts = map(plan.teardown_rows, r => slot_teardown_row_script(row: r))
+  count(
+    filter(
+      concat(plan.retirement_scripts, plan.teardown_scripts),
+      l => converge_line_is_withheld(line: l) && !any(row_scripts, s => s == l),
+    ),
+  )
+}
+
 fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
   match read_runner_unit_name(observed: unit as NonEmptyStr) {
     RunnerUnitInstance { registration_name: n } =>
@@ -254,14 +367,14 @@ fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
       )]
     NotARunnerUnit { observed: o } =>
       [withheld_diagnostic_line(message: join([
-        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+        concat(converge_withheld_marker, " runner-slot obligation: unit="),
         o as String,
         " cause=the required identity is not a runner unit, so no slot tree is derived; ",
         cause,
       ], ""))]
     RunnerUnitInstanceMalformed { observed: o, cause: mc } =>
       [withheld_diagnostic_line(message: join([
-        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+        concat(converge_withheld_marker, " runner-slot obligation: unit="),
         o as String,
         " cause=",
         mc as String,
@@ -291,7 +404,7 @@ fn obligation_withheld_scripts(
   match required {
     RetireesUnresolved { host: uh, cause: c } =>
       [withheld_diagnostic_line(message: join([
-        "__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: host=", uh as String,
+        concat(converge_withheld_marker, " runner-slot obligation: host="), uh as String,
         " cause=the retirement obligation for this host is not derivable, so no required retiree can be named and none may be torn down; ",
         c,
       ], ""))]
@@ -378,7 +491,7 @@ fn ungranted_actuation_withheld_scripts(
   retirement_actuation_candidates(required: required, membership: membership, evidence: evidence)
     |> filter(u => !unit_in_maskable_scope(scope: maskable, unit: u))
     |> map(u => withheld_diagnostic_line(message: join([
-      "__GUNBC_CONVERGE_WITHHELD__ runner-slot retirement: unit=", u,
+      concat(converge_withheld_marker, " runner-slot retirement: unit="), u,
       " cause=the host's rendered grants do not authorize masking this unit, so no mask is emitted",
     ], "")))
 }
@@ -389,7 +502,7 @@ fn ungranted_actuation_withheld_scripts(
 fn slot_removal_withheld_line(unit: String, tree: NonEmptyStr, cause: String) -> String {
   withheld_diagnostic_line(message: join(
     [
-      "__GUNBC_CONVERGE_WITHHELD__ runner-slot teardown: unit=",
+      concat(converge_withheld_marker, " runner-slot teardown: unit="),
       unit,
       " tree=",
       tree as String,
@@ -618,6 +731,12 @@ type RunnerSlotProvisionPlan {
   base_dir_script: String
   upsert_extract_scripts: List<String>
   retirement_scripts: List<String>
+  // THE REMOVE ROWS, TYPED, IN THE ORDER THE TEARDOWN LIST RUNS THEM. The script list below is
+  // DERIVED from these rows, so a plan line and the command it names can never disagree, and a
+  // receipt can count what the plan promised to remove without re-reading it (fleet-converge-
+  // receipt-counts-owed-work). The script list additionally carries the withholds that are not
+  // rows -- the obligation and ungranted-actuation ones -- and that difference is its own number.
+  teardown_rows: List<SlotTeardownRow>
   teardown_scripts: List<String>
 }
 
@@ -663,6 +782,24 @@ fn gunbc_runner_slot_privileged_commands(
 // transaction, and a second top-level path that masked slots beside it would be two authorities over
 // one population. The retirement scripts and the teardown scripts are separate lists on the plan so
 // apply can order them explicitly and so a reader can see that no pass does both to one unit.
+// THE REMOVE ROWS OF A PLAN, IN THE ORDER THE TEARDOWN SCRIPT RUNS THEM. An authorised row becomes
+// the removal command and a withheld one becomes the withheld line, so this list and the script list
+// are the same fact read two ways.
+fn slot_removal_teardown_rows(
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+  evidence: SlotRetirementEvidence,
+) -> List<SlotTeardownRow> {
+  flat_map(membership.actions, a =>
+  match a {
+    MemberRemoved { at: _, from: m } => [slot_removal_teardown_row(evidence: evidence, member: m)]
+    MemberAdded { at: _, to: _ } => []
+    MemberChanged { at: _, from: _, to: _ } => []
+    MemberRemovalRefused { from: _, cause: _ } => []
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+  }
+  )
+}
+
 // THE HOST-KEYED PRODUCTION WRAPPER: the two inputs the fold used to read from inside itself -- the
 // retirement obligation and the static maskable scope -- are computed here, from the same lookups, and
 // handed to runner_slot_provision_plan_over. A witness about the fold supplies them; this wrapper is
@@ -695,6 +832,7 @@ fn runner_slot_provision_plan_over(
     desired: desired_runner_slot_members(deploy: deploy),
     observed: observed,
   )
+  let teardown_rows = slot_removal_teardown_rows(membership: membership, evidence: retirement_evidence)
   RunnerSlotProvisionPlan {
     host_label: deploy.host_label,
     membership: membership,
@@ -744,29 +882,9 @@ fn runner_slot_provision_plan_over(
       membership: membership,
       evidence: retirement_evidence,
     ) |> map(u => retirement_mask_line(unit: u)),
+    teardown_rows: teardown_rows,
     teardown_scripts: concat(
-      flat_map(membership.actions, a =>
-      match a {
-        MemberRemoved { at: _, from: m } =>
-          match slot_removal_realization(
-            evidence: retirement_evidence,
-            unit: slot_member_unit_name(m: m) as String,
-          ) {
-            RemovalTeardownAuthorized { unit: _ } =>
-              [executor_privileged_operation_shell_command(op: RemoveDirectoryTree { path: m.slot_dir })]
-            RemovalActuationRequired { unit: u } =>
-              [slot_removal_withheld_line(unit: u, tree: m.slot_dir, cause: "retirement was actuated on this pass; the postcondition is observed independently on the next one")]
-            RemovalRetirementPending { unit: u, cause: c } =>
-              [slot_removal_withheld_line(unit: u, tree: m.slot_dir, cause: c)]
-            RemovalRetirementRefused { unit: u, cause: c } =>
-              [slot_removal_withheld_line(unit: u, tree: m.slot_dir, cause: c)]
-          }
-        MemberAdded { at: _, to: _ } => []
-        MemberChanged { at: _, from: _, to: _ } => []
-        MemberRemovalRefused { from: _, cause: _ } => []
-        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
-      }
-      ),
+      map(teardown_rows, r => slot_teardown_row_script(row: r)),
       concat(
         obligation_withheld_scripts(
           required: required,

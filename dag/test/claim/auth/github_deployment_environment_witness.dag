@@ -1,9 +1,14 @@
 module test.claim.auth.github_deployment_environment_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, Int, NonEmptyStr }
+import extdeps.github.github { GitHubUser, User }
+import std.algebra { string_contains, string_concat_join, FreeSemigroup, length }
 import extdeps.github.deployment_environments {
   GitHubEnvironmentProtectionSettings, SelectedBranchesAndTags, DeploymentBranchPolicyRule, PolicyRefBranch, PolicyRefTag, RequiredReviewers,
 }
+import gunbc.auth.srv15_arrival_federation_provision { srv15_arrival_environment_creation_frontier }
+import gunbc.secret_provision { srv15_bmc_gunbc_arrival_accessor_version }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority, ObservedByReceipt }
 import gunbc.auth.github_deployment_environment {
   srv1_production_required_protection_is_the_boundary,
   environment_protection_restricts_to_main,
@@ -11,6 +16,20 @@ import gunbc.auth.github_deployment_environment {
   EnvironmentProtectionUnobserved,
   EnvironmentProtectionHolds,
   EnvironmentProtectionDiverges,
+  srv15_arrival_environment_name,
+  srv15_arrival_protection_standing,
+  srv15_arrival_reviewer_decision,
+  srv15_arrival_required_protection_is_the_boundary,
+  srv15_arrival_environment_protection,
+  arrival_reviewer_gate_of,
+  arrival_environment_protection_settings,
+  arrival_environment_creation_permitted,
+  ArrivalReviewerDecided,
+  ArrivalReviewerAwaitingOperatorDecision,
+  environment_protection_requires_reviewers,
+  ReviewersRequired, ReviewersNotRequired, ArrivalEnvironmentProtection,
+  srv1_production_environment_name,
+  srv1_production_required_protection,
 }
 
 test fn srv1_production_required_protection_names_main_and_no_reviewer() -> Bool {
@@ -44,4 +63,133 @@ test fn a_tag_rule_or_a_second_rule_is_not_the_main_branch_boundary() -> Bool {
       deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }] },
       reviewer_requirement: RequiredReviewers,
     })
+}
+
+// srv15-arrival (PXE 2c out-of-repo brief): the boundary is the branch policy AND required reviewers
+// -- unlike srv1-production, whose reviewer absence is its own witnessed fact -- and creation stays
+// refused while the reviewer is undecided.
+test fn srv15_arrival_environment_boundary_requires_reviewers_and_main() -> Bool {
+  srv15_arrival_required_protection_is_the_boundary()
+}
+
+test fn srv15_arrival_standing_names_the_environment_read_back() -> Bool {
+  match srv15_arrival_protection_standing {
+    EnvironmentProtectionUnobserved { required: _, read_obligation: r } =>
+      string_contains(s: r, pattern: string_concat_join(fields: ["environments/", srv15_arrival_environment_name as String], separator: ""))
+        && string_contains(s: r, pattern: "required_reviewers")
+    EnvironmentProtectionHolds { required: _ } => false
+    EnvironmentProtectionDiverges { required: _, detail: _ } => false
+  }
+}
+
+test fn srv15_arrival_reviewer_requirement_is_the_srv1_difference() -> Bool {
+  environment_protection_requires_reviewers(settings: arrival_environment_protection_settings(protection: srv15_arrival_environment_protection))
+    && !environment_protection_requires_reviewers(settings: srv1_production_required_protection)
+    && (srv15_arrival_environment_name as String) != (srv1_production_environment_name as String)
+}
+
+// CONTROL over supplied settings carrying the srv15-arrival name: a TAG rule and a two-rule policy
+// are both outside the main-only half of the boundary.
+test fn srv15_arrival_tag_rule_or_second_rule_stays_outside_the_boundary() -> Bool {
+  !environment_protection_restricts_to_main(settings: GitHubEnvironmentProtectionSettings {
+      name: srv15_arrival_environment_name as String,
+      deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefTag }] },
+      reviewer_requirement: RequiredReviewers,
+    })
+    && !environment_protection_restricts_to_main(settings: GitHubEnvironmentProtectionSettings {
+      name: srv15_arrival_environment_name as String,
+      deployment_branch_policy: SelectedBranchesAndTags { rules: [DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch }, DeploymentBranchPolicyRule { name: "staging", ref_type: PolicyRefBranch }] },
+      reviewer_requirement: RequiredReviewers,
+    })
+}
+
+// Discriminating pair for the creation gate: the committed DECIDED standing with the committed
+// protection (whose reviewer list the decision itself fills) admits; a supplied Awaiting standing is
+// refused even against the committed protection -- a lane whose reviewer is undecided has no
+// principal on its protection body and may not answer yes.
+test fn srv15_arrival_creation_gate_admits_the_decided_principal_and_refuses_awaiting() -> Bool {
+  arrival_environment_creation_permitted(
+    protection: srv15_arrival_environment_protection,
+    decision: srv15_arrival_reviewer_decision,
+  )
+    && !arrival_environment_creation_permitted(
+      protection: srv15_arrival_environment_protection,
+      decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
+    )
+}
+
+// The decided principal is the operator's answer as TYPED FIELDS -- login and the immutable GitHub
+// user id compared by equality, not grepped out of a prose string; an Awaiting standing does not
+// satisfy the read-back precondition.
+test fn srv15_arrival_reviewer_is_the_decided_principal_cited_by_user_id() -> Bool {
+  match srv15_arrival_reviewer_decision {
+    ArrivalReviewerDecided { principal: p, ruling: _ } =>
+      p.login == ("briansrls" as NonEmptyStr) && p.id == 11205878 && p.type == User
+    ArrivalReviewerAwaitingOperatorDecision { candidates: _, decision_obligation: _ } => false
+  }
+}
+
+// THE REVIEWER'S ROUTE: the protection's reviewer gate IS the decision's principal gate, and the
+// committed value is exactly the operator's chosen principal -- compared as STRUCTURED FIELDS
+// (FreeSemigroup of GitHubUser), so a divergent login, id or type flips the equality and the gate.
+test fn srv15_arrival_protection_carries_exactly_the_decided_reviewer() -> Bool {
+  srv15_arrival_environment_protection.reviewers
+    == ReviewersRequired { reviewers: FreeSemigroup { head: GitHubUser { login: "briansrls", id: 11205878, type: User }, tail: [] } }
+    && srv15_arrival_environment_protection.reviewers
+         != ReviewersRequired { reviewers: FreeSemigroup { head: GitHubUser { login: "briansrls", id: 11205879, type: User }, tail: [] } }
+    && !arrival_environment_creation_permitted(
+      protection: ArrivalEnvironmentProtection {
+        environment: srv15_arrival_environment_name,
+        branch_policy: DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch },
+        reviewers: ReviewersRequired { reviewers: FreeSemigroup { head: GitHubUser { login: "briansrls", id: 11205879, type: User }, tail: [] } },
+      },
+      decision: srv15_arrival_reviewer_decision,
+    )
+}
+
+// CONTROL over the derivation: an Awaiting decision contributes NO reviewer -- there is no route by
+// which an undecided lane lands a principal on the protection body.
+// THE ROUND-4 CONTROL (review artifact 95616): an Awaiting decision paired with a
+// ReviewersNotRequired protection -- the exact shape structural equality alone used to admit --
+// refuses. The gate decides the DECISION first: no protection shape yields yes while undecided.
+// And the frontier row consumes the gate with the COMMITTED pair: true.
+test fn srv15_arrival_creation_refused_for_awaiting_even_without_reviewers_and_frontier_row_open() -> Bool {
+  !arrival_environment_creation_permitted(
+    protection: ArrivalEnvironmentProtection {
+      environment: srv15_arrival_environment_name,
+      branch_policy: DeploymentBranchPolicyRule { name: "main", ref_type: PolicyRefBranch },
+      reviewers: ReviewersNotRequired,
+    },
+    decision: ArrivalReviewerAwaitingOperatorDecision { candidates: ["some-candidate"], decision_obligation: "supplied" },
+  )
+    && arrival_environment_creation_permitted(
+      protection: srv15_arrival_environment_protection,
+      decision: srv15_arrival_reviewer_decision,
+    )
+    && length(srv15_arrival_environment_creation_frontier) == 1
+}
+
+test fn srv15_arrival_reviewers_of_an_awaiting_decision_are_none() -> Bool {
+  arrival_reviewer_gate_of(decision: ArrivalReviewerAwaitingOperatorDecision {
+    candidates: ["some-candidate"],
+    decision_obligation: "supplied",
+  })
+    == ReviewersNotRequired
+}
+
+// THE PIN GATE, stated by the frontier over the committed pin: the standing is CITED -- the
+// job-identity versions read of fleet-converge run 44134741714 (artifact
+// srv15-bmc-secret-versions-receipt, id 14362631725) named exactly one ENABLED version and the pin
+// cites that receipt -- so the gate is OPEN and mints the ref naming that version. This claim pins
+// TODAY's value on the other side: unciting the receipt (or reverting the figure) without re-grounding
+// goes red here, and the ref must keep naming secret bmc-srv15-admin version 1, the receipt's figure.
+// The accessor gate is accessor_ref_from_pin ITSELF (a consumed authority, no row beside it): the ref
+// exists exactly when figure and warrant are present together (review 94161).
+test fn srv15_arrival_accessor_gate_is_open_on_the_cited_receipt_read() -> Bool {
+  match srv15_bmc_gunbc_arrival_accessor_version {
+    CitedToAuthority { authority: a } =>
+      (a.uri.locator as String) == "github.com/gunb-ai/gunbc/actions/runs/44134741714/artifact/14362631725"
+    TranscribedUncited { read_obligation: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }
 }

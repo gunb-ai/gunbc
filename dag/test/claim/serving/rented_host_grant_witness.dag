@@ -12,7 +12,7 @@ import gunbc.serving.rented_host_grant {
   RentedHostPermit, RentedHostPermitted, RentedHostNotPermitted,
   rented_host_subject, rented_host_intent, rented_host_scope, rented_host_request, rented_host_permit, rented_host_authorizations,
 }
-import gunbc.auth.privileged_effect_census { privileged_effect_census, site_verdict, rented_host_ssh_effect, DivergesWithReason }
+import gunbc.auth.privileged_effect_registry { privileged_effect_registry, site_verdict, rented_host_ssh_effect, DivergesWithReason }
 import gunbc.auth.authorization_pattern_selection { select_authorization_pattern, PatternSelected, OperatorApprovedCapability }
 import test.claim.serving.rented_enrollment_witness { e_access }
 
@@ -134,6 +134,6 @@ test fn the_selection_yields_the_operator_approval_pattern_for_the_rented_host_e
 }
 
 test fn the_gate_site_is_censused_once_as_a_reasoned_divergence_until_redemption_is_wired() -> Bool {
-  let rows = filter(privileged_effect_census, r => r.site.module_path == "gunbc.serving.rented_host_grant")
+  let rows = filter(privileged_effect_registry, r => r.site.module_path == "gunbc.serving.rented_host_grant")
   length(rows) == 1 && all(rows, r => match site_verdict(row: r).conformance { DivergesWithReason { reason: _ } => true _ => false })
 }

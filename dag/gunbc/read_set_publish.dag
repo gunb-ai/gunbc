@@ -11,7 +11,10 @@ import v2.extdeps.languages.bash_build {
 }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
 import extdeps.github.actions { Step, RunStep }
-import extdeps.github.expressions { ContextAccess, Runner, ExpressionTemplate, Interpolation, LiteralText, serialize_template }
+import extdeps.github.expressions {
+  Expression, ContextAccess, Github, Steps, StringLiteral, Equals, LogicalAnd,
+  Runner, ExpressionTemplate, Interpolation, LiteralText, serialize_expression, serialize_template,
+}
 import gunbc.read_set_schema {
   read_set_request_family,
   read_set_receipt_basename,
@@ -20,16 +23,21 @@ import gunbc.read_set_schema {
   fast_lane_compiler_identity_basename,
 }
 import gunbc.parse_verdict_publish {
-  materialization_family_cache_save_step,
+  materialization_family_cache_save_step_guarded,
   materialization_gha_cache_key_prefix,
-  materialization_publish_if,
+  materialization_publish_scope,
+  materialization_scope_guard,
   parse_verdict_generation_one_bin,
   parse_verdict_fresh_compiler_expr,
   github_sha_expr,
 }
+import gunbc.emitted_subject_build_gate {
+  emitted_subject_self_host_step_id,
+  emitted_subject_v2_native_cli_step_id,
+}
 
 // THE FAST-LANE UNIT, PUBLISHED ON MAIN (step 1 of the planning fast lane,
-// @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted), @ref(gunbc.design_ruling::native_ci_checks_progress_by_plan)).
+// #gunbc.design_ruling::seed_read_set_receipt_is_admitted, #gunbc.design_ruling::native_ci_checks_progress_by_plan).
 //
 // WHAT IS RECORDED. The required job's emit-and-build steps run with GUNBC_READ_SET_OUT naming one
 // workspace-relative file, so the seed's demand acquisition appends every file, probed path and enumerated
@@ -37,12 +45,14 @@ import gunbc.parse_verdict_publish {
 // Actions cache keyed by the commit, together with the native CLI those steps built and that binary's
 // compiler identity, as ONE unit (the parse-verdict unit's scope and key family).
 //
-// WHY THE UNIT IS SAVED LAST. Steps after a failed step do not run, so a unit that exists for a sha is
-// evidence that every earlier step of the job went green on that sha. A pull request whose diff misses the
-// receipt and the fixed inputs can then reuse that verdict for the closure-dependent steps, and run only
-// the whole-tree checks with the restored binary. gunbc.read_set_restore is that reader: it restores the
-// unit for the nearest published first-parent ancestor of the base and decides whether it covers the change.
-// The file names and receipt kinds both sides read are gunbc.read_set_schema.
+// WHY THE UNIT MAY BE SAVED WHERE IT IS. A unit that exists for a sha is evidence that the steps which
+// BUILD AND VALIDATE ITS MEMBERS went green on that sha -- stated as a condition on the stage and save
+// steps themselves (fast_lane_publish_gate: both emit steps' outcomes), not carried implicitly by position.
+// A pull request whose diff misses the receipt and the fixed inputs can then reuse that verdict for the
+// closure-dependent steps, and run only the whole-tree checks with the restored binary. gunbc.read_set_restore
+// is that reader: it restores the unit for the nearest published first-parent ancestor of the base and
+// decides whether it covers the change. The file names and receipt kinds both sides read are
+// gunbc.read_set_schema.
 //
 // The binary is copied into the workspace before saving, because a cache entry's version hashes the
 // path string it was saved under (gunbc.parse_verdict_publish parse_verdict_cache_working_directory): a
@@ -100,6 +110,37 @@ fn fast_lane_stage_script() -> String {
   }
 }
 
+// THE UNIT'S TRUST CLAIM, STATED AS A CONDITION. The unit's three members are all produced by the emit
+// boundary: the native CLI and its compiler identity are the native-CLI emit step's outputs, and both emit
+// steps append their product's read set into `gunbc-read-set.txt`; a full run's layout and reference checks
+// execute inside the native-CLI emit step's control run (the standalone check steps here carry only the
+// reuse-path conditions). So the unit may be saved as soon as BOTH emit steps are green: each member's own
+// producing step succeeded. Previously the save sat behind the parse-population walk and inherited its trust
+// from POSITION -- "everything earlier in the job was green" -- which bundled in the parse-verdict publisher,
+// whose greenness is about the OTHER unit. The walk keeps its place: a main run that fails it still reddens
+// the required check and still stops publishing fresh parse-verdict receipts (that save stays behind it),
+// and every pull request re-runs parse-population with the CLI it restored -- `--reuse-from .` reuses
+// receipts only for targets the restored set already covers, so a walk the unit's own CLI fails goes red on
+// the consumer, not only on main.
+fn fast_lane_publish_gate() -> String {
+  serialize_expression(
+    expression: LogicalAnd {
+      left: LogicalAnd {
+        left: materialization_scope_guard(scope: materialization_publish_scope()),
+        right: fast_lane_member_step_success(id: emitted_subject_self_host_step_id)
+      },
+      right: fast_lane_member_step_success(id: emitted_subject_v2_native_cli_step_id)
+    }
+  )
+}
+
+fn fast_lane_member_step_success(id: String) -> Expression {
+  Equals {
+    left: ContextAccess { context: Steps, path: [id, "outcome"] },
+    right: StringLiteral { value: "success" }
+  }
+}
+
 // THE STAGE READS THE FRESH PRODUCT (gunbc.parse_verdict_publish parse_verdict_generation_one_bin and
 // parse_verdict_fresh_compiler_expr), never the shared native-CLI expressions, so a unit saved for a commit
 // holds the binary that commit's own run built and a restored binary is never saved again under a new sha.
@@ -116,17 +157,18 @@ fn fast_lane_stage_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: Present { value: materialization_publish_if() },
+    if_condition: Present { value: fast_lane_publish_gate() },
     continue_on_error: none,
     timeout_minutes: none
   }
 }
 
 fn read_set_publish_save_step() -> Step {
-  materialization_family_cache_save_step(
+  materialization_family_cache_save_step_guarded(
     family: read_set_request_family,
     path: fast_lane_unit_path(),
-    cache_key: read_set_publish_cache_key()
+    cache_key: read_set_publish_cache_key(),
+    if_value: fast_lane_publish_gate()
   )
 }
 

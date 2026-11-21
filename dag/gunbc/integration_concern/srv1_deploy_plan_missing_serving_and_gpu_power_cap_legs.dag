@@ -1,0 +1,45 @@
+module gunbc.integration_concern.srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, live_deploy_apply_plan_witness_2026_11_18_revision }
+
+data srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs: IntegrationConcern = IntegrationConcern {
+  identity: "srv1_deploy_plan_missing_serving_and_gpu_power_cap_legs",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_plan_legs"),
+    requirement: "the srv1 release roster behind deploy_apply_plan_legs carries an install leg for every artifact its converger and serve units READ, so the deploy-artifact closure gate (gunbc.live_deploy.deploy_artifact_closure::deploy_gate) does not halt the plan before the install, serving-engine retire/reload/enable and gpu-power-cap unit/reload/enable legs are emitted; four release artifacts are read but never installed (see the account)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "deploy_gate") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_plan_legs"),
+    tail: [
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting"),
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run"),
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_binary_only_plan_installs_and_restarts_without_publishing_the_tree"),
+      decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release"),
+    ],
+  },
+  question: "Why does the srv1 release roster behind deploy_apply_plan_legs install none of the four release artifacts its units read -- the attempt-system-unit-helpers directory for the attempt-unit-drain path unit, and the approval-broker front-door release directory with its device-crypto-deployed-digest.env and gunbc files -- so the deploy-artifact closure gate fail-closes the plan before any enable leg runs? The gate is correct to halt; the missing coverage is a release-roster gap. Dissolution: roadmap node deploy-release-roster-carries-every-owned-step (#16661) makes the roster carry every owned step, which closes the gate's installed set and turns the four claims green.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: live_deploy_apply_plan_witness_2026_11_18_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "deploy_apply_plan_legs") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_binary_only_plan_installs_and_restarts_without_publishing_the_tree") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.live_deploy.live_deploy_apply_plan_witness", decl_name: "a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release") },
+        ],
+      },
+      account: "STANDING: with the witness made to resolve (this lane), claim_batch --wet evaluates all 59 witness claims at 55 PASS / 4 FAIL; the four failures are a RECORDED STANDING, not an unexplained red, and they are exactly this capability gap. The four are the_serving_boot_path_retires_the_singleton_and_enables_the_replicas_never_starting, the_gpu_power_cap_is_installed_for_the_next_boot_before_the_engine_and_never_run, a_binary_only_plan_installs_and_restarts_without_publishing_the_tree and a_zero_mutation_plan_installs_publishes_and_restarts_nothing_of_the_release. A read-only diagnostic (a Bool-claim battery plus gunbc run of a fn returning the plan's refusal rendering for deployment_spec_srv1()) proved all four share ONE root cause: deploy_apply_plan_legs is wrapped by the deploy-artifact closure gate introduced by #16587, which fail-closes -- the gate is CORRECT, so this is not a plan-builder defect and there is nothing to restore there. For the srv1 all-kept fixture the whole plan is Refused at step deploy-artifact-gate; the gpu unit file is Ready, the serving boot outcome is admitted, and serve-unit emission is Emitted, so no serving/gpu code drops the legs -- the plan is refused upstream before those legs are reached. gunbc run rendered the halt verbatim (0123456789abcdef0123456789abcdef01234567 is the fixture release revision): live-deploy apply refused: the deploy artifact-closure gate halted -- missing directory [/opt/gunbc/attempt-system-unit-helpers/srv1-live/0123456789abcdef0123456789abcdef01234567] read by [/etc/systemd/system/gunbc-roadmap-attempt-unit-drain.path]: no install-directory leg creates it; missing directory [/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567] read by [443:/approve]: no install-directory leg creates it; missing artifact [/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/device-crypto-deployed-digest.env] read by [443:/approve]: no install-file leg writes it; missing artifact [/opt/gunbc/approval-broker/releases/0123456789abcdef0123456789abcdef01234567/gunbc] read by [443:/approve]: no install-file leg writes it; the plan is refused before any enable leg runs. The reads that lack an install leg are therefore: the unit /etc/systemd/system/gunbc-roadmap-attempt-unit-drain.path (reads the attempt-system-unit-helpers directory) and the approval-broker front-door at 443:/approve (reads the release directory, its device-crypto-deployed-digest.env and its gunbc binary). Dissolution: roadmap node deploy-release-roster-carries-every-owned-step (#16661) -- once the release roster carries install legs for every owned step, the gate's installed set covers these four reads and the plan (and all four claims) turns green. The witness folds themselves (the ApplyLegBrokerTree arm, whose field is now revision, and the ApplyLegInstallDirectory, ApplyLegSystemctl and ApplyLegDiagnosedSystemctl arms) are correct and not implicated.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

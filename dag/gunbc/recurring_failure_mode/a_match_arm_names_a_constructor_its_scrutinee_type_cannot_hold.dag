@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.a_match_arm_names_a_constructor_its_scrutinee_type_cannot_hold
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_match_arm_names_a_constructor_its_scrutinee_type_cannot_hold: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_match_arm_names_a_constructor_its_scrutinee_type_cannot_hold" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the acceptance path judges each match-arm pattern against the scrutinee's type, through every Optional layer, and refuses an arm whose constructor belongs to a different type, with a located diagnostic naming the arm, the constructor's owner and the scrutinee's type" } },
+
+  receipts: [
+    "INVALID STATE: an accepted program contains a match arm whose pattern names a constructor of a type the scrutinee cannot hold. The specimen matches `steps.first()` (std.optional::Optional<RunnerRepairEffectStep>) against bare RunnerRepairEffectStep constructors such as `ObserveRunnerLocalState { slot: _ } => true`, where the scrutinee can only be `Present { value: _ }` or `Absent`. The arm is unreachable, and the program is accepted without a diagnostic.",
+
+    "HARM: the unreachable arm reads as handled while every value falls to the wildcard or default arm. Where that default answers the same way as a mismatch (`_ => false` in a claim), the program is red and the defect is merely misattributed. Where the default is a plausible production answer, the program silently takes it on every input. That is silent wrongness, which gunbc.design_argument::guarantee_ladder places below the ladder.",
+
+    "SPECIMEN: test.claim.runner.runner_connectivity_repair_plan_witness::replace_action_projects_five_step_repair_sequence, five such arms, red on main from its authoring until gunbc#16366 (15f5c96a81) unwrapped them through `Present { value: <ctor> }`. Production (decide_runner_connectivity_action_for_snapshot, replace_repair_steps) was correct throughout. The repair session was briefed with a wrong hypothesis (a gunbc#16289 budget change) and established the real cause from the accepted-but-unreachable arms. The witness sits outside every emitted closure (gunbc.emitted_subject_build_gate), so the required job never ran it.",
+
+    "RUNG FOUND AT: below the ladder, accepted silently on the v1 claim-run route (gunbc run --claim-run executed the claim and reported FAIL, not a type refusal). Other acceptance routes (v2 typing, emitted Rust) are unread for this class, not cleared.",
+
+    "CEILING: structurally guaranteed. Whether a pattern's constructor belongs to the scrutinee's type is decidable from the declarations the program already carries, so no Accepted program need contain one. It is not structurally impossible, because source can still spell the arm.",
+
+    "SIBLINGS: gunbc.recurring_failure_mode.bare_variant_elected_by_spelling_not_by_expected_coproduct is the VALUE-position form (a bare variant elected by spelling rather than by the expected type); this is the PATTERN-position form. A text search for siblings is not decidable here: a bounded `git grep` for arms under `match … .first()` at 15f5c96a81 returns arm bodies as well as patterns, so the population is unread. The enforcement point above is what makes the population discoverable.",
+  ],
+  evidence: [],
+}

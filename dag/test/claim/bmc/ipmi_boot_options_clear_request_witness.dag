@@ -23,7 +23,8 @@ import std.resources { Network }
 import std.measure { second }
 import std.operation_argv { BoundOperationInvocation, OperationRef, operation_argv_bind_text, operation_argv_bind_text_list }
 import v2.std.operation_realization { OperationCall }
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, ipmi_retry_bound_retries_word, ipmi_retry_bound_timeout_word }
+import gunbc.machine_intake.bmc_read_policy { bmc_ipmi_retry_bound }
 import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
   ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear,
@@ -57,7 +58,23 @@ data six_byte_clear_operation: OperationRef = OperationRef {
   operation: "ChassisBootOptionsClear",
 }
 
-fn clear_call(at: OperationRef) -> OperationCall {
+// THE BINDINGS THE CLEAR CARRIES, with the retry bound riding only the row that declares it.
+// extdeps.bmc.ipmi's production ChassisBootOptionsClear splices -R {retry_bound_retries} and
+// -N {retry_bound_timeout} into its argv (gunbc.machine_intake.bmc_read_policy owns the values), so a
+// call at that ref must bind them or bind_argv_expr refuses and the reply is a fault, not an answer.
+// The fixture row above is the operation as it was dispatched BEFORE that change and declares neither,
+// so binding them there would be the mirrored error: a bind for an input no one declared. The Bool
+// keeps both truths in one place instead of two lists that can drift.
+fn clear_call_with(at: OperationRef, retry_bound: Bool) -> OperationCall {
+  let bound = bmc_ipmi_retry_bound()
+  let retry_binds = if retry_bound {
+    [
+      operation_argv_bind_text(name: "retry_bound_retries", text: ipmi_retry_bound_retries_word(bound: bound) as String),
+      operation_argv_bind_text(name: "retry_bound_timeout", text: ipmi_retry_bound_timeout_word(bound: bound) as String),
+    ]
+  } else {
+    []
+  }
   OperationCall {
     invocation: BoundOperationInvocation {
       at: at,
@@ -71,10 +88,20 @@ fn clear_call(at: OperationRef) -> OperationCall {
         operation_argv_bind_text(name: "boot_flag_data_4", text: ipmi_boot_flag_data_4_clear as String),
         operation_argv_bind_text(name: "boot_flag_data_5", text: ipmi_boot_flag_data_5_clear as String),
         operation_argv_bind_text_list(name: "cipher_suite_argv", items: ipmi_cipher_suite_argv(suite: Absent)),
-      ],
+      ] + retry_binds,
     },
     now: second(count: 0),
   }
+}
+
+// The fixture's call: the operation as it was dispatched before the retry bound existed.
+fn clear_call(at: OperationRef) -> OperationCall {
+  clear_call_with(at: at, retry_bound: false)
+}
+
+// The production call: the real declaration, which carries the retry bound in its argv.
+fn production_clear_call() -> OperationCall {
+  clear_call_with(at: bmc_ipmi_operation(operation: "ChassisBootOptionsClear"), retry_bound: true)
 }
 
 // A controller holding an override the clear is meant to remove.
@@ -124,7 +151,7 @@ test fn the_refusal_reads_back_as_a_refused_write_not_an_accepted_one() -> Bool 
 // POSITIVE CONTROL: the real declaration's argv -- selector then five data bytes -- clears the override, and an
 // accepted write is classified as accepted.
 test fn the_real_clear_is_the_parameters_length_and_clears_the_override() -> Bool {
-  match bmc_boot_options_clear_reply(world: seeded(), call: clear_call(at: bmc_ipmi_operation(operation: "ChassisBootOptionsClear"))) {
+  match bmc_boot_options_clear_reply(world: seeded(), call: production_clear_call()) {
     BmcReplied { stdout: out, world: after } => out == "" && after.boot_override == BootOverrideNone
     _ => false
   }

@@ -82,12 +82,12 @@ test fn every_sealed_mtcollins1_write_refuses_an_outside_caller() -> Bool {
 }
 
 // NO PUBLIC ROUTE REACHES A PROOF OR AN ACTUATION FROM OUTSIDE ITS ROOTS: the hold-owning boot path
-// admits only the wet entry, the boot's actuation is sealed to the hold-owning path, and the unit-hold
+// admits only the wet entry, the boot's live effect binding (the only route to a live effect, and it takes the proof) is sealed to the hold-owning path, and the unit-hold
 // acquire (the proof's only mint) is sealed to the two roots.
 test fn every_route_to_a_proof_or_an_actuation_is_sealed_to_its_roots() -> Bool {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_under_live_unit_hold") >= 1
-    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_actuate") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_effects_real") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_on_srv1_resolving_toolchain") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "unit_hold_acquire") >= 1
 }
@@ -103,4 +103,31 @@ test fn the_hold_observations_cannot_be_taken_outside_the_actuation() -> Bool {
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_boot_power_after_poll") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_boot_param5") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "megarac_boot_chassis_power") >= 1
+}
+
+// THE CONTROLLER COLD RESET'S HELD SEQUENCE AND ITS ONE WRITE REFUSE EVERY CALLER BUT THEIR ROOTS (side chat on
+// gunbc#16529, F3): reaching mtcollins1_bmc_cold_reset_held with a forged proof, or the write directly, is refused at
+// compile time, so no call path reaches McResetCold without the hold the route acquires (mtcollins1_bmc_cold_reset_wet_admitted).
+test fn the_cold_reset_cannot_be_reached_without_acquiring_the_hold() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_bmc_cold_reset_held") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_bmc_cold_reset_send") >= 1
+}
+
+// THE ROUTE UNDER A SUPPLIED BUDGET ADMISSION REFUSES EVERY CALLER BUT THE ENTRY AND THE MATRIX (merry-fox-82
+// msg_25b8afcf on gunb-ai/gunbc#16668): mtcollins1_bmc_cold_reset_wet_admitted can be handed an admitted budget, so a
+// call from outside its two admitted callers -- the step's entry, which passes the production admission, and the
+// acceptance matrix's runner -- is refused at compile time, and no production path runs the watch past an
+// unapproved budget.
+test fn the_cold_reset_route_under_a_supplied_budget_refuses_every_caller_but_the_entry_and_the_matrix() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "mtcollins1_bmc_cold_reset_wet_admitted") >= 1
+}
+
+// A CI BUDGET RAISE GRANT CANNOT BE AUTHORED OUTSIDE ITS LEDGER (merry-fox-82 msg_32aa04b6 on gunb-ai/gunbc#16668,
+// F1): gunbc.ci.ci_budget_raise BudgetRaiseGrant is sole_constructor, so a grant binding an unrelated ruling to the
+// cold-reset step past its signed 67 -- the forgery that would admit a budget no operator signed -- is refused at the
+// literal.
+test fn a_forged_budget_raise_grant_is_refused_at_the_literal() -> Bool {
+  blocking_count_for_class_and_subject(c: probe(), wanted: "SoleConstructorViolation", subject: "BudgetRaiseGrant") >= 1
 }

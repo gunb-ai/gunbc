@@ -1,0 +1,44 @@
+module gunbc.recurring_failure_mode.builtin_predicate_actual_accepted_and_ignored
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// A builtin call whose realization does not consume an argument, accepted and silently evaluated as if
+// that argument were absent. This is the arity-accepted-and-ignored family: the declaration is correct, the
+// realization is correct FOR ITS OWN CONTRACT, and the only seam that could have refused the surplus actual
+// -- the type checker -- never counted the actuals against the signature on the builtin route.
+data builtin_predicate_actual_accepted_and_ignored: RecurringFailureMode = RecurringFailureMode {
+  identity: "builtin_predicate_actual_accepted_and_ignored" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: AtCeiling {
+      rung: MechanicallyPreventable,
+      ceiling_reason: "mechanically preventable (rung 2) on the builtin free-call route: the located CallPositionalSurplus diagnostic refuses the surplus positional at type check, so the state can no longer be authored without a located error and a witness that relied on the silence flips red. It sits AT that ceiling rather than rung 3 because a builtin is dispatched by a name string and a surplus positional still parses and reaches the checker; raising it to structurally guaranteed would need the builtin call seam to bind actuals against the declared signature by construction -- the way the direct-call seam's arity bijection does for user functions -- making the surplus unrepresentable rather than diagnosed. TRIGGER (what moves the ceiling): a builtin dispatch that carries its parameter list into the call seam and rejects a surplus structural actual there, so the grammar cannot produce a builtin call whose actual count exceeds the declared arity." as NonEmptyStr
+    }
+  },
+
+  receipts: [
+    "**a predicate actual handed to a 1-argument builtin is accepted and dropped** (the builtin `count` is declared with one receiver formal; `count(xs, predicate)` typed cleanly because the builtin free-call route in `v1.compiler.infer` `infer_expr_body` judged inhabitance, text-crossing and result-declaration diagnostics but never counted the actuals against the signature, and the interpreter arm `free_call.count` reads only `$positional.first()`, silently discarding the rest).",
+
+    "INVALID STATE: a builtin free-call whose positional actual count exceeds the builtin's declared arity, accepted by the type checker and evaluated as if the surplus actual were absent.",
+
+    "HARM, stated as the value the author receives rather than the diagnostic that never fired: measured on origin/main, `count([1,2,3], x => x == 1)` returned 3 (expect 1), `count([1,2,3], x => false)` returned 3 (expect 0), and a named predicate `count(modes, is_named)` returned the whole length. There was no refusal and no warning: the predicate was accepted as if it mattered and then ignored. Under the witness evaluator this is a silent wrong answer -- every witness that wrote a `count(xs, P)` guard was asserting `non-empty(xs)` while reading it as `some x satisfies P`, the exact state the guarantee ladder puts below the ladder.",
+
+    "DISCOVERED BY smart-dove-204, who measured it directly with `gunbc run` (the probe `count(modes, named_pred_fn)` writing its own value); this row is filed by the repairing lane, which holds the executed evidence.",
+
+    "DISTINGUISHING FACTS. (1) This is NOT the fall-through/shadowing class (gunbc.recurring_failure_mode shadowing_body_local_bypassed_by_global_call_fallback, arity_proxy_for_callability_misroutes_a_found_local): there the callee was misrouted; here the callee resolves correctly and the arity is simply never judged. (2) This is NOT the arity-proxy row's fix: that repaired `type_node_is_callable`; the surplus actual was never counted at all on the builtin route. (3) The recognition rule is one question: does the call seam that dispatches a builtin count its actuals against the builtin's declared parameter list? For the builtin route, before the repair it did not. (4) The genuine-variadic exemption is a declared fact of the builtin registry (`v1.compiler.infer_method` `builtin_positionally_variadic`), not a name written into checker logic: `concat` is the only builtin whose realization folds every positional actual, so a third `concat` actual is content, not surplus. Without the exemption a blanket arity wall fabricates refusals on the corpus's 3-to-19-argument `concat` calls -- fabricating a refusal is as forbidden as the silence it removes.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "builtin_positional_arity_diags", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_method", decl_name: "builtin_positionally_variadic", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_method", decl_name: "builtin_accepts_surplus_positional", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "count_where", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.std_list_keyed_scan_witness", decl_name: "w_count_refuses_a_surplus_predicate_actual", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.std_list_keyed_scan_witness", decl_name: "w_one_argument_count_still_resolves_clean", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.std_list_keyed_scan_witness", decl_name: "w_count_where_consults_its_predicate", field: WholeDeclaration },
+  ],
+}

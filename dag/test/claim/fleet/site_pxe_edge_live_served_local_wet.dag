@@ -1,0 +1,38 @@
+module test.claim.fleet.site_pxe_edge_live_served_local_wet
+
+import std.types { Bool, NonEmptyStr, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.exec.command { LocalExec }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.host_command_binding { LocalCommandHost }
+import gunbc.fleet.site_pxe_edge_live_boot_pair { ServedBootFileMeasured, ServedBootFileUnread }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_served_file_on }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE HALF OF the served-root readback's symlink containment (gunbc.design_argument::witness_one_interface): a real directory serves
+// one real file and one symlink whose target is OUTSIDE the root. The real file is measured (positive control); the symlinked one is refused as
+// not resolving under the root, with nothing measured. Deleting the realpath consultation from site_pxe_edge_live_served_file_on makes the
+// symlinked case Measured and this claim false.
+test fn a_symlink_out_of_the_root_is_refused_by_real_execution() -> Bool {
+  let top = shell.Mktemp.Dir()
+  let base = top.path as String
+  let root = concat(base, "/tftp") as NonEmptyStr
+  let made = run_shell_command_observe(
+    command: posix_sh_program_command(script: concat("mkdir -p ", root as String, "/casper && printf kernel > ", root as String, "/casper/vmlinuz && printf secret > ", base, "/outside && ln -s ", base, "/outside ", root as String, "/casper/initrd")),
+    transport: LocalExec,
+  )
+  let inside = match site_pxe_edge_live_served_file_on(host: LocalCommandHost, tftp_root: root, tftp_path: "casper/vmlinuz" as NonEmptyStr) {
+    ServedBootFileMeasured { path: _, digest: _ } => true
+    ServedBootFileUnread { reason: _ } => false
+  }
+  let escaped = match site_pxe_edge_live_served_file_on(host: LocalCommandHost, tftp_root: root, tftp_path: "casper/initrd" as NonEmptyStr) {
+    ServedBootFileUnread { reason: r } => string_contains(s: r, pattern: "does not resolve")
+    ServedBootFileMeasured { path: _, digest: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: top.path)
+  top.success && made.exit_code == 0 && inside && escaped
+}

@@ -33,7 +33,7 @@ fn boot_dedicated_federation(f: ManagedHostBootFederation) -> DedicatedFederatio
 
 // Out-of-band: run by the grant administrator in their own session with a control-plane token
 // (gunbc.auth.access_token_source secret_access_token_path_env), the census's interim realization for
-// setIamPolicy (gunbc.auth.privileged_effect_census interim_gcp_iam_adapter_unlanded). No workflow run
+// setIamPolicy (gunbc.auth.privileged_effect_registry interim_gcp_iam_adapter_unlanded). No workflow run
 // and no session relay performs it. Every provisioned pair, stopping at the first refusal.
 // An empty population refuses: a provisioner that provisioned nothing must not report success.
 fn managed_host_boot_federation_provision_with_supplied_token() -> ProcessExit {

@@ -7,7 +7,8 @@ import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUn
 // A CONTROL THAT NOTHING RUNS. The gate is not missing, not wrong, and not weak: it reads every
 // committed generated artifact, generates each one once, compares, and reports a located finding
 // (gunbc.instruments.generated_artifact_gate run_generated_artifact_drift_gate). What it does not
-// have is a caller. Its roster (gunbc.ci.ci_spec gunbc_ci_gates) is consumed by
+// have is a caller. Its roster (gunbc.ci.ci_spec gunbc_ci_gates, since moved to gunbc.commit_workflow) is
+// consumed by
 // gunbc.instruments.ci_gates run_ci_gates_all, and run_ci_gates_all is called by nothing -- no
 // workflow, no .dag program, no Rust entry point. The gate's own main() exists so a human can run
 // it, which is precisely the difference between a control and a control that is wired: the check
@@ -53,6 +54,6 @@ data an_authored_gate_reached_by_no_execution_route: RecurringFailureMode = Recu
   evidence: [
     decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate"),
     decl_ref(module_path: "gunbc.instruments.ci_gates", decl_name: "run_ci_gates_all"),
-    decl_ref(module_path: "gunbc.ci.ci_spec", decl_name: "gunbc_ci_gates"),
+    decl_ref(module_path: "gunbc.commit_workflow", decl_name: "gunbc_ci_gates"),
   ],
 }

@@ -13,6 +13,7 @@ import product.host_identity { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_183527,
+  operator_host_6ce85c,
 }
 import gunbc.hostname_allocation {
   HostnameAllocation,
@@ -430,3 +431,52 @@ test fn witness_a_colliding_registry_resolves_no_selector() -> Bool {
     HostSelectorUnknown { selector: _ } => false
   }
 }
+
+// AFTER THE FLIP, the drawn name is the live allocated name, not a pending one. It must still be exactly what
+// the allocator yields for the recorded ticket (the ticket is the receipt and it travels into `name`), and it
+// must now ANSWER as a selector -- the opposite of the pending state, where "dan" was reserved but unresolved.
+test fn witness_h11_name_reproduces_from_the_recorded_ticket() -> Bool {
+  let h11 = filter(fleet_machine_registry, r => (r.fleet_slot as String) == (operator_host_6ce85c as String)).first()
+  match h11 {
+    Absent => false
+    Present { value: r } => match r.name {
+      LegacyHostname { label: _ } => false
+      DrawnHumanName { name: h, draw: d } =>
+        d.entropy == 630127021373 &&
+        (human_name_canonical_hostname(name: h) as String) == "dan" &&
+        match draw_human_name(draw: d, existing: filter(fleet_machine_registry, o => (o.fleet_slot as String) != (operator_host_6ce85c as String))) {
+          HumanNameDrawn { name: drawn } => human_name_eq(a: drawn, b: h)
+          HumanNameDrawExhausted { entropy: _, taken_forms: _ } => false
+          HumanNameDrawRefused { reason: _ } => false
+        }
+    }
+  }
+}
+
+// THE FLIP MOVED THE NAME AND RETIRED THE LEGACY SPELLING as an answerable selector: the canonical hostname
+// now projects to "dan", "dan" resolves to the host, the old "h11-a16" no longer selects it (the handle
+// "host-6ce85c" still does), and `next_name` is back to Absent -- the rename is applied, not pending.
+test fn witness_h11_flip_moves_the_name_and_retires_the_legacy_spelling() -> Bool {
+  let canonical_is_dan = match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_6ce85c) {
+    Present { value: label } => (label as String) == "dan"
+    Absent => false
+  }
+  let dan_resolves = match resolve_host_selector(selector: "dan") {
+    HostSelectorResolved { host } => host == operator_host_6ce85c
+    _ => false
+  }
+  let legacy_no_longer_selects = match resolve_host_selector(selector: "h11-a16") {
+    HostSelectorUnknown { selector: s } => s == "h11-a16"
+    _ => false
+  }
+  let handle_still_selects = match resolve_host_selector(selector: "host-6ce85c") {
+    HostSelectorResolved { host } => host == operator_host_6ce85c
+    _ => false
+  }
+  let next_is_absent = match next_name_for_fleet_slot(fleet_slot: operator_host_6ce85c) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  canonical_is_dan && dan_resolves && legacy_no_longer_selects && handle_still_selects && next_is_absent
+}
+

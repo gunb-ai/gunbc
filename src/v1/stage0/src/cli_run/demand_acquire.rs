@@ -39,7 +39,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 // THE READ-SET RECEIPT: the one seed addition the operator admitted for the planning fast lane
-// (@ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted)). Every filesystem fact demand acquisition
+// (#gunbc.design_ruling::seed_read_set_receipt_is_admitted). Every filesystem fact demand acquisition
 // consumes is recorded: a file it read, a path it probed and found absent (or could not admit), and a
 // directory it enumerated. A change to any recorded path -- or under any recorded directory -- can change
 // what this process acquires; a change to no recorded path cannot. When `GUNBC_READ_SET_OUT` names a file,

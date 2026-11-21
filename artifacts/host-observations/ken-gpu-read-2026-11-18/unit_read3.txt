@@ -1,0 +1,73 @@
+### t10-power-cap.sh
+#!/bin/sh
+# Cap every NVIDIA GPU at its own minimum power limit (operator 2026-11-15: "lower their power as low as possible"), read back, fail if not applied.
+# ken carries three Tesla T10s since 2026-11-17 (SLOT4 01:00.0, SLOT6 81:00.0, SLOT2 c1:00.0); fewer than EXPECT fails the unit.
+set -eu
+EXPECT=3
+nvidia-smi -pm 1 >/dev/null
+n=0
+for i in $(nvidia-smi --query-gpu=index --format=csv,noheader); do
+  min=$(nvidia-smi -i $i --query-gpu=power.min_limit --format=csv,noheader,nounits | cut -d. -f1)
+  nvidia-smi -i $i -pl $min >/dev/null
+  got=$(nvidia-smi -i $i --query-gpu=power.limit --format=csv,noheader,nounits | cut -d. -f1)
+  echo "gpu $i ($(nvidia-smi -i $i --query-gpu=pci.bus_id --format=csv,noheader)): limit $got W (min $min W)"
+  [ "$got" = "$min" ] || { echo "gpu $i readback $got != $min" >&2; exit 1; }
+  n=$((n+1))
+done
+[ $n -eq $EXPECT ] || { echo "expected $EXPECT GPUs, saw $n" >&2; exit 1; }
+### power
+GPU 00000000:01:00.0
+    GPU Power Readings
+        Current Power Limit                            : 100.00 W
+        Default Power Limit                            : 150.00 W
+        Min Power Limit                                : 100.00 W
+        Max Power Limit                                : 150.00 W
+        Current Power Limit                            : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+GPU 00000000:81:00.0
+    GPU Power Readings
+        Current Power Limit                            : 100.00 W
+        Default Power Limit                            : 150.00 W
+        Min Power Limit                                : 100.00 W
+        Max Power Limit                                : 150.00 W
+        Current Power Limit                            : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+GPU 00000000:C1:00.0
+    GPU Power Readings
+        Current Power Limit                            : 100.00 W
+        Default Power Limit                            : 150.00 W
+        Min Power Limit                                : 100.00 W
+        Max Power Limit                                : 150.00 W
+        Current Power Limit                            : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+### status
+● t10-power-cap.service - Cap every Tesla T10 (three on ken) at its minimum power limit
+     Loaded: loaded (/etc/systemd/system/t10-power-cap.service; enabled; preset: enabled)
+     Active: active (exited) since Tue 2026-11-17 22:43:09 UTC; 1h 18min ago
+    Process: 2222 ExecStartPre=/sbin/modprobe nvidia (code=exited, status=0/SUCCESS)
+    Process: 2248 ExecStart=/usr/local/sbin/t10-power-cap.sh (code=exited, status=0/SUCCESS)
+   Main PID: 2248 (code=exited, status=0/SUCCESS)
+        CPU: 594ms
+
+Warning: some journal files were not opened due to insufficient permissions.
+
+● ken-strata.service - Strata engine on ken: one server over all three Tesla T10s (strata-main 8c5fafc1 sm_75, IQ3_S, layer split auto, port 18081)
+     Loaded: loaded (/etc/systemd/system/ken-strata.service; enabled; preset: enabled)
+     Active: active (running) since Tue 2026-11-17 22:43:11 UTC; 1h 18min ago
+   Main PID: 2472 (python)
+      Tasks: 144 (limit: 154113)
+     Memory: 50.3G (max: 112.0G swap max: 2.0G available: 61.5G peak: 50.4G)
+        CPU: 3min 20.989s
+     CGroup: /system.slice/ken-strata.service
+             ├─2472 /home/ubuntu/strata-test/strata/.venv/bin/python serve/server.py --engine strata --config /home/ubuntu/strata-pool/cfg-ken.json --host 0.0.0.0 --port 18081
+             └─2645 /home/ubuntu/strata-test/strata-main/build/strata --serve --pack /home/ubuntu/strata-test/Strata-data/packs/iq3_s --native /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf --ple-gguf /home/ubuntu/strata-test/Strata-data/models/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf --expert-profile /home/ubuntu/strata-test/strata/data/expert-profile.bin --expert-cache auto --mmap-experts --prefill auto --spec 4 --spec-min-p 0.5 --mtp /home/ubuntu/strata-test/Strata-data/mtp/rt --max-context 229376 --kv q4_0 --kv-resident 65536 --vram-reserve-later-mib 1158 --conversation-cache-mib 32768 --conversation-cache-slots 24 --pool-workers 6 --trim-stage-weights --batch-groups auto --layer-split auto --batch 8
+
+Nov 17 22:45:01 h11-new python[2472]: ready: http://127.0.0.1:18081/v1  (OpenAI: /v1/chat/completions, Anthropic: /v1/messages, context 229376 tokens, API key required)
+Nov 17 22:45:01 h11-new python[2472]:        open http://127.0.0.1:18081/ in a browser to chat; close this window to stop the model
+Nov 17 22:45:01 h11-new python[2472]:        from other devices: http://192.168.1.236:18081/   (API: http://192.168.1.236:18081/v1)

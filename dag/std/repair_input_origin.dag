@@ -53,7 +53,7 @@ type RenderedTypeSurfaceOrigin {}
 // each with its own cause:
 //
 //   1. CorpusDeclared carries `decl_file: String` -- A POSITION.
-//      gunbc.type_reference_decl_file_occurrence_census names that as the undischarged and larger
+//      gunbc.type_reference_decl_file_occurrence_census (retired 2026-11-10) named that as the undischarged and larger
 //      half of its repair, and a carrier holding BOTH a DeclarationRef and a decl_file would give
 //      one fact two identities, which is the section 3 fork the census exists to warn about. So
 //      the declared arm here carries the DeclarationRef and nothing positional. The v1 position

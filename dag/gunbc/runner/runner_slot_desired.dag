@@ -1,7 +1,10 @@
 module gunbc.runner.runner_slot_desired
 
-import std.types { Int, String, List }
+import std.types { Bool, Int, String, List }
 import std.measure { ByteSize, byte_size, HardwareThreadCount }
+import product.host_identity { HostIdentity }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown }
 
 // THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
 // granted is a leaf fact; gunbc.runner.runner_slot_allocation derives widths, walls and floor-outcome
@@ -196,6 +199,78 @@ data gunbc_runner_slot_memory_max_ruling_note: String = "WHY 16GiB/15GiB, SUPERS
 data gunbc_runner_slot_memory_max_bytes: Int = 26843545600
 
 data gunbc_runner_slot_memory_max: ByteSize = byte_size(gunbc_runner_slot_memory_max_bytes)
+
+// THE BUILD-POOL CARVE, DECIDED FROM HOST FACTS, AND ONLY ON A HOST THAT IS ON THE ROSTER.
+// A remote-build host with no dashboard instance has no serving reservation reaching the envelope
+// through gunbc.runner.runner_slot_allocation host_memory_reserved (unlike srv1, whose serving
+// reservation does), so its build pool needs a CI runner slot carved for it. The operator's standing
+// ruling (the admitted-scaffold provenance on
+// gunbc.design_ruling.remote_build_ssh_dispatch_is_an_admitted_scaffold) carves ONE CI runner slot on
+// such a host for that pool. WHICH hosts are carved is read from host facts, not a hand-written host
+// list (review 95809): the host must be (a) on the serving roster -- gunbc.compute.remote_build_hosts
+// remote_build_host_is_serving -- AND (b) resolve no dashboard instance, i.e. have no instance to carry
+// its own reservation (dashboard_instance_for_host is HostUnknown). Exactly one slot,
+// gunbc_runner_slot_memory_max, is given to the pool; every other host carves nothing (byte_size(0)).
+// This is the SINGLE place that decides the carve; gunbc.compute.host_capacity host_capacity_build_seat
+// READS THIS SAME function (divided across the pool's compute_pool_slots seats) as what it hands the
+// pool, so the width reduction and the ledger appropriation are the ONE carve derived once from a single
+// source -- never two numbers that could drift (gunbc.design_argument::single_authority).
+//
+// THE CARVE FOLLOWS ADMISSION, SO MEMORY IS NEVER SUBTRACTED WITHOUT BEING HELD (review 95809,
+// gunbc.design_argument::consumption). Gating on the roster is what keeps the two sides of the carve
+// together: a host is carved ONLY when it is on the roster, and it is admitted to the roster only when
+// PR 5 has created and read back its /opt/gunbc/compute/capacity home (the same "row and directory in
+// ONE change" rule this PR applies to the roster). So in THIS PR, with srv2/srv3/srv4 off the roster, NO
+// host is carved: srv3/srv4 keep their FULL committed runner width and nothing is subtracted, because
+// nothing would hold the memory. When PR 5 admits srv3/srv4 (creating their home, adding the row), the
+// carve and the ledger appropriation fire in that same change -- the slot leaves CI and is held by the
+// pool atomically. (Today srv1 is the only rostered host; it resolves a dashboard instance and so is
+// NOT carved -- its reservation reaches the envelope through host_memory_reserved, not a carve.)
+//
+// CONSERVATION AGAINST THE WALL (gunbc.ci.ci_runner_placement), stated rather than rewired. That wall is
+// an UPPER BOUND: it sums each host's committed runner width priced at the slot, plus the per-host
+// session slice and fixed overhead, and requires the total <= OS-usable RAM. A carve only ever makes the
+// runner side SMALLER, and the carved slot is held once on the ledger side by the pool appropriation --
+// and, because the carve is roster-gated, only ever for a host whose ledger pool actually exists. So the
+// slot has genuinely MOVED from the CI side to the ledger side of the same machine; the runner-side sum
+// never exceeds what it was before the host joined, and conservation stays gunbc.ci.ci_runner_placement's
+// to certify. There is no revision at which a slot is removed from CI without being held by a pool -- the
+// bug an ungated carve would leave between this PR and PR 5 (a full slot per host lost to neither side).
+// THE CARVE AS A PREDICATE ON A HOST, so a reader that must branch on "is this host carved" asks the SAME
+// question host_build_pool_reservation asks instead of re-deriving the two host facts or testing the
+// reservation amount for > 0 (which conflates "not carved" with a real zero carve). The carve rule itself
+// stays one function (build_pool_carve_is_due); this only applies it to a host.
+fn host_build_pool_is_carved(host: HostIdentity) -> Bool {
+  build_pool_carve_is_due(rostered: remote_build_host_is_serving(host: host), carries_own_ledger: host_carries_own_ledger(host))
+}
+
+fn host_build_pool_reservation(host: HostIdentity) -> ByteSize {
+  if host_build_pool_is_carved(host: host) {
+    gunbc_runner_slot_memory_max
+  } else {
+    byte_size(0)
+  }
+}
+
+// THE CARVE RULE AS A PURE FUNCTION OF THE TWO HOST FACTS, so the POSITIVE case is witnessed even though
+// PR 4 has no rostered host that lacks an instance (review 95809 / manager): a slot is carved for a build
+// pool IFF the host is on the serving roster AND does not carry its own ledger. host_build_pool_reservation
+// applies this to a real host; the positive witness cell exercises all three host-fact shapes so PR 5's
+// admission flips a PROVEN rule (rostered + no instance -> exactly one slot) rather than an unexercised one.
+fn build_pool_carve_is_due(rostered: Bool, carries_own_ledger: Bool) -> Bool {
+  rostered && !carries_own_ledger
+}
+
+// A host "carries its own ledger" when it resolves a dashboard instance -- that instance's reservation
+// reaches the CI envelope through gunbc.runner.runner_slot_allocation host_memory_reserved, so the host
+// needs no carved build-pool slot. A rostered host that resolves NO instance (a build host like srv3/
+// srv4 once PR 5 admits them) is the one whose pool must be carved from a CI slot.
+fn host_carries_own_ledger(host: HostIdentity) -> Bool {
+  match dashboard_instance_for_host(host: host as String) {
+    DashboardInstanceHostUnknown { host: _ } => false
+    DashboardInstanceForHost { instance: _ } => true
+  }
+}
 
 // THE SLOT CARRIES NO ABSOLUTE CPU CEILING, BY THE SAME RULING THAT SETS cores_per_slot TO ONE.
 // This used to be CpuQuotaResolved at the derived cores_per_slot, which with the policy at 1 would

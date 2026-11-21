@@ -1,7 +1,15 @@
 module gunbc.repo.repo_self_build
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.stage0.stage0_crate_partition_generated { generated_partition_crate_rows }
+// WHICH PACKAGES A SEED BUILD BUILDS IS WHAT THE PARTITION DECLARES. The carrier's committed rows
+// were read here; the carrier is that partition's rendering, refreshed by
+// `claim_executor --emit-partition-crates --write`. A change that authors a row for a new partition
+// package therefore did not put that package into the required build phase, and the phase that is
+// supposed to be the wall against a bad seed could not see the package the change had just added --
+// the same fork, in the build command, as DEFECT 4 had in the admission. Authoring a row without
+// landing its package now fails the build, which is the direction this file's header wants the wall
+// to face.
+import gunbc.stage0.stage0_crate_partition_emit { generated_partition_crate_rows_as_declared }
 import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial, repo_self_warning_denial_rustflags }
 import extdeps.rust.cargo_build { cargo_clippy_command }
 import extdeps.exec.command { argv_words }
@@ -233,7 +241,7 @@ fn repo_self_clippy_command() -> String {
 // declared bin or crate outside both this list and the v1-compiler package remains unbuilt by any
 // required phase. That gap is the 2026-08-25 declared row and this command does not close it.
 fn repo_self_build_partition_crate_packages() -> List<String> {
-  generated_partition_crate_rows |> map(row => row.package_name)
+  generated_partition_crate_rows_as_declared() |> map(row => row.package_name)
 }
 
 // THE BUILD ENVIRONMENT EVERY SEED BINARY IS BUILT IN. One commit must give one sha256, and before

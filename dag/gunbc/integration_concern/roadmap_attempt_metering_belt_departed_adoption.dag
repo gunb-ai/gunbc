@@ -1,0 +1,33 @@
+module gunbc.integration_concern.roadmap_attempt_metering_belt_departed_adoption
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern }
+
+data roadmap_attempt_metering_belt_departed_adoption: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_attempt_metering_belt_departed_adoption",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
+    requirement: "the departed pass carries an adoption step that reads a plain metering.json exactly once, verifies it through metering_observe_against, and commits it as generation one through attempt_metering_commit with ExpectSlotAbsent; a record that fails verification refuses typed and stays in place, and adopting twice is a lost race or a no-op, never a duplicate",
+    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_commit"),
+    ],
+  },
+  question: "How do the 23 pre-seal plain metering.json records reach the sealed slot without a second read path? Through this adoption step, invoked by belt_metering_departed before the new reader serves; it retires when the srv2 inventory reads empty.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7476b9b85bb42b3590945d0d768e77c315c97e9a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_observe_against") },
+        tail: [],
+      },
+      account: "the 23 records predate the index route, so the for-attempt pass cannot reach them; only the departed pass (or an operator-invoked boundary over the same modeled act) can adopt them, and neither route reaches attempts already processed by the old pass -- those rows are a known gap beside this one.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

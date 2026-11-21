@@ -1,0 +1,5 @@
+ Board Mfg Date        : Mon 24 Nov 2025 06:38:00 PM UTC UTC
+ Board Mfg             : ASRockRack
+ Board Product         : ALTRAD8UD-1L2T
+ Board Serial          : NS1NF9000200179
+ Product Name          : ALTRAD8UD-1L2T

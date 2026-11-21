@@ -4,8 +4,13 @@ module gunbc.instruments.generated_artifact_gate
 import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRefused }
+import extdeps.tools.gnu_coreutils { mkdir_parents_command }
+import gunbc.command_runner { run_shell_command_capture }
 import gunbc.ci.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
+import std.filesystem { path_parent_directory }
 import gunbc.generated_artifact_registry { committed_generated_artifacts, generated_artifact_registry, uncommitted_project_documentation_artifacts }
 import gunbc.generated_artifact_emit {
   ArtifactGenerated,
@@ -205,6 +210,45 @@ fn artifact_selection_for_path(path: String) -> ArtifactSelection {
   )
 }
 
+// THE ONE GENERATED-ARTIFACT WRITE ROUTE EVERY WET ENTRY SHARES (root generalization of the
+// three generate-then-write forks that main_wet_one, main_wet and documentation_wet each
+// repeated). It owns the artifact's DIRECTORY: before writing the bytes the route materializes the
+// directory of the path it is about to write -- path_parent_directory(path), which in every caller
+// is exactly the roster's artifact_directory(a), because each wet entry passes path = artifact_path(a)
+// (or the registry-matched path, which equals it). The directory is materialized by EXECUTING the
+// modelled coreutils command extdeps.tools.gnu_coreutils.mkdir_parents_command (an ArgvCommand for
+// `mkdir -p -- <dir>`) through the command transport the gate already uses --
+// run_shell_command_capture(..., transport: LocalExec) -- NOT a new Filesystem operation. v1's
+// Filesystem surface is semantics-frozen (gunbc.design_argument::closed_grounded_substrate): adding
+// a FileVerb there would grow the seed's semantics and oblige v2's realization to owe the same verb
+// (a fork in the making); `mkdir` already exists as a modelled ArgvCommand, so the gate reuses it.
+// This is what lets a NEW runner host's artifact -- e.g. provisioning/srv14/gunbc-ghrunner.sudoers,
+// whose directory does not exist in the tree -- be written the moment the roster gains the host,
+// without provisioning/srv14 being hand-created in the repository first. It creates ONLY the
+// directory the rostered artifact it is writing declares, and Filesystem.Write is left a pure write
+// that never plants a tree, so no other Filesystem.Write caller in the compiler inherits directory
+// creation as a side effect. The mkdir's exit status and stderr are folded into the refusal and a
+// failed mkdir is refused, not swallowed: an unwritten artifact that reported success is the same
+// silent state the whole gate exists to prevent (gunbc.design_argument::fail_closed).
+fn write_generated_artifact(a: GeneratedArtifact, path: String, content: String) -> ProcessExit {
+  match run_shell_command_capture(command: mkdir_parents_command(path: path_parent_directory(path: path)), transport: LocalExec) {
+    ProcessRefused { exit_code: code, stderr: err } => exit_failure(
+      reason: concat(
+        concat("mkdir failed for ", artifact_path(a: a)),
+        concat(": exit ", concat(int_to_decimal_string(code), concat(": ", err)))
+      )
+    )
+    _ => {
+      let w = Filesystem.Write(path: path, content: content)
+      if w.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error)))
+      }
+    }
+  }
+}
+
 fn main_wet_one(path: String) -> ProcessExit {
   match artifact_selection_for_path(path: path) {
     ArtifactSelectionEmpty { matches: _ } => exit_failure(
@@ -227,10 +271,7 @@ fn main_wet_one(path: String) -> ProcessExit {
       } else {
         match artifact_generate(a: a) {
           ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", path), concat(": ", reason)))
-          ArtifactGenerated { content } => {
-            let w = Filesystem.Write(path: path, content: content)
-            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error))) }
-          }
+          ArtifactGenerated { content } => write_generated_artifact(a: a, path: path, content: content)
         }
       }
   }
@@ -243,10 +284,7 @@ fn main_wet() -> ProcessExit {
       ExitSuccess =>
         match artifact_generate(a: a) {
           ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
-          ArtifactGenerated { content } => {
-            let w = Filesystem.Write(path: artifact_path(a: a), content: content)
-            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
-          }
+          ArtifactGenerated { content } => write_generated_artifact(a: a, path: artifact_path(a: a), content: content)
         }
     }
   })
@@ -264,10 +302,7 @@ fn documentation_wet() -> ProcessExit {
       ExitSuccess =>
         match artifact_generate(a: a) {
           ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
-          ArtifactGenerated { content } => {
-            let w = Filesystem.Write(path: artifact_path(a: a), content: content)
-            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
-          }
+          ArtifactGenerated { content } => write_generated_artifact(a: a, path: artifact_path(a: a), content: content)
         }
     }
   })

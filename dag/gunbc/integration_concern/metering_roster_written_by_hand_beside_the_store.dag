@@ -1,0 +1,49 @@
+module gunbc.integration_concern.metering_roster_written_by_hand_beside_the_store
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, ExistingHome, PreservedObligation, metering_roster_written_by_hand_beside_the_store_authorities, SuspectedFork }
+
+data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "metering_roster_written_by_hand_beside_the_store",
+  kind: SuspectedFork {
+    authorities: metering_roster_written_by_hand_beside_the_store_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+    ],
+  },
+  question: "Who may put a metering roster entry, or the sealed roster, where one already stands -- gunbc.durable_cas_file_store's committed generations, or this module's own create-only write with its read-back adjudication?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_metering|storage|metering_roster_admit|1, narrowed rather than deleted at review 90974",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8505cef2363: `attempt_metering_create_once` (:1394) writes create-only and, on an occupied name, reads the standing bytes back and compares; `metering_roster_seal_under_hold` (:1661) publishes the sealed roster through it. `attempt_metering_commit` puts the RECORD through `file_compare_and_set` with a carried expectation and a typed lost race, so the same question -- may these bytes stand where those stand -- is answered twice in one module, and only one of the two answers can tell a lost race from a matching one.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
+        control: decl_ref(module_path: "test.claim.c_roadmap2_metering_record_cas_wet_witness", decl_name: "an_entry_that_names_the_worker_is_refused_by_name_and_the_roster_refuses_to_read"),
+        statement: "the roster's own naming rule stands through a migration: an entry file may only add a launch beyond the worker, and an entry that names the worker is refused by name -- the bytes the create-only route wrote today stay readable by the reader that follows",
+      },
+    ],
+    next: climbs_when(capability: "the roster entry and the sealed roster are put through committed generations, the reader reads the head, and a mutation of the library's expectation rule reddens a roster row -- today it reddens none, because these two writes bypass the library"),
+  },
+}

@@ -4,8 +4,8 @@ import std.types { String }
 import gunbc.repo.repo_identity { gunbc_merge_target_ref }
 
 // THE CI DIFF POLICY IS ITS OWN MODULE BECAUSE ITS CONSUMERS NEED IT AND NOTHING ELSE. Closure is
-// module-grain: a module that reaches one declaration of gunbc.ci.ci_spec reaches all of
-// gunbc.ci.ci_spec and everything it imports.
+// module-grain: a module that reaches one declaration of the run-step roster
+// (gunbc.instruments.ci_run_step_roster) reaches the whole roster and every step module it imports.
 // The floor's diff observer (v2.workflow.floor_diff_observe) asks only which base, which head and
 // which range form -- and, reaching it through the CI spec, resolved and typechecked most of the
 // corpus, which the process resolve store then held for the whole floor beside the floor's own

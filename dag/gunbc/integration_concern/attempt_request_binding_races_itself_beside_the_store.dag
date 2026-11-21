@@ -1,0 +1,48 @@
+module gunbc.integration_concern.attempt_request_binding_races_itself_beside_the_store
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, ExistingHome, PreservedObligation, attempt_request_binding_races_itself_beside_the_store_authorities, SuspectedFork }
+
+data attempt_request_binding_races_itself_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "attempt_request_binding_races_itself_beside_the_store",
+  kind: SuspectedFork {
+    authorities: attempt_request_binding_races_itself_beside_the_store_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+    ],
+  },
+  question: "Who may replace an attempt's request binding once one stands -- gunbc.durable_cas_file_store's committed generations with a carried expectation, or this module's create-new plus read-back comparison?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_request_record|storage|attempt_request_binding_create_for_instance|1, kept at review 90974",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8505cef2363: `attempt_request_binding_create_for_instance` (:188) mints the store and delegates to `attempt_request_binding_commit` (:169), which creates with `attempt_state_create_new_at` and on an occupied name reads the standing bytes, decodes them and refuses a different binding -- correct behaviour, held twice: the same rule exists in `gunbc.durable_cas_file_store` as an expectation that answers a lost race typed. An unreadable standing binding is refused here by this module's own reading of the file, not by the library's typed unreadable-slot state.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
+        control: decl_ref(module_path: "test.claim.roadmap.attempt_request_binding_commit_wet_witness", decl_name: "a_different_binding_cannot_replace_the_first"),
+        statement: "the first binding stands: a repeated create of the same binding is idempotent, a different binding cannot replace it, and an unreadable existing binding is not replaced -- whatever route holds the exclusion, these three answers must not change",
+      },
+    ],
+    next: climbs_when(capability: "the binding is committed through generations with a carried expectation and a typed lost race, the refusal of a different binding comes from the library rather than from this module's read-back, and a mutation of the expectation rule reddens a binding row"),
+  },
+}

@@ -122,7 +122,7 @@ fn subject() -> NetworkInstallSubject? {
     Present { value: c } => match admit_public_nocloud_seed(client_mac: client, user_data: fixture_user_data()) {
       PublicSeedRefused { findings: _ } => Absent
       PublicSeedAdmitted { seed: sd } => Present { value: NetworkInstallSubject {
-        attempt: AttemptBinding { unit: "fixture-unit" as UnitKey, attempt: "attempt-1" },
+        attempt: AttemptBinding { unit: UnitKey { kind: BoardUnitKey, value: "fixture-unit" }, attempt: "attempt-1" },
         chain: c,
         binding: SitePxeEdgeInstallBinding { seed: sd, architecture: X86_64 },
         started_at: started,
