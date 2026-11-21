@@ -42,6 +42,10 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_remote_build_supplementary_groups,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCandidate }
+// The candidate row moved to the module that owns host membership for the serving route, so the live
+// dispatch gate and the provisioned-candidate row are read side by side and host_capacity can answer the
+// ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host }
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_admission → observed_cgroup_bound) that
@@ -551,23 +555,9 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
   }
 }
 
-// The CANDIDATE host set PR 5 owns. It is deliberately NOT gunbc.compute.remote_build_hosts
-// ::remote_build_serving_hosts — that is the LIVE dispatch gate (-> remote_build_host_rows ->
-// the fabric roster), which admits a host only after its serving setup converges: admitting a host before its
-// /opt/gunbc/compute/capacity home, store and account exist is fail-open (review 95791). The
-// OBSERVE arm must still read a host that is not yet rostered, so it takes its candidate set
-// from THIS PR 5-owned row: the hosts PR 5 will, in the apply arm, converge and then admit to
-// the live roster one-by-one (each only after its home/store/account are created and read back).
-fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
-  // ken (operator_host_e2d4b7) joins the CANDIDATE set only: it is admitted for the OBSERVE/CONVERGE arms so
-  // the converge can create its /opt/gunbc/compute/capacity home. This does NOT put ken on
-  // gunbc.compute.remote_build_hosts::remote_build_serving_hosts nor into client dispatch -- that roster stays
-  // the ONE live gate, and ken's roster join is separately gated on its capacity ledger having a traversable
-  // home (the build-lane concern at gunbc.integration_concern, decider the build lane). Its build seat is
-  // priced against MEASURED bytes -- gunbc.host / test.claim.fleet.ken_build_host_gate_witness proves two seats
-  // fit over the live 56 GiB serving charge -- so the srv14 "no quiescent read" bar does not apply here.
-  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7]
-}
+// (remote_build_serving_candidate_hosts, the candidate row this arm reads, moved on 2026-11-20 to
+// gunbc.compute.remote_build_hosts, where the live dispatch gate sits beside it -- and ken's admission to that
+// row (operator_host_e2d4b7, PR #16806) moved with it, comment and all.)
 
 // Render the account's authorized_keys content for the host: all admitted client keys rendered through
 // the restrict + forced-command entry, joined as a multi-line string. Returns none when the host is not
@@ -576,7 +566,7 @@ fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
 // remote_build_candidates() — so a not-yet-rostered candidate still renders, and a host outside
 // the candidate row is refused (never silently Met).
 fn serving_forced_command_line(host: HostIdentity) -> String? {
-  match any(remote_build_serving_candidate_hosts(), h => h == host) {
+  match remote_build_host_is_serving_candidate(host: host) {
     false => Absent
     true => match remote_build_render_entry(candidate: RemoteBuildCandidate { host: host, instance: remote_build_serving_instance(host: host) }) {
       RemoteBuildEntryRendered { entries } => Present { value: join(map(entries, e => authorized_key_entry_line(e: e)), "\n") }

@@ -2,16 +2,22 @@ module gunbc.compute.remote_build_hosts
 
 import std.types { Bool, List }
 import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 
 // THE HOSTS THAT SERVE REMOTE BUILDS, AS THE ONE ROW BOTH SIDES OF THE SHARE READ. A serving host runs
 // the remote-build account (gunbc.fleet.fleet_posix_accounts fleet_posix_remote_build_user) beside the
-// operator's service user, and both reserve memory in the host's ONE capacity ledger. So two facts
-// follow from membership here, and both are derived from this list rather than restated:
-//   - gunbc.compute.host_capacity groups that host's ledger directories to the ledger group, so the
-//     remote-build account can write them (compute_ledger_sharing); AND
-//   - gunbc.compute.host_capacity host_capacity_home_for_host resolves that host's ledger to the
-//     host-scoped home instead of walking a dashboard instance, and gunbc.compute.remote_build puts the
-//     host's serving instance on the roster.
+// operator's service user, and both reserve memory in the host's ONE capacity ledger. Two facts follow from
+// this module's rows, and each is read at its own row rather than restated:
+//   - gunbc.compute.host_capacity host_capacity_home_for_host resolves that host's ledger to the host-scoped
+//     home instead of walking a dashboard instance, and gunbc.compute.remote_build puts the host's serving
+//     instance on the roster -- both read THIS list, the live dispatch gate; AND
+//   - gunbc.compute.host_capacity groups that host's ledger directories to the ledger group so the
+//     remote-build account can write them (compute_ledger_sharing) -- since 2026-11-20 that one reads the
+//     CANDIDATE row below, not this one. Keying a POSIX posture on dispatch eligibility was a fork: a host
+//     taken off the dispatch gate while its serving account, its capacity home and its ledger content are
+//     still on the disk needs that ledger to stay group-reachable, and the serving setup's own area rows
+//     already use the shared posture for a candidate. The account witness
+//     the_shared_ledger_grants_exactly_its_two_areas is the claim that caught it, when srv1 left this list.
 // It sits below both modules because host_capacity cannot import the roster (the roster reaches the
 // provider, which reaches host_capacity).
 //
@@ -50,17 +56,76 @@ import product.host_identity { HostIdentity }
 //     what keeps the host off is the serving charge held by
 //     #gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier. It joins after
 //     that frontier dissolves: candidate row
-//     (#gunbc.compute.remote_build_serving_setup::remote_build_serving_candidate_hosts), observe, converge,
+//     (#gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), observe, converge,
 //     this row -- the order srv3 and srv4 took.
 //   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
 // Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool
 // figure -- never before.
+//
+// LEAVING, 2026-11-20, AND WHY A ROW IS NOT A PERMANENT FACT. A row here promises that the host SERVES WHAT
+// THE ROW PROMISES, and the promise is only good as the read-back that admitted it (the integration concern
+// below: admission follows an on-disk home, proven by re-observation). srv1's last such read-back is its
+// 08:57Z serving converge, and the promise has moved since: its pinned checkout predates 2387c5493bb9, so it
+// judges a `gate <label>` request with the ENTRY route's grammar and returns that route's refusal (the class
+// is filed in the failure-mode shelf as a_stale_serving_host_re_reads_a_verb_it_does_not_know_as_another_operations_operand,
+// PR #16797 -- named in prose, not with a @ref marker, because a marker to a declaration that is not on main
+// yet fails the marked-reference step of the required gate),
+// and its build pool holds a seat whose holder was killed before recording an exit, so it admits no work at
+// all. Listing it makes the client's first candidate a host that cannot serve the request -- and a typed
+// request-refusal is terminal in remote_build_next_step, so the request never reaches a host that could.
+// Removal states what is true and costs no capacity: srv1 carries its own ledger, so its build pool was never
+// carved (host_build_pool_is_carved stays false with the row or without it) and its slice ceiling is the
+// standing user-work pool either way. Its ledger keeps its group-shared posture: the posture belongs to the
+// CANDIDATE row below, not to this one, because the serving account, the capacity home and an unsettled seat are
+// still on that disk (host_capacity compute_ledger_sharing_carrier, and the account witness
+// a_suspended_host_is_still_a_provisioned_candidate).
+// RETURN, NAMED SO IT IS NOT RE-ADMITTED ON A GUESS: a serving converge on srv1 at or after 2387c5493bb9 --
+// the same run that executes the seat-recovery leg -- and the row comes back in the change that converge's
+// read-back proves. Nothing here re-adds it on hope.
 fn remote_build_serving_hosts() -> List<HostIdentity> {
   [
-    "srv1" as HostIdentity,
     "srv3" as HostIdentity,
     "srv4" as HostIdentity,
   ]
+}
+// THE CANDIDATE ROW: WHICH HOSTS THE SERVING SETUP IS PROVISIONED ON. Deliberately NOT the live dispatch gate
+// above (-> remote_build_host_rows -> the fabric roster), which admits a host only after its serving setup has
+// converged: admitting a host before its /opt/gunbc/compute/capacity home, store and account exist is fail-open
+// (review 95791). The serving setup's OBSERVE arm must still read a host that is not yet rostered, so it takes
+// its candidate set from THIS row: the hosts it will, in the apply arm, converge and then admit to the live
+// roster one-by-one (each only after its home/store/account are created and read back).
+//
+// IT MOVED HERE FROM gunbc.compute.remote_build_serving_setup ON 2026-11-20 so the two rows of one distinction
+// are read in one module, and because host_capacity cannot import the setup module (the setup reaches
+// host_capacity) yet must answer the ledger-posture question from one row rather than from a copy of it.
+//
+// THE LEDGER POSTURE IS KEYED HERE, NOT ON THE DISPATCH GATE: gunbc.compute.host_capacity
+// compute_ledger_sharing_carrier groups a candidate's host-home ledger for the remote-build account, because the
+// account, the home and the ledger's own content outlive a dispatch suspension. srv1 is that host today: off the
+// dispatch gate, still provisioned, and its ledger still holds a seat whose holder never recorded an exit. A host
+// leaves THIS row only when the serving route is withdrawn from it -- account removed, home dealt with, ledger
+// content settled.
+fn remote_build_serving_candidate_hosts() -> List<HostIdentity> {
+  // ken (operator_host_e2d4b7) joins the CANDIDATE set only: it is admitted for the OBSERVE/CONVERGE arms so
+  // the converge can create its /opt/gunbc/compute/capacity home. This does NOT put ken on
+  // remote_build_serving_hosts nor into client dispatch -- that roster stays the ONE live gate, and ken's
+  // roster join is separately gated on its capacity ledger having a traversable home (the build-lane concern
+  // at gunbc.integration_concern, decider the build lane). Its build seat is priced against MEASURED bytes --
+  // gunbc.host / test.claim.fleet.ken_build_host_gate_witness proves two seats fit over the live 56 GiB
+  // serving charge -- so the srv14 "no quiescent read" bar does not apply here.
+  //
+  // READ WITH THE POSTURE NOTE ABOVE: ken is a candidate rooted at the host capacity home, so its ledger is
+  // planned group-shared for the remote-build account from this row -- which is what the converge needs to
+  // write the home it is being admitted to create. Nothing acts on that yet: ken is x86 and has no converge
+  // path, so the posture is a plan awaiting an executor, not a change to a live host.
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7]
+}
+
+// IS THE SERVING ROUTE PROVISIONED ON THIS HOST, whatever its dispatch standing? The question the ledger
+// posture asks (host_capacity compute_ledger_sharing_carrier) and the question the serving setup's observe
+// arm asks are the same question, so both ask it here rather than re-deriving membership.
+fn remote_build_host_is_serving_candidate(host: HostIdentity) -> Bool {
+  any(remote_build_serving_candidate_hosts(), h => h == host)
 }
 
 fn remote_build_host_is_serving(host: HostIdentity) -> Bool {
