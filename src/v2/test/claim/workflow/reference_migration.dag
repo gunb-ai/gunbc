@@ -8,7 +8,7 @@ import extdeps.filesystem.filesystem_io { filesystem_read_outcome }
 import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
 import std.coercion { unicode_scalar_unfold }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.compiler.module_acquisition { AcquisitionEnv, SourceRootBinding }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.cli.reference_check { check_references, reference_check_holds_head }
@@ -38,6 +38,13 @@ import v2.workflow.reference_migration {
   migration_octet_table_of,
   migration_scalar_index,
   migration_write_outcome,
+  MigrationOccurrence,
+  MigrationOccurrenceForm,
+  MigrationOccurrenceScope,
+  MigrationOutsideAcc,
+  MigrationSweepItem,
+  migration_sweep_order,
+  migration_outside_step,
   migration_ownership_authored,
   migration_ownership_with,
   migration_plan_edit_count,
@@ -1212,4 +1219,65 @@ test fn reader_cost_helpers_survive_655360_element_inputs_holds() -> Bool {
     && migration_paragraph_bottom(lines: lines, index: 0, seen: MigrationLine { start: 0, end: 4, blank: false }) == Present { value: MigrationLine { start: 655359 * 4, end: 655359 * 4 + 4, blank: false } }
     && migration_lexeme_octet_from(content: hay + "needle", octets: table_hay, lexeme: "needle", width: 6, index: 0) == 131072
     && migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty) == migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty)
+}
+
+// The ordered sweep (warm-bear-654 ruling on the report-only kept set): the kept occurrences are
+// pairwise disjoint and disjoint from the accounted (seen) extents, and the TIE RULE is stated and
+// asserted here -- at equal start the LONGER span survives; otherwise the EARLIER start survives;
+// exact ties keep discovery order. A claim asserting only "the kept set is disjoint" would pass on
+// an empty or arbitrary survivor set, so this asserts the SURVIVORS by name.
+test fn sweep_kept_set_is_disjoint_and_the_stated_survivors_are_kept_holds() -> Bool {
+  let occ = sweep_probe_occ
+  let items = migration_sweep_order(
+    seen: [occ(200, 210)],
+    candidates: [occ(15, 25), occ(10, 20), occ(40, 50), occ(30, 45), occ(60, 70), occ(55, 65), occ(80, 84), occ(80, 82)]
+  )
+  let swept = fold_list(
+    xs: items,
+    empty: MigrationOutsideAcc { done: Empty, pend: Absent, tail: 0 },
+    cons: fn(acc, item) { migration_outside_step(acc: acc, item: item) }
+  )
+  let kept = match swept.pend {
+    Present { value: p } => Cons { head: p, tail: swept.done },
+    Absent => swept.done,
+  }
+  let spans = list_map(xs: kept, f: fn(o) { o.start * 100 + o.end })
+  // Candidates: A[15,25) B[10,20) C[40,50) D[30,45) E[60,70) F[55,65) G[80,84) H[80,82), seed S[200,210).
+  // Sweep: B kept first (10); A retracted by nothing?? A starts 15 < B.end 20 -> A must NOT be kept
+  // (frontier). D kept at 30 (longer-at-tie over C? starts differ: D(30) before C(40): D kept, C
+  // retracted only if hit: C.start 40 < D.end 45 -> C skipped by frontier). F(55) kept after frontier
+  // passes 50?? frontier after D is 45; C skipped; F.start 55 >= 45 kept; E.start 60 < F.end 65 skipped;
+  // G(80) kept (earlier-start tie winner over H, and longer); H skipped by frontier. Seed S(200) does
+  // not hit G.end 84, so G stands. Survivors, in fold order (reverse of done): G, F, D, B.
+  let rendered = fold_list(
+    xs: spans,
+    empty: "",
+    cons: fn(acc, s) { if acc == "" { int_to_decimal_string(s) } else { acc + "," + int_to_decimal_string(s) } }
+  )
+  rendered == "8084,5565,3045,1020"
+    && sweep_kept_pairwise_disjoint(kept: kept)
+}
+
+fn sweep_kept_pairwise_disjoint(kept: List<MigrationOccurrence>) -> Bool {
+  fold_list(
+    xs: kept,
+    empty: true,
+    cons: fn(acc, o) {
+      acc && fold_list(
+        xs: kept,
+        empty: true,
+        cons: fn(inner, p) { inner && ((p.start == o.start && p.end == o.end) || p.end <= o.start || o.end <= p.start) }
+      )
+    }
+  )
+}
+
+fn sweep_probe_occ(start: Int, end: Int) -> MigrationOccurrence {
+  MigrationOccurrence {
+    file: "synthetic.dag",
+    start: start,
+    end: end,
+    form: FormMarked { reference: DeclarationRef { module_path: "synthetic.mod", decl_name: "sweep_probe", field: WholeDeclaration } },
+    scope: ScopeCommentary { region_start: 0, region_end: 1000 },
+  }
 }

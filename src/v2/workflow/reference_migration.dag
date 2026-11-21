@@ -650,24 +650,83 @@ fn migration_outside_occurrences(seen: List<MigrationOccurrence>, file: Migratio
     documents: documents,
     scope: ScopeProgramText { token_class: "not commentary" }
   )
-  // The keys are built once for the file, not once per report-only occurrence.
-  let keys = migration_extent_keys(occurrences: seen)
-
-  list_reverse(xs: fold_list(xs: whole, empty: Empty, cons: fn(acc, occ) { migration_outside_step(acc: acc, keys: keys, occ: occ) }))
+  // The kept set is pairwise disjoint AND disjoint from `seen`, enforced by ONE ordered sweep
+  // (warm-bear-654 ruling): every occurrence -- already-accounted and candidate alike -- is folded
+  // in start order, the frontier `tail` is the greatest end accepted so far, and a candidate is
+  // kept only when its start has passed the frontier. Because candidates arrive in start order,
+  // only the LAST kept occurrence can still be hit by a later-seen interval, so it waits in the
+  // `pend` slot and is retracted if an accounted interval starts inside it.
+  let swept = fold_list(
+    xs: migration_sweep_order(seen: seen, candidates: whole),
+    empty: MigrationOutsideAcc { done: Empty, pend: Absent, tail: 0 },
+    cons: fn(acc, item) { migration_outside_step(acc: acc, item: item) }
+  )
+  let flushed = match swept.pend {
+    Present { value: p } => Cons { head: p, tail: swept.done },
+    Absent => swept.done,
+  }
+  list_reverse(xs: flushed)
 }
 
-fn migration_outside_step(acc: List<MigrationOccurrence>, keys: List<MigrationExtentKey>, occ: MigrationOccurrence) -> List<MigrationOccurrence> {
-  if migration_extent_overlaps_any(keys: keys, start: occ.start, end: occ.end) { acc } else { Cons { head: occ, tail: acc } }
+// One item of the sweep: an already-accounted interval (a `seen` extent) or a candidate.
+type MigrationSweepItem {
+  is_seed: Bool
+  start: Int
+  end: Int
+  occ: MigrationOccurrence
 }
 
-// A report-only occurrence is kept only when it does not OVERLAP something already accounted for. The
-// test's file field is decided outside the scan, because discovery is per file and every occurrence in
-// `seen` belongs to it, and the extents are lifted out once per file instead of being compared field by
-// field inside the scan. Two rewritings of this scan were MEASURED AND REJECTED on the dense subject:
-// sorting the keys by start so the scan could stop early on position (the sort cost more than the scan),
-// and walking the keys with a DAG-level recursion that could stop at the first overlap (the interpreted
-// call per element cost more than the host fold step). The fold over integer keys is what the
-// measurements left standing.
+type MigrationOutsideAcc {
+  done: List<MigrationOccurrence>
+  pend: Optional<MigrationOccurrence>
+  tail: Int
+}
+
+// STABLE multi-pass sort: start ascending; ties put an accounted interval before a candidate
+// (a candidate starting exactly where a seen extent starts is covered, not kept); ties among
+// candidates put the LONGER first, and exact ties keep discovery order. The TIE RULE for two
+// overlapping report-only occurrences is therefore: the EARLIER start survives, and at equal
+// start the LONGER span -- and the survivor is what the disjointness claim asserts, not merely
+// that some kept set is disjoint.
+fn migration_sweep_order(seen: List<MigrationOccurrence>, candidates: List<MigrationOccurrence>) -> List<MigrationSweepItem> {
+  let seeds = map(xs: seen, f: fn(o) { MigrationSweepItem { is_seed: true, start: o.start, end: o.end, occ: o } })
+  let cands = map(xs: candidates, f: fn(o) { MigrationSweepItem { is_seed: false, start: o.start, end: o.end, occ: o } })
+  let both = append(xs: seeds, ys: cands)
+  let by_end = sort_by(both, fn(i) { 0 - i.end })
+  let by_seed = sort_by(by_end, fn(i) { if i.is_seed { 0 } else { 1 } })
+  sort_by(by_seed, fn(i) { i.start })
+}
+
+fn migration_outside_step(acc: MigrationOutsideAcc, item: MigrationSweepItem) -> MigrationOutsideAcc {
+  if item.is_seed {
+    // An accounted interval retracts a pending kept occurrence it starts inside (the only one it
+    // can still hit, since every earlier kept one ended at or before this item's start), and it
+    // moves the frontier.
+    let pend = match acc.pend {
+      Present { value: p } => match item.start < p.end {
+        true => Absent,
+        false => Present { value: p },
+      },
+      Absent => Absent,
+    }
+    MigrationOutsideAcc { done: acc.done, pend: pend, tail: if item.end > acc.tail { item.end } else { acc.tail } }
+  } else {
+    if !(item.start >= acc.tail) { acc } else {
+      let flushed = match acc.pend {
+        Present { value: p } => Cons { head: p, tail: acc.done },
+        Absent => acc.done,
+      }
+      MigrationOutsideAcc { done: flushed, pend: Present { value: item.occ }, tail: item.end }
+    }
+  }
+}
+
+// (History, kept because it is a measurement and the next reader will otherwise redo it: the first
+// fix checked each candidate against a GROWING key list, which is O(kept) per occurrence -- still
+// quadratic on the dense subject -- and was replaced by the ordered sweep above. An even earlier
+// form froze `keys` before the fold, so two report-only occurrences overlapping EACH OTHER both
+// survived. Sorting the keys so a linear scan could stop early, and a DAG-level first-overlap
+// recursion, were both measured and rejected; the host folds carry this scan.)
 type MigrationExtentKey {
   start: Int
   end: Int
