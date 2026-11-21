@@ -341,11 +341,16 @@ data srv14_serving_deferred_consumer_frontier: DissolutionCondition = unbound_di
 // (with the subtraction, the committed bound) and 45,243,404,288 (without it). Deleting the residency rows
 // would move butch's overhead to ~42 GiB -- the wrong direction on the wrong evidence, charging CI for bytes
 // that are no longer resident. THE FOLLOWING DISSOLVES when BOTH triggers have landed, and not before:
-//   (1) the live retirement on butch of strata-pool@a, strata-pool@b AND a2-power-cap.service -- a converge
-//       dispatch routed through the butch CI runner lane (tidy-swift-586), which runs AFTER that lane's srv14
-//       address PR and the tailnet join, since the units must be retired by the same lane bringing butch onto
-//       CI; the operator's session read them already inactive/FAILED at 2026-11-16T22:36Z, but a model row
-//       retires on a retirement performed and witnessed, not on a unit having stopped; AND
+//   (1) the live retirement on butch of strata-pool@a, strata-pool@b AND a2-power-cap.service -- retired live
+//       on butch by a srv1-executor / srv14-subject converge dispatch in the gunbc-host-mutation-srv14 group
+//       (gunbc.host.host_unit_retirement::host_unit_retirement_ci_wet, dispatched by quiet-carp-163, which took the retirement over from tidy-swift-586 once smart-crane-730 released #16773), per the
+//       operator's 2026-11-19 ruling gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_
+//       execution_redesign (butch serves remote builds and runs NO CI runner -- there is no srv14 CI runner
+//       lane to route through: ruled_zero_ci_widths admits srv14 at RunnerHostDeployZeroWidthAdmitted) and the
+//       2026-11-20 group-key ruling that host-mutating acts on one machine queue on that machine's group; the
+//       units must be retired by the same workflow bringing butch onto remote builds; the operator's session
+//       read them already inactive/FAILED at 2026-11-16T22:36Z, but a model row retires on a retirement
+//       performed and witnessed, not on a unit having stopped; AND
 //   (2) a re-measured quiescent read on butch after (1) -- a fresh /proc/meminfo MemAvailable high-water with
 //       the engines gone, in the shape of srv14_memavailable_quiescent_read, so the base residency and hence
 //       the runner width rest on a reading of the box as it then is. This is the path the overhead's own

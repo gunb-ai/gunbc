@@ -25,6 +25,7 @@ import gunbc.cloudflare.r2_ci_step { gunbc_ci_r2_bucket_admin_mint_invoke, gunbc
 import gunbc.roadmap.roadmap_launch_deployment_receipt_location { gunbc_rlm_launch_deployment_receipt_artifact_dir, gunbc_rlm_launch_deployment_receipt_artifact_name }
 import gunbc.runner.runner_host_file_converge { gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_file_converge_receipt_path }
 import gunbc.runner.runner_host_withdraw { gunbc_ci_runner_host_restore_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path }
+import gunbc.host.host_unit_retirement { gunbc_ci_host_unit_retirement_receipt_path }
 import gunbc.fleet.site_pxe_edge_converge { site_pxe_edge_converge_receipt_path }
 import gunbc.fleet.site_pxe_edge_live_receipt { site_pxe_edge_live_receipt_artifact_name, site_pxe_edge_live_receipt_path }
 import gunbc.auth.github_app_credential_step { gunbc_ci_app_key_version_verify_mint_script, gunbc_ci_app_key_version_verify_verdict_invoke }
@@ -237,6 +238,7 @@ import gunbc.runner.runner_ci_step {
   gunbc_ci_remote_build_serving_observe_invoke,
   gunbc_ci_remote_build_serving_converge_invoke,
   gunbc_ci_runner_host_restore_invoke,
+  gunbc_ci_host_unit_retirement_invoke,
   gunbc_ci_runner_host_withdraw_invoke,
   gunbc_ci_runner_password_session_tool_converge_invoke,
   gunbc_ci_runner_user_session_converge_invoke,
@@ -409,6 +411,7 @@ type FleetConvergeWorkflowMode
   | BoardFunctionConverge
   | RunnerHostWithdraw
   | RunnerHostRestore
+  | HostUnitRetirement
   | SitePxeEdgeObserve
   | SitePxeEdgeConverge
   | RunnerPasswordSessionToolConverge
@@ -565,6 +568,11 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     BoardFunctionConverge => FleetConvergeModeFacts { wire: "board_function_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerHostWithdraw => FleetConvergeModeFacts { wire: "runner_host_withdraw", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerHostRestore => FleetConvergeModeFacts { wire: "runner_host_restore", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    // The retirement mutates the SUBJECT, not the executor: the group keys on `subject_host` (a queue key,
+    // not a runner label -- the job still runs on the dispatch executor lane), so a teardown of butch
+    // queues behind every other subject-targeted act on butch regardless of which executor runs it,
+    // exactly like gunbc.host.host_hostname_converge keys on its target row.
+    HostUnitRetirement => FleetConvergeModeFacts { wire: "host_unit_retirement", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     SitePxeEdgeObserve => FleetConvergeModeFacts { wire: "site_pxe_edge_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     SitePxeEdgeConverge => FleetConvergeModeFacts { wire: "site_pxe_edge_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerPasswordSessionToolConverge => FleetConvergeModeFacts { wire: "runner_password_session_tool_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -679,7 +687,8 @@ fn fleet_converge_spark_target_description() -> String {
 // value per arm and so refuses any sum with a payload-bearing arm, which Srv1RootMutation is -- so there
 // is nothing here could derive from, and that refusal is itself a row of the witness, observed rather than
 // asserted. The day the language grows the enumeration, this becomes a map.
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, Srv1RootMutation(DashboardDeploy), Srv1RootMutation(DesiredInstanceDeploy), Srv1RootMutation(ApprovalBrokerDarkInstall), Srv1RootMutation(ApprovalNtfyRetire), Srv1RootMutation(MicrovmControllerInstall), MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostnameConverge, HostResetReturn, RunnerHostFileObserve, RemoteBuildServingObserve, RemoteBuildServingConverge, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, BoardFunctionConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, ManagedHostNetworkInstall, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, TailscaleJoinConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, ServiceRunnerLostBootSweepDryRun, JitDeadRegistrationSweep, JitDeadRegistrationSweepDryRun, ServiceSlotStart, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderProbe, FleetKeypairMint, FleetHostKeyScan, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan,LaunchEnvironmentPlan,AllocationStorePlan,WorkspaceCommissioningPlan,WorkspaceAllocationPlan,WorkspaceImageBuild,RevisionJobImageBuild,FleetApply,OrgActionsObserve,AppControlPlaneObserve,MicrovmHostConverge,MicrovmNetworkObserve,MicrovmNetworkApply,GuestImageObserve,GuestImageConverge,MicrovmBootProbe,SparkGrants,SparkBootstrap,SparkServingApply,SparkNativeServingApply,SparkRuntimeImageProbe,SparkWirelessLinkConverge,SparkGrantsObserve,Srv1RootMutation(DashboardDeploy),Srv1RootMutation(DesiredInstanceDeploy),Srv1RootMutation(ApprovalBrokerDarkInstall),Srv1RootMutation(ApprovalNtfyRetire),Srv1RootMutation(MicrovmControllerInstall),MicrovmSlotReserve,MicrovmSlotStart,RlmLaunchDeploymentReceipt,HostnameConverge,HostResetReturn,RunnerHostFileObserve,RemoteBuildServingObserve,RemoteBuildServingConverge,HostMemoryObserve,RunnerHostFileConverge,HostPrimaryNetworkObserve,HostPrimaryNetworkConverge,BoardFunctionConverge,RunnerHostWithdraw,RunnerHostRestore,HostUnitRetirement,SitePxeEdgeObserve,SitePxeEdgeConverge,RunnerPasswordSessionToolConverge,RunnerBrowserToolchainConverge,RunnerUserSessionConverge,RunnerGpuContainerToolchainConverge,ManagedHostNetworkInstall,R2MintPreflight,R2ObjectWriteMint,OrgRunnerRosterObserve,ApprovalKeyringConverge,MtCollins1Boot,MtCollins1PxeMacDiscovery,MtCollins1BmcColdReset,MtCollins1FanObserve,MtCollins1KvmObserverObserve,MtCollins1CensusImagePublish,MtCollins1RunnerImagePublish,MtCollins1CensusMemberReadback,MtCollins1CensusQemuHostObserve,MtCollins1CensusQemuToolchainConverge,HostCredentialCustodyConverge,TailscaleJoinConverge,AppKeyVersionVerify,R2BucketEnsure,R2BucketAdminMint,R2WorkspaceObjectReadMint,R2WorkspaceObjectWriteMint,R2CacheObjectReadMint,R2CacheObjectWriteMint,R2ConditionalPutRaceProbe,WorkspaceSourcePack,WorkspaceCheckpointMeasure,WorkspaceCheckpointRestore,WorkspaceTranscriptRateObserve,FabricWriterIdentityObserve,MicrovmRunnerGroupEnsure,ServiceRunnerLostBootSweep,ServiceRunnerLostBootSweepDryRun,JitDeadRegistrationSweep,JitDeadRegistrationSweepDryRun,ServiceSlotStart,GcpIamConverge,NamecheapObserve,ReviewSheetConverge,PrinterWorkflow,ArrivalConverge,HetznerCloudServerRead,ExportHostReaderConverge,BootMediumReaderProbe,FleetKeypairMint,FleetHostKeyScan,FlexPass,FlexTemplateEnsure,BranchRunGrant,QualificationFloor,QualificationAttempt]
+
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -1746,6 +1755,7 @@ data fleet_converge_runner_host_file_converge_step_if: String = fleet_converge_m
 data fleet_converge_runner_host_withdraw_step_if: String = fleet_converge_mode_step_if(mode: RunnerHostWithdraw)
 
 data fleet_converge_runner_host_restore_step_if: String = fleet_converge_mode_step_if(mode: RunnerHostRestore)
+data fleet_converge_host_unit_retirement_step_if: String = fleet_converge_mode_step_if(mode: HostUnitRetirement)
 
 data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
 
@@ -3106,6 +3116,44 @@ fn fleet_converge_runner_host_withdraw_receipt_upload_step() -> Step {
     ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_withdraw_step_if, ")"], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// B3b Group B trigger (1): the retirement apply. One step: each ruled-retired unit is stopped, its
+// fragment retained OUTSIDE the unit search path, deleted, the manager reloaded, and the unit read back
+// not-found with its retained copy readable -- every terminal state lands in the receipt the upload keeps.
+// It reuses the host-file step shaper for the same reason the withdraw and restore steps do: same host
+// input binding, same fleet-key reach as the administrator, and the subject rides `subject_host` exactly
+// as the split route's other acts do (the precondition gate above refuses executor == subject).
+fn fleet_converge_host_unit_retirement_step() -> Step {
+  fleet_converge_runner_host_file_step_within(
+    id: "host_unit_retirement",
+    name: "Host unit retirement: stop, retain and remove each ruled-retired unit fragment, reload, and read every unit back not-found with its retained copy",
+    invoke: gunbc_ci_host_unit_retirement_invoke(),
+    if_condition: fleet_converge_host_unit_retirement_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+    extra_env: [
+      kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+    ],
+  )
+}
+
+fn fleet_converge_host_unit_retirement_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload host unit retirement receipt" },
+    id: Present { value: "host_unit_retirement_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-unit-retirement-receipt",
+      path: gunbc_ci_host_unit_retirement_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
+    env: none,
+    if_condition: Present { value: join(["always() && (", fleet_converge_host_unit_retirement_step_if, ")"], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -6666,6 +6714,8 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_runner_host_withdraw_receipt_upload_step(),
         fleet_converge_runner_host_restore_step(),
         fleet_converge_runner_host_restore_receipt_upload_step(),
+        fleet_converge_host_unit_retirement_step(),
+        fleet_converge_host_unit_retirement_receipt_upload_step(),
         fleet_converge_runner_password_session_tool_converge_step(),
         fleet_converge_runner_password_session_tool_receipt_upload_step(),
         fleet_converge_runner_browser_toolchain_converge_step(),
