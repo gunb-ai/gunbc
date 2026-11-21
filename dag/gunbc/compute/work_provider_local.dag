@@ -70,7 +70,8 @@ import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedFailure, UnitTerminatedCauseUnknown,
   UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended, unit_lifecycle_wire,
   RecoveryTrigger, RecoveryMayTerminate, RecoveryTooEarly, RecoveryUnitNotEnded, RecoveryTerminalRecordMayRelease,
-  recovery_trigger, recovery_trigger_fires, recovery_trigger_wire,
+  recovery_write_authorization, RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled,
+  RecoveryWriteDeclined, RecoveryWriteRefused,
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
@@ -3815,11 +3816,11 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
       match now_epoch_seconds() {
         Absent => RecoveryRefused { detail: "the host clock could not be read as epoch seconds, and the reserved-state trigger is a comparison against a deadline" }
         Present { value: now } =>
-          match recovery_trigger(record: rec, lifecycle: lifecycle, now: now) {
-            RecoveryTooEarly { deadline: d, now: n } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryTooEarly { deadline: d, now: n }) }
-            RecoveryUnitNotEnded { lifecycle: u } => RecoveryDeclined { reference: rec.reference, why: recovery_trigger_wire(t: RecoveryUnitNotEnded { lifecycle: u }) }
-            RecoveryTerminalRecordMayRelease { state: st } => compute_recover_after_terminal(subject: subject, rec: rec, state: st, lifecycle: lifecycle)
-            RecoveryMayTerminate { reason: why } =>
+          match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
+            RecoveryWriteDeclined { reason: r } => RecoveryDeclined { reference: rec.reference, why: r }
+            RecoveryWriteRefused { reason: r } => RecoveryRefused { detail: r }
+            RecoveryWriteReleaseSettled { state: _, reason: why } => compute_recover_settled_seat(subject: subject, rec: rec, why: why, lifecycle: lifecycle)
+            RecoveryWriteTerminateAndRelease { reason: why } =>
               match attempt_terminate(store: seat.slots, reference: rec.reference as NonEmptyStr, expected: g, verdict: AttemptRecovered, detail: join([why, "; unit ", unit_lifecycle_wire(u: lifecycle)], "")) {
                 AttemptLostRace { expected: e, observed: o } =>
                   RecoveryRefused { detail: join(["the attempt moved while recovery was deciding: expected ", e, " and the slot holds ", o, "; the observation this recovery would act on is stale, so nothing is released"], "") }
@@ -3840,22 +3841,16 @@ fn compute_recover_attempt_in(seat: ComputeSeatStore, subject: ComputeCapacitySu
 // SEAT, and the trigger names that state RecoveryTerminalRecordMayRelease. Declining there would make the
 // settle-then-kill window permanent. THE TERMINATION PROOF is the same one every other arm relies on:
 // the unit's observed lifecycle must be ENDED (unit_lifecycle_ended) at this moment; the terminal
-// record is the reason to look, never the proof. A still-running unit declines and an unknown
-// lifecycle refuses, both keeping the charge. Only then does the door ask the ledger to release. The ledger refuses a reference it is not holding
-// at the proposal, so a seat already returned is reported as declined, never released twice.
-fn compute_recover_after_terminal(subject: ComputeCapacitySubject, rec: AttemptRecord, state: AttemptState, lifecycle: UnitLifecycle) -> ComputeRecovery {
-  let why = recovery_trigger_wire(t: RecoveryTerminalRecordMayRelease { state: state })
-  if unit_lifecycle_ended(u: lifecycle) {
-    match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
-      ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }
-      ComputeNothingToRelease { detail: d } => RecoveryNothingHeld { reference: rec.reference, verdict: why, detail: d }
-      ComputeReleaseRefused { detail: d } => RecoverySettledButHeld { reference: rec.reference, verdict: why, seat: d }
-    }
-  } else {
-    match lifecycle {
-      UnitStillRunning { detail: _ } => RecoveryDeclined { reference: rec.reference, why: join([why, "; the unit is still running, so the seat is kept"], "") }
-      _ => RecoveryRefused { detail: join([why, "; the unit's lifecycle is not proven ended (", unit_lifecycle_wire(u: lifecycle), "), so the seat is kept: a terminal record alone does not prove the unit stopped using memory"], "") }
-    }
+// record is the reason to look, never the proof. That pairing -- ended authorizes, a still-running unit
+// declines, an unreadable lifecycle refuses, both keeping the charge -- is decided once, in
+// gunbc.compute.attempt_lifecycle recovery_write_authorization, which the caller has already consulted by the
+// time this runs; this helper performs only the authorized release. The ledger refuses a reference it is not
+// holding at the proposal, so a seat already returned is reported as declined, never released twice.
+fn compute_recover_settled_seat(subject: ComputeCapacitySubject, rec: AttemptRecord, why: String, lifecycle: UnitLifecycle) -> ComputeRecovery {
+  match compute_recover_release(subject: subject, reference: rec.reference as NonEmptyStr, reason: why) {
+    ComputeReleased { partition: _, reference: _, reason: r } => RecoveryReleased { reference: rec.reference, verdict: why, seat: join(["released (", r as String, ")"], "") }
+    ComputeNothingToRelease { detail: d } => RecoveryNothingHeld { reference: rec.reference, verdict: why, detail: d }
+    ComputeReleaseRefused { detail: d } => RecoverySettledButHeld { reference: rec.reference, verdict: why, seat: d }
   }
 }
 
@@ -3902,10 +3897,12 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // only route that runs this on a serving host -- has to know which attempt slots on this host a recovery
 // would act on, and it has to know that BEFORE it plans. This reading walks EVERY seat directory the host
 // owns (the flat seat and each dispatch-owned seat, gunbc.compute.compute_attempt_slots_root compute_seat_of),
-// lists each one's attempt slots, and for each reference renders the verdict recovery_trigger itself returns
-// for that record against the unit's live lifecycle. The split between "a write would be legitimate here" and
-// "the trigger does not fire" is the model's own predicate recovery_trigger_fires restated at the call site --
-// no wire spelling, no second threshold.
+// lists each one's attempt slots, and for each reference renders exactly what
+// gunbc.compute.attempt_lifecycle recovery_write_authorization answers for that record against the unit's
+// live lifecycle -- the same authority the write path consumes, so a plan read from the census cannot disagree
+// with the door it will call. Authorized is rendered "fire" with the model's own reason; declined is "hold";
+// a REFUSED authorization (the unit's lifecycle could not be read) is not a word at all: it makes the whole
+// census's OBSERVATION unknown, which is the same refusal the write path would answer with.
 //
 // It is three-valued and the unknown arm is the honest one. A seat listing that cannot be read, a seat whose
 // attempt store is not ready, a reference a census listed whose record cannot be read or vanished between the
@@ -3915,7 +3912,7 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // compute_recover_attempt_in refuses an unreadable slot). A seat whose slot directory does not exist at all
 // contributes no reference: that is the census of a store that was never created, and nothing here releases
 // on a census, which is attempt_slot_keys' own warning.
-type RecoverCatalogEntry { reference: NonEmptyStr, trigger: String, fires: Bool }
+type RecoverCatalogEntry { reference: NonEmptyStr, why: String, may_write: Bool }
 
 type RecoverCensusPairs
   = RecoverCensusPairsListed { pairs: List<RecoverSlotPair> }
@@ -3964,8 +3961,17 @@ fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecover
                   match now_epoch_seconds() {
                     Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged"], "") }
                     Present { value: now } => {
-                      let trigger = recovery_trigger(record: rec, lifecycle: unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr), now: now)
-                      RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, trigger: recovery_trigger_wire(t: trigger), fires: recovery_trigger_fires(t: trigger) }) }
+                      let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr)
+                      match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
+                        RecoveryWriteTerminateAndRelease { reason: why } =>
+                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, why: why, may_write: true }) }
+                        RecoveryWriteReleaseSettled { state: _, reason: why } =>
+                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, why: why, may_write: true }) }
+                        RecoveryWriteDeclined { reason: why } =>
+                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, why: why, may_write: false }) }
+                        RecoveryWriteRefused { reason: r } =>
+                          RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r], "") }
+                      }
                     }
                   }
               }
@@ -3986,7 +3992,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 }
 
 fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
-  join(["recover-catalog ", if e.fires { "fire" } else { "hold" }, " ", e.reference as String, " ", e.trigger, "\n"], "")
+  join(["recover-catalog ", if e.may_write { "fire" } else { "hold" }, " ", e.reference as String, " ", e.why, "\n"], "")
 }
 
 // THE DOOR THE SERVING CONVERGE'S RECOVERY LEG READS THROUGH, and it is a READ: no slot is written, no
