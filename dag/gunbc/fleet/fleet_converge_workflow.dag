@@ -6920,11 +6920,20 @@ data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
 // dependencies, each of these MUST list plan-revision directly or its `runs-on` value is empty and the job
 // queues forever on an unlabelled/undefined runner -- a silent hang, exactly what
 // gunbc.design_argument::fail_closed forbids. This roster drives that dependency DERIVED in
-// fleet_converge_job_needs (one rule, not seven hand-edited edge rows); the identity-join claim in
-// test.claim.fleet.machine_board_witness is the independent guard: it derives the truth from the EMITTED
-// runs-on strings, so a job that reads a needs output its edge was not given reddens the claim even if
-// this roster is wrong. `build` and `shared` already carry plan-revision in their edge; listed for
-// uniformity, distinct_by_key removes the duplicate.
+// fleet_converge_job_needs (one rule, not seven hand-edited edge rows).
+//
+// WHY A ROSTER AND NOT A DERIVATION FROM THE JOB MODEL: the honest derivation is "the jobs whose runner is
+// the host selector / deploy slot / build runner", which needs each job's runner -- reachable only via
+// fleet_converge_jobs(). But fleet_converge_job_needs runs DURING job construction (it fills each Job's
+// `needs` field), so calling fleet_converge_jobs() there is a cyclic rebuild of the very job being built --
+// the hazard the module already flags at fleet_converge_job_edges ("costly to lift into List<Job>"). A
+// non-recursive derivation would need a separate id->runner lookup that the job builders ALSO consume for
+// their `runner:` field (so the runner stays one source); that is a module-wide refactor far beyond this
+// change and untestable until regen. So the roster stays, and the correctness guard is NOT this list: it is
+// the identity-join claim in test.claim.fleet.fleet_converge_hostname_converge_emitter_witness, which reads
+// the EMITTED runs-on strings and reddens on any job reading a producer's output it does not directly need
+// -- a new host-selector job that forgets this roster fails THERE, not silently in production. `build` and
+// `shared` already carry plan-revision in their edge; listed for uniformity, distinct_by_key dedups.
 data fleet_converge_plan_revision_runner_consumer_job_ids: List<String> = [
   fleet_converge_shared_job_id as String,
   fleet_converge_release_bins_job_id as String,
