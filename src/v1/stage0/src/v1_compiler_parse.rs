@@ -100,6 +100,7 @@ pub use crate::v1_std_core::{
     transport_auth_basic_key, transport_body_key, transport_headers_key, transport_method_key,
     transport_path_key, transport_path_template_key, transport_query_key,
     transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
+    transport_wall_deadline_key,
     type_param_kind_property_name, undeclared_transport_node, unlocated_cause_phrase,
     variant_node_fields, variant_node_name_at, with_required_cardinality, Cardinality,
     CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
@@ -10184,7 +10185,13 @@ pub fn parse_shell_binding_body(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<TransportResult> {
-    parse_shell_fields(tokens, ctx, Rc::new(vec![]), std::option::Option::None)
+    parse_shell_fields(
+        tokens,
+        ctx,
+        Rc::new(vec![]),
+        std::option::Option::None,
+        std::option::Option::None,
+    )
 }
 
 pub fn parse_shell_fields(
@@ -10192,6 +10199,7 @@ pub fn parse_shell_fields(
     mut __tco_loop_ctx: Rc<ParseContext>,
     mut __tco_loop_argv: Rc<Vec<Rc<Node>>>,
     mut __tco_loop_stdin: Option<Rc<Node>>,
+    mut __tco_loop_wall_deadline: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     {
         loop {
@@ -10203,6 +10211,8 @@ pub fn parse_shell_fields(
             let mut argv = __tco_loop_argv;
             #[allow(unused_mut)]
             let mut stdin = __tco_loop_stdin;
+            #[allow(unused_mut)]
+            let mut wall_deadline = __tco_loop_wall_deadline;
             tokens = skip_newlines(tokens.clone());
             let span = token_span(token_stream_first(tokens.clone()));
             let dummy = crate::v1_std_core::undeclared_transport_node(
@@ -10220,6 +10230,7 @@ pub fn parse_shell_fields(
                         argv.clone(),
                         Rc::new(vec![]),
                         stdin.clone(),
+                        wall_deadline.clone(),
                         span.clone(),
                     ),
                     tokens: tokens.clone(),
@@ -10288,10 +10299,12 @@ pub fn parse_shell_fields(
                         let __tco_1 = r4.ctx.clone();
                         let __tco_2 = r4.exprs.clone();
                         let __tco_3 = stdin;
+                        let __tco_4 = wall_deadline;
                         __tco_loop_tokens = __tco_0;
                         __tco_loop_ctx = __tco_1;
                         __tco_loop_argv = __tco_2;
                         __tco_loop_stdin = __tco_3;
+                        __tco_loop_wall_deadline = __tco_4;
                         continue;
                     }
                 } else {
@@ -10315,28 +10328,65 @@ pub fn parse_shell_fields(
                             let __tco_1 = r3.ctx.clone();
                             let __tco_2 = argv;
                             let __tco_3 = Some(r3.expr.clone());
+                            let __tco_4 = wall_deadline;
                             __tco_loop_tokens = __tco_0;
                             __tco_loop_ctx = __tco_1;
                             __tco_loop_argv = __tco_2;
                             __tco_loop_stdin = __tco_3;
+                            __tco_loop_wall_deadline = __tco_4;
                             continue;
                         }
                     } else {
-                        break Rc::new(TransportResult {
-                            transport: dummy.clone(),
-                            tokens: r2.tokens.clone(),
-                            ctx: ctx.clone(),
-                            err: Some(parse_error(
-                                v1_rt::concat(
+                        if (fname.clone() == transport_wall_deadline_key()) {
+                            // THE PER-LEG CEILING IS A DECLARED TRANSPORT FIELD, like `stdin`: a
+                            // transport that names one carries a ceiling, one that does not runs as
+                            // it always did. The caller's parameter spelling decides nothing
+                            // (review 96999).
+                            let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
+                            if has_err(r3.err.clone()) {
+                                return Rc::new(TransportResult {
+                                    transport: dummy.clone(),
+                                    tokens: r3.tokens.clone(),
+                                    ctx: r3.ctx.clone(),
+                                    err: r3.err.clone(),
+                                });
+                            }
+                            let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+                            tokens = match (*e.clone()).clone() {
+                                EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
+                                EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
+                            };
+                            {
+                                let __tco_0 = tokens;
+                                let __tco_1 = r3.ctx.clone();
+                                let __tco_2 = argv;
+                                let __tco_3 = stdin;
+                                let __tco_4 = Some(r3.expr.clone());
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_ctx = __tco_1;
+                                __tco_loop_argv = __tco_2;
+                                __tco_loop_stdin = __tco_3;
+                                __tco_loop_wall_deadline = __tco_4;
+                                continue;
+                            }
+                        } else {
+                            break Rc::new(TransportResult {
+                                transport: dummy.clone(),
+                                tokens: r2.tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: Some(parse_error(
                                     v1_rt::concat(
-                                        "transport shell has no field `".to_string(),
-                                        fname.clone(),
+                                        v1_rt::concat(
+                                            "transport shell has no field `".to_string(),
+                                            fname.clone(),
+                                        ),
+                                        "`; the declared fields are `argv`, `stdin` and `wall_deadline`"
+                                            .to_string(),
                                     ),
-                                    "`; the declared fields are `argv` and `stdin`".to_string(),
-                                ),
-                                r.span.clone(),
-                            )),
-                        });
+                                    r.span.clone(),
+                                )),
+                            });
+                        }
                     }
                 }
             }

@@ -1,6 +1,7 @@
 module gunbc.compute.remote_build
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.measure { Second }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import product.host_identity { HostIdentity }
@@ -487,6 +488,16 @@ type RemoteBuildHostAnswer
   | HostUnreachable { detail: String }
   | HostRefusedRequest { detail: String }
   | HostOutcomeUnknown { detail: String }
+  // A LEG THAT RAN OUT OF ITS WALL CLOCK. This arm exists because an overrun is not an answer: the
+  // transport's own exit code after a kill (ssh answers 255) must never be routed as though the host
+  // had replied, which is what a client reading raw exit codes does (review 96994). It is only ever
+  // produced by a PROBE leg -- a probe names no work, so nothing can have started, and the host is
+  // simply not established reachable within the ceiling it was given. A REQUEST leg that overruns is
+  // HostOutcomeUnknown, because the work may have started there.
+  // The ceiling is carried as std.measure's Second, the unit the authority mints it in: an Int here
+  // would flatten a measured quantity into an unqualified number at the boundary between the model and
+  // its receipt (review 96999).
+  | HostLegOverran { deadline: Second }
 
 type RemoteBuildAttempt {
   host: HostIdentity
@@ -508,6 +519,9 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
     HostUnreachable { detail: _ } => true
     HostRefusedRequest { detail: _ } => false
     HostOutcomeUnknown { detail: _ } => false
+    // Nothing was sent on a probe that overran, so the next candidate is tried; the overrun is in the
+    // attempt record either way.
+    HostLegOverran { deadline: _ } => true
   }
 }
 

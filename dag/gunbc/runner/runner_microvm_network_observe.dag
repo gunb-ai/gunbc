@@ -14,9 +14,9 @@ import gunbc.command_runner { run_shell_commands, run_shell_command_capture, Loc
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh, SshShell, EmitArtifactThenThinRun }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.runner.runner_host_deploy {
   RunnerHostDeploy, runner_host_deploy_for, runner_host_zero_width_slot_identities,
   RunnerHostDeployFound, RunnerHostDeployZeroWidth, RunnerHostDeployUnmodeled, RunnerHostDeployRefused,
@@ -69,7 +69,8 @@ fn admin_read_outcome(
 ) -> ProcessOutcome
 {
   let argv = sudo_elevate_argv(command: map(executor_privileged_operation_argv(op: op), w => w as String))
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv) {
+  TypedArgvExecOverran { deadline: d } => ProcessRefused { exit_code: -1, stderr: typed_argv_exec_overran_reason(leg_hint: "microvm network observe", deadline: d) }
     TypedArgvExecRefused { reason: why } => ProcessRefused { exit_code: -1, stderr: why }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code != 0 {
@@ -150,7 +151,7 @@ fn observe_admitted_host_wet(job_user: NonEmptyStr, slots: List<RunnerSlotIdenti
               slots: slots,
               host: host,
               generation: generation,
-              reads: read_privileged_network(transport: FleetSsh { target: target, context: context }),
+              reads: read_privileged_network(transport: FleetSsh {kind: ProbeLeg, target: target, context: context }),
             )
         }
     }

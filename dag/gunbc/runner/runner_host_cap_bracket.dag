@@ -52,7 +52,7 @@ import extdeps.systemd.systemctl {
   systemctl_stop_argv,
 }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTarget }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate, FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
@@ -711,7 +711,7 @@ fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, uni
       } else if !slot_state_stopped(active: r.active) {
         none
       } else {
-        run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)])
+        run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: [systemctl_mask_argv(unit: unit)])
       }
   }
 }
@@ -887,7 +887,7 @@ fn stop_listener_over(target: SshTarget, context: FleetSshExecutionContext, unit
     // run_slot_steps_over answers the FIRST failing step, or absent when every step succeeded -- so an
     // absent here is a stop the host accepted, not a stop that went unanswered.
     ActionStopListener { unit: _ } =>
-      match run_slot_steps_over(target: target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
+      match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: [systemctl_stop_argv(unit: unit)]) {
         Present { value: first } => Present { value: join(["stop failed on ", unit as String, ": ", first], "") }
         Absent => none
       }
@@ -974,7 +974,7 @@ fn stop_admitted_listener_over(target: SshTarget, context: FleetSshExecutionCont
 {
   match restart_decision_of(closure: runner_host_cap_admission_closure, unit: unit, readings: read_slot_drain_pass_over(target: target, context: context, units: [unit])) {
     ListenerStopAdmitted =>
-      match run_slot_steps_over(target: target, context: context, steps: [systemctl_stop_argv(unit: unit)]) {
+      match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: [systemctl_stop_argv(unit: unit)]) {
         Present { value: why } => ListenerStopRefused { unit: unit, cause: concat("the stop failed: ", why) }
         Absent => ListenerStopped { unit: unit }
       }
@@ -1154,7 +1154,7 @@ fn release_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit:
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "release-read", reason: concat("the release read of the unit was refused, so no release was decided: ", why) }
     SlotRead { reading: r } =>
-      if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, unit: unit) }
+      if slot_is_masked(r: r) { activate_runner_slot_over(target: target, context: context, kind: ActuationLeg, unit: unit) }
       else if slot_activation_read_back_holds(r: r) {
         SlotActuationNoop { unit: unit, state: "not masked and read back loaded, enabled and active: no argv issued" }
       } else {

@@ -5,15 +5,14 @@ import extdeps.systemd.systemd_run { systemd_run_command_argument_words }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text_list, operation_argv_cause_label, shell_materialize_operation_argv }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec {
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetLegKind,FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { 
   typed_argv_exec_over_fleet_ssh,
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 
 data systemd_run_transient_path: String = "dag/extdeps/systemd/systemd_run.dag"
 data systemd_run_transient_service: String = "systemd.SystemdRun"
@@ -71,6 +70,7 @@ fn systemd_run_transient_outcome_from_exec(outcome: TypedArgvExecOutcome) -> Sys
   match outcome {
     TypedArgvExecConverged { result: r } =>
       systemd_run_transient_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)
+      TypedArgvExecOverran { deadline: d } => SystemdRunTransientRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
     TypedArgvExecRefused { reason: why } => SystemdRunTransientRefused { reason: why }
   }
 }
@@ -94,11 +94,12 @@ fn systemd_run_transient_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
   command: ArgvCommand,
+  kind: FleetLegKind,
 ) -> SystemdRunTransientOutcome {
   match systemd_run_transient_operation_argv(command: command) {
     ArgvMaterialized { argv: materialized } =>
       systemd_run_transient_outcome_from_exec(
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: materialized),
+        outcome: typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: materialized),
       )
     ArgvMaterializationRefused { at: _, cause: c } =>
       SystemdRunTransientRefused { reason: operation_argv_cause_label(cause: c) }
@@ -108,11 +109,12 @@ fn systemd_run_transient_fleet_ssh(
 fn systemd_run_transient_read(
   transport: HostEffectTransport,
   command: ArgvCommand,
+  kind: FleetLegKind,
 ) -> SystemdRunTransientOutcome {
   match transport {
     LocalShell => systemd_run_transient_local(command: command)
     SshShell { ssh_host: h } => systemd_run_transient_ssh(host: h, command: command)
-    FleetSsh { target: t, context: c } => systemd_run_transient_fleet_ssh(target: t, context: c, command: command)
+    FleetSsh { target: t, context: c } => systemd_run_transient_fleet_ssh(target: t, context: c, command: command, kind: kind)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       SystemdRunTransientRefused {
         reason: "systemd-run transient start refused EmitArtifactThenThinRun transport",
@@ -152,6 +154,8 @@ fn systemd_run_transient_wait_outcome_from_exec(
         stdout: result.stdout,
         stderr: result.stderr,
       )
+      TypedArgvExecOverran { deadline: d } =>
+        SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
     TypedArgvExecRefused { reason: why } =>
       SystemdRunTransientWaitTransportRefused { reason: why }
   }
@@ -192,7 +196,7 @@ fn systemd_run_transient_wait_read(
   match transport {
     LocalShell => systemd_run_transient_wait_local(command: command)
     SshShell { ssh_host: h } => systemd_run_transient_wait_ssh(host: h, command: command)
-    FleetSsh { target: _, context: _ } => SystemdRunTransientWaitTransportRefused {
+    FleetSsh { target: _, context: _, kind: _ } => SystemdRunTransientWaitTransportRefused {
       reason: "systemd-run transient wait refused FleetSsh until exact remote status is distinguished from transport status",
     }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>

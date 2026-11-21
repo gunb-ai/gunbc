@@ -4127,16 +4127,16 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
 }
 
 fn parse_shell_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportResult {
-  parse_shell_fields(tokens: tokens, ctx: ctx, argv: [], stdin: none)
+  parse_shell_fields(tokens: tokens, ctx: ctx, argv: [], stdin: none, wall_deadline: none)
 }
 
-fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, stdin: Node?) -> TransportResult {
+fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, stdin: Node?, wall_deadline: Node?) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let minted = mint_parsed_node_identity(ctx: ctx, at: CompletedLater)
-    TransportResult { transport: shell_transport_node(occurrence_identity: minted.identity, argv: argv, env: [], stdin: stdin, span: span), tokens: tokens, ctx: minted.ctx, err: none }
+    TransportResult { transport: shell_transport_node(occurrence_identity: minted.identity, argv: argv, env: [], stdin: stdin, wall_deadline: wall_deadline, span: span), tokens: tokens, ctx: minted.ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -4152,15 +4152,24 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
       if has_err(err: r5.err) { return TransportResult { transport: dummy, tokens: r5.tokens, ctx: r4.ctx, err: r5.err } }
       let e = eat(tokens: r5.tokens, expected: ExpectComma)
       let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r5.tokens }
-      parse_shell_fields(tokens: tokens, ctx: r4.ctx, argv: r4.exprs, stdin: stdin)
+      parse_shell_fields(tokens: tokens, ctx: r4.ctx, argv: r4.exprs, stdin: stdin, wall_deadline: wall_deadline)
     } else if fname == transport_stdin_key {
       let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
       let e = eat(tokens: r3.tokens, expected: ExpectComma)
       let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
-      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: Present { value: r3.expr })
+      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: Present { value: r3.expr }, wall_deadline: wall_deadline)
+    } else if fname == transport_wall_deadline_key {
+      // THE PER-LEG CEILING IS A DECLARED TRANSPORT FIELD, like `stdin`: a transport that names one
+      // carries a ceiling, one that does not runs as it always did. The caller's parameter spelling
+      // decides nothing (review 96999).
+      let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
+      if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
+      let e = eat(tokens: r3.tokens, expected: ExpectComma)
+      let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
+      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: stdin, wall_deadline: Present { value: r3.expr })
     } else {
-      TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport shell has no field `", fname, "`; the declared fields are `argv` and `stdin`"), span: r.span) } }
+      TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport shell has no field `", fname, "`; the declared fields are `argv`, `stdin` and `wall_deadline`"), span: r.span) } }
     }
   }
 }

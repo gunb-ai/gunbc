@@ -9,15 +9,14 @@ import gunbc.hostname_read {
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 
 type HostnameSetCasOutcome
   = HostnameSetCasApplied
@@ -83,6 +82,8 @@ fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCa
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success { HostnameSetCasApplied } else { HostnameSetCasApplyFailed { stderr: r.stderr } }
+      TypedArgvExecOverran { deadline: d } =>
+        HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d)) }
     TypedArgvExecRefused { reason: why } =>
       HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", why) }
   }
@@ -95,7 +96,7 @@ fn hostname_set_fleet_ssh(
   desired: DnsLabel,
 ) -> HostnameSetCasOutcome {
   hostname_set_cas_from_outcome(
-    outcome: typed_argv_exec_over_fleet_ssh(
+    outcome: typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,
       target: target,
       context: context,
       argv: hostname_set_privileged_operation_argv(hostnamectl_path: hostnamectl_path, desired: desired),
@@ -119,6 +120,7 @@ fn hostname_set_ssh(
           } else {
             HostnameSetCasApplyFailed { stderr: r.stderr }
           }
+          TypedArgvExecOverran { deadline: d } => HostnameSetCasApplyFailed { stderr: typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d) }
         TypedArgvExecRefused { reason: why } => HostnameSetCasApplyFailed { stderr: why }
       }
   }
