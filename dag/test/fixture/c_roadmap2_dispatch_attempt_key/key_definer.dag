@@ -1,0 +1,16 @@
+module test.fixture.c_roadmap2_dispatch_attempt_key.key_definer
+
+// THE SEALED TWIN DEFINER for the take-path key carrier: the shape production has -- a record sealed by
+// sole_constructor (the seal itself is what the claim tests; the checked entrance lives in production
+// dispatch_attempt_key.dag). Probes forge the carrier with `as` casts from a module FOREIGN to this one.
+// Companion: key_stripped_definer.dag, identical but for the seal keyword.
+
+import std.types { Bool, PathSegment, String }
+
+type DispatchAttemptKeySegment sole_constructor {
+  segment: PathSegment
+}
+
+fn forge_target(segment: DispatchAttemptKeySegment) -> Bool {
+  true
+}

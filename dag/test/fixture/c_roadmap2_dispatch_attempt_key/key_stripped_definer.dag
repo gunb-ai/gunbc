@@ -1,0 +1,15 @@
+module test.fixture.c_roadmap2_dispatch_attempt_key.key_stripped_definer
+
+// THE STRIPPED TWIN: identical to key_definer.dag except the seal keyword is gone. The SAME forged-cast
+// sources must compile here with NO SoleConstructorViolation row. If this twin ever flags, the seal
+// keyword is not what refused and the paired claim goes red.
+
+import std.types { Bool, PathSegment, String }
+
+type DispatchAttemptKeySegment {
+  segment: PathSegment
+}
+
+fn forge_target(segment: DispatchAttemptKeySegment) -> Bool {
+  true
+}

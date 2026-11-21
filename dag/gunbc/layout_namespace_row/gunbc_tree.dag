@@ -369,6 +369,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "test.fixture.c_host_store_seal",
     "test.fixture.c_printing_store_seal",
     "test.fixture.c_roadmap2_credential_reference_authority",
+    "test.fixture.c_roadmap2_dispatch_attempt_key",
     "test.fixture.c_roadmap2_credential_store_seal",
     "test.fixture.cross_module_alias_handler",
     "test.fixture.cross_shard_seam",
