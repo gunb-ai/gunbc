@@ -9,7 +9,7 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import std.types { FilePath }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, host_capacity_carrier_of }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
   ComputeCapacityLedger, ComputeBuildPool, compute_capacity_slots, compute_root_directory, compute_capacity_directories, host_capacity_subject_in, compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
@@ -93,7 +93,7 @@ fn instance_at(root: String) -> HostDashboardInstance {
 }
 
 fn subject_at(root: String) -> ComputeCapacitySubject {
-  host_capacity_subject_in(requesting: instance_at(root: root), host_instance: instance_at(root: root), pool: ComputeBuildPool).subject
+  host_capacity_subject_in(requesting: instance_at(root: root), host_home: host_capacity_carrier_of(instance: instance_at(root: root)), pool: ComputeBuildPool).subject
 }
 
 fn reserved_amount(r: ComputeReservation) -> Int {
