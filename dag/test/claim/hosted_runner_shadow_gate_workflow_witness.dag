@@ -16,7 +16,7 @@ module test.claim.hosted_runner_shadow_gate_workflow_witness
 // YAML loses either marker, so a regeneration that silently drops them is caught.
 
 import std.types { Bool, Int, String }
-import test.fixture.text_scan { occurrences }
+import test.fixture.text_scan { occurs_before, occurrences }
 import gunbc.witness.hosted_runner_shadow_gate_workflow {
   expected_hosted_runner_shadow_gate_yml,
   ShadowGateWorkflowGenerationOutcome,
@@ -136,7 +136,7 @@ test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -
     // does not mask).
     && contains(haystack: rendered, needle: "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
     && contains(haystack: rendered, needle: "echo \"::add-mask::$VAL\"")
-    && occurrences(haystack: rendered, needle: "rm -f \"$HDR_FILE\"\n") == 1
+    && occurs_before(haystack: rendered, before: "secrets/tailscale-oauth-client-secret/versions/1:access", after: "rm -f \"$HDR_FILE\"")
     && !(contains(haystack: rendered, needle: "${{ secrets."))
 }
 
