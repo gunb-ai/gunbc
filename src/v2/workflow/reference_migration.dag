@@ -74,7 +74,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemWriteRefused,
   FilesystemWritten
 }
-import std.types { Bool, Int, List, Map, String }
+import std.types { Bool, Char, Int, List, Map, String }
 import std.algebra {
   Cons,
   Empty,
@@ -834,75 +834,84 @@ fn migration_comment_malformed(file: String, octets: MigrationOctetTable, annota
 // commentary and nothing else.
 fn migration_program_occurrences(file: MigrationFile, policy: MigrationContextPolicy, documents: List<String>, tokens: List<Token>) -> List<MigrationOccurrence> {
   let octets = migration_file_octets(file: file)
-  list_reverse(xs: fold_list(xs: tokens, empty: MigrationProgramScan { occurrences: Empty, cursor: 0 }, cons: fn(acc, token) {
-    migration_program_step(acc: acc, file: file, octets: octets, policy: policy, documents: documents, token: token)
-  }).occurrences)
-}
-
-// The scan carries the octet at which the LAST located token stood, so the search for the next one
-// starts there: the lexer emits tokens in file order, so a token's lexeme stands at or after the
-// previous one's. Restarting every search at octet 0 made the string pass quadratic in file size --
-// the same defect the comment pass used to have, on the other kind of dense file.
-type MigrationProgramScan {
-  occurrences: List<MigrationOccurrence>
-  cursor: Int
-}
-
-fn migration_program_step(acc: MigrationProgramScan, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, token: Token) -> MigrationProgramScan {
-  if !migration_token_is_string(token: token) {
-    acc
-  } else {
-    // The token stream says WHICH spans are strings; it does not say where they are in the file in the
-    // units this surface reports — a token's own start/end are the lexer's progress marks, not file
-    // octets — so the extent is established here by locating the lexeme in the file text and counting
-    // octets the way every other extent in this module is counted. A lexeme that cannot be located
-    // contributes nothing here, and the whole-file sweep still reports whatever citation it carries:
-    // classification may be lost, a finding never is.
-    let width = migration_octet_width(text: token.lexeme)
-    let base = migration_lexeme_octet_from(content: file.content, octets: octets, lexeme: token.lexeme, width: width, index: acc.cursor)
-    if base < 0 {
-      // Not found at or ahead of the cursor: this token contributes nothing here, and the cursor
-      // stays where it was so a later token is still searched from ground that is real.
+  // ONE host-bounded fold over the file's scalars for the WHOLE token stream, not one file walk per
+  // token (review 97145): a fold cannot exit early, so a per-token scan from the cursor re-walked the
+  // file for every string token -- O(tokens x file) on any file with a 29 KB string region, the very
+  // trigger this module names. The lexer emits string tokens in file order, so one sweep consumes the
+  // queue: at each octet the HEAD token's lexeme is tested there; a match records the span, pops the
+  // head, and the sweep moves on. A head that finds no match within the horizon is given up on --
+  // classification may be lost for that token, a finding never is (the whole-file sweep still reports
+  // whatever citation it carries), matching the contract this pass has always had.
+  let pairs = fold_list(xs: tokens, empty: Empty, cons: fn(acc, t) {
+    if !migration_token_is_string(token: t) {
       acc
     } else {
-      MigrationProgramScan {
-        occurrences: fold_list(xs: migration_span_occurrences(
-          file: file.path,
-          text: token.lexeme,
-          base: base,
-          policy: policy,
-          documents: documents,
-          scope: ScopeProgramText { token_class: migration_token_class_name(token: token) },
-        ), empty: acc.occurrences, cons: fn(inner, occurrence) { Cons { head: occurrence, tail: inner } }),
-        cursor: base + width,
+      Cons {
+        head: MigrationStringToken {
+          lexeme: t.lexeme,
+          width: migration_octet_width(text: t.lexeme),
+          class_name: migration_token_class_name(token: t),
+        },
+        tail: acc,
       }
     }
-  }
+  })
+  let swept = fold_list(
+    xs: unicode_scalar_unfold(s: file.content),
+    empty: MigrationTokenSweep { rest: list_reverse(xs: pairs), out: Empty, octet: 0, miss_start: 0 },
+    cons: fn(acc, c) {
+      migration_token_sweep_step(acc: acc, file: file, octets: octets, policy: policy, documents: documents, c: c)
+    }
+  )
+  list_reverse(xs: swept.out)
 }
 
-type MigrationLexemeScan {
+type MigrationStringToken {
+  lexeme: String
+  width: Int
+  class_name: String
+}
+
+type MigrationTokenSweep {
+  rest: List<MigrationStringToken>
+  out: List<MigrationOccurrence>
   octet: Int
-  result: Int
+  miss_start: Int
 }
 
-fn migration_lexeme_octet_from(content: String, octets: MigrationOctetTable, lexeme: String, width: Int, index: Int) -> Int {
-  // Host-bounded fold over the file's scalars: the scan used to take one interpreter frame per
-  // octet from `index`, once per program-text token — depth and O(n-squared) work on files with
-  // long strings. Every octet index at or after `index` is still tested with the same octet-slice
-  // comparison, first match wins, -1 when none does.
-  if width == 0 || index > octets.octet_total - width {
-    -1
-  } else {
-    let scan = fold_list(xs: unicode_scalar_unfold(s: content), empty: MigrationLexemeScan { octet: 0, result: -1 }, cons: fn(acc, c) {
-      if acc.result >= 0 {
-        acc
-      } else if acc.octet >= index && migration_octet_slice(content: content, octets: octets, start: acc.octet, end: acc.octet + width) == lexeme {
-        MigrationLexemeScan { octet: acc.octet + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c)), result: acc.octet }
-      } else {
-        MigrationLexemeScan { octet: acc.octet + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c)), result: -1 }
+// The give-up horizon for one head token: four megabytes of file walked with no match. Real string
+// tokens stand within a few hundred octets of each other, so the horizon never binds on authored
+// files; it bounds the adversarial case (a token whose lexeme is absent) that the previous
+// per-token scan also paid, once per token, for the whole rest of the file.
+fn migration_token_sweep_horizon() -> Int { 4194304 }
+
+fn migration_token_sweep_step(acc: MigrationTokenSweep, file: MigrationFile, octets: MigrationOctetTable, policy: MigrationContextPolicy, documents: List<String>, c: Char) -> MigrationTokenSweep {
+  let next_octet = acc.octet + unicode_scalar_utf8_octet_count(code_point: unicode_char_code_point(c: c))
+  match acc.rest {
+    Empty => MigrationTokenSweep { rest: acc.rest, out: acc.out, octet: next_octet, miss_start: acc.miss_start }
+    Cons { head: t, tail: r } => if t.width == 0 {
+      // An empty lexeme locates nothing (the per-token scan returned -1 for it); drop it.
+      MigrationTokenSweep { rest: r, out: acc.out, octet: next_octet, miss_start: acc.octet }
+    } else if migration_octet_slice(content: file.content, octets: octets, start: acc.octet, end: acc.octet + t.width) == t.lexeme {
+      MigrationTokenSweep {
+        rest: r,
+        out: fold_list(xs: migration_span_occurrences(
+          file: file.path,
+          text: t.lexeme,
+          base: acc.octet,
+          policy: policy,
+          documents: documents,
+          scope: ScopeProgramText { token_class: t.class_name },
+        ), empty: acc.out, cons: fn(inner, occurrence) { Cons { head: occurrence, tail: inner } }),
+        octet: next_octet,
+        miss_start: acc.octet,
       }
-    })
-    scan.result
+    } else if acc.octet - acc.miss_start >= migration_token_sweep_horizon() {
+      // Head given up on: the queue advances so later tokens are still tried from real ground.
+      MigrationTokenSweep { rest: r, out: acc.out, octet: next_octet, miss_start: acc.octet }
+    } else {
+      MigrationTokenSweep { rest: acc.rest, out: acc.out, octet: next_octet, miss_start: acc.miss_start }
+    }
   }
 }
 

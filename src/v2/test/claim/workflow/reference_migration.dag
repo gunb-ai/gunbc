@@ -8,6 +8,7 @@ import extdeps.filesystem.filesystem_io { filesystem_read_outcome }
 import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
 import std.coercion { unicode_scalar_unfold }
+import v2.std.compilers.lexing { Token }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.compiler.module_acquisition { AcquisitionEnv, SourceRootBinding }
 import v2.std.cross_tree.import_model { DagTree }
@@ -33,6 +34,7 @@ import v2.workflow.reference_migration {
   Applied,
   Refused,
   migration_context_policy_design,
+  migration_program_occurrences,
   migration_context_policy_none,
   migration_file,
   migration_octet_table_of,
@@ -83,7 +85,6 @@ import v2.workflow.reference_migration {
   MigrationWord,
   migration_last_code,
   migration_last_word_scalar_end,
-  migration_lexeme_octet_from,
   migration_line_index_go,
   migration_paragraph_bottom,
   migration_paragraph_top,
@@ -1217,7 +1218,7 @@ test fn reader_cost_helpers_survive_655360_element_inputs_holds() -> Bool {
     && migration_line_index_go(lines: lines, at: 655360 * 4, position: 0) == 0 - 1
     && migration_paragraph_top(lines: lines, index: 655359, seen: MigrationLine { start: 0, end: 0, blank: false }) == Present { value: MigrationLine { start: 0, end: 4, blank: false } }
     && migration_paragraph_bottom(lines: lines, index: 0, seen: MigrationLine { start: 0, end: 4, blank: false }) == Present { value: MigrationLine { start: 655359 * 4, end: 655359 * 4 + 4, blank: false } }
-    && migration_lexeme_octet_from(content: hay + "needle", octets: table_hay, lexeme: "needle", width: 6, index: 0) == 131072
+    && sweep_finds_deep_head(hay: hay)
     && migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty) == migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty)
 }
 
@@ -1279,5 +1280,23 @@ fn sweep_probe_occ(start: Int, end: Int) -> MigrationOccurrence {
     end: end,
     form: FormMarked { reference: DeclarationRef { module_path: "synthetic.mod", decl_name: "sweep_probe", field: WholeDeclaration } },
     scope: ScopeCommentary { region_start: 0, region_end: 1000 },
+  }
+}
+
+// The single-pass token sweep (review 97145 fix) must locate a string-literal lexeme standing at
+// (a citation standing inside a string literal) at octet 131072 of a 1.1 MB haystack, through
+// the PUBLIC entry, not through a per-token helper that
+// re-walked the file: the sweep walks the file once for the whole token queue.
+fn sweep_finds_deep_head(hay: String) -> Bool {
+  let hits = migration_program_occurrences(
+    file: MigrationFile { path: "cost.hay", content: hay + "#gunbc.design_argument::fail_closed", digest: "0000000000000000000000000000000000000000000000000000000000000000" },
+    policy: migration_context_policy_design(),
+    documents: Empty,
+    tokens: [Token { class: ^dag_token_string_literal, lexeme: "#gunbc.design_argument::fail_closed", file: "cost.hay", start: 0, end: 0 }]
+  )
+  let first: Optional<MigrationOccurrence> = fold_list(xs: hits, empty: Absent, cons: fn(a, o) { match a { Present { value: _ } => a, Absent => Present { value: o } } })
+  match first {
+    Absent => false,
+    Present { value: o } => o.file == "cost.hay" && o.start == 131072 && o.end == 131107,
   }
 }
