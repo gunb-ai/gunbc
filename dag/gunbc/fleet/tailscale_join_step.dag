@@ -5,8 +5,11 @@ module gunbc.fleet.tailscale_join_step
 // never reached through ci_spec: gunbc_run_step_script_for_target from v2.workflow.gunbc_invoke_step_emit
 // and witness_layer_roots from gunbc.ci.ci_layer_roots. The target is the converge module's own wet entry
 // -- the executing consumer review 95837 required -- and this step is how gunbc.fleet.fleet_converge_workflow
-// dispatches it: one job per host, TAILSCALE_JOIN_HOST and the runner label both bound to the dispatch's
-// `host` input, exactly as the host credential custody step binds its credential and executor.
+// dispatches it: the runner label is bound to the dispatch's `host` input and the machine to join is bound
+// to its `subject_host` input, with the mode's own subject rule travelling beside them -- the same shape the
+// serving converge steps use. The join declares may_be_executors_own, so a host joining its own runner
+// (srv3, srv4) stays legal, and a host with no runner lane of its own (butch/srv14) can be joined from a
+// machine that has one. The old single-key shape bound both roles to one input and could not express that.
 
 import std.types { String }
 import v2.workflow.gunbc_invoke_step_emit {

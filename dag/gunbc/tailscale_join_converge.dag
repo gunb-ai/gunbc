@@ -127,7 +127,6 @@ import extdeps.units.iso8601_calendar {
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.auth.secret_ref_credential {
   SecretCredentialAccessUpsertRequired,
