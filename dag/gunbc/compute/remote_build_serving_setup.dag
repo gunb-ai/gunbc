@@ -45,7 +45,7 @@ import gunbc.compute.remote_build { remote_build_serving_instance, RemoteBuildCa
 // The candidate row moved to the module that owns host membership for the serving route, so the live
 // dispatch gate and the provisioned-candidate row are read side by side and host_capacity can answer the
 // ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
-import gunbc.compute.remote_build_hosts { remote_build_serving_candidate_hosts }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host }
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_admission → observed_cgroup_bound) that
@@ -566,7 +566,7 @@ fn serving_ledger_service_user(dirs: List<OwnedDirectoryTarget>) -> String? {
 // remote_build_candidates() — so a not-yet-rostered candidate still renders, and a host outside
 // the candidate row is refused (never silently Met).
 fn serving_forced_command_line(host: HostIdentity) -> String? {
-  match any(remote_build_serving_candidate_hosts(), h => h == host) {
+  match remote_build_host_is_serving_candidate(host: host) {
     false => Absent
     true => match remote_build_render_entry(candidate: RemoteBuildCandidate { host: host, instance: remote_build_serving_instance(host: host) }) {
       RemoteBuildEntryRendered { entries } => Present { value: join(map(entries, e => authorized_key_entry_line(e: e)), "\n") }
