@@ -1196,7 +1196,7 @@ fn cost_codes(text: String) -> CostInts {
   })
 }
 
-test fn reader_cost_helpers_survive_131072_element_inputs_holds() -> Bool {
+test fn reader_cost_helpers_survive_655360_element_inputs_holds() -> Bool {
   let text = cost_double(seed: "word ", n: 17)
   let words = list_reverse(xs: cost_words(text: text).words)
   let lines = list_reverse(xs: cost_lines(text: text).lines)
@@ -1204,13 +1204,12 @@ test fn reader_cost_helpers_survive_131072_element_inputs_holds() -> Bool {
   let table = migration_octet_table_of(octets: codes)
   let hay = cost_double(seed: "x", n: 17)
   let table_hay = migration_octet_table_of(octets: cost_codes(text: hay + "needle").codes)
-  migration_last_word_scalar_end(words: words, seen: 0 - 7) == 131071
+  migration_last_word_scalar_end(words: words, seen: 0 - 7) == 655359
     && migration_last_code(codes: codes, seen: 0 - 7) == 97
-    && migration_line_index_go(lines: lines, at: 131071 * 4 + 1, position: 0) == 131071
-    && migration_line_index_go(lines: lines, at: 131071 * 4 + 9, position: 0) == 0 - 1
-    && migration_paragraph_top(lines: lines, index: 131071, seen: MigrationLine { start: 0, end: 0, blank: false }) == Present { value: MigrationLine { start: 0, end: 4, blank: false } }
-    && migration_paragraph_bottom(lines: lines, index: 0, seen: MigrationLine { start: 0, end: 4, blank: false }) == Present { value: MigrationLine { start: 131071 * 4, end: 131071 * 4 + 4, blank: false } }
+    && migration_line_index_go(lines: lines, at: 655359 * 4 + 1, position: 0) == 655359
+    && migration_line_index_go(lines: lines, at: 655360 * 4, position: 0) == 0 - 1
+    && migration_paragraph_top(lines: lines, index: 655359, seen: MigrationLine { start: 0, end: 0, blank: false }) == Present { value: MigrationLine { start: 0, end: 4, blank: false } }
+    && migration_paragraph_bottom(lines: lines, index: 0, seen: MigrationLine { start: 0, end: 4, blank: false }) == Present { value: MigrationLine { start: 655359 * 4, end: 655359 * 4 + 4, blank: false } }
     && migration_lexeme_octet_from(content: hay + "needle", octets: table_hay, lexeme: "needle", width: 6, index: 0) == 131072
     && migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty) == migration_sentence_bounds(codes: unicode_scalar_unfold(s: cost_double(seed: "ab. ", n: 15)), position: 0, pending: 0 - 1, boundaries: Empty)
 }
-
