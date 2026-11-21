@@ -101,6 +101,49 @@ fn step_if_text(step: Step) -> String {
   }
 }
 
+// THE GITHUB-EXPRESSION LEXICON CLAIM (review 97094). A GitHub Actions expression accepts ONLY
+// single-quoted string literals; a double-quoted string literal is a parse error that refuses the WHOLE
+// workflow at dispatch, not just the offending job -- so one malformed runs-on strands every mode. The
+// legitimate `"` in this workflow appear only INSIDE a single-quoted literal (the JSON arrays and objects
+// handed to fromJSON('["self-hosted",...]'). So: split the expression on the single quote -- the in-literal
+// pieces land at odd positions -- and a `"` in an even (outside-a-literal) piece is the illegal kind. The
+// fold carries the in-single-quote parity by toggling per piece, so no index primitive is needed. It runs
+// over the expression-bearing String fields the model exposes (runs-on, job `if`, step `if`) -- the fields
+// that carry format()/fromJSON() where a stray double quote can appear; job `outputs` carry only needs-ref
+// interpolations with no string literals, adding no surface this claim would miss. On the pre-fix head the
+// deploy-slot hands format() double-quoted host/group args and this goes red; single-quoted (the 97094 fix)
+// it goes green -- the discriminating input gunbc.design_argument::fail_closed asks a boundary to owe.
+type QuoteScanState { in_single: Bool, found_illegal: Bool }
+
+fn job_if_text(job: Job) -> String {
+  match job.if_condition { Present { value: v } => v  Absent => "" }
+}
+
+fn workflow_expressions() -> List<String> {
+  let jobs = emitted_jobs()
+  let runsons = map(jobs, j => runs_on_text(job: j))
+  let job_ifs = map(jobs, j => job_if_text(job: j))
+  let step_ifs = flat_map(jobs, j => map(j.steps, s => step_if_text(step: s)))
+  filter(concat(concat(runs ons, job_ifs), step_ifs), e => string_contains(s: e, pattern: "${{"))
+}
+
+fn has_double_quote_outside_single_quotes(expression: String) -> Bool {
+  fold(
+    split(s: expression, delimiter: "'"),
+    init: QuoteScanState { in_single: false, found_illegal: false },
+    f: fn(acc: QuoteScanState, segment: String) -> QuoteScanState {
+      QuoteScanState {
+        in_single: !acc.in_single,
+        found_illegal: acc.found_illegal || (!acc.in_single && string_contains(s: segment, pattern: "\"")),
+      }
+    },
+  ).found_illegal
+}
+
+test fn no_double_quoted_string_literal_in_any_expression() -> Bool {
+  all(workflow_expressions(), e => !has_double_quote_outside_single_quotes(expression: e))
+}
+
 fn runs_on_text(job: Job) -> String {
   match job.runner {
     RunsOnExpression { expression: e } => e

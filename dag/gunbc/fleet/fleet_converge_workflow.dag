@@ -1340,10 +1340,13 @@ data fleet_converge_host_runner_expression: String = join(["${{ ", fleet_converg
 // .outputs.arch), read the same way the host selector reads it -- never a hard-coded "arm64". srv1 is
 // arm64 today because its board says so, not because this string says so; a host whose board changed
 // would change the runner here too (review 97086; gunbc.design_argument::fail_closed -- an empty arch
-// here must fail at the identity-join claim, not silently queue an unlabelled runner).
+// here must fail at the identity-join claim, not silently queue an unlabelled runner). The two constant
+// format ARGS (the srv1 host label and the deploy group) are emitted SINGLE-quoted, matching the host
+// selector above whose JSON sits inside one single-quoted literal; a double-quoted string literal in a
+// GitHub expression is a parse error that refuses the WHOLE workflow at dispatch (review 97094).
 data fleet_converge_deploy_slot_runner_expression: String = join([
-  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\",\"{2}\"]', needs.plan-revision.outputs.arch, \"",
-  runner_host_label(host: operator_host_srv1) as String, "\",\"", deploy_slot_runner_group_name as String, "\")) || ",
+  "${{ github.event.inputs.host == '", runner_host_label(host: operator_host_srv1) as String, "' && fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\",\"{2}\"]', needs.plan-revision.outputs.arch, '",
+  runner_host_label(host: operator_host_srv1) as String, "','", deploy_slot_runner_group_name as String, "')) || ",
   fleet_converge_host_runner_expression_body, " }}",
 ], "")
 
