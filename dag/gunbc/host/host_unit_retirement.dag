@@ -33,7 +33,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.design_ruling { DesignRuling, hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, fleet_converge_split_refusal_line, SplitOk, SplitRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
@@ -283,6 +283,12 @@ fn host_unit_retirement_exec_all(target: SshTarget, context: FleetSshExecutionCo
   map(commands, c => typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: c))
 }
 
+// ONE leg, bound by name rather than by position: a leg this entry judges is never addressed by index,
+// so renaming or reordering a command cannot silently move a verdict onto another leg.
+fn host_unit_retirement_exec_one(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> TypedArgvExecOutcome {
+  typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv)
+}
+
 fn host_unit_retirement_ok(outcome: TypedArgvExecOutcome) -> Bool {
   match outcome {
     TypedArgvExecConverged { result: r } => r.exit_code == 0
@@ -359,26 +365,22 @@ fn host_unit_retirement_read_value(read: HostUnitRetirementRead) -> String {
 // ONE ROW, acted: stop (idempotent), retain-then-delete (the delete runs only when the copy's own leg
 // succeeded -- a row never deletes what was not copied), reload, then read all three facts back.
 fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionContext, row: HostUnitRetirementRow) -> HostUnitRetirementReadback {
-  let acts = host_unit_retirement_exec_all(target, context, [
-    systemctl_stop_argv(unit: row.unit),
-    systemctl_daemon_reload_argv(),
-    mkdir_parents_argv(path: host_unit_retirement_retained_dir),
-    argv_words(command: test_regular_file_command(path: row.retained_path)),
-    coreutils_install_file_argv(mode: "0444" as NonEmptyStr, source: row.fragment_path, dest: row.retained_path),
-  ])
+  let stop_result = host_unit_retirement_exec_one(target, context, systemctl_stop_argv(unit: row.unit))
+  let _reload = host_unit_retirement_exec_one(target, context, systemctl_daemon_reload_argv())
+  let retain_dir_result = host_unit_retirement_exec_one(target, context, mkdir_parents_argv(path: host_unit_retirement_retained_dir))
+  let retained_before = host_unit_retirement_exec_one(target, context, argv_words(command: test_regular_file_command(path: row.retained_path)))
+  let install_result = host_unit_retirement_exec_one(target, context, coreutils_install_file_argv(mode: "0444" as NonEmptyStr, source: row.fragment_path, dest: row.retained_path))
   // Observed BEFORE the judgement, unconditionally: whether the fragment still stands on disk decides
   // whether trusting a pre-existing retained copy can lose anything.
-  let fragment_probe = host_unit_retirement_exec_all(target, context, [
-    argv_words(command: test_regular_file_command(path: row.fragment_path)),
-  ])
+  let fragment_probe = host_unit_retirement_exec_one(target, context, argv_words(command: test_regular_file_command(path: row.fragment_path)))
   // The copy is satisfied when THIS row wrote the retained copy, or when the fragment is already gone and
   // a readable retained copy stands in its place -- the two engine rows share ONE template fragment, so
   // the second row's `install` finds no source (the first row deleted it) while the retained copy is
   // already on disk from the first row. A present fragment next to an UNVERIFIED retained copy is NOT
   // accepted (host_unit_retirement_copy_accepted): the row keeps its fragment and reads RetainedCopyAbsent.
-  let retained_present = host_unit_retirement_ok(acts.at(3))
-  let install_ok = host_unit_retirement_ok(acts.at(4))
-  let fragment_present = host_unit_retirement_ok(fragment_probe.at(0))
+  let retained_present = host_unit_retirement_ok(retained_before)
+  let install_ok = host_unit_retirement_ok(install_result)
+  let fragment_present = host_unit_retirement_ok(fragment_probe)
   let copy_ok = host_unit_retirement_copy_accepted(install_ok: install_ok, fragment_present: fragment_present, retained_present: retained_present)
   // The delete follows the copy's success ONLY: a fragment is never removed before its retained copy is
   // confirmed written. When the copy fails the unit stays put and the row reads RetainedCopyAbsent. The
@@ -388,16 +390,19 @@ fn host_unit_retirement_act_row(target: SshTarget, context: FleetSshExecutionCon
   // STATE must be gone: a leftover enable symlink (review 96915) would keep is-enabled answering `enabled`
   // for a fragment that no longer exists, and a receipt printed over that state would fabricate "gone from
   // the system manager" (gunbc.design_argument::fail_closed).
-  let back = host_unit_retirement_exec_all(target, context, [
-    systemctl_show_load_state_argv(unit: row.unit),
-    systemctl_is_active_argv(unit: row.unit),
-    argv_words(command: test_regular_file_command(path: row.retained_path)),
-    systemctl_show_property_argv(unit: row.unit, property: UnitFileState),
-  ])
+  let read_load_state = host_unit_retirement_exec_one(target, context, systemctl_show_load_state_argv(unit: row.unit))
+  let read_active_state = host_unit_retirement_exec_one(target, context, systemctl_is_active_argv(unit: row.unit))
+  let read_retained_copy = host_unit_retirement_exec_one(target, context, argv_words(command: test_regular_file_command(path: row.retained_path)))
+  let read_unit_file_state = host_unit_retirement_exec_one(target, context, systemctl_show_property_argv(unit: row.unit, property: UnitFileState))
   if !copy_ok {
     RetainedCopyAbsent { unit: row.unit, retained_path: row.retained_path }
   } else {
-    host_unit_retirement_judge_reads(row, host_unit_retirement_first_line(back.at(0), false), host_unit_retirement_first_line(back.at(1), true), host_unit_retirement_first_line(back.at(3), false), host_unit_retirement_ok(back.at(2)))
+    host_unit_retirement_judge_reads(
+      row,
+      host_unit_retirement_first_line(read_load_state, false),
+      host_unit_retirement_first_line(read_active_state, true),
+      host_unit_retirement_first_line(read_unit_file_state, false),
+      host_unit_retirement_ok(read_retained_copy))
   }
 }
 
@@ -417,10 +422,10 @@ fn host_unit_retirement_ci_wet() -> ProcessExit {
             RunnerHostSpecAbsent { host: _ } => exit_failure(reason: concat("host_unit_retirement: ", subject_host, " has no RunnerHostSpec; there is nothing to dial"))
             RunnerHostSpecFound { spec: _ } =>
               match administrator_ssh_target(host: subject_host as HostIdentity) {
-                SshTargetRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the administrator target for ", subject_host, " is refused: ", reason))
+                SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: concat("host_unit_retirement: the administrator target for ", subject_host, " is refused: ", ssh_target_refusal_text(endpoint: e, refusal: why)))
                 SshTargetResolved { target } =>
                   match prepare_fleet_ssh_agent_context(attempt_raw: host_unit_retirement_attempt_raw) {
-                    FleetSshContextRefused { reason } => exit_failure(reason: concat("host_unit_retirement: the fleet ssh context is refused: ", reason))
+                    FleetSshContextRefused { cause: c } => exit_failure(reason: concat("host_unit_retirement: the fleet ssh context is refused: ", c))
                     FleetSshContextReady { context, receipt } =>
                       host_unit_retirement_run(target, context, subject_host, executor_runner_name)
                   }
@@ -446,7 +451,7 @@ fn host_unit_retirement_run(target: SshTarget, context: FleetSshExecutionContext
   let rows = rows_of(subject_host)
   let _pre = host_unit_retirement_predisable_pass(target, context, rows)
   let readbacks = fold(rows, init: [] as List<HostUnitRetirementReadback>, f: fn(acc, r) { append(acc, items: [ host_unit_retirement_act_row(target, context, r) ]) })
-  readbacks |> judge_run(subject_host: subject_host, executor_runner_name: executor_runner_name)
+  judge_run(readbacks, subject_host: subject_host, executor_runner_name: executor_runner_name)
 }
 
 fn rows_of(host: String) -> List<HostUnitRetirementRow> {

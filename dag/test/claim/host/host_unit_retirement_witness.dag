@@ -35,6 +35,7 @@ import gunbc.host.host_unit_retirement {
   host_unit_retirement_read_row,
   host_unit_retirement_readback_line,
   host_unit_retirement_all_retired,
+  is_retired_readback,
   host_unit_retirement_rows_carry_the_live_ruling,
   host_unit_retirement_committed_readbacks,
   host_unit_retirement_retained_dir,
@@ -126,10 +127,13 @@ test fn host_unit_retirement_group_keys_on_the_subject() -> Bool {
 // must satisfy, that state refuses every row -- the run's acceptance is exactly what is missing today.
 test fn host_unit_retirement_live_units_still_refuse_retired() -> Bool {
   let rows = host_unit_retirement_rows()
-  let a_state = host_unit_retirement_read_row(rows.at(0), "loaded", "inactive", "", false)
-  let b_state = host_unit_retirement_read_row(rows.at(1), "loaded", "inactive", "", false)
-  let cap_state = host_unit_retirement_read_row(rows.at(2), "loaded", "failed", "", false)
-  !host_unit_retirement_all_retired([ a_state, b_state, cap_state ])
+  // Each captured state is attached through the row's OWN unit field, never by position:
+  // host_unit_retirement_plan_is_the_ruled_three pins the roster, and an index here would move one
+  // unit's captured state onto another row the moment the plan changed -- the very confusion this
+  // claim exists to make impossible.
+  let verdicts = map(rows, r => host_unit_retirement_read_row(r, "loaded", if r.unit == "a2-power-cap.service" { "failed" } else { "inactive" }, "", false))
+  length(filter(verdicts, rb => is_retired_readback(rb))) == 0
+    && !host_unit_retirement_all_retired(verdicts)
 }
 
 // THE SHARED FRAGMENT CANNOT STRAND THE SECOND ROW (review 96883 fix 1, hardened by review 96889 fix 1):
