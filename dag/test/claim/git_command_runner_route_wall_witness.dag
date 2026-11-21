@@ -16,9 +16,17 @@ module test.claim.git_command_runner_route_wall_witness
 // forwards it unchecked.
 //
 // THE MUTATION CONTROL (documented, not inlined).
-// Remove the `git_route_wall_admits` check from run_shell_command_observe_outcome
-// and claims refused_bare_mutating_local, refused_absolute_path_local,
-// refused_bare_mutating_ssh_all become false. This proves the gate is load-bearing.
+// Forcing git_route_wall_admits to always-admit (disabling the gate) makes test_refused_bare_mutating_local,
+// test_refused_bare_mutating_local_add, test_refused_absolute_path_local, test_refused_deep_absolute_path_local,
+// test_refused_bare_mutating_ssh and test_refused_bare_mutating_ssh_absolute STOP yielding the
+// ProcessNotSpawned arm -- they proceed to RunArgv -- and test_bare_mutating_git_yields_the_single_not_spawned_arm
+// goes false. Reverting the mutation makes them refuse again: this proves the gate is load-bearing. (Run
+// and reverted in-PR; the head has the gate live.)
+//
+// THE COMMIT-BUILDER AND EXIT-ZERO CONTROLS (side-chat blockers 1 and 2).
+// test_admitted_commit_snapshot_builder_passes_gate consumes the shipped git_commit_snapshot_command
+// (guards the `-C`-first ordering against regression); test_nonzero_exit_with_plausible_stdout_is_refused_not_present
+// and test_zero_exit_with_stdout_is_present pin the exit-zero prerequisite the output readers depend on.
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { string_contains }
@@ -27,11 +35,11 @@ import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, SshExec 
 import extdeps.git {
   git_program_at, git_argv_command_at, is_git_program,
   shape_git_add_all_args, shape_git_commit_allow_empty_args,
-  shape_git_status_porcelain_nul_args,
+  shape_git_status_porcelain_nul_args, git_commit_snapshot_command,
 }
 import extdeps.exec.program { ProgramIdentity }
-import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
-import gunbc.command_runner { run_shell_command_observe_outcome, git_route_wall_admits }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, process_observation }
+import gunbc.command_runner { run_shell_command_observe_outcome, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
 import gunbc.remote_shell_command { openssh_login_shell_interpretation }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +174,18 @@ fn test_admitted_in_repo_absolute_passes_gate() -> Bool {
   )
 }
 
+// THE COMMIT BUILDER ITSELF MUST BE ADMITTED (side-chat blocker 1). The positive controls hand-spell a
+// leading `-C`, which is exactly why they MISSED the shipped git_commit_snapshot_command leading with
+// `-c user.name=...` and being refused. This consumes the real builder, so if it ever regresses to a
+// leading `-c` the gate refuses it and this claim goes false.
+fn test_admitted_commit_snapshot_builder_passes_gate() -> Bool {
+  git_route_wall_admits(
+    command: git_commit_snapshot_command(
+      repository_dir: "/tmp/seed-repo", identity_name: "w", identity_email: "w@e", message: "seed",
+    ),
+  )
+}
+
 fn test_non_git_passes_gate() -> Bool {
   // Non-git programs are never gated.
   git_route_wall_admits(
@@ -205,4 +225,33 @@ fn test_path_basename_correctness() -> Bool {
     && path_basename(path: "/bin/ls") == "ls"
     && path_basename(path: "./relative/path") == "path"
     && path_basename(path: "") == ""
+}
+
+// ---------------------------------------------------------------------------
+// THE EXIT-ZERO PREREQUISITE (side-chat blocker 2). An admitted output reader (wet_out / out) trusts
+// stdout ONLY via classify_process_observation(ExitZeroSucceeds). This proves that a command that RAN
+// and exited NONZERO while printing PLAUSIBLE stdout is classified ProcessRefused -- not
+// ProcessOutputPresent -- so a downstream readback reading the "present" text can never accept output
+// from a command that did not fully succeed (e.g. a `find` that hit a permission error, exited 1, yet
+// printed the one line a sticky-mode readback would accept).
+// ---------------------------------------------------------------------------
+
+fn test_nonzero_exit_with_plausible_stdout_is_refused_not_present() -> Bool {
+  let o = process_observation(exit_code: 1, stdout: "100700 sticky_dir\n", stderr: "find: permission denied\n")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: o) {
+    // THE BUG WOULD CLASSIFY THIS AS PRESENT; the correct rung is Refused.
+    ProcessRefused { exit_code: e, stderr: _ } => e == 1
+    ProcessOutputPresent { text: _ } => false
+    ProcessOutputAbsent => false
+  }
+}
+
+// And a genuine success (exit 0, stdout) IS present -- so the control is not just "always refuse".
+fn test_zero_exit_with_stdout_is_present() -> Bool {
+  let o = process_observation(exit_code: 0, stdout: "abc123def\n", stderr: "")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: o) {
+    ProcessOutputPresent { text: t } => t == "abc123def\n"
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
 }

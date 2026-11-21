@@ -102,8 +102,10 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
 
 // THE LAST COMPONENT OF A PATH, the final non-empty segment. The dual of path_parent_directory.
 // Empty string and "/" both yield "" (POSIX basename of "/" is "/" but no caller needs that; if
-// one does it gets its own predicate). Three hand-rolled instances exist in extdeps (firecracker,
-// docker/cgroup, linux/cgroup_v2_memory) and are hoisted here by root_generalization.
+// one does it gets its own predicate). THE single spelling of this fold (root_generalization): it is
+// consumed by extdeps.git::is_git_program (classify the program by basename, not spelling),
+// extdeps.virtualization.firecracker (jailer exec-file basename), extdeps.docker.cgroup (cgroup last
+// segment) and gunbc.live_deploy.member_observe, each of which formerly carried a byte-identical copy.
 fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
 }

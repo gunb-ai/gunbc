@@ -1057,7 +1057,10 @@ fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_progra
 // or "./git" are all caught. The dispatch sandbox (command_runner) uses this to gate the route wall
 // before transport, closing the absolute-path bypass the #16810-era exact-spelling check left open.
 fn is_git_program(invocation: String) -> Bool {
-  path_basename(path: invocation) == git_program_word
+  // BOTH SIDES ARE BASENAMED. The caller's invocation may be any spelling ("/usr/bin/git"); the
+  // declared git_program_word is normalized through the same fold so the comparison is basename-to-
+  // basename and a configured word that ever carries a path segment cannot silently fail to classify.
+  path_basename(path: invocation) == path_basename(path: git_program_word)
 }
 
 // A git ProgramIdentity at an arbitrary path, for witnesses that exercise the absolute-path spelling.
@@ -1186,9 +1189,16 @@ fn git_add_all_force_command(repository_dir: String) -> ArgvCommand {
 }
 
 fn git_commit_snapshot_command(repository_dir: String, identity_name: String, identity_email: String, message: String) -> ArgvCommand {
+  // THE IN-REPO DRESSING COMES FIRST. git_argv_route_wall::git_argv_is_in_repo_dressed locates the
+  // repository ONLY at argv[0] (a leading `-C <repo>` / `--git-dir <repo>`), so `-C <repo>` must precede
+  // the per-command `-c user.*` identity settings -- otherwise argv[0] is `-c`, the argv is not dressed,
+  // and the leading-subcommand walk misreads `user.name=...` as the subcommand, refusing a command that
+  // is in fact pinned to <repo>. `-C` before `-c` is valid git (both are global options ahead of the
+  // subcommand) and mirrors `shape_git_commit_allow_empty_silent_in_repo_args`, which already leads `-C`.
   argv_command(program: git_program(), arguments: [
+    "-C", repository_dir,
     "-c", concat("user.name=", identity_name), "-c", concat("user.email=", identity_email),
-    "-C", repository_dir, "commit", "-q", "--allow-empty", "--no-verify", "-m", message,
+    "commit", "-q", "--allow-empty", "--no-verify", "-m", message,
   ])
 }
 
