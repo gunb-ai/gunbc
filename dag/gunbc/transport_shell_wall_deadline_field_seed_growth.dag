@@ -1,0 +1,61 @@
+module gunbc.transport_shell_wall_deadline_field_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for ONE grammar field on the v1 transport shell block, split out of
+// gunb-ai/gunbc#16737 as gunb-ai/gunbc#16842 so the grammar rung and its corpus use are two changes.
+// Homed beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns
+// the ROSTER and the join.
+//
+// WHAT THE SUBJECT IS. `transport shell { argv: ..., stdin: ... }` is the host declaration of a shell
+// transport in src/v1/00_core.dag, parsed by a field roster in src/v1/02_parse.dag, and read by the
+// seed interpreter when it dispatches a shell leg. The roster refused every name except `argv` and
+// `stdin`, so a per-leg wall-clock ceiling had nowhere declared to live.
+//
+// WHAT WAS ADMITTED. One optional declared field: `wall_deadline:`. Accepted into the roster
+// (transport_shell_fields), carried into the node property list (shell_transport_node), readable
+// (transport_wall_deadline), and reserved (transport_wall_deadline_key). Nothing in the corpus writes
+// it at this head, so main's sources parse byte-identically; the field is accepted, not used.
+//
+// WHY THE TWO HAND-RUST LINES ARE HERE AT ALL. The grammar itself is modeled (.dag). What is not
+// modeled is the seed interpreter's own construction of a transport node: the #[cfg(test)] fixtures in
+// v1_interpreter.rs build that node POSITIONALLY, so a roster that grows one field forces those two
+// fixtures to pass one more argument. They are test fixtures of the argv-cap authority, not new
+// behaviour: the comment at each says out loud that the ceiling is absent there, which is exactly
+// main's behaviour, so a reader can tell an absent ceiling from a zero ceiling at the call site.
+//
+// WHY ADMITTED AGAINST THE v1 FREEZE (gunbc.v1.v1_maintenance_standing v1_seed_standing): by PURPOSE,
+// and by the operator's own word. RULING (2026-11-21, principal:google-oidc/accounts/116084671989231734979,
+// given in chat to the lane manager and quoted verbatim): "ah sorry - yes you can admit the seed change."
+// It covers this grammar field and the interpreter kill/decode growth on #16737; the interpreter half
+// carries its own row there. WHAT THE PURPOSIVE TEST ACTUALLY PASSES: the field removes a SECOND,
+// UNMODELED authority rather than adding a capability. Before it, the seed armed the per-leg kill by
+// looking up a PARAMETER NAME at dispatch time (param_env.lookup(ctx.sym("wall_deadline"))), so any
+// caller that happened to name a parameter that word armed a kill, and any caller that named it
+// something else ran unbounded -- a spelling, not a declaration. Review 96999 (REQUEST_CHANGES) is what
+// put the ceiling where it belongs. A transport that does not declare the field keeps main's behaviour
+// byte for byte, so nothing existing changes meaning. It adds no language behaviour beyond that one
+// optional field, no flag, no admission of new syntax elsewhere, and no corpus use in this PR.
+//
+// THE CONTROLS, and why they are controls rather than decoration. The emitted test
+// transport_shell_declared_wall_deadline_field (authored in src/v1/compiler_tests_rust.dag, emitted
+// into src/v1/stage0/src/compiler_tests.rs, generation-authority proof
+// gunbc.v1.compiler_emit_rust / gunbc.generated_artifact) has three arms: a shell block with NO
+// wall_deadline still parses (the field is optional -- this is the arm that proves main's corpus is
+// unaffected), `wall_deadline: 15` parses, and `wall_clock_limit: 15` is REFUSED with the refusal
+// naming `argv`, `stdin` and `wall_deadline`. The third arm is the one that earns the row: a parser
+// that quietly accepted any extra field would pass the first two and fail the third, and the refusal
+// text is checked to enumerate the roster, so the roster itself cannot drift silently.
+data transport_shell_wall_deadline_field_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.argv_arg_limit_test", decl_name: "shell_check_style_transport", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.argv_arg_limit_test", decl_name: "single_program_transport", field: WholeDeclaration }
+  ],
+  reason: "Two positional fixture arguments in v1_interpreter.rs, forced by one new declared field on the transport shell roster. Admitted by PURPOSE and by the operator's word (2026-11-21, principal:google-oidc/accounts/116084671989231734979: 'ah sorry - yes you can admit the seed change'), because the field retires a second unmodeled authority -- the seed used to arm a per-leg wall-clock kill by looking up a parameter NAME, so the bound existed only where a spelling matched, which review 96999 (REQUEST_CHANGES) refused. No transport in the corpus declares the field at this head, so main's sources and main's behaviour are unchanged; the emitted three-arm control (absent parses, 15 parses, wall_clock_limit refused naming the whole roster) is what makes 'optional and unused here' an executed fact rather than a claim.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Dissolves when the seed interpreter stops building transport nodes positionally in hand Rust -- i.e. when the argv-cap fixtures in v1_interpreter.rs are re-authored as .dag witnesses over a modeled transport construction (the exec_arg_limit_witness.dag side of the same authority), at which point a roster that grows a field touches no hand-written call site and these two DeclarationRefs are deleted rather than maintained. What does NOT dissolve them: the parser being rewritten in place, the field being renamed, or the fixtures being moved to another file -- each of those keeps the same positional construction and the same hand call site.",
+  current_boundary: "src/v1/00_core.dag (transport_wall_deadline_key, shell_transport_node, transport_wall_deadline); src/v1/02_parse.dag (transport_shell_fields, the unknown-field refusal); src/v1/compiler_tests_rust.dag and its emitted form src/v1/stage0/src/compiler_tests.rs (the three-arm control); src/v1/tests/claim/transport_roster_closure_witness_test.dag (the roster witness call site that passes wall_deadline: none by name); src/v1/stage0/src/v1_interpreter.rs mod argv_arg_limit_test (the two fixtures listed above); dag/gunbc/transport_shell_wall_deadline_field_seed_growth.dag"
+}
