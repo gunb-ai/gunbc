@@ -1,0 +1,44 @@
+module gunbc.integration_concern.flex_serving_onstart_is_a_string_shell_beside_the_grammar
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 19: main 50c45934852.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+// A SHELL PROGRAM LIVES AS ONE STRING LITERAL BESIDE THE EMITTING GRAMMAR. The JIT wrapper just
+// moved onto v2.workflow.bash_emit (Nodes, not string-built bash); the serving image's on-start
+// program is the same shape of artifact that has NOT moved: the whole on-start -- env recovery,
+// driver refusal, TLS minting, cache sizing, the written run.sh supervisor -- is one String data.
+// It is a different lane's carrier (a product image's entrypoint), and whether an image on-start
+// belongs to the shell grammar or may stay an image-carrier string is the serving lane's reading,
+// not a defect this PR fixes. Recorded so the rule has one visible boundary instead of two.
+data flex_serving_onstart_is_a_string_shell_beside_the_grammar: IntegrationConcern = IntegrationConcern {
+  identity: "flex_serving_onstart_is_a_string_shell_beside_the_grammar",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.workflow.bash_emit", decl_name: "bash_emit_stmts"),
+    requirement: "An on-start program installed on a host is emitted from bash Nodes through the shell grammar, the way gunbc.runner.runner_unit_file::runner_jit_wrapper_script and gunbc.fabric.fabric_blob_shell do; a hand-assembled shell String re-implements control flow, refusals and exit codes outside the grammar.",
+    standing: RequirementUnestablished {
+      decided_by: "serving lane: whether product.fabric.flex_serving_image's on-start is grammar-emitted like the host carriers, or stands as an image-carrier exception because it is baked into a product image rather than written by fleet converge",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "product.fabric.flex_serving_image", decl_name: "flex_serving_onstart"),
+    tail: [decl_ref(module_path: "product.fabric.flex_serving_image", decl_name: "flex_serving_image")],
+  },
+  question: "Which reading wins: grammar-emitted on-start for product images (deleting the string), or a declared carrier exception? Until it is decided, two shapes of installed shell coexist and the medium-as-string rule has an unstated boundary.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "292fab294d62a12267530f3e9708aa1410288a4b",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.flex_serving_image", decl_name: "flex_serving_onstart") },
+        tail: [],
+      },
+      account: "Surfaced while review 95482 blocked string-built bash in the runner carrier; the wrapper moved to the grammar, this sibling stayed. No fix attempted here (parent ruling msg_a60a9c8a): record, do not migrate."
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

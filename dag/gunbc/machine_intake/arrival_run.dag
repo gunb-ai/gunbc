@@ -13,6 +13,9 @@ import gunbc.auth.access_token_source {
   WorkloadIdentityToken, GcloudPrintToken, OperatorSuppliedToken,
 }
 import gunbc.machine_intake.arrival_admission { arrival_admit_executor }
+// THE ONE SHARED hpm-check READ (landed from the boot lane's lift, #16719): the arrival leg below
+// calls it; this lane owns only its endpoint, wall bounds, artifact path and refusal wording.
+import gunbc.machine_intake.bmc_firmware_hpm_read { bmc_hpm_check_transport, HpmCheckTransportOk, HpmCheckTransportFailed, HpmCheckRetentionFailed }
 import gunbc.machine_intake.arrival_subject {
   admit_arrival_subject, ArrivalSubjectAdmitted, ArrivalSubjectInPopulation,
   ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion, ArrivalSubjectOutsideGrant,
@@ -792,6 +795,36 @@ fn arrival_wet_ipmi_legs_bound() -> Second {
   second(count: per_call * calls)
 }
 
+// THE hpm CHECK LEG'S BUDGET ENTRY: one controller round trip with the door's read walls, bounded
+// by the SAME arm as every other ipmitool leg -- an independent bound would let the roster and the
+// fold drift (the rule behind arrival_wet_ipmi_legs_bound, extended to this leg). It is not an
+// ipmi census leg: it enters the step fold as its own phase
+// (fleet_converge_arrival_converge_step_timeout_minutes) so the census pairing claim keeps counting
+// exactly the door's census legs.
+fn arrival_hpm_check_leg_bound() -> Second {
+  arrival_ipmi_leg_bound()
+}
+
+// The retained artifact's path: under THIS unit's evidence root, keyed by the run, so a rerun
+// cannot read back a previous attempt's table (the boot lane's run-keyed-name lesson).
+fn arrival_wet_hpm_check_path(evidence_root: FilePath, run_wire: NonEmptyStr) -> NonEmptyStr {
+  concat(evidence_root as String, concat("/hpm-check-", run_wire as String)) as NonEmptyStr
+}
+
+// The transport arm's refusal, in this lane's words (never routed through the boot lane's
+// classifier: the arrival refusals stay distinct and located, and a wrong answer here would send
+// the operator to inspect the wrong component).
+fn arrival_wet_hpm_check_refusal(host: NonEmptyStr, at: NonEmptyStr, exit_code: Int, transport_stderr: String, retained_path: NonEmptyStr) -> NonEmptyStr {
+  join(["ARRIVAL WET HPM CHECK REFUSED: hpm check was not read at ", at as String, " against controller ", host as String, " (exit ", to_string(exit_code), "): ", transport_stderr, " -- the table was not retained at ", retained_path as String, "; the run is refused before the census reference commits"], "") as NonEmptyStr
+}
+
+// The retention arm's refusal (review 96635's rule for this lane): the controller ANSWERED, so the
+// only fault to name is the local write. No controller exit code is claimed; the endpoint is not
+// blamed.
+fn arrival_wet_hpm_retention_refusal(at: NonEmptyStr, retained_path: NonEmptyStr, write_error: String) -> NonEmptyStr {
+  join(["ARRIVAL WET HPM RETENTION REFUSED: the controller answered; the hpm table could not be retained at ", retained_path as String, " (", at as String, "): ", write_error, " -- the run is refused until the evidence file can be written"], "") as NonEmptyStr
+}
+
 // A roster probe result carried with the channel number it answered: the op result is copied into
 // plain fields because an operation's output record is not a nameable type.
 fn arrival_probe_channel(host: NonEmptyStr, managed_account: NonEmptyStr, password_file: NonEmptyStr, number: IpmiChannelNumber) -> ChannelProbeReading {
@@ -1069,6 +1102,35 @@ fn arrival_run_wet_gated(row: ArrivalUnitCaptureRow, binding: ServerBaseboard, h
     Present { value: t } => t
     Absent => {
       return exit_failure(reason: "ARRIVAL WET COUNTED READ LOST: the ops list no longer yields the fru print -- list and reads have forked")
+    }
+  }
+  // THE FIRMWARE READING AS AN ARRIVAL OBSERVATION (smart-crane-730 ruling): the controller's
+  // `hpm check` table is read at THIS unit's endpoint through the ONE shared transport
+  // (gunbc.machine_intake.bmc_firmware_hpm_read -- the same function the boot lane calls), inside
+  // the same held slot and the same credential brackets, with the door's own read-policy walls and
+  // the shared retry bound. It is a READ-ONLY leg: it never mints a firmware fact into the
+  // qualification carrier -- those facts stay in the Manager Redfish carrier below -- and its
+  // product is the retained table file under this unit's evidence root, which the follow-up
+  // evidence PR commits with an EvidenceRef after the live run (the mtcollins1 precedent).
+  // Every arm terminates here: Ok records, the other two refuse typed and located, and the
+  // retention arm never passes through an ipmitool cause classifier, so a local write failure is
+  // never blamed on the controller (review 96635's rule, kept per-lane).
+  let hpm_check_path = arrival_wet_hpm_check_path(evidence_root: evidence_root, run_wire: run_wire)
+  let _ = match bmc_hpm_check_transport(
+    controller_host: host,
+    username: row.managed_account,
+    password_file: password_file,
+    deadline: arrival_read_policy.deadline,
+    kill_after: arrival_read_policy.kill_after,
+    cipher_suite: none,
+    retained_path: hpm_check_path,
+  ) {
+    HpmCheckTransportOk { table: _, retained_path: _, at: _ } => Present { value: true }
+    HpmCheckTransportFailed { exit_code: exit_code, transport_stderr: transport_stderr, at: at } => {
+      return exit_failure(reason: arrival_wet_hpm_check_refusal(host: host, at: at, exit_code: exit_code, transport_stderr: transport_stderr, retained_path: hpm_check_path))
+    }
+    HpmCheckRetentionFailed { retained_path: retained_path, write_error: write_error, at: at } => {
+      return exit_failure(reason: arrival_wet_hpm_retention_refusal(at: at, retained_path: retained_path, write_error: write_error))
     }
   }
   let root = redfish.Http.GetServiceRoot(bmc_host: host)

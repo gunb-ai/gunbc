@@ -145,7 +145,7 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
-import gunbc.machine_intake.arrival_run { arrival_wet_ipmi_legs_bound }
+import gunbc.machine_intake.arrival_run { arrival_wet_ipmi_legs_bound, arrival_hpm_check_leg_bound }
 import gunbc.machine_intake.prior_life_capture_live { live_prior_life_legs_bound }
 import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation { mtcollins1_ui_status_asset_observation_receipt_path, mtcollins1_ui_status_asset_probe_bound }
@@ -271,7 +271,8 @@ import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converg
 import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets, host_primary_network_receipt_path }
 import gunbc.fleet.board_function_converge_delivery { board_function_converge_delivery_receipt_path }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
-import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
+import gunbc.tailscale_join_converge { tailscale_join_converge_mode }
+import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name, host_credential_custody_converge_mode }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.runner.runner_slot_allocation { runner_host_label, revision_job_slots }
@@ -570,11 +571,11 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     RunnerBrowserToolchainConverge => FleetConvergeModeFacts { wire: "runner_browser_toolchain_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerUserSessionConverge => FleetConvergeModeFacts { wire: runner_user_session_converge_mode_wire, scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerGpuContainerToolchainConverge => FleetConvergeModeFacts { wire: "runner_gpu_container_toolchain_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    HostCredentialCustodyConverge => FleetConvergeModeFacts { wire: "host_credential_custody_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    HostCredentialCustodyConverge => FleetConvergeModeFacts { wire: host_credential_custody_converge_mode, scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     // TAILSCALE FLEET JOIN: the tailscale up join converge (gunbc.tailscale_join_converge). Same shared
     // host-pinned job, same fleet-key reach as the administrator edge its legs travel; the key's exposure is
     // bounded by the converge's own removal leg and the key's 90-day expiry, not by the job boundary.
-    TailscaleJoinConverge => FleetConvergeModeFacts { wire: "tailscale_join_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    TailscaleJoinConverge => FleetConvergeModeFacts { wire: tailscale_join_converge_mode, scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     R2MintPreflight => FleetConvergeModeFacts { wire: "r2_mint_preflight", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     R2BucketEnsure => FleetConvergeModeFacts { wire: "r2_bucket_ensure", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     R2BucketAdminMint => FleetConvergeModeFacts { wire: "r2_bucket_admin_mint", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -2533,7 +2534,10 @@ fn fleet_converge_remote_build_serving_observe_step() -> Step {
     invoke: gunbc_ci_remote_build_serving_observe_invoke(),
     if_condition: fleet_converge_remote_build_serving_observe_step_if,
     timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
-    extra_env: [kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}"))],
+    extra_env: [
+      kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      fleet_converge_subject_rule_env_pair(mode: RemoteBuildServingObserve),
+    ],
   )
 }
 
@@ -2546,7 +2550,10 @@ fn fleet_converge_remote_build_serving_converge_step() -> Step {
     invoke: gunbc_ci_remote_build_serving_converge_invoke(),
     if_condition: fleet_converge_remote_build_serving_converge_step_if,
     timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
-    extra_env: [kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}"))],
+    extra_env: [
+      kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      fleet_converge_subject_rule_env_pair(mode: RemoteBuildServingConverge),
+    ],
   )
 }
 
@@ -2753,6 +2760,20 @@ fn fleet_converge_subject_rule_expression() -> Expression {
       right: StringLiteral { value: split_rule_wire_not_applicable }
     }
   }
+}
+
+// THE RULE FOR ONE STEP, as the env pair the entry downstream reads. The gate expression above decides
+// the value per DISPATCH because one gate step serves every gated mode; a mode step is already pinned to
+// one mode by its own if:, so its value is that mode's spelling straight out of the facts table -- no
+// second chain that could drift from it. srv4 run 44822470270 (remote_build_serving_converge, host=srv4)
+// is the receipt for why the pair belongs on the step and not only on the gate: with the env absent the
+// entry reads an empty rule, maps it to SubjectRuleNotApplicable, and refuses a dispatch whose facts row
+// declares may_be_executors_own.
+fn fleet_converge_subject_rule_env_pair(mode: FleetConvergeWorkflowMode) -> YamlKeyValue {
+  kv(
+    key: fleet_converge_subject_rule_env_name,
+    value: yaml_string(s: fleet_converge_split_rule_wire(rule: fleet_converge_mode_facts(mode: mode).subject_rule)),
+  )
 }
 
 fn fleet_converge_executor_subject_split_gate_if() -> Expression {
@@ -6622,13 +6643,17 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_spark_wireless_link_converge_step(),
         fleet_converge_spark_grants_observe_step(),
         fleet_converge_runner_host_file_observe_step(),
+        // The split precondition runs BEFORE any step whose acts name a machine other than the executor:
+        // it is the cheap refusal (one bash step, no resolve), and the entries repeat the same decision
+        // downstream. Placed after the serving steps it could only contradict them after the fact, which
+        // is what srv4 run 44822470270 showed -- the entry refused and the gate never got to speak first.
+        fleet_converge_executor_subject_split_gate_step(),
         fleet_converge_remote_build_serving_observe_step(),
         fleet_converge_remote_build_serving_converge_step(),
         fleet_converge_remote_build_serving_observe_receipt_upload_step(),
         fleet_converge_host_memory_observe_step(),
         fleet_converge_fleet_host_key_scan_step(),
         fleet_converge_fleet_host_key_scan_receipt_upload_step(),
-        fleet_converge_executor_subject_split_gate_step(),
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_host_cap_release_step(),
         fleet_converge_runner_host_cap_release_receipt_upload_step(),
@@ -8652,7 +8677,10 @@ fn fleet_converge_arrival_service_account_expression() -> String {
 // arrival lane's fix, the same shape fan_observe and the runner-host read steps moved to after the
 // identical kill.
 fn fleet_converge_arrival_converge_step_timeout_minutes() -> Int {
-  fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), live_prior_life_legs_bound()])
+  // THE hpm CHECK LEG enters the fold as its own phase: a leg with no budget row is a leg the
+  // fold silently does not pay for. Bounded by the same arm as every other ipmitool leg
+  // (arrival_hpm_check_leg_bound); it is NOT part of the census roster, which stays the door's.
+  fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, arrival_wet_ipmi_legs_bound(), arrival_hpm_check_leg_bound(), live_prior_life_legs_bound()])
 }
 
 // THE ARRIVAL JOB'S BACKSTOP, built the way the boot job's is (gunbc.fleet.fleet_workflow_steps

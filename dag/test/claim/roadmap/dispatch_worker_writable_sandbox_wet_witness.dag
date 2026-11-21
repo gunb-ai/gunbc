@@ -84,6 +84,10 @@ import extdeps.tools.env { env_absolute_program }
 import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator { attempt_state_prepare_argvs_for_instance }
+// The workdir-free git route (gunbc.git_workdir_free_route): a git argv reaches the repository through
+// its own --git-dir / work-tree, never through a process working directory.
+import extdeps.git { shape_git_commit_in_git_dir_work_tree_args, shape_git_worktree_add_detached_in_repo_args }
+import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_succeeded }
 import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_git, ExecOk, ExecFailed, ExecRefused,
@@ -4968,15 +4972,16 @@ test fn a_symlinked_request_body_is_refused_without_following() -> Bool {
 }
 
 fn sandbox_worktree_commit_cli(worktree: String, git_dir: String) -> ProcessExit {
-  let r = shell.Exec.RunArgv(
-    program: "/usr/bin/git",
-    arguments: [
-      "--git-dir", git_dir, "--work-tree", worktree,
-      "-c", "user.email=probe@gunbc.local", "-c", "user.name=probe",
-      "commit", "--allow-empty", "-q", "-m", "worker-probe",
-    ],
+  let r = run_git_argv_workdir_free(
+    argv: shape_git_commit_in_git_dir_work_tree_args(
+      git_dir: git_dir,
+      work_tree: worktree,
+      user_email: "probe@gunbc.local",
+      user_name: "probe",
+      message: "worker-probe",
+    ),
   )
-  if r.exit_code == 0 {
+  if git_workdir_free_succeeded(run: r) {
     ExitSuccess
   } else {
     exit_failure(reason: "worktree commit refused")
@@ -4987,10 +4992,12 @@ fn prepare_launcher_linked_worktree(instance: HostDashboardInstance, unit: WetLa
   let wt = unit.worktree
   prepare_probe_attempt(instance: instance, unit: unit)
     && shell.Exec.RunArgv(program: "rm", arguments: ["-rf", "--", wt]).exit_code == 0
-    && shell.Exec.RunArgv(
-      program: "git",
-      arguments: ["-C", instance.repo_root as String, "worktree", "add", "--detach", "--", wt, "HEAD"],
-    ).exit_code == 0
+    && git_workdir_free_succeeded(run: run_git_argv_workdir_free(
+      argv: shape_git_worktree_add_detached_in_repo_args(
+        repo: instance.repo_root as String,
+        path: wt,
+      ),
+    ))
 }
 
 fn launcher_worktree_commit(instance: HostDashboardInstance, unit: WetLaunchedUnit, root: NonEmptyStr, claim: String) -> SandboxTouch {

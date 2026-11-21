@@ -33,6 +33,8 @@ import gunbc.guarantee_stall { GuaranteeStall }
 import gunbc.guarantee_stall.roster { guarantee_stall_roster }
 import gunbc.layout_namespace_row { LayoutNamespaceRow }
 import gunbc.layout_namespace_row.roster { layout_namespace_row_roster }
+import gunbc.integration_concern { IntegrationConcern }
+import gunbc.integration_concern.roster { integration_concern_roster }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 
@@ -40,7 +42,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE INHABITANCE PAIRING FOR v2.test.claim.derived_roster, OVER THE REPOSITORY'S REAL LEDGERS
 // (gunbc.source_layout layout_derived_rosters). It reads the live tree on purpose: the claim is that
-// the native derivation and the seed's agree on THIS corpus.
+// the native derivation and the seed's agree on THIS corpus. The fifth pairing,
+// gunbc.integration_concern.roster, is the concern register's: it joined the table when the register
+// moved from one hand-listed line to one file per row, and it is the pairing that a duplicated concern
+// name across two row files turns red on.
 //
 // THE ORACLE IS THE SEED. This file is evaluated by the seed, so `rung_drop_roster`,
 // `recurring_failure_mode_roster` and `guarantee_stall_roster` below are the seed's own in-memory rosters
@@ -123,6 +128,11 @@ fn layout_namespace_row_identity(r: LayoutNamespaceRow) -> String {
   r.repository
 }
 
+// An IntegrationConcern carries `identity`, and every row file spells its own stem in it.
+fn integration_concern_identity(r: IntegrationConcern) -> String {
+  r.identity as String
+}
+
 test fn the_native_rung_drop_roster_agrees_with_the_seeds() -> Bool {
   agrees_with_seed(
     name: "gunbc.rung_drop.roster",
@@ -147,6 +157,15 @@ test fn the_native_layout_namespace_row_roster_agrees_with_the_seeds() -> Bool {
     declaration: "layout_namespace_row_roster",
     directory: "dag/gunbc/layout_namespace_row",
     seed_identities: list_map(xs: layout_namespace_row_roster, f: layout_namespace_row_identity)
+  )
+}
+
+test fn the_native_integration_concern_roster_agrees_with_the_seeds() -> Bool {
+  agrees_with_seed(
+    name: "gunbc.integration_concern.roster",
+    declaration: "integration_concern_roster",
+    directory: "dag/gunbc/integration_concern",
+    seed_identities: list_map(xs: integration_concern_roster, f: integration_concern_identity)
   )
 }
 
