@@ -952,7 +952,6 @@ test fn a_symlinked_request_body_is_refused_without_following() -> Bool {
 
 fn sandbox_worktree_commit_cli(worktree: String, git_dir: String) -> ProcessExit {
   let r = run_git_argv_workdir_free(
-    program: "/usr/bin/git" as NonEmptyStr,
     argv: shape_git_commit_in_git_dir_work_tree_args(
       git_dir: git_dir,
       work_tree: worktree,
