@@ -9,10 +9,10 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.host.host_layout { srv1_host_layout }
 import std.types { FilePath }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, host_capacity_carrier_of }
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved,
-  ComputeCapacityLedger, ComputeBuildPool, compute_capacity_slots, compute_root_directory, compute_capacity_directories, host_capacity_subject_in, compute_capacity_subject, compute_capacity_root, compute_root, compute_memory_partition, compute_memory_ceiling,
+  ComputeCapacityLedger, ComputeBuildPool, compute_capacity_slots, compute_root_directory, compute_capacity_directories, host_capacity_subject_in, compute_capacity_subject, compute_capacity_root, compute_capacity_root_carrier, compute_root, compute_memory_partition, compute_memory_ceiling,
   HostMemoryObservation, HostMemoryObserved, HostMemoryUnobserved, observe_host_memory,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   compute_reserve_on, compute_reserve_against, compute_release, ComputeRelease, ComputeNothingToRelease, ComputeReleased, ComputeReleaseRefused,
@@ -93,7 +93,7 @@ fn instance_at(root: String) -> HostDashboardInstance {
 }
 
 fn subject_at(root: String) -> ComputeCapacitySubject {
-  host_capacity_subject_in(requesting: instance_at(root: root), host_instance: instance_at(root: root), pool: ComputeBuildPool).subject
+  host_capacity_subject_in(requesting: instance_at(root: root), host_home: host_capacity_carrier_of(instance: instance_at(root: root)), pool: ComputeBuildPool).subject
 }
 
 fn reserved_amount(r: ComputeReservation) -> Int {
@@ -237,16 +237,19 @@ test fn two_instances_on_one_host_resolve_to_one_pool_at_one_root() -> Bool {
             && (live.instance_root as String) != (lab.instance_root as String)
             && (live.host_identity as String) == (lab.host_identity as String)
             && (a.partition as String) == (b.partition as String)
-            && (a.instance.instance_id as String) == (b.instance.instance_id as String)
+            && (a.home.instance_root as String) == (b.home.instance_root as String)
             && string_contains(s: a.partition as String, pattern: live.host_identity as String)
             && !string_contains(s: a.partition as String, pattern: lab.instance_id as String)
-            // THE SUBJECT CARRIES THE RESOLVED INSTANCE, NOT A ROOT, so the claim asserts the resolution:
-            // two resolutions of one host name one instance, and the ledger root is the declared member chain
-            // under THAT instance's compute root. The member is not re-spelled here (that is the second literal
-            // this lane deletes); the assertion is containment under the declared compute root.
-            && (a.instance.instance_id as String) == (live.instance_id as String)
-            && (compute_capacity_root(host_instance: a.instance) as String) == (compute_capacity_root(host_instance: live) as String)
-            && string_contains(s: compute_capacity_root(host_instance: a.instance) as String, pattern: compute_root(instance: live) as String)
+            // THE SUBJECT CARRIES THE HOST'S CAPACITY HOME, not an instance: one host has ONE home, which is
+            // what the partition's host keying already states (gunbc#11962 -- keying a pool by the instance
+            // was the mis-keying). So the two resolutions of one host must name one home and one ledger root,
+            // whichever of the host's instances was asked. That a ROSTERED host's home is the host home rather
+            // than the instance's root is decided and discriminated once, in gunbc.compute.host_capacity
+            // host_capacity_home_for; this claim does not restate that decision -- it refuses a second root.
+            // The member chain is not re-spelled here (that is the second literal this lane deletes): the
+            // assertion is containment under the declared root.
+            && (compute_capacity_root_carrier(home: a.home) as String) == (compute_capacity_root_carrier(home: b.home) as String)
+            && string_contains(s: compute_capacity_root_carrier(home: a.home) as String, pattern: a.home.instance_root as String)
             && kibibyte_count(k: a_app) == kibibyte_count(k: b_app)
             && kibibyte_count(k: a_app) == kibibyte_count(k: compute_memory_ceiling(instance: live)) * 2
             && kibibyte_count(k: compute_memory_ceiling(instance: live)) > 0

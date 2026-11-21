@@ -4,7 +4,7 @@ import std.optional { Present, Absent }
 import gunbc.durable_cas_file_store { SlotStore }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, host_capacity_carrier_of }
 import gunbc.compute.compute_attempt_slots_root {
   ComputeSeat, ComputeDispatchSeat, compute_seat_path, compute_seat_holder_line,
   ComputeSeatStore, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready,
@@ -81,7 +81,7 @@ fn fresh_root() -> String {
 // second mint (the witness residual isolated_dashboard_instance names; no rung is claimed for it). What the pool
 // appropriates and what a request takes are arithmetic inputs, supplied here beside the subject.
 fn subject_at(root: String) -> ComputeCapacitySubject {
-  host_capacity_subject_in(requesting: instance_at(root: root), host_instance: instance_at(root: root), pool: ComputeBuildPool).subject
+  host_capacity_subject_in(requesting: instance_at(root: root), host_home: host_capacity_carrier_of(instance: instance_at(root: root)), pool: ComputeBuildPool).subject
 }
 
 fn witness_appropriation() -> Kibibyte {
