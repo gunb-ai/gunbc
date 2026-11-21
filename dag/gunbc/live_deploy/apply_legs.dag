@@ -1611,12 +1611,12 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
             // from before the operator's ruling of 2026-11-10 (gunbc.design_ruling::
             // t6_fabric_storage_excluded_from_live_deploy_2026_11_10) or was written by hand. Silently dropping
             // it would let a stale plan keep believing the deployment owns the endpoint's unit.
-            FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision, emitted_at: none })
+            FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
             FabricStorageServeMapping =>
               if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {
                 ApplyPlanReady { legs: [] }
               } else {
-                deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision, emitted_at: none })
+                deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
               }
             TailnetDoorServeUnit => deploy_apply_tailnet_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
             AgentDoorServeUnit => deploy_apply_agent_door_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision }, oidc_now: oidc_now)
