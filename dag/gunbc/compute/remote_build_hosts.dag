@@ -56,7 +56,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 //     what keeps the host off is the serving charge held by
 //     #gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier. It joins after
 //     that frontier dissolves: candidate row
-//     (#gunbc.compute.remote_build_serving_setup::remote_build_serving_candidate_hosts), observe, converge,
+//     (#gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), observe, converge,
 //     this row -- the order srv3 and srv4 took.
 //   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
 // Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool
