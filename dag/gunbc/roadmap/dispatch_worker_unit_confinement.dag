@@ -27,6 +27,7 @@ import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_propert
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitLaunchManagerRoute, UnitRunOnSystemManager, UnitRunOnUserManager }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.spool_queue { SpoolAttemptExit, RolePending, spool_role_dirs }
+import gunbc.dispatch_provider_words { DispatchProviderWordsDeclaration, dispatch_provider_words }
 import gunbc.roadmap.dispatch_worker_handed_set {
   HandedEntry, HandedWorkingDirectory, HandedReadWrite, HandedReadOnly, HandedStdout, HandedStderr,
   HandedExitRoot, HandedExecutable, HandedCredentialSource, dispatch_worker_source_roots, dispatch_worker_set_working_directory,

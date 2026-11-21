@@ -1032,9 +1032,9 @@ data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
 // Spawned and session-present remain actuator/process observations only — never a claim that the
 // provider completed successfully.
 
-// THE WORD IS NOT SPELLED HERE. The provider word is declared once, beside the provider type, in
-// gunbc.roadmap.dispatch_worker_unit_confinement (dispatch_provider_words / dispatch_provider_word); this is a
-// reader, not a second map. The snapshot store reads the same row, so the label the belt reports a provider
+// THE WORD IS NOT SPELLED HERE. The provider word is declared once, in the std-only leaf
+// gunbc.dispatch_provider_words (the dispatch_provider_words row); confinement, the snapshot store and
+// this actuator all import that one row. This is a reader, not a second map. The snapshot store reads the same row, so the label the belt reports a provider
 // under and the provider segment of the snapshot file name cannot drift apart (review 89845).
 fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
   dispatch_provider_word(provider: provider) as String
