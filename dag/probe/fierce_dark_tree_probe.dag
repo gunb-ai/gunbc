@@ -1,0 +1,86 @@
+module probe.fierce_dark_tree_probe
+
+// THROWAWAY instrument (session fierce-fox-88, node adhoc-3d3a761b-fbc). NOT committed.
+// Purpose: reproduce, as pure evaluation with no effects, the silent window in the
+// approval-broker dark-install step between the last pre-storm effect and the first
+// storm effect (run 40630763823: 04:39:56.586 -> 04:51:33.230, 696.6s, zero effect
+// lines). The dark install walks the release tree (dag + src/v2, ~10k files): it
+// parses the sha256sum lines, sorts them, derives every ancestor directory, joins
+// the hash lines twice (agree test) and folds an install argv per file. Each of
+// those is a candidate for the silent window; this probe times them separately.
+
+import gunbc.host.host_effect_realize {
+  TreeFileHash,
+  tree_file_hashes_of_stdout,
+  tree_entries_agree,
+  tree_hash_lines,
+  sort_tree_file_hashes,
+  tree_ancestor_directories,
+  tree_path_prefixes,
+}
+import gunbc.host.host_effect_realize { coreutils_install_file_owned_argv }
+import std.list { join, list_map, list_sort_by_key }
+import std.string { concat, string_length }
+
+// The real storm size: `find dag src/v2 -type f` on this repo is ~10k files.
+fn sample_entries() -> List<TreeFileHash> {
+  let subs = ["dag", "src"]
+  let areas = list_map(xs: subs, f: fn(a) {
+    map_range(from: 0, to: 5000, f: fn(i) {
+      TreeFileHash {
+        path: join([a, "/gunbc/", int_to_string(i), "/module_", int_to_string(i), ".dag"], ""),
+        hex: hex_of(i: i),
+      }
+    })
+  })
+  concat(xs: areas)
+}
+
+fn hex_of(i: Int) -> String {
+  // 64 chars, deterministic, cheap — the shape sha256sum prints.
+  join(list_map(xs: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], f: fn(k) {
+    let d = (i * (k + 7)) % 16
+    if d == 10 { "a" } else if d == 11 { "b" } else if d == 12 { "c" } else if d == 13 { "d" } else if d == 14 { "e" } else if d == 15 { "f" } else { int_to_string(d) }
+  }), "")
+}
+
+// STEP A only: parse + sort (the storm's front door).
+fn probe_sort() -> Int {
+  count(sort_tree_file_hashes(entries: sample_entries()))
+}
+
+// STEP B only: the ancestor-directory derivation over the sorted walk.
+fn probe_ancestors() -> Int {
+  count(tree_ancestor_directories(files: sample_entries()))
+}
+
+// STEP C only: the receipt text (sort + join of 10k lines).
+fn probe_hash_lines() -> Int {
+  string_length(s: tree_hash_lines(entries: sample_entries()))
+}
+
+// STEP D only: the agreement test, which builds the joined text of BOTH sides.
+fn probe_agree() -> Bool {
+  tree_entries_agree(source: sample_entries(), installed: sample_entries())
+}
+
+// STEP E only: one argv projection per file (the per-call emit machinery the
+// rung_drop names), without any effect.
+fn probe_argv_fold() -> Int {
+  count(list_map(xs: sample_entries(), f: fn(e) {
+    join(xs: coreutils_install_file_owned_argv(mode: "0644", owner: "gunbc", group: "gunbc", source: e.path, dest: e.path), separator: " ")
+  }))
+}
+
+// WHOLE FOLD: everything the dark install does per file, in order.
+fn probe_whole() -> String {
+  let entries = sample_entries()
+  let sorted = sort_tree_file_hashes(entries: entries)
+  let dirs = tree_ancestor_directories(files: sorted)
+  let lines = tree_hash_lines(entries: sorted)
+  let agree = tree_entries_agree(source: sorted, installed: sorted)
+  let argvs = count(list_map(xs: sorted, f: fn(e) {
+    join(xs: coreutils_install_file_owned_argv(mode: "0644", owner: "gunbc", group: "gunbc", source: e.path, dest: e.path), separator: " ")
+  }))
+  join([int_to_string(count(dirs)), ":", int_to_string(string_length(s: lines)), ":", bool_to_string(agree), ":", int_to_string(argvs)], "")
+}
