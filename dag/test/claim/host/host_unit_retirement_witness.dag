@@ -42,6 +42,8 @@ import gunbc.host.host_unit_retirement {
   host_unit_retirement_copy_accepted,
   HostUnitRetirementObservation,
   host_unit_retirement_observed_row_readback,
+  host_unit_retirement_trigger_discharged,
+  host_unit_retirement_trigger_discharged_with,
 }
 
 // THE PLAN IS THE RULING'S, VERBATIM IN SIZE AND IDENTITY.
@@ -173,18 +175,35 @@ test fn host_unit_retirement_observed_readback_uses_the_receipt_path() -> Bool {
   }
 }
 
-// THE CLAIM THAT GOES GREEN ONLY WITH THE LIVE RUN: every ruled row has a committed observation, taken
-// from the dispatch's own receipt, reading retired. Until the dispatch runs AND its receipt is committed
-// as observation rows, this is RED -- and red for the true reason: nothing has torn these units down yet.
-// It is the acceptance evidence of trigger (1), stated as a claim, not as prose. The follow-up commit that
-// fills host_unit_retirement_observed_readings from the receipt names the run id in the PR.
-test fn host_unit_retirement_units_are_retired() -> Bool {
-  let readbacks = host_unit_retirement_committed_readbacks()
-  // EVERY ruled row must be covered, and the count is pinned to the plan's three: an empty or partial
-  // observation list can never pass this claim by vacuity -- 0 != 3 refuses until the receipt is committed.
-  length(host_unit_retirement_rows_for(operator_host_srv14 as String)) == 3
-    && length(readbacks) == 3
-    && host_unit_retirement_all_retired(readbacks)
+// WHAT THE MODEL MAY SAY BEFORE ANY DISPATCH, stated as the standing it actually holds rather than as a
+// claim left red on main: with no observation rows and no committed read-backs, trigger (1) of the srv14
+// frontier is ARMED, not discharged. The assertion that the units ARE retired arrives together with the
+// receipt rows after the live run, as that run's acceptance evidence -- a red claim here would be read as
+// a failure by every later tally, and a stated cause does not repair that.
+test fn host_unit_retirement_trigger_one_stays_armed_until_its_receipt_lands() -> Bool {
+  let rows = host_unit_retirement_rows_for(operator_host_srv14 as String)
+  // today's standing, exactly: nothing observed, nothing committed, nothing discharged.
+  length(host_unit_retirement_observed_readings) == 0
+    && length(host_unit_retirement_committed_readbacks()) == 0
+    && !host_unit_retirement_trigger_discharged()
+    // NOT vacuously false: the same ruled rows, each carrying an observation with a run id and each read
+    // back retired, DO discharge the trigger. Take the receipt rows away again and it is armed once more,
+    // which is what keeps the claim above honest instead of merely easy.
+    && host_unit_retirement_trigger_discharged_with(
+         map(rows, r => HostUnitRetirementObservation {
+           unit: r.unit,
+           load_state: "not-found",
+           active_state: "inactive",
+           unit_file_state: "",
+           retained_path: r.retained_path,
+           retained_readable: true,
+           probed_at: "2026-11-21T00:00:00Z" as NonEmptyStr,
+           // A HYPOTHETICAL id, on purpose: this claim never asserts that a run happened. It asserts what
+           // WOULD discharge the trigger, so the armed verdict above is a real verdict and not a stub.
+           dispatch_run_id: "hypothetical-input-not-a-run-id" as NonEmptyStr,
+         }),
+         map(rows, r => host_unit_retirement_read_row(r, "not-found", "inactive", "", true)),
+       )
 }
 
 // (review 96978) A DROPPED READ IS NOT AN ANSWER. The empty stdout of a refused exec must never reach

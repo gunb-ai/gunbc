@@ -175,6 +175,21 @@ fn host_unit_retirement_committed_readbacks() -> List<HostUnitRetirementReadback
   map(host_unit_retirement_observed_readings, o => host_unit_retirement_observed_row_readback(o))
 }
 
+// WHAT DISCHARGES trigger (1) of `gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier`,
+// said ONCE, so no later reader has to guess: every ruled row needs a committed observation from a real
+// dispatch AND every committed read-back must read retired. Nothing else discharges it -- not authorship,
+// not a plan, not a claim left red on main. A claim cannot stand in for the act; this predicate can.
+fn host_unit_retirement_trigger_discharged_with(readings: List<HostUnitRetirementObservation>, readbacks: List<HostUnitRetirementReadback>) -> Bool {
+  let ruled = host_unit_retirement_rows().length()
+  ruled > 0 && readings.length() == ruled && readbacks.length() == ruled && host_unit_retirement_all_retired(readbacks)
+}
+
+// THE STANDING A BRANCH HAS BEFORE ANY DISPATCH: armed, not discharged. The wet entry reports the same
+// verdict it computed from its own run, and the witness asserts this one against the empty row set.
+fn host_unit_retirement_trigger_discharged() -> Bool {
+  host_unit_retirement_trigger_discharged_with(host_unit_retirement_observed_readings, host_unit_retirement_committed_readbacks())
+}
+
 // THE READBACK, per row, from the reads the wet entry takes. Retired is the only accepting shape.
 type HostUnitRetirementReadback
   = Retired { unit: NonEmptyStr, retained_path: String }
