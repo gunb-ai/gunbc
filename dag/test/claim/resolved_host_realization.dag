@@ -1,0 +1,48 @@
+module test.claim.resolved_host_realization
+
+import std.host_text { HostText, chars }
+import std.types { Char, List }
+import std.algebra { trim }
+import test.claim.unbound_host_spelling { an_unbound_legacy_position_read_keeps_its_legacy_contract }
+
+test fn an_unrelated_host_module_does_not_create_an_explicit_binding() -> Bool {
+  an_unbound_legacy_position_read_keeps_its_legacy_contract()
+}
+
+// trim's declared body is an unreachable seam, including in the memory-stall monitor's PSI parser.
+test fn an_imported_trim_uses_its_declared_host_projection() -> Bool {
+  trim(s: "  aé😀  ") == "aé😀"
+}
+
+// The host declaration is in the same closure. This declaration must still run its own body.
+fn text_of_chars(scalars: List<Char>) -> HostText { "source declaration" }
+
+fn char_at(text: HostText, pos: Int) -> HostText { "source position reader" }
+
+test fn a_source_declaration_precedes_an_ambient_builtin_spelling() -> Bool {
+  char_at(text: "ab", pos: 0) == "source position reader"
+}
+
+test fn the_qualified_host_crossing_keeps_its_selected_declaration() -> Bool {
+  std.host_text.text_of_chars(scalars: chars(text: "aé😀")) == "aé😀"
+}
+
+test fn a_same_named_source_declaration_is_not_the_host_crossing() -> Bool {
+  text_of_chars(scalars: []) == "source declaration"
+}
+
+test fn a_qualified_source_declaration_is_not_the_host_crossing() -> Bool {
+  test.claim.resolved_host_realization.text_of_chars(scalars: []) == "source declaration"
+}
+
+fn call_through_local(text_of_chars: fn(List<Char>) -> HostText) -> HostText {
+  text_of_chars([])
+}
+
+test fn a_callable_local_keeps_the_source_declaration_it_holds() -> Bool {
+  call_through_local(text_of_chars: text_of_chars) == "source declaration"
+}
+
+test fn a_callable_local_keeps_the_host_declaration_it_holds() -> Bool {
+  call_through_local(text_of_chars: std.host_text.text_of_chars) == ""
+}

@@ -1249,6 +1249,8 @@ data tailscale_acl_ssh_section_residue_2026_11_20: DesignRuling = DesignRuling {
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    heal_convergence_job_budget_increase_2026_11_20,
+    text_of_chars_is_a_whole_list_host_realization,
     reference_markers_are_hashtag_form,
     ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
     estimates_are_one_representation_derived_upward,
@@ -1473,4 +1475,20 @@ data pxe_witnesses_need_no_required_ci_2026_11_10: DesignRuling = DesignRuling {
   decided: "2026-11-10",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Decides that the PXE witnesses do not join required CI. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 7 (\"7. Decided: no required CI for the PXE witnesses\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The carrier's sentence, verbatim from that file: \"The operator ruled on 2026-11-10 that the PXE witnesses do not join required CI now. Nothing on the required path evaluates a witness (the declared drop gunbc.rung_drop v1_required_lanes_withdrawn), and the job roster and budgets stay closed to growth (gunbc.design_ruling job_roster_closed_to_growth, ci_job_budgets_closed_to_growth). Each lane runs the witnesses it touches with claim_batch and records the result in its PR.\" Its opening clause is the decision; the rest is smart-crane-730's gloss of the model, so it is cited and not repeated: that drop and those two rulings are rows of gunbc.rung_drop and gunbc.design_ruling. INTERPRETATION (mine, 2026-11-20, not the operator's words): this narrows conformance (gunbc.design_argument::conformance) for this class of witness only, because a check needing a machine on the network and a hand at a console would block every unrelated change whenever the floor is busy -- so its verdict is carried by the work item's own acceptance, not branch protection. It does not weaken the witness: the claim still goes RED against a plant and GREEN against the fix, on the post-wall binary, before the item that owes it is accepted.",
+}
+
+
+data heal_convergence_job_budget_increase_2026_11_20: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "heal_convergence_job_budget_increase_2026_11_20"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, directly in session merry-moth-343 on 2026-11-20, after the diagnosis of heal run 44676645073 on gunbc#16761: \"yeah could you give this more budget/variable budget now? and then could you give me the cleanup/performance stuff after\". This is an explicit instruction to increase this heal job budget, not a timeout-default escalation. IMPLEMENTATION CHOICE, not a numeric quotation from the operator: increase gunbc.ci.repository_ci_profile::gunbc_repository_ci_profile heal.timeout from 90 to 120 minutes; the assistant stated that choice in its next response. The measured run completed its third generation with first_generation_equal=true at 06:17:03Z and was cancelled at 06:17:08Z by the 90-minute job backstop before repair publication. The extra 30 minutes allows publication and runtime variation. Scope: only the heal-generated-artifacts job; no witness timeout, memory envelope, generation bound or check is relaxed. The operator also requested the cleanup/performance follow-up, so this allowance does not discharge the repeated regeneration and scope-selection work tracked by gunbc.plans.read_set_convergence.",
+}
+
+
+data text_of_chars_is_a_whole_list_host_realization: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_of_chars_is_a_whole_list_host_realization"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
+  provenance: "Operator decision msg_65796359-9ec0-4dec-b4a3-b2e29621206a: revise the 2026-10-25 NOT A SEAM decision and model std.host_text::text_of_chars as a declaration-identity host realization. The existing operation is the total whole-list inverse of chars over Unicode scalar values, realized by a linear host writer. This neither declares nor equates the arbitrary-window chars_to_string operation: its clamping and invalid-Int behavior remain separate. Preserve round trips and linear cost; no copied-accumulator .dag substitute and no ambient-name resolver exception.",
 }

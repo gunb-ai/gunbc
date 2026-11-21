@@ -37,6 +37,15 @@ fn primitive_identity_runtime_name(identity: PrimitiveIdentity) -> String {
 // inside a module scope so two same-named declarations collapse into one, and it has no room for a
 // fidelity distinction. Module qualification answers the second; this single carrier answers the
 // first; ProjectionFidelity answers the third.
+//
+// EVALUATION CONSUMES THE SAME DECISION AS EMISSION. Resolve the callable declaration before
+// consulting this relation; a closure-wide entry with the same spelling is not that declaration.
+// HostRealizedSeam requires a realization and cannot fall through to its self-call body.
+// ModeledProjection permits its own declared body when no host realization exists.
+// DivergentProjection and an absent row preserve the selected source declaration. A lexical
+// function value keeps its selected declaration even when its local binder has another name.
+// v1.compiler.infer_lookup::resolved_declaration_call_target already realizes these three cases;
+// the seed evaluator consumes that result rather than maintaining a second semantic roster.
 
 // HostRealizedSeam and ModeledProjection agree at the resolver -- both mean the declaration and the
 // primitive are ONE authority, so a candidate collector must not report them as two. They are kept
@@ -127,8 +136,11 @@ data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "lis
 data primitive_shell_materialize_operation_argv: PrimitiveIdentity = primitive_identity_slug(name: "shell_materialize_operation_argv")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
+data primitive_text_of_chars: PrimitiveIdentity = primitive_identity_slug(name: "text_of_chars")
 data primitive_string_length: PrimitiveIdentity = primitive_identity_slug(name: "string_length")
 data primitive_char_at: PrimitiveIdentity = primitive_identity_slug(name: "char_at")
+
+data primitive_trim: PrimitiveIdentity = primitive_identity_slug(name: "trim")
 data primitive_substring: PrimitiveIdentity = primitive_identity_slug(name: "substring")
 data primitive_sha256_hex_of_text: PrimitiveIdentity = primitive_identity_slug(name: "sha256_hex_of_text")
 data primitive_machine_word_native_operate: PrimitiveIdentity = primitive_identity_slug(name: "machine_word_native_operate")
@@ -178,6 +190,8 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_shell_materialize_operation_argv, module_path: "std.operation_argv", decl_name: "shell_materialize_operation_argv", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_trim, module_path: "std.algebra", decl_name: "trim", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_text_of_chars, module_path: "std.host_text", decl_name: "text_of_chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_char_at, module_path: "std.host_text", decl_name: "char_at", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_substring, module_path: "std.host_text", decl_name: "substring", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_sha256_hex_of_text, module_path: "std.content_hash", decl_name: "sha256_hex_of_text", fidelity: HostRealizedSeam),
