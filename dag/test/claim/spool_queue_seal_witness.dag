@@ -96,7 +96,7 @@ data minted_partitioned_store_source: String = "module probe_spool_queue_minted_
 // CONTROL: there is NO path-taking store mint left to aim at a foreign tree (review 95668). A module that tries
 // to reach the deleted spool_queue path-mint spool_open_uid -- the route that used to accept an arbitrary root +
 // uid -- is refused (MissingExport). This is the foreign-module RED for the path-to-store route.
-data path_taking_route_source: String = "module probe_spool_queue_path_taking_route\nimport std.types { String }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid, SpoolOpenReady, SpoolOpenUidRoot }\nfn f() -> String {\n  match spool_open_uid(kind: SpoolComputeExit {}, instance_root: \"/tmp/compute/root\", uid: 1000) {\n    SpoolOpenReady { store: _ } => \"ready\"\n    SpoolOpenUidRoot => \"refused\"\n  }\n}\n"
+data path_taking_route_source: String = "module probe_spool_queue_path_taking_route\nimport std.types { String }\nimport gunbc.spool_queue { SpoolComputeExit, spool_open_uid }\nfn f() -> String {\n  \"path-taking-route probe: importing the deleted path-taking mint resolves to a MissingExport keyed on spool_open_uid\"\n}\n"
 
 test fn a_forged_key_cannot_defer_an_entry() -> ProcessExit {
   census_exit(census_verdict(census: seal_violations(source: forged_defer_source, subject: "SpoolEntryKey"), holds: fn(n) { n == 1 }))
@@ -151,7 +151,7 @@ test fn a_minted_partitioned_store_has_no_seal_violation() -> ProcessExit {
 // can aim the full-privilege ExecStopPost hook or the reader's listing at a tree or a uid it chose. The sealed store
 // is admitted ONLY through compute_attempt_exit_spool_open(instance). RED unless the path-taking route is gone.
 test fn no_path_taking_mint_survives_in_spool_queue() -> ProcessExit {
-  census_exit(census_verdict(census: total_blocking_census(source: path_taking_route_source), holds: fn(n) { n >= 1 }))
+  census_exit(census_verdict(census: blocking_subject_census(source: path_taking_route_source, wanted_class: "MissingExport", wanted_subject: "spool_open_uid"), holds: fn(n) { n >= 1 }))
 }
 
 // FRESHNESS PAIR for the compute exit spool realization: a reader that reaches the done directory THROUGH the

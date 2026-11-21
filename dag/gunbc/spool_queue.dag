@@ -1035,8 +1035,10 @@ data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
 // path derivation over that declaration; the sealed PartitionedSpoolStore and its SINGLE admitting mint live
 // in the compute layer (gunbc.compute.host_capacity), where the instance root and the principal uid are
 // admitted by authority (compute_root on the instance, and the process's own effective uid) -- so there is
-// NO path-taking store mint in this leaf for a foreign module to aim at an arbitrary tree. A mismatched
-// value is UNWRITABLE, not runtime-refused (review 95668).
+// NO path-taking store mint in this leaf: the mint takes the instance and never a path, and the root is
+// derived from the instance and this declaration. The instance-root-authoring residual is documented in
+// gunbc.roadmap.roadmap_dashboard_instance (rung honesty, refused by a check not made impossible), and the
+// wider mode in gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module (review 95668).
 // ================================================================================================
 
 // THE CLOSED PARTITIONED KINDS, DISJOINT from SpoolKind: the compute-exit spool is its OWN kind (never the
