@@ -39,7 +39,7 @@ data a_fleet_route_keyed_by_an_unanchored_address_outlives_its_address: Recurrin
   ],
 
   evidence: [
-    DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrolled_anchor", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv14_host_lan_endpoint", field: WholeDeclaration },
   ]
 }

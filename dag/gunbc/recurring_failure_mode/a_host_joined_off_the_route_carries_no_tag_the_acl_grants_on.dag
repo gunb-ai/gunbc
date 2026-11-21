@@ -40,6 +40,6 @@ data a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on: RecurringFail
 
   evidence: [
     DeclarationRef { module_path: "gunbc.tailscale_join_converge", decl_name: "tailscale_join_converge_mode", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrolled_anchor", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "enrolled_fingerprint_for", field: WholeDeclaration },
   ]
 }

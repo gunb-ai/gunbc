@@ -41,8 +41,8 @@ data an_enabled_unit_names_hardware_that_no_longer_enumerates: RecurringFailureM
 
   evidence: [
     DeclarationRef { module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "fleet_physical_host_units", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.fleet.gpu_device_observation", decl_name: "gpu_device_observation_by_gpu", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "butch_a2s_removed_pending_sale", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.systemctl_show_read", decl_name: "systemctl_show_property_read", field: WholeDeclaration },
   ]
 }
