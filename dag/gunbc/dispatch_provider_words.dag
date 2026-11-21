@@ -1,0 +1,29 @@
+module gunbc.dispatch_provider_words
+
+// THE PROVIDER WORDS ROW, MOVED OUT OF gunbc.roadmap.dispatch_worker_unit_confinement so the row sits BELOW
+// every reader. It used to live beside the provider type, which was fine until the confinement module itself
+// grew imports upward (dispatch_worker_handed_set, compute.unit_bounds): then the snapshot store reading the
+// row reached unit_bounds -> live_deploy.spec -> roadmap.dashboard_instance_directories ->
+// dispatch_credential_acquisition -> dispatch_credential_snapshot -> the row's module, closing the one thing
+// the import graph may never do. The row is data, not confinement law, so the shared declaration moves below
+// both modules (the ruling that moved roadmap_metering_closing_provision down is the same precedent). The
+// confinement module now imports THIS module; every reader reads the one row, so an actuator label and a
+// snapshot file name still cannot drift apart (review 89845).
+
+import std.types { NonEmptyStr }
+
+type DispatchProviderWordsDeclaration {
+  claude: NonEmptyStr
+  codex: NonEmptyStr
+  cursor: NonEmptyStr
+  gunbc_harness: NonEmptyStr
+  gunbc_replay: NonEmptyStr
+}
+
+data dispatch_provider_words: DispatchProviderWordsDeclaration = DispatchProviderWordsDeclaration {
+  claude: "claude" as NonEmptyStr,
+  codex: "codex" as NonEmptyStr,
+  cursor: "cursor" as NonEmptyStr,
+  gunbc_harness: "gunbc-harness" as NonEmptyStr,
+  gunbc_replay: "gunbc-replay" as NonEmptyStr,
+}
