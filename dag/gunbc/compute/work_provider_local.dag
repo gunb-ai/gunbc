@@ -4094,23 +4094,26 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
 // THE CENSUS DOOR, OVER THE PROCESS WIRE -- a READ: no slot is written, no lease is touched, nothing is
 // released here. The answer is one line per reference in the census
 // (`recover-catalog terminate|settle|hold <reference> <trigger>`), exit 0 when the census was established and
-// exit 2 when the observation is unknown -- the same three exits the recovery door itself uses, so a leg that
-// reads this and a leg that writes there agree about what a number means.
-// DECLARED FRONTIER for exit 0: the caller this is shaped for is the serving converge's
-// recovery leg (its action kind RecoverStaleSeat, at the rank after RecordServeIdentity, gated on that
-// identity leg being Met), which does NOT ship in this change; the trigger for that leg is the serve route
-// resolving again (done by #16828, which cut compute_seat_ensure out of that route), since until that entry
-// resolves the converge's witnesses cannot be run. This change exercises the exit-2 path from its witness
-// (`the_cli_door_exits_two_when_no_instance_resolves`), which asserts the refusal exit. Exit 0 is exercised
-// by increment 2's live proof over a fleet-converge run on --ref main.
+// exit 2 when the observation is unknown -- the same exits the recovery door itself uses, spoken from
+// the ONE declared table (recover_door_exit_table), so a leg that reads this and a leg that writes
+// there agree about what a number means.
+// ITS CONSUMER SHIPS IN THE SAME PROGRAM THIS DOOR WAS OPENED FOR: the serving converge's recovery leg
+// — the observe runs THIS door as the serving account over the ssh edge (its rendering parsed back by
+// recover_catalog_leg_reading, beside the door) and classifies every seat through it, and the plan
+// renders the stale entries as RecoverStaleSeat at the rank after RecordServeIdentity, gated on that
+// identity leg being Met (dag/gunbc/compute/remote_build_serving_converge.dag::serving_leg_seat_census,
+// converge_recover_stale_seat; program
+// gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold). The door's exit-2 path is
+// asserted by `the_cli_door_exits_two_when_no_instance_resolves` in the catalog witness, and both exits
+// are exercised end to end by the converge witness's census cells and the srv1 live proof.
 fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } =>
-      CliWirePrintable { bytes: join(["recover-catalog unknown: no dashboard instance is rooted at ", r, "\n"], ""), exit: ExitFailure { code: 2, reason: "recover-catalog: the host's dashboard instance could not be resolved" } }
+      CliWirePrintable { bytes: join(["recover-catalog unknown: no dashboard instance is rooted at ", r, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the host's dashboard instance could not be resolved" } }
     DashboardInstanceResolved { instance } =>
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
-          CliWirePrintable { bytes: join(["recover-catalog unknown: ", d, "\n"], ""), exit: ExitFailure { code: 2, reason: "recover-catalog: the seat census could not be established" } }
+          CliWirePrintable { bytes: join(["recover-catalog unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the seat census could not be established" } }
         RecoverCatalogEstablished { entries } =>
           CliWirePrintable {
             bytes: concat("recover-catalog established\n", fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),
@@ -4125,10 +4128,10 @@ fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
 // answer and must not read as a tool failure), 2 recovery could not establish enough to answer.
 fn compute_recover_cli(repo_root: String, reference: String, receipt_path: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
-    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute-recover: no dashboard instance is rooted at ", r], "") }
+    DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["compute-recover: no dashboard instance is rooted at ", r], "") }
     DashboardInstanceResolved { instance } =>
       if trim(s: reference) == "" {
-        ExitFailure { code: 2, reason: "compute-recover: a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)" }
+        ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "compute-recover: a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)" }
       } else {
         compute_recover_exit(
           outcome: compute_recover_attempt(instance: instance, reference: trim(s: reference) as NonEmptyStr),
@@ -4145,37 +4148,61 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
   let wire = compute_recovery_wire(r: outcome)
   let written = Filesystem.Write(path: receipt_path, content: join([wire, "\n"], ""))
   if !written.success {
-    ExitFailure { code: 2, reason: join(["compute-recover: the receipt could not be written to ", receipt_path, ": ", written.error, "; the outcome was ", wire], "") }
+    ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["compute-recover: the receipt could not be written to ", receipt_path, ": ", written.error, "; the outcome was ", wire], "") }
   } else {
     match outcome {
       RecoveryReleased { reference: _, verdict: _, seat: _ } => ExitSuccess
       RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => ExitSuccess
-      RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => ExitFailure { code: 2, reason: wire }
-      RecoveryDeclined { reference: _, why: _ } => ExitFailure { code: 1, reason: wire }
-      RecoveryRefused { detail: _ } => ExitFailure { code: 2, reason: wire }
+      RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: wire }
+      RecoveryDeclined { reference: _, why: _ } => ExitFailure { code: recover_door_exit_code(RecoverDoorDeclined), reason: wire }
+      RecoveryRefused { detail: _ } => ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: wire }
     }
   }
 }
 
-// THE ONE DECLARED MAPPING OF THE RECOVERY DOORS' EXIT CODES -- the READING half, paired with
-// compute_recover_exit above, which is the only producer of these numbers: 0 is released or
-// nothing-held, 1 is declined (a legitimately held seat), 2 is refused, settled-but-held, or a receipt
-// write that failed. The census door (compute_recover_catalog_cli) speaks the same 0/2 pair and the
-// read-back door below keeps to the same three, so a leg that runs any of them over ssh maps the
-// number through THIS function rather than comparing exit literals at the leg -- the leg's idea of
-// what a number means stays the door's (gunbc.design_argument::single_authority).
+// THE ONE DECLARED TABLE OF THE RECOVERY DOORS' EXIT CODES. The recovery doors — the recovery door
+// (compute_recover_cli with compute_recover_exit), the census door (compute_recover_catalog_cli) and
+// the read-back door (compute_recover_readback_cli) — are three processes on ONE verdict, and this is
+// the only place their numbers are typed. The producers ask recover_door_exit_code for the number of
+// the verdict they mean; the reader — the serving converge's recovery leg, which sees only an exit
+// code across the ssh edge — asks recover_door_verdict, over the same rows. No door and no leg keeps
+// its own copy of 0, 1 or 2 (gunbc.design_argument::single_authority: "a second place that
+// independently decides it is a fork"; review 97267, finding 1).
 type RecoverDoorVerdict
   = RecoverDoorSettled
   | RecoverDoorDeclined
   | RecoverDoorUnknown
   | RecoverDoorUnmapped { code: Int }
 
+type RecoverDoorExitTable { settled: Int, declined: Int, unknown: Int }
+
+fn recover_door_exit_table() -> RecoverDoorExitTable {
+  RecoverDoorExitTable { settled: 0, declined: 1, unknown: 2 }
+}
+
+// The number a verdict is spoken with: 0 is released or nothing-held, 1 is declined (a legitimately
+// held seat — the SAFE answer, which must not read as a tool failure), 2 is refused, settled-but-held,
+// a receipt write that failed, or an observation that could not establish itself. A verdict that came
+// from outside the mapping carries the number it arrived with; a door never invents a new one.
+fn recover_door_exit_code(verdict: RecoverDoorVerdict) -> Int {
+  let t = recover_door_exit_table()
+  match verdict {
+    RecoverDoorSettled => t.settled
+    RecoverDoorDeclined => t.declined
+    RecoverDoorUnknown => t.unknown
+    RecoverDoorUnmapped { code: c } => c
+  }
+}
+
+// The reading half, over the SAME rows: what a number heard across the process edge means. A code the
+// table does not speak is unmapped, and the leg fails on it rather than guessing at intent.
 fn recover_door_verdict(code: Int) -> RecoverDoorVerdict {
-  if code == 0 {
+  let t = recover_door_exit_table()
+  if code == t.settled {
     RecoverDoorSettled
-  } else if code == 1 {
+  } else if code == t.declined {
     RecoverDoorDeclined
-  } else if code == 2 {
+  } else if code == t.unknown {
     RecoverDoorUnknown
   } else {
     RecoverDoorUnmapped { code: code }
@@ -4389,20 +4416,20 @@ fn compute_recover_readback_reading(instance: HostDashboardInstance, subject: Co
 fn compute_recover_readback_cli(repo_root: String, reference: String) -> CliWireResponse {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } =>
-      CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["no dashboard instance is rooted at ", r], "")), exit: ExitFailure { code: 2, reason: "recover-readback: the host's dashboard instance could not be resolved" } }
+      CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["no dashboard instance is rooted at ", r], "")), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the host's dashboard instance could not be resolved" } }
     DashboardInstanceResolved { instance } =>
       if trim(s: reference) == "" {
-        CliWirePrintable { bytes: recover_readback_unknown_line(detail: "a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)"), exit: ExitFailure { code: 2, reason: "recover-readback: the reference is required" } }
+        CliWirePrintable { bytes: recover_readback_unknown_line(detail: "a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)"), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the reference is required" } }
       } else {
         match compute_capacity_subject(instance: instance) {
           ComputeSubjectHostUnresolved { host: h } =>
-            CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["the capacity subject for host ", h, " does not resolve"], "")), exit: ExitFailure { code: 2, reason: "recover-readback: the capacity subject could not be resolved" } }
+            CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["the capacity subject for host ", h, " does not resolve"], "")), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the capacity subject could not be resolved" } }
           ComputeSubjectResolved { subject, appropriation: _ } =>
             match compute_recover_readback_reading(instance: instance, subject: subject, reference: trim(s: reference) as NonEmptyStr) {
               RecoverReadbackFacts { record: record, charge: charge } =>
                 CliWirePrintable { bytes: recover_readback_line(record: record, charge: charge), exit: ExitSuccess }
               RecoverReadbackUnknown { detail: d } =>
-                CliWirePrintable { bytes: recover_readback_unknown_line(detail: d), exit: ExitFailure { code: 2, reason: "recover-readback: the read-back could not be established" } }
+                CliWirePrintable { bytes: recover_readback_unknown_line(detail: d), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the read-back could not be established" } }
             }
         }
       }
