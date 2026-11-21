@@ -31,7 +31,7 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
 // remote_build_serving_candidate_hosts moved to this module on 2026-11-20, beside the live dispatch gate.
-import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_serving_candidate_hosts }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_host_is_serving_candidate, remote_build_serving_candidate_hosts }
 import gunbc.compute.host_capacity { host_capacity_home_directories, host_capacity_home_directories_admitted }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
@@ -1504,15 +1504,33 @@ test fn candidate_host_serving_ledger_rows_equal_the_admitted_host_capacity_rows
   }
 }
 
-// RED CONTROL: the roster-gated host_capacity_home_directories(srv2) — what the PR asked for
-// before this fix — is the SERVICE-ONLY posture and must DIFFER from the serving desired state.
-// If admission ever stops changing anything here, this cell goes red, not the settled receipt.
+// RED CONTROL, re-keyed with this PR. Before it, the roster alone set a host's host-home ledger
+// posture, so the non-rostered srv2 answered the SERVICE-ONLY rows and differed from what a converge
+// installs. The posture now follows the CANDIDATE row (the provisioning authority: a converge has to
+// create a traversable, compute-grouped /opt/gunbc/compute/capacity home BEFORE the roster admits the
+// host), so for a candidate the roster-gated route AGREES with the converge — that agreement is the
+// change, and pinning it here is what stops the old claim from being quietly satisfied by the new
+// authority. The discriminating host is the one on NEITHER list: srv9 is neither candidate nor
+// rostered, so its host-home rows must stay service-only (no row carries the ledger group) and must
+// differ from what a converge installs for the candidate. If candidacy ever stops changing anything
+// here, THIS cell goes red, not the settled receipt.
 test fn pre_admission_ledger_posture_is_not_the_serving_posture() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv2) {
     Absent => false
-    Present { value: d } =>
+    Present { value: d } => {
+      let srv2_home_dirs = host_capacity_home_directories(host: operator_host_srv2)
+      let srv9_home_dirs = host_capacity_home_directories(host: operator_host_srv9)
+      // srv2 is a candidate but is never live-dispatched, and its home carries the shared grouping.
       !remote_build_host_is_serving(host: operator_host_srv2)
-        && !ledger_rows_equal(a: d.ledger_dirs, b: host_capacity_home_directories(host: operator_host_srv2))
+        && remote_build_host_is_serving_candidate(host: operator_host_srv2)
+        && ledger_rows_equal(a: d.ledger_dirs, b: srv2_home_dirs)
+        && any(srv2_home_dirs, t => (owned_directory_owner(t: t).group as String) == "gunbc-compute")
+        // srv9 is on neither serving row, so nothing groups its home for the compute pool.
+        && !remote_build_host_is_serving_candidate(host: operator_host_srv9)
+        && !remote_build_host_is_serving(host: operator_host_srv9)
+        && !any(srv9_home_dirs, t => (owned_directory_owner(t: t).group as String) == "gunbc-compute")
+        && !ledger_rows_equal(a: d.ledger_dirs, b: srv9_home_dirs)
+    }
   }
 }
 
