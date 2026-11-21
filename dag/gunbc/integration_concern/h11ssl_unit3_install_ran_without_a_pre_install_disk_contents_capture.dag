@@ -1,0 +1,45 @@
+module gunbc.integration_concern.h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 20: main 18cabce704f (#16564).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, h11ssl_unit3_intake_sighting_revision }
+
+// AN INSTALL THAT ALREADY HAPPENED LEAVES NO PRE-INSTALL DISK CAPTURE.
+data h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.host.network_install", decl_name: "TargetDiskContents"),
+    requirement: "The install subject admits a target disk only on a contents report read by BOTH the lsblk block reader and the sfdisk partition-table reader, showing no partition table and no filesystem. That capture is taken before the install writes anything, and for this unit it no longer exists -- the OS is installed and the disk is written. The model can say what an install admitted, and it can carry a dated disk READING taken afterwards, but it has no standing that says plainly: this unit's install admission was satisfied outside the model and cannot be evidenced after the fact. Without that standing, the only honest row available reads as if the admission evidence exists.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.host.network_install", decl_name: "admit_target_disk_contents"),
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.host.network_install", decl_name: "TargetDiskContents"),
+    tail: [
+      decl_ref(module_path: "gunbc.host.network_install", decl_name: "admit_target_disk_contents"),
+      decl_ref(module_path: "gunbc.fleet.machine_target_disk_observations", decl_name: "machine_target_disk_observations"),
+    ],
+  },
+  question: "What standing does a disk observation carry when the install it describes already ran by hand, and how does the witness keep it from being read as an empty-disk admission?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_intake_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.host.network_install", decl_name: "DiskContentsReport"),
+        },
+        tail: [],
+      },
+      account: "Sighted by still-fox-404 on 2026-11-15: the unit's OS is already installed, so the empty-disk capture the install subject admits on can no longer be taken for it. The only disk reading available is a post-install one, and it is labelled as a post-install reading wherever it is written, never as an admission.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
