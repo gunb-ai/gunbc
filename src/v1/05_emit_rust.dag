@@ -19747,9 +19747,9 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     // THE TWO DEADLINE CHANNELS ARE NOT REALIZED ON THIS TARGET. They are NOT given a placeholder
     // value and not swept into a wildcard: they route through the SAME typed refusal the emit gate
     // uses, so a compiled body that ever reached here would carry the error expression naming the
-    // channel and the target rather than an answer. The drop -- what is dropped, why, and what
-    // closes it -- is a row, not a comment:
-    // @ref(gunbc.rung_drop.compiled_shell_wall_deadline_unrealized::compiled_shell_wall_deadline_unrealized)
+    // channel and the target rather than an answer. What sits below its ceiling here, why, and what
+    // would close it is a row, not a comment:
+    // @ref(gunbc.guarantee_stall.compiled_shell_leg_deadline_enforcement_stall::compiled_shell_leg_deadline_enforcement_stall)
     ShellChanOverran => emit_unrealizable_shell_channel(channel: ShellChanOverran)
     ShellChanWallDeadlineSeconds => emit_unrealizable_shell_channel(channel: ShellChanWallDeadlineSeconds)
   }
