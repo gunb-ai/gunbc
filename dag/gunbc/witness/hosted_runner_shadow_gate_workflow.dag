@@ -183,7 +183,8 @@ data shadow_gate_fork_guard: String = "github.event_name == 'merge_group' || git
 data shadow_gate_ci_ssh_key_file: String = "$RUNNER_TEMP/remote-build-ci-ssh-key"
 
 // The fetched Tailscale OAuth client SECRET reaches the tailscale action's step through this env
-// name: a value appended to $GITHUB_ENV is masked by the runner in all later step logs.
+// name. $GITHUB_ENV alone does NOT mask: the fetch step registers the value with ::add-mask::
+// first, and only then appends it, so every later log redacts it.
 data shadow_gate_oauth_secret_env: String = "TS_OAUTH_SECRET"
 
 // The config-check script no longer probes secrets -- the credentials are not GitHub secrets and
@@ -290,8 +291,8 @@ fn shadow_gate_tailscale_join_step() -> Step {
       // #gunbc.tailscale_ci_oauth_client::tailscale_oauth_client_secret_ref; the annotation is where
       // an operator reads the id, not a second source the job resolves.)
       kv(key: "oauth-client-id", value: yaml_string(s: ci_oauth_client_id)),
-      // The fetched secret reaches this step as job env: a value appended to $GITHUB_ENV by the
-      // fetch step is masked by the runner in every later log.
+      // The fetched secret reaches this step as job env: the fetch step registers it with
+      // ::add-mask:: before appending it to $GITHUB_ENV, so every later log redacts it.
       kv(key: "oauth-secret", value: yaml_string(s: concat("${{ env.", shadow_gate_oauth_secret_env, " }}"))),
       kv(key: "tags", value: yaml_string(s: shadow_gate_tailscale_tags)),
       kv(key: "args", value: yaml_string(s: shadow_gate_tailscale_args)),
@@ -335,6 +336,11 @@ fn shadow_gate_ci_credentials_fetch_script() -> String {
     "umask 077\n",
     "HDR_FILE=\"$RUNNER_TEMP/shadow-gate-auth-header\"\n",
     "VAL_FILE=\"$RUNNER_TEMP/shadow-gate-oauth-val\"\n",
+    "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"\n",
+    // KEY_FILE is set HERE, not in the step's env block: env values are literal strings GitHub
+    // pastes unchanged, and only the script's own bash expands $RUNNER_TEMP. The gate steps'
+    // --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key lines expand the same way, so all
+    // three land on one path (review 97111 finding 2).
     "cleanup() { rm -f \"$HDR_FILE\" \"$VAL_FILE\"; }\n",
     "trap cleanup EXIT\n",
     gunbc_ci_auth_header_file_write_command_to(header_file: "HDR_FILE"),
@@ -347,21 +353,26 @@ fn shadow_gate_ci_credentials_fetch_script() -> String {
     "curl -fsSL -H @\"$HDR_FILE\" \"",
     shadow_gate_ssh_key_access_url(),
     "\" | python3 -c 'import sys,json,base64; sys.stdout.write(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]).decode(\"utf-8\"))' > \"$KEY_FILE\"\n",
-    "rm -f \"$HDR_FILE\"\n",
     "chmod 600 \"$KEY_FILE\"\n",
     "ACTUAL_FP=\"$(ssh-keygen -lf \"$KEY_FILE\" | awk '\{print $2}')\"\n",
     "EXPECTED_FP=\"",
     remote_build_client_key_ci.fingerprint,
     "\"\n",
     "if [ \"$ACTUAL_FP\" != \"$EXPECTED_FP\" ]; then\n  rm -f \"$KEY_FILE\"\n  echo \"::error::fetched remote-build CI SSH key fingerprint $ACTUAL_FP != the modeled $EXPECTED_FP; refusing to connect with it\" >&2\n  exit 1\nfi\n",
-    // THE TAILSCALE OAUTH CLIENT SECRET. A value appended to $GITHUB_ENV is masked by the runner
-    // in every later log; the tailscale step reads it as env, never as a secret-context reference.
+    // THE TAILSCALE OAUTH CLIENT SECRET. The header file is deleted only AFTER BOTH fetches -- one
+    // mint, two reads (review 97111 finding 1: an rm between them made the second curl impossible).
+    // The value is registered with ::add-mask:: BEFORE it joins $GITHUB_ENV: appending to
+    // $GITHUB_ENV alone does NOT mask (review 97111 finding 3) -- add-mask is what makes every
+    // later log redact it. The tailscale step reads it as env, never as a secret-context reference.
     "curl -fsSL -H @\"$HDR_FILE\" \"",
     shadow_gate_oauth_secret_access_url(),
     "\" | python3 -c 'import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)[\"payload\"][\"data\"]).decode(\"utf-8\"), end=\"\")' > \"$VAL_FILE\"\n",
+    "rm -f \"$HDR_FILE\"\n",
+    "VAL=\"$(cat \"$VAL_FILE\")\"\n",
+    "echo \"::add-mask::$VAL\"\n",
     "printf '%s=%s\\n' \"",
     shadow_gate_oauth_secret_env,
-    "\" \"$(cat \"$VAL_FILE\")\" >> \"$GITHUB_ENV\"\n",
+    "\" \"$VAL\" >> \"$GITHUB_ENV\"\n",
     "rm -f \"$VAL_FILE\"\n",
   ], "")
 }
@@ -377,7 +388,6 @@ fn shadow_gate_ci_credentials_fetch_step() -> Step {
     working_directory: none,
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
-      kv(key: "KEY_FILE", value: yaml_string(s: shadow_gate_ci_ssh_key_file)),
     ] },
     if_condition: none,
     continue_on_error: none,

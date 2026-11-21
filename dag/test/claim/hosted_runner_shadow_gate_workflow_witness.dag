@@ -130,6 +130,13 @@ test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -
     && contains(haystack: rendered, needle: "oauth-secret: ${{ env.TS_OAUTH_SECRET }}")
     && contains(haystack: rendered, needle: "id-token: write")
     && contains(haystack: rendered, needle: "EXPECTED_FP=\"SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM\"")
+    // The path is set in SCRIPT (env values are literal), the secret is ::add-mask::-registered
+    // before $GITHUB_ENV, and the bearer header is deleted exactly ONCE -- after both fetches
+    // (review 97111: an rm between them made the OAuth curl impossible; and $GITHUB_ENV alone
+    // does not mask).
+    && contains(haystack: rendered, needle: "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
+    && contains(haystack: rendered, needle: "echo \"::add-mask::$VAL\"")
+    && occurrences(haystack: rendered, needle: "rm -f \"$HDR_FILE\"\n") == 1
     && !(contains(haystack: rendered, needle: "${{ secrets."))
 }
 
