@@ -276,12 +276,14 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 // DECLARED-UNCHECKED RESIDUAL for git (gunbc.design_argument::guarantee_ladder / fail_closed): this
 // entry returns ProcessObservation and reaches shell.Exec.RunArgv WITHOUT the git route wall gate. Its
 // one git caller, worker_git_subtree_apply_spawn_wet_witness wre3_gate_observation (a read-only
-// `rev-parse --absolute-git-dir` premise), sits HERE and so is never inspected by the wall -- and
-// because that argv leads with `-c safe.directory=...` (not `-C`), if it WERE routed through the gate it
-// would be refused, since the leading-subcommand walk stops at `safe.directory=...` before reaching the
-// read-only verb. It is left on the unchecked observe route (the migration scope was git-through-capture;
-// observe was left unchecked); the trigger to gate it is the same as run_shell_command's -- a git caller
-// that needs a typed not-spawned result. Counted here, not concealed.
+// `rev-parse --absolute-git-dir` premise), sits HERE and so is never inspected by the wall. Note: even
+// though that argv leads with `-c safe.directory=...`, its verb `rev-parse` IS on the wall's
+// read-only allowlist, so if it WERE routed through the gate it would be admitted via the read-only
+// verb (the leading-subcommand walk correctly skips the `-c`/`--git-dir` operands and lands on
+// `rev-parse`) -- it does not need `-C`-first reordering. It is left on the unchecked observe route
+// (the migration scope was git-through-capture; observe was left unchecked); the trigger to gate it is
+// the same as run_shell_command's -- a git caller that needs a typed not-spawned result. Counted here,
+// not concealed.
 fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) -> ProcessObservation
 {
   match command_over_transport(command: command, transport: transport) {
@@ -377,12 +379,19 @@ fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTra
 
 // THE UNCHECKED ROUTE, declared. Capture's product is stdout, so it returns ProcessOutcome (the three
 // output arms) via run_shell_command_observe (the ProcessObservation record path). It carries NO git
-// route wall gate: a bare mutating git argv forwarded here would reach RunArgv un-walled. Every
-// KNOWN git caller has been migrated onto run_shell_command_observe_outcome (gated), so capture-on-git
-// is a declared-unchecked residual with no live caller; the trigger to gate it is a consumer that needs
-// capture's stdout product on a git command -- at which point ProcessOutcome must grow a not-spawned
-// concept through the single-path (it cannot redeclare ProcessNotSpawned: the compiler rejects a second
-// same-named variant in this module, and it already lives on ProcessRunOutcome).
+// route wall gate: a bare mutating git argv forwarded here would reach RunArgv un-walled. MOST git
+// callers have been migrated onto run_shell_command_observe_outcome (gated), but ONE live caller
+// remains on capture, declared here as a bounded residual (gunbc.design_argument::fail_closed):
+//   gunbc.runner.runner_revision_job_guest::revision_job_tree_steps (git init / add / snapshot commit /
+//   diff-tree, L100-110) is executed through capture by test/claim/runner/runner_revision_job_guest_
+//   wet_witness::run_all. It is DEFERRED onto the unchecked capture route (not the accepted PR-1
+//   migration scope) because it reads only the run/did-run Bool via classify_process_observation, not
+//   stdout, and its commands are all `-C`-dressed (the shipped builders), so it is the sanctioned
+//   pattern -- leaving it is a counted gap, not a concealed one. TRIGGER to gate capture (which needs a
+//   typed not-spawned result -- a refusal cannot ride ProcessOutcome without fabricating an exit code,
+//   and it cannot redeclare ProcessNotSpawned: the compiler rejects a second same-named variant in this
+//   module, where it already lives on ProcessRunOutcome): the first capture-on-git caller that reads
+//   stdout off a git command, or a bare (undressed) mutating git argv reaching capture.
 fn run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ProcessOutcome
 {
   classify_process_observation(

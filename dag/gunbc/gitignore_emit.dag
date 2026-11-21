@@ -1,6 +1,7 @@
 module gunbc.gitignore_emit
 
 import std.types { String, List, Bool }
+import std.filesystem { path_basename }
 import std.workspace_artifact {
   WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance,
   footprint_display, ignore_reason_label
@@ -174,9 +175,14 @@ fn without_suffix(s: String, suffix: String) -> String {
   substring(s: s, start: 0, end: s.length() - suffix.length())
 }
 
-fn path_basename(path: String) -> String {
-  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
-}
+// path_basename is std.filesystem's (root_generalization -- this was a byte-similar fold that differed
+// ONLY in not skipping empty segments, so "a/b/" returned "" here vs "b" in std). MIGRATED onto the
+// single spelling, with the explicit DECISION that trailing-slash now follows POSIX basename ("a/b/" ->
+// "b"), which is the more correct reading for a gitignore pattern matched against a directory path. The
+// divergence was unreachable here: pattern_matches feeds real tracked paths (no trailing slash; the
+// trailing-"/" dir-pattern cases are handled by the separate dir branches above), so no emitted arm's
+// matching changes. The old copy also shared the name `path_basename` while meaning something else -- a
+// meaning fork (gunbc.design_argument::single_authority); deleting it removes the fork.
 
 // A LEADING SLASH ON A DIRECTORY PATTERN BINDS IT TO THE ROOT. Without this arm the dir branch
 // below strips the slash and answers the unanchored question for every anchored pattern, so the

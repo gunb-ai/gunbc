@@ -102,10 +102,24 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
 
 // THE LAST COMPONENT OF A PATH, the final non-empty segment. The dual of path_parent_directory.
 // Empty string and "/" both yield "" (POSIX basename of "/" is "/" but no caller needs that; if
-// one does it gets its own predicate). THE single spelling of this fold (root_generalization): it is
-// consumed by extdeps.git::is_git_program (classify the program by basename, not spelling),
-// extdeps.virtualization.firecracker (jailer exec-file basename), extdeps.docker.cgroup (cgroup last
-// segment) and gunbc.live_deploy.member_observe, each of which formerly carried a byte-identical copy.
+// one does it gets its own predicate). THE single spelling of this fold (root_generalization): after
+// consolidating every hand-rolled copy, `grep 'fn path_basename' dag` and the fold body itself both
+// resolve ONLY to this definition. Consumers, each of which formerly carried its own copy of the fold:
+//   extdeps.git::is_git_program (classify the program by basename, not spelling);
+//   extdeps.virtualization.firecracker (jailer exec-file basename);
+//   extdeps.docker.cgroup (cgroup last segment);
+//   gunbc.live_deploy.member_observe; gunbc.owned_directory (owned_directory_basename);
+//   gunbc.roadmap.dispatch_worker_unit_confinement (dispatch_worktree_entry_name);
+//   gunbc.gitignore_emit and gunbc.url_file_acquisition (their old `path_basename` copies kept a
+//   trailing-slash empty segment -- a DIFFERENT meaning under the SAME name, a meaning fork; migrated
+//   here with the explicit decision that trailing-slash now follows POSIX basename, unreachable for
+//   their file-path callers);
+//   gunbc.site.gunb_ai_content (repository_slug).
+// Other `fold(split(_, "/"))` sites in the tree are NOT this fold and are not claimed: they trim each
+// segment (dispatch_credential_acquisition, runner_host_cap_bracket), build a structured accumulator
+// (runner_slot_retirement, live_deploy.emit), test all-segments-safe (verified_binary_install,
+// cursor_agent_realization), or take a raw last segment -- including empty -- under a DISTINCT name for
+// a witness-local reason (worker_git_subtree_apply wet_basename). None shares this name or meaning.
 fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
 }

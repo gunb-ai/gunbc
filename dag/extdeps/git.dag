@@ -1190,11 +1190,14 @@ fn git_add_all_force_command(repository_dir: String) -> ArgvCommand {
 
 fn git_commit_snapshot_command(repository_dir: String, identity_name: String, identity_email: String, message: String) -> ArgvCommand {
   // THE IN-REPO DRESSING COMES FIRST. git_argv_route_wall::git_argv_is_in_repo_dressed locates the
-  // repository ONLY at argv[0] (a leading `-C <repo>` / `--git-dir <repo>`), so `-C <repo>` must precede
-  // the per-command `-c user.*` identity settings -- otherwise argv[0] is `-c`, the argv is not dressed,
-  // and the leading-subcommand walk misreads `user.name=...` as the subcommand, refusing a command that
-  // is in fact pinned to <repo>. `-C` before `-c` is valid git (both are global options ahead of the
-  // subcommand) and mirrors `shape_git_commit_allow_empty_silent_in_repo_args`, which already leads `-C`.
+  // repository ONLY at argv[0] (a leading `-C <repo>` / `--git-dir <repo>`). If a `-c user.*` identity
+  // setting leads instead, argv[0] is not a dressing token, so the predicate does not recognise the
+  // argv as in-repo; `commit` is mutating (not on the read-only allowlist), so the whole argv is
+  // classified as a bare mutating command and refused -- even though it is in fact pinned to <repo>
+  // further along. (The leading-subcommand walk itself is fine: it correctly consumes `-c`'s operand
+  // and lands on `commit`.) Putting `-C <repo>` at argv[0] lets the dressing predicate see it. `-C`
+  // before `-c` is valid git (both are global options ahead of the subcommand) and mirrors
+  // `shape_git_commit_allow_empty_silent_in_repo_args`, which already leads `-C`.
   argv_command(program: git_program(), arguments: [
     "-C", repository_dir,
     "-c", concat("user.name=", identity_name), "-c", concat("user.email=", identity_email),

@@ -3,7 +3,7 @@ module gunbc.url_file_acquisition
 import std.types { NonEmptyStr, Bool, FilePath, String }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
-import std.filesystem { path_parent_directory }
+import std.filesystem { path_parent_directory, path_basename }
 import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
@@ -66,9 +66,13 @@ fn url_file_entry_from(path: String, first_cause: NonEmptyStr?) -> UrlFileEntry 
   }
 }
 
-fn path_basename(path: String) -> String {
-  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
-}
+// path_basename is std.filesystem's (root_generalization). This was a byte-similar fold that differed
+// ONLY in not skipping empty segments ("a/b/" -> "" here vs "b" in std); MIGRATED onto the single
+// spelling, DECIDING that trailing-slash now follows POSIX basename ("a/b/" -> "b"). The divergence was
+// unreachable here: url_file_entry derives a name from a URL-acquisition path (a file path, no trailing
+// slash); the recursive probe walks UP via path_parent_directory, and both spellings agree on every
+// non-trailing-slash input. It also shared the name `path_basename` while meaning something else -- a
+// meaning fork (gunbc.design_argument::single_authority); deleting it removes the fork.
 
 fn observe_url_file(path: NonEmptyStr, expected_hash: NonEmptyStr) -> AcquisitionObservation {
   match url_file_entry(path: path as String) {
