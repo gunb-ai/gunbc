@@ -280,35 +280,47 @@ test fn a_serving_dispatch_that_names_no_machine_refuses() -> Bool {
 // (10) A SERVING SUBJECT MUST RESOLVE TO AN ADDRESS THE ANCHOR NAMES. The legs dial the anchored address of
 // the subject (gunbc.fleet.fleet_known_hosts_anchor::anchored_ssh_target), so a subject the anchor does not
 // know refuses there instead of connecting somewhere guessed. Red control: a name no anchor row carries.
-// Positive: srv14 IS anchored today, which is why butch's admission is not blocked on
-// gunbc.fleet.fleet_reach_endpoint::fleet_probe_endpoint_for resolving registry hosts to their tailnet names
-// (#16762, tidy-pike-449, still open) or on butch's stale .205 anchor being retired (#16655). Reach by
-// tailnet name is that pair's fact to land; what this claim holds is that no leg may dial an unanchored name.
+// Positive: a host the registry DOES carry (srv1, LAN and tailnet rows) resolves.
+// srv14 DOES NOT resolve, and that is the model's standing since 2026-11-17: its key left the anchor
+// registry for the first-contact hop (gunbc.fleet.fleet_host_key_enrollment.srv14_first_contact_key;
+// operator ruling msg_0ac59f6c -- hosts are reached by their tailnet name), and gunbc.fleet.fleet_host_registry
+// #16655 left it there. So NO anchored leg may dial butch until butch joins the tailnet and its tailnet
+// anchor row lands -- which is exactly why the srv14 unit retirement (the frontier's trigger one,
+// gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier) is chained behind
+// the tailscale join, and why hostname_converge and tailscale_join_converge alone may reach it through
+// the hop. Before #16655 this claim asserted the opposite, off butch's stale .205 anchor row, and went
+// red when that row left the registry: the honest reading is that the retirement cannot ssh butch yet.
 test fn a_serving_subject_that_resolves_to_no_endpoint_refuses() -> Bool {
   match anchored_ssh_target(host: "srv-not-in-the-registry" as HostIdentity, principal: executor_bootstrap_principal.login) {
     SshTargetRefused { endpoint: _, refusal: why } => string_contains(s: ssh_target_refusal_text(endpoint: "srv-not-in-the-registry", refusal: why), pattern: "anchor row")
     _ => false
   }
     && match anchored_ssh_target(host: "srv14" as HostIdentity, principal: executor_bootstrap_principal.login) {
+      SshTargetRefused { endpoint: _, refusal: why } => string_contains(s: ssh_target_refusal_text(endpoint: "srv14", refusal: why), pattern: "anchor row")
+      _ => false
+    }
+    && match anchored_ssh_target(host: "srv1" as HostIdentity, principal: executor_bootstrap_principal.login) {
       SshTargetResolved { target: t } => ssh_target_wire(target: t) as String != ""
       _ => false
     }
 }
 
 // (11) THE RULE LIST AND THE ROSTER NAME THE SAME PAIR, in one wire spelling, and the roster is exactly the
-// three act modes plus the two serving modes. If the install-rule list grew past the roster, a mode would be
-// handed the lenient rule by the script and the strict one by nothing -- or vice versa -- and the two halves
-// of the same gate would disagree.
+// four act modes plus the two serving modes -- the act half having grown by host_unit_retirement, which acts
+// on a machine that owns no runner lane (the srv14 serving-engine retirement of
+// gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier). If the install-rule
+// list grew past the roster, a mode would be handed the lenient rule by the script and the strict one by
+// nothing -- or vice versa -- and the two halves of the same gate would disagree.
 test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   let drain_half = filter(roster, w => drain_rule_admits_its_own_mode(mode: w))
   let install_half = filter(roster, w => install_rule_admits_its_own_mode(mode: w))
-  length(roster) == 5
+  length(roster) == 6
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) != drain_rule_admits_its_own_mode(mode: w))
-    && length(drain_half) == 3
+    && length(drain_half) == 4
     && length(install_half) == 2
-    && all(drain_half, w => w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
+    && all(drain_half, w => w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore" || w == "host_unit_retirement")
     && all(install_half, w => w == "remote_build_serving_observe" || w == "remote_build_serving_converge")
     && !any(roster, w => w == "runner_host_file_observe")
 }
@@ -363,7 +375,7 @@ test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Boo
   let gate = step_id_text(step: fleet_converge_executor_subject_split_gate_step())
   let gated = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   gate != ""
-    && length(gated) == 5
+    && length(gated) == 6
     && length(filter(names, n => n == gate)) == 1
     // appears_before alone would let a gated mode off free: if its step is renamed away, the gate is trivially
     // "first". So every gated wire must have a step in the emitted list before the order means anything.
