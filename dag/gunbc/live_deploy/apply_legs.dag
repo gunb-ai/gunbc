@@ -1607,12 +1607,21 @@ fn deploy_apply_step_plan(step: DeploymentStep, effects: List<MemberEffect<Deplo
           match ck {
             OidcConfigArtifact => deploy_apply_oidc_plan(spec: spec, plan: plan, oidc_now: oidc_now)
             SystemdUnit => deploy_apply_unit_plan(spec: spec, plan: plan, oidc_now: oidc_now)
-            // REFUSED, not skipped: no spec the model emits names this member any more, so one that does came
-            // from before the operator's ruling of 2026-11-10 (gunbc.design_ruling::
-            // t6_fabric_storage_excluded_from_live_deploy_2026_11_10) or was written by hand. Silently dropping
-            // it would let a stale plan keep believing the deployment owns the endpoint's unit.
+            // The endpoint's OWN unit is deployment state again (gunbc.design_ruling::
+            // fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, superseding the 11-10
+            // exclusion): deploy_apply_fabric_storage_plan stages the emitted unit, reloads, enables and
+            // RESTARTS it, then brings its tailscale route up -- so it is live before the tailnet-door cutover
+            // gate reads the journal. Before that ruling this arm REFUSED (the FleetConvergeTimerUnit
+            // precedent); leaving it refused is what let the operator-held unit crash-loop after 72808ffd2c
+            // deleted `gunbc serve` and the deploy replaced /opt/gunbc/bin/gunbc.
             FabricStorageServeUnit => deploy_apply_fabric_storage_plan(spec: spec, revision: RevisionBoundAtEmission { revision: plan.target.revision })
             FabricStorageServeMapping =>
+              // The tailscale route to the door socket is the member the 11-10 ruling KEPT. Two cases:
+              //   (1) the spec also names the unit (the current model) -- the FabricStorageServeUnit arm above
+              //       already brought the unit up before this route, so this arm contributes NO legs of its own;
+              //   (2) a mapping-only spec from the 11-10 era (unit step absent) -- this arm now, DELIBERATELY per
+              //       the supersession ruling, also stages and restarts the unit, so a deploy that carries only
+              //       the route still repairs the endpoint rather than routing to a dead door socket.
               if spec_has_artifact_kind(spec: spec, kind: ComposeOwned { kind: FabricStorageServeUnit }) {
                 ApplyPlanReady { legs: [] }
               } else {
