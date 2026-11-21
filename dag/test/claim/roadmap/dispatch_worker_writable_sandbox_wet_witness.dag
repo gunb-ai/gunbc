@@ -1414,10 +1414,10 @@ fn wet_stage(stage: String, ok: Bool) -> Bool {
   // and only after that decision. A refused destination records nothing and answers false: the trail carries
   // the typed not-observed records the whole capability tally is adjudicated from, so a stage that cannot be
   // recorded cannot be audited, and an unauditable stage is not a pass (DESIGN 5, no silent pass-through).
-  // The in-memory trace still shows the attempt, so a run log can tell "refused" from "never reached".
+  // A refused stage answers false and is visible there: every caller folds wet_stage's Bool into a typed
+  // refusal or into the outcome tally, so a stage that could not be recorded can never be tallied as a pass.
   let trail = wet_stage_trail_path()
   if trail == "" {
-    wet_claim_sandbox_trace(join(["stage-refused:", note], ""))
     false
   } else {
     let dir = mkdir_parents_command(path: wet_stage_trail_dir())
