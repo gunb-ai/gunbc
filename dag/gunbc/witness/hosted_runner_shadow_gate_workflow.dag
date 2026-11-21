@@ -225,10 +225,13 @@ fn shadow_gate_config_check_script() -> String {
 // 44948446694). The action's post step logs the node out.
 
 data shadow_gate_tailscale_tags: String = join(ci_oauth_client_tags, ",")
-// `tailscale up` args for the runner node. Only --accept-dns=false belongs here: ephemerality is
-// decided where the key is minted (ci_oauth_client_ephemeral, asserted by the custody witness), not
-// re-decided in up args -- and `up` has no ephemeral flag to re-decide it with.
-data shadow_gate_tailscale_args: String = "--accept-dns=false"
+// `tailscale up` args for the runner node: EMPTY. --accept-dns=false was wrong: the probe step
+// needs MagicDNS to resolve the serving hosts' srv*.tailecbe08.ts.net names (run 44954152909 typed
+// 'Could not resolve hostname srv3.tailecbe08.ts.net'), and MagicDNS forwards everything else
+// upstream, so nothing off-tailnet breaks -- `tailscale up` accepts DNS by default anyway.
+// Ephemerality is decided where the key is minted (ci_oauth_client_ephemeral), never in up args
+// (`up` has no such flag; run 44948446694 typed-failed on the invented one).
+data shadow_gate_tailscale_args: String = ""
 
 // ── THE CONFIG-CHECK STEP ─────────────────────────────────────────────────────────────────────────
 //
