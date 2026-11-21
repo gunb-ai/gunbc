@@ -5,12 +5,12 @@ import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.shell.credentials { env_credential }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.exec.command { LocalExec }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
 import gunbc.runner.runner_user_session_receipt {
   RunnerUserSessionReceiptInput, ReceiptSupplied, ReceiptUnreadable, ReceiptAbsent, runner_user_session_converge_mode_wire,
@@ -84,9 +84,13 @@ fn runner_user_session_receipt_observed_with(host: HostIdentity, token: Secret?)
 fn runner_user_session_receipt_of_run(run: GitHubWorkflowRunId, read_at: Timestamp) -> RunnerUserSessionReceiptInput {
   let dir = runner_user_session_receipt_download_dir(run: run, read_at: read_at)
   match run_shell_command_capture(command: runner_user_session_converge_receipt_read_command(run: run, into: dir), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code, stderr } => runner_user_session_receipt_unreadable(step: "artifact download", cause: join(["gh run download exited ", to_string(exit_code), ": ", stderr], ""))
     ProcessOutputPresent { text: _ } => runner_user_session_receipt_of_downloaded(run: run, dir: dir)
     ProcessOutputAbsent => runner_user_session_receipt_of_downloaded(run: run, dir: dir)
+    // The download client never ran, so the artifact directory holds nothing to read.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => runner_user_session_receipt_unreadable(step: "artifact download", cause: join(["gh run download was never spawned: ", p, ": ", why], ""))
   }
 }
 

@@ -17,7 +17,7 @@ import gunbc.host.verified_archive_install {
   ArchiveSha256, StagedArchive, ExtractDebData, ArchivePlacement, archive_placements_text,
   stage_archives_wet, archives_all_staged, publish_staged_tree_wet,
 }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, LocalExec, process_capture_admitted}
 import gunbc.host.host_effect { LocalShell }
 
 // A PINNED QEMU TOOLCHAIN ON AN EXECUTOR HOST, PLACED AS THE JOB USER WITH NO ADMINISTRATOR AND NO
@@ -140,7 +140,7 @@ fn qemu_toolchain_placement_text(p: QemuToolchainPlacement) -> String {
 }
 
 fn qemu_toolchain_run_ok(command: ArgvCommand) -> Bool {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+  process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
 }
 
 // AN EXISTING TREE IS NEVER REPLACED. Its path is the recipe's, so it was published from these

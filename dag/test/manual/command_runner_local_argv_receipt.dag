@@ -4,8 +4,8 @@ import std.types { Bool, String }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.gnu_coreutils { printf_command, true_command }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text, process_capture_receipt_text}
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 
 // THE DISCRIMINATING RECEIPT FOR command_runner's TRANSPORT-AGNOSTIC RUN SITE.
 //
@@ -35,8 +35,8 @@ import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRe
 // test/manual/process_argv_expansion_receipt.dag is, for the same reason.
 
 test fn spaced_operand_survives_as_one_argument() -> Bool {
-  process_outcome_receipt_text(
-    outcome: run_shell_command_capture(
+  process_capture_receipt_text(
+    captured: run_shell_command_capture(
       command: printf_command(format: "%s|", values: ["a b"]),
       transport: LocalExec,
     )
@@ -47,8 +47,8 @@ test fn spaced_operand_survives_as_one_argument() -> Bool {
 // the equality above: the shell-split rendering must NOT be what comes back. Written separately so
 // a future edit that weakens the positive into something like a nonempty check still trips here.
 test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
-  process_outcome_receipt_text(
-    outcome: run_shell_command_capture(
+  process_capture_receipt_text(
+    captured: run_shell_command_capture(
       command: printf_command(format: "%s|", values: ["a b"]),
       transport: LocalExec,
     )
@@ -58,8 +58,8 @@ test fn shell_split_rendering_is_not_what_comes_back() -> Bool {
 // Control that the runner works at all on the ordinary case, so a failure above is read as a
 // splitting regression rather than as the whole path being broken.
 test fn plain_operand_round_trips() -> Bool {
-  process_outcome_receipt_text(
-    outcome: run_shell_command_capture(
+  process_capture_receipt_text(
+    captured: run_shell_command_capture(
       command: printf_command(format: "%s|", values: ["plain"]),
       transport: LocalExec,
     )
@@ -87,9 +87,12 @@ test fn nonzero_exit_printing_nothing_is_refused_not_absent() -> Bool {
     command: posix_sh_program_command(script: "exit 3"),
     transport: LocalExec,
   ) {
+    ProcessCaptureNotSpawned { program: p, cause: why } => false
+    ProcessCaptured { outcome: captured } => match captured {
     ProcessRefused { exit_code: _, stderr: _ } => true
     ProcessOutputAbsent => false
     ProcessOutputPresent { text: _ } => false
+    }
   }
 }
 
@@ -98,9 +101,12 @@ test fn zero_exit_printing_nothing_is_absent_not_refused() -> Bool {
     command: true_command(),
     transport: LocalExec,
   ) {
+    ProcessCaptureNotSpawned { program: p, cause: why } => false
+    ProcessCaptured { outcome: captured } => match captured {
     ProcessOutputAbsent => true
     ProcessRefused { exit_code: _, stderr: _ } => false
     ProcessOutputPresent { text: _ } => false
+    }
   }
 }
 
@@ -174,8 +180,11 @@ test fn zero_exit_with_output_is_present() -> Bool {
     command: printf_command(format: "%s", values: ["value"]),
     transport: LocalExec,
   ) {
+    ProcessCaptureNotSpawned { program: p, cause: why } => false
+    ProcessCaptured { outcome: captured } => match captured {
     ProcessOutputPresent { text: t } => t == "value"
     ProcessOutputAbsent => false
     ProcessRefused { exit_code: _, stderr: _ } => false
+    }
   }
 }

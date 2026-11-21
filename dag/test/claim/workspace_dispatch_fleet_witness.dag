@@ -3,7 +3,7 @@ module test.claim.workspace_dispatch_fleet_witness
 import gunbc.fleet.fleet_converge_scope { WorkspaceSlotCommissioningOnly }
 
 import extdeps.crypto.hash { sha256_digest }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import gunbc.workspace_commissioning_executor_input { workspace_executor_grant_digest_matches }
 
 import std.types { Bool, String }
@@ -69,10 +69,20 @@ test fn installation_readback_grants_only_the_exact_policy_file() -> Bool {
 // trailing newline, but the file digest must still distinguish them.
 test fn policy_digest_readback_preserves_final_newline_identity() -> Bool {
   let expected = sha256_digest(hex: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0")
-  workspace_executor_grant_digest_matches(expected: expected,
-    observed: ProcessOutputPresent { text: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0  /etc/sudoers.d/gunbc-workspace-commissioning" })
-    && !workspace_executor_grant_digest_matches(expected: expected,
-      observed: ProcessOutputPresent { text: "823412d1eacb67956220e532959f0104603057c88704863ca38e7cd188fda812  /etc/sudoers.d/gunbc-workspace-commissioning" })
-    && !workspace_executor_grant_digest_matches(expected: expected, observed: ProcessOutputAbsent)
-    && !workspace_executor_grant_digest_matches(expected: expected, observed: ProcessRefused { exit_code: 1, stderr: "denied" })
+  workspace_executor_grant_digest_matches(expected: expected,observed:      ProcessCaptured { outcome: ProcessOutputPresent { text: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0  /etc/sudoers.d/gunbc-workspace-commissioning" } })
+    && !workspace_executor_grant_digest_matches(expected: expected,observed:        ProcessCaptured { outcome: ProcessOutputPresent { text: "823412d1eacb67956220e532959f0104603057c88704863ca38e7cd188fda812  /etc/sudoers.d/gunbc-workspace-commissioning" } })
+    && !workspace_executor_grant_digest_matches(expected: expected,observed:  ProcessCaptured { outcome: ProcessOutputAbsent })
+    && !workspace_executor_grant_digest_matches(expected: expected,observed:  ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "denied" } })
+}
+
+// A GRANT DIGEST FROM A COMMAND THAT NEVER RAN DOES NOT MATCH. The digest of nothing is not the
+// grant's digest, and the old -1 sentinel dressed the unspawned read as a child that exited 1.
+test fn workspace_executor_grant_from_a_never_spawned_read_does_not_match() -> Bool {
+  let expected = sha256_digest(hex: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0")
+  !workspace_executor_grant_digest_matches(
+    expected: expected,
+    observed: ProcessCaptureNotSpawned {
+      program: "cat" as NonEmptyStr,
+      cause: "the grant read was never started" as NonEmptyStr,
+    })
 }

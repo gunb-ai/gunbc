@@ -21,7 +21,7 @@ import gunbc.runner.runner_microvm_host_ready {
   MicrovmHostBindingRefusal, HostBindingRefused, HostNotRostered, HostNameUnresolved,
   ExpectedHostAbsent, HostObservationFailed,
   microvm_host_binding_of, microvm_host_binding_refusal_text,
-  kvm_standing_of, binary_standing_of, firecracker_host_ready, firecracker_host_ready_in_this_process,
+  kvm_standing_of, binary_standing_of, CaptureProbe, ProbeAnswered, ProbeUnreadable, FirecrackerVersionReading, VersionLineRead, VersionUnreadable, firecracker_host_ready, firecracker_host_ready_in_this_process,
   group_names_contain, firecracker_host_standing_text,
   firecracker_fetch_commands, firecracker_install_commands, firecracker_installed_binary, firecracker_install_root,
 }
@@ -323,20 +323,20 @@ test fn the_group_readback_matches_a_whole_name_and_not_a_prefix() -> Bool {
 
 // RED control: a binary that answers another version is a mismatch, never installed.
 test fn a_binary_answering_another_version_is_a_mismatch() -> Bool {
-  (match binary_standing_of(binary: "/x/firecracker", executable: true, version_output: "Firecracker v1.16.1\n", rel: firecracker_release_aarch64) {
+  (match binary_standing_of(binary: "/x/firecracker", executable: ProbeAnswered { admitted: true }, version: VersionLineRead { text: "Firecracker v1.16.1\n" }, rel: firecracker_release_aarch64) {
     FirecrackerInstalled { binary: _, version_line: v } => v == "Firecracker v1.16.1"
     _ => false
   })
-    && (match binary_standing_of(binary: "/x/firecracker", executable: true, version_output: "Firecracker v1.15.0\n", rel: firecracker_release_aarch64) {
+    && (match binary_standing_of(binary: "/x/firecracker", executable: ProbeAnswered { admitted: true }, version: VersionLineRead { text: "Firecracker v1.15.0\n" }, rel: firecracker_release_aarch64) {
     FirecrackerVersionMismatch { binary: _, observed: o } => o == "Firecracker v1.15.0"
     _ => false
   })
-    && (match binary_standing_of(binary: "/x/firecracker", executable: false, version_output: "", rel: firecracker_release_aarch64) {
+    && (match binary_standing_of(binary: "/x/firecracker", executable: ProbeAnswered { admitted: false }, version: VersionLineRead { text: "" }, rel: firecracker_release_aarch64) {
     FirecrackerBinaryAbsent { binary: b } => b == "/x/firecracker"
     _ => false
   })
-    && (match kvm_standing_of(exists: true, writable: false) { KvmDevicePresentNotWritable => true  _ => false })
-    && (match kvm_standing_of(exists: false, writable: false) { KvmDeviceAbsent => true  _ => false })
+    && (match kvm_standing_of(exists: ProbeAnswered { admitted: true }, writable: ProbeAnswered { admitted: false }) { KvmDevicePresentNotWritable => true  _ => false })
+    && (match kvm_standing_of(exists: ProbeAnswered { admitted: false }, writable: ProbeAnswered { admitted: false }) { KvmDeviceAbsent => true  _ => false })
 }
 
 // The install is a typed command list in two halves around the digest verdict: fetch (mkdir, mkdir,

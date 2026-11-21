@@ -1,5 +1,5 @@
 module extdeps.printing.orca_slicer
-import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent, ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome}
 
 import extdeps.exec.program { uncataloged_program }
 
@@ -148,28 +148,50 @@ fn orca_slice_to_project_command(
 }
 
 // The caller's copy is never executed, and a failed digest cannot mint the capability.
-fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessOutcome) -> ProcessOutcome {
+// THE NEVER-SPAWNED REFUSALS ARE THIS FUNCTION'S OWN: no private directory, no copy, no digest, no
+// chmod. Each of those is the AppImage never being executed, so each carries ProcessCaptureNotSpawned,
+// naming the AppImage and the cause, rather than ProcessRefused with an exit code 1 attributed to a
+// process that never ran. `use` is the caller's capture of the verified executable, and its verdict
+// passes through untouched. FAILED CLEANUP IS NOT ONE OF THEM: by the time cleanup runs, `use` may
+// already have produced a real ProcessCaptured verdict over children that DID run, so a cleanup failure
+// must not overwrite that verdict with a spawn fact (gunbc.design_argument::fail_closed: no plausible
+// output is fabricated, in either direction). The cleanup failure is therefore not turned into a
+// ProcessCaptureOutcome at all: the verdict of the run stands, and the leaked private realization under
+// temp.path is the residue of this function's own host effect. A typed carrier for the leak (an
+// OrcaRealization coproduct over {capture, cleanup}) belongs to the first caller that must ACT on it --
+// root_generalization answer (2): should be, named trigger, not now.
+fn with_verified_orca(appimage: FilePath, use: fn(OrcaExecutable) -> ProcessCaptureOutcome) -> ProcessCaptureOutcome {
   let temp = shell.Mktemp.Dir()
-  if !temp.success { return ProcessRefused { exit_code: 1, stderr: "Cannot create private Orca realization" } }
+  if !temp.success { return ProcessCaptureNotSpawned { program: (appimage as String) as NonEmptyStr, cause: "Cannot create private Orca realization" as NonEmptyStr } }
   let path = join([temp.path as String, "/", orca_slicer_linux_aarch64_appimage_sha256 as String, ".AppImage"], "")
   let result = if !shell.Copy.File(source: appimage, destination: path as FilePath).success {
-    ProcessRefused { exit_code: 1, stderr: "Cannot copy Orca archive" }
+    ProcessCaptureNotSpawned { program: (appimage as String) as NonEmptyStr, cause: "Cannot copy Orca archive" as NonEmptyStr }
   } else {
     match sha256sum_file_digest_via_shell(path: path as NonEmptyStr) {
-      Sha256FileDigestUnavailable { path: _, reason: r } => ProcessRefused { exit_code: 1, stderr: r as String }
+      Sha256FileDigestUnavailable { path: _, reason: r } => ProcessCaptureNotSpawned { program: path as NonEmptyStr, cause: r as NonEmptyStr }
       Sha256FileDigest { digest: d } =>
         if (d.hex as String) != (orca_slicer_linux_aarch64_appimage_sha256 as String) {
-          ProcessRefused { exit_code: 1, stderr: "Orca archive differs from the selected upstream digest; not executed" }
+          ProcessCaptureNotSpawned { program: path as NonEmptyStr, cause: "Orca archive differs from the selected upstream digest; not executed" as NonEmptyStr }
         } else {
           match run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "0500", path: path), transport: LocalExec) {
-            ProcessRefused { exit_code: c, stderr: e } => ProcessRefused { exit_code: c, stderr: e }
-            ProcessOutputAbsent=>use(OrcaExecutable { program: path as NonEmptyStr }) ProcessOutputPresent {text:_}=>use(OrcaExecutable { program: path as NonEmptyStr })
+            // The chmod never ran, so the AppImage was never made executable and there is no verified
+            // Orca to hand to `use`.
+            ProcessCaptureNotSpawned { program: p, cause: why } => ProcessCaptureNotSpawned {
+              program: p, cause: join(["chmod of the Orca AppImage was never spawned: ", why as String], "") as NonEmptyStr,
+            }
+            ProcessCaptured { outcome: chmod } => match chmod {
+              ProcessRefused { exit_code: c, stderr: e } => ProcessCaptured { outcome: ProcessRefused { exit_code: c, stderr: e } }
+              ProcessOutputAbsent=>use(OrcaExecutable { program: path as NonEmptyStr }) ProcessOutputPresent {text:_}=>use(OrcaExecutable { program: path as NonEmptyStr })
+            }
           }
         }
     }
   }
-  if shell.Remove.RecursiveForce(path: temp.path as FilePath).success { result }
-  else { ProcessRefused { exit_code: 1, stderr: concat("Orca realization cleanup failed at ", temp.path as String) } }
+  // Cleanup failure keeps the verdict that was actually had (it may be a real ProcessCaptured): claiming
+  // NotSpawned here would fabricate the absence of children that ran. The leak itself is documented in
+  // the doc block above; no caller can act on it yet.
+  let _cleanup = shell.Remove.RecursiveForce(path: temp.path as FilePath)
+  result
 }
 
 // THE SYSTEM PROFILES SHIP INSIDE THE PINNED ARCHIVE, so a profile named here is a fact of that one

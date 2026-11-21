@@ -27,11 +27,12 @@ import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, Trans
 import extdeps.uri { Uri, Https }
 import std.decl_ref { decl_ref }
 import gunbc.host.host_cli_dependency { observe_host_cli_dependency, HostCliDependencyPresent, HostCliDependencyAbsent }
-import gunbc.command_runner { run_shell_command_observe }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.auth.access_token_source { select_access_token_source, AccessTokenSourceSelected, AccessTokenSourceUnavailable }
 import gunbc.auth.netrc_binding { netrc_binding_path }
 import gunbc.cloudflare.r2_s3_netrc { place_r2_s3_netrc, shred_r2_s3_netrc, R2S3NetrcPlaced, R2S3NetrcRefused, R2S3NetrcRefusedResidueRemains }
-import gunbc.cloudflare.r2_staged_transfer { classify_s3_transfer, S3Answered, S3NotAnswered, s3_status_precondition_failed }
+import gunbc.cloudflare.r2_staged_transfer { classify_s3_run, S3Answered, S3NotAnswered, s3_status_precondition_failed }
 import gunbc.cloudflare.r2_origin {
   CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
   R2OriginAllocated, R2OriginUnallocated, fabric_workspace_standing,
@@ -533,11 +534,11 @@ fn race_write_body(path: String, round: Nat, writer: String) -> Bool {
 }
 
 fn race_seed(locator: R2ObjectLocator, netrc: FilePath, body: String) -> ObjectEntityTag? {
-  let observed = run_shell_command_observe(
+  let observed = run_shell_command_observe_outcome(
     command: curl_sigv4_s3_upload_command(url: r2_object_url(locator: locator), local_path: body, netrc_path: netrc, sigv4_region: r2_s3_sigv4_region, precondition: PutUnconditional, report: ReportStatusAndEntityTag),
     transport: LocalExec,
   )
-  match classify_s3_transfer(observation: observed) {
+  match classify_s3_run(run: observed) {
     S3NotAnswered { cause: _ } => none
     S3Answered { status: s, tag: t } => if http_status_is_success(status: s) { t } else { none }
   }
@@ -563,7 +564,7 @@ fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
       Absent => RaceRoundUnseeded { cause: "the unconditional seed PUT did not answer 2xx with an entity tag" }
       Present { value: tag } => {
         let url = r2_object_url(locator: locator)
-        let observed = run_shell_command_observe(
+        let observed = run_shell_command_observe_outcome(
           command: curl_sigv4_s3_parallel_upload_command(
             uploads: [
               S3ParallelUpload { label: race_writer_a, url: url, local_path: a_body, precondition: PutIfMatch { tag: tag } },
@@ -573,10 +574,19 @@ fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
           ),
           transport: LocalExec,
         )
-        RaceRoundRaced {
-          a: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_a),
-          b: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_b),
-          overlap: race_overlap_of_trace(reading: race_trace_reading(path: trace), label_a: race_writer_a, label_b: race_writer_b),
+        match observed {
+          // A round whose writers were never spawned did not race, and the round record says so with
+          // the program and the cause rather than reading two transfer reports out of a stdout that was
+          // never printed. RaceRoundUnseeded is the arm that already means 'this round produced no
+          // race to judge', and the probe reads it as a short run -- inconclusive, never a pass.
+          ProcessNotSpawned { program: p, cause: why } => RaceRoundUnseeded {
+            cause: join(["the round's parallel writers were never spawned: ", p as String, " -- ", why as String], "") as NonEmptyStr,
+          }
+          ProcessRan { observation: observed } => RaceRoundRaced {
+            a: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_a),
+            b: curl_parallel_transfer_report(stdout: observed.stdout, label: race_writer_b),
+            overlap: race_overlap_of_trace(reading: race_trace_reading(path: trace), label_a: race_writer_a, label_b: race_writer_b),
+          }
         }
       }
     }
@@ -594,8 +604,8 @@ fn race_rounds(declared: Int, locator: R2ObjectLocator, netrc: FilePath, dir: Fi
 }
 
 fn race_cleanup(locator: R2ObjectLocator, netrc: FilePath) -> String {
-  let observed = run_shell_command_observe(command: curl_sigv4_s3_delete_command(url: r2_object_url(locator: locator), netrc_path: netrc, sigv4_region: r2_s3_sigv4_region), transport: LocalExec)
-  match classify_s3_transfer(observation: observed) {
+  let observed = run_shell_command_observe_outcome(command: curl_sigv4_s3_delete_command(url: r2_object_url(locator: locator), netrc_path: netrc, sigv4_region: r2_s3_sigv4_region), transport: LocalExec)
+  match classify_s3_run(run: observed) {
     S3Answered { status: s, tag: _ } =>
       if http_status_is_success(status: s) { "cleanup=probe key deleted" } else { join(["cleanup=REFUSED: the probe key delete answered ", to_string(s), "; the key remains"], "") }
     S3NotAnswered { cause: c } => concat("cleanup=UNKNOWN: the probe key delete received no answer: ", c as String)
@@ -664,12 +674,21 @@ fn run_r2_conditional_put_race_probe() -> ProcessExit {
   match observe_host_cli_dependency(tool: curl_trace_ids_cli_tool) {
     HostCliDependencyAbsent { absence: a } => exit_failure(reason: join(["THE TRANSPORT IS NOT ON THIS HOST: ", a.tool as String, " (", a.hint, ")"], ""))
     HostCliDependencyPresent => {
-      let version = run_shell_command_observe(command: curl_version_command(), transport: LocalExec)
+      match run_shell_command_observe_outcome(command: curl_version_command(), transport: LocalExec) {
+        // NOT handed to curl_version_standing as an empty stdout: that would report "curl --version
+        // printed no 'curl M.m.p' first line", which is a false explanation of a curl that never ran.
+        // The refusal names what happened -- the version probe was never spawned.
+        ProcessNotSpawned { program: p, cause: why } => race_refused_before_rounds(
+          transport: join(["transport=REFUSED the curl version probe was never spawned: ", p as String, " -- ", why as String], ""),
+        )
+        ProcessRan { observation: version } => {
       let standing = curl_version_standing(tool: curl_trace_ids_cli_tool, stdout: version.stdout)
       match standing {
         CurlVersionBelowPin { observed: _, required: _ } => race_refused_before_rounds(transport: race_transport_line(standing: standing))
         CurlVersionUnreadable { cause: _ } => race_refused_before_rounds(transport: race_transport_line(standing: standing))
         CurlVersionMeetsPin { observed: _ } => race_run_with_version(transport: race_transport_line(standing: standing))
+      }
+        }
       }
     }
   }

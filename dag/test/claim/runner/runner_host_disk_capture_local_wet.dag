@@ -11,7 +11,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.command_runner { run_shell_command_observe }
+import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage, HostCaptureBound, SectionComplete,
   host_capture_program_envelopes, host_capture_bind, host_capture_section_reading, host_capture_run_identity_of,
@@ -101,7 +101,11 @@ fn run_program(root: String, tag: String, disk: List<HostCaptureStage>, timeout_
     halt_command: "true",
   )
   let wrote = Filesystem.Write(path: program, content: text as String)
-  let _ran = run_shell_command_observe(
+  // The capture's OWN result is not this claim's evidence -- the console file read below is -- so a child
+  // that never spawned is not asserted on here; it shows up as a console that cannot be read, which makes
+  // the claim false. run_shell_command_observe_outcome is used because the spawn answer is now typed, and
+  // dropping it is honest only because a missing child cannot produce the file this claim reads.
+  let _ran = run_shell_command_observe_outcome(
     command: posix_sh_program_command(script: join(["timeout ", timeout_secs, " sh ", posix_single_quote(spelling: program)], "")),
     transport: LocalExec,
   )

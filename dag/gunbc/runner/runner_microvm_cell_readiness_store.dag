@@ -12,7 +12,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.stat {
   stat_owner_uid_command, stat_mode_command, stat_file_type_command, stat_regular_file_type,
-  StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading,
+  StatFieldReading, StatFieldRead, StatFieldUnread, stat_field_reading, stat_field_reading_capture,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonArray, JsonObject, JsonNull, JsonBool, JsonNumber, JsonString,
@@ -717,11 +717,11 @@ type StoreOwnershipReading
 
 fn read_store_ownership(path: String) -> StoreOwnershipReading
 {
-  match stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
+  match stat_field_reading_capture(captured: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
     StatFieldUnread { detail: d } =>
       OwnershipUnread { reason: join(["the store directory's owner could not be read: ", d], "") as NonEmptyStr }
     StatFieldRead { value: uid_text } =>
-      match stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec)) {
+      match stat_field_reading_capture(captured: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec)) {
         StatFieldUnread { detail: d } =>
           OwnershipUnread { reason: join(["the store directory's mode could not be read: ", d], "") as NonEmptyStr }
         StatFieldRead { value: mode_text } => ownership_of_readings(uid_text: uid_text, mode_text: mode_text)
@@ -901,7 +901,7 @@ fn decode_entry_for_cell(rs: List<CellReadinessRecord>, path: String, named: Cel
 // own.
 fn entry_is_root_authoritative(path: String) -> NonEmptyStr?
 {
-  match stat_field_reading(outcome: run_shell_command_capture(command: stat_file_type_command(path: path), transport: LocalExec)) {
+  match stat_field_reading_capture(captured: run_shell_command_capture(command: stat_file_type_command(path: path), transport: LocalExec)) {
     StatFieldUnread { detail: d } =>
       Present { value: join(["the cell record at ", path, " has no readable type: ", d], "") as NonEmptyStr }
     StatFieldRead { value: kind } =>

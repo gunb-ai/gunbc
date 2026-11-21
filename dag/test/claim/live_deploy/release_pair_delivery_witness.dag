@@ -40,6 +40,7 @@ import gunbc.live_deploy.deploy_artifact_read_sets { deployment_artifact_read_se
 import gunbc.live_deploy.deploy_artifact_closure { ArtifactReadSet, Declared, DeclaredRead }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, HostDashboardInstance }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptured }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -276,8 +277,7 @@ data locus_link: String = "/opt/gunbc/releases/incoming-release-bins/33333333333
 // readlink prints THIS revision's fetched member -> benign (a prior tick placed the link then died before the receipt;
 // the fresh tick may resume to write it). Trailing newline is trimmed, matching the actuator's readlink capture.
 test fn witness_occupied_link_to_same_target_is_benign() -> Bool {
-  release_pair_occupied_link_benign(
-    link_read: ProcessOutputPresent { text: join([locus_link, "\n"], "") },
+  release_pair_occupied_link_benign(link_read:      ProcessCaptured { outcome: ProcessOutputPresent { text: join([locus_link, "\n"], "") } },
     expected_source: locus_link,
   )
 }
@@ -285,16 +285,27 @@ test fn witness_occupied_link_to_same_target_is_benign() -> Bool {
 // readlink prints a DIFFERENT target -> NOT benign (red control: an occupied link pointing elsewhere refuses rather
 // than being silently adopted). Written as an == false compare to avoid relying on a not-operator spelling.
 test fn witness_occupied_link_to_other_target_is_not_benign() -> Bool {
-  release_pair_occupied_link_benign(
-    link_read: ProcessOutputPresent { text: "/some/other/revision/bin/gunbc-standings-serve\n" },
+  release_pair_occupied_link_benign(link_read:      ProcessCaptured { outcome: ProcessOutputPresent { text: "/some/other/revision/bin/gunbc-standings-serve\n" } },
     expected_source: locus_link,
   ) == false
 }
 
 // readlink refuses (the path is not a symlink) -> NOT benign (fail-closed: never adopt a foreign path as ours).
 test fn witness_occupied_link_readlink_refused_is_not_benign() -> Bool {
+  release_pair_occupied_link_benign(link_read:      ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "not a symlink" } },
+    expected_source: locus_link,
+  ) == false
+}
+
+// A LINK READ THAT NEVER RAN IS NOT BENIGN (fail-closed): nothing was read, so nothing can be shown to
+// be this revision's placement. The old sentinel made this a ProcessRefused { exit_code: -1 } -- a
+// refusal that reported a status, for a command that never existed.
+test fn witness_occupied_link_never_spawned_is_not_benign() -> Bool {
   release_pair_occupied_link_benign(
-    link_read: ProcessRefused { exit_code: 1, stderr: "not a symlink" },
+    link_read: ProcessCaptureNotSpawned {
+      program: "readlink" as NonEmptyStr,
+      cause: "the readback was never started" as NonEmptyStr,
+    },
     expected_source: locus_link,
   ) == false
 }

@@ -4,7 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.gnu_coreutils { cat_command }
-import gunbc.command_runner { run_shell_command_observe, LocalExec }
+import gunbc.command_runner { run_shell_command_observe_outcome, LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
 import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootConsoleLacksRunnerVersion,
@@ -63,16 +64,27 @@ data runner_version_check_standing: VersionCheckStanding = CheckedAtReceiptTime 
 // #gunbc.runner.runner_microvm_boot_probe::boot_probe_verdict).
 fn observe_captured_console(path: String) -> BootProbeConsole
 {
-  let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
-  if obs.exit_code != 0 {
-    BootProbeConsole {
-      stdout: "",
-      stderr: obs.stderr,
-      source: path,
-      read_cause: Present { value: join(["the committed capture could not be read: ", obs.stderr], "") },
-    }
-  } else {
-    BootProbeConsole { stdout: obs.stdout, stderr: "", source: path, read_cause: Absent }
+  match run_shell_command_observe_outcome(command: cat_command(path: path), transport: LocalExec) {
+    ProcessRan { observation: obs } =>
+      if obs.exit_code != 0 {
+        BootProbeConsole {
+          stdout: "",
+          stderr: obs.stderr,
+          source: path,
+          read_cause: Present { value: join(["the committed capture could not be read: ", obs.stderr], "") },
+        }
+      } else {
+        BootProbeConsole { stdout: obs.stdout, stderr: "", source: path, read_cause: Absent }
+      }
+    // A cat that never spawned read NOTHING: the console stays unreadable with the spawner's own
+    // words, never an empty stdout that the classifier could read as a silent boot.
+    ProcessNotSpawned { program: p, cause: why } =>
+      BootProbeConsole {
+        stdout: "",
+        stderr: "",
+        source: path,
+        read_cause: Present { value: join(["the console cat never spawned: ", p, ": ", why], "") },
+      }
   }
 }
 

@@ -403,8 +403,8 @@ import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, argv_words }
 import extdeps.tools.stat { stat_inode_command }
 import extdeps.tools.findutils { find_symlink_target_glob_command }
-import gunbc.command_runner { run_shell_command_capture }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture}
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured, ProcessCaptureOutcome}
 import gunbc.build_cache.build_cache_ensure {
   EnsureBuildCacheAdmission,
   EnsureAlreadyConverged,
@@ -5105,14 +5105,20 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
 // BODY before any word is examined, but the same words as argv pass it typed.
 //
 // THE LOCAL ADAPTER: the local seam's observation record, flattened into the classifier's fields.
-fn slot_census_from_process_outcome(host: HostIdentity, outcome: ProcessOutcome) -> SlotCensus {
+fn slot_census_from_process_outcome(host: HostIdentity, outcome: ProcessCaptureOutcome) -> SlotCensus {
   match outcome {
+    // A census whose listing was never spawned is REFUSED, with the spawner's own cause. It is not an
+    // empty census, and it is not a child that exited non-zero: no number belongs to it.
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      CensusRefused { cause: join(["the slot listing was never spawned: ", p, ": ", why], "") }
+    ProcessCaptured { outcome: observed } => match observed {
     ProcessOutputPresent { text: t } =>
       slot_census_from_command_outcome(host: host, success: true, exit_code: 0, stdout: t, stderr: "")
     ProcessOutputAbsent =>
       slot_census_from_command_outcome(host: host, success: true, exit_code: 0, stdout: "", stderr: "")
     ProcessRefused { exit_code: c, stderr: e } =>
       slot_census_from_command_outcome(host: host, success: false, exit_code: c, stdout: "", stderr: e)
+    }
   }
 }
 
@@ -9526,6 +9532,7 @@ fn build_cache_host_read_observed(
         command: command,
         transport: LocalExec,
       ) {
+        ProcessCaptured { outcome: __outcome } => match __outcome {
         ProcessOutputPresent { text: t } =>
           BuildCacheReadRan {
             observed: ShellExecObserved { exit_code: 0, success: true, stdout: t, stderr: "" },
@@ -9538,6 +9545,11 @@ fn build_cache_host_read_observed(
           BuildCacheReadRan {
             observed: ShellExecObserved { exit_code: code, success: false, stdout: "", stderr: err },
           }
+        // The child never existed, so there is no ShellExecObserved to report: no exit code, no
+        // stdout, no stderr of a child that never ran. BuildCacheReadRefused is the honest answer.
+        }
+        ProcessCaptureNotSpawned { program: p, cause: why } =>
+          BuildCacheReadRefused { reason: join(["the build cache read was never spawned: ", p, ": ", why], "") }
       }
     SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
     FleetSsh { target: _, context: _, kind: _} => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)

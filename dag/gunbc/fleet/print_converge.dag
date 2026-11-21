@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
 import extdeps.shell
 import extdeps.tools.hostname
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.cloud.gcp.secret_manager { sm_resolved_version_id, SmVersionIdProjected, SmVersionIdNotAVersionResource }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
@@ -37,7 +37,7 @@ import gunbc.fleet.fleet_printer_access {
   read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused,
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound, PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
 }
-import gunbc.fleet.printer_report { report_using_session }
+import gunbc.fleet.printer_report { report_using_session, PrinterReported, PrinterCleanupClean, PrinterCleanupOutstanding }
 import gunbc.fleet.printer_job_monitor { observe_job }
 import gunbc.fleet.printer_project_delivery { remote_name_for_attempt }
 import gunbc.fleet.printer_actuation {
@@ -188,7 +188,17 @@ fn copy_verified(record: PrintRequestRecord, path: String) -> Bool {
 fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, credential_source: PrinterCredentialSource) -> String? {
   match read_existing_printer_session(printer: printer, version: version, credential_source: credential_source) {
     PrinterSessionRefused { cause: _ } => none
-    PrinterSessionReady { session: s } => match report_using_session(session: s) { ProcessOutputPresent { text: t } => Present { value: t } ProcessOutputAbsent => none ProcessRefused { exit_code: _, stderr: _ } => none }
+    PrinterSessionReady { session: s } => match report_using_session(session: s) {
+      // A clean capture yields the standing only when the credential-bound cleanup fully
+      // succeeded; a never-spawned read or an outstanding leak yields no standing, never a text.
+      PrinterReported { outcome: ProcessCaptured { outcome: observed }, cleanup: PrinterCleanupClean } => match observed {
+        ProcessOutputPresent { text: t } => Present { value: t }
+        ProcessOutputAbsent => none
+        ProcessRefused { exit_code: _, stderr: _ } => none
+      }
+      PrinterReported { outcome: ProcessCaptureNotSpawned { program: _, cause: _ }, cleanup: _ } => none
+      PrinterReported { outcome: ProcessCaptured { outcome: _ }, cleanup: PrinterCleanupOutstanding { detail: _ } } => none
+    }
   }
 }
 

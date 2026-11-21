@@ -3,11 +3,11 @@ module gunbc.fleet.printer_start_reconciliation
 import std.types {String,NonEmptyStr,Bool,Int}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import extdeps.tools.sleep
-import extdeps.languages.json.emit {json_object,json_kv,json_string,serialize_json}
-import extdeps.shell.exec {ProcessOutputPresent,ProcessOutputAbsent,ProcessRefused}
+import extdeps.languages.json.emit {json_object,json_kv,json_string,json_bool,serialize_json}
+import extdeps.shell.exec {ProcessOutputPresent,ProcessOutputAbsent,ProcessRefused,ProcessCaptured}
 import gunbc.fleet.printer_job_monitor {observe_job,JobRunning,JobPaused,JobFailed,JobCompletedAwaitingInspection,JobUnresolved}
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer}
-import gunbc.fleet.printer_report {report_once_using_session}
+import gunbc.fleet.printer_report {report_once_using_session, PrinterReported, PrinterCleanupClean, PrinterCleanupOutstanding}
 import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
 import gunbc.auth.access_token_source {AccessTokenSource}
 import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_record}
@@ -48,7 +48,17 @@ fn reconcile_start(session:PrinterCredentialSession,remote:NonEmptyStr,version:S
 }
 fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,remaining:Int) -> ProcessExit {
  let response=report_once_using_session(session:session)
- let text=match response {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
+ let text=match response {
+  PrinterReported { outcome: ProcessCaptured { outcome: observed }, cleanup: PrinterCleanupClean } => match observed {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
+  // The telemetry client was never spawned: the read is recorded as never having run, with the
+  // spawner's cause, rather than as a read that came back refusing.
+  PrinterReported { outcome: ProcessCaptureNotSpawned {program:pp,cause:why}, cleanup: _ } => serialize_json(v:json_object(members:[json_kv(key:"read_never_spawned",value:json_string(s:join([pp," -- ",why],"")))]))
+  // A credential-bound leak outstanding after the read is recorded as such beside the read's
+  // own verdict -- the standing is never dropped.
+  PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent {text:t} }, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read",value:json_string(s:t)),json_kv(key:"cleanup_outstanding",value:json_string(s:d))]))
+  PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputAbsent }, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read_empty",value:json_bool(b: true)),json_kv(key:"cleanup_outstanding",value:json_string(s:d))]))
+  PrinterReported { outcome: ProcessCaptured { outcome: ProcessRefused {exit_code:_,stderr:e} }, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e)),json_kv(key:"cleanup_outstanding",value:json_string(s:d))]))
+ }
  let read=9-remaining
  let evidence=match start_evidence_record(store:evidence_store,claim_key:claim_key,read:read,content:text) {
   CreateOnceRecorded {path:p}=>p

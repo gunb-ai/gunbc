@@ -5,9 +5,9 @@ import std.integer { int_to_decimal_string }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessRefused }
+import extdeps.shell.exec { ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.tools.gnu_coreutils { mkdir_parents_command }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import gunbc.ci.ci_gate { gate_receipt_failure_detail }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path }
 import std.filesystem { path_parent_directory }
@@ -232,12 +232,15 @@ fn artifact_selection_for_path(path: String) -> ArtifactSelection {
 // silent state the whole gate exists to prevent (gunbc.design_argument::fail_closed).
 fn write_generated_artifact(a: GeneratedArtifact, path: String, content: String) -> ProcessExit {
   match run_shell_command_capture(command: mkdir_parents_command(path: path_parent_directory(path: path)), transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code: code, stderr: err } => exit_failure(
       reason: concat(
         concat("mkdir failed for ", artifact_path(a: a)),
         concat(": exit ", concat(int_to_decimal_string(code), concat(": ", err)))
       )
     )
+    // No mkdir child, so no exit code: the parent directory may not exist, and the write that would
+    // have followed is not attempted on a spawner's say-so.
     _ => {
       let w = Filesystem.Write(path: path, content: content)
       if w.success {
@@ -246,6 +249,8 @@ fn write_generated_artifact(a: GeneratedArtifact, path: String, content: String)
         exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error)))
       }
     }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => exit_failure(reason: concat(concat("mkdir never spawned for ", artifact_path(a: a)), concat(": ", p)))
   }
 }
 

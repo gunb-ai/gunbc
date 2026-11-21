@@ -4,13 +4,14 @@ import std.types { Bool, String, List }
 import extdeps.exec.command { argv_words }
 import extdeps.llm.cursor_cli { cursor_key_probe_command, cursor_disable_auto_update_flag, cursor_list_models_flag }
 import gunbc.host.cursor_agent_realization { cursor_agent_pinned_program, cursor_agent_executable_path, cursor_agent_pinned_version }
-import gunbc.cursor_harness_credential { cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyAccepted, CursorKeyRejected, CursorKeyProbeUnreadable }
+import gunbc.cursor_harness_credential { cursor_key_probe_reading, CursorKeyProbeReading, CursorKeyAccepted, CursorKeyRejected, CursorKeyProbeUnreadable, CursorKeyProbeNotSpawned }
 
 fn accepted(r: CursorKeyProbeReading) -> Bool {
   match r {
     CursorKeyAccepted => true
     CursorKeyRejected { detail } => false
     CursorKeyProbeUnreadable { exit_code, detail } => false
+    CursorKeyProbeNotSpawned { detail } => false
   }
 }
 
@@ -19,6 +20,7 @@ fn rejected(r: CursorKeyProbeReading) -> Bool {
     CursorKeyAccepted => false
     CursorKeyRejected { detail } => true
     CursorKeyProbeUnreadable { exit_code, detail } => false
+    CursorKeyProbeNotSpawned { detail } => false
   }
 }
 

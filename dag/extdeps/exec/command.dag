@@ -92,6 +92,8 @@ type ArgvCommand sole_constructor {
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
 fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand
   admit_callers: [
+    // TRANSPORT-REFUSAL PRODUCER CONTROL witness (see extdeps.exec.program admit_callers note).
+    decl_ref(module_path: "test.claim.command_runner_transport_refusal_witness", decl_name: "argv_echo"),
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),

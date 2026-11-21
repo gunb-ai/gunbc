@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr }
 import gunbc.runner.runner_microvm_network_observe { network_read_outcome }
 import gunbc.host.host_effect { SshShell }
 import gunbc.executor_privileged_operation { ReadNftRuleset }
-import extdeps.shell.exec { ProcessRefused }
+import extdeps.shell.exec { ProcessCaptureNotSpawned }
 import gunbc.runner.runner_microvm_network_sanitation_observe { tap_holders_reading }
 import gunbc.runner.runner_microvm_network { TapPresentUnheld, TapHeld, TapHoldersUnreadable }
 import extdeps.linux.tun_fdinfo { TunDescriptorCount, TunDescriptorUnreadable, TunCensusMultiQueue, TunCensusQueueCountUnreadable }
@@ -27,7 +27,7 @@ test fn network_producer_preserves_unsupported_queue_observation() -> Bool {
 
 test fn unanchored_network_observation_refuses_before_opening_a_session() -> Bool {
   match network_read_outcome(transport: SshShell { ssh_host: "unexpected-host" }, op: ReadNftRuleset) {
-    ProcessRefused { exit_code: _, stderr: _ } => true
+    ProcessCaptureNotSpawned { program: _, cause: _ } => true
     other => false
   }
 }

@@ -22,7 +22,7 @@ import gunbc.runner.runner_browser_toolchain {
   BrowserLaunchReadback, BrowserLaunchRendered, BrowserLaunchWrongPage, BrowserLaunchWrongModule, launch_readback_of,
   runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
-  tree_admission_of, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
+  tree_admission_of, PathExistence, PathPresent, PathAbsent, PathExistenceUnreadable, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
   browser_toolchain_probe_fragment,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
@@ -165,10 +165,10 @@ test fn a_digest_only_pin_change_names_a_different_tree() -> Bool {
 
 // ADMISSION IS THE CONTENT DIGEST AGAINST THE PIN, AND EVERY OTHER READING REFUSES.
 test fn a_tree_is_admitted_only_when_present_and_its_content_digest_equals_the_pin() -> Bool {
-  (match tree_admission_of(tree: "/t", present: true, pinned: "aa", observation: TreeDigestObserved { hex: "aa" }) { TreeAdmitted => true  _ => false })
-    && (match tree_admission_of(tree: "/t", present: true, pinned: "aa", observation: TreeDigestObserved { hex: "bb" }) { TreeContentMismatch { tree: _, expected: e, observed: o } => (e as String) == "aa" && (o as String) == "bb"  _ => false })
-    && (match tree_admission_of(tree: "/t", present: false, pinned: "aa", observation: TreeDigestObserved { hex: "aa" }) { TreeAbsent { tree: _ } => true  _ => false })
-    && (match tree_admission_of(tree: "/t", present: true, pinned: "aa", observation: TreeDigestUnobservable { reason: "sort failed" }) { TreeUnobservable { tree: _, reason: _ } => true  _ => false })
+  (match tree_admission_of(tree: "/t", presence: PathPresent, pinned: "aa", observation: TreeDigestObserved { hex: "aa" }) { TreeAdmitted => true  _ => false })
+    && (match tree_admission_of(tree: "/t", presence: PathPresent, pinned: "aa", observation: TreeDigestObserved { hex: "bb" }) { TreeContentMismatch { tree: _, expected: e, observed: o } => (e as String) == "aa" && (o as String) == "bb"  _ => false })
+    && (match tree_admission_of(tree: "/t", presence: PathAbsent, pinned: "aa", observation: TreeDigestObserved { hex: "aa" }) { TreeAbsent { tree: _ } => true  _ => false })
+    && (match tree_admission_of(tree: "/t", presence: PathPresent, pinned: "aa", observation: TreeDigestUnobservable { reason: "sort failed" }) { TreeUnobservable { tree: _, reason: _ } => true  _ => false })
 }
 
 // THE MANIFEST IS A PROPERTY OF THE TREE'S CONTENT, NOT ITS LOCATION: the tree prefix is removed from

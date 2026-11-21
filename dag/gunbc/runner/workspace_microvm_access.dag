@@ -8,10 +8,10 @@ import std.algebra { trim }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 import extdeps.ssh.openssh_client_commands { ssh_keyscan_command }
 import extdeps.network.ipv4 { render_ipv4_address }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import gunbc.runner.runner_microvm_network { runner_slot_network }
 import gunbc.runner.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
 import gunbc.runner.runner_microvm_cell_readiness_store { encode_attempt }
@@ -122,6 +122,7 @@ fn workspace_observe_connection(identity: AttemptIdentity, launch: AttemptLaunch
       else {
         let ip = render_ipv4_address(addr: runner_slot_network(slot: identity.attempt.slot).guest_address)
         match run_shell_command_capture(command: ssh_keyscan_command(host: ip, key_type: "ed25519", timeout_seconds: 2), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
           ProcessOutputPresent { text: scanned } =>
             match bind_attempt_console(identity: identity, launch: launch) {
               AttemptConsoleBound { unit: unit_after, systemd_invocation: after } => if unit_after != unit || after != invocation || !systemd.Systemctl.IsActive(unit: unit).active {
@@ -134,7 +135,13 @@ fn workspace_observe_connection(identity: AttemptIdentity, launch: AttemptLaunch
             }
           ProcessOutputAbsent => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
           ProcessRefused { exit_code: _, stderr: _ } => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
-        }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
+
+
+
+
+}
       }
     }
     AttemptConsoleUnbound { reason: _ } => WorkspaceConnectionUnavailable { reason: "workspace VMM has no attributable running invocation" }

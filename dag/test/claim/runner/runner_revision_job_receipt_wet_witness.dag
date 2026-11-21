@@ -9,8 +9,8 @@ import std.content_hash { content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessRefused }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.shell.exec { ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
+import gunbc.command_runner { run_shell_command_capture  }
 import product.fabric.identity { FabricIdentity, ReceiptKey }
 import product.fabric.execution { Receipt, ReceiptPayload, ExecutionReceipt, MaterializationReceipt, LeaseIdentity }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult }
@@ -87,9 +87,16 @@ test fn a_disagreeing_receipt_address_refuses_and_writes_no_index_entry_by_real_
     Present { value: d } => match publish_revision_job_receipt(store_root: probe, staging_path: concat(probe, "/staging.json"), d: d) {
       RevisionJobPublished { address: a, index_entry: _ } => {
         let made = match run_shell_command_capture(command: mkdir_parents_command(path: concat(root, "/receipts")), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
           ProcessRefused { exit_code: _, stderr: _ } => false
           _ => true
-        }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => false
+
+
+
+
+}
         let squatted = made && Filesystem.Write(path: join([root, "/receipts/", a as String, ".json"], ""), content: "not this receipt").success
         let refused = match publish_revision_job_receipt(store_root: root, staging_path: concat(root, "/staging.json"), d: d) {
           RevisionJobPublicationRefused { step: s, detail: _ } => (s as String) == "link-receipt"

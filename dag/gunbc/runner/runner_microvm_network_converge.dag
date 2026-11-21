@@ -6,7 +6,7 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.algebra { trim }
 import std.content_hash { Sha256Digest, Sha256DigestHex, sha256_hex_digest }
 import extdeps.exec.command { ArgvCommand }
-import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptureOutcome, ProcessCaptured}
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
   filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
@@ -20,7 +20,7 @@ import extdeps.linux.nf_conntrack {
   nf_conntrack_helper_proc_path, nf_conntrack_sysctl_dir, nf_conntrack_helper_sysctl_name,
 }
 import extdeps.tools.uname { uname_release_command }
-import gunbc.command_runner { run_shell_command_capture, LocalExec }
+import gunbc.command_runner { run_shell_command_capture, LocalExec}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.shell
 import extdeps.github.actions_environment { github_run_id_variable_name }
@@ -324,12 +324,18 @@ fn parse_auto_assignment_value(text: String) -> HelperAutoAssignment {
 }
 
 // A SURFACE THAT DID NOT ANSWER IS UNREAD, and the count is only minted from a run that answered.
-fn surface_reading(o: ProcessOutcome, surface: String, count: Int) -> HelperSurfaceReading {
+fn surface_reading(o: ProcessCaptureOutcome, surface: String, count: Int) -> HelperSurfaceReading {
   match o {
-    ProcessRefused { exit_code: code, stderr: _ } =>
-      HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
-    ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
-    ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessRefused { exit_code: code, stderr: _ } =>
+        HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
+      ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
+      ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+    }
+    // A probe nobody started answered nothing: it is unread, and the cause is the spawner's own words.
+    // Counting a surface off an unspawned probe would mint a "no helper attached" from silence.
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      HelperSurfaceUnread { reason: join([surface, " probe was never spawned: ", p, ": ", why], "") as NonEmptyStr }
   }
 }
 
@@ -566,26 +572,36 @@ fn proc_readable(o: FilesystemReadOutcome) -> Bool {
   }
 }
 
-fn capture_stdout(c: ArgvCommand) -> ProcessOutcome {
+fn capture_stdout(c: ArgvCommand) -> ProcessCaptureOutcome {
   run_shell_command_capture(command: c, transport: LocalExec)
 }
 
 // A REFUSED COMMAND HAS NO READING, AND AN EMPTY ONE IS NOT THE SAME AS A MISSING ONE.
 // ProcessOutputAbsent is a run that printed nothing -- an empty conntrack expectation table is
 // exactly that, and it is a real reading -- while ProcessRefused is a probe that did not answer.
-fn outcome_stdout(o: ProcessOutcome) -> String {
+fn outcome_stdout(o: ProcessCaptureOutcome) -> String {
   match o {
-    ProcessOutputPresent { text: t } => t
-    ProcessOutputAbsent => ""
-    ProcessRefused { exit_code: _, stderr: _ } => ""
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: t } => t
+      ProcessOutputAbsent => ""
+      ProcessRefused { exit_code: _, stderr: _ } => ""
+    }
+    // A probe the spawner never ran printed nothing, and nothing is what its counters must see -- but
+    // only alongside outcome_ran(o:) == false, which is what keeps the reading from being believed.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => ""
   }
 }
 
-fn outcome_ran(o: ProcessOutcome) -> Bool {
+fn outcome_ran(o: ProcessCaptureOutcome) -> Bool {
   match o {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: _ } => true
+      ProcessOutputAbsent => true
+      ProcessRefused { exit_code: _, stderr: _ } => false
+    }
+    // It did not run. That is the fact, and it is reported as one: no exit code is named for a probe
+    // the spawner never started.
+    ProcessCaptureNotSpawned { program: _, cause: _ } => false
   }
 }
 
@@ -599,12 +615,16 @@ fn listing_digest(d: Sha256FileDigest) -> Sha256Digest? {
   }
 }
 
-fn slot_probe_reading(o: ProcessOutcome, probe: String) -> SlotProbeReading {
+fn slot_probe_reading(o: ProcessCaptureOutcome, probe: String) -> SlotProbeReading {
   match o {
-    ProcessOutputPresent { text: t } => SlotProbeRead { text: t }
-    ProcessOutputAbsent => SlotProbeRead { text: "" }
-    ProcessRefused { exit_code: code, stderr: _ } =>
-      SlotProbeUnread { reason: join([probe, " exited ", to_string(code)], "") as NonEmptyStr }
+    ProcessCaptured { outcome: outcome } => match outcome {
+      ProcessOutputPresent { text: t } => SlotProbeRead { text: t }
+      ProcessOutputAbsent => SlotProbeRead { text: "" }
+      ProcessRefused { exit_code: code, stderr: _ } =>
+        SlotProbeUnread { reason: join([probe, " exited ", to_string(code)], "") as NonEmptyStr }
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      SlotProbeUnread { reason: join([probe, " was never spawned: ", p, ": ", why], "") as NonEmptyStr }
   }
 }
 
@@ -634,12 +654,14 @@ fn host_ruleset_digest_wet(listing: String) -> Sha256FileDigest {
 // gunbc.runner.runner_microvm_network_observe, which cannot live here: gunbc.runner.runner_host_grants consumes this
 // module's operation fold, and the administrator edge reaches through it. What stays here is every
 // reading an unprivileged principal CAN take -- procfs, ip, uname -- and the fold over all of them.
+// EACH FIELD IS EITHER AN OBSERVED CHILD RESULT OR THE FACT THAT ITS PROBE WAS NEVER SPAWNED. The
+// administrator edge may decline to start a probe at all; that is not a child that printed nothing.
 type MicrovmPrivilegedReadings {
-  table: ProcessOutcome
-  ruleset: ProcessOutcome
-  xtables: ProcessOutcome
-  userspace: ProcessOutcome
-  expectations: ProcessOutcome
+  table: ProcessCaptureOutcome
+  ruleset: ProcessCaptureOutcome
+  xtables: ProcessCaptureOutcome
+  userspace: ProcessCaptureOutcome
+  expectations: ProcessCaptureOutcome
 }
 
 fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: MicrovmPrivilegedReadings) -> HostReading {

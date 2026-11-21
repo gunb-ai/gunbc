@@ -9,7 +9,7 @@ import std.measure { Second, second, micro_per_unit, ByteSize, byte_size, byte_s
 import std.content_hash { ContentHash, serialize_content_hash, content_hash_of_value }
 import extdeps.bazel.label { Label }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.stat { stat_size_bytes_command, stat_field_reading, StatFieldRead, StatFieldUnread }
+import extdeps.tools.stat { stat_size_bytes_command, stat_field_reading, stat_field_reading_capture, StatFieldRead, StatFieldUnread }
 import extdeps.systemd { ExecMainStartTimestampMonotonic, ExecMainExitTimestampMonotonic }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
@@ -104,7 +104,7 @@ fn read_unit_runtime(unit: NonEmptyStr) -> UnitRuntimeReading {
 // the staged size refuses before its text is interpreted; a drive whose size or text could not be
 // read at all is ResultsDriveUnobserved, never a size.
 fn read_results_drive(path: String, staged_bytes: ByteSize) -> ClaimSetResultsDecode {
-  match stat_field_reading(outcome: run_shell_command_capture(command: stat_size_bytes_command(path: path), transport: LocalExec)) {
+  match stat_field_reading_capture(captured: run_shell_command_capture(command: stat_size_bytes_command(path: path), transport: LocalExec)) {
     StatFieldUnread { detail: d } => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, ": ", d], "") } }
     StatFieldRead { value: v } => match parse_int(s: v) {
       Absent => ClaimSetResultsRefused { cause: ResultsDriveUnobserved { detail: join(["stat of ", path, " printed a non-integer size: ", v], "") } }

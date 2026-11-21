@@ -84,7 +84,7 @@ import extdeps.github.effect { GitHubOrganizationRef }
 import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import product.fabric.work { Work }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted, process_capture_admitted}
 import gunbc.host.host_effect { LocalShell }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -94,6 +94,7 @@ import gunbc.runner.runner_host_deploy { RunnerHostSpec }
 import gunbc.runner.runner_microvm_host_ready {
   MicrovmHostBinding, MicrovmHostBound, MicrovmHostBindingRefused, MicrovmHostBindingRefusal,
   microvm_host_binding_of, microvm_host_binding_refusal_text, HostObservationFailed,
+  CaptureProbe, ProbeAnswered, ProbeUnreadable, capture_probe,
 }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_slot_env_name, microvm_release_dir_env_name,
@@ -194,6 +195,10 @@ type SlotControllerRefusal
   | SlotNotAFabricMember { instance: String }
   | SlotHostBindingRefused { cause: MicrovmHostBindingRefusal }
   | ReleaseLocusIncomplete { path: String }
+  // A locus file whose executable/exists probe was never SPAWNED: the controller refuses to launch
+  // -- but the refusal says the probe never ran, not that the file is missing. Claiming absence from
+  // an unanswered question is the collapse this variant forbids (gunbc.design_argument::fail_closed).
+  | ProbeUnspawned { path: String, program: String, cause: String }
   | GuestImageIncomplete { path: String }
   | ReservationNotObserved { observation: RequiredBuildCellObservation }
   | CellNotBound { cause: String }
@@ -249,16 +254,16 @@ fn bind_slot_host(slot: RunnerSlotIdentity) -> MicrovmHostBinding {
 
 // ── stage 2: the locus and the guest image, read as existence ───────────────────────────────────
 
-fn path_is_executable(path: String) -> Bool
+fn path_is_executable(path: String) -> CaptureProbe
   uses net: Network
 {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
+  capture_probe(captured: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec))
 }
 
-fn path_exists(path: String) -> Bool
+fn path_exists(path: String) -> CaptureProbe
   uses net: Network
 {
-  process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+  capture_probe(captured: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
 }
 
 // THE VMM AND THE JAILER ARE THE LOCUS'S, root-owned and installed beside this binary by the same
@@ -447,15 +452,19 @@ fn slot_controller_launch_admitted(slot: RunnerSlotIdentity, snapshot: RequiredB
   uses net: Network, fs: Filesystem
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "slot_controller_on_reservation")]
 {
-  if !path_is_executable(path: bins.firecracker) {
-    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
-  } else if !path_is_executable(path: bins.jailer) {
-    SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
-  } else if !path_exists(path: image.kernel) {
-    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
-  } else if !path_exists(path: image.rootfs) {
-    SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
-  } else {
+  match path_is_executable(path: bins.firecracker) {
+    ProbeUnreadable { program: p, cause: c } => SlotControllerRefused { refusal: ProbeUnspawned { path: bins.firecracker, program: p, cause: c } }
+    ProbeAnswered { admitted: false } => SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
+    ProbeAnswered { admitted: true } => match path_is_executable(path: bins.jailer) {
+      ProbeUnreadable { program: p, cause: c } => SlotControllerRefused { refusal: ProbeUnspawned { path: bins.jailer, program: p, cause: c } }
+      ProbeAnswered { admitted: false } => SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
+      ProbeAnswered { admitted: true } => match path_exists(path: image.kernel) {
+        ProbeUnreadable { program: p, cause: c } => SlotControllerRefused { refusal: ProbeUnspawned { path: image.kernel, program: p, cause: c } }
+        ProbeAnswered { admitted: false } => SlotControllerRefused { refusal: GuestImageIncomplete { path: image.kernel } }
+        ProbeAnswered { admitted: true } => match path_exists(path: image.rootfs) {
+          ProbeUnreadable { program: p, cause: c } => SlotControllerRefused { refusal: ProbeUnspawned { path: image.rootfs, program: p, cause: c } }
+          ProbeAnswered { admitted: false } => SlotControllerRefused { refusal: GuestImageIncomplete { path: image.rootfs } }
+          ProbeAnswered { admitted: true } => {
   let binding = bind_microvm_to_cell(snapshot: snapshot)
   match binding {
     VmUnboundCellNotOwned { cause: c } => SlotControllerRefused { refusal: CellNotBound { cause: c } }
@@ -476,6 +485,10 @@ fn slot_controller_launch_admitted(slot: RunnerSlotIdentity, snapshot: RequiredB
               }
           }
       }
+  }
+  }
+  }
+  }
   }
   }
 }
@@ -577,6 +590,7 @@ fn refusal_text(r: SlotControllerRefusal) -> String {
     SlotNotAFabricMember { instance: i } => join(["SlotNotAFabricMember ", i, " -- not in gunbc.runner.runner_slot_allocation fabric_execution_slot_identities"], "")
     SlotHostBindingRefused { cause: c } => join(["SlotHostBindingRefused ", microvm_host_binding_refusal_text(c: c)], "")
     ReleaseLocusIncomplete { path: p } => join(["ReleaseLocusIncomplete ", p, " is not an executable in the release locus"], "")
+    ProbeUnspawned { path: p, program: q, cause: c } => join(["ProbeUnspawned ", p, " was never tested -- the probe child was not created: ", q, " -- ", c], "")
     GuestImageIncomplete { path: p } => join(["GuestImageIncomplete ", p, " is absent"], "")
     ReservationNotObserved { observation: o } => join(["ReservationNotObserved ", reservation_observation_text(o: o)], "")
     CellNotBound { cause: c } => join(["CellNotBound ", c], "")
@@ -947,9 +961,13 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "workspace_slot_launch_observed")]
 {
   let bins = locus_binaries(release_dir: release_dir)
-  if !path_is_executable(path: bins.firecracker) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } } }
-  else if !path_is_executable(path: bins.jailer) { SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } } }
-  else { match workspace_installed_image(release_dir: release_dir, identity: reservation.request.image) {
+  match path_is_executable(path: bins.firecracker) {
+    ProbeUnreadable { program: p, cause: c } => SlotControllerRefused { refusal: ProbeUnspawned { path: bins.firecracker, program: p, cause: c } }
+    ProbeAnswered { admitted: false } => SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.firecracker } }
+    ProbeAnswered { admitted: true } => match path_is_executable(path: bins.jailer) {
+      ProbeUnreadable { program: p, cause: c } => SlotControllerRefused { refusal: ProbeUnspawned { path: bins.jailer, program: p, cause: c } }
+      ProbeAnswered { admitted: false } => SlotControllerRefused { refusal: ReleaseLocusIncomplete { path: bins.jailer } }
+      ProbeAnswered { admitted: true } => match workspace_installed_image(release_dir: release_dir, identity: reservation.request.image) {
     WorkspaceImageRefused { reason } => workspace_slot_refused(reason: reason)
     WorkspaceImageVerified { image } => match microvm_attempt(slot: reservation.slot, attempt_id: reservation.grant.attempt.key as String) {
       MicroVmAttemptRefused { refusal } => workspace_slot_refused(reason: attempt_segment_refusal_text(r: refusal))
@@ -971,7 +989,9 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
       }
       }
     }
-  } }
+  }
+  }
+  }
 }
 
 // The root-owned installed controller applies only the durable plan already selected for its unit.

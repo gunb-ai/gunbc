@@ -4,12 +4,12 @@ import std.types { String, Secret, Timestamp, List }
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.tools.gh { gh_run_download_command }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
 import extdeps.exec.command { LocalExec }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.repository { gunbc_repository }
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture}
 import extdeps.github.workflow_runs { WorkflowRun }
 import gunbc.fleet.fleet_converge_producer_run { ProducerRunObserved, ProducerRunAbsent, ProducerRunUnreadable, fleet_converge_producer_run_observed, FleetConvergeProducerRunSelection, fleet_converge_producer_run_select }
 import gunbc.host.running_os { RunningOsReading }
@@ -70,9 +70,13 @@ fn running_os_receipt_of_run(source: RunningOsReceiptSource, run: GitHubWorkflow
   let dir = running_os_receipt_download_dir(run: run, read_at: read_at)
   let download = gh_run_download_command(run_id: github_workflow_run_id_wire_text(id: run), repo: gunbc_repository.full_name, artifact: source.artifact, dir: dir)
   match run_shell_command_capture(command: download, transport: LocalExec) {
+    ProcessCaptured { outcome: __outcome } => match __outcome {
     ProcessRefused { exit_code, stderr } => running_os_receipt_unobserved(step: "artifact download", cause: join(["gh run download exited ", to_string(exit_code), ": ", stderr], ""))
     ProcessOutputPresent { text: _ } => running_os_receipt_of_downloaded(source: source, producer: producer, dir: dir)
     ProcessOutputAbsent => running_os_receipt_of_downloaded(source: source, producer: producer, dir: dir)
+    // The download client never ran, so the artifact directory holds nothing to read.
+    }
+    ProcessCaptureNotSpawned { program: p, cause: why } => running_os_receipt_unobserved(step: "artifact download", cause: join(["gh run download was never spawned: ", p, ": ", why], ""))
   }
 }
 

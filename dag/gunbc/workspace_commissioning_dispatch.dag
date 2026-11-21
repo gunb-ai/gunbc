@@ -25,9 +25,9 @@ import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_obser
 import gunbc.workspace_commissioning_start_observe { workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartSnapshot, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartUnreadable }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.fleet.fleet_generation_execution { fleet_generation_publication_as_owner }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 
 fn workspace_dispatch_refused(reason: String) -> CliWireResponse {
   CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
@@ -134,11 +134,14 @@ fn workspace_dispatch_complete_cli() -> CliWireResponse {
               workspace_dispatch_refused(reason: "commissioning has no protected completed generation")
             } else { match run_shell_command_capture(command: fleet_generation_publication_as_owner(action: "observe", host: plan.provenance.slot.host as NonEmptyStr,
               prior: record.subject.prior_fleet_generation, planned: record.subject.planned_fleet_generation, bundle: plan.bundle), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
               ProcessOutputPresent { text: verdict } => if trim(s: verdict) != "committed" { workspace_dispatch_refused(reason: "fleet generation readback is not committed") }
                 else { workspace_dispatch_completed_unit(slot: slot as NonEmptyStr, bundle: expected) }
               ProcessOutputAbsent => workspace_dispatch_refused(reason: "fleet generation receipt is unreadable")
               ProcessRefused { exit_code: _, stderr: _ } => workspace_dispatch_refused(reason: "fleet generation receipt is unreadable")
-            } }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => workspace_dispatch_refused(reason: concat("fleet generation receipt never spawned: ", concat(__pp0 as String, ": ", __pw0 as String)))
+} }
             Absent => workspace_dispatch_refused(reason: "executor journal is absent")
           }
           WorkspaceExecutorJournalUnreadable { reason: _ } => workspace_dispatch_refused(reason: "executor journal is unreadable")

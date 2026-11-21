@@ -12,12 +12,13 @@ import extdeps.virtualization.qemu {
 import extdeps.firmware.tianocore_edk2.aavmf { AavmfDistributionBuild, AavmfFirmwareFile, aavmf_2024_02_ubuntu_noble }
 import gunbc.command_runner {
   ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, run_shell_command_capture,
-  process_outcome_admitted, LocalExec,
+  process_outcome_admitted, LocalExec, process_capture_admitted
 }
-import gunbc.runner.runner_microvm_host_ready { KvmDeviceStanding, KvmDeviceWritable, kvm_standing_of, kvm_standing_text }
+import gunbc.runner.runner_microvm_host_ready { KvmDeviceStanding, KvmDeviceWritable, kvm_standing_of, capture_probe, kvm_standing_text }
 import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
 import extdeps.tools.ldd { ldd_command, ldd_reading_of, LddReading, LddAllResolved, LddUnresolved, LddUnreadable }
 import gunbc.runner.runner_qemu_toolchain { qemu_toolchain_rooted, qemu_toolchain_cleared_command }
+import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptured }
 
 // WHAT AN EXECUTOR HOST CARRIES FOR A QEMU BOOT UNDER KVM, READ AND NOTHING WRITTEN. This is an
 // EXECUTOR-HOST reading (managed-host cut 4b): its subject is the machine the job runs on, KEYED BY
@@ -54,6 +55,11 @@ type QemuBinaryStanding
   = QemuAbsent { binary: String, detail: String }
   | QemuPinnedBuild { binary: String, banner: String }
   | QemuOtherBuild { binary: String, observed_sha256: String, banner: String, banner_is_pinned: Bool }
+  // NEITHER ABSENT NOR WRONG-BUILD: the executable probe or the --version child never spawned, so
+  // the binary was never asked anything. Reading that as OtherBuild (the old prose banner did)
+  // convicts a binary of an identity nobody verified; the standing carries the probe's own program
+  // and cause and refuses.
+  | QemuBinaryUnreadable { binary: String, program: String, cause: String }
 
 type FirmwareFileStanding
   = FirmwareFileMatches { path: String }
@@ -87,14 +93,20 @@ fn qemu_banner_first_line(output: String) -> String {
 type QemuBannerReading
   = QemuBannerNotRead
   | QemuBannerRead { banner: String }
+  // The --version child was never spawned: there is no banner, prose or otherwise -- and prose
+  // invented for it would be classified by qemu_banner_is_pinned as a build reading.
+  | QemuBannerUnreadable { program: String, cause: String }
 
 type QemuPresence
   = QemuNotExecutable
   | QemuExecutable { digest: Sha256FileDigest }
+  // The `test -x` child never spawned: 'not executable' is an answer, this is the absence of one.
+  | QemuPresenceUnreadable { program: String, cause: String }
 
 // The one decision the wet sequencer consults before spawning the banner command.
 fn qemu_banner_may_be_read(presence: QemuPresence) -> Bool {
   match presence {
+    QemuPresenceUnreadable { program: _, cause: _ } => false
     QemuNotExecutable => false
     QemuExecutable { digest: d } => match d { Sha256FileDigest { digest: _ } => true  Sha256FileDigestUnavailable { path: _, reason: _ } => false }
   }
@@ -106,11 +118,14 @@ fn qemu_binary_standing_of(root: String, build: QemuDistributionBuild, presence:
   let binary = qemu_toolchain_rooted(root: root, packaged: build.installed_binary)
   match presence {
     QemuNotExecutable => QemuAbsent { binary: binary, detail: "no executable file at this path; the binary was not run" }
+    QemuPresenceUnreadable { program: p, cause: c } => QemuBinaryUnreadable { binary: binary, program: p, cause: c }
     QemuExecutable { digest: digest } =>
       match digest {
         Sha256FileDigestUnavailable { path: _, reason: r } => QemuAbsent { binary: binary, detail: concat(r, "; the binary was not run") }
         Sha256FileDigest { digest: d } => {
-          let text = match banner { QemuBannerNotRead => ""  QemuBannerRead { banner: t } => t }
+          // A banner that was never READ cannot certify (or contradict) the pinned build: the
+          // classification stops at the unreadable reading instead of comparing invented prose.
+          let text = match banner { QemuBannerUnreadable { program: p, cause: c } => return QemuBinaryUnreadable { binary: binary, program: p, cause: c }  QemuBannerNotRead => ""  QemuBannerRead { banner: t } => t }
           if (d.hex as String) == (build.installed_binary_sha256 as String) && qemu_banner_is_pinned(build: build, banner: text) {
             QemuPinnedBuild { binary: binary, banner: text }
           } else {
@@ -125,9 +140,12 @@ fn observe_qemu_banner_wet(root: String, build: QemuDistributionBuild, presence:
   let path = qemu_toolchain_rooted(root: root, packaged: build.installed_binary)
   let banner = if qemu_banner_may_be_read(presence: presence) {
     match run_shell_command_capture(command: qemu_toolchain_cleared_command(root: root, command: qemu_version_command(binary: path as FilePath)), transport: LocalExec) {
+      ProcessCaptured { outcome: __outcome } => match __outcome {
       ProcessOutputPresent { text: t } => QemuBannerRead { banner: qemu_banner_first_line(output: t) }
       ProcessOutputAbsent => QemuBannerRead { banner: "" }
       ProcessRefused { exit_code: x, stderr: e } => QemuBannerRead { banner: join(["(--version exit ", to_string(x), ": ", trim(s: e), ")"], "") }
+      }
+      ProcessCaptureNotSpawned { program: p, cause: why } => QemuBannerUnreadable { program: p as String, cause: why as String }
     }
   } else {
     QemuBannerNotRead
@@ -137,10 +155,14 @@ fn observe_qemu_banner_wet(root: String, build: QemuDistributionBuild, presence:
 
 fn observe_qemu_presence_wet(root: String, build: QemuDistributionBuild) -> QemuPresence {
   let path = qemu_toolchain_rooted(root: root, packaged: build.installed_binary)
-  if process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)) {
+  let probe = run_shell_command_capture(command: test_executable_command(path: path), transport: LocalExec)
+  match probe {
+    ProcessCaptureNotSpawned { program: p, cause: why } => QemuPresenceUnreadable { program: p as String, cause: why as String }
+    ProcessCaptured { outcome: _ } => if process_capture_admitted(captured: probe) {
     QemuExecutable { digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
   } else {
     QemuNotExecutable
+  }
   }
 }
 
@@ -149,11 +171,16 @@ fn observe_qemu_presence_wet(root: String, build: QemuDistributionBuild) -> Qemu
 fn observe_qemu_libraries_wet(root: String, build: QemuDistributionBuild, presence: QemuPresence) -> QemuLibraryStanding {
   match presence {
     QemuNotExecutable => QemuLibrariesNotRead { reason: "no executable at the rooted path" }
+    // ldd over a binary nobody confirmed exists is not a reading: say the probe never ran.
+    QemuPresenceUnreadable { program: p, cause: c } => QemuLibrariesNotRead { reason: join(["the executable probe was never spawned: ", p, " -- ", c], "") }
     QemuExecutable { digest: _ } =>
       match run_shell_command_capture(command: qemu_toolchain_cleared_command(root: root, command: ldd_command(binary: qemu_toolchain_rooted(root: root, packaged: build.installed_binary))), transport: LocalExec) {
+        ProcessCaptured { outcome: __outcome } => match __outcome {
         ProcessOutputPresent { text: t } => QemuLibrariesRead { reading: ldd_reading_of(output: t) }
         ProcessOutputAbsent => QemuLibrariesRead { reading: ldd_reading_of(output: "") }
         ProcessRefused { exit_code: x, stderr: e } => QemuLibrariesNotRead { reason: join(["ldd exited ", to_string(x), ": ", trim(s: e)], "") }
+        }
+        ProcessCaptureNotSpawned { program: p, cause: why } => QemuLibrariesNotRead { reason: join(["ldd was never spawned: ", p, ": ", why], "") }
       }
   }
 }
@@ -176,7 +203,7 @@ fn observe_firmware_file_digest_wet(root: String, file: AavmfFirmwareFile) -> Sh
 }
 
 fn qemu_standing_ready(s: QemuBinaryStanding) -> Bool {
-  match s { QemuPinnedBuild { banner: _ } => true  QemuAbsent { binary: _, detail: _ } => false  QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: _ } => false }
+  match s { QemuPinnedBuild { banner: _ } => true  QemuAbsent { binary: _, detail: _ } => false  QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: _ } => false  QemuBinaryUnreadable { binary: _, program: _, cause: _ } => false }
 }
 
 fn firmware_standing_ready(s: FirmwareFileStanding) -> Bool {
@@ -184,7 +211,7 @@ fn firmware_standing_ready(s: FirmwareFileStanding) -> Bool {
 }
 
 fn kvm_standing_ready(k: KvmDeviceStanding) -> Bool {
-  match k { KvmDeviceWritable => true  KvmDevicePresentNotWritable => false  KvmDeviceAbsent => false }
+  match k { KvmDeviceWritable => true  KvmDevicePresentNotWritable => false  KvmDeviceAbsent => false  KvmDeviceUnreadable { program: _, cause: _ } => false }
 }
 
 fn library_standing_ready(l: QemuLibraryStanding) -> Bool {
@@ -200,6 +227,7 @@ fn qemu_standing_text(s: QemuBinaryStanding) -> String {
   match s {
     QemuAbsent { binary: b, detail: d } => join(["qemu=absent (", b, ": ", d, ")"], "")
     QemuPinnedBuild { binary: b, banner: x } => join(["qemu=pinned (", b, ", ", x, ")"], "")
+    QemuBinaryUnreadable { binary: b, program: p, cause: c } => join(["qemu=unreadable (", b, ": probe never spawned -- ", p, " ", c, ")"], "")
     QemuOtherBuild { binary: b, observed_sha256: h, banner: x, banner_is_pinned: p } =>
       join(["qemu=other-build (", b, " sha256 ", h, ", banner \"", x, "\"", if p { " -- the banner matches but the bytes do not" } else { "" }, ")"], "")
   }
@@ -271,8 +299,8 @@ fn qemu_host_standing_of(
 
 fn observe_qemu_host_standing_wet(host: HostnameShortCapture, root: String) -> QemuHostStanding {
   let kvm_path = qemu_kvm_accelerator_device as String
-  let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
-  let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
+  let exists = capture_probe(captured: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
+  let writable = capture_probe(captured: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
   let build = qemu_8_2_2_ubuntu_noble_arm64
   let firmware = aavmf_2024_02_ubuntu_noble
   let presence = observe_qemu_presence_wet(root: root, build: build)

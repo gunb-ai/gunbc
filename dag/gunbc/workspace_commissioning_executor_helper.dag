@@ -31,9 +31,9 @@ import gunbc.runner.runner_microvm_network { SlotNetworkSanitationSubject }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_commissioning_executor_journal { ExecutorReleaseObserved, ExecutorGenerationCommitted }
 import gunbc.fleet.fleet_generation_execution { fleet_generation_publication_as_owner }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { run_shell_command_capture  }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned}
 
 
 // Helpers run as children of the native systemd-owned executor, not as its MainPID. An
@@ -220,6 +220,7 @@ fn workspace_executor_helper_publish(executor: NonEmptyStr,
           action: "publish", host: settlement.completed.provenance.slot.host as NonEmptyStr,
           prior: record.subject.prior_fleet_generation, planned: record.subject.planned_fleet_generation,
           bundle: record.subject.fleet_bundle_hash), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
           ProcessOutputPresent { text } => if trim(s: text) != "committed" {
             WorkspaceExecutorHelperRefused { reason: "fleet publication returned no committed receipt" }
           } else { match workspace_executor_actor_observe(slot: record.subject.slot) {
@@ -237,7 +238,13 @@ fn workspace_executor_helper_publish(executor: NonEmptyStr,
           } }
           ProcessOutputAbsent => WorkspaceExecutorHelperRefused { reason: "fleet publication failed or is unsettled; retain the durable obligation" }
           ProcessRefused { exit_code: _, stderr: _ } => WorkspaceExecutorHelperRefused { reason: "fleet publication failed or is unsettled; retain the durable obligation" }
-        } }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => WorkspaceExecutorHelperRefused { reason: "fleet publication failed or is unsettled; retain the durable obligation" }
+
+
+
+
+} }
         Absent => WorkspaceExecutorHelperRefused { reason: "executor settlement disappeared before publication" }
       }
       WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorHelperRefused { reason: "executor settlement is unreadable before publication" }
@@ -265,11 +272,18 @@ fn workspace_executor_helper_finish(executor: NonEmptyStr, controller: NonEmptyS
             action: "observe", host: provenance.slot.host as NonEmptyStr,
             prior: record.subject.prior_fleet_generation, planned: record.subject.planned_fleet_generation,
             bundle: record.subject.fleet_bundle_hash), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
             ProcessOutputPresent { text } => if trim(s: text) == "committed" { WorkspaceExecutorHelperAccepted }
               else { WorkspaceExecutorHelperRefused { reason: "completed executor has no coherent fleet publication history" } }
             ProcessOutputAbsent => WorkspaceExecutorHelperRefused { reason: "fleet publication history is unreadable" }
             ProcessRefused { exit_code: _, stderr: _ } => WorkspaceExecutorHelperRefused { reason: "fleet publication history is unreadable" }
-          } }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => WorkspaceExecutorHelperRefused { reason: "fleet publication history is unreadable" }
+
+
+
+
+} }
           WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorHelperRefused { reason: "completion replay executor is unreadable" }
         } }
       } else { match workspace_executor_helper_settle(executor: executor, controller: controller,

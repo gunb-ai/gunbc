@@ -74,7 +74,7 @@ import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program
 import extdeps.tools.gnu_coreutils { cat_command, whoami_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import extdeps.languages.bash.invocation { bash_program_command }
-import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command_capture, run_shell_commands, process_outcome_admitted , process_capture_admitted}
 import gunbc.host.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner.runner_unit { runner_unit_dropin_dir }
 import gunbc.runner.runner_slot_retirement {
@@ -249,6 +249,7 @@ import gunbc.fleet.fleet_converge_receipt {
   admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
+import extdeps.shell.exec { ProcessCaptured, ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 // The apply script is written by this CLI and then executed, so its mode is a decision this module
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
@@ -272,11 +273,18 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 fn observe_effective_user_wet() -> NonEmptyStr?
 {
   match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
     ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" { none } else { Present { value: trim(s: t) as NonEmptyStr } }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => none
+
+
+
+
+}
 }
 
 fn observe_host_short_wet() -> NonEmptyStr?
@@ -285,6 +293,7 @@ fn observe_host_short_wet() -> NonEmptyStr?
     command: hostname_short_read_command(),
     transport: LocalExec,
   ) {
+    ProcessCaptured { outcome: __pc1 } => match __pc1 {
     ProcessOutputPresent { text: t } =>
       if trim(s: t) == "" {
         none
@@ -293,7 +302,13 @@ fn observe_host_short_wet() -> NonEmptyStr?
       }
     ProcessOutputAbsent => none
     ProcessRefused { exit_code: _, stderr: _ } => none
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp1, cause: __pw1 } => none
+
+
+
+
+}
 }
 
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
@@ -311,15 +326,38 @@ fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmissio
   )
 }
 
-fn observe_timer_members_wet() -> List<TimerRetirementMember>
+// A TIMER IS EITHER NOT A MEMBER OR UNASKED -- NOT BOTH. The old filter collapsed 'the `test`
+// child was never spawned' into 'unit file not present', so a launch-environment converge could
+// propose timer work over a unit population nobody enumerated (gunbc.design_argument::fail_closed).
+// Unobservable carries the probe's own program and cause; the callers refuse, never plan.
+type TimerMembersObservation
+  = TimerMembersObserved { members: List<TimerRetirementMember> }
+  | TimerMembersUnobservable { unit: NonEmptyStr, program: String, cause: String }
+
+fn observe_timer_members_wet() -> TimerMembersObservation
 {
   let legacy = timer_retirement_observed_legacy_srv1()
-  filter(legacy, m =>
-    process_outcome_admitted(outcome: run_shell_command_capture(
-      command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
-      transport: LocalExec,
-    ))
-  )
+  fold(legacy, init: TimerMembersObserved { members: [] }, f: fn(acc, m) {
+    match acc {
+      TimerMembersUnobservable { unit: _, program: _, cause: _ } => acc
+      TimerMembersObserved { members: members } => {
+        let probe = run_shell_command_capture(
+          command: test_regular_file_command(path: concat("/etc/systemd/system/", m.unit_name as String)),
+          transport: LocalExec,
+        )
+        match probe {
+          ProcessCaptureNotSpawned { program: p, cause: why } =>
+            TimerMembersUnobservable { unit: m.unit_name, program: p as String, cause: why as String }
+          ProcessCaptured { outcome: _ } =>
+            if process_capture_admitted(captured: probe) {
+              TimerMembersObserved { members: append(members, items: [m]) }
+            } else {
+              TimerMembersObserved { members: members }
+            }
+        }
+      }
+    }
+  })
 }
 
 type CapMembersObservation
@@ -428,12 +466,18 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
         observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
       },
     }
-    ScopeDecoded { scope: LaunchEnvironment } => FleetConvergeRequestObserved {
-      request: LaunchEnvironmentConverge {
-        host: host,
-        observed_timers: observe_timer_members_wet(),
-      },
-    }
+    ScopeDecoded { scope: LaunchEnvironment } =>
+      match observe_timer_members_wet() {
+        TimerMembersUnobservable { unit: u, program: p, cause: c } => FleetConvergeRequestUnobserved {
+          reason: join(["TimerMembersUnobservable unit=", u as String, " — the membership test was never spawned: ", p, " -- ", c], ""),
+        }
+        TimerMembersObserved { members: observed_timers } => FleetConvergeRequestObserved {
+          request: LaunchEnvironmentConverge {
+            host: host,
+            observed_timers: observed_timers,
+          },
+        }
+      }
     ScopeDecoded { scope: WorkspaceSlotCommissioningOnly } => FleetConvergeRequestUnobserved { reason: "commissioning observation requires the admitted revision" }
     ScopeDecoded { scope: WorkspaceAllocationOnly } => FleetConvergeRequestUnobserved { reason: "workspace allocation observation requires the admitted revision" }
     ScopeDecoded { scope: LiveDeploy } =>
@@ -448,8 +492,10 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                 CapMembersUnobservable { path: path, cause: cause } => FleetConvergeRequestUnobserved {
                   reason: join(["CapMemberUnobservable path=", path as String, " — ", cause], ""),
                 }
-                CapMembersAbsent => {
-                  let observed_timers = observe_timer_members_wet()
+                CapMembersAbsent =>
+                  match observe_timer_members_wet() {
+                    TimerMembersUnobservable { unit: u, program: p, cause: c } => FleetConvergeRequestUnobserved { reason: join(["TimerMembersUnobservable unit=", u as String, " — the membership test was never spawned: ", p, " -- ", c], "") }
+                    TimerMembersObserved { members: observed_timers } => {
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
@@ -467,9 +513,12 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_host_grants: observed_host_grants,
                     },
                   }
-                }
-                CapMembersObserved { members: observed_caps } => {
-                  let observed_timers = observe_timer_members_wet()
+                    }
+                  }
+                CapMembersObserved { members: observed_caps } =>
+                  match observe_timer_members_wet() {
+                    TimerMembersUnobservable { unit: u, program: p, cause: c } => FleetConvergeRequestUnobserved { reason: join(["TimerMembersUnobservable unit=", u as String, " — the membership test was never spawned: ", p, " -- ", c], "") }
+                    TimerMembersObserved { members: observed_timers } => {
                   let observed_fabric_cells = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity))
                   let observed_unit_standings = observe_runner_unit_standings_wet(host: host)
                   let observed_retirement = observe_slot_retirement_evidence_wet(host: host)
@@ -487,7 +536,8 @@ fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> 
                       observed_host_grants: observed_host_grants,
                     },
                   }
-                }
+                    }
+                  }
               }
           }
   }
@@ -588,10 +638,17 @@ fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersio
     Absent => ""
   }
   let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
+    ProcessCaptured { outcome: __pc2 } => match __pc2 {
     ProcessOutputPresent { text: _ } => true
     ProcessOutputAbsent => true
     ProcessRefused { exit_code: _, stderr: _ } => false
-  }
+    }
+    ProcessCaptureNotSpawned { program: __pp2, cause: __pw2 } => false
+
+
+
+
+}
   HostGrantDecisionRead {
     query: query,
     decision: if present {
@@ -1555,10 +1612,18 @@ fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> Pro
 // The registration KIND comes from the file's own bytes, read only when the file is present; an
 // unreadable or undecodable file is carried as its own arm so ownership refuses on it rather than
 // defaulting either way.
-fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSlotRegistration {
-  if !present {
-    SlotUnregistered
-  } else {
+// A TEST THAT NEVER RAN IS NOT AN ABSENT REGISTRATION. `test -f` refusing answers 'unregistered';
+// a test child never spawned answers nothing, and defaulting that to SlotUnregistered would let a
+// roster print a registered runner as unregistered -- the exact collapse this file's own rule ("no
+// name enters the roster without provenance") forbids. The unreadable check lands in the arm that
+// refuses, never in the arm that defaults.
+fn observe_runner_slot_registration_wet(presence: ProcessCaptureOutcome, path: String) -> RunnerSlotRegistration {
+  match presence {
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      SlotRegistrationUnreadable { reason: join(["the registration check was never spawned: ", p as String, " -- ", why as String], "") }
+    ProcessCaptured { outcome: _ } =>
+      if process_capture_admitted(captured: presence) {
+    
     let read = Filesystem.Read(path: path)
     if !read.success {
       SlotRegistrationUnreadable { reason: join([".runner present but unreadable: ", read.error], "") }
@@ -1569,6 +1634,9 @@ fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSl
         ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent, agent_name: _ } => SlotRegisteredPersistent
       }
     }
+      } else {
+        SlotUnregistered
+      }
   }
 }
 
@@ -1600,11 +1668,11 @@ fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMembe
     }
   } else {
     let registration_path = join([member.slot_dir as String, "/", actions_runner_registration_file_name], "")
-    let registered = process_outcome_admitted(outcome: run_shell_command_capture(
+    let registration_check = run_shell_command_capture(
       command: test_regular_file_command(path: registration_path),
       transport: LocalExec,
-    ))
-    let registration = observe_runner_slot_registration_wet(present: registered, path: registration_path)
+    )
+    let registration = observe_runner_slot_registration_wet(presence: registration_check, path: registration_path)
     let unit = runner_unit_name_of_registration(registration_name: name)
     match read_unit_property(unit: unit, property: ActiveState) {
       UnitPropertyUnreadable { unit: u, property: p } =>

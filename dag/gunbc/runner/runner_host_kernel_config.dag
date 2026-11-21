@@ -4,7 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.runner.runner_host_filtered_egress { KernelFeatureRequirement, runner_host_kernel_requirements }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.gnu_coreutils { cat_command }
-import gunbc.command_runner { ProcessObservation, run_shell_command_observe, LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome, LocalExec }
 
 // WHAT THE RUNNER HOST'S KERNEL MUST CONTAIN, AS ONE AUTHORITY RATHER THAN TWO.
 //
@@ -296,13 +297,18 @@ fn kernel_config_argv_text() -> String {
 // cause instead of leaving a reader to infer it from a config that looks blank.
 fn observe_built_kernel_config(path: String) -> KernelConfigVerdict
 {
-  let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
+  match run_shell_command_observe_outcome(command: cat_command(path: path), transport: LocalExec) {
+    ProcessNotSpawned { program: p, cause: why } => KernelConfigUnreadable {
+      detail: join(["reading ", path, " was never attempted: ", p as String, " -- ", why as String], "") as NonEmptyStr,
+    }
+    ProcessRan { observation: obs } =>
   if obs.exit_code != 0 {
     KernelConfigUnreadable {
       detail: join(["reading ", path, " exited ", to_string(obs.exit_code), ": ", obs.stderr], "") as NonEmptyStr
     }
   } else {
     verify_kernel_config(config: obs.stdout)
+  }
   }
 }
 

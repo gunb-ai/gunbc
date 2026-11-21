@@ -1,5 +1,5 @@
 module product.printed_chassis.cad_check_run
-import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
+import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent, ProcessCaptured, ProcessCaptureNotSpawned}
 
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -12,7 +12,7 @@ import extdeps.languages.json.emit {serialize_json,json_array,json_string}
 import gunbc.host_state_root {host_state_tree}
 import product.printing.print_runtime {CadRuntimeReady,cad_program_command,observe_cad_runtime,CadRuntimeObserved,CadRuntimeRefused}
 import extdeps.exec.command {LocalExec}
-import gunbc.command_runner {run_shell_command_capture}
+import gunbc.command_runner {run_shell_command_capture }
 import extdeps.shell.exec {ProcessRefused}
 
 // The workflow executes the existing realization/check adapter, rather than only
@@ -34,9 +34,16 @@ fn check_printable_cad(cad:CadRuntimeReady,root:PrintedAssemblyRoot,output:Strin
     let source=join(["import sys\nsys.argv = ",argv,"\n",program],"")
     if !Filesystem.Write(path:manifest_path,content:serialize_json(v:printable_manifest(a:a))).success || !Filesystem.Write(path:script_path,content:source).success {return exit_failure(reason:"Cannot stage generated CAD checks")}
     match run_shell_command_capture(command:cad_program_command(c:cad,script_path:script_path),transport:LocalExec) {
+    ProcessCaptured { outcome: __pc0 } => match __pc0 {
      ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:e)
      ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
     }
+    ProcessCaptureNotSpawned { program: __pp0, cause: __pw0 } => exit_failure(reason:join(["never spawned ", __pp0 as String, ": ", __pw0 as String], ""))
+
+
+
+
+}
    }
    CliWirePrintable {bytes:_,exit:e}=>e
   }
