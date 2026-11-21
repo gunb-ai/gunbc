@@ -46,21 +46,20 @@ import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 // tag:ci-dispatch, client id kNQLY8UpZK11CNTRL. It REPLACES an older client named `githubcirunners`, which
 // the operator will revoke once CI works on this one. The scope and tag below match that client.
 //
-// THE CLIENT NAME CONSTANT STILL CARRIES THE EARLIER DRAFT VALUE "gunbc-ci-shadow-gate" and is corrected to
-// the real value "gunbc-ci-github" in PR#2, together with the rewrite of
-// gunbc.witness.hosted_runner_shadow_gate_workflow and the regeneration of its committed YAML -- because the
-// name is EMITTED into that YAML (the mint_args client_name claim), so the value and the committed workflow
-// must move in one change under the generated-artifact drift watch. Until PR#2 lands, the value here is the
-// declared-but-not-yet-regenerated correction; PR#2 is its consumer.
+// THE CLIENT NAME WAS AN EARLIER DRAFT VALUE, "gunbc-ci-shadow-gate"; the correction to the real name
+// landed in one change with the rewrite of gunbc.witness.hosted_runner_shadow_gate_workflow and the
+// regeneration of its committed YAML -- the name is EMITTED into that YAML (the mint_args client_name
+// claim), so value and committed workflow move together under the generated-artifact drift watch.
 
 // The operator named the client gunbc-ci-github when creating it (2026-11-20); the model follows the
 // real object, not the other way round.
 data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-github"
 
-// THE CLIENT ID — PUBLIC, so it is a model constant. The operator also mirrored it as the annotation
-// `tailscale-oauth-client-id` on the Secret Manager secret; the gate's fetch resolves it from that
-// annotation over WIF, so a rotation that changes the id cannot silently drift from this row.
-// (test.claim.hosted_ci_secrets_custody_witness pins this row to the relayed value.)
+// THE CLIENT ID — PUBLIC, so it is a model constant, and the gate PASSES THIS CONSTANT to the
+// tailscale action; no fetch resolves it. The operator mirrors it as the annotation
+// `tailscale-oauth-client-id` on the Secret Manager secret for HUMAN reads and rotation pairing:
+// if a rotation changes the id, the operator updates this row and the annotation together
+// (test.claim.hosted_ci_secrets_custody_witness pins this row to the relayed value).
 data ci_oauth_client_id: NonEmptyStr = "kNQLY8UpZK11CNTRL"
 
 // THE PREDECESSOR, RECORDED AS REVOKED: the identity of this client and the revocation of its

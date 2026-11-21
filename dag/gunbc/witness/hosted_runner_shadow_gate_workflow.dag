@@ -205,7 +205,7 @@ fn shadow_gate_config_check_script() -> String {
   join([
     "if [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ] && [ \"$GITHUB_REF\" = \"refs/heads/",
     gunbc_default_branch_name,
-    "\" ]; then\n  echo 'configured=true' >> $GITHUB_OUTPUT\nelif [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n  echo '::error::not a dispatch at refs/heads/"
+    "\" ]; then\n  echo 'configured=true' >> $GITHUB_OUTPUT\nelif [ \"$GITHUB_EVENT_NAME\" = \"workflow_dispatch\" ]; then\n  echo '::error::not a dispatch at refs/heads/",
     gunbc_default_branch_name,
     ": the WIF provider is pinned to the reviewed main copy of this workflow (hosted_ci_secrets_attribute_condition), so this run cannot federate the credentials; a dispatched verdict request that cannot federate fails rather than passing green'\n  exit 1\nelse\n  echo 'configured=false' >> $GITHUB_OUTPUT\n  echo '::notice::remote legs run only on workflow_dispatch at refs/heads/",
     gunbc_default_branch_name,

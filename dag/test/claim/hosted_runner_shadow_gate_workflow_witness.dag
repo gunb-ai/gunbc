@@ -80,7 +80,7 @@ test fn the_emitted_workflow_arms_the_events_with_typed_notices() -> Bool {
     // a dispatch at a non-main ref is a verdict REQUEST that cannot federate: error + exit 1, never
     // a green with a notice (review 97115; fail_closed: no green-by-default on an explicit ask).
     && contains(haystack: rendered, needle: "::error::not a dispatch at refs/heads/main")
-    && contains(haystack: rendered, needle: "fails rather than passing green'\n  exit 1")
+    && contains(haystack: rendered, needle: "fails rather than passing green'\n            exit 1")
     && contains(haystack: rendered, needle: "the pinned WIF provider refuses pull_request/merge_group claims")
 }
 
@@ -138,7 +138,7 @@ test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -
     // does not mask).
     && contains(haystack: rendered, needle: "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
     && contains(haystack: rendered, needle: "echo \"::add-mask::$VAL\"")
-    && occurs_before(haystack: rendered, before: "secrets/tailscale-oauth-client-secret/versions/1:access", after: "rm -f \"$HDR_FILE\"")
+    && occurs_before(haystack: rendered, before: "secrets/tailscale-oauth-client-secret/versions/1:access", after: "\n          rm -f \"$HDR_FILE\"")
     && !(contains(haystack: rendered, needle: "${{ secrets."))
 }
 
