@@ -14,7 +14,7 @@ module test.claim.serving.butch_serving_retirement_witness
 //
 // THE RED CONTROL. On main the boot-state rows do not exist yet, so this module does not resolve and every claim
 // below is red; the change that lands them is what turns it green. Within the branch each claim still discriminates
-// at a real interface: re-enabling any unit (flipping a row to EnabledAtBoot), emptying the population, dropping the
+// at a real interface: re-enabling any unit (flipping a row to UnitEnabled), emptying the population, dropping the
 // provenance that ties a row to the operator's read, or widening the boot-state set onto another host, each reds a
 // specific claim below -- not by counting prose, but by deciding a value over the rows the operator read.
 //
@@ -29,7 +29,7 @@ module test.claim.serving.butch_serving_retirement_witness
 //     --entry dag/test/claim/serving/butch_serving_retirement_witness.dag \
 //     --functions <the test fn names, comma-joined>
 import std.types { Bool }
-import std.dissolution { dissolution_description, dissolution_is_bound }
+import std.dissolution { dissolution_is_bound }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
@@ -87,18 +87,15 @@ test fn every_boot_state_is_a_typed_operator_read() -> Bool {
       })
 }
 
-// THE CHARGE IS NOT RELEASED EARLY. Step 1 retires the UNITS; it does not release the memory charge. The serving
-// memory-charge retirement frontier must still be UNBOUND (trigger two -- the quiescent re-read -- is unmet), and
-// must still name the units and the quiescent gate it waits on. This is the guard that srv14's 192 GiB reservation
-// stays held and srv14_runner_capacity_witness stays green: were the charge retired with the units, this frontier
-// would be bound and this claim would go red.
+// THE CHARGE IS NOT RELEASED EARLY. Step 1 retires the UNITS; it does not release the memory charge. The single
+// typed guard that srv14's 192 GiB serving memory charge is still HELD is the retirement frontier being UNBOUND:
+// trigger one (the unit retirement) is discharged in typed rows, asserted disabled by
+// butch_desired_state_declares_no_serving_engine, and trigger two -- the quiescent re-read -- has no
+// host_memory_observe receipt yet, so the frontier cannot bind. Were the charge retired with the units, this
+// frontier would bind and this claim would go red; srv14_runner_capacity_witness pins the same money independently.
 test fn the_serving_memory_charge_frontier_is_still_held() -> Bool {
-  let text = dissolution_description(srv14_serving_memory_charge_retirement_frontier)
   !dissolution_is_bound(srv14_serving_memory_charge_retirement_frontier)
-    && string_contains(s: text, pattern: "strata-pool@a")
-    && string_contains(s: text, pattern: "a2-power-cap")
-    && string_contains(s: text, pattern: "quiescent")
-    && string_contains(s: text, pattern: "OPERATOR'S HAND")
+    && all(srv14_serving_unit_boot_states, u => is_unit_disabled(u.unit_file_state))
 }
 
 // THE BOOT-STATE SET IS SCOPED TO BUTCH ALONE. This is a boot-enable reading of butch's units, not a fleet-wide
