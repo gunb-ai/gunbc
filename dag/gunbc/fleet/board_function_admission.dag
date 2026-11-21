@@ -256,20 +256,26 @@ fn port_plans(host: HostIdentity, catalog: BaseboardCatalogRow) -> List<HostBoar
 // One plan per function a machine's board carries. A board with no catalog row still gets one plan per
 // common function, each refusing with the obligation, so an unconverged machine shows up as work rather
 // than as nothing; a provider-owned board gets none, because none of its functions are the fleet's.
+// THE TWO NO-CATALOG-ROW ARMS SHARE ONE BODY (review 97089). A board merely absent from the catalog
+// and a board whose authority is bound elsewhere are distinct standings, but each gets one refusing
+// plan per common function naming its obligation -- the same body. It lives here once so the arms
+// cannot drift; the authority field is deliberately not consulted (both refuse, neither resolves it).
+fn unmodeled_board_function_plans(host: HostIdentity, board: NonEmptyStr, obligation: NonEmptyStr) -> List<HostBoardFunctionPlan> {
+  map(board_functions, f => function_plan(
+    host: host,
+    f: f,
+    removal: RemovalUnmodeled { cause: concat(board as String, concat(" has no board catalog row: ", obligation as String)) as NonEmptyStr },
+  ))
+}
+
 fn machine_board_function_plans(row: MachineBoardRow) -> List<HostBoardFunctionPlan> {
   match row.board {
     MachineBoardCatalogued { catalog, source: _ } =>
       concat(map(board_functions, f => function_plan(host: row.host, f: f, removal: board_function_removal(host: row.host, catalog: catalog, f: f))), port_plans(host: row.host, catalog: catalog))
-    MachineBoardUncatalogued { board, obligation } => map(board_functions, f => function_plan(
-      host: row.host,
-      f: f,
-      removal: RemovalUnmodeled { cause: concat(board as String, concat(" has no board catalog row: ", obligation as String)) as NonEmptyStr },
-    ))
-    MachineBoardAuthorityBound { board, obligation, authority: _ } => map(board_functions, f => function_plan(
-      host: row.host,
-      f: f,
-      removal: RemovalUnmodeled { cause: concat(board as String, concat(" has no board catalog row: ", obligation as String)) as NonEmptyStr },
-    ))
+    MachineBoardUncatalogued { board, obligation } =>
+      unmodeled_board_function_plans(host: row.host, board: board, obligation: obligation)
+    MachineBoardAuthorityBound { board, obligation, authority: _ } =>
+      unmodeled_board_function_plans(host: row.host, board: board, obligation: obligation)
     MachineBoardProviderOwned { provider: _ } => []
   }
 }
