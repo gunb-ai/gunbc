@@ -1,0 +1,39 @@
+module c_scratch_probe_diag
+
+import std.types { String, Bool }
+import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census }
+import test.claim.credential_reference_authority_witness { hostile_observe_source, hostile_root_source, safe_observe_source, safe_root_source }
+
+fn row_count(src: String) -> Int {
+  match compile_dag_diagnostic_census(src) {
+    CensusObserved { rows: rows } => count(rows |> filter(r => true))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn has_class(src: String, label: String) -> Bool {
+  match compile_dag_diagnostic_census(src) {
+    CensusObserved { rows: rows } => count(rows |> filter(r => (r.diagnostic_class as String) == label)) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn probe_root() -> Bool {
+  row_count(src: hostile_root_source) >= 1
+    && (has_class(src: hostile_root_source, label: "WhereRefinementUnenforced")
+      || has_class(src: hostile_root_source, label: "TypeMismatch")
+      || has_class(src: hostile_root_source, label: "UnresolvedName")
+      || has_class(src: hostile_root_source, label: "UnknownFunction")
+      || has_class(src: hostile_root_source, label: "UnknownType")
+      || has_class(src: hostile_root_source, label: "InhabitanceError"))
+}
+
+test fn probe_obs() -> Bool {
+  row_count(src: hostile_observe_source) >= 1
+    && (has_class(src: hostile_observe_source, label: "WhereRefinementUnenforced")
+      || has_class(src: hostile_observe_source, label: "TypeMismatch")
+      || has_class(src: hostile_observe_source, label: "UnresolvedName")
+      || has_class(src: hostile_observe_source, label: "UnknownFunction")
+      || has_class(src: hostile_observe_source, label: "UnknownType")
+      || has_class(src: hostile_observe_source, label: "InhabitanceError"))
+}
