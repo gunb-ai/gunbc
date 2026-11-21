@@ -1,0 +1,357 @@
+module test.claim.extdeps.contained_existence_ancestor_walk_witness
+
+// THE ANCESTOR WALK, executed. gunbc.host.host_effect_realize's removal read-back drives these fns
+// with real `test` probes; this file pins the DECISION they make -- when a `test -e` false becomes an
+// absence and when it stays unknown -- over the readings themselves, so the law is witnessed at the
+// level it lives at and not only through a transport. The shapes below are the ones the srv1
+// retract leg met and the ones the sanitation guarantee exists for:
+// gunbc.recurring_failure_mode::an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish.
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { Cons, Empty }
+import extdeps.posix.test_utility {
+  AncestorExistenceProbe,
+  AncestorNotSearchable,
+  AncestorSearchable,
+  AncestorSearchUnreadable,
+  AncestorNotADirectory,
+  AncestorIsNotADirectory,
+  AncestorIsASymlink,
+  AncestorIsAbsentOrUnstattable,
+  AncestorEstablishesAbsence,
+  AncestorRefuses,
+  ContainedAbsent,
+  ContainedExistence,
+  ContainedPresent,
+  ContainedUnreadable,
+  PathAbsentOrUnstattable,
+  PathExistenceUnreadable,
+  PathPresent,
+  absent_under,
+  absent_under_nearest_present_ancestor,
+  ancestor_walk_step,
+  contained_existence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The path the srv1 retract leg asked about, and the two ancestor levels it met: `srv1-live` absent,
+// `/opt/gunbc/attempt-system-unit-helpers` present root:root 0755.
+fn srv1_path() -> String {
+  "/opt/gunbc/attempt-system-unit-helpers/srv1-live/installed-revision"
+}
+
+fn srv1_parent() -> String {
+  "/opt/gunbc/attempt-system-unit-helpers/srv1-live"
+}
+
+fn srv1_grandparent() -> String {
+  "/opt/gunbc/attempt-system-unit-helpers"
+}
+
+// An ancestor whose `test -x` said present-and-searchable: the entry reading is owed only where that
+// did not answer, so it stays unprobed here.
+fn searchable(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe { ancestor: ancestor, search: AncestorSearchable }
+}
+
+// An ancestor `test -x` answered false for, and whose entry then read ABSENT: not in its own parent,
+// so the walk climbs past it.
+fn absent_ancestor(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe {
+    ancestor: ancestor,
+    search: AncestorNotSearchable { entry: PathAbsentOrUnstattable },
+  }
+}
+
+// An ancestor `test -x` answered false for, and whose entry then read PRESENT: mode 000, the shape
+// the walk must not climb past.
+fn unsearchable_ancestor(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe {
+    ancestor: ancestor,
+    search: AncestorNotSearchable { entry: PathPresent },
+  }
+}
+
+// THE SRV1 CHAIN, nearest first: the parent absent, the grandparent present and searchable, and
+// nothing above it consulted.
+fn srv1_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: searchable(srv1_grandparent()), tail: Empty },
+  }
+}
+
+// The same walk with the grandparent present but NOT searchable: it may be holding the subtree with
+// its search bit off.
+fn unsearchable_grandparent_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: unsearchable_ancestor(srv1_grandparent()), tail: Empty },
+  }
+}
+
+// Readable ground FARther up does not rescue an unsearchable level nearer the path: the unsearchable
+// one is the nearest ancestor that answers.
+fn unsearchable_parent_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: unsearchable_ancestor(srv1_parent()),
+    tail: Cons { head: searchable(srv1_grandparent()), tail: Empty },
+  }
+}
+
+// One level only: the parent itself is present and searchable, the case that already worked before
+// the walk existed and must keep working exactly as it did.
+fn searchable_parent_chain() -> List<AncestorExistenceProbe> {
+  Cons { head: searchable(srv1_parent()), tail: Empty }
+}
+
+// A level `test -x` answered for, that `test -d` says is not a directory: present, "executable" by its
+// own mode bits, and with nothing to search.
+fn non_directory_ancestor(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe {
+    ancestor: ancestor,
+    search: AncestorNotADirectory { cause: AncestorIsNotADirectory },
+  }
+}
+
+// A level `test -x` and `test -d` both answered for by FOLLOWING ITSELF: it spoke for its referent.
+fn symlinked_ancestor(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe {
+    ancestor: ancestor,
+    search: AncestorNotADirectory { cause: AncestorIsASymlink },
+  }
+}
+
+fn non_directory_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: non_directory_ancestor(srv1_grandparent()), tail: Empty },
+  }
+}
+
+fn symlinked_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: symlinked_ancestor(srv1_grandparent()), tail: Empty },
+  }
+}
+
+// `test -x` itself unreadable: the level cannot be called searchable or unsearchable, so it answers
+// nothing and the walk stops there.
+fn unreadable_search_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons {
+      head: AncestorExistenceProbe {
+        ancestor: srv1_grandparent(),
+        search: AncestorSearchUnreadable { reason: "test exited 2" as NonEmptyStr },
+      },
+      tail: Empty,
+    },
+  }
+}
+
+// Not searchable as far as `test -x` said, and the entry itself unreadable: the level cannot be
+// climbed past either, because "the entry is not there" is exactly what was not answered.
+//
+// NOTE what is NOT here. Under an earlier shape of this model an ancestor could be put in the chain
+// with `test -x` false and NO entry reading at all -- the ambiguity one-level `absent_under` exists to
+// refuse -- and a run-time arm refused it. That value is no longer constructible: AncestorNotSearchable
+// carries its entry reading, so the driver cannot hand the law a level it has not settled
+// (gunbc.design_argument::fail_closed section 5). What is witnessed below is the nearest state that IS
+// writable, and the refusal it earns.
+fn unreadable_entry_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: AncestorExistenceProbe {
+      ancestor: srv1_parent(),
+      search: AncestorNotSearchable {
+        entry: PathExistenceUnreadable { reason: "test exited 2" as NonEmptyStr },
+      },
+    },
+    tail: Empty,
+  }
+}
+
+// Every level false, all the way up: nobody ever searched for the path.
+fn all_levels_absent_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: absent_ancestor(srv1_grandparent()), tail: Empty },
+  }
+}
+
+fn answered_absence(verdict: ContainedExistence) -> Bool {
+  match verdict {
+    ContainedAbsent => true
+    ContainedPresent => false
+    ContainedUnreadable { reason: _ } => false
+  }
+}
+
+fn refused_because(verdict: ContainedExistence, needle: String) -> Bool {
+  match verdict {
+    ContainedAbsent => false
+    ContainedPresent => false
+    ContainedUnreadable { reason: r } => string_contains(s: r as String, pattern: needle)
+  }
+}
+
+fn walk_of(chain: List<AncestorExistenceProbe>) -> ContainedExistence {
+  absent_under_nearest_present_ancestor(path: srv1_path(), chain: chain)
+}
+
+// CONTROL 1 -- THE SRV1 SHAPE RESOLVES TO ABSENT. The parent reads false and its entry reads false,
+// so it is not there; the grandparent above it reads present and searchable, so it was SEARCHED and
+// did not contain the component. A directory that is not there has no subtree: the retract leg's
+// three paths are established absent and the retirement proceeds instead of refusing at leg 40.
+test fn the_srv1_shape_is_an_established_absence_at_the_searchable_grandparent() -> Bool {
+  answered_absence(walk_of(srv1_chain()))
+}
+
+// CONTROL 2 -- AN UNSEARCHABLE PRESENT ANCESTOR STILL REFUSES. `test -x` false is the same two-valued
+// ambiguity as `test -e` false: absent OR unsearchable. Where the entry says the ancestor IS there, it
+// may be holding the whole subtree with its search bit off (mode 000), and the walk stops WITHOUT an
+// answer -- the sanitation guarantee for an unreadable subtree is not weakened by the walk existing.
+test fn a_present_unsearchable_ancestor_still_refuses_the_absence() -> Bool {
+  refused_because(
+    walk_of(unsearchable_grandparent_chain()),
+    "it is not searchable and nothing under it could be",
+  )
+}
+
+// A refusal nearer the path is never overwritten by readable ground farther above it: the chain is
+// nearest-first and the walk stops at the FIRST ancestor that answers, so a searchable directory
+// sitting above an unsearchable one does not rescue anything under the unsearchable one.
+test fn a_searchable_ancestor_above_an_unsearchable_one_does_not_rescue_it() -> Bool {
+  refused_because(
+    walk_of(unsearchable_parent_chain()),
+    "it is not searchable and nothing under it could be",
+  )
+}
+
+// CONTROL 3a -- THE SINGLE-LEVEL CASE IS UNCHANGED: a parent that is itself present and searchable
+// still settles the path at the first ancestor, exactly as it did before the walk existed.
+test fn a_searchable_parent_still_settles_the_path_in_one_level() -> Bool {
+  answered_absence(walk_of(searchable_parent_chain()))
+}
+
+// An unreadable `test -x` at a level is not an answer at that level: the walk refuses there rather
+// than climbing on to readable ground above it.
+test fn an_unreadable_search_reading_refuses_the_walk() -> Bool {
+  refused_because(walk_of(unreadable_search_chain()), "could not be read while establishing")
+}
+
+// And so is an unreadable entry under a level `test -x` said was not searchable: climbing past it
+// would assert "not in its parent" on a reading that never said so.
+test fn an_unreadable_entry_reading_refuses_the_walk() -> Bool {
+  refused_because(walk_of(unreadable_entry_chain()), "its entry could not be read")
+}
+
+// THE ONE-LEVEL FOLD ON ITS OWN FACE is untouched: parent and child both false is still not an
+// absence, an unreadable parent is still no answer, and a present child is still present.
+test fn the_one_level_fold_still_refuses_what_it_always_refused() -> Bool {
+  refused_because(
+    absent_under(path: srv1_path(), parent: srv1_parent(), parent_reading: PathAbsentOrUnstattable),
+    "nothing under that parent could be read",
+  )
+}
+
+test fn the_one_level_fold_still_refuses_an_unreadable_parent() -> Bool {
+  refused_because(
+    absent_under(
+      path: srv1_path(),
+      parent: srv1_parent(),
+      parent_reading: PathExistenceUnreadable { reason: "test exited 2" as NonEmptyStr },
+    ),
+    "could not be read",
+  )
+}
+
+test fn a_present_child_is_still_present_under_any_parent_reading() -> Bool {
+  match contained_existence(
+    path: srv1_path(),
+    parent: srv1_parent(),
+    parent_reading: PathAbsentOrUnstattable,
+    child_reading: PathPresent,
+  ) {
+    ContainedPresent => true
+    _ => false
+  }
+}
+
+// NO SEARCHABLE PRESENT ANCESTOR ANYWHERE: the walk ran out of ancestors, nothing ever searched for
+// the path, and the answer is ContainedUnreadable -- never a quiet ContainedAbsent.
+test fn an_absence_no_ancestor_ever_searched_for_stays_unreadable() -> Bool {
+  refused_because(walk_of(Empty), "no ancestor of it read present and searchable")
+}
+
+test fn an_all_false_walk_stays_unreadable_too() -> Bool {
+  refused_because(walk_of(all_levels_absent_chain()), "no ancestor of it read present and searchable")
+}
+
+// ONE LEVEL, on its face: what each ancestor's own readings answer, before the fold decides. Present
+// and searchable establishes; present and not searchable refuses; absent-or-unstattable climbs.
+test fn a_searchable_level_establishes_the_absence() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: searchable(srv1_grandparent())) {
+    AncestorEstablishesAbsence => true
+    _ => false
+  }
+}
+
+test fn an_unsearchable_present_level_refuses() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: unsearchable_ancestor(srv1_grandparent())) {
+    AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_absent_level_is_climbed_past() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: absent_ancestor(srv1_parent())) {
+    AncestorIsAbsentOrUnstattable => true
+    _ => false
+  }
+}
+
+test fn an_unreadable_search_level_refuses_on_its_face() -> Bool {
+  match ancestor_walk_step(
+    path: srv1_path(),
+    probe: AncestorExistenceProbe {
+      ancestor: srv1_grandparent(),
+      search: AncestorSearchUnreadable { reason: "test exited 2" as NonEmptyStr },
+    },
+  ) {
+    AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
+
+// A LEVEL `test -x` ANSWERED FOR IS NOT YET A SEARCHER. `test -x` on a regular file is answered by the
+// file's own execute bit, and `stat` under that file is ENOTDIR -- which is not "searched and not found".
+// Admitting it would make the sanitation verdict turn on a mode bit, since a NON-executable file already
+// refuses on its `test -x`.
+test fn an_ancestor_that_is_not_a_directory_never_establishes_the_absence() -> Bool {
+  refused_because(walk_of(non_directory_chain()), "it is not a directory")
+}
+
+test fn a_non_directory_level_refuses_on_its_face() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: non_directory_ancestor(srv1_grandparent())) {
+    AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
+
+// AND A SYMLINK DOES NOT BORROW ITS REFERENT'S SEARCH BIT: `test -x` and `test -d` both follow it, so the
+// level answered for what it points at while the removal works at the link's own name. This module reads
+// an entry as the entry it is, not as whatever it points at, and an ancestor is no exception.
+test fn a_symlinked_ancestor_never_establishes_the_absence() -> Bool {
+  refused_because(walk_of(symlinked_chain()), "is a symlink")
+}
+
+test fn a_symlinked_level_refuses_on_its_face() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: symlinked_ancestor(srv1_grandparent())) {
+    AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
