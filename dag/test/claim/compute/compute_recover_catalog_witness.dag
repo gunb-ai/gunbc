@@ -61,6 +61,7 @@ import gunbc.compute.attempt_lifecycle {
   attempt_slot_read, attempt_open, AttemptSlotHeld, AttemptSlotAbsent, AttemptSlotUnreadable,
   AttemptWorkEnded,
   AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled, RecoveryWriteDeclined, RecoveryWriteRefused,
 }
 import gunbc.compute.compute_attempt_slots_root {
   ComputeFlatSeat, ComputeDispatchSeat, ComputeSeat, ComputeSeatStore, ComputeSeatStoreReady, ComputeSeatStoreUnready,
@@ -71,11 +72,12 @@ import gunbc.compute.work_provider_local {
   RecoverCatalogEstablished, RecoverCatalogUnknown, RecoverCatalogEntry,
   ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
   compute_recover_attempt,
-  compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_attempt_record,
+  compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
   compute_open_attempt, compute_settle_attempt,
   AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
 }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 
 // A DIRECTORY THIS CLAIM OWNS, created per claim: srv1 hosts several runner instances sharing /tmp, and a
 // fixed path across claims or runners is the hazard gunbc.recurring_failure_mode
@@ -374,7 +376,11 @@ fn censusing_the_same_slot_twice_settles_nothing() -> Bool {
               RecoverCatalogEstablished { entries: second } =>
                 count_where(xs: first, predicate: e => true) == count_where(xs: second, predicate: e => true)
                   && render_entries(entries: first) == render_entries(entries: second)
-                  && !any(second, e => e.may_write)
+                  && !any(second, e => match e.authorization {
+                    RecoveryWriteTerminateAndRelease { reason: _ } => true
+                    RecoveryWriteReleaseSettled { state: _, reason: _ } => true
+                    _ => false
+                  })
             }
         }
   }
@@ -386,6 +392,16 @@ test fn the_census_answers_the_same_way_twice_and_settles_nothing() -> Bool {
 
 // THE ENTRY A WET LANE RUNS. The claims evaluate the host clock and the host's unit observer for real, so
 // they run through a plain entry WITHOUT --claim-run: claim-run routes those host effects through the
+// THE CLI DOOR IS DRIVEN HERE: a bogus repo_root cannot resolve to any built-in instance, so the census
+// is observation-unknown and the door exits 2. This is the exit the serving converge's recovery leg reads
+// when it refuses to plan; increment 2's live proof will exercise exit 0 over a fleet-converge run.
+test fn the_cli_door_exits_two_when_no_instance_resolves() -> Bool {
+  match compute_recover_catalog_cli(repo_root: "/nonexistent-recover-catalog-witness-cli") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: 2, reason: _ } } => true
+    _ => false
+  }
+}
+
 // hermetic mock table, and a mocked clock or process probe would make these verdicts agree with authored
 // data instead of with the host. Exit 0 only when every claim holds; a red claim names itself.
 fn check_or_name(name: String, held: Bool) -> String {
@@ -400,6 +416,7 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "an_attempt_past_its_declared_window_is_censused_as_a_write", held: past_window_attempt_is_a_write_the_census_names()),
     check_or_name(name: "one_reference_in_two_seat_directories_makes_the_observation_unknown", held: one_reference_in_two_seat_directories_is_unknown()),
     check_or_name(name: "the_census_answers_the_same_way_twice_and_settles_nothing", held: censusing_the_same_slot_twice_settles_nothing()),
+    check_or_name(name: "the_cli_door_exits_two_when_no_instance_resolves", held: the_cli_door_exits_two_when_no_instance_resolves()),
   ], "")
   if red == "" {
     ExitSuccess

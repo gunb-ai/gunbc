@@ -3919,7 +3919,7 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // compute_recover_attempt_in refuses an unreadable slot). A seat whose slot directory does not exist at all
 // contributes no reference: that is the census of a store that was never created, and nothing here releases
 // on a census, which is attempt_slot_keys' own warning.
-type RecoverCatalogEntry { reference: NonEmptyStr, why: String, may_write: Bool }
+type RecoverCatalogEntry { reference: NonEmptyStr, authorization: RecoveryWriteAuthorization }
 
 type RecoverCensusPairs
   = RecoverCensusPairsListed { pairs: List<RecoverSlotPair> }
@@ -3970,14 +3970,10 @@ fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecover
                     Present { value: now } => {
                       let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr)
                       match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
-                        RecoveryWriteTerminateAndRelease { reason: why } =>
-                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, why: why, may_write: true }) }
-                        RecoveryWriteReleaseSettled { state: _, reason: why } =>
-                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, why: why, may_write: true }) }
-                        RecoveryWriteDeclined { reason: why } =>
-                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, why: why, may_write: false }) }
                         RecoveryWriteRefused { reason: r } =>
                           RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r], "") }
+                        auth =>
+                          RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, authorization: auth }) }
                       }
                     }
                   }
@@ -3999,21 +3995,33 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
 }
 
 fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
-  join(["recover-catalog ", if e.may_write { "fire" } else { "hold" }, " ", e.reference as String, " ", e.why, "\n"], "")
+  let verdict = match e.authorization {
+    RecoveryWriteTerminateAndRelease { reason: _ } => "terminate"
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => "settle"
+    RecoveryWriteDeclined { reason: _ } => "hold"
+    RecoveryWriteRefused { reason: _ } => "refused"
+  }
+  let why = match e.authorization {
+    RecoveryWriteTerminateAndRelease { reason: r } => r
+    RecoveryWriteReleaseSettled { state: _, reason: r } => r
+    RecoveryWriteDeclined { reason: r } => r
+    RecoveryWriteRefused { reason: r } => r
+  }
+  join(["recover-catalog ", verdict, " ", e.reference as String, " ", why, "\n"], "")
 }
 
 // THE CENSUS DOOR, OVER THE PROCESS WIRE -- a READ: no slot is written, no lease is touched, nothing is
 // released here. The answer is one line per reference in the census
-// (`recover-catalog fire|hold <reference> <trigger>`), exit 0 when the census was established and exit 2
-// when the observation is unknown -- the same three exits the recovery door itself uses, so a leg that
+// (`recover-catalog terminate|settle|hold <reference> <trigger>`), exit 0 when the census was established and
+// exit 2 when the observation is unknown -- the same three exits the recovery door itself uses, so a leg that
 // reads this and a leg that writes there agree about what a number means.
-// DECLARED FRONTIER, not a present consumer: the caller this is shaped for is the serving converge's
+// DECLARED FRONTIER for exit 0: the caller this is shaped for is the serving converge's
 // recovery leg (its action kind RecoverStaleSeat, at the rank after RecordServeIdentity, gated on that
 // identity leg being Met), which does NOT ship in this change; the trigger for that leg is the serve route
 // resolving again (done by #16828, which cut compute_seat_ensure out of that route), since until that entry
-// resolves the converge's
-// witnesses cannot be run. Today the only route that runs this door is compute_recover_catalog_witness,
-// which calls the reading it renders and refuses on both exits.
+// resolves the converge's witnesses cannot be run. This change exercises the exit-2 path from its witness
+// (`the_cli_door_exits_two_when_no_instance_resolves`), which asserts the refusal exit. Exit 0 is exercised
+// by increment 2's live proof over a fleet-converge run on --ref main.
 fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } =>

@@ -816,6 +816,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_cli_door_exits_two_when_no_instance_resolves" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_cli_door_exits_two_when_no_instance_resolves",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.manager_unaskable_wet_witness", function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting" },
       entry: "dag/test/claim/compute/manager_unaskable_wet_witness.dag",
       function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting",
