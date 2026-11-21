@@ -1,6 +1,6 @@
 module gunbc.runner.runner_spec_from_offer
 
-import extdeps.github.actions { RunnerSpec, SelfHosted, self_hosted_provenance_label, runner_os_label, runner_arch_label, self_hosted_labels }
+import extdeps.github.actions { RunnerSpec, SelfHosted, self_hosted_provenance_label, runner_os_label, self_hosted_labels }
 import gunbc.ci.ci_fleet { ComputeOffer, gunbc_ci_fleet_offer }
 import gunbc.fleet.fleet_intent { compute_host_primary_cpu, PrimaryCpuMeasured, PrimaryCpuAbsentFromSurvey, PrimaryCpuCensusUnread }
 import extdeps.cpu { cpu_facts_architecture }
@@ -38,25 +38,18 @@ fn gunbc_ci_runner_spec() -> RunnerSpec {
   runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
 }
 
-// THE CI BUILD POOL'S OWN CPU ARCHITECTURE LABEL, read from the model -- the pool is not arm64 by fiat.
-// The fleet-converge build job compares this to a host-bound run's executor arch (gunbc.fleet.machine_board
-// fleet_converge_runner_arch_label, published by the plan-revision job as `arch`): on the pool when they
-// agree (srv1-srv4 arm64 builds keep the fast pool), on the executor host when they differ (an x86 executor
-// such as ken gets bins built for its own arch). Absent when the pool host has no surveyed primary CPU.
-// THE CI POOL'S ARCHITECTURE, from the survey -- the enum, so a comparison against the executor host's
-// arch (fleet_converge_runner_arch) is enum-vs-enum, never rendered strings (clever-raven-401 ruling).
+// THE CI POOL'S ARCHITECTURE, read from the survey -- the Architecture ENUM, not a rendered label. The
+// fleet-converge build job compares this to a host-bound run's executor arch (gunbc.fleet.machine_board
+// fleet_converge_runner_arch, published through the plan-revision job's executor_arch step): on the pool when
+// the two agree (srv1-srv4 arm64 builds keep the fast pool), on the executor host when they differ (an x86
+// executor such as ken gets bins built for its own arch). Compared enum-vs-enum, never rendered strings
+// (clever-raven-401 ruling). Absent when the pool host has no surveyed primary CPU, which the caller refuses
+// rather than defaulting.
 fn gunbc_ci_pool_runner_arch() -> Architecture? {
   match compute_host_primary_cpu(host: gunbc_ci_fleet_offer.supply.physical) {
     PrimaryCpuMeasured { cpu } => Present { value: cpu_facts_architecture(cpu: cpu) }
     PrimaryCpuAbsentFromSurvey { host: _ } => Absent
     PrimaryCpuCensusUnread { host: _ } => Absent
-  }
-}
-
-fn gunbc_ci_pool_runner_arch_label() -> String? {
-  match gunbc_ci_pool_runner_arch() {
-    Absent => Absent
-    Present { value: architecture } => Present { value: runner_arch_label(arch: architecture) }
   }
 }
 

@@ -8,7 +8,6 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.board_soc { BoardSocArchitectureStanding, board_soc_architecture }
 import extdeps.toolchain.types { Architecture }
-import extdeps.github.actions { runner_arch_label }
 import gunbc.host.board_platform_facts { board_soc_edges_for }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
@@ -150,19 +149,19 @@ data machine_board_rows: List<MachineBoardRow> = [
 // yields "x64", which is what lets an x86 executor such as ken host a converge job.
 //
 // A machine whose board is uncatalogued, provider-owned, names no SoC edge, or whose families agree on
-// no single architecture answers RunnerArchUnknown. The caller (the fleet-converge plan) REFUSES on that
-// answer -- it never defaults to arm64, so a host with no modeled architecture cannot silently borrow an
-// arm64 runner. This is the same "typed unestablished, never a silent default" discipline as
-// board_soc_architecture itself.
-type RunnerArchStanding
-  = RunnerArchKnown { label: String }
-  | RunnerArchUnknown
+// no single architecture yields NO architecture: fleet_converge_runner_arch returns Optional Absent. The
+// caller (the fleet-converge plan) REFUSES on that absence -- it never defaults to arm64, so a host with no
+// modeled architecture cannot silently borrow an arm64 runner. This is the same "typed unestablished, never
+// a silent default" discipline as board_soc_architecture itself, and absence rides std.optional::Optional
+// alone -- never a second presence/absence type invented beside it (gunbc.design_argument::single_authority).
 
 // THE ARCHITECTURE SOURCE OF TRUTH for a runner. Reads the host's board authority -> SoC edge ->
 // Architecture ENUM (never a rendered string). Every runner label -- the GH arch label AND the self-hosted
-// label set the build job uses -- is DERIVED from this one enum, so no second place decides architecture
-// (clever-raven-401 ruling). A host whose board establishes no architecture yields Absent, which the
-// caller must refuse loudly rather than default to arm64.
+// label set the build job uses -- is DERIVED from this one enum by extdeps.github.actions runner_arch_label
+// at the call site (resolve_executor_arch and the machine_board witness make the SAME call), so no second
+// place decides architecture and no test-only path decides the label apart from production
+// (clever-raven-401 ruling; gunbc.design_argument::witness_one_interface). A host whose board establishes no
+// architecture yields Optional Absent, which the caller must refuse loudly rather than default to arm64.
 fn fleet_converge_runner_arch(host: HostIdentity) -> Architecture? {
   match first_where(xs: machine_board_rows, keep: r => host_identity_eq(a: r.host, b: host)) {
     Absent => Absent
@@ -176,14 +175,5 @@ fn fleet_converge_runner_arch(host: HostIdentity) -> Architecture? {
         }
       }
     }
-  }
-}
-
-// The GH runner arch LABEL, derived from the single Architecture source above via runner_arch_label.
-// Kept as the name the dropdown identity-join claim and the plan-revision arch output consume.
-fn fleet_converge_runner_arch_label(host: HostIdentity) -> RunnerArchStanding {
-  match fleet_converge_runner_arch(host: host) {
-    Absent => RunnerArchUnknown
-    Present { value: architecture } => RunnerArchKnown { label: runner_arch_label(arch: architecture) }
   }
 }

@@ -4,39 +4,47 @@
 //   * POSITIVE -- srv1-srv4 (AsRock ALTRAD8UD-1L2T, Ampere Altra) resolve to the label "arm64", byte-
 //     identical to the literal every serving runner label carried before this derivation existed. Delete
 //     asrock_altrad8ud_board_soc_edge from gunbc.host.board_platform_facts board_soc_edges and these four
-//     fall to RunnerArchUnknown -- so the AsRock edge is load-bearing, not decoration.
+//     yield no architecture (fleet_converge_runner_arch returns Optional Absent) -- so the AsRock edge is
+//     load-bearing, not decoration.
 //   * x86 -- ken (Supermicro H11SSL, AMD EPYC) resolves to "x64", the label that lets it host a converge
-//     job. Delete supermicro_h11ssl_board_soc_edge and this falls to RunnerArchUnknown.
+//     job. Delete supermicro_h11ssl_board_soc_edge and this yields no architecture (Optional Absent).
 //   * RED -- a machine with no architecture the fleet can establish (a provider-owned Hetzner guest)
-//     answers RunnerArchUnknown, NOT "arm64". The fleet-converge plan refuses on that answer; it must
-//     never silently borrow an arm64 runner for a host whose architecture is unknown.
+//     yields no architecture (Optional Absent), NOT "arm64". The fleet-converge plan refuses on that
+//     absence; it must never silently borrow an arm64 runner for a host whose architecture is unknown.
 module test.claim.fleet.machine_board_witness
 
 import std.types { Bool }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.machine_board { fleet_converge_runner_arch_label, RunnerArchKnown, RunnerArchUnknown, fleet_converge_runner_arch }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.fleet.fleet_host_identity {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
   operator_host_e2d4b7, operator_host_183527, operator_host_mtcollins1,
 }
 import extdeps.toolchain.types { Architecture }
-import extdeps.github.actions { SelfHosted, self_hosted_labels }
+import extdeps.github.actions { SelfHosted, self_hosted_labels, runner_arch_label }
 import std.os.types { Linux }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec, gunbc_ci_build_runner_spec }
 import gunbc.runner.runner_unit_file { runner_unit_labels_json, RunnerUnitLabels, RunnerUnitLabelsHostedRunner, RunnerUnitLabelsUnresolvedExpression }
 
+// THE PRODUCTION ROUTE, asserted exactly as the plan takes it: resolve_executor_arch calls
+// fleet_converge_runner_arch (the Architecture enum) and then applies runner_arch_label to it. The claim
+// follows the SAME call, so it discriminates at the interface production actually runs -- not a parallel
+// label path the plan never calls (gunbc.design_argument::witness_one_interface). Absent (Optional) is the
+// unknown answer; the plan refuses there and the claim below pins it.
 fn resolves_to(host: HostIdentity, expected: String) -> Bool {
-  match fleet_converge_runner_arch_label(host: host) {
-    RunnerArchKnown { label } => label == expected
-    RunnerArchUnknown => false
+  match fleet_converge_runner_arch(host: host) {
+    Present { value: arch } => runner_arch_label(arch: arch) == expected
+    Absent => false
   }
 }
 
+// The unknown host is the SAME Optional the plan reads: fleet_converge_runner_arch yields Absent, there is no
+// second presence/absence type beside Optional and no arm64 is ever produced for it.
 fn answers_unknown(host: HostIdentity) -> Bool {
-  match fleet_converge_runner_arch_label(host: host) {
-    RunnerArchUnknown => true
-    RunnerArchKnown { label: _ } => false
+  match fleet_converge_runner_arch(host: host) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
@@ -62,7 +70,8 @@ test fn host_without_an_architecture_answers_unknown_never_arm64() -> Bool {
 // mtcollins1 reaches its arm64 through the DIRECT AUTHORITY BINDING (its machine-board row names the
 // cited mt_collins_board_authority, not a BaseboardCatalogRow -- its BMC family is only an expectation,
 // so a catalog row cannot honestly fill it). This is the "catalog OR binding" half of the one arch rule;
-// drop the binding and it falls to RunnerArchUnknown, and the dropdown claim below reddens with it.
+// drop the binding and it yields no architecture (Optional Absent), and the dropdown claim below reddens
+// with it.
 test fn mtcollins1_runner_arch_derives_arm64_through_its_board_authority() -> Bool {
   resolves_to(host: operator_host_mtcollins1, expected: "arm64")
 }
