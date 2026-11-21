@@ -2987,7 +2987,7 @@ fn fleet_converge_tailscale_join_step() -> Step {
         // TAILSCALE_JOIN_HOST key is gone rather than re-pointed -- the entry reads the joined host through
         // fleet_converge_install_subject_read (tailscale_join_converge.dag), and a second spelling of the same
         // machine that nothing reads is exactly the fork the rule exists to prevent.
-        kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.", fleet_converge_subject_host_input_name, " }}")),
+        kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
         fleet_converge_subject_rule_env_pair(mode: TailscaleJoinConverge),
         kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       ]
