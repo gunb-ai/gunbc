@@ -129,9 +129,10 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
   WorkflowPermissions, PermRead, PermWrite, 
-  RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
+  RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm, runner_arch_label,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch }
 import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_seed_build_step_run }
 import gunbc.action_use_admission {
   admit_workflow_checkout_refs, checkout_ref_entry, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
@@ -1332,6 +1333,62 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
 data fleet_converge_host_runner_expression_body: String = "fromJSON(format('[\"self-hosted\",\"linux\",\"{0}\",\"{1}\"]', needs.plan-revision.outputs.arch, github.event.inputs.host))"
 
 data fleet_converge_host_runner_expression: String = join(["${{ ", fleet_converge_host_runner_expression_body, " }}"], "")
+
+// THE SELF-HOSTED RUNNER for a job pinned to ONE modeled host, DERIVED from that host's board architecture
+// (review 97146 root-generality; clever-raven-401 msg_653962b9). This is the ONE place that turns
+// "run job X on host H" into runner labels: self-hosted, linux, H's board-established Architecture label,
+// and H's own name. NO hard-coded "arm64" -- the arch comes from gunbc.fleet.machine_board
+// fleet_converge_runner_arch (board authority -> SoC edge -> Architecture), the SAME derivation the runtime
+// host selector reads through needs.plan-revision.outputs.arch; the only difference is these jobs pin a host
+// known at GENERATION time, so the arch is resolved here rather than published as a step output. Compared
+// and rendered through the Architecture enum via runner_arch_label -- never a hand-written label string.
+// Absent when H has no board-established architecture; the caller then emits the refused job below rather
+// than pinning it to a literal arch it did not derive (gunbc.design_argument::fail_closed: no plausible
+// label is fabricated, and no unlabelled runner is silently queued).
+fn fleet_converge_self_hosted_runner_for(host: HostIdentity, host_label: String) -> RunnerSpec? {
+  match fleet_converge_runner_arch(host: host) {
+    Absent => Absent
+    Present { value: arch } =>
+      Present { value: SelfHosted { labels: ["self-hosted", "linux", runner_arch_label(arch: arch), host_label] } }
+  }
+}
+
+// THE REFUSED PLACEHOLDER for a host-pinned job whose pinned host has no board-established architecture.
+// Like the other *refused jobs in this file (e.g. fleet_converge_gcp_iam_converge_refused_job), it runs one
+// step that prints a typed refusal and fails. It is placed on the shared CI pool via gunbc_ci_runner_spec --
+// NOT on the arch-less host, which cannot advertise a runner for an arch the model cannot establish -- because
+// it carries no host work; it never represents real converged state. Unreachable while every host these jobs
+// pin has a board row (srv1, mtcollins1, the approval broker); if one ever loses its board row this refuses
+// the dispatch instead of defaulting it to arm64.
+fn fleet_converge_host_arch_refused_job(id: String, host_label: String) -> Job {
+  Job {
+    id: id,
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    environment: none,
+    steps: [
+      RunStep {
+        name: Present { value: "REFUSED: the pinned host has no board-established architecture" },
+        id: none,
+        run: "echo 'REFUSED: pinned host has no board-established Architecture; refusing to place a host-pinned job on a literal arch (fail_closed, review 97146)'; exit 1",
+        shell: none,
+        env: none,
+        working_directory: none,
+        if_condition: none,
+        continue_on_error: none,
+        timeout_minutes: Present { value: 1 },
+      },
+    ],
+    needs: fleet_converge_job_needs(id: id),
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: 5 },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
 
 // THE DEPLOY SLOT'S SELECTOR, for the one host that has such a slot. Selection is set membership, so
 // srv1's selector adds the deploy label to the host's and every other host keeps its own selector
@@ -6254,7 +6311,15 @@ fn fleet_converge_mtcollins1_boot_store_host_unread() -> String {
 // prelude below: which runner holds the credentials, and which bytes the steps fetch and execute, are
 // facts a witness reads, and reading them here costs those parts rather than the whole job's.
 fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
-  SelfHosted { labels: ["self-hosted", "linux", "arm64", fleet_converge_mtcollins1_boot_store_host()] }
+  // The boot runs on the unit-hold store host (srv1 today). Its arch is DERIVED from that host's board
+  // authority via the one helper -- no hard-coded "arm64" (review 97146). The Absent arm is unreachable while
+  // the store host keeps its board row (arm64 by board, pinned by the srv-arch witnesses); if it ever loses
+  // its board row we refuse to fabricate arm64 and place the placeholder refusal on the shared pool, where
+  // the boot steps fail LOUDLY (no host access) rather than queue on an unlabelled runner.
+  match fleet_converge_self_hosted_runner_for(host: fleet_converge_mtcollins1_boot_store_host() as HostIdentity, host_label: fleet_converge_mtcollins1_boot_store_host()) {
+    Present { value: runner } => runner
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: MtCollins1Boot) as String, host_label: fleet_converge_mtcollins1_boot_store_host()).runner
+  }
 }
 
 // The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
@@ -8063,6 +8128,14 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
   Job {
     id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
     name: none,
+    // (C) review 97146 (clever-raven-401 msg_653962b9): this is the REFUSED-dispatch placeholder emitted only
+    // when the approval broker has no host (prod role unresolved). It carries NO host work -- its single step
+    // (below) prints the typed refusal and exits 1 -- so it is placed on the shared CI pool by its own labels
+    // purely so that refusal can print. The host the real job would have pinned is genuinely unknown here
+    // (that is the refusal), so there is no executor arch to derive; and because the job always fails, no real
+    // work can land on the wrong arch. This is NOT the build/executor placement rule (gunbc_ci_build_runner_spec)
+    // nor the host-pinned rule (fleet_converge_self_hosted_runner_for); it is a label on a job that never runs
+    // real work. Its runs-on is on the pool, which every dispatch can already schedule.
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
     environment: none,
     steps: [
@@ -8098,10 +8171,17 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
 }
 
 fn fleet_converge_gcp_iam_converge_job_on(host: NonEmptyStr) -> Job {
+  match fleet_converge_self_hosted_runner_for(host: host as HostIdentity, host_label: host as String) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String, host_label: host as String)
+    Present { value: runner } => fleet_converge_gcp_iam_converge_job_on_with_runner(runner: runner)
+  }
+}
+
+fn fleet_converge_gcp_iam_converge_job_on_with_runner(runner: RunnerSpec) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+    runner: runner,
     environment: Present { value: gcp_iam_converge_environment as String },
     steps: [
       fleet_converge_event_sha_checkout_step(),
@@ -8781,10 +8861,17 @@ fn fleet_converge_arrival_converge_backstop_holds() -> Bool {
 }
 
 fn fleet_converge_arrival_converge_job() -> Job {
+  match fleet_converge_self_hosted_runner_for(host: operator_host_srv1, host_label: operator_host_srv1 as String) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String, host_label: operator_host_srv1 as String)
+    Present { value: runner } => fleet_converge_arrival_converge_job_with_runner(runner: runner)
+  }
+}
+
+fn fleet_converge_arrival_converge_job_with_runner(runner: RunnerSpec) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: ArrivalConverge) as String,
     name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", operator_host_srv1 as String] },
+    runner: runner,
     environment: Present { value: fleet_converge_arrival_environment_expression() },
     steps: [
       fleet_converge_event_sha_checkout_step(),
@@ -9068,21 +9155,24 @@ fn fleet_converge_printer_job_backstop_timeout_minutes() -> Duration {
 // the mint requests the OIDC assertion from the Actions sidecar at use time, not in a pre-poll step.
 
 fn fleet_converge_printer_job() -> Job {
-  Job {
-    id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
-    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", printer_lan_host_identity() as String] },
-    environment: Present { value: printer_environment as String },
-    steps: fleet_converge_printer_job_steps(),
-    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
-    env: none, outputs: none,
-    if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
-    timeout_minutes: Present { value: fleet_converge_printer_job_backstop_timeout_minutes() },
-    continue_on_error: none,
-    concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
-    permissions: Present { value: WorkflowPermissions {
-      contents: Present { value: PermRead }, pull_requests: none, issues: none,
-      actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
-    } },
+  match fleet_converge_self_hosted_runner_for(host: printer_lan_host_identity() as HostIdentity, host_label: printer_lan_host_identity() as String) {
+    Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, host_label: printer_lan_host_identity() as String)
+    Present { value: runner } => Job {
+      id: fleet_converge_mode_job_id(mode: PrinterWorkflow) as String, name: none,
+      runner: runner,
+      environment: Present { value: printer_environment as String },
+      steps: fleet_converge_printer_job_steps(),
+      needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: PrinterWorkflow)),
+      env: none, outputs: none,
+      if_condition: Present { value: fleet_converge_mode_step_if(mode: PrinterWorkflow) },
+      timeout_minutes: Present { value: fleet_converge_printer_job_backstop_timeout_minutes() },
+      continue_on_error: none,
+      concurrency: fleet_converge_exclusive_job_concurrency(group: "printer-${{ inputs.printer }}"),
+      permissions: Present { value: WorkflowPermissions {
+        contents: Present { value: PermRead }, pull_requests: none, issues: none,
+        actions: Present { value: PermRead }, id_token: Present { value: PermWrite },
+      } },
+    }
   }
 }
 
@@ -9170,10 +9260,12 @@ fn fleet_converge_gcp_iam_bootstrap_refused(id: NonEmptyStr, cause: ProdRoleReal
 
 fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
+    ApprovalBrokerHostResolved { host } => match fleet_converge_self_hosted_runner_for(host: host as HostIdentity, host_label: host as String) {
+      Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_gcp_iam_bootstrap_request_job_id as String, host_label: host as String)
+      Present { value: runner } => Job {
       id: fleet_converge_gcp_iam_bootstrap_request_job_id as String,
       name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+      runner: runner,
       environment: Present { value: gcp_iam_converge_environment as String },
       steps: [
         fleet_converge_event_sha_checkout_step(),
@@ -9218,6 +9310,7 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
     }
+      }
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_request_job_id, cause: cause)
   }
 }
@@ -9227,10 +9320,12 @@ fn fleet_converge_gcp_iam_bootstrap_request_job() -> Job {
 // iam_bootstrap_delta_observer_trust) -- so the request it re-admits is the one the operator approved.
 fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
   match approval_broker_host_under(realization: prod_role_actuated_realization()) {
-    ApprovalBrokerHostResolved { host } => Job {
+    ApprovalBrokerHostResolved { host } => match fleet_converge_self_hosted_runner_for(host: host as HostIdentity, host_label: host as String) {
+      Absent => fleet_converge_host_arch_refused_job(id: fleet_converge_gcp_iam_bootstrap_job_id as String, host_label: host as String)
+      Present { value: runner } => Job {
       id: fleet_converge_gcp_iam_bootstrap_job_id as String,
       name: none,
-      runner: SelfHosted { labels: ["self-hosted", "linux", "arm64", host as String] },
+      runner: runner,
       environment: Present { value: gcp_iam_bootstrap_environment as String },
       steps: [
         fleet_converge_event_sha_checkout_step(),
@@ -9267,6 +9362,7 @@ fn fleet_converge_gcp_iam_bootstrap_job() -> Job {
       concurrency: Present { value: fleet_converge_gcp_iam_bootstrap_concurrency() },
       permissions: Present { value: fleet_converge_gcp_iam_bootstrap_permissions() }
     }
+      }
     ApprovalBrokerHostRefused { cause } => fleet_converge_gcp_iam_bootstrap_refused(id: fleet_converge_gcp_iam_bootstrap_job_id, cause: cause)
   }
 }

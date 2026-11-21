@@ -17,9 +17,11 @@ module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 import std.types { Bool, List, String }
 import std.algebra { string_contains }
 import std.optional { Absent, Present }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.machine_board { fleet_converge_runner_arch }
 import extdeps.languages.yaml.types { YamlString }
 import extdeps.github.actions {
-  ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput, DispatchInputType,
+  ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput, DispatchInputType, runner_arch_label,
   InputChoice, InputString, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
   workflow_dispatch_max_inputs,
 }
@@ -771,4 +773,30 @@ test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
             && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
       }
   }
+}
+
+// (A) review 97146 / clever-raven-401 msg_653962b9: THE DEFERRAL GUARD, checked rather than prose. The
+// reset-observer runner expression (data fleet_converge_reset_observer_runner_expression) and the peer-run
+// hostname-converge runner (the peer StringLiteral) still pin the LITERAL "arm64", because their host is chosen
+// at DISPATCH time (github.event.inputs.reset_observer, and the `host` field which names the peer for that mode
+// -- hostname_converge_peer_input_name == "host") while plan-revision publishes only the EXECUTOR's arch; the
+// per-host host->arch map that would let them derive (the reset_subject_map_json precedent) is DEFERRED per the
+// manager. The named trigger for that map: the first host whose board Architecture is NOT arm64 becomes
+// SELECTABLE for either role. Until that day the literal is checked against the BOARD MODEL so it cannot
+// silently diverge -- every host the dispatch form actually offers for these two roles must derive arm64 from
+// its board. The day a non-arm64 host enters either option list this claim goes RED, and publishing the
+// host->arch map from plan-revision is the fix (a new literal here would be the same fork review 97146 rejects).
+fn selectable_reset_or_peer_option_derives_arm64(host: String) -> Bool {
+  match fleet_converge_runner_arch(host: host as HostIdentity) {
+    Absent => false
+    Present { value: arch } => runner_arch_label(arch: arch) == "arm64"
+  }
+}
+
+test fn every_reset_observer_and_hostname_converge_peer_option_derives_arm64_from_its_board() -> Bool {
+  // The two roles whose runner still pins the arm64 literal. The option lists ARE the selectable set the
+  // dispatch form offers; asserting over them (not a hand-kept roster) is what makes this the trigger, not a
+  // list that quietly falls out of step with the form.
+  all(dispatch_input_options(name: "reset_observer"), h => selectable_reset_or_peer_option_derives_arm64(host: h))
+    && all(dispatch_input_options(name: hostname_converge_peer_input_name as String), h => selectable_reset_or_peer_option_derives_arm64(host: h))
 }
