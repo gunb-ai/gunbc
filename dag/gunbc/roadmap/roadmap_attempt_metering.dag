@@ -1233,14 +1233,24 @@ fn attempt_metering_index_store(instance: HostDashboardInstance) -> AttemptMeter
 // the declaration's own derivation (attempt_metering_declared_member_name, through the sole layout law
 // attempt_state_member_name) or from a name already checked by the same law. Precedent:
 // gunbc.merge_admission.subject walk_attempt_id and std.types' own "one constructor per brand" note.
-type AttemptMeteringMemberName = PathSegment where brand("AttemptMeteringMemberName")
+type AttemptMeteringMemberName sole_constructor {
+  segment: PathSegment
+}
 
 fn attempt_metering_member_name(raw: String) -> AttemptMeteringMemberName? {
   if path_segment_is_safe(raw: raw) {
-    Present { value: raw as AttemptMeteringMemberName }
+    Present { value: AttemptMeteringMemberName { segment: raw as PathSegment } }
   } else {
     none
   }
+}
+
+// THE CARRIER, NOT AN ENTRANCE. Reading the admitted segment out is not minting one: construction is
+// sealed to attempt_metering_member_name above (sole_constructor -- record literals and `as` casts from
+// other modules are compile errors; review 97160 established that a plain brand is castable from
+// anywhere, which is why this carrier is a sealed record and not a brand).
+fn attempt_metering_member_name_segment(entry: AttemptMeteringMemberName) -> PathSegment {
+  entry.segment
 }
 
 fn attempt_metering_declared_member_name(member: AttemptStateMember) -> AttemptMeteringMemberName? {
@@ -1384,15 +1394,15 @@ fn attempt_metering_commit(store: AttemptMeteringStore, expected: CasExpectation
 // refuse it, which is what the traversal claims pin.
 fn attempt_metering_read_derived(dir: String, name: AttemptMeteringMemberName) -> OptionalFileRead {
   // THE LAW RUNS INSIDE THE EFFECT TOO: even a forged carrier answers with a refusal, never a read.
-  if !path_segment_is_safe(raw: name as String) {
+  if !path_segment_is_safe(raw: attempt_metering_member_name_segment(entry: name) as String) {
     OptionalFileRefused { cause: "the member name is not one safe path segment; the read was refused, never attempted" }
   } else {
-  let path = join([dir, "/", name as String], "")
+  let path = join([dir, "/", attempt_metering_member_name_segment(entry: name) as String], "")
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
   attempt_metering_optional_of_observation(filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: name as String,
+    name: attempt_metering_member_name_segment(entry: name) as String,
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   ))
@@ -1427,10 +1437,10 @@ fn attempt_metering_listing_of(store: AttemptMeteringStore) -> AttemptMeteringLi
 // (ruling, this cohort). The effect runs and is matched in this module.
 fn attempt_metering_create_once(store: AttemptMeteringStore, entry: AttemptMeteringMemberName, content: String) -> AttemptMeteringCreateOnce {
   // THE LAW RUNS INSIDE THE EFFECT TOO: a forged carrier is refused before any create is attempted.
-  if !path_segment_is_safe(raw: entry as String) {
+  if !path_segment_is_safe(raw: attempt_metering_member_name_segment(entry: entry) as String) {
     AttemptMeteringCreateRefused { error: "the member name is not one safe path segment; the create was refused, never attempted" }
   } else {
-  let path = join([store.directory as String, "/", entry as String], "")
+  let path = join([store.directory as String, "/", attempt_metering_member_name_segment(entry: entry) as String], "")
   let w = Filesystem.WriteCreateNew(path: path, content: content)
   match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
     FilesystemCreated { path: _ } => AttemptMeteringCreated
@@ -1568,10 +1578,10 @@ fn metering_attempt_closing_acquire_at_key(instance: HostDashboardInstance, node
 
 fn attempt_metering_index_create_once(store: AttemptMeteringIndexStore, entry: AttemptMeteringMemberName, content: String) -> AttemptMeteringCreateOnce {
   // THE LAW RUNS INSIDE THE EFFECT TOO: a forged carrier is refused before any create is attempted.
-  if !path_segment_is_safe(raw: entry as String) {
+  if !path_segment_is_safe(raw: attempt_metering_member_name_segment(entry: entry) as String) {
     AttemptMeteringCreateRefused { error: "the member name is not one safe path segment; the create was refused, never attempted" }
   } else {
-  let path = join([store.root as String, "/", entry as String], "")
+  let path = join([store.root as String, "/", attempt_metering_member_name_segment(entry: entry) as String], "")
   let w = Filesystem.WriteCreateNew(path: path, content: content)
   match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
     FilesystemCreated { path: _ } => AttemptMeteringCreated

@@ -67,3 +67,34 @@ test fn a_caller_chosen_entry_reaches_no_create_or_read_effect() -> Bool {
     && type_mismatch_count(source: hostile_index_source) >= 1
     && type_mismatch_count(source: safe_index_source) == 0
 }
+
+// THE MEMBER CARRIER SEAL, BY TWIN (review 97160 follow-up: #15574's segment carrier had the same
+// plain-brand hole). Two forged casts -- a traversal spelling and a WELL-FORMED spelling -- against two
+// definer fixtures differing in nothing but the sole_constructor keyword. Sealed: BOTH forgeries are
+// refused construction (>=1 SoleConstructorViolation row each). Stripped: the SAME sources compile with
+// NO such row. The seal keyword is what refuses.
+
+data member_forged_cast_sealed_twin_source: String = "module probe_member_twin_sealed\nimport test.fixture.c_roadmap2_metering_member.member_definer { AttemptMeteringMemberName, forge_target }\nfn forged_traversal() -> Bool { forge_target(entry: \"../outside\" as AttemptMeteringMemberName) }\nfn forged_wellformed() -> Bool { forge_target(entry: \"record.json\" as AttemptMeteringMemberName) }\n"
+
+data member_forged_cast_stripped_twin_source: String = "module probe_member_twin_stripped\nimport test.fixture.c_roadmap2_metering_member.member_stripped_definer { AttemptMeteringMemberName, forge_target }\nfn forged_traversal() -> Bool { forge_target(entry: \"../outside\" as AttemptMeteringMemberName) }\nfn forged_wellformed() -> Bool { forge_target(entry: \"record.json\" as AttemptMeteringMemberName) }\n"
+
+fn sole_ctor_rows(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_rows_of_class(rows, "SoleConstructorViolation")
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn census_ran(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn the_member_carrier_seal_is_what_refuses_forged_casts() -> Bool {
+  census_ran(source: member_forged_cast_sealed_twin_source)
+    && census_ran(source: member_forged_cast_stripped_twin_source)
+    && sole_ctor_rows(source: member_forged_cast_sealed_twin_source) >= 2
+    && sole_ctor_rows(source: member_forged_cast_stripped_twin_source) == 0
+}

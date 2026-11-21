@@ -46,6 +46,20 @@ import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.roadmap.roadmap_attempt_state_store { attempt_state_directory_text, AttemptDirectoryRoot }
 import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_sibling_name, harness_seat_pointer_suffix }
 
+// Fixtures may only carry admitted member names: the sealed constructor is the single entrance
+// (review 97160). Every fixture name is one safe path segment, so the fallback arms are unreachable;
+// they exist because the language demands arm exhaustiveness.
+fn fx_member(raw: String) -> AttemptMeteringMemberName {
+  match attempt_metering_member_name(raw: raw) {
+    Present { value: entry } => entry
+    Absent => match attempt_metering_member_name(raw: "fx-safe-fallback") {
+      Present { value: entry } => entry
+      Absent => fx_member(raw: "fx-safe-fallback")
+    }
+  }
+}
+
+
 fn fx_lab_instance(tag: String) -> HostDashboardInstance {
   isolated_dashboard_instance(
     deployment: deployment_id(name: join(["c-roadmap2-hardening-", tag], "") as NonEmptyStr),
@@ -392,7 +406,7 @@ test fn declared_member_read_returns_its_content() -> Bool {
   let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
   let planted = Filesystem.Write(path: join([dir, "/metering-roster.json"], "") as FilePath, content: "declared bytes\n").success
-  let read = attempt_metering_read_derived(dir: dir, name: "metering-roster.json" as AttemptMeteringMemberName)
+  let read = attempt_metering_read_derived(dir: dir, name: fx_member(raw: "metering-roster.json"))
   made && planted && match read {
     OptionalFileContent { content: c } => c == "declared bytes\n"
     OptionalFileAbsent => false
