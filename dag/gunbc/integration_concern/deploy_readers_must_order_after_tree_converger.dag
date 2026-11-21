@@ -1,0 +1,63 @@
+module gunbc.integration_concern.deploy_readers_must_order_after_tree_converger
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 22: main dd14ed00b63 (#16587).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementUnestablished, SuspectedCapabilityGap, Triaged }
+
+// deploy-readers-must-order-after-tree-converger (review 95811 item 2, filed at gate-cb8-rebuild).
+// A CAPABILITY GAP, not a fork: there is ONE authority for TreeContent coverage (the deploy-artifact gate's
+// (path,kind) matcher) and it cannot express a concrete requirement the reader units need. The reader units
+// -- the ServeBinary unit and the roadmap-daemon / tailnet-door units, each declaring a TreeContent read at
+// the instance repo_root (working_directory_read classifies a WorkingDirectory==repo_root as TreeContent) --
+// must be ordered After= and Requires= the tree-sync PUBLICATION unit so the tree is present when they start.
+// The gate proves only that a converger RUNS this deploy (rung: converger-runs, not ordering); no After=/
+// Requires= edge from reader to converger is recorded anywhere, so it cannot be checked. The affected
+// declarations name the readers (deployment_artifact_read_set / working_directory_read) and the converger
+// (live_deploy_tree_sync_unit_file_for_closure, decided by converger_brought_up matching the publication
+// leg's typed systemctl action and unit identity; tree-remote only sets the origin URL and never publishes
+// content, so it is not the producer).
+data deploy_readers_must_order_after_tree_converger: IntegrationConcern = IntegrationConcern {
+  identity: "deploy-readers-must-order-after-tree-converger",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers"),
+    requirement: "each reader unit that opens the deployed source tree at the instance repo_root -- the ServeBinary unit and the roadmap-daemon / tailnet-door units, each declaring a TreeContent read -- is ordered After= and Requires= the tree-sync publication unit (spec.names.tree_sync_unit_name, whose typed unit file is live_deploy_tree_sync_unit_file_for_closure), so the tree content is present when the reader starts",
+    standing: RequirementUnestablished { decided_by: "the coverage matcher has no ordering axis: deploy_artifact_closure_gate covers a TreeContent by unit kind (converger_brought_up), proving only that the tree-sync publication runs this deploy, and never records an After=/Requires= edge from a reader unit to the tree-sync publication unit, so nothing in the model can be checked for the ordering" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "deployment_artifact_read_set"),
+    tail: [
+      decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "working_directory_read"),
+      decl_ref(module_path: "gunbc.live_deploy.emit", decl_name: "live_deploy_tree_sync_unit_file_for_closure"),
+      decl_ref(module_path: "gunbc.live_deploy.apply_legs", decl_name: "converger_brought_up"),
+    ],
+  },
+  question: "How does the deploy-artifact gate record that each reader unit (ServeBinary, the roadmap-daemon unit, the tailnet door units) must start After=/Requires= the tree-sync publication unit, when its TreeContent coverage proves only that the publication runs this deploy -- not that the tree content is present when the reader starts?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "349be312b30ac1fa355fcb82062d349ec2226a3c",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers") },
+        tail: [],
+      },
+      account: "The rebuilt deploy-artifact gate covers a TreeContent read only when the tree-sync PUBLICATION leg is brought up this deploy (its typed systemctl action Restart on the unit named spec.names.tree_sync_unit_name, the unit file live_deploy_tree_sync_unit_file_for_closure decides); a reader unit whose WorkingDirectory is the repo_root therefore reads that tree with no modelled ordering edge to the publication. The gate is honest about the rung it establishes -- publication-runs, not ordering -- and this row is the discoverable record that the ordering is a still-owed obligation, not an established guarantee. Tree-remote is not the producer: ensure_deployed_tree_remote only sets the origin URL.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_closure", decl_name: "owned_covers") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.live_deploy.deploy_artifact_read_sets", decl_name: "deployment_artifact_read_set"),
+        control: Absent,
+        statement: "a reader unit's TreeContent read at the instance repo_root is covered only by the tree-sync publication leg being brought up this deploy; the rung the gate establishes stays honest (the publication runs this deploy, NOT that content is present when a reader starts)",
+      },
+    ],
+    next: climbs_when(capability: "the unit-file model records each reader's After=/Requires= edge to the tree-sync publication unit and deploy_artifact_closure_gate checks it, so a TreeContent read is covered only when the reader is ordered after the publication"),
+  },
+}

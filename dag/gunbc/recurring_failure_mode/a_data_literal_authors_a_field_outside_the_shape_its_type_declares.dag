@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_data_literal_authors_a_field_outside_the_shape_its_type_declares
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_data_literal_authors_a_field_outside_the_shape_its_type_declares: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_data_literal_authors_a_field_outside_the_shape_its_type_declares" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a typecheck-side refusal that rejects a data-literal field value which inhabits no constructor of the declared field type -- today a list literal in a FreeSemigroup-typed field typechecks into a plain List and dies only in the consumer that asks its head -- with a RED enrolling exactly that literal and a positive control authored in the declared shape, both on the required path. The ceiling is derived, not aspirational: inhabitation of a constructor of a closed declared type is decidable from the literal and the type alone, so the class can reach rung 3 (structurally guaranteed -- the source may still write the bad literal, no accepted program contains it). The interim mitigation, rung 2, is a claim that renders every row of a ledger through the ledger's own renderer -- a per-ledger sweep the lane must enrol, not the guarantee.",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE AND HARM. A data literal gives a field a value whose shape is not what the field's declared type inhabits. The checker accepts the literal, so the row compiles, lands, and every fold that never READS that field stays green; the value carries the wrong shape at runtime, and the first consumer that projects it -- asks .head, matches a constructor -- dies with an error that names the consumer's file, not the authoring mistake. The harm is double: the ledger is silently unrenderable, and the failure surfaces in whichever lane happens to read the row, far from the lane that authored it.",
+
+    "SPECIMEN, found 2026-11-18 (gunb-ai/gunbc#16602). ConcernSighting.evidence is declared FreeSemigroup<SightingEvidence> in gunbc.integration_concern; two of the five rows #16602 added -- h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer and h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat -- author it as a plain list literal, the shape every multi-item sighting in the ledger spells as FreeSemigroup { head: ..., tail: [...] }. Both rows typechecked and landed on main. The failure surfaced on ANOTHER branch: session/valiant-swift-593's register fold (PR #16338) renders every row through the ledger's own reading_text, and at main 7dc10cb275c it died with: TypeError { msg: \"cannot access field 'head' on List [at dag/gunbc/integration_concern.dag byte 416920] <- sighting_lines <- concern_text <- reading_text\" }. Reproduced on main itself by calling reading_text over the register: the ledger has been unrenderable since #16602 landed, and nothing on main knew, because no fold on main renders it.",
+
+    "THE DISCRIMINATOR. The authoring lane's typecheck is not the discriminator -- it passed. Ask for the head: a correctly authored sighting renders; the inert one dies with 'cannot access field head on List' raised at the READER's position (sighting_lines), while the defect sits in a data block hundreds of lines away. The cheap prevention, until the checker refuses the literal, is exactly one claim per ledger that walks every row through the ledger's own renderer -- enrolled for the concern register as every_row_renders_through_the_reading in gunb-ai/gunbc#16707, whose RED is the TypeError above on the pre-conversion tree and whose positive control is the converted rows rendering with the other 14 claims green. Rung honesty at filing: that rung-2 claim is authored and green IN #16707, which is open; until it merges, the executed evidence on main is the reproduction alone, and the rung this row claims is dated to that merge.",
+
+    "NOT THIS CLASS. A missing import is refused at resolve time by the position that consumes the name (gunbc.recurring_failure_mode.a_moved_or_copied_block_uses_a_name_the_mover_never_imported, filed in open pull request gunb-ai/gunbc#16647 -- that name names the pull request, not a row on this branch); this class is precisely the position that is NOT refused: the checker never compares a literal's shape against the declared type's constructors, so nothing in the authoring motion can surface it."
+  ],
+
+  evidence: [],
+}
