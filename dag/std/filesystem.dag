@@ -110,16 +110,20 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
 //   extdeps.docker.cgroup (cgroup last segment);
 //   gunbc.live_deploy.member_observe; gunbc.owned_directory (owned_directory_basename);
 //   gunbc.roadmap.dispatch_worker_unit_confinement (dispatch_worktree_entry_name);
-//   gunbc.gitignore_emit and gunbc.url_file_acquisition (their old `path_basename` copies kept a
-//   trailing-slash empty segment -- a DIFFERENT meaning under the SAME name, a meaning fork; migrated
-//   here with the explicit decision that trailing-slash now follows POSIX basename, unreachable for
-//   their file-path callers);
+//   gunbc.gitignore_emit (its old `path_basename` copy kept a trailing-slash empty segment -- a DIFFERENT
+//   meaning under the SAME name, a meaning fork; migrated here with the explicit decision that trailing-
+//   slash now follows POSIX basename. Only witness-literal callers drive the matcher, and they pass no
+//   trailing slash, so the emitted .gitignore bytes are unchanged -- an equal blob. NOTE the matcher's
+//   OWN result does change for a trailing-slash input like "a/.DS_Store/" (now true); no current caller
+//   passes one, and those callers are witness literals, not production tracked paths);
 //   gunbc.site.gunb_ai_content (repository_slug).
-// Other `fold(split(_, "/"))` sites in the tree are NOT this fold and are not claimed: they trim each
-// segment (dispatch_credential_acquisition, runner_host_cap_bracket), build a structured accumulator
+// Other `fold(split(_, "/"))` sites are NOT this fold and are not claimed: they trim each segment
+// (dispatch_credential_acquisition, runner_host_cap_bracket), build a structured accumulator
 // (runner_slot_retirement, live_deploy.emit), test all-segments-safe (verified_binary_install,
-// cursor_agent_realization), or take a raw last segment -- including empty -- under a DISTINCT name for
-// a witness-local reason (worker_git_subtree_apply wet_basename). None shares this name or meaning.
+// cursor_agent_realization), or take a raw last segment -- INCLUDING empty -- under a DISTINCT, accurate
+// name because that behavior is load-bearing and must not be merged: gunbc.url_file_acquisition::
+// url_file_final_segment (parent/leaf must agree for trailing-slash subjects) and the witness-local
+// worker_git_subtree_apply wet_basename. None shares this name or meaning (single_authority).
 fn path_basename(path: String) -> String {
   fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
 }

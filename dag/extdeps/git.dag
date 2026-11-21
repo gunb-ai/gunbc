@@ -1063,18 +1063,15 @@ fn is_git_program(invocation: String) -> Bool {
   path_basename(path: invocation) == path_basename(path: git_program_word)
 }
 
-// A git ProgramIdentity at an arbitrary path, for witnesses that exercise the absolute-path spelling.
-// The admitted-caller seal on uncataloged_program is satisfied here because this module already calls
-// it (git_program). The path is a caller argument: it is what makes the red control cover every spelling.
-fn git_program_at(path: NonEmptyStr) -> ProgramIdentity = uncataloged_program(invocation: path)
-
-// Build a git ArgvCommand at a given program path with the given argv (no program-word prepending;
-// `arguments` are what follows the program). Witness and route-wall callers use this to exercise
-// the command_runner gate with specific argv shapes.
-fn git_argv_command_at(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand {
-  argv_command(program: program, arguments: arguments)
-}
-
+// A git ProgramIdentity at an arbitrary path and a generic (identity, argv) ArgvCommand builder are
+// DELIBERATELY NOT offered here. Minting a ProgramIdentity from an arbitrary caller path (the former
+// git_program_at) and a passthrough argv_command wrapper (the former git_argv_command_at) were a public
+// way around the program-identity seal: any importer of extdeps.git could mint an identity for ANY
+// binary and skip the uncataloged-program census, and argv_command(program, arguments) is a plain alias
+// -- a second path beside a modeled route (gunbc.design_argument::how_to_work / fail_closed). The
+// absolute-path red controls that needed them build their identities/commands in the witness itself,
+// where the arbitrary-path construction is sealed to that test decl (as test.claim.cursor_runtime_root_
+// wet_witness already is). Only `is_git_program` (a classifier) and the typed git builders live here.
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   git_argv_of_args(args: ["commit", "--no-verify", "--no-edit"])
 }

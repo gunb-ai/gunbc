@@ -31,13 +31,14 @@ module test.claim.git_command_runner_route_wall_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { string_contains }
 import std.filesystem { path_basename }
-import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, SshExec }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, SshExec, argv_command }
 import extdeps.git {
-  git_program_at, git_argv_command_at, is_git_program,
+  is_git_program,
   shape_git_add_all_args, shape_git_commit_allow_empty_args,
   shape_git_status_porcelain_nul_args, git_commit_snapshot_command,
 }
-import extdeps.exec.program { ProgramIdentity }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.tools.ls { ls_program }
 import extdeps.shell.exec { ProcessRan, ProcessNotSpawned, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, process_observation }
 import gunbc.command_runner { run_shell_command_observe_outcome, git_route_wall_admits, classify_process_observation, ExitZeroSucceeds }
 import gunbc.remote_shell_command { openssh_login_shell_interpretation }
@@ -46,12 +47,27 @@ import gunbc.remote_shell_command { openssh_login_shell_interpretation }
 // BUILT-IN (pure): basename catches absolute-path spellings.
 // ---------------------------------------------------------------------------
 
+// THE WITNESS-LOCAL ARBITRARY-PATH CONSTRUCTION. extdeps.git deliberately does NOT expose a way to
+// mint a ProgramIdentity for an arbitrary path or a generic argv builder -- that was a public way
+// around the program-identity seal (any importer could mint an identity for ANY binary; argv_command
+// passthrough is a second path beside a modeled route). The absolute-path red controls need git
+// identities at paths not in the catalog, so that construction lives HERE, sealed to these two witness
+// decls (the rows in extdeps/exec/program.dag and extdeps/exec/command.dag), exactly as
+// test.claim.cursor_runtime_root_wet_witness is sealed. These are the ONLY callers, and only git
+// spellings are passed; the non-git control uses the cataloged ls_program instead of minting one.
+fn witness_git_program_at(path: NonEmptyStr) -> ProgramIdentity {
+  uncataloged_program(invocation: path)
+}
+fn witness_git_argv(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand {
+  argv_command(program: program, arguments: arguments)
+}
+
 // The red control for concern #2: absolute-path spelling must not evade the gate.
-data absolute_git_program: ProgramIdentity = git_program_at(path: "/usr/bin/git" as NonEmptyStr)
+data absolute_git_program: ProgramIdentity = witness_git_program_at(path: "/usr/bin/git" as NonEmptyStr)
 // A bare path-resolved invocation.
-data git_identity: ProgramIdentity = git_program_at(path: "git" as NonEmptyStr)
+data git_identity: ProgramIdentity = witness_git_program_at(path: "git" as NonEmptyStr)
 // A far-fetched absolute path.
-data absolute_git_program_2: ProgramIdentity = git_program_at(path: "/opt/local/libexec/git-core/git" as NonEmptyStr)
+data absolute_git_program_2: ProgramIdentity = witness_git_program_at(path: "/opt/local/libexec/git-core/git" as NonEmptyStr)
 
 // is_git_program must be true for any basename-"git" spelling, false otherwise.
 fn test_is_git_program_classifies_all_spellings() -> Bool {
@@ -70,7 +86,7 @@ fn test_is_git_program_classifies_all_spellings() -> Bool {
 
 fn test_refused_bare_mutating_local() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: git_identity, arguments: shape_git_commit_allow_empty_args(message: "x")),
+    command: witness_git_argv(program: git_identity, arguments: shape_git_commit_allow_empty_args(message: "x")),
     transport: LocalExec,
   ) {
     ProcessNotSpawned { program: _, cause: c } =>
@@ -81,7 +97,7 @@ fn test_refused_bare_mutating_local() -> Bool {
 
 fn test_refused_bare_mutating_local_add() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: git_identity, arguments: shape_git_add_all_args()),
+    command: witness_git_argv(program: git_identity, arguments: shape_git_add_all_args()),
     transport: LocalExec,
   ) {
     ProcessNotSpawned { program: _, cause: c } =>
@@ -96,7 +112,7 @@ fn test_refused_bare_mutating_local_add() -> Bool {
 
 fn test_refused_absolute_path_local() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: absolute_git_program, arguments: shape_git_commit_allow_empty_args(message: "x")),
+    command: witness_git_argv(program: absolute_git_program, arguments: shape_git_commit_allow_empty_args(message: "x")),
     transport: LocalExec,
   ) {
     ProcessNotSpawned { program: p, cause: c } =>
@@ -108,7 +124,7 @@ fn test_refused_absolute_path_local() -> Bool {
 
 fn test_refused_deep_absolute_path_local() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: absolute_git_program_2, arguments: shape_git_add_all_args()),
+    command: witness_git_argv(program: absolute_git_program_2, arguments: shape_git_add_all_args()),
     transport: LocalExec,
   ) {
     ProcessNotSpawned { program: p, cause: c } =>
@@ -131,7 +147,7 @@ data test_ssh_transport: CommandTransport = SshExec {
 
 fn test_refused_bare_mutating_ssh() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: git_identity, arguments: shape_git_commit_allow_empty_args(message: "x")),
+    command: witness_git_argv(program: git_identity, arguments: shape_git_commit_allow_empty_args(message: "x")),
     transport: test_ssh_transport,
   ) {
     ProcessNotSpawned { program: _, cause: c } =>
@@ -142,7 +158,7 @@ fn test_refused_bare_mutating_ssh() -> Bool {
 
 fn test_refused_bare_mutating_ssh_absolute() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: absolute_git_program, arguments: shape_git_add_all_args()),
+    command: witness_git_argv(program: absolute_git_program, arguments: shape_git_add_all_args()),
     transport: test_ssh_transport,
   ) {
     ProcessNotSpawned { program: _, cause: c } =>
@@ -158,19 +174,19 @@ fn test_refused_bare_mutating_ssh_absolute() -> Bool {
 
 fn test_admitted_read_only_passes_gate() -> Bool {
   git_route_wall_admits(
-    command: git_argv_command_at(program: git_identity, arguments: shape_git_status_porcelain_nul_args()),
+    command: witness_git_argv(program: git_identity, arguments: shape_git_status_porcelain_nul_args()),
   )
 }
 
 fn test_admitted_in_repo_passes_gate() -> Bool {
   git_route_wall_admits(
-    command: git_argv_command_at(program: git_identity, arguments: ["-C", "/tmp", "commit", "--allow-empty", "-m", "x"]),
+    command: witness_git_argv(program: git_identity, arguments: ["-C", "/tmp", "commit", "--allow-empty", "-m", "x"]),
   )
 }
 
 fn test_admitted_in_repo_absolute_passes_gate() -> Bool {
   git_route_wall_admits(
-    command: git_argv_command_at(program: absolute_git_program, arguments: ["-C", "/tmp", "rev-parse", "HEAD"]),
+    command: witness_git_argv(program: absolute_git_program, arguments: ["-C", "/tmp", "rev-parse", "HEAD"]),
   )
 }
 
@@ -189,7 +205,7 @@ fn test_admitted_commit_snapshot_builder_passes_gate() -> Bool {
 fn test_non_git_passes_gate() -> Bool {
   // Non-git programs are never gated.
   git_route_wall_admits(
-    command: git_argv_command_at(program: git_program_at(path: "/bin/ls" as NonEmptyStr), arguments: ["-la"]),
+    command: witness_git_argv(program: ls_program(), arguments: ["-la"]),
   )
 }
 
@@ -205,7 +221,7 @@ fn test_non_git_passes_gate() -> Bool {
 
 fn test_bare_mutating_git_yields_the_single_not_spawned_arm() -> Bool {
   match run_shell_command_observe_outcome(
-    command: git_argv_command_at(program: git_identity, arguments: shape_git_add_all_args()),
+    command: witness_git_argv(program: git_identity, arguments: shape_git_add_all_args()),
     transport: LocalExec,
   ) {
     ProcessNotSpawned { program: p, cause: c } =>

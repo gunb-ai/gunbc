@@ -3,7 +3,7 @@ module gunbc.url_file_acquisition
 import std.types { NonEmptyStr, Bool, FilePath, String }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
-import std.filesystem { path_parent_directory, path_basename }
+import std.filesystem { path_parent_directory }
 import extdeps.filesystem.filesystem_io { listed_entry_presence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.http.client
 import extdeps.tools.sha256sum { sha256sum_verify_via_shell, Sha256Matches, Sha256Mismatch, Sha256VerifyInfraFailure }
@@ -47,7 +47,7 @@ fn url_file_refusal(first_cause: NonEmptyStr?, own: String) -> UrlFileEntry {
 
 fn url_file_entry_from(path: String, first_cause: NonEmptyStr?) -> UrlFileEntry {
   let parent = path_parent_directory(path: path)
-  match listed_entry_presence(directory: parent, name: path_basename(path: path)) {
+  match listed_entry_presence(directory: parent, name: url_file_final_segment(path: path)) {
     FilesystemEntryAbsent(_) => UrlFileEntryAbsent
     FilesystemEntryListed { directory: _, name: _ } => match first_cause {
       Absent => UrlFileEntryListed
@@ -66,13 +66,21 @@ fn url_file_entry_from(path: String, first_cause: NonEmptyStr?) -> UrlFileEntry 
   }
 }
 
-// path_basename is std.filesystem's (root_generalization). This was a byte-similar fold that differed
-// ONLY in not skipping empty segments ("a/b/" -> "" here vs "b" in std); MIGRATED onto the single
-// spelling, DECIDING that trailing-slash now follows POSIX basename ("a/b/" -> "b"). The divergence was
-// unreachable here: url_file_entry derives a name from a URL-acquisition path (a file path, no trailing
-// slash); the recursive probe walks UP via path_parent_directory, and both spellings agree on every
-// non-trailing-slash input. It also shared the name `path_basename` while meaning something else -- a
-// meaning fork (gunbc.design_argument::single_authority); deleting it removes the fork.
+// THE RAW FINAL PATH SEGMENT -- a DISTINCT operation from std.filesystem.path_basename, kept under its
+// own accurate name. path_basename returns the last NON-EMPTY segment ("a/b/" -> "b"); this returns the
+// last segment INCLUDING empty ("a/b/" -> ""). The difference is LOAD-BEARING here: url_file_entry_from
+// derives BOTH the parent (path_parent_directory, which already drops the empty final segment) and the
+// leaf from the same subject path, and they must agree. For a trailing-slash subject like "/tmp/occupied/"
+// the parent is "/tmp/occupied", so the leaf must be "" (probing an entry that cannot exist -> the honest
+// Indeterminate -> the nonregular-subject refusal), NOT "occupied" (which would query "/tmp/occupied/
+// occupied" and report Absent, and acquire_artifact would treat Absent as licence to create the parent and
+// acquire -- breaking this module's own contract that an existing nonregular destination refuses BEFORE
+// any attempt). root_generalization does NOT require merging operations that merely shared a name; the
+// former `path_basename` copy here was a meaning fork (single_authority), now resolved by the distinct
+// name rather than by silently changing behavior.
+fn url_file_final_segment(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: fn(_, seg) { seg })
+}
 
 fn observe_url_file(path: NonEmptyStr, expected_hash: NonEmptyStr) -> AcquisitionObservation {
   match url_file_entry(path: path as String) {
