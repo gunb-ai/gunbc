@@ -13,8 +13,9 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, 
 import gunbc.repository { gunbc_repository }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import gunbc.remote_shell_command { ShellSimpleCommand, ShellCommandInDirectory, emit_remote_shell_in_directory }
-import gunbc.roadmap.roadmap_dashboard_instance {
-  HostDashboardInstance, dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.compute.host_capacity {
+  host_capacity_home_for_host, HostCapacityHomeFound, HostCapacityHomeUnknown,
 }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named }
 import product.host_identity { HostIdentity }
@@ -65,8 +66,9 @@ import gunbc.compute.remote_build {
 // Steps, each answering with the ending the shared contract names (header line, then document):
 //   1. the host is on the roster, which yields its serving instance and the ledger it reserves in;
 //   2. the process is the remote-build account, holds its declared groups and no root-equivalent one,
-//      and the ledger group lists the ledger's service user, read back from /proc/self/status and
-//      /etc/group (a key installed under any other account serves nothing);
+//      and the ledger group lists the ledger's service user -- the owner of the capacity home the ledger
+//      lives in, the same carrier step 1's subject resolves through, never a second lookup -- read back
+//      from /proc/self/status and /etc/group (a key installed under any other account serves nothing);
 //   3. a probe ("remote-build-v1 probe") is answered ready here, before any operation is read, so a
 //      probe can never follow a started producer;
 //   4. the request decodes;
@@ -80,20 +82,45 @@ import gunbc.compute.remote_build {
 data remote_build_ssh_command_variable: NonEmptyStr = "SSH_ORIGINAL_COMMAND"
 
 // The host is resolved first only because the principal check needs the ledger's service user; nothing
-// is read from the request until the principal is admitted.
+// is read from the request until the principal is admitted. WHO THE LEDGER BELONGS TO IS NOT A SECOND
+// QUESTION beside where it lives: this asks the same authority the ledger subject itself resolves
+// through (gunbc.compute.host_capacity host_capacity_home_for_host). Asking a dashboard-instance lookup
+// instead let one host answer twice -- the subject at the host home under the host's service root, the
+// principal from an instance row that need not exist -- so srv3 and srv4, serving hosts with no dashboard
+// instance of their own, refused the ledger they were writing.
 fn remote_build_serve_cli(host: String) -> CliWireResponse {
   match remote_build_candidate_for_host(host: host) {
     Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the roster has no serving instance for host ", host))
     Present { value: candidate } =>
-      match dashboard_instance_for_host(host: host) {
-        DashboardInstanceHostUnknown { host: h } => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: no ledger instance is declared for host ", h))
-        DashboardInstanceForHost { instance: ledger } =>
-          match remote_build_serve_principal(service_user: ledger.directory_owner.user) {
+      match remote_build_serve_ledger_owner(host: host) {
+        ServeLedgerOwnerUndeclared { host: h } => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: no capacity home is declared for host ", h))
+        ServeLedgerOwnerDeclared { service_user: owner } =>
+          match remote_build_serve_principal(service_user: owner) {
             RemoteBuildServePrincipalRefused { reason } =>
               remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: not serving as this principal: ", reason))
             RemoteBuildServePrincipalAdmitted => remote_build_serve_on(instance: candidate.instance)
           }
       }
+  }
+}
+
+// WHO MAY WRITE THIS HOST'S LEDGER, read off the carrier that says where that ledger lives.
+// gunbc.compute.host_capacity host_capacity_home_for_host is the one decision: a rostered serving host's
+// home is the host-scoped area under the host's service root, whose declared directory owner is the
+// ledger's service user; a host that runs a dashboard instance takes that instance's home and owner
+// instead, exactly as before; a host with neither has no ledger to authorize, and that is a refusal
+// rather than a default. The serving converge declares that same owner as a member of the compute-ledger
+// group (gunbc.compute.remote_build_serving_setup serving_ledger_service_user reads it back off the ledger
+// area's own ownership), so a converged host admits here and a host whose group file predates that share
+// refuses with the reason named.
+type RemoteBuildServeLedgerOwner
+  = ServeLedgerOwnerDeclared { service_user: NonEmptyStr }
+  | ServeLedgerOwnerUndeclared { host: String }
+
+fn remote_build_serve_ledger_owner(host: String) -> RemoteBuildServeLedgerOwner {
+  match host_capacity_home_for_host(host: host as NonEmptyStr) {
+    HostCapacityHomeUnknown { host: h } => ServeLedgerOwnerUndeclared { host: h as String }
+    HostCapacityHomeFound { home: home } => ServeLedgerOwnerDeclared { service_user: home.directory_owner.user }
   }
 }
 
