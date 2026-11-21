@@ -42,6 +42,7 @@ import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildSourceRef,
   remote_build_source_ref, remote_build_source_ref_name, remote_build_request_words, remote_build_entry_admitted,
   RemoteBuildCandidate, remote_build_candidates, remote_build_admitted_public_keys,
+  RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
   HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
@@ -252,8 +253,13 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
 // The roster is walked by remote_build_next_step and nothing else: each round asks it what to do with
 // the attempts so far, so the order and the stopping rule have one home. A round per candidate is
 // enough, since each round either tries the next candidate or finds the request settled.
-fn remote_build_drive(context: FleetSshExecutionContext, request: RemoteBuildRequest) -> RemoteBuildStep {
-  let candidates = remote_build_candidates()
+//
+// The roster walked is remote_build_pinned_candidates(pin): with no pin that is the whole roster,
+// in order (unchanged behaviour); with a rostered pin it is exactly the one named host, so a
+// pinned request is tried on that host and nowhere else. An off-roster pin never reaches here --
+// remote_build_run refuses it before any effect -- but the pinned list is empty even if one did.
+fn remote_build_drive(context: FleetSshExecutionContext, request: RemoteBuildRequest, pin: RemoteBuildHostPin?) -> RemoteBuildStep {
+  let candidates = remote_build_pinned_candidates(pin: pin)
   let attempts = fold(candidates, init: [], f: fn(acc, round) {
     match remote_build_next_step(candidates: candidates, attempts: acc) {
       RemoteBuildTryHost { candidate } => concat(acc, [RemoteBuildAttempt { host: candidate.host, answer: remote_build_try_host(context: context, request: request, candidate: candidate) }])
@@ -316,7 +322,21 @@ type RemoteBuildRun
 
 // Every operation of one run is asked of the same snapshot through one ref, so a test pattern that
 // selects several modules publishes once and deletes once.
-fn remote_build_run(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>, identity_file: String?) -> RemoteBuildRun {
+// THE ONE RUN. A host pin is decided BEFORE any effect -- no snapshot, no push, no connection --
+// so a pin the DISPATCH roster does not admit refuses on the spot rather than contacting a host or
+// being widened to the whole roster. A rostered pin (or none) falls through to the ordinary walk
+// with that pin threaded into remote_build_drive, which then walks exactly that one host.
+fn remote_build_run(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>, identity_file: String?, host: String?) -> RemoteBuildRun {
+  match remote_build_host_pin(text: host) {
+    Absent => remote_build_run_pinned(worktree: worktree, commit_text: commit_text, operations: operations, identity_file: identity_file, pin: none)
+    Present { value: PinRostered { host: pinned } } =>
+      remote_build_run_pinned(worktree: worktree, commit_text: commit_text, operations: operations, identity_file: identity_file, pin: Present { value: PinRostered { host: pinned } })
+    Present { value: PinOffRoster { pin: refused, roster } } =>
+      RemoteBuildNotSent { step: "host-pin", detail: remote_build_pin_refusal(pin: refused, roster: roster) }
+  }
+}
+
+fn remote_build_run_pinned(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>, identity_file: String?, pin: RemoteBuildHostPin?) -> RemoteBuildRun {
   match git_object_id_from_untagged_hex(hex: commit_text) {
     Absent => RemoteBuildNotSent { step: "snapshot", detail: concat("the snapshot is not a commit id: ", commit_text) }
     Present { value: commit } =>
@@ -332,7 +352,7 @@ fn remote_build_run(worktree: String, commit_text: String, operations: List<Remo
                 ComputeExecOk { stdout: _, stderr: _ } => {
                   let results = operations |> map(op => RemoteBuildRequestResult {
                     operation: op,
-                    step: remote_build_drive(context: context, request: RemoteBuildRequest { commit: commit, source: source, operation: op }),
+                    step: remote_build_drive(context: context, request: RemoteBuildRequest { commit: commit, source: source, operation: op }, pin: pin),
                   })
                   RemoteBuildRan {
                     commit: git_object_id_wire_hex(oid: commit) as String,
@@ -469,14 +489,16 @@ fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, de
 //   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_compile_cli \
 //     --arg worktree=$PWD --arg entry=<dag/...dag> --arg receipt_path=$PWD/.gunbc-compile-receipt.json
 // Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
-fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, identity_file: String?) -> ProcessExit {
+// Optional --arg host=<host> PINS this request to one host: it must be a DISPATCH-roster host, or
+// the whole run refuses before any effect (never widened to the rest of the roster).
+fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
   if !remote_build_entry_admitted(entry: entry) {
     ExitFailure { code: 2, reason: concat("gunbc remote compile: entry must be a .dag file under dag/, relative to the worktree: ", entry) }
   } else {
     match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
       SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote compile: snapshot refused at ", step, ": ", detail], "") }
       SnapshotResolved { commit } =>
-        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }], identity_file: identity_file), declined: [], failed: [])
+        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }], identity_file: identity_file, host: host), declined: [], failed: [])
     }
   }
 }
@@ -572,14 +594,17 @@ fn remote_gate_exit_code(o: RemoteGateOutcome) -> Int {
   }
 }
 
-fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String?) -> ProcessExit {
+// Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
+// Optional --arg host=<host> PINS this gate to one DISPATCH-roster host; any other host refuses
+// before any effect rather than falling through to the rest of the roster.
+fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
   match remote_build_decode_gate_subject(words: [remote_build_gate_word as String, label], operand: label) {
     RemoteBuildOperationRefused { cause } =>
       ExitFailure { code: 2, reason: join(["gunbc remote gate: ", remote_build_request_refusal_text(cause: cause)], "") }
     RemoteBuildOperationDecoded { operation } =>
       match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
         SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote gate: snapshot refused at ", step, ": ", detail], "") }
-        SnapshotResolved { commit } => remote_gate_run_and_exit(worktree: worktree, commit: commit, operation: operation, receipt_path: receipt_path, identity_file: identity_file)
+        SnapshotResolved { commit } => remote_gate_run_and_exit(worktree: worktree, commit: commit, operation: operation, receipt_path: receipt_path, identity_file: identity_file, host: host)
       }
   }
 }
@@ -587,8 +612,8 @@ fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identi
 // THE RUN, THE RECEIPT, THEN THE CODE. The receipt is written whether or not anything was served --
 // the attempts and their answer words are the record a human reads when the exit says "no host admitted
 // this" -- and the exit code is the class, never a re-derivation of it.
-fn remote_gate_run_and_exit(worktree: String, commit: String, operation: RemoteBuildOperation, receipt_path: String, identity_file: String?) -> ProcessExit {
-  let run = remote_build_run(worktree: worktree, commit_text: commit, operations: [operation], identity_file: identity_file)
+fn remote_gate_run_and_exit(worktree: String, commit: String, operation: RemoteBuildOperation, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
+  let run = remote_build_run(worktree: worktree, commit_text: commit, operations: [operation], identity_file: identity_file, host: host)
   let document = serialize_json(v: remote_build_run_json(r: run, declined: [], failed: []))
   let receipt = Filesystem.Write(path: receipt_path, content: document)
   if !receipt.success {
@@ -651,7 +676,9 @@ fn remote_not_sent_json(label: String, reason: String) -> JsonValue {
 //   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli \
 //     --arg worktree=$PWD --arg pattern=//dag/test/claim/<package>/... --arg receipt_path=$PWD/.gunbc-test-receipt.json
 // Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
-fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, identity_file: String?) -> ProcessExit {
+// Optional --arg host=<host> PINS this test run to one DISPATCH-roster host; any other host refuses
+// before any effect rather than falling through to the rest of the roster.
+fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
   match parse_target_pattern(text: pattern) {
     TargetPatternRefused { cause } => ExitFailure { code: 2, reason: concat("gunbc remote test: ", target_pattern_refusal_text(r: cause)) }
     TargetPatternParsed { pattern: parsed } =>
@@ -668,7 +695,7 @@ fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, iden
               if count(operations) == 0 {
                 remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: RemoteBuildNotSent { step: "selection", detail: concat("the pattern selected no module with a planned claim: ", render_target_pattern(pattern: parsed)) }, declined: declined, failed: failed)
               } else {
-                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations, identity_file: identity_file), declined: declined, failed: failed)
+                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations, identity_file: identity_file, host: host), declined: declined, failed: failed)
               }
             }
           }
