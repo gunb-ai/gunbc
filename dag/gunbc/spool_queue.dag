@@ -1036,9 +1036,10 @@ data spool_out_of_corpus_writers_frontier_rows: List<FrontierRow> = [
 // in the compute layer (gunbc.compute.host_capacity), where the instance root and the principal uid are
 // admitted by authority (compute_root on the instance, and the process's own effective uid) -- so there is
 // NO path-taking store mint in this leaf: the mint takes the instance and never a path, and the root is
-// derived from the instance and this declaration. The instance-root-authoring residual is documented in
-// gunbc.roadmap.roadmap_dashboard_instance (rung honesty, refused by a check not made impossible), and the
-// wider mode in gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module (review 95668).
+// derived from the instance and this declaration. The record is sealed against foreign construction; a caller-chosen
+// instance root (route 3) and a foreign field read of the sealed record (route 2) are the accepted residuals recorded
+// in gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module -- there is no outer-root
+// admission check here, and none is claimed (review 95668, review 6004580095).
 // ================================================================================================
 
 // THE CLOSED PARTITIONED KINDS, DISJOINT from SpoolKind: the compute-exit spool is its OWN kind (never the
@@ -1071,8 +1072,10 @@ fn partitioned_spool_declaration(kind: PartitionedSpoolKind) -> PartitionedSpool
 // uid as a Nat) and return STRINGS -- they build NO store and perform no filesystem or privilege action. The
 // sealed PartitionedSpoolStore, which is the ONLY value compute_attempt_exit_hook and compute_attempt_exit_record_listing
 // accept, is declared and minted in gunbc.compute.host_capacity, where instance_root comes from compute_root
-// of the admitted instance and uid from the process's own effective uid -- so a foreign module cannot forge a
-// store or aim a read/hook at a caller-chosen tree (review 95668). Provisioning's owned root target and the
+// of the admitted instance and uid from the process's own effective uid -- so NO direct path-or-uid mint is
+// reachable and the layout is FIXED relative to the supplied instance (review 95668; caller-chosen instance
+// roots remain the accepted route-3 residual in
+// gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module). Provisioning's owned root target and the
 // reader's terminal path are BOTH spelled here, so a dropped segment breaks provisioning and the read TOGETHER
 // (the realization witness's provisioning-drop RED), never one alone.
 fn partitioned_spool_base_dir(kind: PartitionedSpoolKind, instance_root: String) -> String {

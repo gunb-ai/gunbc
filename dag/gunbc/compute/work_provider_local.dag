@@ -837,8 +837,10 @@ fn compute_user_sccache_server_uds(user_runtime_dir: FilePath) -> NonEmptyStr {
 // compute-layer mint compute_attempt_exit_spool_open, which takes the instance and NEVER a path: the instance
 // root is derived from compute_root and the principal uid from THIS process's own effective uid -- no path
 // string and no caller-supplied uid is passed in (review 95668). The instance-root-authoring residual (the
-// instance's FilePath roots are fields a caller authors) is documented in gunbc.roadmap.roadmap_dashboard_instance
-// (rung honesty); the wider mode is gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module. A process that cannot name its
+// instance's FilePath roots are fields a caller authors, and a sole_constructor record's field reads are not
+// module-private) is the ACCEPTED route-3 / route-2 residual recorded in
+// gunbc.recurring_failure_mode.a_slot_store_is_built_over_a_literal_path_by_any_module -- there is no outer-root
+// admission check and none is claimed. A process that cannot name its
 // own uid gets NO store: it is not permitted to fall back to the spool root, to another uid's directory, or to
 // "there is no record" -- each of those would let an absence this provider never observed stand for a seat's
 // end. The caller keeps the seat and says why.
