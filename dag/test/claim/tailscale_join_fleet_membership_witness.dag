@@ -61,13 +61,22 @@ import extdeps.tailscale.join {
   tailscale_up_join_state_is_joined,
   tailscale_up_join_state_of,
   tailscale_self_tags_include,
+  tailscale_ping_verdict,
+  PingAnswered,
+  TailscaleUpJoinCommandBuilt,
+  TailscaleUpJoinCommandRefused,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.fleet.fleet_enrollment {
   ci_runner_enrollment_participation,
   both_participation_enrollment_participation,
 }
 import gunbc.output_policy { ExpectSuccess }
+import extdeps.exec.command { argv_words }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import std.list { list_member, first_where }
+
 import gunbc.tailscale_fleet_auth_key { tailscale_fleet_node_tag, tailscale_desired_tags_for_participation, tailscale_fleet_auth_key_later_consumer_frontier_rows }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -101,6 +110,8 @@ import gunbc.tailscale_join_converge {
   tailscale_join_outcome_receipt,
   tailscale_join_plan,
   tailscale_join_run_settled,
+  tailscale_ping_pong_is_expected,
+  tailscale_join_up_command,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -431,7 +442,7 @@ test fn w_a_ci_only_host_is_desired_to_carry_ci_and_not_serving() -> Bool {
 test fn w_hand_joined_specimen_reads_as_joined_but_not_a_fleet_member() -> Bool {
   match state_of(fixture: hand_joined_fixture_path) {
     // No `backend == "Running"` conjunct here: the arm IS that fact. Restating it would test the type
-    // rather than the reading (@ref(gunbc.design_argument::fail_closed): making the wrong state unwritable is
+    // rather than the reading (#gunbc.design_argument::fail_closed: making the wrong state unwritable is
     // stronger than catching it).
     JoinStateJoinedWithoutRequiredTag { self_tags: tags } =>
       tags.count() == 0
@@ -470,7 +481,7 @@ test fn w_not_joined_fixture_reads_as_not_joined() -> Bool {
 // A DOCUMENT THAT CANNOT ANSWER IS NOT THE TAGLESS ANSWER. Running with no `Self`: membership cannot be decided,
 // so this refuses rather than reading as "joined, no tags" -- which would route it into the very arm this change
 // adds, on evidence the document does not give. Fail-closed means the failure arm refuses; it does not widen into
-// whichever arm is nearest (@ref(gunbc.design_argument::fail_closed)).
+// whichever arm is nearest (#gunbc.design_argument::fail_closed).
 test fn w_running_without_self_refuses_rather_than_reading_tagless() -> Bool {
   match state_of(fixture: running_without_self_fixture_path) {
     JoinStateUnreadable { cause: cause } => cause != ""
@@ -725,4 +736,70 @@ test fn w_the_apt_repo_install_plan_has_the_ten_step_order() -> Bool {
     ",",
   )
     == "KeyringDir,Mktemp,Fetch,ShowKeys,Guard,Dearmor,SourceLine,Update,Install,Cleanup"
+}
+
+// (d) THE READ-BACK PONG NAMED BY THE NODE LABEL. The srv4 join dispatch (fleet-converge run
+// 44757742976, 2026-11-20) installed tailscale through the shared apt walker and ran `tailscale up`, then
+// REFUSED at the read-back: "the pong named srv4, not srv4.tailecbe08.ts.net". The cause: `tailscale ping
+// <fqdn>` names the answering peer by its NODE LABEL ("srv4"), while the expected name is the MagicDNS FQDN;
+// string-equal, they never match, so a join that had in fact settled was refused. The fixture is that run's
+// pong -- the node name "srv4" is the observed fact; the address and route behind it never enter the
+// comparison -- transcribed here so a regression in the read-back goes red on the real bytes, not a guess.
+test fn w_the_srv4_pong_from_the_dispatch_settles_a_correct_join() -> Bool {
+  let srv4_pong = "pong from srv4 (100.120.40.7) via <derp-7> in 18ms"
+  match tailnet_host_from(machine: operator_host_srv4) {
+    Present { value: expected_fqdn } =>
+      match tailscale_ping_verdict(exit_code: 0, stdout: srv4_pong, stderr: "") {
+        PingAnswered { node_name: node_name, line: _ } =>
+          // The pong names srv4, and the read-back compares that node label to the model's first label
+          // (the canonical name ahead of the zone labels), so the correct join settles.
+          node_name == "srv4"
+            && tailscale_ping_pong_is_expected(expected: expected_fqdn, node_name: node_name)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE READ-BACK STILL FAILS CLOSED ON A WRONG NAME. The fix must not turn "compare like with like" into
+// "trust whoever answered": a pong naming a different node -- an address answering from a stale peer record
+// as somebody else -- is still refused. This is the guard the fix had to preserve; it goes red if the
+// comparison is loosened to "any pong at all".
+test fn w_a_pong_from_a_different_node_still_refuses_the_read_back() -> Bool {
+  let wrong_pong = "pong from srv3 (100.120.40.3) via <derp-7> in 21ms"
+  match tailnet_host_from(machine: operator_host_srv4) {
+    Present { value: expected_fqdn } =>
+      match tailscale_ping_verdict(exit_code: 0, stdout: wrong_pong, stderr: "") {
+        PingAnswered { node_name: node_name, line: _ } =>
+          node_name == "srv3"
+            && !tailscale_ping_pong_is_expected(expected: expected_fqdn, node_name: node_name)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE JOIN CANNOT ENABLE THE HOST-SIDE TAILSCALE-SSH HALF. The host-side decision (RunSSH=false on
+// srv1/srv2 as of 2026-11-20; srv3/srv4 plain OpenSSH) is recorded at
+// #gunbc.design_ruling::tailscale_ssh_off_on_fleet_build_hosts_2026_11_20. What this claim discriminates
+// is the join half: #extdeps.tailscale.join::tailscale_up_join_argv carries no --ssh flag in ANY
+// spelling (bare, --ssh=true), so no join can bring a host up answering ssh on tailscale-ssh instead
+// of sshd-with-forced-command -- if a --ssh word ever enters the argv, THIS claim goes red.
+test fn w_the_fleet_join_argv_never_enables_tailscale_ssh() -> Bool {
+  match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_srv1) {
+    Present { value: name } =>
+      match tailscale_join_up_command(hostname: name) {
+        TailscaleUpJoinCommandBuilt { command: command } =>
+          match first_where(
+            xs: argv_words(command: command),
+            keep: word => string_contains(s: word, pattern: "--ssh")
+          ) {
+            // Any word CARRYING --ssh (bare, --ssh=true, any spelling) would enable the host-side half.
+            Absent => true
+            Present { value: _ } => false
+          }
+        TailscaleUpJoinCommandRefused { cause: _ } => false
+      }
+    Absent => false
+  }
 }

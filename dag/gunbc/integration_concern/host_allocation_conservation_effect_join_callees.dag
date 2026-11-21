@@ -1,0 +1,55 @@
+module gunbc.integration_concern.host_allocation_conservation_effect_join_callees
+
+// THE SAME EFFECT-JOIN GAP AS presentation_witness_effect_join_callees, at a different callee and
+// entry module: the witness-local helper synthetic_bytes_of calls std.measure.byte_size_count and the
+// effect join never establishes that callee's identity, so EVERY entry witness in
+// test.claim.host.host_allocation_conservation refuses at reconcile. Sighted on the B4a serving-model
+// work (PR #16266) while attributing whether that module's reconcile-red was caused by that PR; it is
+// not, so the finding is recorded here rather than left with the session that found it.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data host_allocation_conservation_effect_join_callees: IntegrationConcern = IntegrationConcern {
+  identity: "host_allocation_conservation_effect_join_callees",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.measure", decl_name: "byte_size_count"),
+    requirement: "a test claim in test.claim.host.host_allocation_conservation that reaches std.measure.byte_size_count through the witness-local helper synthetic_bytes_of has that call's effects joined, so the module's entry witnesses reconcile at emit instead of refusing on an effect-summary gap",
+    // The gap is established, not open: a whole-tree run of the module's 31 entry witnesses on a
+    // checkout of origin/main with the same claim_batch binary (cited artifact) refused every one
+    // with the identical single diagnostic. Neither callee nor helper is touched by that PR.
+    standing: RequirementEstablished {
+      by: CitesArtifact {
+        label: "claim_batch --functions run of all 31 entry witnesses at origin/main d53b3ded449ab3385a28c5c4141ca3d3cc76eb84 (git checkout of main's tree, same binary): 0 pass, 31 fail, one identical effect-summary diagnostic per witness",
+        sha256: Sha256Digest { hex: "20f0e1097078b36fe582d89639eb12917f4fe45818894df07a7589b3dab8b095" as Sha256DigestHex },
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "synthetic_bytes_of"),
+    tail: [
+      decl_ref(module_path: "std.measure", decl_name: "byte_size_count"),
+    ],
+  },
+  question: "What establishes a callee's identity for the effect join, and why does std.measure.byte_size_count — reached through the witness-local helper synthetic_bytes_of — never get it: a missing effect declaration at the callee, a visibility gap in the resolver's callee table for a helper reached only from claim code, or claims resolved through a path that bypasses that table? The same phenomenon as gunbc.integration_concern.presentation_witness_effect_join_callees (a roadmap callee), here at a byte-count callee in a host-memory witness module.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "d53b3ded449ab3385a28c5c4141ca3d3cc76eb84",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.host.host_allocation_conservation", decl_name: "synthetic_bytes_of") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "std.measure", decl_name: "byte_size_count") },
+          CitesArtifact {
+            label: "claim_batch --functions run of all 31 entry witnesses at origin/main d53b3ded449ab3385a28c5c4141ca3d3cc76eb84 (git checkout of main's tree, same binary): 0 pass, 31 fail, one identical effect-summary diagnostic per witness",
+            sha256: Sha256Digest { hex: "20f0e1097078b36fe582d89639eb12917f4fe45818894df07a7589b3dab8b095" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "While landing the B4a serving model (PR #16266, session bold-hawk-555) the manager required that the reconcile-red reported for test.claim.host.host_allocation_conservation be attributed against main rather than asserted. A git checkout of origin/main d53b3ded449ab3385a28c5c4141ca3d3cc76eb84 (the module's src/ are byte-identical to the branch, so the same claim_batch binary applies) run with --functions over all 31 entry witnesses answered 0 pass, 31 fail; every refusal carried one identical closure diagnostic: 'effect summary incomplete: call to byte_size_count in test.claim.host.host_allocation_conservation.synthetic_bytes_of has no established callee identity, so its effects cannot be joined', at the file's synthetic_bytes_of helper. Neither synthetic_bytes_of nor std.measure.byte_size_count is touched by #16266 — the red is main's, seen while closing another work item, and the reproduction is deterministic (claim_batch --functions over the entry on the cited revision with the same binary). #16266 relocated the two witnesses it needs out of this module into test.claim.serving.serving_reservation_witness, where they run green, so the module-level reconcile-red does not gate that PR; it is recorded here so a standing main red does not sit unowned. This is the same class as presentation_witness_effect_join_callees, not a second name for it: a different callee and entry module.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

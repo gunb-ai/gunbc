@@ -72,7 +72,7 @@ import gunbc.parse_verdict_restore {
 }
 
 // THE PULL-REQUEST SIDE OF THE PLANNING FAST LANE (gunbc.read_set_publish is the main side; the operator
-// admitted the receipt it consumes in @ref(gunbc.design_ruling::seed_read_set_receipt_is_admitted), "so the
+// admitted the receipt it consumes in #gunbc.design_ruling::seed_read_set_receipt_is_admitted, "so the
 // required job can skip the emit and build when a pull request changes nothing that acquisition reads").
 //
 // ONE UNIT, ONE DECISION, THE FULL PATH AS THE FALLBACK. Early in the required job, a pull-request run

@@ -2304,11 +2304,11 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // replaying it. There is no
 // in-flight record, no in-flight file and no in-flight event, and none may be added: an
 // in-flight-bearing record would be a SECOND authority over the fact of who holds what
-// (@ref(gunbc.design_argument::single_authority)), and two authorities over a holding answer are exactly
+// (#gunbc.design_argument::single_authority), and two authorities over a holding answer are exactly
 // the drift the log exists to remove. Everything below is a read — it takes the log's own wire lines
 // and returns what they say, so a reader can never be shown a hold that no event recorded.
 //
-// CONSUMED BY A NAMED LATER CHANGE — the classification @ref(gunbc.design_argument::consumption) asks for,
+// CONSUMED BY A NAMED LATER CHANGE — the classification #gunbc.design_argument::consumption asks for,
 // so the frontier is declared here rather than asserted in prose. Today the only thing that calls
 // roadmap_leaf_in_flight_set is its own witness module, which exercises the fold but is not a consumer.
 // The consumer is the node this one unblocks: roadmap-work-item-projection
@@ -2351,7 +2351,7 @@ fn roadmap_migration_acceptance_identity_is_seeded(identity: String) -> Bool {
 // show, rather than being told nothing happened.
 //
 // A CLAIMED WITH A MALFORMED GRAIN IS A TYPED REFUSAL, NOT A DROPPED LINE
-// (@ref(gunbc.design_argument::fail_closed)). Such a line cannot survive roadmap_event_decode, which is why this read takes the
+// (#gunbc.design_argument::fail_closed). Such a line cannot survive roadmap_event_decode, which is why this read takes the
 // log's WIRE LINES rather than decoded events: a read over decoded events alone would never see the
 // case at all, and would fold as though the claim had never happened — reporting as free a leaf some
 // session holds. So a line the decoder refuses is asked here whether it is a Claimed with a grain

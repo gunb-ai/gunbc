@@ -6,7 +6,7 @@ module test.claim.firmware_network_boot_standing_witness
 // refusal keeps its cause, and every route the seam emits is a route the catalog owns.
 
 import std.types { Bool, EpochMs, List, NonEmptyStr }
-import std.algebra { string_contains, length, list_head }
+import std.algebra { string_contains, length, list_head, for_all }
 // THE BINDING INPUTS ARE OPTIONAL VALUES, so the witness states a unit's BIOS version or states that
 // it was never read -- rather than passing "" to mean 'not read', which would be an observation the
 // probe never made, and the binder COMPARES versions, so a placeholder could accidentally match one.

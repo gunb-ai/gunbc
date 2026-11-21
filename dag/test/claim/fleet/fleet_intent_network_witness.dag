@@ -164,9 +164,9 @@ test fn fleet_intent_network_srv14_lease_row_holds_kind_and_hop_discipline() -> 
 }
 
 // GROUP B IS SOLD, SO NO SOLD HOST HOLDS AN ENDPOINT ROW. The operator's ruling of 2026-10-10
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) is explicit -- "Group B (srv9-srv12) is sold
+// #gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 is explicit -- "Group B (srv9-srv12) is sold
 // too: every one of the eight procured units is now sold, and none may remain a reachable fleet host" -- and
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries each router label at its former slot.
+// #gunbc.spark.dgx_procurement::dgx_spark_disposed_units carries each router label at its former slot.
 //
 // This replaces fleet_intent_network_srv10_enrolled_at_its_reserved_address, which pinned 192.168.1.237 to srv10.
 // That claim was itself part of the defect: a test that kept a sold cage addressable. It is deleted rather than
@@ -205,7 +205,7 @@ test fn fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row() -> Boo
 // declaration of any kind, and that shape is why retired rows should be deleted rather than left standing outside
 // the roster.
 //
-// Single pass by construction: @ref(std.list::first_duplicate_by_key) folds once, carrying the keys it has seen,
+// Single pass by construction: #std.list::first_duplicate_by_key folds once, carrying the keys it has seen,
 // and stops at the first repeat. Review 96631 caught the first version re-filtering the whole roster once per row
 // -- a quadratic fold -- which gunbc.design_argument::how_to_work forbids regardless of how small n is today.
 test fn fleet_intent_network_no_two_endpoint_rows_hold_one_address() -> Bool {

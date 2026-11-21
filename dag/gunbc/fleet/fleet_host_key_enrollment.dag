@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_host_key_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
-import gunbc.hostname_allocation { fleet_machine_srv1, fleet_machine_srv2, fleet_machine_srv3, fleet_machine_srv4 }
+import gunbc.hostname_allocation { fleet_machine_srv1, fleet_machine_srv2, fleet_machine_srv3, fleet_machine_srv4, fleet_machine_ken }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_name }
 import gunbc.host.host_name_resolution { fleet_lan_name }
 import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set, fleet_convergence_provider_resource }
@@ -28,7 +28,7 @@ import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.mac { Eui48Address }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
 import gunbc.fleet.fleet_intent_network { host_lan_address }
-import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7 }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name, host_by_ipv4, render_network_host, parse_network_host, NetworkHostParsed, NetworkHostRefused }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.known_hosts { known_hosts_host_field, openssh_standard_port }
@@ -187,6 +187,14 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = list_append(
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAID5/OXS9/f1VdH5sOKS+RL5MDKrfGtwFtFDJDvSz+IPB",
     sha256_fingerprint: "SHA256:nU6X9fCjhRYdvvvuKCbS7egf9CJMbJI6vYJ/Wgf5zxI",
     provenance: ScannedFirstContact { scanned_from: "srv4 via ssh-keyscan -t ed25519 from the LAN probe position; host address still a DHCP lease (not reserved), no cited external key authority" as NonEmptyStr },
+  },
+  KnownHostKeyRow {
+    host: operator_host_e2d4b7,
+    address: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: fleet_machine_ken)),
+    key_type: "ssh-ed25519",
+    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIGmwHT6TB01o//nxJr0cmpxRdbPz3aS5Zz8jN3WNM7kA",
+    sha256_fingerprint: "SHA256:rS86bHoHXcFgifCUhrKDi6+vmjgL8GVz+MhHkd/Pb0o",
+    provenance: ScannedFirstContact { scanned_from: "fleet_host_key_scan run 44804781923 (mode fleet_host_key_scan, executor srv1, 2026-11-20): ssh-keyscan -t ed25519 of ken.tailecbe08.ts.net returned outcome=observed; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
   },
   ],
   right: lan_endpoint_host_key_rows(),

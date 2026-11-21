@@ -9,9 +9,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, dec
 import std.annotation_reference {
   AnnotationReference,
   AnnotationReferenceExtraction,
-  CoordinateMalformed,
   MalformedReferenceMarker,
-  MarkerUnterminated,
   annotation_reference_extraction_concat,
   annotation_reference_extraction_empty,
   annotation_reference_marker,
@@ -148,15 +146,19 @@ fn reference_walk_counted(walk: ReferenceWalk) -> ReferenceWalk {
   ReferenceWalk { members: walk.members + 1, lexed: walk.lexed, annotations: walk.annotations, sites: walk.sites, target_sites: walk.target_sites, malformed: walk.malformed, unread: walk.unread }
 }
 
-// A module is worth tokenizing if it spells the @ref marker (annotation citations) OR the run-step-target
-// constructor IDENTIFIER (a run-time entry to resolve). The target prefilter keys on the bare identifier
-// `gunbc_run_step_target`, NOT the identifier plus `(`: a call written `gunbc_run_step_target (` or with a
-// newline before the paren must still be queued, or its misspelled entry would reach CI run time unchecked (the
-// gunbc#8377 class). Either spelling is an EXACT substring pre-filter -- never a pattern, never a regex, never a
-// heuristic (v2.compiler::the_cost_of_a_grammars_lexical_rulesets_bound_binds_its_lexers_admission): a module
-// with neither contains nothing to extract, and a substring cannot false-negative.
+// A module is worth tokenizing if it could hold a marked reference OR a run-step-target constructor
+// IDENTIFIER (a run-time entry to resolve). The hashtag marker needs a two-part prefilter: `#` alone
+// would admit nearly every module (issue numbers, colours), but a span is a marker only if it
+// reaches `::`, so `#` AND `::` both appearing is EXACT for "could hold a marker" -- a real marker
+// contains both, and a substring cannot false-negative. The target prefilter keys on the bare
+// identifier `gunbc_run_step_target`, NOT the identifier plus `(`: a call written
+// `gunbc_run_step_target (` or with a newline before the paren must still be queued, or its
+// misspelled entry would reach CI run time unchecked (the gunbc#8377 class). Every spelling here is
+// an EXACT substring pre-filter -- never a pattern, never a regex, never a heuristic
+// (v2.compiler::the_cost_of_a_grammars_lexical_rulesets_bound_binds_its_lexers_admission): a module
+// none of them hits contains nothing to extract.
 fn reference_walk_read(env: AcquisitionEnv, caller: String, file: String, content: String, walk: ReferenceWalk) -> ReferenceWalk {
-  let has_marker = string_contains(s: content, pattern: annotation_reference_marker)
+  let has_marker = string_contains(s: content, pattern: annotation_reference_marker) && string_contains(s: content, pattern: "::")
   let has_target = run_step_target_text_contains_constructor(text: content)
   if !has_marker && !has_target {
     walk
@@ -184,7 +186,7 @@ fn reference_walk_go(env: AcquisitionEnv, pending: List<String>, walk: Reference
 // not import the target module, so import resolution never sees the name) and only fails when the step RUNS.
 // The module half is already checked at emit by gunbc.source_layout layout_module_storage_path; the entry half
 // was unchecked. Enrolling it here resolves the pair through the SAME target universe and native resolver the
-// @ref markers use, so a bad entry refuses in the required job (rung 2, mechanically preventable -- DESIGN
+// marked references use, so a bad entry refuses in the required job (rung 2, mechanically preventable -- DESIGN
 // "A rung is a mechanism's job, and the only way up the ladder is to build it").
 //
 // A call is a SITE only when its callee resolves, in this check's OWN ResolutionContext and through the
@@ -464,15 +466,11 @@ fn cited_targets_with(acc: CitedTargets, name: String, standing: CitedModule) ->
 // ---- judging -----------------------------------------------------------------------------------
 
 fn site_head(site: ReferenceSite) -> String {
-  concat(site.file, "@", int_to_decimal_string(value: site.site.start), ": ", annotation_reference_marker, declaration_ref_display_key(ref: site.site.reference), ")")
+  concat(site.file, "@", int_to_decimal_string(value: site.site.start), ": ", annotation_reference_marker, declaration_ref_display_key(ref: site.site.reference))
 }
 
 fn malformed_line(m: MalformedSite) -> String {
-  let cause = match m.marker.cause {
-    MarkerUnterminated => "unterminated marker"
-    CoordinateMalformed => "malformed coordinate (module.path::decl, ::field or ::<T>)"
-  }
-  concat(m.file, "@", int_to_decimal_string(value: m.marker.start), ": ", m.marker.text, ": ", cause)
+  concat(m.file, "@", int_to_decimal_string(value: m.marker.start), ": ", m.marker.text, ": ", "malformed coordinate (module.path::decl, ::field or ::<T>)")
 }
 
 fn resolution_line(site: ReferenceSite, resolution: DeclarationRefResolution) -> Optional<String> {
@@ -638,7 +636,7 @@ fn run_step_target_entry_line(site: RunStepTargetSite, lex: PreparedLexRules, gr
 //    name: a different failure needing a different remedy than a missing module or a missing name, which is why it
 //    is not folded into either -- gunbc.design_argument::single_authority);
 //  - the module parses but declares no top-level fn of that name -> RunStepTargetDeclarationAbsent.
-// The read/unread cause comes from the SAME standing map the @ref path builds (cited_targets_read), so both kinds
+// The read/unread cause comes from the SAME standing map the marker path builds (cited_targets_read), so both kinds
 // of demand agree on whether a module is even in the population; the existence read is the front end's own parse.
 fn run_step_target_existence_refusal(site: RunStepTargetSite, module_name: String, function_name: String, lex: PreparedLexRules, grammar: PreparedGrammar, standing: Map<String, CitedModule>) -> Optional<String> {
   match map_lookup(m: standing, key: module_name) {
@@ -694,7 +692,7 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
 }
 
 // The target universe is built ONCE -- ONE resolution context, finished a single time -- from the union of every
-// module any site names: the @ref-cited modules, and for the run-step-target sites their caller module (to walk
+// module any site names: the marker-cited modules, and for the run-step-target sites their caller module (to walk
 // their ASTs and to resolve the callee through their imports) and the constructor home. The run-step sites are
 // EXTRACTED from the load's roots BEFORE the finish (their ASTs need only normalized roots), which is what lets
 // their named target modules then join the same load, so both site kinds resolve against the SAME native context
@@ -703,7 +701,7 @@ fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
 // EVERY queued run-step caller is accounted for: one whose module never normalized yields a typed, located refusal
 // (run_step_target_extract_from_load), and a home that will not resolve makes every site an unconfirmed refusal
 // (run_step_target_callee_verdict) -- never a silent "0 targets, held".
-// NAMED-FUNCTION RECURSION over the run-step target sites, mirroring the @ref read path (cited_targets_read) so
+// NAMED-FUNCTION RECURSION over the run-step target sites, mirroring the marker read path (cited_targets_read) so
 // the whole verdict build is one uniform named-function shape rather than a mix of recursion and closures.
 fn run_step_target_verdicts(context: ResolutionContext, lex: PreparedLexRules, grammar: PreparedGrammar, standing: Map<String, CitedModule>, pending: List<RunStepTargetSite>, acc: ReferenceVerdicts) -> ReferenceVerdicts {
   match pending {
@@ -720,7 +718,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
   })
   let supported = supported_sites(sites: sites)
   // The queued run-step callers and the constructor home must be in the load so their roots are walkable and the
-  // callee identity resolvable; only pulled in when there ARE callers, so a pure-@ref run pays nothing for targets.
+  // callee identity resolvable; only pulled in when there ARE callers, so a marker-only run pays nothing for targets.
   let caller_set = fold_list(xs: target_callers, empty: cited_module_names(sites: supported), cons: fn(acc, c) { map_insert(m: acc, key: c.caller, value: true) })
   let module_set = if is_empty(xs: target_callers) { caller_set } else { run_step_target_home_seeded(base: caller_set) }
   let pending = map_support_keys(m: module_set)
@@ -729,7 +727,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
   } else {
     let targets = cited_targets_read(env: env, pending: pending, acc: cited_targets_empty())
     match program_assembly_ingest_scope_outcome(ingest: targets.ingest) {
-      // The whole batch could not even form an ingest scope: refuse every @ref site AND every queued run-step
+      // The whole batch could not even form an ingest scope: refuse every marked site AND every queued run-step
       // caller, located, so no caller is certified by an empty scan.
       Rejected { diagnostics: _ } =>
         fold_list(xs: supported, empty: fold_list(xs: target_callers, empty: unsupported, cons: fn(acc, c) { reference_verdicts_push(acc: acc, line: Present { value: concat(c.file, ": RunStepTargetUnread: the cited modules' ingest scope could not be formed, so its run-step target was not checked") }) }), cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
@@ -747,12 +745,12 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
         let extra = list_append(left: live_context_hop_homes(load: named, names: names), right: map_support_keys(m: run_step_target_cited_module_names(target_sites: target_sites)))
         let with_homes = cited_targets_read(env: env, pending: extra, acc: targets)
         let loaded = live_context_load_modules(load: named, by_name: with_homes.by_name, modules: extra, lex: env.lex, prepared: env.grammar, ingest_scope: scope)
-        // ONE HOP OVER THE LOADED TARGET MODULES. The @ref path reaches a cited name's home through the same
+        // ONE HOP OVER THE LOADED TARGET MODULES. The marker path reaches a cited name's home through the same
         // live_context_hop_homes, but only for modules already in the load when it runs; a run-step target module
         // joins the load after that pass, so any name it imports (a re-export, or the home of an entry the target
         // module itself only re-binds) never had its home loaded. Running the identical one-hop pass now that the
         // target modules are present pulls those homes into the SAME single context -- one hop, not transitive,
-        // exactly as @ref does; anything further is a module absent from the roots the resolver already answers
+        // exactly as marked references do; anything further is a module absent from the roots the resolver already answers
         // ModuleAbsent for, so no widening loop.
         let extra_homes = live_context_hop_homes(load: loaded, names: names)
         let with_target_homes = cited_targets_read(env: env, pending: extra_homes, acc: with_homes)
@@ -766,7 +764,7 @@ fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>, target_ca
             // loaded_final (present before finish; only ImportScoped finish prunes them from the ACTIVE roots the
             // resolver sees), read through the same node accessors the call-site walk uses -- no host builtin, no
             // normalize. The per-site verdict still runs by named recursion (run_step_target_verdicts) so the shape
-            // matches the @ref read path; the roots map is built once here, in a named-function position.
+            // matches the marker read path; the roots map is built once here, in a named-function position.
             fold_list(xs: supported, empty: run_step_target_verdicts(context: context, lex: env.lex, grammar: env.grammar, standing: with_target_homes.standing, pending: target_sites, acc: target_seed), cons: fn(acc, s) {
               reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
             })

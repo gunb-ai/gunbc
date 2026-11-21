@@ -231,14 +231,14 @@ test fn every_unit_is_a_single_leaf_stage() -> Bool {
 // A RULED QUESTION IS CITED, NOT CARRIED. The operator ruled both of these on 2026-11-18: a claim names
 // its leaf from the first landing, and a Split is accepted as any work item is. So neither row may keep a
 // question piece ahead of its leaf -- a re-opened ruling fails here, and each leaf's own label carries the
-// @ref of the ruling that closed it.
+// marked citation of the ruling that closed it.
 test fn a_ruled_question_is_cited_and_not_carried() -> Bool {
   all(ruled_units, id => all(decomposition_for(node: nid(s: id)), d =>
     row_decision_pieces(d: d) == 0 && row_leaf_pieces(d: d) == 1))
     && any(row_leaf_labels(node: "roadmap-claim-names-leaf"), l =>
-      contains(s: l, pattern: "@ref(gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing)"))
+      contains(s: l, pattern: "gunbc.design_ruling::claims_name_their_leaf_from_the_first_landing"))
     && any(row_leaf_labels(node: "roadmap-typed-handback"), l =>
-      contains(s: l, pattern: "@ref(gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager)"))
+      contains(s: l, pattern: "gunbc.design_ruling::a_split_handback_is_accepted_by_the_manager"))
 }
 
 // THE DEPENDENCY ROWS ARE THE EDGES: every decomposed dependency is waited on, and every waits_on names
