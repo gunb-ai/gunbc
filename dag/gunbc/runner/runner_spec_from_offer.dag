@@ -70,8 +70,10 @@ fn gunbc_ci_build_runner_spec(exec_arch: Architecture, host_text: String) -> Run
   match gunbc_ci_pool_runner_arch() {
     Absent => Absent
     Present { value: pool } =>
-      if exec_arch == pool
-        then Present { value: gunbc_ci_runner_spec() }
-        else Present { value: SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: exec_arch, custom: [host_text]) } }
+      if exec_arch == pool {
+        Present { value: gunbc_ci_runner_spec() }
+      } else {
+        Present { value: SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: exec_arch, custom: [host_text]) } }
+      }
   }
 }
