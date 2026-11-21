@@ -372,6 +372,25 @@ fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List
   }
 }
 
+// A PRESENT checkout may never settle Met on existence. Its identity is the HEAD, not the
+// directory: Met requires the HEAD leg to be Read and equal the pin (serving_subject_value_deviation).
+// An UNREAD HEAD (subject presence unread, or a read refused under a present subject) is already an
+// unknown via serving_subject_value_unknown. The one leak left is SubjectValueSkipped under a
+// CONFIRMED-PRESENT checkout — the HEAD was never read yet the presence compare says the directory is
+// there. That mints nothing today, so a present-but-unread checkout reads 'all items met'. It is an
+// unknown here: the plan refuses rather than falsely settling. An ABSENT checkout (presence deviation
+// drives EnsureCheckout) legitimately leaves the HEAD leg Skipped, so the guard fires only when the
+// directory is proven present while its HEAD went unread.
+fn serving_checkout_head_read_guard(checkout: ObservationAttempt<Bool, ServingLegFailure>, revision: ServingSubjectValue) -> List<ServingUnknown> {
+  match checkout {
+    ObservationEstablished { observed: true } => match revision {
+      SubjectValueSkipped => [ServingUnknown { item: "checkout.revision", cause: "a present checkout whose HEAD was never read cannot be Met on existence; the plan refuses" }]
+      _ => []
+    }
+    _ => []
+  }
+}
+
 // The identity-sidecar compare over its reading (PR-1c, clever-raven-401). Unlike
 // serving_subject_value_deviation (which compares to a fixed PIN), the sidecar must equal the sha of the
 // binary the host ACTUALLY RUNS -- a read value, not a constant -- so it needs this one-off. The reading
@@ -1246,6 +1265,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           serving_subject_value_unknown(item: "serve_binary.sha256", leg: o.serve_binary_sha256),
           serving_subject_value_unknown(item: "checkout.revision", leg: o.checkout_revision),
         ),
+        serving_checkout_head_read_guard(checkout: o.checkout, revision: o.checkout_revision),
         match o.target_arch { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "host.arch", cause: c.cause }] },
         // The remediation dependency: only when the channel is PROVEN absent does rustup's presence
         // decide what the plan may write; unreadable rustup then (and only then) is a blocking unknown.
