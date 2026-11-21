@@ -515,7 +515,7 @@ test fn the_srv1_shape_is_an_established_absence_and_the_walk_stops_at_the_searc
       path: srv1_retract_path(),
       run: fn(c) {
         probe_by_command(
-          present: ["test -x /opt/gunbc/attempt-system-unit-helpers"],
+          present: ["test -x /opt/gunbc/attempt-system-unit-helpers", "test -d /opt/gunbc/attempt-system-unit-helpers"],
           refused: ["test -x /opt/gunbc", "test -e /opt/gunbc", "test -L /opt/gunbc"],
           command: c,
         )
@@ -568,6 +568,7 @@ test fn a_searchable_ancestor_above_an_unsearchable_one_does_not_rescue_it() -> 
           present: [
             "test -L /opt/gunbc/attempt-system-unit-helpers/srv1-live",
             "test -x /opt/gunbc/attempt-system-unit-helpers",
+            "test -d /opt/gunbc/attempt-system-unit-helpers",
           ],
           refused: [],
           command: c,
@@ -588,7 +589,7 @@ test fn a_searchable_parent_still_settles_the_path_in_one_level_and_an_unanswera
       path: srv1_retract_path(),
       run: fn(c) {
         probe_by_command(
-          present: ["test -x /opt/gunbc/attempt-system-unit-helpers/srv1-live"],
+          present: ["test -x /opt/gunbc/attempt-system-unit-helpers/srv1-live", "test -d /opt/gunbc/attempt-system-unit-helpers/srv1-live"],
           refused: ["test -x /opt/gunbc/attempt-system-unit-helpers"],
           command: c,
         )
@@ -628,4 +629,74 @@ test fn the_ancestor_chain_is_nearest_first_up_to_the_root() -> Bool {
   join(host_remove_ancestors(path: srv1_retract_path()), "|")
     == "/opt/gunbc/attempt-system-unit-helpers/srv1-live|/opt/gunbc/attempt-system-unit-helpers|/opt/gunbc|/opt|/"
     && join(host_remove_ancestors(path: "/srv1-live"), "|") == "/"
+    // A RELATIVE path has no chain: the level above a bare relative name is the probe's working
+    // directory, not the file-system root, and `host_remove_parent_of` answering "/" there used to hand
+    // the walk a "/" that was never the path's parent.
+    && join(host_remove_ancestors(path: "attempt-unit-spool/drain.lock"), "|") == ""
+}
+
+// CONTROL 4 -- A LEVEL WHOSE `test -x` ANSWERS PRESENT IS NOT YET A SEARCHABLE DIRECTORY. Two shapes
+// where a bare `test -x` used to hand the walk an establishment it had not earned, both now refused:
+//
+//  - A REGULAR FILE, mode 0755: `test -x` follows the file's own execute bit and answers 0, but the level
+//    has no entries to search -- `stat` under it is ENOTDIR, which is not "searched and not found". The
+//    non-executable file already refused (its `test -x` is 1), so admitting the executable one made the
+//    verdict an accident of the file's mode bits.
+//  - A SYMLINK, to a searchable directory: `test -x` and `test -d` both follow it, so the level was
+//    vouching for its REFERENT's search bit while the walk was removing entries at the link's own name --
+//    against this module's standing rule that an entry is read as the entry it is, not as what it points at.
+//
+// Both shapes are rigged below exactly as the host answers them, and in both the nearer levels are absent
+// so the walk REACHES the lying level: the verdict must be a refusal, not the absence it used to conclude.
+test fn an_executable_regular_file_ancestor_is_not_a_searchable_directory() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: "/p/exe/missing/leaf",
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /p/exe", "test -e /p/exe"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "it is not a directory",
+  )
+}
+
+test fn a_symlinked_ancestor_does_not_borrow_its_referents_search_bit() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: "/p/link/missing/leaf",
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /p/link", "test -d /p/link", "test -L /p/link"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "is a symlink",
+  )
+}
+
+// CONTROL 5 -- A RELATIVE PATH'S ABSENCE IS NEVER ESTABLISHED BY A WALK. `HostRemoveTarget` carries
+// NonEmptyStr, not an absolute path, so a relative name is an admitted input. With the probe's working
+// directory at mode 000, `a/b` reads false and `a` reads false because the directory they live in cannot
+// be searched -- and the old chain handed the walk a fabricated "/" whose `test -x` answers present, which
+// concluded ABSENCE for a path that EXISTS. The walk is refused before it starts, and the reason says why.
+test fn a_relative_path_is_never_established_absent_by_the_walk() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: "attempt-unit-spool/drain.lock",
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /", "test -d /"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "relative path",
+  )
 }

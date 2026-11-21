@@ -90,6 +90,10 @@ import extdeps.posix.test_utility {
   AncestorSearchable,
   AncestorSearchUnreadable,
   AncestorNotSearchable,
+  AncestorNotADirectory,
+  AncestorIsNotADirectory,
+  AncestorIsASymlink,
+  AncestorDirectoryReadingUnreadable,
   absent_under_nearest_present_ancestor,
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
@@ -9464,28 +9468,76 @@ fn host_remove_parent_of(path: String) -> String {
   )
 }
 
-// THE ANCESTOR CHAIN, NEAREST FIRST: the parent, its parent, up to the file-system root -- the levels
-// the absence proof may climb. Every step is host_remove_parent_of, this module's own parent authority,
-// and the chain ends where the parent stops moving (the root, or a bare relative name whose parent is
-// the root), so a path of any depth is walked in depth steps and no path can loop it.
+// THE ANCESTOR CHAIN, NEAREST FIRST: the parent, its parent, up to the file-system root -- the levels the
+// absence proof may climb, and NOTHING ELSE. The root appears in it exactly once and only for an absolute
+// path, because `host_remove_parent_of` answers the parent of a bare relative name with `/` and `/` is not
+// that name's parent -- its parent is the probe's working directory, which no reading here covers. A
+// relative path therefore has NO ancestor chain at all, which is the honest value: host_remove_absent_state
+// refuses it before asking. Every step is host_remove_parent_of, this module's own parent authority, and
+// the chain ends where the parent stops moving, so a path of any depth is walked in depth steps and no
+// path can loop it.
 fn host_remove_ancestors(path: String) -> List<String> {
-  let parent = host_remove_parent_of(path: path)
-  if parent == path || parent == "/" {
-    [parent]
+  if host_remove_path_is_absolute(path: path) {
+    let parent = host_remove_parent_of(path: path)
+    if parent == path || parent == "/" {
+      [parent]
+    } else {
+      list_append(left: [parent], right: host_remove_ancestors(path: parent))
+    }
   } else {
-    list_append(left: [parent], right: host_remove_ancestors(path: parent))
+    []
   }
 }
 
-// THE WALK, DRIVEN: probe the ancestors nearest-first and stop at the first that answers. `test -x` is
-// asked FIRST because it is the only reading that can end the walk on the spot; its false is the same
-// two-valued ambiguity as the path's own, so the ENTRY is asked next (extdeps.posix.test_utility
-// entry_existence_reading -- the same lstat-OR-stat the path itself is read by, so a symlinked ancestor
-// is read as the entry it is and not as whatever it points at), and only an entry that is genuinely not
-// there lets the walk climb a level. A present-but-unsearchable ancestor and an unreadable reading both
-// end the walk there, leaving the verdict to the pure law, which refuses both. The runner is the same
-// parameter the entry probe is driven by, so one control supplies the whole probe vector and no
-// filesystem is touched.
+// WHETHER A LEVEL IS A DIRECTORY THAT CAN HAVE BEEN SEARCHED -- three readings, not one.
+//
+// `test -x` alone does NOT establish it, and the two ways a single `test -x` lies are both refused here:
+//  - A REGULAR FILE with an execute bit answers `test -x` with 0. It is not a directory and has no
+//    entries to search, so treating it as the searcher that "did not contain" the component under it
+//    would conclude absence from a reading that never looked (`stat` there says ENOTDIR). The mode-0755
+//    file is the shape a hostile or merely stale tenant can leave behind, and a non-executable file
+//    already refused under the single-reading rule -- which made the executable case an accident of the
+//    file's mode bits rather than a decision.
+//  - A SYMLINK answers `test -x` by following itself to its referent, so the level says something about
+//    what it POINTS AT, not about itself. This module's standing rule for an ancestor is the entry rule
+//    the path itself is read by: lstat-OR-stat, "read as the entry it is and not as whatever it points
+//    at". A symlinked directory is therefore not admitted as a searcher either -- the walk refuses it
+//    rather than borrowing the referent's search bit.
+// So a level is admitted as `AncestorSearchable` only when `test -x` AND `test -d` both answer present
+// and `test -L` answers absent: present, a directory, and not a link. Anything else is either "not there"
+// (the entry decides whether the walk climbs) or "unreadable" (the law refuses).
+fn host_remove_directory_admission(
+  ancestor: String,
+  run: fn(ArgvCommand) -> RunArgvTransportOutcome,
+) -> AncestorSearchReading {
+  let directory = host_remove_reading(path: ancestor, outcome: run(test_directory_command(path: ancestor)))
+  match directory {
+    PathPresent => {
+      let link = host_remove_reading(path: ancestor, outcome: run(test_symbolic_link_command(path: ancestor)))
+      match link {
+        // A real directory, not a link: this level could have been searched for the level under it.
+        PathAbsentOrUnstattable => AncestorSearchable
+        PathPresent => AncestorNotADirectory { cause: AncestorIsASymlink }
+        // The link could not be told from a plain entry: what the level IS was not answered.
+        PathExistenceUnreadable { reason: r } => AncestorSearchUnreadable { reason: r }
+      }
+    }
+    // `test -x` true and `test -d` false: a file with an execute bit, or a link to one. It has no
+    // entries to search, so it cannot be the level that establishes anything below it.
+    PathAbsentOrUnstattable => AncestorNotADirectory { cause: AncestorIsNotADirectory }
+    PathExistenceUnreadable { reason: r } =>
+      AncestorNotADirectory { cause: AncestorDirectoryReadingUnreadable { reason: r } }
+  }
+}
+
+// THE WALK, DRIVEN: probe the ancestors nearest-first and stop at the first that answers. The search
+// reading is asked FIRST because it is the only one that can end the walk on the spot; its false is the
+// same two-valued ambiguity as the path's own, so the ENTRY is asked next (extdeps.posix.test_utility
+// entry_existence_reading -- the same lstat-OR-stat the path itself is read by), and only an entry that
+// is genuinely not there lets the walk climb a level. A present-but-unsearchable ancestor, a present
+// non-directory, a symlinked ancestor and an unreadable reading all end the walk there, leaving the
+// verdict to the pure law, which refuses each of them. The runner is the same parameter the entry probe
+// is driven by, so one control supplies the whole probe vector and no filesystem is touched.
 fn host_remove_ancestor_chain(
   path: String,
   ancestors: List<String>,
@@ -9494,11 +9546,14 @@ fn host_remove_ancestor_chain(
   match ancestors {
     Empty => []
     Cons { head: ancestor, tail: rest } => {
-      let searchable = host_remove_reading(path: ancestor, outcome: run(test_executable_command(path: ancestor)))
-      match searchable {
-        // Present-and-searchable, or a reading nothing can be read from: the pure law decides this
-        // ancestor on that one reading, and the coproduct has no entry slot for it to be owed in.
-        PathPresent => [AncestorExistenceProbe { ancestor: ancestor, search: AncestorSearchable }]
+      let executable = host_remove_reading(path: ancestor, outcome: run(test_executable_command(path: ancestor)))
+      match executable {
+        // `test -x` answered for the level: that is necessary and not sufficient, so the directory and
+        // link probes decide whether it is admitted as the searcher at all.
+        PathPresent => [AncestorExistenceProbe {
+          ancestor: ancestor,
+          search: host_remove_directory_admission(ancestor: ancestor, run: run),
+        }]
         PathExistenceUnreadable { reason: r } =>
           [AncestorExistenceProbe { ancestor: ancestor, search: AncestorSearchUnreadable { reason: r } }]
         // Not searchable as far as `test -x` could tell: the entry is asked next, and the type will not
@@ -9526,17 +9581,39 @@ fn host_remove_ancestor_chain(
   }
 }
 
+// WHETHER A PATH HAS AN ESTABLISHED ANCESTRY AT ALL: only an absolute one. A relative path's containing
+// directory is the WORKING DIRECTORY OF THE PROBE PROCESS, which is not something the walk reads, and the
+// level above a bare relative name is NOT the file-system root. Fabricating one there -- the shape this
+// module used to have, `host_remove_parent_of("a") == "/"` -- lets a relative path be declared absent by
+// a `/` that was never its parent: with the cwd at mode 000, `a/b` reads false, `a` reads false, `test -x
+// /` answers present, and an EXISTING `a/b` would be reported Absent. That is a fabricated absence, the
+// one answer this read-back must never produce, so a relative path is refused before the walk.
+fn host_remove_path_is_absolute(path: String) -> Bool {
+  starts_with(s: path, prefix: "/")
+}
+
 // THE ABSENCE PROOF, WALKED -- asked only where the path's own entry read absent-or-unstattable. This
 // is the leg the srv1 retract refusal of 2026-11-21 was missing: an absent parent under a present,
 // searchable grandparent is an ESTABLISHED absence, not an unreadable subtree, and the refusal that
 // stopped there was the earliest unjustified boundary of the proof, not a conservative one.
 fn host_remove_absent_state(path: String, run: fn(ArgvCommand) -> RunArgvTransportOutcome) -> HostRemovePathState {
-  host_remove_state_of_contained(
-    contained: absent_under_nearest_present_ancestor(
-      path: path,
-      chain: host_remove_ancestor_chain(path: path, ancestors: host_remove_ancestors(path: path), run: run),
-    ),
-  )
+  if host_remove_path_is_absolute(path: path) {
+    host_remove_state_of_contained(
+      contained: absent_under_nearest_present_ancestor(
+        path: path,
+        chain: host_remove_ancestor_chain(path: path, ancestors: host_remove_ancestors(path: path), run: run),
+      ),
+    )
+  } else {
+    // No walk, and no absence: what the probe searched for was a name in a working directory the walk has
+    // no reading of, so nothing above it is established.
+    HostRemovePathUnreadable {
+      reason: join([
+        "`", path, "` is a relative path: its containing directory is the working directory of the probe,",
+        " which this read-back does not read, so no ancestor of it can establish its absence",
+      ], ""),
+    }
+  }
 }
 
 // THE READ-BACK PROBE, OF THE ENTRY AND NOT ITS REFERENT. Unprivileged `test -L` then `test -e`

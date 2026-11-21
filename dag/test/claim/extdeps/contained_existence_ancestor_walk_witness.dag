@@ -15,6 +15,9 @@ import extdeps.posix.test_utility {
   AncestorNotSearchable,
   AncestorSearchable,
   AncestorSearchUnreadable,
+  AncestorNotADirectory,
+  AncestorIsNotADirectory,
+  AncestorIsASymlink,
   AncestorIsAbsentOrUnstattable,
   AncestorEstablishesAbsence,
   AncestorRefuses,
@@ -102,6 +105,37 @@ fn unsearchable_parent_chain() -> List<AncestorExistenceProbe> {
 // the walk existed and must keep working exactly as it did.
 fn searchable_parent_chain() -> List<AncestorExistenceProbe> {
   Cons { head: searchable(srv1_parent()), tail: Empty }
+}
+
+// A level `test -x` answered for, that `test -d` says is not a directory: present, "executable" by its
+// own mode bits, and with nothing to search.
+fn non_directory_ancestor(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe {
+    ancestor: ancestor,
+    search: AncestorNotADirectory { cause: AncestorIsNotADirectory },
+  }
+}
+
+// A level `test -x` and `test -d` both answered for by FOLLOWING ITSELF: it spoke for its referent.
+fn symlinked_ancestor(ancestor: String) -> AncestorExistenceProbe {
+  AncestorExistenceProbe {
+    ancestor: ancestor,
+    search: AncestorNotADirectory { cause: AncestorIsASymlink },
+  }
+}
+
+fn non_directory_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: non_directory_ancestor(srv1_grandparent()), tail: Empty },
+  }
+}
+
+fn symlinked_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons { head: symlinked_ancestor(srv1_grandparent()), tail: Empty },
+  }
 }
 
 // `test -x` itself unreadable: the level cannot be called searchable or unsearchable, so it answers
@@ -288,6 +322,35 @@ test fn an_unreadable_search_level_refuses_on_its_face() -> Bool {
       search: AncestorSearchUnreadable { reason: "test exited 2" as NonEmptyStr },
     },
   ) {
+    AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
+
+// A LEVEL `test -x` ANSWERED FOR IS NOT YET A SEARCHER. `test -x` on a regular file is answered by the
+// file's own execute bit, and `stat` under that file is ENOTDIR -- which is not "searched and not found".
+// Admitting it would make the sanitation verdict turn on a mode bit, since a NON-executable file already
+// refuses on its `test -x`.
+test fn an_ancestor_that_is_not_a_directory_never_establishes_the_absence() -> Bool {
+  refused_because(walk_of(non_directory_chain()), "it is not a directory")
+}
+
+test fn a_non_directory_level_refuses_on_its_face() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: non_directory_ancestor(srv1_grandparent())) {
+    AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
+
+// AND A SYMLINK DOES NOT BORROW ITS REFERENT'S SEARCH BIT: `test -x` and `test -d` both follow it, so the
+// level answered for what it points at while the removal works at the link's own name. This module reads
+// an entry as the entry it is, not as whatever it points at, and an ancestor is no exception.
+test fn a_symlinked_ancestor_never_establishes_the_absence() -> Bool {
+  refused_because(walk_of(symlinked_chain()), "is a symlink")
+}
+
+test fn a_symlinked_level_refuses_on_its_face() -> Bool {
+  match ancestor_walk_step(path: srv1_path(), probe: symlinked_ancestor(srv1_grandparent())) {
     AncestorRefuses { reason: _ } => true
     _ => false
   }

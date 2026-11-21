@@ -43,6 +43,23 @@ import gunbc.guarantee_rung { MechanicallyPreventable }
 // `test -e`) for there-or-not, and the first level that answers decides: a refusal nearer the path is
 // never overwritten by readable ground farther above it. With no searchable ancestor anywhere, the
 // verdict stays "not established", exactly as it was.
+//
+// AND THE SAME ROW CARRIES ITS MIRROR, because fixing "stopped one level too early" invites the next
+// defect of the same shape: crediting a reading with the question it did not answer. Three were found on
+// this very repair, each of them an over-credited reading rather than an abandoned one.
+//  - `test -x` on a REGULAR FILE is answered by the file's own execute bit, and `stat` under a file says
+//    ENOTDIR. A level admitted as the searcher on that reading alone would "search" a file that has no
+//    entries, and a non-executable file already refused -- so the sanitation verdict would turn on a mode
+//    bit. Admission therefore takes `test -d` present as well.
+//  - `test -x` and `test -d` on a SYMLINK follow the link, so the level answers for what it POINTS AT while
+//    the removal works at the link's own name. A symlink is read as the entry it is, not as its referent --
+//    here as everywhere else in this module -- so it is not admitted as a searcher either.
+//  - A RELATIVE PATH has no established ancestry. The level above a bare relative name is the probe's
+//    working directory, not the file-system root; inventing `/` there let `a/b` be declared absent by a root
+//    that was never its parent, with the cwd at mode 000 and the path in fact PRESENT. Such a path is
+//    refused before the walk, because a fabricated absence is the one answer this read-back may not give.
+// The general form: a walk is only as sound as the admission test on the level that ENDS it, and the level
+// that ends a proof deserves at least as much scrutiny as the levels it climbs past.
 
 data an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish: RecurringFailureMode = RecurringFailureMode {
   identity: "an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish" as NonEmptyStr,
@@ -77,5 +94,8 @@ data an_ambiguous_reading_ends_a_proof_a_higher_level_could_finish: RecurringFai
     DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "the_srv1_shape_is_an_established_absence_at_the_searchable_grandparent", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "a_present_unsearchable_ancestor_still_refuses_the_absence", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "a_searchable_parent_still_settles_the_path_in_one_level", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "an_ancestor_that_is_not_a_directory_never_establishes_the_absence", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.extdeps.contained_existence_ancestor_walk_witness", decl_name: "a_symlinked_ancestor_never_establishes_the_absence", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.host.host_remove_on_host_witness", decl_name: "a_relative_path_is_never_established_absent_by_the_walk", field: WholeDeclaration },
   ],
 }

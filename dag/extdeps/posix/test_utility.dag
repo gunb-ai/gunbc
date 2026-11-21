@@ -243,7 +243,27 @@ fn absent_under(path: String, parent: String, parent_reading: PathExistenceReadi
 type AncestorSearchReading
   = AncestorSearchable
   | AncestorSearchUnreadable { reason: NonEmptyStr }
+  | AncestorNotADirectory { cause: AncestorNotADirectoryCause }
   | AncestorNotSearchable { entry: PathExistenceReading }
+
+// WHY A LEVEL THAT `test -x` ANSWERED PRESENT STILL CANNOT HAVE BEEN SEARCHED. This is a declared sum
+// rather than a `directory` reading sitting beside a `link` reading for the same reason the level itself
+// is one: two independent readings would make "is a directory AND is not a link" -- the searchable case --
+// writable as a refusal, and every mixed pair with it. Each cause below is a fact one probe answered, and
+// the law owns the wording of what it refuses.
+//
+//  - A file's OWN execute bit answers `test -x` with 0, so a level can be present-and-"executable" and
+//    still have no entries to search: `stat` under a regular file is ENOTDIR, which is not "searched and
+//    not found". Whether the verdict turns on this is not something a mode bit should decide.
+//  - A symlink answers `test -x` (and `test -d`) by following ITSELF, so such a level reports on its
+//    referent while the removal works at the link's own name. This module reads an entry as the entry it
+//    is, not as whatever it points at, and a level that resolves elsewhere cannot vouch for what lives
+//    under this name.
+//  - And where the directory probe itself was not answered, nothing was established either way.
+type AncestorNotADirectoryCause
+  = AncestorDirectoryReadingUnreadable { reason: NonEmptyStr }
+  | AncestorIsNotADirectory
+  | AncestorIsASymlink
 
 // One ancestor of the path: which level it is, and what its two readings settled.
 type AncestorExistenceProbe {
@@ -269,6 +289,35 @@ fn ancestor_walk_step(path: String, probe: AncestorExistenceProbe) -> AncestorWa
               "`test -x ", ancestor, "` could not be read while establishing the absence of ", path,
               " (", r as String, "), so the path's absence is not established",
             ], "") as NonEmptyStr,
+          }
+        AncestorNotADirectory { cause: cause } =>
+          match cause {
+            AncestorIsNotADirectory =>
+              AncestorRefuses {
+                reason: join([
+                  "`test -d ", ancestor, "` is false while establishing the absence of ", path,
+                  ": the level is present and `test -x` answered for it, but it is not a directory and has",
+                  " no entries that could have been searched, and a reading of ENOTDIR under it is not a",
+                  " search that did not find the component",
+                ], "") as NonEmptyStr,
+              }
+            AncestorIsASymlink =>
+              AncestorRefuses {
+                reason: join([
+                  "`", ancestor, "` is a symlink while establishing the absence of ", path,
+                  ": `test -x` and `test -d` follow the link, so the level answered for what it POINTS AT",
+                  " and not for itself, and a level that resolves elsewhere cannot vouch for what lives",
+                  " under this name",
+                ], "") as NonEmptyStr,
+              }
+            AncestorDirectoryReadingUnreadable { reason: r } =>
+              AncestorRefuses {
+                reason: join([
+                  "`test -d ", ancestor, "` could not be read while establishing the absence of ", path,
+                  " (", r as String, "), so the level was never established to be a directory that could",
+                  " have been searched",
+                ], "") as NonEmptyStr,
+              }
           }
         AncestorNotSearchable { entry: entry } =>
           match entry {
