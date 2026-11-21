@@ -808,7 +808,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
   }
 }
 
-// THE TWO QUESTIONS THE READER WILL ASK, ASKED HERE FIRST (src/v1/stage0/src/cli_run.rs:611 wants a
+// THE TWO QUESTIONS THE READER WILL ASK, ASKED HERE FIRST (src/v1/stage0/src/cli_run.rs::spawn_workspace_root_locus wants a
 // `dag` directory and a regular receipt file, and the drain execs the member by name). Asking before the
 // drain runs is what keeps a half-installed locus from becoming a 245-second leg whose failure says
 // nothing about why.
@@ -2123,7 +2123,7 @@ fn wet_root_drain_elevated(
     if length(xs: words) == 12 {
         // THE LOCUS, NOT THE SOURCE COPY. srv2's S1 at 114bcf31 (stern, 2026-11-05) is what this line
         // replaced: the drain asked for `instance.repo_root`, a copied tree with no receipt, and the
-        // real CLI refused it at cli_run.rs:611 -- `names no release locus: missing member
+        // real CLI refused it at src/v1/stage0/src/cli_run.rs::spawn_workspace_root_locus -- `names no release locus: missing member
         // .gunbc-tree-receipt` -- before any sandbox conjunct ran. The words now come from
         // `wet_image_serve_argv`, the same builder the served-image probe uses.
         let command = wet_image_serve_argv(
@@ -2631,7 +2631,7 @@ fn sandbox_touch_cli(path: String) -> ProcessExit {
 
 // THE WITNESS FILE, RELATIVE TO WHICHEVER TREE IT IS READ FROM. One row, two roots: the unit's inner
 // side runs it out of the copied source tree (GUNBC_WORKSPACE_ROOT is unset there, so the CLI walks to
-// the .git ancestor and the tree is its own root -- src/v1/stage0/src/cli_run.rs:562 says "WHEN UNSET
+// the .git ancestor and the tree is its own root -- src/v1/stage0/src/cli_run.rs::workspace_root_resolve says "WHEN UNSET
 // nothing changes"), and the drain runs it out of the INSTALLED LOCUS, where the same env is set
 // explicitly and the entry has to sit under the root the env names. Two literals for the same file is
 // how a drain and an inner side drift apart.
@@ -2671,7 +2671,7 @@ fn wet_locus_gate_text(instance: HostDashboardInstance, label: String, claim: St
 // binary, both `--source-root` values and the entry come from the fixture's locus accessors, which are
 // production's `helper_locus_dir` over the row. This is precisely what srv2's S1 at `114bcf31` caught:
 // the drain named `instance.repo_root` -- a copied tree with no receipt -- and the CLI refused it at
-// `cli_run.rs:611` before a single sandbox conjunct ran, while nothing in the witness could see that
+// `src/v1/stage0/src/cli_run.rs::spawn_workspace_root_locus` before a single sandbox conjunct ran, while nothing in the witness could see that
 // the drain and the probe had drifted into two different routes. Elevation is NOT part of this builder:
 // the drain wraps these words in `sudo_elevate_command`, the probe runs them as itself, and that is the
 // whole difference between them.
@@ -5308,7 +5308,7 @@ test fn the_drain_names_the_installed_locus_and_not_the_source_copy() -> Bool {
   // stern's S1 at 114bcf31 lost nine root-launch legs because the elevated drain named
   // `instance.repo_root` -- a copied tree with no `.gunbc-tree-receipt` -- as GUNBC_WORKSPACE_ROOT, and
   // the real CLI answered `names no release locus: missing member .gunbc-tree-receipt`
-  // (src/v1/stage0/src/cli_run.rs:611). Nothing in this file could see it, because those words were only
+  // (src/v1/stage0/src/cli_run.rs::spawn_workspace_root_locus). Nothing in this file could see it, because those words were only
   // ever assembled inside a leg that had already required sudo. This claim assembles the SAME words --
   // `wet_image_serve_argv`, the one builder the drain and the served-image probe share -- and asks what
   // they name, with no sudo, no manager and no install. A mutant that puts `repo_root` back into the

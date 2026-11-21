@@ -937,7 +937,7 @@ fn witness_locus_dir_text(instance: HostDashboardInstance, locus_key: String) ->
   join([witness_batch_locus_base(instance: instance), "/", locus_key], "")
 }
 
-// The `dag` DIRECTORY the reader requires (cli_run.rs:611), inside the locus.
+// The `dag` DIRECTORY the reader requires (src/v1/stage0/src/cli_run.rs::spawn_workspace_root_locus), inside the locus.
 fn witness_locus_dag_dir(instance: HostDashboardInstance, locus_key: String) -> String {
   join([witness_locus_dir_text(instance: instance, locus_key: locus_key), "/", "dag"], "")
 }
