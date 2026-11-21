@@ -16,7 +16,7 @@ type DispatchAttemptKeySegment sole_constructor { segment: PathSegment }
 
 fn dispatch_attempt_key_segment(raw: String) -> DispatchAttemptKeySegment? {
   if path_segment_is_safe(raw: raw) {
-    Present { value: raw as DispatchAttemptKeySegment }
+    Present { value: DispatchAttemptKeySegment { segment: raw as PathSegment } }
   } else {
     none
   }
