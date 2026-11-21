@@ -1,0 +1,17 @@
+[package]
+name = "v2-emitted-policy-unit-1"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+im = { version = "15.1", features = ["serde"] }
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+libc = "0.2"
+stacker = "0.1"
+lazy_static = "1"
+ureq = { version = "2", features = ["json"] }
+v2-emitted-runtime = { path = "../v2-emitted-runtime" }
+v2-emitted-policy-unit-0 = { path = "../v2-emitted-policy-unit-0" }
