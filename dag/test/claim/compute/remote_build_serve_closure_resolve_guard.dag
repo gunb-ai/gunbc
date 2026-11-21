@@ -1,0 +1,49 @@
+module test.claim.compute.remote_build_serve_closure_resolve_guard
+
+import std.types { Bool }
+import std.optional { Present }
+import gunbc.compute.remote_build {
+  RemoteBuildOperation, RemoteCompileEntry, remote_build_dependency_rule,
+  RemoteBuildDependencyRule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild,
+}
+import gunbc.compute.work_request { WorkOutcome, WorkSucceeded }
+import gunbc.compute.work_provider_local { ProvideResult, ProvideAttached, HostRecordWritten }
+import gunbc.compute.remote_build_serve {
+  remote_build_serve_provide, remote_build_serve_settled, remote_build_provide_on, remote_build_ending_of_provide,
+  RemoteBuildServeEnding, ServeServed,
+}
+
+// THE RESOLVE GUARD FOR THE REMOTE-BUILD SERVE CLOSURE.
+//
+// WHY THIS CLAIM EXISTS. gunbc#16781 (13d2196d958, 2026-11-20 09:47Z) added import
+// gunbc.compute.compute_seat_ensure to gunbc.compute.remote_build_serve so the serve could run the seat-discharge
+// pass before answering a full pool. That import put the SERVE ENTRY out of resolution: gunbc.compute.compute_seat_ensure
+// seat_fell_by judges an equality on Measure over its phantom arguments Memory and Kibi -- nullary coproduct variants that
+// the equality plan refuses when the judging module does not import their owner coproducts -- so remote_build_serve.dag
+// stopped resolving and every serving host refused every request whatever binary it held. Nothing caught it, because the
+// serving route is exercised only through pure helpers and no lane loads the serve entry's full closure where it matters.
+//
+// HONEST ABOUT ITS LANE. This claim has NO EXECUTING LANE. The CI job roster is closed and CI evaluates no witnesses, so
+// no job loads this file: resolving it is not a check anyone runs today. It is recorded, not remembered -- the claim a
+// witness-executing lane MUST run -- in gunbc.recurring_failure_mode.a_held_compute_seat_has_no_in_corpus_discharge (the
+// serve-knock revert receipt) and gunbc.design_argument::continuous_generalization, which requires an unfinished
+// reconciliation to be recorded rather than trusted to memory. It is NOT counted as coverage.
+//
+// WHAT IT GUARDS, AND WHAT IT DOES NOT. This claim forces the serve module's REACHABLE closure to resolve: the entry's
+// pure helpers (remote_build_dependency_rule, remote_build_ending_of_provide) and the provide types, by importing the
+// module and asserting a hermetic read of its dependency routing (no host, no side effect). Resolution here is
+// REACHABILITY-DRIVEN, not whole-module: a probe confirmed that importing the entry symbols, or even re-adding
+// import gunbc.compute.compute_seat_ensure with its pass called from remote_build_serve_provide, does NOT typecheck the
+// unreachable entry body, so this claim does NOT by itself reproduce the gunbc#16781 entry-refusal. The authoritative check
+// for that failure mode is the ENTRY resolve, run by hand and by no CI lane: gunbc --dry-run run --source-root dag
+// --source-root src/v2 --entry dag/gunbc/compute/remote_build_serve.dag --function remote_build_serve_cli, which is the
+// resolve_entry_graph_inclusive pass that gunbc#16781 broke. This claim is the reachable-contract half of the guard; that
+// entry command is the entry-graph half; both currently execute in no lane and neither is counted as coverage.
+
+test fn the_serve_dependency_rule_routes_the_seed_and_the_serve_closure_resolves() -> Bool {
+  remote_build_dependency_rule(op: RemoteCompileEntry { entry: "dag/gunbc/compute/remote_build_serve.dag" })
+    == RemoteBuildBuildsTheSeedFirst
+    && remote_build_ending_of_provide(
+      r: ProvideAttached { identity: "op", ending: "succeeded", document: "{}", host_record: HostRecordWritten },
+    ) == ServeServed
+}

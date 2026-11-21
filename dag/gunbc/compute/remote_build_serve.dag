@@ -12,11 +12,6 @@ import extdeps.github.github { github_https_clone_url }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import gunbc.repository { gunbc_repository }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import gunbc.compute.compute_seat_ensure {
-  SeatDischargePass, SeatDischargeStanding, SeatDischargeClean, SeatDischargeHasRefusals, SeatDischargeHasReds,
-  SeatDischargePassRefused, seat_discharge_pass_standing, compute_seat_discharge_pass_in,
-  compute_provide_pool_full, seat_discharge_pass_released_a_seat,
-}
 import gunbc.remote_shell_command { ShellSimpleCommand, ShellCommandInDirectory, emit_remote_shell_in_directory }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown,
@@ -260,18 +255,18 @@ fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBu
     RemoteBuildCarriesItsOwnSeedBuild =>
       remote_build_serve_settled(
         instance: instance,
-        attempt: remote_build_provide_discharging(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+        result: remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
       )
     RemoteBuildBuildsTheSeedFirst => {
-      let build = remote_build_provide_discharging(instance: instance, request: request, op: remote_build_dependency_operation())
-      match remote_build_ending_of_provide(r: build.result) {
+      let build = remote_build_provide_on(instance: instance, request: request, op: remote_build_dependency_operation())
+      match remote_build_ending_of_provide(r: build) {
         ServeServed =>
           remote_build_serve_settled(
             instance: instance,
-            attempt: remote_build_provide_discharging(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+            result: remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
           )
         // The dependency build did not serve: its ending IS the work's answer, identity aside.
-        _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build.result), text: remote_build_attempt_document(attempt: build))
+        _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))
       }
     }
   }
@@ -287,15 +282,15 @@ fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBu
 // Not served (unsuccessful, refused, host full, in flight): the work's OWN typed outcome is the answer,
 // untouched. The serving binary never attested a success here, so there is nothing to vouch for and a
 // present-but-broken identity file must not overwrite the work's verdict.
-fn remote_build_serve_settled(instance: HostDashboardInstance, attempt: RemoteBuildServeAttempt) -> CliWireResponse {
-  let work_ending = remote_build_ending_of_provide(r: attempt.result)
+fn remote_build_serve_settled(instance: HostDashboardInstance, result: ProvideResult) -> CliWireResponse {
+  let work_ending = remote_build_ending_of_provide(r: result)
   match work_ending {
     ServeServed => remote_build_serve_identity_answer(
       ending: ServeServed,
-      document: remote_build_attempt_document(attempt: attempt),
+      document: provide_result_document(r: result),
       identity: read_serve_binary_identity(serve_binary: instance.serve_binary as String),
     )
-    _ => remote_build_serve_answer(ending: work_ending, text: remote_build_attempt_document(attempt: attempt))
+    _ => remote_build_serve_answer(ending: work_ending, text: provide_result_document(r: result))
   }
 }
 // THE SERVING BINARY'S IDENTITY, read from the sidecar the converge step writes beside the binary.
@@ -391,75 +386,6 @@ fn remote_build_serve_identity_answer(ending: RemoteBuildServeEnding, document: 
   }
 }
 
-// A FULL POOL IS NOT ACCEPTED AS AN ANSWER UNTIL THE SEAT DOOR HAS BEEN KNOCKED ONCE.
-//
-// The remote-build serve used to read "pool full" and stop. That is correct as a refusal and wrong as a
-// recovery: on a host whose whole build-pool appropriation is ONE CI slot, a seat left behind by an
-// attempt whose owner is gone wedges EVERY later request, and the only thing that frees it is the
-// discharge pass this corpus runs once per belt TICK -- a tick nothing in the deployment starts (the
-// deployed belt unit runs the launch obligation only). So the serve now asks the same two questions the
-// belt's own converge step asks, against the SAME declarations (gunbc.compute.compute_seat_ensure:
-// compute_seat_discharge_pass_in, compute_provide_pool_full, seat_discharge_pass_released_a_seat): is
-// this refusal a full pool at all, and did a pass actually RETURN a seat, with its readback? Only then is
-// the request made a second time. Every other ending answers exactly as it did before, so a cancelled
-// attempt, an attached product or a refused request cannot trigger a recovery pass.
-//
-// ONE KNOCK, NOT A LOOP. A second refusal after a seat was returned is a fact about the pool, and
-// repeating the pass would be a wait dressed up as a policy. And the boundary of what the pass can reach
-// is stated at the declaration it inherits: it selects seats owned by DISPATCH attempts -- an exit record,
-// or a live dispatch directory -- so a seat charged by a DIRECT-INVOCATION holder (a remote build) is in
-// neither set and will not be freed here. Recovering those needs a way to prove THEY ended; that is its
-// own defect with its own row, and not a reason to widen a resolver that refuses to guess owners.
-type RemoteBuildServeAttempt { result: ProvideResult, discharge: SeatDischargePass? }
-
-// THE ONE RULE, AS A FUNCTION YOU CAN ASK: after a first answer and a pass that has run, is a second
-// request owed? Both halves are the seat layer's own questions, and BOTH must be true -- a refusal that
-// is not a full pool never earns a recovery, and a pass that did not RETURN a seat (nothing discharged,
-// a seat held by a live unit, the pass itself refused) never earns one either. Witnessed claim by claim in
-// test.claim.compute.remote_build_seat_discharge_witness.
-fn remote_build_retry_after_discharge(first: ProvideResult, pass: SeatDischargePass) -> Bool {
-  compute_provide_pool_full(result: first) && seat_discharge_pass_released_a_seat(pass: pass)
-}
-
-fn remote_build_provide_discharging(instance: HostDashboardInstance, request: RemoteBuildRequest, op: WorkOperation) -> RemoteBuildServeAttempt {
-  let first = remote_build_provide_on(instance: instance, request: request, op: op)
-  if compute_provide_pool_full(result: first) {
-    let pass = compute_seat_discharge_pass_in(instance: instance)
-    if remote_build_retry_after_discharge(first: first, pass: pass) {
-      RemoteBuildServeAttempt { result: remote_build_provide_on(instance: instance, request: request, op: op), discharge: Present { value: pass } }
-    } else {
-      RemoteBuildServeAttempt { result: first, discharge: Present { value: pass } }
-    }
-  } else {
-    RemoteBuildServeAttempt { result: first, discharge: Absent }
-  }
-}
-
-// WHAT THE PASS FOUND, WRITTEN INTO THE ANSWER. A refusal that says only "the pool is full" leaves the
-// reader to infer a wedge; this says what was tried and what the door answered -- a seat refused a
-// release (unreadable slot, unknown lifecycle) KEEPS its charge, and the reason is in the receipt, typed
-// and countable, where the person who has to clear it can read it.
-fn remote_build_discharge_note(pass: SeatDischargePass) -> String {
-  match pass {
-    // A SKIPPED PASS IS NOT A CLEAN ONE. The standing erases the difference (it counts outcomes), and a
-    // receipt that said "clean" for a pass that was never run would be exactly the kind of reading that
-    // sends someone off to look in the wrong place.
-    SeatDischargeSkipped { why } => join(["\nseat-discharge: the pass was skipped, so no seat was touched: ", why], "")
-    _ => match seat_discharge_pass_standing(p: pass) {
-    SeatDischargeClean => "\nseat-discharge: the pass ran clean: no seat refused a release and none came back red"
-    SeatDischargeHasRefusals { refused, first } => join(["\nseat-discharge: ", to_string(value: refused), " seat(s) refused a release and KEEP their charge; first: ", first], "")
-    SeatDischargeHasReds { reds, first } => join(["\nseat-discharge: ", to_string(value: reds), " seat(s) came back red; first: ", first], "")
-    SeatDischargePassRefused { reason } => concat("\nseat-discharge: the pass itself refused, so no seat was touched: ", reason)
-    }
-  }
-}
-
-fn remote_build_attempt_document(attempt: RemoteBuildServeAttempt) -> String {
-  match attempt.discharge {
-    Absent => provide_result_document(r: attempt.result)
-    Present { value: pass } => concat(provide_result_document(r: attempt.result), remote_build_discharge_note(pass: pass))
-  }
-}
 // A LOST HOST RECORD IS NOT A CLEAN RUN, the same reading gunbc.compute.test_run gives it: the work's
 // own ending is in the document, but the run is answered as unsuccessful so the loss is heard.
 fn remote_build_ending_of_provide(r: ProvideResult) -> RemoteBuildServeEnding {
