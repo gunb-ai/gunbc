@@ -1,0 +1,29 @@
+module v2.cli.old.write.probe.tmp
+
+// One-shot receipt driver (deleted after the run): renders what the UNFIXED migration_write
+// reports for a mixed batch (one writable file, one /proc file that must refuse). Pre-fix it
+// reports Refused naming only the refusal -- the written file is unrecorded (the F1 defect).
+
+import std.types { Bool, List, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { Cons, Empty, is_empty, length }
+import std.integer { int_to_decimal_string }
+import v2.workflow.reference_migration {
+  MigrationApplyOutcome,
+  MigrationFile,
+  migration_file,
+  migration_write,
+}
+
+fn probe_mixed(out_path: String) -> Bool {
+  let files = [
+    migration_file(path: "/tmp/gunbc-reference-migration-write-control-written.dag", content: "module tmp.wet.write.control.written\n"),
+    migration_file(path: "/tmp/gunbc-reference-migration-write-control-parentfile", content: "not-a-directory\n"),
+    migration_file(path: "/tmp/gunbc-reference-migration-write-control-parentfile/child.dag", content: "module tmp.wet.write.control.refused\n"),
+  ]
+  let label = match migration_write(contents: files, paths: ["/tmp/gunbc-reference-migration-write-control-written.dag", "/tmp/gunbc-reference-migration-write-control-parentfile", "/tmp/gunbc-reference-migration-write-control-parentfile/child.dag"]) {
+    Refused { refusals: refusals } => "REFUSED refusals=" + int_to_decimal_string(value: length(xs: refusals))
+    Applied { written: written, contents: _ } => "APPLIED written=" + int_to_decimal_string(value: length(xs: written))
+  }
+  Filesystem.Write(path: out_path, content: label + "\n").success
+}

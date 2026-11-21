@@ -1553,7 +1553,10 @@ fn migration_judge_targets(env: AcquisitionEnv, candidates: List<DeclarationRef>
   let sites = list_map(xs: migration_numbered(candidates: candidates), f: fn(pair) {
     ReferenceSite { file: "@migration-target", site: AnnotationReference { reference: pair.reference, start: pair.index, end: pair.index + 1 } }
   })
-  let verdicts = reference_verdicts(env: env, sites: sites)
+  // The hashtag-form signature (main, #16776) carries queued run-step target callers; the
+  // migration judge checks cited DECLARATIONS only and queues no run-step targets, so the
+  // honest list is empty -- a marker-only run, which pays nothing for targets.
+  let verdicts = reference_verdicts(env: env, sites: sites, target_callers: [])
   list_reverse(xs: fold_list(xs: sites, empty: Empty, cons: fn(acc, site) {
     match migration_first_containing(lines: verdicts.lines, head: site_head(site: site)) {
       Present { value: line } => Cons { head: MigrationTargetFailure { index: site.site.start, reason: line }, tail: acc }
@@ -2265,12 +2268,17 @@ fn migration_write_outcome(chosen: List<MigrationEdit>, current: List<MigrationF
       written: list_reverse(xs: fold_list(xs: outcomes, empty: Empty, cons: fn(acc, outcome) {
         match outcome {
           Applied { written: written, contents: _ } => fold_list(xs: written, empty: acc, cons: fn(inner, path) { Cons { head: path, tail: inner } })
+          // Exhaustive arm: reached only in the all-succeeded branch (a PartiallyApplied outcome
+          // carries refusals and routes the whole batch to Refused), but the match stays total.
+          PartiallyApplied { written: written, refusals: _ } => fold_list(xs: written, empty: acc, cons: fn(inner, path) { Cons { head: path, tail: inner } })
           Refused { refusals: _ } => acc
         }
       })),
       contents: list_reverse(xs: fold_list(xs: outcomes, empty: Empty, cons: fn(acc, outcome) {
         match outcome {
           Applied { written: _, contents: contents } => fold_list(xs: contents, empty: acc, cons: fn(inner, file) { Cons { head: file, tail: inner } })
+          // Exhaustive arm; see the written fold above. The refused half has no contents to report.
+          PartiallyApplied { written: _, refusals: _ } => acc
           Refused { refusals: _ } => acc
         }
       })),
