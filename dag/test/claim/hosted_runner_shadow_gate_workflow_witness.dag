@@ -122,7 +122,7 @@ test fn the_emitted_workflow_runs_every_gate_row_with_the_agreed_exit_rendering(
 // goes red.
 test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -> Bool {
   let rendered = emitted_yaml_or_empty()
-  contains(haystack: rendered, needle: "iam.googleapis.com/projects/")
+  contains(haystack: rendered, needle: "workloadIdentityPools/github-hosted-shadow-gate/providers/github-hosted-shadow-gate-oidc")
     && contains(haystack: rendered, needle: "hosted-ci-secrets@gunbai-secrets.iam.gserviceaccount.com")
     && contains(haystack: rendered, needle: "secrets/remote-build-ci-ssh-key/versions/1:access")
     && contains(haystack: rendered, needle: "secrets/tailscale-oauth-client-secret/versions/1:access")
