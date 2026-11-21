@@ -1212,6 +1212,7 @@ data native_scm_fabric_first_gate_lifted_2026_11_19: DesignRuling = DesignRuling
 }
 
 
+
 data reference_markers_are_hashtag_form: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "reference_markers_are_hashtag_form"),
   decided: "2026-11-19",
@@ -1219,8 +1220,37 @@ data reference_markers_are_hashtag_form: DesignRuling = DesignRuling {
   provenance: "Operator, 2026-11-19, asked by session bold-stag-227 whether comment references should use the hashtag form #gunbc.design_argument::single_authority instead of the @ref(...) form, verbatim: \"yeah i'd like to use the hashtag thanks\". The marker is '#' immediately followed by a coordinate (module.path::decl, ::field or ::<T>); '#' preceded by an identifier character or '/' never opens a marker, a span is a marker only if it reaches '::', sentence punctuation is trimmed from the coordinate, and the escape is a backslash before '#'. ACCEPTED COST, stated and not argued away: under the old form every unescaped marker opening was accounted for, so a coordinate-shaped typo that never reaches '::' (a bare '#a.b:c') is now silent prose and is no longer a finding; this is a deliberate narrowing of the fail-closed accounting (gunbc.design_argument::fail_closed) taken for ergonomics, and the grammar module (std.annotation_reference) pins it as a witness rather than claiming parity with the old coverage.",
 }
 
+// ── TAILNET HAND-CONFIGURATION OF 2026-11-20, RECORDED AS OPERATOR DECISIONS ────────────────────────
+// The operator's wish, relayed by gentle-crab-832 on 2026-11-20 (msg_6ba80db3): "The operator wants
+// everything from today recorded in gunbc so it isn't lost." These rows are the typed carriers for the
+// three dated facts of that day's tailnet work; the prose around them cites these rows and carries none
+// of the record itself #gunbc.design_argument::source_annotations.
+
+data tailscale_ssh_off_on_fleet_build_hosts_2026_11_20: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_ssh_off_on_fleet_build_hosts_2026_11_20"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "extdeps.tailscale.join", decl_name: "tailscale_up_join_argv"),
+  provenance: "Decides the HOST-SIDE half of Tailscale SSH on the fleet build hosts. The operator's words, relayed by gentle-crab-832 (msg_764c3d20, 2026-11-20): \"With the operator's approval, Tailscale SSH is now also OFF on srv2 (RunSSH=false), not just srv1.\" srv1's off state was relayed by clever-raven-401 the same day (msg_069afa76): \"Tailscale SSH off on srv1 (srv3 and srv4 already run plain OpenSSH)\". INTERPRETATION (mine, 2026-11-20, not the operator's words): all four build hosts then terminate SSH through plain OpenSSH -- sshd with the forced-command client keys (gunbc.compute.remote_build) -- so the ci-dispatch -> tag:ci tcp:22 network grant (extdeps.tailscale.acl) reaches sshd, never a tailscale-ssh server; and the join cannot flip the host-side half back, because tailscale_up_join_argv carries no --ssh flag. The discriminating consumer is the claim w_the_fleet_join_argv_never_enables_tailscale_ssh in test.claim.tailscale_join_fleet_membership_witness, red for any argv word carrying --ssh in any spelling. The relay also notes Tailscale SSH had been masking LAN-only from= restrictions on srv1/srv2; repairing those authorized_keys options is gentle-crab-832's own row in gunbc.fleet.fleet_ssh_access, not this ruling's.",
+}
+
+data tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.tailscale_ci_oauth_client", decl_name: "ci_oauth_client_name"),
+  provenance: "Decides the OAuth client identity for CI tailnet joins: the operator created gunbc-ci-github (auth_keys:write, tag:ci-dispatch, ephemeral) and the model names it (ci_oauth_client_name); the predecessor client for GitHub runners, named githubcirunners, was REVOKED the same day -- the operator's instruction as relayed by clever-raven-401 (msg_069afa76, 2026-11-20): \"the old githubcirunners client recorded as revoked\". INTERPRETATION (mine, 2026-11-20, not the operator's words): replaced, not grown beside. The revocation has no executing consumer today -- the tailnet reconcile route (tailscale_acl_reported) reads ACL policy, not OAuth clients -- so the lifecycle fact lives HERE, in this ledger row, and not as string data beside the client rows; if a client read-back route is modeled, this row's fact moves into a closed lifecycle type that route consumes.",
+}
+
+data tailscale_acl_ssh_section_residue_2026_11_20: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "tailscale_acl_ssh_section_residue_2026_11_20"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "extdeps.tailscale.acl", decl_name: "operator_tailscale_acl_ssh"),
+  provenance: "Classifies the emitted ssh section of the tailnet policy as RESIDUE. Finding relayed by gentle-crab-832 (msg_c1605991, 2026-11-20): \"The tailnet policy's ssh section now has no consumer. Under the Consumption rule it should be dropped from what tailscale_acl_emit emits, or recorded as residue.\" The recorded disposition, agreed with gentle-crab-832 (msg_85c8392d: \"Recording the ssh section as residue with a consumer note is fine\"): KEEP emitting the rules unchanged, because the emitted document must equal the live tailnet policy -- the reconcile fixture test/fixture/tailscale_acl_reference.json carries them -- and dropping them from the emit before the tailnet drops them would invert the drift rather than remove it. DISSOLUTION CONDITION, typed by this row: when the tailnet read-back (tailscale_acl_reported reconcile) first reports the section ABSENT, the residue is gone and the emit drops with it; the reconcile route is the consumer that makes that moment visible instead of a comment.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    heal_convergence_job_budget_increase_2026_11_20,
+    text_of_chars_is_a_whole_list_host_realization,
     reference_markers_are_hashtag_form,
     ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
     estimates_are_one_representation_derived_upward,
@@ -1317,6 +1347,9 @@ fn design_rulings() -> List<DesignRuling> {
     operator_delegates_fan_control_to_the_fleet_policy,
     v1_seed_emitted_byte_write_exception,
     production_is_main_only_lab_admits_integration,
+    tailscale_ssh_off_on_fleet_build_hosts_2026_11_20,
+    tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20,
+    tailscale_acl_ssh_section_residue_2026_11_20,
     flex_market_policy_is_operator_decided,
     flex_fleet_cap_raised_to_three_dollars,
     flex_operator_template_v2,
@@ -1426,8 +1459,8 @@ WHAT THE MODEL DOES NOT YET KNOW, which is the part a reader must not skip. No r
 data pxe_default_install_and_no_standing_erase_2026_11_10: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "pxe_default_install_and_no_standing_erase_2026_11_10"),
   decided: "2026-11-10",
-  governs: decl_ref(module_path: "gunbc.host.network_install", decl_name: "network_install_no_requests"),
-  provenance: "Decides the default installation path and the lifetime of an install request. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 1 (\"1. Operator decisions (2026-11-10)\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The decision text, verbatim from that file: \"PXE is the default installation path for every eligible physical machine. BMC virtual media remains a fallback that needs an explicit, evidenced reason.\" and \"An install is one-shot. An install request is never a standing authorization to erase a disk.\" INTERPRETATION (mine, 2026-11-20, not the operator's words): these are two halves of one decision -- a default plus a one-shot exception to it -- and both are already modeled rather than restated here: the eligible architectures are uefi_pxe_admitted_architectures at gunbc.network_boot_delivery:221, and gunbc.host.network_install::network_install_no_requests is the roster of standing install requests, empty at :919, with each install a client binding at :864 carrying its own target-disk identity. The ruling changes what is decided; the empty roster is what refuses a standing erase.",
+  governs: decl_ref(module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_no_install_requests"),
+  provenance: "Decides the default installation path and the lifetime of an install request. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 1 (\"1. Operator decisions (2026-11-10)\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The decision text, verbatim from that file: \"PXE is the default installation path for every eligible physical machine. BMC virtual media remains a fallback that needs an explicit, evidenced reason.\" and \"An install is one-shot. An install request is never a standing authorization to erase a disk.\" INTERPRETATION (mine, 2026-11-20, not the operator's words): these are two halves of one decision -- a default plus a one-shot exception to it -- and both are already modeled rather than restated here: the eligible architectures are uefi_pxe_admitted_architectures at gunbc.network_boot_delivery:221, and gunbc.fleet.site_pxe_edge_converge::site_pxe_edge_no_install_requests is the roster of standing install requests, kept empty, with each install a client binding carrying its own target-disk identity. The ruling changes what is decided; the empty roster is what refuses a standing erase.",
 }
 
 data runner_capacity_counts_only_when_observed_2026_11_10: DesignRuling = DesignRuling {
@@ -1442,4 +1475,20 @@ data pxe_witnesses_need_no_required_ci_2026_11_10: DesignRuling = DesignRuling {
   decided: "2026-11-10",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance"),
   provenance: "Decides that the PXE witnesses do not join required CI. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 7 (\"7. Decided: no required CI for the PXE witnesses\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The carrier's sentence, verbatim from that file: \"The operator ruled on 2026-11-10 that the PXE witnesses do not join required CI now. Nothing on the required path evaluates a witness (the declared drop gunbc.rung_drop v1_required_lanes_withdrawn), and the job roster and budgets stay closed to growth (gunbc.design_ruling job_roster_closed_to_growth, ci_job_budgets_closed_to_growth). Each lane runs the witnesses it touches with claim_batch and records the result in its PR.\" Its opening clause is the decision; the rest is smart-crane-730's gloss of the model, so it is cited and not repeated: that drop and those two rulings are rows of gunbc.rung_drop and gunbc.design_ruling. INTERPRETATION (mine, 2026-11-20, not the operator's words): this narrows conformance (gunbc.design_argument::conformance) for this class of witness only, because a check needing a machine on the network and a hand at a console would block every unrelated change whenever the floor is busy -- so its verdict is carried by the work item's own acceptance, not branch protection. It does not weaken the witness: the claim still goes RED against a plant and GREEN against the fix, on the post-wall binary, before the item that owes it is accepted.",
+}
+
+
+data heal_convergence_job_budget_increase_2026_11_20: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "heal_convergence_job_budget_increase_2026_11_20"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, directly in session merry-moth-343 on 2026-11-20, after the diagnosis of heal run 44676645073 on gunbc#16761: \"yeah could you give this more budget/variable budget now? and then could you give me the cleanup/performance stuff after\". This is an explicit instruction to increase this heal job budget, not a timeout-default escalation. IMPLEMENTATION CHOICE, not a numeric quotation from the operator: increase gunbc.ci.repository_ci_profile::gunbc_repository_ci_profile heal.timeout from 90 to 120 minutes; the assistant stated that choice in its next response. The measured run completed its third generation with first_generation_equal=true at 06:17:03Z and was cancelled at 06:17:08Z by the 90-minute job backstop before repair publication. The extra 30 minutes allows publication and runtime variation. Scope: only the heal-generated-artifacts job; no witness timeout, memory envelope, generation bound or check is relaxed. The operator also requested the cleanup/performance follow-up, so this allowance does not discharge the repeated regeneration and scope-selection work tracked by gunbc.plans.read_set_convergence.",
+}
+
+
+data text_of_chars_is_a_whole_list_host_realization: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_of_chars_is_a_whole_list_host_realization"),
+  decided: "2026-11-20",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "closed_grounded_substrate"),
+  provenance: "Operator decision msg_65796359-9ec0-4dec-b4a3-b2e29621206a: revise the 2026-10-25 NOT A SEAM decision and model std.host_text::text_of_chars as a declaration-identity host realization. The existing operation is the total whole-list inverse of chars over Unicode scalar values, realized by a linear host writer. This neither declares nor equates the arbitrary-window chars_to_string operation: its clamping and invalid-Int behavior remain separate. Preserve round trips and linear cost; no copied-accumulator .dag substitute and no ambient-name resolver exception.",
 }
