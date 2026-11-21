@@ -338,11 +338,11 @@ fn shadow_gate_ci_credentials_fetch_script() -> String {
     "umask 077\n",
     "HDR_FILE=\"$RUNNER_TEMP/shadow-gate-auth-header\"\n",
     "VAL_FILE=\"$RUNNER_TEMP/shadow-gate-oauth-val\"\n",
-    "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"\n",
-    // KEY_FILE is set HERE, not in the step's env block: env values are literal strings GitHub
-    // pastes unchanged, and only the script's own bash expands $RUNNER_TEMP. The gate steps'
-    // --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key lines expand the same way, so all
-    // three land on one path (review 97111 finding 2).
+    // The path comes from ONE constant, shadow_gate_ci_ssh_key_file -- the same value the ssh -i
+    // probe and every --arg identity_file= gate step read (review 97138). It is assigned HERE, in
+    // the script, not in the step's env block: env values are literal strings GitHub pastes
+    // unchanged, and only the script's own bash expands $RUNNER_TEMP (review 97111 finding 2).
+    concat("KEY_FILE=\"", shadow_gate_ci_ssh_key_file, "\"\n"),
     "cleanup() { rm -f \"$HDR_FILE\" \"$VAL_FILE\"; }\n",
     "trap cleanup EXIT\n",
     gunbc_ci_auth_header_file_write_command_to(header_file: "HDR_FILE"),
