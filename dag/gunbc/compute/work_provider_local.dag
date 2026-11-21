@@ -15,7 +15,7 @@ import std.nat { Nat }
 import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim, skip, take_prefix, zip_map, count_where }
+import std.algebra { trim, skip, take_prefix, zip_map, count_where, list_at_optional }
 import std.list { first_where }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
@@ -124,6 +124,7 @@ import gunbc.compute.host_capacity {
   compute_capacity_subject, compute_capacity_store, compute_release_on, compute_root, compute_attempt_exit_spool_open,
   PartitionedSpoolStore, SpoolOpenReady, SpoolOpenUidUnreadable, SpoolOpenUidRoot, compute_launching_uid,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
+  ComputeSeatCharge, SeatChargeReturned, SeatChargeStillHeld, SeatChargeNeverAcquired, SeatChargeUnproven, compute_seat_charge_returned,
 }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, ComputeWorkRecordWritten, ComputeWorkRecordUnwritten, ComputeWorkRecordPresent, ComputeWorkRecordUnread, compute_work_root, compute_work_records, compute_work_dir, compute_work_consumption_write, compute_work_consumption_path, compute_work_log_read, compute_work_log_write, compute_work_log_path }
 import gunbc.compute.compute_producer_lease {
@@ -4008,6 +4009,88 @@ fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
   join(["recover-catalog ", verdict, " ", e.reference as String, " ", why, "\n"], "")
 }
 
+// THE PARSE OF THE CENSUS RENDERING, beside the renderer so the grammar has one home. This is what a
+// leg that runs compute_recover_catalog_cli over ssh reads: exit 0 with the established header and one
+// line per reference, where a terminate/settle arm is a STALE seat (the model authorizes the recovery
+// write) and a hold arm is a seat LEGITIMATELY HELD (live or too-early holder -- plan nothing). An
+// answer that is not this rendering -- a wrong header, a line with too few words, an arm the renderer
+// does not emit (including the refused arm, which the census itself turns into unknown), or the same
+// reference named by two lines -- comes back unknown, and the leg that reads it refuses rather than
+// planning on a half-answer (gunbc.design_argument::fail_closed).
+type RecoverCatalogLegEntry
+  = CatalogLegStale { reference: NonEmptyStr }
+  | CatalogLegHeld { reference: NonEmptyStr }
+
+type RecoverCatalogLegReading
+  = RecoverCatalogLegEstablished { entries: List<RecoverCatalogLegEntry> }
+  | RecoverCatalogLegUnknown { detail: String }
+
+fn recover_catalog_leg_stale_token(token: String) -> Bool {
+  token == "terminate" || token == "settle"
+}
+
+fn recover_catalog_leg_line(words: List<String>) -> RecoverCatalogLegEntry? {
+  match list_at_optional(xs: words, index: 0) {
+    Present { value: head } =>
+      if head != "recover-catalog" {
+        none
+      } else {
+        match list_at_optional(xs: words, index: 1) {
+          Present { value: arm } =>
+            match list_at_optional(xs: words, index: 2) {
+              Present { value: reference } =>
+                if trim(s: reference) == "" {
+                  none
+                } else if recover_catalog_leg_stale_token(token: arm) {
+                  Present { value: CatalogLegStale { reference: trim(s: reference) as NonEmptyStr } }
+                } else if arm == "hold" {
+                  Present { value: CatalogLegHeld { reference: trim(s: reference) as NonEmptyStr } }
+                } else {
+                  none
+                }
+              Absent => none
+            }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
+}
+
+fn recover_catalog_leg_reference(e: RecoverCatalogLegEntry) -> NonEmptyStr {
+  match e {
+    CatalogLegStale { reference: r } => r
+    CatalogLegHeld { reference: r } => r
+  }
+}
+
+fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
+  let lines = split(s: trim(s: text), delimiter: "\n") |> filter(l => trim(s: l) != "")
+  match list_at_optional(xs: lines, index: 0) {
+    Absent => RecoverCatalogLegUnknown { detail: "the census answered with nothing to read" }
+    Present { value: header } =>
+      if trim(s: header) != "recover-catalog established" {
+        RecoverCatalogLegUnknown { detail: join(["the census answer is not one this door established (first line: ", trim(s: header), ")"], "") }
+      } else {
+        let body = skip(xs: lines, n: 1)
+        let parsed = map(body, l => recover_catalog_leg_line(words: split(s: trim(s: l), delimiter: " ") |> filter(w => w != "")))
+        match first_where(xs: parsed, keep: p => match p { Absent => true _ => false }) {
+          Present { value: _ } => RecoverCatalogLegUnknown { detail: "a census line is not one this door renders; the seat census cannot be established from it" }
+          Absent => {
+            let entries = fold(parsed, init: [], f: (acc, p) => match p {
+              Present { value: e } => concat(acc, [e])
+              Absent => acc
+            })
+            match first_where(xs: entries, keep: e => count_where(xs: entries, predicate: o => recover_catalog_leg_reference(e: o) == recover_catalog_leg_reference(e: e)) > 1) {
+              Present { value: dup } => RecoverCatalogLegUnknown { detail: join(["the census named ", recover_catalog_leg_reference(e: dup), " twice; which seat speaks for it cannot be established"], "") }
+              Absent => RecoverCatalogLegEstablished { entries: entries }
+            }
+          }
+        }
+      }
+  }
+}
+
 // THE CENSUS DOOR, OVER THE PROCESS WIRE -- a READ: no slot is written, no lease is touched, nothing is
 // released here. The answer is one line per reference in the census
 // (`recover-catalog terminate|settle|hold <reference> <trigger>`), exit 0 when the census was established and
@@ -4071,6 +4154,258 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
       RecoveryDeclined { reference: _, why: _ } => ExitFailure { code: 1, reason: wire }
       RecoveryRefused { detail: _ } => ExitFailure { code: 2, reason: wire }
     }
+  }
+}
+
+// THE ONE DECLARED MAPPING OF THE RECOVERY DOORS' EXIT CODES -- the READING half, paired with
+// compute_recover_exit above, which is the only producer of these numbers: 0 is released or
+// nothing-held, 1 is declined (a legitimately held seat), 2 is refused, settled-but-held, or a receipt
+// write that failed. The census door (compute_recover_catalog_cli) speaks the same 0/2 pair and the
+// read-back door below keeps to the same three, so a leg that runs any of them over ssh maps the
+// number through THIS function rather than comparing exit literals at the leg -- the leg's idea of
+// what a number means stays the door's (gunbc.design_argument::single_authority).
+type RecoverDoorVerdict
+  = RecoverDoorSettled
+  | RecoverDoorDeclined
+  | RecoverDoorUnknown
+  | RecoverDoorUnmapped { code: Int }
+
+fn recover_door_verdict(code: Int) -> RecoverDoorVerdict {
+  if code == 0 {
+    RecoverDoorSettled
+  } else if code == 1 {
+    RecoverDoorDeclined
+  } else if code == 2 {
+    RecoverDoorUnknown
+  } else {
+    RecoverDoorUnmapped { code: code }
+  }
+}
+
+// THE READ-BACK DOOR -- THIN, AND IT DECIDES NOTHING. The serving converge's recovery leg asks it two
+// questions after a recovery has been applied, and decides for itself from the answer: what does the
+// ATTEMPT RECORD say (terminal, still active, or absent), and has the SEAT CHARGE come back to the
+// capacity ledger (returned, never acquired, or still held)? Both facts are read THROUGH THE MODEL --
+// attempt_slot_read over the seat that holds the reference, and gunbc.compute.host_capacity's
+// compute_seat_charge_returned over the instance's ledger -- so the answer is the model's and not a
+// second reading of files by hand. An observation that cannot be established (a seat listing that
+// cannot be read, a slot that cannot be read, one reference holding a slot in two seat directories, a
+// ledger charge that cannot be proven, a subject that does not resolve, a store that is not standing)
+// comes back unknown at exit 2; a complete observation is one line at exit 0:
+//   recover-readback <record> <charge>   with record in {terminal, active, absent}
+//                                                     charge in {returned, never, held}
+// The render and its parse live HERE, beside the door, so the grammar has one home.
+type RecoverReadbackRecord
+  = ReadbackRecordTerminal
+  | ReadbackRecordActive
+  | ReadbackRecordAbsent
+
+type RecoverReadbackCharge
+  = ReadbackChargeReturned
+  | ReadbackChargeNeverAcquired
+  | ReadbackChargeStillHeld
+
+type RecoverReadbackReading
+  = RecoverReadbackFacts { record: RecoverReadbackRecord, charge: RecoverReadbackCharge }
+  | RecoverReadbackUnknown { detail: String }
+
+fn recover_readback_record_token(r: RecoverReadbackRecord) -> String {
+  match r {
+    ReadbackRecordTerminal => "terminal"
+    ReadbackRecordActive => "active"
+    ReadbackRecordAbsent => "absent"
+  }
+}
+
+fn recover_readback_charge_token(c: RecoverReadbackCharge) -> String {
+  match c {
+    ReadbackChargeReturned => "returned"
+    ReadbackChargeNeverAcquired => "never"
+    ReadbackChargeStillHeld => "held"
+  }
+}
+
+fn recover_readback_line(record: RecoverReadbackRecord, charge: RecoverReadbackCharge) -> String {
+  join(["recover-readback ", recover_readback_record_token(r: record), " ", recover_readback_charge_token(c: charge), "\n"], "")
+}
+
+fn recover_readback_unknown_line(detail: String) -> String {
+  join(["recover-readback unknown ", detail, "\n"], "")
+}
+
+fn recover_readback_record_of_token(token: String) -> RecoverReadbackRecord? {
+  if token == "terminal" {
+    Present { value: ReadbackRecordTerminal }
+  } else if token == "active" {
+    Present { value: ReadbackRecordActive }
+  } else if token == "absent" {
+    Present { value: ReadbackRecordAbsent }
+  } else {
+    none
+  }
+}
+
+fn recover_readback_charge_of_token(token: String) -> RecoverReadbackCharge? {
+  if token == "returned" {
+    Present { value: ReadbackChargeReturned }
+  } else if token == "never" {
+    Present { value: ReadbackChargeNeverAcquired }
+  } else if token == "held" {
+    Present { value: ReadbackChargeStillHeld }
+  } else {
+    none
+  }
+}
+
+// THE PARSE OF THE READ-BACK LINE, beside the renderer. Anything that is not the renderer's own grammar
+// -- including the door's own unknown line, which parses to its detail -- comes back as the unknown
+// arm, so a leg consuming this cannot mistake a malformed answer for a settled one
+// (gunbc.design_argument::fail_closed: a failure arm refuses, it never widens).
+fn recover_readback_words(text: String) -> List<String> {
+  split(s: trim(s: text), delimiter: " ") |> filter(w => w != "")
+}
+
+fn recover_readback_reading(text: String) -> RecoverReadbackReading {
+  let words = recover_readback_words(text: text)
+  match list_at_optional(xs: words, index: 0) {
+    Absent => RecoverReadbackUnknown { detail: join(["there was no read-back answer to read (text: ", trim(s: text), ")"], "") }
+    Present { value: head } =>
+      if head != "recover-readback" {
+        RecoverReadbackUnknown { detail: join(["the read-back answer is not one this door rendered: ", trim(s: text)], "") }
+      } else {
+        match list_at_optional(xs: words, index: 1) {
+          Absent => RecoverReadbackUnknown { detail: "the read-back answer carried no arms" }
+          Present { value: second } =>
+            if second == "unknown" {
+              if count(xs: words) < 3 {
+                RecoverReadbackUnknown { detail: "the read-back refused and named no reason" }
+              } else {
+                RecoverReadbackUnknown { detail: join(skip(xs: words, n: 2), " ") }
+              }
+            } else if count(xs: words) != 3 {
+              RecoverReadbackUnknown { detail: join(["the read-back answer is not three words: ", trim(s: text)], "") }
+            } else {
+              match list_at_optional(xs: words, index: 2) {
+                Absent => RecoverReadbackUnknown { detail: "the read-back answer carried no charge arm" }
+                Present { value: third } => match recover_readback_record_of_token(token: second) {
+                  Absent => RecoverReadbackUnknown { detail: join(["the read-back record arm is not one the door renders: ", second], "") }
+                  Present { value: record } => match recover_readback_charge_of_token(token: third) {
+                    Absent => RecoverReadbackUnknown { detail: join(["the read-back charge arm is not one the door renders: ", third], "") }
+                    Present { value: charge } => RecoverReadbackFacts { record: record, charge: charge }
+                  }
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+// Which seat directory speaks for the reference, read once per seat through the model. A reference that
+// answers in two seat directories is UNREADABLE for the read-back exactly as the census refuses it --
+// which attempt the read-back would describe cannot be established (one rule, not two).
+type RecoverReadbackScan
+  = ScanUntouched
+  | ScanNothingHeld
+  | ScanHeldOnce { record: RecoverReadbackRecord }
+  | ScanUnreadable { detail: String }
+  | ScanDuplicated { detail: String }
+
+fn recover_readback_record_of(rec: AttemptRecord) -> RecoverReadbackRecord {
+  match rec.state {
+    AttemptTerminal { verdict: _, detail: _ } => ReadbackRecordTerminal
+    AttemptReserved => ReadbackRecordActive
+    AttemptLaunching => ReadbackRecordActive
+  }
+}
+
+fn recover_readback_scan(stores: List<ComputeSeatStore>, reference: NonEmptyStr) -> RecoverReadbackScan {
+  fold(stores, init: ScanUntouched, f: (acc, seat) => match acc {
+    ScanUnreadable { detail: d } => ScanUnreadable { detail: d }
+    ScanDuplicated { detail: d } => ScanDuplicated { detail: d }
+    ScanHeldOnce { record: r } =>
+      match attempt_slot_read(store: seat.slots, reference: reference) {
+        AttemptSlotHeld { record: _, generation: _ } =>
+          ScanDuplicated { detail: join(["the attempt reference ", reference as String, " holds a slot in more than one seat directory; which attempt it names cannot be established"], "") }
+        AttemptSlotUnreadable { detail: d } => ScanUnreadable { detail: join(["the attempt slot for ", reference as String, " could not be read: ", d], "") }
+        AttemptSlotAbsent => ScanHeldOnce { record: r }
+      }
+    _ =>
+      match attempt_slot_read(store: seat.slots, reference: reference) {
+        AttemptSlotHeld { record: rec, generation: _ } => ScanHeldOnce { record: recover_readback_record_of(rec: rec) }
+        AttemptSlotUnreadable { detail: d } => ScanUnreadable { detail: join(["the attempt slot for ", reference as String, " could not be read: ", d], "") }
+        AttemptSlotAbsent => ScanNothingHeld
+      }
+  })
+}
+
+// THE BOTH READINGS TOGETHER, through the model: the attempt record from the seat that holds it, the
+// charge from the instance's capacity ledger. Anything short of a complete observation is unknown, with
+// the reason that made it so.
+fn compute_recover_readback_reading(instance: HostDashboardInstance, subject: ComputeCapacitySubject, reference: NonEmptyStr) -> RecoverReadbackReading {
+  match compute_capacity_store(subject: subject) {
+    ComputeCapacityStoreUnready { area: a, detail: d } =>
+      RecoverReadbackUnknown { detail: join(["the capacity ledger is not standing at ", a, ": ", d], "") }
+    ComputeCapacityStoreReady { store: ledger } =>
+      match compute_dispatch_seats(instance: instance) {
+        ComputeSeatsUnreadable { reason: r } => RecoverReadbackUnknown { detail: join(["the seat listing could not be read: ", r], "") }
+        ComputeSeatsListed { seats } =>
+          match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
+            ComputeSeatStoresUnready { detail: d } => RecoverReadbackUnknown { detail: join(["a seat's attempt store is not ready: ", d], "") }
+            ComputeSeatStoresReady { stores } =>
+              match recover_readback_scan(stores: stores, reference: reference) {
+                ScanUntouched => RecoverReadbackUnknown { detail: "no seat store was listed for this instance; there is nothing to read back" }
+                ScanUnreadable { detail: d } => RecoverReadbackUnknown { detail: d }
+                ScanDuplicated { detail: d } => RecoverReadbackUnknown { detail: d }
+                ScanNothingHeld =>
+                  match compute_seat_charge_returned(store: ledger, partition: subject.partition, reference: reference) {
+                    SeatChargeUnproven { detail: d } => RecoverReadbackUnknown { detail: join(["the seat charge is unproven: ", d], "") }
+                    SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, by: _, generation: _ } =>
+                      RecoverReadbackFacts { record: ReadbackRecordAbsent, charge: ReadbackChargeReturned }
+                    SeatChargeNeverAcquired { reference: _ } =>
+                      RecoverReadbackFacts { record: ReadbackRecordAbsent, charge: ReadbackChargeNeverAcquired }
+                    SeatChargeStillHeld { reference: _, acquired_at: _ } =>
+                      RecoverReadbackFacts { record: ReadbackRecordAbsent, charge: ReadbackChargeStillHeld }
+                  }
+                ScanHeldOnce { record: r } =>
+                  match compute_seat_charge_returned(store: ledger, partition: subject.partition, reference: reference) {
+                    SeatChargeUnproven { detail: d } => RecoverReadbackUnknown { detail: join(["the seat charge is unproven: ", d], "") }
+                    SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, by: _, generation: _ } =>
+                      RecoverReadbackFacts { record: r, charge: ReadbackChargeReturned }
+                    SeatChargeNeverAcquired { reference: _ } =>
+                      RecoverReadbackFacts { record: r, charge: ReadbackChargeNeverAcquired }
+                    SeatChargeStillHeld { reference: _, acquired_at: _ } =>
+                      RecoverReadbackFacts { record: r, charge: ReadbackChargeStillHeld }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE READ-BACK DOOR ITSELF: resolve the instance from the repo root, resolve the capacity subject,
+// read the two facts through the model, render. Exits through the ONE mapping above: 0 established,
+// 2 unknown. It releases nothing, writes nothing, and decides nothing.
+fn compute_recover_readback_cli(repo_root: String, reference: String) -> CliWireResponse {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: r } =>
+      CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["no dashboard instance is rooted at ", r], "")), exit: ExitFailure { code: 2, reason: "recover-readback: the host's dashboard instance could not be resolved" } }
+    DashboardInstanceResolved { instance } =>
+      if trim(s: reference) == "" {
+        CliWirePrintable { bytes: recover_readback_unknown_line(detail: "a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)"), exit: ExitFailure { code: 2, reason: "recover-readback: the reference is required" } }
+      } else {
+        match compute_capacity_subject(instance: instance) {
+          ComputeSubjectHostUnresolved { host: h } =>
+            CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["the capacity subject for host ", h, " does not resolve"], "")), exit: ExitFailure { code: 2, reason: "recover-readback: the capacity subject could not be resolved" } }
+          ComputeSubjectResolved { subject, appropriation: _ } =>
+            match compute_recover_readback_reading(instance: instance, subject: subject, reference: trim(s: reference) as NonEmptyStr) {
+              RecoverReadbackFacts { record: record, charge: charge } =>
+                CliWirePrintable { bytes: recover_readback_line(record: record, charge: charge), exit: ExitSuccess }
+              RecoverReadbackUnknown { detail: d } =>
+                CliWirePrintable { bytes: recover_readback_unknown_line(detail: d), exit: ExitFailure { code: 2, reason: "recover-readback: the read-back could not be established" } }
+            }
+        }
+      }
   }
 }
 

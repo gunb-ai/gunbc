@@ -31,6 +31,9 @@ import gunbc.compute.remote_build_serving_setup {
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld,
+}
 import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv }
 import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
 import extdeps.languages.json.emit { JsonString }
@@ -1838,6 +1841,100 @@ test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
   }
 }
 
+// ---- THE SEAT RECOVERY LEG (increment 2) ----
+// The census arrives ALREADY JUDGED: its entries come from
+// gunbc.compute.attempt_lifecycle::recovery_write_authorization through the recovery door
+// (gunbc.compute.work_provider_local::compute_recover_catalog_cli), rendered and parsed back through
+// the door's own grammar. The plan only RENDERS them, and only when the identity leg is Met. These
+// cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
+// an unmet identity refuses the recovery alongside it.
+
+fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(), account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    serve_identity: sidecar,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    seat_census: census,
+  )
+}
+
+fn plan_census(d: RemoteBuildServingDesired, census: RecoverCatalogLegReading, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+}
+
+fn count_recover(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecoverStaleSeat { reference: _ } => true  _ => false })) }
+fn planned_recover_reference(ws: List<ConvergeAction>) -> String {
+  match first_where(ws, keep: a => match a { RecoverStaleSeat { reference: _ } => true  _ => false }) {
+    Absent => ""
+    Present { value: a } => match a { RecoverStaleSeat { reference: r } => r as String  _ => "" }
+  }
+}
+
+// GREEN: an established census entry the model AUTHORIZED — a terminal unit whose release is due —
+// plans the recovery: exactly one RecoverStaleSeat carrying that reference, no identity write, when the
+// identity leg is Met (a sidecar recording the binary's own sha).
+test fn a_stale_seat_plans_the_recovery_when_identity_is_met() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegStale { reference: "gunbc-build.job#1" as NonEmptyStr }] }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 1 && count_identity(ws) == 0 && planned_recover_reference(ws) == "gunbc-build.job#1"
+    }
+  }
+}
+
+// RED CONTROL (live holder): an established 'hold' entry — a live or too-early holder, which the model
+// DECLINED — is legitimately held and plans NOTHING. The host stays settled; recovering it would take
+// a seat from under its holder, which is the exact harm #16827's authorization exists to prevent.
+test fn a_legitimately_held_seat_plans_nothing() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegHeld { reference: "gunbc-build.job#2" as NonEmptyStr }] }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      plan_is_settled(plan) && count_recover(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL (unreadable slot): a census that could not establish itself — an unreadable slot, or one
+// reference sitting in two seat directories — is an unknown; unknowns dominate, the assessment is
+// indeterminate, and the plan REFUSES. The ARM is the assertion: a refused plan has nothing to
+// execute, so recovery never runs against a half-read seat pool (fail_closed).
+test fn an_unreadable_seat_census_refuses_the_plan() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegUnknown { detail: "one reference sits in two seat directories" }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL (the identity gate): the recovery is planned ONLY when the identity leg is Met. With the
+// sidecar absent the identity leg still needs its write, and the recovery CLI IS the binary the identity
+// documents — so the plan refuses the recovery alongside it, and the stale seat waits for the next run.
+test fn a_stale_seat_with_an_unmet_identity_refuses_the_plan() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegStale { reference: "gunbc-build.job#3" as NonEmptyStr }] }, sidecar: Present { value: sidecar_absent() })
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
 // ---- converge_order regression guard (rank-bucket drop; clever-raven-401) ----
 // converge_order once concatenated a FIXED list of rank buckets (r0..r9), so every ConvergeAction kind
 // past the largest bucket was silently filtered out of the ordered plan -- the rank-10 identity write,
@@ -1861,6 +1958,7 @@ fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
     InstallUserWorkSlice { unit_name: user_work_slice_unit_name, unit_path: "/run/systemd/user/gunbc-user-work.slice", memory_max: byte_size(1), memory_high: byte_size(1), memory_swap_max: byte_size(1), expected_content: "[Unit]" },
     InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" },
     RecordServeIdentity { install_path: "/opt/gunbc/bin/gunbc", revision: "deadbeef", sha256: "aaa" },
+    RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
   ]
 }
 test fn converge_order_preserves_every_action_kind() -> Bool {

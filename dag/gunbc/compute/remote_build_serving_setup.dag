@@ -59,6 +59,9 @@ import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 import extdeps.ssh.keys { authorized_key_entry_line }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, recover_catalog_leg_reading,
+}
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
   ObservationAttempt, ObservationEstablished, ObservationRefused, assess_by_deviations_and_unknowns,
@@ -152,6 +155,14 @@ type ServingDeviation
   // the slice's cgroup -- an empty user slice under a non-lingering account is torn down before anything
   // can read it -- so the converge enables lingering on the account before it installs the slice.
   | UserManagerNotLingering { account_name: NonEmptyStr }
+  // A seat whose holder is dead and whose launch deadline has passed: stale, recoverable. The plan
+  // emits RecoverStaleSeat only when the identity leg is Met (no ServeIdentityDrift deviation present);
+  // if the identity leg is not yet settled, the plan refuses (the recovery CLI is the binary the identity
+  // documents, so it cannot be invoked before that leg lands). A live or too-early holder is legitimately
+  // held and emits NO deviation; an unreadable slot or one reference in two seat dirs is observation
+  // unknown, which makes the whole assessment ServingIndeterminate (fail_closed: the census cannot
+  // classify against a partial reading).
+  | StaleSeatDetected { reference: NonEmptyStr }
 
 // The serve binary's IDENTITY SIDECAR, as a READING -- never a string sentinel. Decoded ONCE by the
 // converge's observe caller of parse_serve_binary_identity (the single serve-side format authority), so
@@ -189,6 +200,7 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     UserWorkSliceUncapped { unit_name, reason: _ } => concat("user_work.slice.", unit_name)
     ServeIdentityDrift { path: _, reason: _ } => "serve.binary.identity"
     UserManagerNotLingering { account_name: _ } => "user_manager.linger"
+    StaleSeatDetected { reference: _ } => "seat.stale"
   }
 }
 
@@ -233,6 +245,7 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     UserWorkSliceUncapped { unit_name, reason } => concat("user_work.slice (", unit_name, " not capped at the ceiling with swap forbidden: ", slice_cap_reason_text(reason: reason), ")")
     ServeIdentityDrift { path, reason } => concat((path as String), ".identity ", serve_identity_drift_reason_text(reason))
     UserManagerNotLingering { account_name } => concat("user_manager.linger (", (account_name as String), " not lingering; the user manager must be live before the slice is installed)")
+    StaleSeatDetected { reference } => concat("seat.stale (", (reference as String), " terminal with its release due; the recovery door must run)")
   }
 }
 
@@ -856,6 +869,13 @@ type ServingObserved {
   // absence -- absence is proven only by a leg established to the empty string (stat 'No such
   // file'). Typed per field so no joined wire format is minted for the comparator to re-parse.
   ledger_rows: List<ServingLedgerRowObserved>
+  // The seat census AS OBSERVED: the recovery door's rendering, parsed through the model. Established
+  // entries classify every seat the census read; a census that could not establish itself carries its
+  // detail and makes the assessment indeterminate (the plan REFUSES rather than recovering against a
+  // half-read seat pool). The EMPTY established census means 'the census ran and found no seat in need
+  // of the recovery write' — the default for a caller that has not wired the read (witnesses that do
+  // not exercise the recovery leg).
+  seat_census: RecoverCatalogLegReading = RecoverCatalogLegEstablished { entries: [] }
 }
 
 // ---------------------------------------------------------------------------
@@ -1317,6 +1337,13 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       }
       let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String))
       let identity_unknowns = serving_serve_identity_unknown(binary_sha: serve_identity_binary_sha, leg: o.serve_identity)
+      // The seat census: a STALE seat (the recovery write authorized THROUGH THE MODEL, by
+      // gunbc.compute.attempt_lifecycle::recovery_write_authorization inside the census) plans a
+      // recovery; a LEGITIMATELY HELD one (a live or too-early holder — the model declined) plans
+      // nothing; a census that could not establish itself is an unknown, and unknowns dominate —
+      // the plan REFUSES rather than recovering against a half-read seat pool.
+      let seat_deviations = serving_seat_census_deviations(leg: o.seat_census)
+      let seat_unknowns = serving_seat_census_unknown(leg: o.seat_census)
       assess_by_deviations_and_unknowns(
         evidence: ServingEvidence {
           account_uid: match o.passwd { ObservationEstablished { observed: t } => serving_passwd_uid(text: Present { value: t }, name: d.account_name)  ObservationRefused { cause: _ } => Absent },
@@ -1334,14 +1361,14 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           checkout_revision: match o.checkout_revision { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent },
           target_arch: match o.target_arch { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
         },
-        deviations: concat(concat(concat(deviations, concat(pin_deviations, ledger.deviations)), mode_shell_deviations), identity_deviations),
+        deviations: concat(concat(concat(concat(deviations, concat(pin_deviations, ledger.deviations)), mode_shell_deviations), identity_deviations), seat_deviations),
         // the elevation precondition, folded in FIRST: 'sudo -n' refused (or an elevation leg nobody
         // read) is itself an unknown, and unknowns dominate deviations in assess_by_deviations_and_unknowns,
         // so a refused elevation forces GoalIndeterminate even if a non-sudo leg also shows drift — the
         // apply can never read "drift" for a host whose sudo-dependent state it could not have written anyway.
         unknowns: concat(
           match o.elevation { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "elevation", cause: c.cause }] },
-          concat(concat(concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)), concat(mode_shell_unknowns, concat(serving_user_work_slice_unknowns(d: d, o: o), serving_user_manager_linger_unknowns(d: d, o: o)))), identity_unknowns),
+          concat(concat(concat(concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)), concat(mode_shell_unknowns, concat(serving_user_work_slice_unknowns(d: d, o: o), serving_user_manager_linger_unknowns(d: d, o: o)))), concat(identity_unknowns, seat_unknowns))),
         ),
       )
     }
@@ -1545,6 +1572,7 @@ fn serving_observed_from_reads(
   user_manager_linger: ObservationAttempt<Bool, ServingLegFailure>,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
+  seat_census: RecoverCatalogLegReading = RecoverCatalogLegEstablished { entries: [] },
 ) -> ServingObserved {
   // The elevation precondition applied ONCE here (not re-checked in each leg): when 'sudo -n true' was
   // refused, every sudo-dependent leg is ObservationRefused regardless of what the leg would have read,
@@ -1588,6 +1616,33 @@ fn serving_observed_from_reads(
     user_manager_linger: user_manager_linger,
     target_arch: target_arch,
     ledger_rows: ledger_rows,
+    seat_census: seat_census,
+  }
+}
+
+// The seat census's two chains, written together so a stale seat cannot be a deviation in one chain
+// and an unknown in the other (the ledger compare's ServingLedgerOutcome shape, one join). 'hold'
+// entries — a live or too-early holder, which the model DECLINED — emit NOTHING: declining is not a
+// deviation. A census that could not establish itself is an unknown, and unknowns dominate: the
+// assessment goes indeterminate and the plan REFUSES rather than recovering against a half-read pool
+// (gunbc.design_argument::fail_closed). The judgement itself is the model's — the census entries come
+// from gunbc.compute.attempt_lifecycle::recovery_write_authorization through
+// gunbc.compute.work_provider_local::compute_recover_catalog_for; this pair only renders them.
+fn serving_seat_census_deviations(leg: RecoverCatalogLegReading) -> List<ServingDeviation> {
+  match leg {
+    RecoverCatalogLegEstablished { entries: es } =>
+      fold(es, init: [], f: (acc, e) => match e {
+        CatalogLegStale { reference: r } => concat(acc, [StaleSeatDetected { reference: r }])
+        CatalogLegHeld { reference: _ } => acc
+      })
+    RecoverCatalogLegUnknown { detail: _ } => []
+  }
+}
+
+fn serving_seat_census_unknown(leg: RecoverCatalogLegReading) -> List<ServingUnknown> {
+  match leg {
+    RecoverCatalogLegEstablished { entries: _ } => []
+    RecoverCatalogLegUnknown { detail: d } => [ServingUnknown { item: "seat.census", cause: d }]
   }
 }
 
