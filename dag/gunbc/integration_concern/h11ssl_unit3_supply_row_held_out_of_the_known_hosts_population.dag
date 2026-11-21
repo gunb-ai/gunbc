@@ -1,0 +1,43 @@
+module gunbc.integration_concern.h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, h11ssl_unit3_reach_report_sighting_revision }
+
+data h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "fleet_intent_known_hosts"),
+    requirement: "a host joins gunbc.fleet.fleet_intent::fleet_intent_known_hosts only once the fleet's per-host goal can be EVALUATED for it: gunbc.fleet.fleet_health::host_goal folds over that population and refuses the WHOLE fleet's check when a single rostered host has no fan-expectation row, and its telemetry path is board-family specific (an asrock/altrad8ud profile), which an H11SSL-i board does not have",
+    standing: RequirementUnestablished {
+      decided_by: "two reads and one decision. The reads: the fan read for this board (extdeps.bmc.supermicro_oem_fan GetZoneDuty, reached read-only through gunbc.machine_intake.fan_observe), which is what a HostFanTachExpectation row for this host needs, and the SMBIOS/hardware read that gives the board its own figures. The decision: which telemetry route an H11SSL-i answers, since the health goal's telemetry profile is board-family specific today. The reads are the same in-band dispatch this unit's other owed reads name.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "supermicro_h11ssl_unit3_host"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "supermicro_h11ssl_unit3_baseboard"),
+      decl_ref(module_path: "gunbc.fleet.fleet_health", decl_name: "host_goal"),
+      decl_ref(module_path: "gunbc.fleet.fleet_fan_tach_expectation", decl_name: "fleet_fan_tach_expectations"),
+    ],
+  },
+  question: "Is what keeps this unit out of fleet work the missing fan expectation, the missing telemetry profile for its board family, or both -- and does an H11SSL-i board need its own telemetry profile before ANY H11SSL host can hold fleet work, which would make this a family gap rather than a unit gap?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
+        },
+        tail: [],
+      },
+      account: "Sighted 2026-11-16 while adding this unit's supply rows. The host row exists at catalog grain, and the host was NOT put into fleet_intent_known_hosts: that population is the difference between a machine the fleet has a supply statement about and one it will schedule work onto, and joining it today would refuse the fleet-wide health check for EVERY host, not just this one, because gunbc.fleet.fleet_health::host_goal refuses its whole fold on a single missing per-host row. The operator's fan report is the reason the fan read cannot be skipped: the board needs a floor the fleet has no row for, and a hand setting that reverts on power-off is not a state the fleet holds. Held behind the reads named in the requirement, not behind a date.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

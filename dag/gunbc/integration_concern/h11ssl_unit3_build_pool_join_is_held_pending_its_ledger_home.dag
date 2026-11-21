@@ -1,0 +1,83 @@
+module gunbc.integration_concern.h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, h11ssl_unit3_build_pool_carve_derived_revision, h11ssl_unit3_build_pool_fork_sighting_revision, h11ssl_unit3_reach_report_sighting_revision }
+
+// AN INSTALL THAT ALREADY HAPPENED LEAVES NO PRE-INSTALL DISK CAPTURE.
+// This unit's supply rows are written, and the host is deliberately NOT in the population that turns a
+// supply row into fleet work. Written while that is true, with the reads that would dissolve it named.
+// This unit holds one CI runner slot back for the remote-build pool without being a member of that pool.
+// The asymmetry is a decision with a home and an owner, not a line in a capacity file.
+data h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build_hosts", decl_name: "remote_build_serving_hosts"),
+    requirement: "a host joins gunbc.compute.remote_build_hosts::remote_build_serving_hosts -- the ONE authority for which hosts serve remote builds -- only once its capacity ledger has a home the remote-build account can traverse; that module states the condition and why srv1 alone satisfies it. No width plan may imply a membership that roster does not grant",
+    standing: RequirementUnestablished {
+      decided_by: "the build lane (clever-raven-401), when this unit's ledger has a home -- which needs the disk and board reads this unit's intake module owes. The reservation entry in gunbc.runner.runner_capacity_plan is deleted the moment the roster names the host, or the moment the lane says the host will never serve build units; the reservation must not outlive the pending decision either way.The width plan already treats the entry as PENDING rather than membership: gunbc.runner.runner_capacity_plan::remote_build_pool_slot_reservation counts it only for a host this roster has admitted (read through remote_build_host_is_serving), so today it holds back no width, and it starts holding the ruling's slot back the moment the roster admits the host -- the join stays this list's decision, not the reservation's. The candidate fork between this list and that roster, the derivation that would close it, and the ruling that keeps srv1's plan untouched inside this enrollment, are the second sighting on this row.",
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "host_build_pool_reservation"),
+    tail: [
+      decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+      decl_ref(module_path: "gunbc.compute.remote_build_hosts", decl_name: "remote_build_serving_hosts"),
+      decl_ref(module_path: "gunbc.fleet.fleet_enrollment", decl_name: "fleet_enrollments"),
+    ],
+  },
+  question: "Does this box join the remote-build pool at all? It is enrolled for CI runner and inference serving, and its two reported T10 cards point at inference rather than builds -- and if it does not join, who removes the held slot: the change that held it, or the roster's owner when it declines?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.design_ruling", decl_name: "remote_build_ssh_dispatch_is_an_admitted_scaffold"),
+        },
+        tail: [],
+      },
+      account: "Sighted 2026-11-16 while wiring this unit into the width plan. The ruling carves one runner slot per joining host out of that host's CI width; this host is enrolled for CiRunnerParticipation and has never been measured, so the plan admits no positive width for it today, and the held slot is the plan refusing to spend that slot while the build lane's decision is open. The host is NOT in the serving roster, and the roster's own condition is not met by this board today. Holding the slot is the conservative direction: an unheld slot gets spent by a GitHub width and then has to be taken back out of a running plan.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: h11ssl_unit3_build_pool_fork_sighting_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.compute.remote_build_hosts", decl_name: "remote_build_serving_hosts"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+            },
+          ],
+        },
+        account: "Sighted 2026-11-17 in review 96009, read against head 091f3a9b924ba4ff63268fee3f289d8ef14a27c6, and ruled the same day by smart-crane-730 (msg_450aa9c1-089b-41dd-80ae-dbf0745b04fe): this shape stands for this enrollment, and the stronger derivation is a follow-up the build lane owns. THE DIVERGENCE: this list answers which hosts hold a build slot from a different place than gunbc.compute.remote_build_hosts::remote_build_serving_hosts answers which hosts serve remote builds, so it is a candidate fork of that roster, and the two can already disagree -- this unit is on one list and not the other. The width plan closes the fork for EFFECT rather than for existence: remote_build_pool_slot_reservation subtracts width only for a host remote_build_host_is_serving admits, so a row the roster has not admitted holds back no width. THE FOLLOW-UP the review named: derive this list from the roster itself, one slot per admitted host, which would close the divergence today -- and carried with it a consequence this enrollment must not spend, because the only host the roster admits today is srv1, so deriving it lowers srv1's spendable ceiling by one slot. That is a change to a measured host's plan inside the build lane's ledger, and it belongs to that lane, not to a new enrollment. Either way the fork closes when ONE authority answers both questions: the roster grants this unit's join and its reservation row is deleted, or the lane declines and this row is deleted.",
+      },
+      ConcernSighting {
+        revision: h11ssl_unit3_build_pool_carve_derived_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "host_build_pool_reservation"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.runner.runner_slot_desired", decl_name: "build_pool_carve_is_due"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.runner.runner_capacity_plan", decl_name: "remote_build_pool_slot_reservation"),
+            },
+          ],
+        },
+        account: "SUPERSEDES THE SIGHTING ABOVE, AND CORRECTS ONE SENTENCE IN IT. main 5215eaaf821e brought gunbc.runner.runner_slot_desired: host_build_pool_reservation carves exactly gunbc_runner_slot_memory_max when build_pool_carve_is_due(rostered, carries_own_ledger) -- on the serving roster AND resolving no dashboard instance of its own -- and that one function is read by the CI memory envelope and by compute.host_capacity::host_capacity_build_seat. Two consequences. First, the capacity plan's hand-kept list was exactly the second place review 96009 called it, with an existing single authority sitting beside it. Second, the previous sighting's claim that deriving would lower srv1's spendable ceiling was FALSE: srv1 is on the roster AND resolves dashboard instances, so the carve is not due for it and no measured host's plan moves. Ruled by smart-crane-730 at 2026-11-17T04:34:45Z (msg_18413ff0-fd25-4d8f-81bb-0a14cf65d4f7), on the corrected facts: the list is deleted as a carrier; the plan converts THE SAME CARVE into the unit it plans in (measure_fit_count_floor over gunbc_runner_slot_memory_max, so a due carve is one held slot and an absent carve is none); nothing is added to the serving roster; this unit's pending join lives only on this row. The fork is closed by that, not by keeping two lists in step: one authority grants a carve, one reader spends it in slot units, and three claims in test.claim.runner.runner_capacity_plan_witness pin equality with the carve over every enrolled host, ken's zero while unrostered, and the bite -- a rostered host with no instance holds exactly one slot and that slot changes the width admission. What stays open is the ORIGINAL question, unchanged: does this box join the remote-build pool, which needs its ledger home, which needs the disk and board reads it still owes. And the dissolution is unchanged: when the SSH scaffold is replaced by work-exec-2's durable route, the carve goes with it and this row is deleted.",
+      },
+    ],
+  },
+  disposition: Open,
+}

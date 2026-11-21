@@ -1,0 +1,29 @@
+module gunbc.integration_concern.session_expiry_refused_as_free_text_beside_typed_stale_evidence
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, SuspectedFork, credential_consolidation_base_revision, session_expiry_refused_as_free_text_beside_typed_stale_evidence_authorities }
+
+data session_expiry_refused_as_free_text_beside_typed_stale_evidence: IntegrationConcern = IntegrationConcern {
+  identity: "session_expiry_refused_as_free_text_beside_typed_stale_evidence",
+  kind: SuspectedFork {
+    authorities: session_expiry_refused_as_free_text_beside_typed_stale_evidence_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.auth.request_authentication", decl_name: "human_authentication_decision"),
+    tail: [],
+  },
+  question: "Is an expired authenticated session the same fact as stale credential evidence? request_authentication refuses it as AccessPolicyRefused with a sentence, while std.access now carries AccessEvidenceStale with the observation and the deadline.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_consolidation_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.request_authentication", decl_name: "human_authentication_decision") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.access", decl_name: "AccessRefusalCause") }],
+      },
+      account: "Seen while checking which modules match std.access AccessRefusalCause before adding arms. The session's expiry is on a wall Timestamp, not a monotonic deadline, so whether it inhabits CredentialValidity or only the refusal arm is undecided.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

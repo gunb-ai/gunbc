@@ -1,0 +1,38 @@
+module gunbc.integration_concern.normalize_drops_fn_with_out_of_scope_capability
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+// Recorded by lane jolly-cat-157 (run-step target decl_name check, PR #16675), per parent directive
+// msg_390d61fd: a fail-open seen in its own right, NOT fixed in that PR (which stopped at the pre-normalize
+// parse so a real capability entry is no longer refused). The fix owed is for normalize/finish, not the check.
+data normalize_drops_fn_with_out_of_scope_capability: IntegrationConcern = IntegrationConcern {
+  identity: "normalize_drops_fn_with_out_of_scope_capability",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped"),
+    requirement: "a module that declares a top-level fn whose `uses` clause names an out-of-scope capability must refuse, not have the fn node silently dropped: today the ImportScoped normalize/finish route lets a real run-time entry vanish from the active roots while the module reports an Accepted tree, a fail-open (DESIGN gunbc.design_argument::fail_closed: a failure arm refuses, never widens)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped"),
+    tail: [decl_ref(module_path: "v2.compiler.live_resolution_context", decl_name: "live_context_finish")],
+  },
+  question: "Should normalize_scoped, or the ImportScoped live_context_finish, refuse a module whose fn has an out-of-scope `uses` capability rather than dropping the fn node and returning an Accepted tree that is missing that entry?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "182b850af64d33b827bb14fb5f94875bbd26ddb2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.normalize", decl_name: "normalize_scoped") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v2.compiler.live_resolution_context", decl_name: "live_context_finish") }],
+      },
+      account: "Found while resolving run-step target entries in v2.cli.reference_check. Reading entry existence off the normalized/active roots (ImportScoped finish), 27 real capability entries -- `fn name() -> ProcessExit uses <capability>` -- answered RunStepTargetDeclarationAbsent although the fn is declared in the target module and the module read cleanly: the capability-using fn node is dropped rather than the module refusing. The check was switched to read the pre-normalize parse tree (PR #16675); the drop itself is NOT fixed here. Sample entries verified present in source yet absent from the normalized root: gcp_iam_converge_request_wet (dag/gunbc/auth/gcp_iam_converge_run.dag:194) and approval_keyring_converge_wet (dag/gunbc/auth/approval_keyring_converge.dag:319).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

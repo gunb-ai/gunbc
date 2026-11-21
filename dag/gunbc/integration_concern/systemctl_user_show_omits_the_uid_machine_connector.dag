@@ -1,0 +1,35 @@
+module gunbc.integration_concern.systemctl_user_show_omits_the_uid_machine_connector
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data systemctl_user_show_omits_the_uid_machine_connector: IntegrationConcern = IntegrationConcern {
+  identity: "systemctl_user_show_omits_the_uid_machine_connector",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_machine_connector"),
+    requirement: "a systemctl --user read of a unit property carries the UID@ machine connector the way the daemon-reload and start and enable family already do, so a root-elevated converge reads the owning UID's user manager and not root's",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_daemon_reload_argv") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_user_property_argv"),
+    tail: [ decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_machine_connector") ],
+  },
+  question: "How does a systemctl --user show reach the owning UID's user manager from a root-elevated converge: does the show argv grow the UID@ connector its sibling builders carry, or does every user-bus property read route through a uid-taking builder so a bare --user never reads root's manager for another uid's unit?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "ad2f4552470380f92edaa354ecc76f464dc97a64",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_show_user_property_argv") },
+        tail: [ CitesDeclaration { declaration: decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_daemon_reload_argv") } ],
+      },
+      account: "systemctl_show_user_property_argv spells systemctl --user show with no UID@ connector, while systemctl_user_daemon_reload_argv carries it for the same user bus. A root-elevated converge that reads a user unit's property through the show builder reaches root's manager and reports about a unit that was never touched. The slice readback in remote_build_serving_converge reads the slice's cgroup files through the same function the admitting reader uses, so the slice leg is sound while this show builder stays wrong for its roadmap belt consumer.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

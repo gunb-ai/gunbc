@@ -13,7 +13,11 @@ import gunbc.integration_concern {
   ExistingHome, HomeUnresolved, HistoricalDeclaration, RetainedExecutionResult, IntegrationEvidence,
   RequirementUnestablished, ConcernSighting, CitesDeclaration, PreservedObligation,
   distinct_authorities, concerns_for, concerns_in_subtree, concern_is_open, kind_declarations,
-  concern_text, integration_concerns, fork_rows_have_distinct_authorities, reading_text,
+  concern_text,
+}
+import gunbc.integration_concern.roster { integration_concern_roster }
+import gunbc.integration_concern.reading {
+  fork_rows_have_distinct_authorities, reading_text,
 }
 
 // SUPPLIED ROWS (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the relevance and
@@ -144,7 +148,8 @@ test fn evidence_is_cited_not_implicated_and_an_obligation_holder_is_implicated(
 // The committed-row re-check. Its red cannot be authored here: DistinctAuthorities is sole_constructor,
 // and the compiler refuses a literal of it outside gunbc.integration_concern (measured: "sole_constructor
 // type 'DistinctAuthorities' cannot be constructed outside its defining module"). So a repeated authority
-// can only enter through a row in that module, which is what this re-check reads.
+// can only enter through a row of the register -- the sealed half is built in
+// gunbc.integration_concern and the row file imports it -- which is what this re-check reads.
 test fn committed_fork_rows_name_distinct_authorities() -> Bool {
   fork_rows_have_distinct_authorities()
 }
@@ -158,31 +163,31 @@ fn names(rows: List<IntegrationConcern>, identity: String) -> Bool {
 }
 
 test fn the_real_register_answers_a_scoped_reading_by_identity() -> Bool {
-  names(rows: concerns_for(s: scope(changed: ["product.printed_chassis.print_preparation"], referenced: []), rows: integration_concerns), identity: "support_restriction_scope")
-    && names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.fleet.print_converge"]), rows: integration_concerns), identity: "started_operation_ownership")
-    && names(rows: concerns_for(s: scope(changed: [], referenced: ["product.printed_chassis.card_cooling_route"]), rows: integration_concerns), identity: "duct_placement_chosen_by_hand")
-    && !names(rows: concerns_for(s: scope(changed: ["product.printed_chassis.assembly_geometry"], referenced: []), rows: integration_concerns), identity: "support_restriction_scope")
+  names(rows: concerns_for(s: scope(changed: ["product.printed_chassis.print_preparation"], referenced: []), rows: integration_concern_roster), identity: "support_restriction_scope")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.fleet.print_converge"]), rows: integration_concern_roster), identity: "started_operation_ownership")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["product.printed_chassis.card_cooling_route"]), rows: integration_concern_roster), identity: "duct_placement_chosen_by_hand")
+    && !names(rows: concerns_for(s: scope(changed: ["product.printed_chassis.assembly_geometry"], referenced: []), rows: integration_concern_roster), identity: "support_restriction_scope")
     // The target-syntax concern's affected set is read from its ledger: a ledgered TypeScript client
     // and a ledgered Swift printer each make it relevant, and a module outside the ledger does not.
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.site.build_meter_client"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.approve_ios_swift_operation_errors"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.site.element.build_meter"], referenced: []), rows: integration_concerns), identity: "target_syntax_built_by_hand_in_application_modules")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.site.build_meter_client"], referenced: []), rows: integration_concern_roster), identity: "target_syntax_built_by_hand_in_application_modules")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.approve_ios_swift_operation_errors"], referenced: []), rows: integration_concern_roster), identity: "target_syntax_built_by_hand_in_application_modules")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.site.element.build_meter"], referenced: []), rows: integration_concern_roster), identity: "target_syntax_built_by_hand_in_application_modules")
 
     // THE BYTE-SEQUENCE-SEARCH FORK ROW, sighted by the Mt. Collins UI asset observer. Its authorities
     // sit in seven modules, so a change to any one of them makes it relevant, and the reading is exact:
     // the module path above the machine_intake module is NOT relevant, because relevance compares whole
     // module paths and never walks namespace ancestry.
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake.mtcollins1_ui_status_asset_observation"], referenced: []), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
-    && names(rows: concerns_for(s: scope(changed: [], referenced: ["extdeps.version.semver"]), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake"], referenced: []), rows: integration_concerns), identity: "byte_sequence_search_reimplemented_per_module")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake.mtcollins1_ui_status_asset_observation"], referenced: []), rows: integration_concern_roster), identity: "byte_sequence_search_reimplemented_per_module")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["extdeps.version.semver"]), rows: integration_concern_roster), identity: "byte_sequence_search_reimplemented_per_module")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.machine_intake"], referenced: []), rows: integration_concern_roster), identity: "byte_sequence_search_reimplemented_per_module")
 
     // THE FLEET-AUTOMATION-PRINCIPAL FORK ROW (PR 16079). Its authorities sit in two fleet modules and its
     // affected set includes the diskless runner boot module, so a change to any one of the three makes it
     // relevant, while the namespace above them does not -- relevance compares whole module paths and never
     // walks ancestry.
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.fleet_posix_accounts"], referenced: []), rows: integration_concerns), identity: "fleet_automation_principal_has_two_names")
-    && names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.runner.runner_host_medium"]), rows: integration_concerns), identity: "fleet_automation_principal_has_two_names")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet"], referenced: []), rows: integration_concerns), identity: "fleet_automation_principal_has_two_names")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.fleet_posix_accounts"], referenced: []), rows: integration_concern_roster), identity: "fleet_automation_principal_has_two_names")
+    && names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.runner.runner_host_medium"]), rows: integration_concern_roster), identity: "fleet_automation_principal_has_two_names")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet"], referenced: []), rows: integration_concern_roster), identity: "fleet_automation_principal_has_two_names")
 }
 
 // THE DEPLOY-READER/CONVERGER ORDERING GAP, reachable by the declarations it names (review 95811 item 2).
@@ -190,13 +195,12 @@ test fn the_real_register_answers_a_scoped_reading_by_identity() -> Bool {
 // module, or the converger-brought-up module each makes it relevant, and a module outside them does not --
 // relevance compares whole module paths and never walks namespace ancestry.
 test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and_converger() -> Bool {
-  names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.live_deploy.deploy_artifact_read_sets"]), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.emit"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.apply_legs"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.print_converge"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
-    && !names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy"], referenced: []), rows: integration_concerns), identity: "deploy-readers-must-order-after-tree-converger")
+  names(rows: concerns_for(s: scope(changed: [], referenced: ["gunbc.live_deploy.deploy_artifact_read_sets"]), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.emit"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy.apply_legs"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.fleet.print_converge"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
+    && !names(rows: concerns_for(s: scope(changed: ["gunbc.live_deploy"], referenced: []), rows: integration_concern_roster), identity: "deploy-readers-must-order-after-tree-converger")
 }
-
 
 // EVERY ROW RENDERS (a sighting authored as a list literal where the field type says
 // FreeSemigroup<SightingEvidence> typechecks into a plain list and dies only when someone asks its head --
@@ -212,7 +216,7 @@ test fn the_deploy_reader_converger_ordering_gap_is_reachable_by_its_readers_and
 // this claim is the rung-2 interim the row records, not the guarantee -- the guarantee is the typecheck-side
 // inhabitance refusal the row's trigger names.
 test fn every_row_renders_through_the_reading() -> Bool {
-  let text: String = reading_text(title: "every row, rendered", rows: integration_concerns)
+  let text: String = reading_text(title: "every row, rendered", rows: integration_concern_roster)
   string_contains(s: text, pattern: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer")
     && string_contains(s: text, pattern: "the lease table read naming which MAC holds 192.168.1.236")
 }
