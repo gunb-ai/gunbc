@@ -48,7 +48,8 @@ import gunbc.compute.work_provider_local {
   compute_work_identity, compute_execution_identity, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
   ComputeExecOk, ComputeExecFailed, compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
   ComputeMemoized, ComputeRecomputed, compute_store_read_decide, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused,
-  ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, NoComputeDependency,
+  ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, is_compute_command_refused,
+  compute_command_argv_words_of, NoComputeDependency,
   compute_dependency_decide, ComputeDependencyResolved, ComputeDependencyRefused,
 }
 import std.materialization_object {
@@ -823,14 +824,78 @@ test fn the_claim_window_keys_apart_and_binds_the_unit_environment() -> Bool {
     && count(compute_operation_env(op: work_default_build())) == 0
 }
 
-// THE RUNNER IS TOLD THE MODE THE KEY SAYS. claim_batch defaults to hermetic, so a wet request that
-// spelled no flag ran hermetic under a wet identity. RED against an argv that omits --wet.
+// THE RUNNER IS TOLD THE MODE THE KEY SAYS, AND THE REQUEST IS A CLAIM REQUEST. The old form of this
+// control existed because `claim_batch` defaulted to hermetic: a wet request that spelled no flag ran
+// hermetic under a wet identity. On the one route the mode is a required argument of the request, so the
+// guarantee is now double -- the argv shows the mode the key carries (pinned here, in both directions),
+// and the call site cannot be written without deciding it. The subject is a REAL claim of the claim
+// universe: this used to pass `"dag/t.dag"` and a name that exists nowhere, which was harmless while the
+// builder spelled words for anything it was handed and is a refusal now that the request is admitted.
 test fn a_claim_run_names_its_mode_in_both_directions() -> Bool {
-  let layout = compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "abc")
-  let wet = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, dependency: NoComputeDependency)
-  let hermetic = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, dependency: NoComputeDependency)
-  any(wet, a => a == "--wet") && !any(wet, a => a == "--hermetic")
-    && any(hermetic, a => a == "--hermetic") && !any(hermetic, a => a == "--wet")
+  let layout = compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "claim-mode")
+  let wet = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/test/claim/github_pull_request_decode_witness.dag" as FilePath,
+      functions: "the_recorded_pull_request_body_decodes_at_all" as NonEmptyStr,
+      hermetic: false,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  let hermetic = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/test/claim/github_pull_request_decode_witness.dag" as FilePath,
+      functions: "the_recorded_pull_request_body_decodes_at_all" as NonEmptyStr,
+      hermetic: true,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  // A REFUSAL IS A RED, NOT A PASS: these rows name a claim module and one of its residents, so a
+  // builder that cannot spell them has broken and must say so rather than compare two empty word lists.
+  !is_compute_command_refused(command: wet)
+    && !is_compute_command_refused(command: hermetic)
+    && any(compute_command_argv_words_of(command: wet), a => a == "--wet")
+    && !any(compute_command_argv_words_of(command: wet), a => a == "--hermetic")
+    && any(compute_command_argv_words_of(command: hermetic), a => a == "--hermetic")
+    && !any(compute_command_argv_words_of(command: hermetic), a => a == "--wet")
+}
+
+// A SUBJECT OUTSIDE THE CLAIM UNIVERSE IS REFUSED, NOT RUN SMALLER. This is the half the type exists
+// for: `--entry dag/gunbc/compute/work_request.dag` is a production module, and under the legacy builder
+// it produced an argv that ran whatever it found. Under the typed builder the whole request comes back
+// refused, with the row it could not name -- so a compute record can never again say "we ran the claims
+// of X" about something that was never a claim of X. The red half is the same request with a claim-module
+// entry, which must NOT refuse.
+test fn a_compute_claim_request_refuses_a_subject_that_is_not_a_claim() -> Bool {
+  let layout = compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "claim-refusal")
+  let not_a_claim = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/gunbc/compute/work_request.dag" as FilePath,
+      functions: "work_refusal_detail" as NonEmptyStr,
+      hermetic: true,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  let is_a_claim = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/test/claim/github_pull_request_decode_witness.dag" as FilePath,
+      functions: "the_recorded_pull_request_body_decodes_at_all" as NonEmptyStr,
+      hermetic: true,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  is_compute_command_refused(command: not_a_claim) && !is_compute_command_refused(command: is_a_claim)
 }
 
 // A BUILD RECORD CARRIES ITS BINARIES AS PARTS, AND THE DECODE ADMITS NOTHING ELSE. RED against a

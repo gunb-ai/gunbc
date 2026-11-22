@@ -113,8 +113,20 @@ import gunbc.emitted_subject_build_gate {
   NativeStepMemoryInput, native_step_memory_inputs, native_product_reuse_env_name, native_product_reuse_fresh_value,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_job_cgroup_ownership }
-import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
+import gunbc.gunbc_cli_command {
+  gunbc_test_invocation_words,
+  TestBatchMode,
+  HermeticBatch,
+  WetBatch,
+  gunbc_test_batch_invocation_words,
+  gunbc_test_batch_hermetic_spelling,
+}
 import gunbc.cli_invoke { invocation_words_bare }
+import gunbc.instruments.host_prelude {
+  ClaimOperand,
+  ClaimOperandUnnameable,
+  claim_identity_operand,
+}
 import extdeps.bazel.label { render_label }
 import gunbc.compute.host_capacity {
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
@@ -631,14 +643,208 @@ fn provide_result_document(r: ProvideResult) -> String {
 // the binaries the SAME subject's build produced -- the verified byte-part readings of that build's
 // record in the materialization store (compute_dependency_read) -- so a worker never checks its .dag
 // with a compiler built from a different tree, and never executes bytes the store did not verify.
-// THE MODE IS ALWAYS SPELLED. claim_batch defaults to hermetic, so leaving the flag off for a wet
-// request ran it hermetic while its identity said wet -- the key and the realization answering two
-// different questions. Both arms now name their mode, so the run is the operation the key describes.
+// THE MODE IS A REQUIRED ARGUMENT OF THE REQUEST, NOT A FLAG THAT MAY BE OMITTED. This used to read
+// "the mode is always spelled", because `claim_batch` defaulted to hermetic and a request that left the
+// flag off ran hermetic while its identity said wet -- the key and the realization answering two
+// different questions. On the one route the guarantee moved from the argv into the request's TYPE:
+// `gunbc_test_batch_invocation_words` takes the mode as an argument, so this call site cannot be written
+// without deciding it, and `gunbc.gunbc_cli_command`'s admission grants the same mode the words name (a
+// `gunbc test` with no mode flag is Hermetic by admission, which is why Hermetic needs no word here).
+// The key and the realization answer one question, and it is answered by the compiler rather than by a
+// convention a later edit can drop.
 // THE ONE TARGET AUTHORITY IS cargo's --target-dir, NOT the CARGO_TARGET_DIR environment variable:
 // sccache hashes every CARGO_* variable of a rustc invocation into the Rust compile key
 // (extdeps.cache.sccache sccache_rust_key_facts), so exporting the per-identity target through the
 // environment made every identity's key unique and no Rust compile was ever reused across identities.
-fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
+// ONE OPERAND PER NAMED FUNCTION, THROUGH THE ROUTE'S IDENTITY RULE. The work request keeps its shape
+// -- a module path and a comma-separated list of function names, both part of the request KEY, which a
+// caller migration must not perturb -- and the words it turns into are labels admitted by
+// `claim_identity_operand`. A name the route cannot spell is NOT dropped: the raw entry goes through as
+// an operand and `gunbc.gunbc.target_invocation`'s admission refuses the run with a located reason, so a
+// malformed subject fails the work loudly instead of running a subset the key never described. That is
+// the difference between a refusal and a silent shrink, and this call site has no error channel of its
+// own to be polite about.
+// THE CLAIM ARGV, OR A REFUSAL -- NEVER A SMALLER RUN. One operand per named function, admitted by
+// `claim_identity_operand`, the same rule `host_prelude`'s pooled builder admits rows through; the first
+// name the route cannot spell refuses the WHOLE request, with the row and the reason. Two builders with
+// two refusal points is a fork, so this one refuses rather than passing the raw entry through and
+// letting the route's admission be the one that notices: the request key and the argv the worker runs
+// then cannot disagree, and "we ran something other than what the key said" is not available to anyone.
+type ComputeClaimArgv
+  = ComputeClaimArgvBuilt { argv: List<String> }
+  | ComputeClaimArgvRefused { entry: String, function: String, reason: String }
+
+fn compute_claim_argv(
+  layout: ComputeLayout,
+  dependency: ComputeDependency,
+  entry: NonEmptyStr,
+  functions: NonEmptyStr,
+  hermetic: Bool
+) -> ComputeClaimArgv {
+  match compute_claim_operands(entry: entry, functions: functions) {
+    ComputeClaimOperandsRefused { entry: e, function: f, reason: r } => ComputeClaimArgvRefused {
+      entry: e as String,
+      function: f as String,
+      reason: r as String,
+    }
+    ComputeClaimOperandsBuilt { operands: operands } => ComputeClaimArgvBuilt {
+      argv: concat(
+        [compute_dependency_program(dependency: dependency, bin: GunbcDriver)],
+        invocation_words_bare(
+          words: gunbc_test_batch_invocation_words(
+            operands: operands,
+            mode: if hermetic { HermeticBatch } else { WetBatch },
+            source_roots: [join([layout.checkout, "/dag"], ""), join([layout.checkout, "/src/v2"], "")]
+          )
+        ),
+        invocation_words_bare(
+          words: gunbc_test_batch_hermetic_spelling(mode: if hermetic { HermeticBatch } else { WetBatch })
+        ),
+      ),
+    }
+  }
+}
+
+type ComputeClaimOperands
+  = ComputeClaimOperandsBuilt { operands: List<String> }
+  | ComputeClaimOperandsRefused { entry: NonEmptyStr, function: NonEmptyStr, reason: NonEmptyStr }
+
+fn compute_claim_operands(entry: NonEmptyStr, functions: NonEmptyStr) -> ComputeClaimOperands {
+  fold(
+    functions.split(delimiter: ","),
+    init: ComputeClaimOperandsBuilt { operands: [] },
+    f: (acc, name) => match acc {
+      ComputeClaimOperandsRefused { entry: e, function: f, reason: r } => ComputeClaimOperandsRefused {
+        entry: e,
+        function: f,
+        reason: r,
+      }
+      ComputeClaimOperandsBuilt { operands: built } => match claim_identity_operand(
+        entry: entry as String,
+        function: name as String
+      ) {
+        ClaimOperand { label: label } => ComputeClaimOperandsBuilt { operands: concat(built, [label]) }
+        ClaimOperandUnnameable { entry: e, function: f, reason: r } => ComputeClaimOperandsRefused {
+          entry: e,
+          function: f,
+          reason: r,
+        }
+      }
+    }
+  )
+}
+
+// THE ONE TYPED ENTRY TO A WORK UNIT'S ARGV. `Built` carries the words the systemd unit execs;
+// `Refused` carries the request's own row and the reason the route could not name it, and it stops the
+// launch. The split is the whole point: before it, a claim request produced an argv whatever its rows
+// said, and a subject outside the claim universe turned into a run of something the key never described.
+// Claim requests go to `compute_claim_argv` (identity-admitted, first unnameable name refuses the batch,
+// the same rule and the same refusal point as `host_prelude`'s pooled builder); every other operation
+// keeps the word builder unchanged.
+type ComputeCommandArgv
+  = ComputeCommandArgvBuilt { argv: List<String> }
+  | ComputeCommandArgvRefused { entry: String, function: String, reason: String }
+
+fn compute_command_argv(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  op: WorkOperation,
+  dependency: ComputeDependency
+) -> ComputeCommandArgv {
+  match op {
+    RunClaims { entry, functions, hermetic, window: _ } => match compute_claim_argv(
+      layout: layout,
+      dependency: dependency,
+      entry: entry,
+      functions: functions,
+      hermetic: hermetic
+    ) {
+      ComputeClaimArgvBuilt { argv: argv } => ComputeCommandArgvBuilt { argv: argv }
+      ComputeClaimArgvRefused { entry: e, function: f, reason: r } => ComputeCommandArgvRefused {
+        entry: e,
+        function: f,
+        reason: r,
+      }
+    }
+    _ => ComputeCommandArgvBuilt {
+      argv: compute_command_argv_words(
+        instance: instance,
+        layout: layout,
+        op: op,
+        dependency: dependency
+      )
+    }
+  }
+}
+
+// THE TWO QUESTIONS THE LAUNCH SITE ASKS OF A TYPED ARGV, ANSWERED WITHOUT UNWRAPPING IT TWICE. They
+// exist so the guard below reads as one decision -- refuse, or run what was built -- rather than as a
+// match nested inside the launch's own match, where a missed arm would be the next version of the bug
+// this type removes.
+fn is_compute_command_refused(command: ComputeCommandArgv) -> Bool {
+  match command {
+    ComputeCommandArgvRefused { entry: _, function: _, reason: _ } => true
+    ComputeCommandArgvBuilt { argv: _ } => false
+  }
+}
+
+fn compute_command_argv_words_of(command: ComputeCommandArgv) -> List<String> {
+  match command {
+    ComputeCommandArgvBuilt { argv: argv } => argv
+    ComputeCommandArgvRefused { entry: _, function: _, reason: _ } => []
+  }
+}
+
+// THE REFUSAL, REPORTED AS THE WORK'S OUTCOME. Nothing spawned, so the summary is the unspawned one and
+// the gate says what it always says; what is new is that the cause names THE ROW and THE REASON, because
+// "the request did not denote a claim" is a defect a person has to be able to find in the record without
+// reproducing the launch.
+fn compute_claim_refusal_attempt(
+  identity: String,
+  command: ComputeCommandArgv,
+  launched: AttemptGate
+) -> ComputeAttempt {
+  match command {
+    ComputeCommandArgvRefused { entry: entry, function: function, reason: reason } => ComputeAttempt {
+      outcome: WorkRefusedByInfrastructure {
+        identity: identity,
+        cause: ClaimRequestSubjectUnnameable { entry: entry, function: function, reason: reason },
+      },
+      summary: compute_unspawned_summary(),
+      gate: launched,
+    }
+    ComputeCommandArgvBuilt { argv: _ } => ComputeAttempt {
+      outcome: WorkRefusedByInfrastructure {
+        identity: identity,
+        cause: SubjectUnresolved { detail: "a built claim argv reached the refusal report" },
+      },
+      summary: compute_unspawned_summary(),
+      gate: launched,
+    }
+  }
+}
+
+// THE UNWRAP FOR CALLERS THAT CANNOT CARRY A REFUSAL, AND CANNOT RECEIVE ONE. Both callers here pass
+// `work_default_build()` -- `dag/gunbc/instruments/compute_wrong_capture.dag:166` and
+// `dag/gunbc/instruments/compute_run_unit_cold.dag:609` -- and a Build operation never produces a claim
+// operand, so the refused arm is unreachable FOR THEM. It is written rather than assumed: if a caller
+// ever starts passing a claim operation through here, it gets an argv with no program word, the unit
+// fails to exec, and the capture reports the failure -- which is a loud defect, not a run of something
+// the key did not describe. Callers that CAN carry the refusal (the launch site, and the witness that
+// pins the claim argv) match `compute_command_argv` directly instead of using this.
+fn compute_build_command_argv(
+  instance: HostDashboardInstance,
+  layout: ComputeLayout,
+  op: WorkOperation,
+  dependency: ComputeDependency
+) -> List<String> {
+  match compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency) {
+    ComputeCommandArgvBuilt { argv: argv } => argv
+    ComputeCommandArgvRefused { entry: _, function: _, reason: _ } => []
+  }
+}
+
+fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLayout, op: WorkOperation, dependency: ComputeDependency) -> List<String> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
       concat(
@@ -649,13 +855,13 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
       [compute_dependency_program(dependency: dependency, bin: GunbcDriver), "compile",
        "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
        "--entry", join([layout.checkout, "/", entry as String], ""), "--output-dir", layout.out_dir, "--target", "dag"]
-    RunClaims { entry, functions, hermetic, window: _ } =>
-      concat(
-        [compute_dependency_program(dependency: dependency, bin: ClaimBatchRunner),
-         "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
-         "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
-        if hermetic { ["--hermetic"] } else { ["--wet"] },
-      )
+    // UNREACHABLE FOR ANY CALLER THAT ASKS THROUGH `compute_command_argv`, and deliberately so: that
+    // dispatcher answers every `RunClaims` request through `compute_claim_argv`, which is the one place a
+    // name the route cannot spell refuses the WHOLE request with the row and the reason. This arm exists
+    // because the match must be exhaustive. Returning an empty argv here is not a silent pass -- the unit
+    // it would spawn has no program to exec, so the launch fails and the capture reports it; the refusal
+    // is not bypassed, it simply is not carried by this path, and no caller takes it.
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
     // THE GATE SUBJECT IS THE CI STEP, SHAPE FOR SHAPE: build the seed with cargo, then run
     // `gunbc test <label>` on the binary that build produced. Those two CI STEPS are ONE cargo
     // PROGRAM here (`cargo run`), and that is a fact about the guard, not a convenience. `gunbc test`'s
@@ -3425,7 +3631,13 @@ fn compute_spawn_and_collect(
         gate: launched,
       }
     Present { value: user_runtime_dir } =>
-  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
+  let command = compute_command_argv(instance: instance, layout: layout, op: op, dependency: dependency)
+  // THE GUARD COMES BEFORE THE SPAWN. A request whose subject the route cannot name never reaches
+  // systemd: it is reported, with its row and reason, as the work's outcome.
+  if is_compute_command_refused(command: command) {
+    compute_claim_refusal_attempt(identity: identity, command: command, launched: launched)
+  } else {
+    match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv_words_of(command: command), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -3461,6 +3673,7 @@ fn compute_spawn_and_collect(
     gate: launched,
   }
     }
+  }
   }
   }
 }

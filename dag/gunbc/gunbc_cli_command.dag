@@ -195,6 +195,21 @@ fn test_batch_execution_mode(mode: TestBatchMode) -> ExecutionMode {
   }
 }
 
+// THE WORD A CALLER ADDS WHEN IT SPELLS WHAT THE ROUTE WOULD GRANT ANYWAY. `gunbc test <label>` with no
+// mode flag is Hermetic -- the admission grants it, and that is the contributor's one-command interface,
+// so the request words above deliberately carry no word for it. A CALLER is a different surface: a
+// compute request's argv is read by a person debugging a worker and is pinned in both directions by
+// `dag/test/claim/compute/work_request_witness.dag` (`a_claim_run_names_its_mode_in_both_directions`),
+// which asks that the argv show the mode the key carries. This is that word, owned here so the spelling
+// has one home: an empty list for the modes whose words are already in the request.
+fn gunbc_test_batch_hermetic_spelling(mode: TestBatchMode) -> List<InvocationWord> {
+  match mode {
+    HermeticBatch => [LiteralWord { spelling: "--hermetic" }]
+    WetBatch => []
+    RecordBatch { fixture_store: _ } => []
+  }
+}
+
 fn gunbc_test_batch_mode_words(mode: TestBatchMode) -> List<InvocationWord> {
   match mode {
     HermeticBatch => []

@@ -17,7 +17,7 @@ import gunbc.compute.work_request { work_default_build, work_declared_outputs, W
 import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_label }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
-  compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  compute_build_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
   ComputeUnitStopObservation, ComputeUnitStopObservationRefused,
   NoStopObservation, NoPathVirtualization,
   NoComputeDependency, compute_return_outputs, OutputsReturn, OutputsReturned, OutputsMismatch, compute_staged_path,
@@ -33,7 +33,7 @@ import gunbc.instruments.compute_run_unit_cold {
 //
 // compute_layout gives each work identity its own checkout, staging path and lease
 // (lease_path = <root>/leases/<identity_hex>, the key compute_reserve_and_run takes under), but ONE
-// target_dir per host. compute_command_argv passes it to cargo as --target-dir and compute_return_outputs
+// target_dir per host. compute_command_argv_words passes it to cargo as --target-dir and compute_return_outputs
 // reads the declared TargetRoot outputs back out of it. This instrument drives exactly those two
 // steps for two identities from two distinguishable trees, in the order
 //     A builds -> B builds (writes the shared target) -> A captures -> B captures
@@ -165,7 +165,7 @@ fn wrong_capture_build(
     instance: instance,
     layout: layout,
     identity_hex: identity,
-    argv: compute_command_argv(instance: instance, layout: layout, op: work_default_build(), dependency: NoComputeDependency),
+    argv: compute_build_command_argv(instance: instance, layout: layout, op: work_default_build(), dependency: NoComputeDependency),
     env: wrong_capture_unit_env(runtime_dir: runtime_dir, homes: homes),
     launcher_env: user_session_launcher_env(runtime_dir: runtime_dir),
     granted: compute_run_unit_cold_unit_grant(),

@@ -369,6 +369,12 @@ type WorkInfrastructureRefusal
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
+  // A CLAIM REQUEST WHOSE SUBJECT THE ONE ROUTE CANNOT NAME. `gunbc test` admits an operand by
+  // `claim_identity_operand`; a work request whose module path or function name does not denote a claim of
+  // the claim universe is not a run with a smaller subject, it is a request that never denoted a claim at
+  // all. The refusal is reported HERE, where the request is, with the row and the reason -- the alternative
+  // was to let the child decide, which turned "we did not run what the key said" into an exit code.
+  | ClaimRequestSubjectUnnameable { entry: String, function: String, reason: String }
   | ToolchainMismatchRefused { field: String, declared: String, observed: String }
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
@@ -445,6 +451,10 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    ClaimRequestSubjectUnnameable { entry, function, reason } => join(
+      ["claim operand is not a claim of the claim universe: entry ", entry, ", function ", function, ": ", reason],
+      ""
+    )
     ToolchainMismatchRefused { field, declared, observed } => join(["the observed toolchain does not meet the declared requirement (", field, "): declared ", declared, ", observed ", observed], "")
     UnitEndingUnclassifiable { exit_code, cause } =>
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
