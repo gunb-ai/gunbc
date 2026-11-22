@@ -16,7 +16,7 @@ module gunbc.compute.remote_build_serving_converge
 // does: the host arrives in FLEET_CONVERGE_EXPECTED_HOST and an unset name refuses rather
 // than fanning a read across the fleet from an empty variable.
 
-import std.types { Bool, String, Int, NonEmptyStr }
+import std.types { Bool, String, Int, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -36,9 +36,7 @@ import gunbc.compute.work_provider_local {
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
 }
-import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command, gunbc_command_argv }
-import extdeps.tools.env { env_prefixed_argv }
-import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
@@ -59,11 +57,12 @@ import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path, owned
 import std.list { first_where, list_member, distinct_by_key }
 import std.algebra { Cons, Empty }
 import std.env_binding { EnvSet }
+import gunbc.host.user_session_runtime { user_session_runtime_dir, user_session_launcher_env }
 import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
-import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command, env_prefixed_command_in }
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
@@ -617,7 +616,8 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: t } => Present { value: t }
     ObservationRefused { cause: _ } => Absent
   }
-  let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_passwd_uid(text: passwd_opt, name: d.account_name))
+  let serving_uid = serving_passwd_uid(text: passwd_opt, name: d.account_name)
+  let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
   // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
   // cgroup to persist, so it is observed in the same pass. It is GATED on the account being present, exactly
   // as the rustup/toolchain legs are: a confirmed-absent account (a fresh host) has no user manager to ask
@@ -657,7 +657,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
-    seat_census: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d),
+    seat_census: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid),
   )
   ServingObservedView { desired: d, observed: o }
 }
@@ -1383,7 +1383,7 @@ fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
 // puts on a systemd unit's gunbc run, gunbc.live_deploy.board_function_converge_unit). An admission
 // refusal — a name that cannot round-trip — yields NO argv, and the caller fails closed: a
 // half-bound door run is exactly how a stale read once stayed green.
-fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, arguments: List<NamedArgumentRequest>) -> Optional<List<String>> {
+fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, arguments: List<NamedArgumentRequest>, runtime_dir: FilePath) -> Optional<List<String>> {
   let repo = d.checkout_dir as String
   match gunbc_installed_run_with_named_arguments_command(
     binary: d.serve_binary as NonEmptyStr,
@@ -1393,10 +1393,29 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
     arguments: arguments
   ) {
     Absent => Absent
-    Present { value: cmd } => Present { value: env_prefixed_argv(
-      bindings: [EnvSet { name: gunbc_workspace_root_env_name, value: repo }],
-      command_argv: gunbc_command_argv(cmd: cmd)
-    ) }
+    Present { value: cmd } => Present { value: argv_words(command: env_prefixed_command_in(
+      // THE DOOR STARTS IN THE SERVING CHECKOUT, and GUNBC_WORKSPACE_ROOT is NOT bound. Two measured
+      // refusals on srv1 (runs 44976395909 and 44980662577, 2026-11-22) name this seam: the seed's
+      // cli_run workspace-root scaffold (src/v1/stage0/src/cli_run.rs, workspace_root_resolve) treats a
+      // SET GUNBC_WORKSPACE_ROOT as THE AUTHORITY and validates it as a release locus — a plain git
+      // checkout like the serving one has no .gunbc-tree-receipt, and the scaffold refuses rather than
+      // falling back ("A fallback to a different directory is a false success"). Unset, it binds by the
+      // .git walk from the STARTING DIRECTORY — so the door is started in the checkout, exactly how the
+      // admitted serve route's forced command runs its door (gunbc.compute.remote_build_serve
+      // remote_build_forced_command_words, same refusal observed there on 2026-11-15). env -C is
+      // extdeps.tools.env's own chdir flag through extdeps.exec.command's one env builder.
+      directory: repo,
+      // The account's OWN user-session bindings. A door run through sudo inherits neither
+      // XDG_RUNTIME_DIR nor the session bus (gunbc.host.user_session_runtime), and a door that bears
+      // host effects is REFUSED before it reads anything unless its user manager is reachable to wrap
+      // it into the capped gunbc-user-work.slice — the seed's user-work-scope gate
+      // (src/v1/stage0/src/cli_run/user_work_scope.rs) answers exit 2 "cannot wrap into
+      // gunbc-user-work.slice (UserSessionAbsent)" for such a command. These bindings are the account's
+      // login environment for that one manager: they grant no privilege and skip no bound — with them
+      // the door RUNS INSIDE the slice this converge itself installs and caps (measured: run-r…scope).
+      bindings: user_session_launcher_env(runtime_dir: runtime_dir),
+      command: cmd
+    )) }
   }
 }
 
@@ -1416,24 +1435,35 @@ fn converge_as_user_outcome(target: SshTarget, context: FleetSshExecutionContext
 // back through the door's own grammar. A refused elevation, a run refused before exec, or an output
 // the grammar cannot settle is an UNKNOWN census — never an empty one. An EMPTY established census
 // means the census RAN and found no seat the model authorized; only that distinction may exist here.
-fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure>, target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> RecoverCatalogLegReading {
+fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure>, target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, uid: Int?) -> RecoverCatalogLegReading {
   match elevation {
     ObservationRefused { cause: c } => RecoverCatalogLegUnknown { detail: join(["elevation refused: ", c.cause], "") }
-    ObservationEstablished { observed: _ } => match converge_gunbc_door_argv(d: d, function: "compute_recover_catalog_cli", arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }]) {
-      Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
-      Present { value: argv } => {
-        let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
-        match outcome {
-          TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
-          // The exit is read through the SAME declared table as the other two doors (review 97280,
-          // finding 2): the census door speaks 0 when established and 2 when unknown, and this leg
-          // honors the number before the rendering — an exit the table does not speak is an unknown
-          // census even if stdout would have parsed.
-          TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
-            RecoverDoorSettled => recover_catalog_leg_reading(text: r.stdout)
-            RecoverDoorDeclined => RecoverCatalogLegUnknown { detail: "the census door declined at exit 1, which its contract does not speak" }
-            RecoverDoorUnknown => RecoverCatalogLegUnknown { detail: join(["the census door answered unknown: ", trim(s: r.stderr)], "") }
-            RecoverDoorUnmapped { code: c } => RecoverCatalogLegUnknown { detail: join(["the census door exited ", to_string(c), ", outside the declared mapping (0/2)"], "") }
+    ObservationEstablished { observed: _ } => match uid {
+      // No observed uid, no session: the door would be refused by its own user-work-scope gate before it
+      // read a seat, so this leg does not run it. An UNKNOWN census with the named cause — never an empty
+      // one, and never a run that is known to refuse.
+      Absent => RecoverCatalogLegUnknown { detail: "the serving account's uid is unobserved, so the census door cannot be placed in its user session" }
+      Present { value: serving_uid } => match converge_gunbc_door_argv(
+        d: d,
+        function: "compute_recover_catalog_cli",
+        arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }],
+        runtime_dir: user_session_runtime_dir(uid: serving_uid)
+      ) {
+        Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
+        Present { value: argv } => {
+          let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+          match outcome {
+            TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
+            // The exit is read through the SAME declared table as the other two doors (review 97280,
+            // finding 2): the census door speaks 0 when established and 2 when unknown, and this leg
+            // honors the number before the rendering — an exit the table does not speak is an unknown
+            // census even if stdout would have parsed.
+            TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
+              RecoverDoorSettled => recover_catalog_leg_reading(text: r.stdout)
+              RecoverDoorDeclined => RecoverCatalogLegUnknown { detail: "the census door declined at exit 1, which its contract does not speak" }
+              RecoverDoorUnknown => RecoverCatalogLegUnknown { detail: join(["the census door answered unknown: ", trim(s: r.stderr)], "") }
+              RecoverDoorUnmapped { code: c } => RecoverCatalogLegUnknown { detail: join(["the census door exited ", to_string(c), ", outside the declared mapping (0/2)"], "") }
+            }
           }
         }
       }
@@ -1445,23 +1475,36 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
 // through the ONE declared mapping; the settled answer is then CHECKED against the world by the two
 // read-backs before this step claims done. The receipt path is the door's own copy of the outcome,
 // written by the account inside the checkout it owns (compute_recover_exit refuses exit 0 without it).
+// Apply RE-READS the uid it acts on — the observe's read is not carried across a write — from the same
+// typed passwd read the observe uses, so the door runs as the account inside its OWN user session and
+// the engine wraps it into the capped gunbc-user-work.slice this converge maintains. An account whose
+// uid cannot be re-read at apply is a refusal, never a door exec the bounds gate would itself refuse.
 fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr) -> ConvergeStep {
   let repo = d.checkout_dir as String
-  match converge_gunbc_door_argv(d: d, function: "compute_recover_cli", arguments: [
-    NamedArgumentRequest { name: "repo_root", value: repo },
-    NamedArgumentRequest { name: "reference", value: reference as String },
-    NamedArgumentRequest { name: "receipt_path", value: join([repo, "/recover-", reference as String, ".receipt.json"], "") },
-  ]) {
-    Absent => StepFailed { cause: join(["the recovery run's named arguments for ", reference as String, " could not be admitted"], "") }
-    Present { value: argv } => {
-      let door = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
-      match door {
-        TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
-        TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
-          RecoverDoorSettled => converge_recover_readbacks(target: target, context: context, d: d, reference: reference)
-          RecoverDoorDeclined => StepFailed { cause: join(["the model declined the recovery write for ", reference as String, ": the seat is legitimately held between plan and apply, and the next assessment re-decides"], "") }
-          RecoverDoorUnknown => StepFailed { cause: join(["the recovery could not establish itself for ", reference as String, ": ", trim(s: r.stderr)], "") }
-          RecoverDoorUnmapped { code: c } => StepFailed { cause: join(["the recovery door exited ", to_string(c), ", outside the declared mapping (0/1/2)"], "") }
+  match serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo(path: "/etc/passwd")) {
+    ObservationRefused { cause: c } => StepFailed { cause: join(["the account could not be re-read for the recovery of ", reference as String, ": ", c.cause], "") }
+    ObservationEstablished { observed: text } => match serving_passwd_uid(text: Present { value: text }, name: d.account_name) {
+      Absent => StepFailed { cause: join(["the serving account's uid is not in the re-read passwd, so the recovery door for ", reference as String, " cannot be placed in its user session"], "") }
+      Present { value: serving_uid } => {
+        let runtime_dir = user_session_runtime_dir(uid: serving_uid)
+        match converge_gunbc_door_argv(d: d, function: "compute_recover_cli", arguments: [
+          NamedArgumentRequest { name: "repo_root", value: repo },
+          NamedArgumentRequest { name: "reference", value: reference as String },
+          NamedArgumentRequest { name: "receipt_path", value: join([repo, "/recover-", reference as String, ".receipt.json"], "") },
+        ], runtime_dir: runtime_dir) {
+          Absent => StepFailed { cause: join(["the recovery run's named arguments for ", reference as String, " could not be admitted"], "") }
+          Present { value: argv } => {
+            let door = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+            match door {
+              TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
+              TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
+                RecoverDoorSettled => converge_recover_readbacks(target: target, context: context, d: d, reference: reference, runtime_dir: runtime_dir)
+                RecoverDoorDeclined => StepFailed { cause: join(["the model declined the recovery write for ", reference as String, ": the seat is legitimately held between plan and apply, and the next assessment re-decides"], "") }
+                RecoverDoorUnknown => StepFailed { cause: join(["the recovery could not establish itself for ", reference as String, ": ", trim(s: r.stderr)], "") }
+                RecoverDoorUnmapped { code: c } => StepFailed { cause: join(["the recovery door exited ", to_string(c), ", outside the declared mapping (0/1/2)"], "") }
+              }
+            }
+          }
         }
       }
     }
@@ -1474,11 +1517,11 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
 // settled. terminal+returned is the recovered shape; absent+never is its twin (a seat whose record was
 // cleaned or whose charge was never written — nothing held anywhere); an ACTIVE record or a
 // STILL-HELD charge fails the step.
-fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr) -> ConvergeStep {
+fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr, runtime_dir: FilePath) -> ConvergeStep {
   match converge_gunbc_door_argv(d: d, function: "compute_recover_readback_cli", arguments: [
     NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String },
     NamedArgumentRequest { name: "reference", value: reference as String },
-  ]) {
+  ], runtime_dir: runtime_dir) {
     Absent => StepFailed { cause: join(["the read-back run's named arguments for ", reference as String, " could not be admitted"], "") }
     Present { value: argv } => {
       let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
