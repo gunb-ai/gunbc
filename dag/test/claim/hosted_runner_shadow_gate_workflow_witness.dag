@@ -137,8 +137,10 @@ test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -
     // (review 97111: an rm between them made the OAuth curl impossible; and $GITHUB_ENV alone
     // does not mask).
     && contains(haystack: rendered, needle: "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
-    // no ssh-agent on the WIF route: every remote dial names the fetched key (review 97131)
-    && contains(haystack: rendered, needle: "ssh -i \"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
+    // no ssh-agent on the WIF route AND no bare ssh dial at all: the forced command is the protocol
+    // server, so a bare dial is a refused one-word request (run 44960617832); the key reaches the
+    // host only through the client's --arg identity_file (pinned above)
+    && !(contains(haystack: rendered, needle: "ssh -i "))
     && contains(haystack: rendered, needle: "echo \"::add-mask::$VAL\"")
     && occurs_before(haystack: rendered, before: "secrets/tailscale-oauth-client-secret/versions/1:access", after: "\n          rm -f \"$HDR_FILE\"")
     // the join passes NO up args: --accept-dns=false broke MagicDNS resolution of the serving
