@@ -902,7 +902,7 @@ mod compiler_tests {
             "module probe\n",
             "service Probe {\n",
             "  operation Run {\n",
-            "    input { ceiling: Int }\n",
+            "    input { ceiling: Second }\n",
             "    output {\n",
             "      out: String from \"stdout\"\n",
             "    }\n",
@@ -926,11 +926,29 @@ mod compiler_tests {
                 e
             ));
         }
-        if let Some(e) = error_of("    transport shell { argv: [\"true\"], wall_deadline: 15 }") {
+        // The ceiling is a std.measure duration, never a bare number.
+        if let Some(e) =
+            error_of("    transport shell { argv: [\"true\"], wall_deadline: ceiling }")
+        {
             failures.push(format!(
-                "the grammar must accept the declared wall_deadline field, got: {}",
+                "the grammar must accept a declared-duration wall_deadline, got: {}",
                 e
             ));
+        }
+        match error_of("    transport shell { argv: [\"true\"], wall_deadline: 15 }") {
+            None => failures.push("a bare number at `wall_deadline:` must be refused: the unit is not the consumer to decide".to_string()),
+            Some(msg) => {
+                if !msg.contains("must name a duration") {
+                    failures.push(format!("the refusal must name the required carrier, got: {}", msg));
+                }
+            }
+        }
+        match error_of("    transport shell { argv: [\"true\"], wall_deadline: 0 }") {
+            None => failures.push(
+                "wall_deadline: 0 must be refused: there is no zero ceiling and no 0-means-none"
+                    .to_string(),
+            ),
+            Some(_) => {}
         }
         match error_of("    transport shell { argv: [\"true\"], wall_clock_limit: 15 }") {
             None => {

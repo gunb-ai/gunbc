@@ -2388,11 +2388,6 @@ fn transport_stdin(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? 
   find_property(props: t.properties, prop_name: transport_stdin_key, source_indices: source_indices)
 }
 
-// THE ONLY WAY A SHELL LEG GETS A CEILING: the transport declares the field, and this reads it.
-fn transport_wall_deadline(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: t.properties, prop_name: transport_wall_deadline_key, source_indices: source_indices)
-}
-
 fn transport_response_format(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: t.properties, prop_name: transport_response_format_key, source_indices: source_indices)
 }

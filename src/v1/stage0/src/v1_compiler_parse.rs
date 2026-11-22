@@ -10338,6 +10338,24 @@ pub fn parse_shell_fields(
                         }
                     } else {
                         if (fname.clone() == transport_wall_deadline_key()) {
+                            let hd = token_stream_first(r2.tokens.clone());
+                            let bare_literal = match hd.clone() {
+                                Some(t) => match t.shape.clone() {
+                                    TokenShape::ShLitInt => true,
+                                    TokenShape::ShLitFloat => true,
+                                    TokenShape::ShLitStr => true,
+                                    _ => false,
+                                },
+                                std::option::Option::None => false,
+                            };
+                            if bare_literal.clone() {
+                                return Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: r2.tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("transport shell field `wall_deadline:` must name a duration (std.measure Second), not a bare literal: a bare number leaves the unit to the consumer, which is the mis-typed-budget defect (gunbc.design_argument::single_authority)".to_string(), token_span(hd.clone()))),
+});
+                            }
                             let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
                             if has_err(r3.err.clone()) {
                                 return Rc::new(TransportResult {
