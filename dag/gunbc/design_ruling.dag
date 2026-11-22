@@ -1288,6 +1288,7 @@ data tailscale_acl_ssh_section_residue_2026_11_20: DesignRuling = DesignRuling {
 fn design_rulings() -> List<DesignRuling> {
   [
     known_red_decoder_dissolution_approved_by_default_2026_11_22,
+    claim_execution_has_one_v1_entrypoint,
     heal_convergence_job_budget_increase_2026_11_20,
     text_of_chars_is_a_whole_list_host_realization,
     reference_markers_are_hashtag_form,
