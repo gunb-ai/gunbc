@@ -48,7 +48,7 @@ import gunbc.runner.runner_jit_perform {
 import std.optional { Absent, Present }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_delete }
 import extdeps.cloud.gcp.secret_manager
-import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused }
+import extdeps.cloud.gcp.secret_manager { decode_sm_access_version_secret_wire, SmAccessVersionSecretDecoded, SmAccessVersionSecretDecodeRefused, SmAccessVersionSecretNotText }
 import extdeps.cloud.gcp.error_info { gcp_safe_error_codes }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestCredentialRefused, rest_credential_refusal_cause, RestBodyUndecodable }
 import extdeps.github.app { GitHubInstallationTokenPermissions, github_installation_token_permissions }
@@ -588,6 +588,11 @@ fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> 
       match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
         SmAccessVersionSecretDecodeRefused { cause: _ } =>
           ControllerKeyNotStaged { cause: "ControllerAppKeyUnreadable: the Secret Manager payload did not decode" }
+        // A key stored as bytes that are not text is not an undecodable payload and is not a key: the
+        // bytes are exactly what was stored. Naming it separately keeps the PEM path's answer intact --
+        // this secret holds an app key, which may be any bytes the API returns -- and stages nothing.
+        SmAccessVersionSecretNotText =>
+          ControllerKeyNotStaged { cause: "ControllerAppKeyUnreadable: the Secret Manager payload is bytes that are not UTF-8 text" }
         SmAccessVersionSecretDecoded { credential: key } => {
           stage_key_file(key: key, key_path: key_path)
         }
