@@ -27,6 +27,18 @@ import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_instal
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+// Increment 2 (the serving converge's recovery leg): the recovery doors' ONE declared exit mapping,
+// the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
+// shape every host-side door run shares. The leg itself decides nothing.
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegReading, RecoverCatalogLegUnknown, recover_catalog_leg_reading,
+  RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
+  RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
+  ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
+}
+import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command, gunbc_command_argv }
+import extdeps.tools.env { env_prefixed_argv }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
@@ -645,6 +657,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
+    seat_census: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d),
   )
   ServingObservedView { desired: d, observed: o }
 }
@@ -807,6 +820,14 @@ type ConvergeAction =
   // stops at the first failed write, the identity is written only once the binary itself has landed,
   // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
   | RecordServeIdentity { install_path: String, revision: String, sha256: String }
+  // The serving converge's recovery leg: after the identity is recorded, a stale seat (one whose holder is
+  // dead and whose launch deadline has passed) is recovered by running compute_recover_cli over ssh as the
+  // service user. The observe classifies each seat through the recovery model: a live or too-early holder is
+  // legitimately held (plan nothing); an unreadable slot or one reference in two seat dirs is observation
+  // unknown (the plan REFUSES). The apply runs the CLI with two read-backs: the attempt record (must be
+  // terminal) and compute_seat_charge_returned (the charge must be returned or never held). Planned only
+  // when the identity leg is Met; refuses otherwise. RANK 11, right after RecordServeIdentity.
+  | RecoverStaleSeat { reference: NonEmptyStr }
   | EnsureLedgerDirectory { path: String, owner_user: String, owner_group: String, mode: FileMode }
   // Put the serving account's user manager into its lingering state, immediately before the slice install:
   // the slice's cgroup only persists under a live user manager (an empty user slice under a non-lingering
@@ -1103,6 +1124,9 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     // binary depends on); the executor's stop-at-first-failure means it is written only once the
     // binary itself has landed -- never provenance for a binary that failed to install.
     RecordServeIdentity { install_path: _, revision: _, sha256: _ } => 10
+    // The stale-seat recovery runs AFTER the identity is recorded (rank 11): the recovery CLI is the
+    // installed binary itself, so identity must be settled first. Planned only when the identity leg is Met.
+    RecoverStaleSeat { reference: _ } => 11
   }
 }
 
@@ -1121,6 +1145,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
     InstallUserWorkSlice { unit_name: n, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => concat("slice:", n)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
     RecordServeIdentity { install_path: i, revision: _, sha256: _ } => concat("identity:", i)
+    RecoverStaleSeat { reference: r } => concat("recover:", r as String)
   }
 }
 
@@ -1251,6 +1276,11 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
+    // A stale seat detected by the observe: plan the recovery. The identity-Met gate is enforced in
+    // converge_classify (post-fold) so the fold itself stays total; if identity is not yet settled, the
+    // classify step refuses rather than silently dropping the write.
+    StaleSeatDetected { reference: ref } =>
+      ConvergeDraft { writes: concat([RecoverStaleSeat { reference: ref }], acc.writes), unhandled: acc.unhandled }
   }
 }
 
@@ -1264,7 +1294,22 @@ fn converge_classify(draft: ConvergeDraft) -> ConvergeDecision {
   if length(draft.unhandled) != 0 {
     ConvergeUnhandled { items: draft.unhandled }
   } else {
-    match converge_order(converge_dedupe(draft.writes)) {
+    let ordered = converge_order(converge_dedupe(draft.writes))
+    // IDENTITY-MET GATE: a stale-seat recovery requires the identity leg to be Met — the recovery CLI
+    // IS the binary the identity documents. When the identity still needs its write, the recovery is
+    // DEFERRED, not the plan refused (review 97280, finding 1): the RecordServeIdentity write is safe
+    // and admissible NOW, and refusing the whole plan would stall the host on every run — a refusal the
+    // model did not need (gunbc.design_argument::fail_closed refuses when the answer is unavailable;
+    // here it is). The deferral cannot be lost: the census deviation is re-derived from the host every
+    // observe, so the next assessment — with identity Met — plans the recovery by itself. Rank 11 after
+    // rank 10 already orders the two writes correctly for the run that carries both.
+    let has_identity_write = any(ordered, w => match w { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true _ => false })
+    let planned = if has_identity_write {
+      filter(ordered, w => match w { RecoverStaleSeat { reference: _ } => false  _ => true })
+    } else {
+      ordered
+    }
+    match planned {
       Cons { head: first, tail: rest } => ConvergePlan { writes: FreeSemigroup { head: first, tail: rest } }
       Empty {} => converge_refuse("the assessment reported drift that yielded neither a write nor an unhandled item")
     }
@@ -1307,6 +1352,153 @@ fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
     TypedArgvExecRefused { reason: r } => StepFailed { cause: concat("refused before exec: ", r) }
     TypedArgvExecConverged { result: r } => if r.exit_code == 0 { StepDone } else {
       StepFailed { cause: join(["exit ", to_string(r.exit_code), ": ", trim(r.stderr)], "") }
+    }
+  }
+}
+
+// THE RECOVERY LEG (increment 2, program remote_build_ssh_dispatch_is_an_admitted_scaffold).
+//
+// Everything this leg knows about a stale seat arrived through the model: the observe read the seat
+// census through the recovery door (serving_leg_seat_census -> compute_recover_catalog_cli, whose
+// every judgement is gunbc.compute.attempt_lifecycle::recovery_write_authorization), and the plan
+// planned RecoverStaleSeat only for an established census entry the model AUTHORIZED. The leg itself
+// decides nothing. It runs three doors over the ssh edge as the serving account — all through the
+// typed `gunbc run` shape (gunbc.cli_invoke) — and reads their answers in the doors' own declared
+// vocabulary:
+//   * the write door compute_recover_cli, whose exit maps through recover_door_verdict — the ONE
+//     declared mapping, living beside compute_recover_exit, the only producer of those numbers. No
+//     literal 0/1/2 appears anywhere at this leg.
+//   * the read-back door compute_recover_readback_cli, which answers the two questions a converge
+//     must ask after applying a recovery — what the ATTEMPT RECORD says, and whether the SEAT CHARGE
+//     came back (gunbc.compute.host_capacity::compute_seat_charge_returned) — both read through the
+//     model, in one line, parsed by recover_readback_reading.
+// A settled door whose read-back does not agree is a FAILED step: the converge re-assesses instead of
+// claiming. compute_seat_ensure is NOT on this route (cut from the serve route by #16828).
+
+// The argv for ONE host-side door run: the host's serve binary (the bytes the identity documents —
+// gunbc.gunbc_cli_command::gunbc_installed_run_with_named_arguments_command is the installed binary's
+// `gunbc run` of one function with its named arguments, admission whole-or-nothing), the checkout's
+// source roots and entry, and the workspace-root binding the seed's resolver needs when the process
+// does not start inside the checkout (gunbc.cli_run_workspace_root_scaffold; the same binding env(1)
+// puts on a systemd unit's gunbc run, gunbc.live_deploy.board_function_converge_unit). An admission
+// refusal — a name that cannot round-trip — yields NO argv, and the caller fails closed: a
+// half-bound door run is exactly how a stale read once stayed green.
+fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, arguments: List<NamedArgumentRequest>) -> Optional<List<String>> {
+  let repo = d.checkout_dir as String
+  match gunbc_installed_run_with_named_arguments_command(
+    binary: d.serve_binary as NonEmptyStr,
+    source_roots: [concat(repo, "/dag"), concat(repo, "/src/v2")],
+    entry: concat(repo, "/dag/gunbc/compute/work_provider_local.dag"),
+    function: function,
+    arguments: arguments
+  ) {
+    Absent => Absent
+    Present { value: cmd } => Present { value: env_prefixed_argv(
+      bindings: [EnvSet { name: gunbc_workspace_root_env_name, value: repo }],
+      command_argv: gunbc_command_argv(cmd: cmd)
+    ) }
+  }
+}
+
+// The as-account run that KEEPS the exit code. converge_as_user collapses a non-zero run into a
+// failed step, erasing the three-way answer; the recovery doors' verdict lives IN the code and must
+// arrive whole at recover_door_verdict.
+fn converge_as_user_outcome(target: SshTarget, context: FleetSshExecutionContext, account: String, argv: List<String>) -> TypedArgvExecOutcome {
+  typed_argv_exec_over_fleet_ssh(
+    target: target,
+    context: context,
+    argv: argv_words(command: sudo_elevate_as_command(user: account as NonEmptyStr, command: argv))
+  )
+}
+
+// The observe's seat census: the recovery door's census, run as the serving account (the seats and the
+// capacity ledger belong to it; the seat directories are 0700 — not readable any other way), parsed
+// back through the door's own grammar. A refused elevation, a run refused before exec, or an output
+// the grammar cannot settle is an UNKNOWN census — never an empty one. An EMPTY established census
+// means the census RAN and found no seat the model authorized; only that distinction may exist here.
+fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure>, target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> RecoverCatalogLegReading {
+  match elevation {
+    ObservationRefused { cause: c } => RecoverCatalogLegUnknown { detail: join(["elevation refused: ", c.cause], "") }
+    ObservationEstablished { observed: _ } => match converge_gunbc_door_argv(d: d, function: "compute_recover_catalog_cli", arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }]) {
+      Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
+      Present { value: argv } => {
+        let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+        match outcome {
+          TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
+          // The exit is read through the SAME declared table as the other two doors (review 97280,
+          // finding 2): the census door speaks 0 when established and 2 when unknown, and this leg
+          // honors the number before the rendering — an exit the table does not speak is an unknown
+          // census even if stdout would have parsed.
+          TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
+            RecoverDoorSettled => recover_catalog_leg_reading(text: r.stdout)
+            RecoverDoorDeclined => RecoverCatalogLegUnknown { detail: "the census door declined at exit 1, which its contract does not speak" }
+            RecoverDoorUnknown => RecoverCatalogLegUnknown { detail: join(["the census door answered unknown: ", trim(s: r.stderr)], "") }
+            RecoverDoorUnmapped { code: c } => RecoverCatalogLegUnknown { detail: join(["the census door exited ", to_string(c), ", outside the declared mapping (0/2)"], "") }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The apply: open the recovery door once, as the serving account, over the ssh edge. The exit goes
+// through the ONE declared mapping; the settled answer is then CHECKED against the world by the two
+// read-backs before this step claims done. The receipt path is the door's own copy of the outcome,
+// written by the account inside the checkout it owns (compute_recover_exit refuses exit 0 without it).
+fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr) -> ConvergeStep {
+  let repo = d.checkout_dir as String
+  match converge_gunbc_door_argv(d: d, function: "compute_recover_cli", arguments: [
+    NamedArgumentRequest { name: "repo_root", value: repo },
+    NamedArgumentRequest { name: "reference", value: reference as String },
+    NamedArgumentRequest { name: "receipt_path", value: join([repo, "/recover-", reference as String, ".receipt.json"], "") },
+  ]) {
+    Absent => StepFailed { cause: join(["the recovery run's named arguments for ", reference as String, " could not be admitted"], "") }
+    Present { value: argv } => {
+      let door = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+      match door {
+        TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
+        TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
+          RecoverDoorSettled => converge_recover_readbacks(target: target, context: context, d: d, reference: reference)
+          RecoverDoorDeclined => StepFailed { cause: join(["the model declined the recovery write for ", reference as String, ": the seat is legitimately held between plan and apply, and the next assessment re-decides"], "") }
+          RecoverDoorUnknown => StepFailed { cause: join(["the recovery could not establish itself for ", reference as String, ": ", trim(s: r.stderr)], "") }
+          RecoverDoorUnmapped { code: c } => StepFailed { cause: join(["the recovery door exited ", to_string(c), ", outside the declared mapping (0/1/2)"], "") }
+        }
+      }
+    }
+  }
+}
+
+// The two read-backs, in one run of the read-back door (it answers record AND charge from the model in
+// one line). A settled door whose read-back disagrees is a FAILED step — the door said the seat came
+// back and the world says otherwise, which is exactly what the next converge must see as diverged, not
+// settled. terminal+returned is the recovered shape; absent+never is its twin (a seat whose record was
+// cleaned or whose charge was never written — nothing held anywhere); an ACTIVE record or a
+// STILL-HELD charge fails the step.
+fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr) -> ConvergeStep {
+  match converge_gunbc_door_argv(d: d, function: "compute_recover_readback_cli", arguments: [
+    NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String },
+    NamedArgumentRequest { name: "reference", value: reference as String },
+  ]) {
+    Absent => StepFailed { cause: join(["the read-back run's named arguments for ", reference as String, " could not be admitted"], "") }
+    Present { value: argv } => {
+      let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+      match outcome {
+        TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the read-back run was refused before it executed: ", r], "") }
+        TypedArgvExecConverged { result: r } => match recover_readback_reading(text: r.stdout) {
+          RecoverReadbackUnknown { detail: why } => StepFailed { cause: join(["the recovery read-back could not be established: ", why], "") }
+          RecoverReadbackFacts { record: rec, charge: chg } => match rec {
+            ReadbackRecordActive => StepFailed { cause: join(["the recovery door settled but the attempt record still reads active for ", reference as String], "") }
+            ReadbackRecordTerminal => match chg {
+              ReadbackChargeStillHeld => StepFailed { cause: join(["the recovery door settled but the seat charge for ", reference as String, " is still held on the capacity ledger"], "") }
+              _ => StepDone
+            }
+            ReadbackRecordAbsent => match chg {
+              ReadbackChargeStillHeld => StepFailed { cause: join(["the attempt record for ", reference as String, " is absent while its seat charge is still held on the capacity ledger"], "") }
+              _ => StepDone
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -1660,6 +1852,12 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
+    // The recovery leg: run compute_recover_cli over ssh as the service user. Exit 0 = released/nothing
+    // held → settled. Exit 1 = declined (the seat is still legitimately held; the observation was stale)
+    // → failed. Exit 2 = refused (observation unknown) → failed. The exit-code mapping is declared by
+    // compute_recover_exit (work_provider_local); this leg reads that mapping, not bare literals.
+    RecoverStaleSeat { reference: ref } =>
+      converge_recover_stale_seat(target: target, context: context, d: d, reference: ref)
   })
 }
 
