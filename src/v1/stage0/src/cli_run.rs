@@ -11100,6 +11100,30 @@ impl WitnessRuntimeCause {
     }
 }
 
+/// The KIND of a panic payload, decided at the catch site where the raw `Box<dyn Any>` is still in
+/// hand. `panic_payload_text` collapses every payload to a `String` for display, so without carrying
+/// this beside the text a non-string panic (e.g. `panic_any(42u32)`) is indistinguishable from a
+/// string one once it reaches `ClaimOutcome::Panicked` -- and the route's `cause=` line field, a
+/// machine key parsers rely on, would be wrong for the non-string case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanicPayloadKind {
+    /// The payload downcast to `&str` or `String` -- the real text is on the line.
+    StringPayload,
+    /// Anything else: `panic_payload_text` substituted the placeholder, so only the panic hook's
+    /// stderr carries the message.
+    NonStringPayload,
+}
+
+impl PanicPayloadKind {
+    /// The closed cause token for the route line (a machine key; never Rust `Debug`).
+    pub fn token(self) -> &'static str {
+        match self {
+            PanicPayloadKind::StringPayload => "string_payload",
+            PanicPayloadKind::NonStringPayload => "non_string_payload",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
@@ -11196,6 +11220,7 @@ pub enum ClaimOutcome {
     /// FAILED the witness at exit 1. Could-not-measure already had a home; could-not-run did not.
     Panicked {
         payload: String,
+        payload_kind: PanicPayloadKind,
     },
     /// PLANNED, AND THE FOLD NEVER REACHED IT, because a sibling claim's unwind stopped the line.
     ///
@@ -16621,15 +16646,61 @@ pub fn seed_runner_bool_false_failure_detail(
 /// `String` respectively and nothing else does in this crate; an unrecognised payload type is
 /// named as such rather than rendered as an empty message, because a blank detail field would
 /// read as "the panic said nothing" when the truth is "this runner could not read what it said".
-fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> String {
+fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> (String, PanicPayloadKind) {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
-        (*s).to_string()
+        ((*s).to_string(), PanicPayloadKind::StringPayload)
     } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
+        (s.clone(), PanicPayloadKind::StringPayload)
     } else {
-        "panic payload is not a string; see the panic hook's stderr line for the message and \
-         location"
-            .to_string()
+        (
+            "panic payload is not a string; see the panic hook's stderr line for the message and \
+             location"
+                .to_string(),
+            PanicPayloadKind::NonStringPayload,
+        )
+    }
+}
+
+#[cfg(test)]
+mod panic_payload_kind_tests {
+    use super::*;
+
+    /// THE PRODUCER (the catch seam). Run a real `std::panic::panic_any(42u32)` through the same
+    /// `catch_unwind` + `panic_payload_text` the route uses, and the payload must be labelled
+    /// `NonStringPayload` -- this is what the route's `cause=` field turns into. A real floor claim
+    /// crashes this way (a non-`String` payload), so mislabelling it `string_payload` is a wrong
+    /// machine key, not a cosmetic one. A `String` payload is the string arm with its text intact.
+    #[test]
+    fn the_panic_catch_labels_each_payload_by_its_real_kind() {
+        // Silence the default panic hook so the intentional panics do not spam test stderr.
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let non_string = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any(42u32)
+        }));
+        let string = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any(String::from("a real message"))
+        }));
+        std::panic::set_hook(prev);
+
+        let non_string = non_string.expect_err("panic_any(42u32) must unwind");
+        let (text, kind) = panic_payload_text(non_string.as_ref());
+        assert_eq!(
+            kind,
+            PanicPayloadKind::NonStringPayload,
+            "a u32 payload is not a string"
+        );
+        assert!(
+            text.contains("not a string"),
+            "the placeholder explains the absence: {text}"
+        );
+        assert_eq!(kind.token(), "non_string_payload");
+
+        let string = string.expect_err("panic_any(String) must unwind");
+        let (text, kind) = panic_payload_text(string.as_ref());
+        assert_eq!(kind, PanicPayloadKind::StringPayload);
+        assert_eq!(text, "a real message", "the real text is preserved");
+        assert_eq!(kind.token(), "string_payload");
     }
 }
 
@@ -16644,7 +16715,12 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
     let _ = v1_interpreter::take_raise_path();
     let evaluated = match run_claim_evaluation(ctx, function) {
         Ok(result) => result,
-        Err(payload) => return ClaimOutcome::Panicked { payload },
+        Err((payload, payload_kind)) => {
+            return ClaimOutcome::Panicked {
+                payload,
+                payload_kind,
+            }
+        }
     };
     match evaluated {
         Ok(v1_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
@@ -19171,7 +19247,7 @@ pub fn project_witness_cost_receipt(
                 // AN UNWIND IS A REFUSAL EVENT, NOT A FAILED ONE. `failed` carries a semantic
                 // verdict the claim reached; neither of these reached one, so they take the
                 // refused constructor with the fact that distinguishes them as the diagnostic.
-                ClaimOutcome::Panicked { payload } => {
+                ClaimOutcome::Panicked { payload, .. } => {
                     args.push((
                         Some("diagnostic".to_string()),
                         str_value(format!("panicked during evaluation: {payload}")),
@@ -20442,9 +20518,6 @@ fn parse_floor_discovery_producer_result(
     }
 }
 
-/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
-/// module name (read off the `module` line by the module index), which is what the claim's label
-/// is minted from (`gunbc.discovery_census` `site_label`).
 /// One member's result in the claim route -- the route's OWN outcome type, deliberately NOT a
 /// `ClaimOutcome` variant. A member either reports what the runner evaluated, or reports the typed
 /// reason its entry could not be resolved at all.
@@ -20486,6 +20559,9 @@ pub fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
     }
 }
 
+/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
+/// module name (read off the `module` line by the module index), which is what the claim's label
+/// is minted from (`gunbc.discovery_census` `site_label`).
 pub struct ClaimRouteMember {
     pub module_path: String,
     pub function: String,

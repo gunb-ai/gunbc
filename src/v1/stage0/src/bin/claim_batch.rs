@@ -11,7 +11,7 @@ use v1_compiler::cli_run::{
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
     resolve_entry_with_index_typed, run_claim_measured, ClaimOutcome, EntryResolveRefusal,
-    MultiEntryIndex,
+    MultiEntryIndex, PanicPayloadKind,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -442,7 +442,7 @@ fn report_outcome(
         // AN UNWIND IS ITS OWN LINE, NOT A FAIL. `FAIL` asserts the witness answered false;
         // the host unwound here, so the claim answered nothing. Reported as a failed run
         // (`any_failed`) because the line must still stop — what changes is what the line says.
-        ClaimOutcome::Panicked { payload } => {
+        ClaimOutcome::Panicked { payload, .. } => {
             println!(
                 "PANICKED {} (the host unwound during evaluation: {})",
                 function, payload
@@ -563,7 +563,7 @@ fn outcome_row_facts(
             }
             .to_string(),
         ),
-        ClaimOutcome::Panicked { payload } => (payload.clone(), String::new(), String::new()),
+        ClaimOutcome::Panicked { payload, .. } => (payload.clone(), String::new(), String::new()),
         ClaimOutcome::NotAttempted { halted_by } => {
             (halted_by.clone(), String::new(), String::new())
         }
@@ -1537,6 +1537,7 @@ mod cli_path_resolution_wiring_tests {
             },
             ClaimOutcome::Panicked {
                 payload: "p".into(),
+                payload_kind: PanicPayloadKind::StringPayload,
             },
             ClaimOutcome::NotAttempted {
                 halted_by: "h".into(),

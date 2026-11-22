@@ -277,7 +277,7 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
 pub(crate) fn run_claim_evaluation(
     ctx: &v1_interpreter::InterpContext,
     function: &str,
-) -> Result<v1_interpreter::InterpResult<v1_interpreter::Value>, String> {
+) -> Result<v1_interpreter::InterpResult<v1_interpreter::Value>, (String, PanicPayloadKind)> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         v1_interpreter::run_in_context(ctx, function, false)
     }))
