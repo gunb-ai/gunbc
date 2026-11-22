@@ -22,6 +22,7 @@ import gunbc.witness.hosted_runner_shadow_gate_workflow {
   shadow_gate_source_root_args,
   shadow_gate_first_serving_host,
   shadow_gate_plumbing_proof_pattern,
+  shadow_gate_push_credential_header_note,
   ShadowGateWorkflowGenerationOutcome,
   ShadowGateWorkflowGenerated,
   ShadowGateWorkflowGenerationRefused,
@@ -199,7 +200,8 @@ test fn the_plumbing_pattern_selects_the_witness_it_names() -> Bool {
   }
 }
 
-// THE PUSH CREDENTIAL IS SCOPED AS RULED (operator 2026-11-22, option (A)): the job grants
+#gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
+// THE PUSH CREDENTIAL IS SCOPED AS THAT RULING HOLDS: the job grants
 // contents: write for the protocol's ONE push (refs/remote-build/<commit>.<millis>, bounded by
 // gunbc.compute.remote_build_client), but the token rides ONLY the three remote-build client steps
 // -- never a job-level env block, never checkout (persist-credentials stays false), never any other
@@ -212,5 +214,5 @@ test fn the_push_credential_reaches_only_the_client_steps() -> Bool {
   && occurrences(s: rendered, pattern: "password=$GITHUB_TOKEN; };f") == 3
   && occurrences(s: rendered, pattern: "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}") == 3
   && occurrences(s: rendered, pattern: "\n    env:") == 0
-  && contains(haystack: rendered, needle: "# PUSH CREDENTIAL (operator ruling 2026-11-22)")
+  && contains(haystack: rendered, needle: shadow_gate_push_credential_header_note)
 }

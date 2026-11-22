@@ -596,7 +596,8 @@ fn shadow_gate_remote_build_steps() -> List<Step> {
   )
 }
 
-// ── THE PUSH CREDENTIAL (operator ruling 2026-11-22, option (A), narrowly scoped) ────────────────
+// ── THE PUSH CREDENTIAL (narrowly scoped; the granting decision is the ruling cited below) ───────
+// #gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
 //
 // The protocol's hidden-ref push (remote_build_client_source_ref / remote_build_client_push_argv:
 // ONLY refs/remote-build/<commit>.<millis>, a one-level hidden ref the client deletes after the
@@ -751,7 +752,7 @@ fn shadow_gate_generated_header() -> String {
 // The push-credential fact, carried at the bytes boundary where it is reviewed: WHAT may be pushed
 // (protocol-bounded hidden refs), HOW far the permission reaches (client steps' env only), and that
 // main stays guarded. The operator scoped it; the record belongs on the artifact.
-data shadow_gate_push_credential_header_note: String = "# PUSH CREDENTIAL (operator ruling 2026-11-22): the remote-build client pushes ONLY hidden refs refs/remote-build/<commit>.<millis> (gunbc.compute.remote_build_client remote_build_client_source_ref), deleted after the request; contents: write is held by this dispatch@main-only job and the token rides ONLY the client steps' env (GIT_CONFIG_* helper, never .git/config); checkout persists no credential; branch protection still guards main.\n"
+data shadow_gate_push_credential_header_note: String = "# PUSH CREDENTIAL (gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22, decided 2026-11-22): the remote-build client pushes ONLY hidden refs refs/remote-build/<commit>.<millis> (gunbc.compute.remote_build_client remote_build_client_source_ref), deleted after the request; contents: write is held by this dispatch@main-only job and the token rides ONLY the client steps' env (GIT_CONFIG_* helper, never .git/config); checkout persists no credential; branch protection still guards main.\n"
 
 fn expected_hosted_runner_shadow_gate_yml_with(workflow: Workflow) -> ShadowGateWorkflowGenerationOutcome {
   match admit_workflow_action_uses(workflow: workflow) {
