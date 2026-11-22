@@ -39,6 +39,7 @@ data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
 data derived_types_keep_their_name_intention: String = "gunbc.plans.derived_types_keep_their_name"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
+data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
@@ -153,6 +154,15 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "derived-type-argument-inhabitance-root", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
   serves(node: "nonempty-str-becomes-a-checked-nominal", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
   serves(node: "brands-reached-by-checked-constructors", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  // gunbc.plans.read_set_convergence: heal's regeneration round (2026-11-22). Layer is edge depth.
+  serves(node: "heal-scope-relation-without-typecheck", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-scope-population-evidence", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-seed-build-artifacts-scoped", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-noop-before-regenerator-build", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 1),
+  serves(node: "heal-planning-only-in-a-minute", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 2),
+  serves(node: "heal-observation-reuse-by-subject", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-bootstrap-seed-reuse", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-terminal-emission-elision", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -190,6 +200,9 @@ data intention_terminals: List<IntentionTerminals> = [
   // would turn the plan into "retire nicknames", a bigger target than it states, and would put an unruled decision
   // at the end of the critical path (gunbc.design_argument::plans_are_intentions).
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "brands-reached-by-checked-constructors")] },
+  // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
+  // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {
