@@ -17,7 +17,7 @@ module v1.tests.claim.v1_source_chars_once_witness
 // guard (tokens and newline indices identical before/after on the corpus) lives in the
 // sibling module v1.tests.claim.v1_source_chars_once_identity.
 
-import extdeps.filesystem.filesystem_io { filesystem_read }
+import extdeps.filesystem.filesystem_io
 import std.types { String, Bool }
 
 data compile_path: String = "src/v1/compile.dag"

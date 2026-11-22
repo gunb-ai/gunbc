@@ -13,7 +13,7 @@ module v1.tests.claim.v1_source_chars_once_identity
 // This module uses newline_index_from_char_codes, so it runs on the post-change head only --
 // it is the behavioural identity guard, not the red/green pivot.
 
-import extdeps.filesystem.filesystem_io { filesystem_read }
+import extdeps.filesystem.filesystem_io
 import extdeps.languages.dag.syntax { dag_parse_environment }
 import std.types { String, List, Int, Bool }
 import v1.std.core { build_newline_index, newline_index_from_char_codes, NewlineIndex }
