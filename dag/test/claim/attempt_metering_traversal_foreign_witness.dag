@@ -81,7 +81,7 @@ data member_forged_cast_stripped_twin_source: String = "module probe_member_twin
 
 fn sole_ctor_rows(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_rows_of_class(rows, "SoleConstructorViolation")
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation"))
     CensusNotRunnable { cause: _ } => -1
   }
 }
