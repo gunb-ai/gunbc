@@ -3,7 +3,7 @@ module gunbc.recurring_failure_mode.an_enabled_unit_names_hardware_that_no_longe
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 import std.decl_ref { DeclarationRef }
 
 data an_enabled_unit_names_hardware_that_no_longer_enumerates: RecurringFailureMode = RecurringFailureMode {
@@ -18,8 +18,8 @@ data an_enabled_unit_names_hardware_that_no_longer_enumerates: RecurringFailureM
     standing: BelowCeiling {
       current: FoundOnRung { rung: Mitigatable },
       ceiling: StructurallyGuaranteed,
-      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth", field: WholeDeclaration } } },
-      trigger_capability: "for every unit a host's desired state enables, the hardware that unit declares it depends on is enumerated on THAT host and the two are compared -- a unit whose device class returns nothing is an orphan, and the orphan is refused at roster admission and reported at boot rather than started into failure; the read is proposed as a mode of the existing per-host fleet-converge route, and whether it may be SCHEDULED is the one thing that rests on the operator's ruling about the scheduled-job roster"
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "for every unit a host's desired state enables, the hardware that unit declares it depends on is enumerated on THAT host and the two are compared -- a unit whose device class returns nothing is an orphan, and the orphan is refused at roster admission and reported at boot rather than started into failure; the read's cadence is no longer the open question it was when this row was written: the operator ruled on 2026-11-21 that it rides the existing per-host converge route as an observe-only mode (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21), so what stands between this row and its ceiling is the build, not a decision"
     }
   },
 
@@ -41,6 +41,7 @@ data an_enabled_unit_names_hardware_that_no_longer_enumerates: RecurringFailureM
 
   evidence: [
     DeclarationRef { module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "fleet_truth_read_rides_the_converge_timer_2026_11_21", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "butch_a2s_removed_pending_sale", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.systemctl_show_read", decl_name: "systemctl_show_property_read", field: WholeDeclaration },
