@@ -3934,12 +3934,15 @@ pub fn transport_stdin(
     find_property(t.properties.clone(), transport_stdin_key(), source_indices)
 }
 
-/// THE ONLY WAY A SHELL LEG GETS A CEILING: the transport declares the field, and this reads it.
 pub fn transport_wall_deadline(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), transport_wall_deadline_key(), source_indices)
+    find_property(
+        t.properties.clone(),
+        transport_wall_deadline_key(),
+        source_indices,
+    )
 }
 
 pub fn transport_response_format(
