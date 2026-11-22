@@ -41,8 +41,8 @@ import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, WitnessModuleSelected, WitnessModuleNotAWitness,
 }
 import gunbc.compute.remote_build {
-  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildSourceRef,
-  remote_build_source_ref, remote_build_source_ref_name, remote_build_request_words, remote_build_entry_admitted,
+  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildWork, RemoteBuildSourceRef,
+  remote_build_source_ref, remote_build_source_ref_name, remote_build_request_work, remote_build_request_words, remote_build_entry_admitted,
   RemoteBuildCandidate, remote_build_candidates, remote_build_admitted_public_keys,
   RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
@@ -240,13 +240,18 @@ type RemoteBuildLeg
 // sent leaves the host unreachable; a request that could not be sent after a ready probe is the
 // request's own fault and is final, since every host would refuse the same words.
 fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuildRequest, candidate: RemoteBuildCandidate) -> RemoteBuildHostAnswer {
+  // The words are the WORK's projection, formed here rather than inside the leg call: the leg is an
+  // effect, and an effect's summary is joined against the callee identities reachable from its arguments,
+  // so a pure projection is settled before the effect is -- not for what it does, which is nothing, but
+  // so the summary stays checkable instead of incomplete.
+  let words = remote_build_request_words(r: remote_build_request_work(r: request))
   match remote_build_client_leg(context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
     RemoteBuildLegNotSent { detail } => HostUnreachable { detail: detail }
     RemoteBuildLegRan { target: _, result: probe } =>
       match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: probe.exit_code, stdout: probe.stdout, stderr: probe.stderr)) {
         Present { value: moved_on } => moved_on
         Absent =>
-          match remote_build_client_leg(context: context, host: candidate.host, words: remote_build_request_words(r: remote_build_request_work(r: request))) {
+          match remote_build_client_leg(context: context, host: candidate.host, words: words) {
             RemoteBuildLegNotSent { detail } => HostRefusedRequest { detail: detail }
             RemoteBuildLegRan { target: _, result: sent } => remote_build_answer_from_exit(exit_code: sent.exit_code, stdout: sent.stdout, stderr: sent.stderr)
           }
@@ -468,6 +473,8 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostWorkInFlight { receipt } => receipt
     HostCapacityFull { detail } => detail
     HostCannotServe { detail } => detail
+    // The detail IS the verdict, rendered by fabric; nothing here re-describes it.
+    HostExecutionClassRefused { admission: _, detail } => detail
     HostUnreachable { detail } => detail
     HostRefusedRequest { detail } => detail
     HostOutcomeUnknown { detail } => detail
@@ -613,6 +620,9 @@ fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
         HostCapacityFull { detail: _ } => GateNoHostAdmitted
         HostCannotServe { detail: _ } => GateNoHostAdmitted
         HostUnreachable { detail: _ } => GateNoHostAdmitted
+        // A host the fleet's execution class refused never judged the code either: the work was refused
+        // before it reached any host, which is the same class of non-verdict as a host that was down.
+        HostExecutionClassRefused { admission: _, detail: _ } => GateNoHostAdmitted
         HostOutcomeUnknown { detail: _ } => GateNoHostAdmitted
       }
     RemoteBuildNoHostAvailable { attempts: _ } => GateNoHostAdmitted

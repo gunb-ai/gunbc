@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_executor_class
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
 import product.fabric.work {
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, capacity_class_eq, capacity_class_wire,
@@ -303,9 +304,9 @@ type ExecutionClassAdmission
       required: Architecture,
       host_arch: Architecture,
     }
-  | ExecutionClassUnclassified { host: HostIdentity, required: Architecture }
+  | ExecutionClassUnclassified { host: HostIdentity, required: Architecture? }
 
-fn execution_class_required_architecture(requirements: ExecutionRequirements) -> Architecture? {
+fn execution_class_required_architecture(requirements: ExecutionRequirements) -> Optional<Architecture> {
   match requirements.shape.envelope.cpu {
     Present { value: cpu } => cpu.architecture
     Absent => Absent
@@ -345,13 +346,13 @@ fn admit_execution_class(
 // THE LEDGER LINE. Rendered, never compared: the diagnostics name is what
 // extdeps.toolchain.types::architecture_diagnostic_name is for, and this is the only place it is
 // reached from this module's decision path.
-fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> NonEmptyStr {
+fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> String {
   match admission {
     ExecutionClassAdmitted { host: h, host_arch: a } =>
       concat(
         concat(concat("admitted ", h as String), " executes "),
         architecture_diagnostic_name(arch: a) as String,
-      ) as NonEmptyStr
+      )
     ExecutionClassArchitectureRefused { host: h, required: r, host_arch: a } =>
       concat(
         concat(
@@ -359,7 +360,7 @@ fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> NonEmpt
           architecture_diagnostic_name(arch: r) as String,
         ),
         concat(", host executes ", architecture_diagnostic_name(arch: a) as String),
-      ) as NonEmptyStr
+      )
     ExecutionClassUnclassified { host: h, required: r } =>
       match r {
         Present { value: required } =>
@@ -369,9 +370,9 @@ fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> NonEmpt
               architecture_diagnostic_name(arch: required) as String,
             ),
             " and the host is unclassified",
-          ) as NonEmptyStr
+          )
         Absent =>
-          concat(concat("refused ", h as String), ": no fleet execution class for this host") as NonEmptyStr
+          concat(concat("refused ", h as String), ": no fleet execution class for this host")
       }
   }
 }
