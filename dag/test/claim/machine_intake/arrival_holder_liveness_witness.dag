@@ -3,7 +3,7 @@
 // admit_callers names arrival_archive_slot_acquire as its sole permitted caller, and the resolver refused a
 // first draft that imported it -- so these answer the decision the recovery stands on: what a reported
 // status means. The three arms are exercised through the acquire in the wet claim.
-module gunbc.test.claim.machine_intake.arrival_dead_holder_recovery_witness;
+module gunbc.test.claim.machine_intake.arrival_holder_liveness_witness;
 
 import std.types { Bool, String }
 import std.optional { Present, Absent }
