@@ -16,6 +16,7 @@ import gunbc.target_binding {
   build_target_binding_index, target_binding_lookup,
 }
 import std.types { String, Bool, List }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import std.integer { Int }
 import extdeps.bazel.target_pattern {
   TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
@@ -263,6 +264,124 @@ fn test_selection_batch_route(selection: TestOperandSelection) -> TestBatchRoute
         MixedBatch { native: 0, claim: 0, instrument: 0 }
       }
   }
+}
+
+// THE OPTION SURFACE IS TWO OPTIONS, AND THE DEFAULT IS A GRANT RATHER THAN A REFUSAL.
+//
+// The cutover adds exactly two things to `gunbc test`: the execution mode and the corpus it reads. Both are claim-route
+// only, and both refuse on every other route -- the same rule stated once, in the same shape, so a reader checking
+// "can this option reach the interpreter?" finds one answer in two places rather than two answers to compare.
+//
+// A MODE IS THE ONLY THING SPELLING A MODE CAN CHANGE, AND UNSPELLING IS NOT A FAILURE. With no mode flag the batch
+// runs `Hermetic`, which is what `execution_mode_for(None, is_claim = true)` does today and what every contributor's
+// `gunbc test <label>` and the remote build's test command already rely on; refusing an unspelled mode would break the
+// one-command goal and every existing invocation, so the arm below grants it and there is deliberately no refusal arm to
+// reach for. `Record` is a mode of its own -- effects run and fixtures are written -- which is why `--record` alone
+// grants the claim's host effects, `--hermetic --fixture-store <dir>` replays with none, and `--record --wet` is TWO
+// mode flags rather than a combination: the refusal names both, because a reader correcting this needs to know which
+// two they typed.
+//
+// A FIXTURE STORE NAMES A MODE AND DOES NOT DEFAULT ONE. `--fixture-store <dir>` without an explicit `--record` or
+// `--hermetic` is refused: a store is meaningful in exactly two modes and guessing which one the caller meant would put
+// the guess where the caller's intent belongs.
+type TestModeFlags {
+  hermetic: Bool
+  wet: Bool
+  record: Bool
+  fixture_store: String
+}
+
+type TestExecutionModeRefusal
+  = ModeFlagsConflict { first: String, second: String }
+  | RecordWithoutFixtureStore
+  | FixtureStoreWithoutRecordOrHermetic
+  | ModeOptionOnNonClaimBatch
+
+type TestExecutionModeAdmission
+  = TestExecutionModeGranted { mode: ExecutionMode, fixture_store: String }
+  | TestExecutionModeDenied { cause: TestExecutionModeRefusal }
+
+// Total, and the spelling of the conflict is checked rather than inferred from the count of flags: `first` and `second`
+// are the flags as typed, in the order a reader meets them in the argv.
+fn admit_test_execution_mode(
+  batch: TestBatchRoute,
+  flags: TestModeFlags
+) -> TestExecutionModeAdmission {
+  if batch != ClaimBatch {
+    TestExecutionModeDenied { cause: ModeOptionOnNonClaimBatch }
+  } else if flags.wet && flags.record {
+    TestExecutionModeDenied { cause: ModeFlagsConflict { first: "--wet", second: "--record" } }
+  } else if flags.wet && flags.hermetic {
+    TestExecutionModeDenied { cause: ModeFlagsConflict { first: "--hermetic", second: "--wet" } }
+  } else if flags.hermetic && flags.record {
+    TestExecutionModeDenied { cause: ModeFlagsConflict { first: "--hermetic", second: "--record" } }
+  } else if flags.record && length(flags.fixture_store) == 0 {
+    // Record writes fixtures; a mode that writes into nowhere is a request nobody can honour, and the fixture store is
+    // the mode's OWN argument -- never a source root.
+    TestExecutionModeDenied { cause: RecordWithoutFixtureStore }
+  } else if length(flags.fixture_store) > 0 && !flags.record && !flags.hermetic {
+    TestExecutionModeDenied { cause: FixtureStoreWithoutRecordOrHermetic }
+  } else if flags.record {
+    TestExecutionModeGranted { mode: Record, fixture_store: flags.fixture_store }
+  } else if flags.wet {
+    TestExecutionModeGranted { mode: Wet, fixture_store: "" }
+  } else {
+    // The grant every existing invocation depends on: no flag, or `--hermetic` alone (with or without a store to
+    // replay from). Hermetic is granted, not refused.
+    TestExecutionModeGranted { mode: Hermetic, fixture_store: flags.fixture_store }
+  }
+}
+
+// THE CORPUS THE ONE ROUTE READS, SELECTED NOT SWITCHED. `--source-root` is an option on the claim route for one
+// reason the plan settles by name (section 2, line 26): "For each caller that supplies source roots today, it is
+// established whether that set is redundant with `witness_layer_roots` or meaningful (fixture-driven callers
+// especially), and the migration preserves the meaningful ones." The fixture witness passes a third root today, the
+// directory its scratch entry lives in, and a label cannot reach a file outside the roots.
+//
+// THIS IS NOT A SECOND ENTRYPOINT, AND THE TEST IS THAT THE ADMISSION AND THE RESULT RULE DO NOT CHANGE. The operands
+// stay labels admitted by `admit_test_operands`; what this option selects is which corpus those labels are looked up
+// in. It is refused on the native and instrument routes exactly as the mode option is, so the number of routes that
+// read a caller-supplied corpus stays one.
+//
+// THE REPLACE-NOT-APPEND RULE IS IN THE TYPE, NOT IN A COMMENT (gunbc.design_argument::source_annotations: a comment is
+// unreadable by any pass). There is exactly one roots field, the route reads that field and nothing else, and
+// `default_roots` is a PARAMETER the caller of this admission supplies -- it never reaches a row of its own, so when an
+// option was given the defaults have nowhere to reappear. The seed control that makes this readable gives one root and
+// asserts no default is among `Granted.roots`.
+type TestSourceRootRefusal
+  = SourceRootsOnNonClaimBatch
+  | RootValueAbsent
+  | RootNotWalkable { root: String, reason: String }
+
+type TestSourceRootsAdmission
+  = TestSourceRootsGranted { roots: List<String> }
+  | TestSourceRootsDenied { cause: TestSourceRootRefusal }
+
+// Total. `default_roots` is supplied by the caller (the seed passes `gunbc.ci.ci_layer_roots.witness_layer_roots`)
+// rather than named here, for the same reason the universes are parameters above: a module that pulled in the lane's
+// own rows would be checkable only against a transcription of them.
+fn admit_test_source_roots(
+  batch: TestBatchRoute,
+  given: List<String>,
+  default_roots: List<String>
+) -> TestSourceRootsAdmission {
+  if batch != ClaimBatch {
+    TestSourceRootsDenied { cause: SourceRootsOnNonClaimBatch }
+  } else if length(given) == 0 {
+    TestSourceRootsGranted { roots: default_roots }
+  } else if any(given, r => length(r) == 0) {
+    TestSourceRootsDenied { cause: RootValueAbsent }
+  } else {
+    TestSourceRootsGranted { roots: given }
+  }
+}
+
+// A ROOT THAT TURNS OUT NOT TO BE A DIRECTORY IS DISCOVERED BY THE INDEX, NOT BY THIS ADMISSION. `RootNotWalkable`
+// stays unconstructible here -- length and emptiness are all a string can be judged by -- and exists so the seed's
+// unreadable-root path reports through THIS vocabulary next to `ClaimSourceRefusalCause.ClaimSourceRootUnreadable`
+// above, which keeps the prose cause out of a typed refusal the same way.
+fn test_source_root_not_walkable(root: String, reason: String) -> TestSourceRootRefusal {
+  RootNotWalkable { root: root, reason: reason }
 }
 
 // A CLAIM-ROOT SOURCE THE ROUTE CANNOT READ IS NO OBSERVATION, AND ITS CAUSE IS NOT A TYPO'S.
