@@ -315,37 +315,56 @@ type ClaimOperandAdmission
 
 // THE CLAIM'S IDENTITY, AS THE ROUTE READS IT: `//test/claim/<module>:<function>`, rendered by
 // `extdeps.bazel.label` `render_label` rather than by concatenation, so the label this instrument runs is the
-// label the route reports and the label the corpus declares. The entry must be a `test/claim/` module under the
-// `dag/` root: that is where the route's universe lives (`claim_route_universe`), and an entry from anywhere
-// else means the roster row is not a claim module -- which is refused, because the alternative is a wrong label
-// that the child process refuses late with exit 2 after a runner has been paid for.
+// label the route reports on its result line and the label the corpus declares. Two shapes are refused before a
+// child is paid for. An entry outside the route's universe -- `gunbc.discovery_census` `claim_route_universe`,
+// the subtree `//test/claim/...` -- is not addressable through the claim route at all, and the out-of-universe
+// shape a builder reaches for by mistake is a `src/v2/test/claim/...` module: the interpreter never sees a
+// `//v2/...` label, so a row naming one refuses here rather than becoming a plausible-looking operand.
+//
+// THE ROOT IS NOT PART OF THE LABEL, AND THE SLASHES ARE. Which corpora the route reads is a separate option
+// (`--source-root`), so the leading corpus root is dropped as a root while `test/claim/` is kept as identity --
+// `dag/test/claim/nested/beta_witness.dag` is the claim `//test/claim/nested/beta_witness`, not
+// `//dag/test/claim/nested/beta_witness`, which lies outside the universe and would exit 2 in a child minutes
+// after the runner was paid for. The package path stays in slash form because that is the form the label
+// authority parses (`gunbc.extdeps.bazel.label`, e.g. `//my/app/lib:lib`), and the label is rendered back by
+// that authority rather than guessed at: a dotted hand-built label names a target no discovery row reports, and
+// a folded result line would carry an identity no operand asked for.
+//
+// THE PATH IS REBUILT BY REPLACING, NOT SLICING. A list index in this language is optional and an off-by-one in
+// a slice is silent, while `replace` on a marker just checked to occur exactly once is total; the count checks
+// are what keep "exactly once" honest, because `replace` replaces every occurrence -- a module named `dag_x`
+// under the root would otherwise lose its root marker too, and a name carrying `.dag` twice is a roster row
+// this instrument should not be improvising an identity for.
 fn claim_identity_operand(entry: String, function: String) -> ClaimOperandAdmission {
-  let prefix = "dag/test/claim/"
-  if !entry.starts_with(prefix) {
+  let root = "dag/"
+  let universe = "test/claim/"
+  let root_count = count(entry.split(delimiter: root))
+  if entry.starts_with(root) && root_count != 2 {
     ClaimOperandUnnameable {
       entry: entry,
       function: function,
-      reason: "the entry is not a module under the dag/test/claim claim universe",
-    }
-  } else if !entry.ends_with(".dag") {
-    ClaimOperandUnnameable {
-      entry: entry, function: function, reason: "the entry is not a .dag module path"
+      reason: "the module path carries the corpus root marker more than once",
     }
   } else {
-    // THE PATH IS REBUILT BY REPLACING, NOT SLICED. A list index in this language is optional and an
-    // off-by-one in a slice is silent, while `replace` on a string that was just checked to carry the
-    // marker once is total. The count check is what keeps "once" honest: `split` on the marker yields
-    // n+1 pieces, so a module name carrying `.dag` twice is refused rather than guessed about -- and a
-    // name like that is a roster row this instrument should not be improvising a label for.
-    let rest = entry.replace(from: prefix, to: "")
-    if count(rest.split(delimiter: ".dag")) != 2 {
+    let after_root = if entry.starts_with(root) { entry.replace(from: root, to: "") } else { entry }
+    if !after_root.starts_with(universe) {
+      ClaimOperandUnnameable {
+        entry: entry,
+        function: function,
+        reason: "the entry is not a module in the claim universe test/claim, the subtree the claim route addresses (gunbc.discovery_census claim_route_universe)",
+      }
+    } else if !entry.ends_with(".dag") {
+      ClaimOperandUnnameable {
+        entry: entry, function: function, reason: "the entry is not a .dag module path"
+      }
+    } else if count(after_root.split(delimiter: ".dag")) != 2 {
       ClaimOperandUnnameable {
         entry: entry,
         function: function,
         reason: "the module name carries more than one .dag suffix",
       }
     } else {
-      let package_path = rest.replace(from: ".dag", to: "").replace(from: "/", to: ".")
+      let package_path = after_root.replace(from: ".dag", to: "")
       match parse_label(text: concat(concat(concat("//", package_path), ":"), function)) {
         // THE LABEL IS PARSED, NOT ASSUMED. `extdeps.bazel.label` is the authority on what a label is, and
         // it refuses the set forms (`TargetPattern`), a `.` segment, a relative path, a repository
