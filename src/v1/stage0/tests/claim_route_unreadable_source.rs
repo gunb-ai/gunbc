@@ -40,7 +40,7 @@ fn route(scratch: String) -> Result<usize, String> {
     .map(|members| {
         members
             .iter()
-            .filter(|m| matches!(m.outcome, v1_compiler::cli_run::ClaimOutcome::Pass))
+            .filter(|m| matches!(m.outcome, v1_compiler::cli_run::ClaimMemberOutcome::Evaluated(v1_compiler::cli_run::ClaimOutcome::Pass)))
             .count()
     })
 }

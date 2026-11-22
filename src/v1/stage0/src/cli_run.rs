@@ -20445,10 +20445,29 @@ fn parse_floor_discovery_producer_result(
 /// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
 /// module name (read off the `module` line by the module index), which is what the claim's label
 /// is minted from (`gunbc.discovery_census` `site_label`).
+/// One member's result in the claim route -- the route's OWN outcome type, deliberately NOT a
+/// `ClaimOutcome` variant. A member either reports what the runner evaluated, or reports the typed
+/// reason its entry could not be resolved at all.
+///
+/// Reusing `ClaimOutcome::NotAttempted` for a resolve failure would give one name two meanings: it is
+/// documented as "planned, never reached, because a sibling claim's unwind stopped the line," with
+/// `halted_by` naming the claim whose panic stopped it -- which the floor and CI renderers read that
+/// way. A resolve refusal is not that (`gunbc.design_argument::single_authority`), so the route carries
+/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority already
+/// sets: a closure diagnostic is a finding (did not hold); a missing entry or infrastructure refusal is
+/// no observation. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimMemberOutcome {
+    /// The runner reached the claim and evaluated it.
+    Evaluated(ClaimOutcome),
+    /// The claim's entry could not be resolved; the typed refusal says what kind of failure this is.
+    Unresolved(EntryResolveRefusal),
+}
+
 pub struct ClaimRouteMember {
     pub module_path: String,
     pub function: String,
-    pub outcome: ClaimOutcome,
+    pub outcome: ClaimMemberOutcome,
     pub eval_steps: u64,
     pub cpu_ms: u128,
 }
@@ -20586,27 +20605,32 @@ pub fn run_claim_route(
     }
     let mut members = Vec::new();
     for (entry, module_path, functions) in groups {
-        // Resolve this entry's reference closure ONCE. A resolve failure for ONE entry is a
-        // LOCATED outcome, not a fatal error: the claims discovery enrolled under it are known
-        // identities (they came from discovery's own rows, never invented here), so each gets
-        // exactly one unobserved outcome and the OTHER entries still run. Only when a claim's
-        // SOURCE cannot be enumerated at all does the route refuse (above): that is a source or
-        // selection failure, not something to paper over with an unobserved row for a claim we
-        // cannot name.
-        let resolved = match resolve_entry_with_index(&index, &entry) {
-            Err(e) => Err(format!("resolve {entry}: {e}")),
+        // Resolve this entry's reference closure ONCE, with the refusal kept TYPED. A resolve
+        // failure for ONE entry is a LOCATED outcome, not a fatal error: the claims discovery
+        // enrolled under it are known identities (from discovery's own rows, never invented here),
+        // so each gets exactly one outcome carrying the refusal and the OTHER entries still run.
+        // The fold then reads the refusal by the rule the resolve authority already sets: a closure
+        // diagnostic is a finding (did not hold, exit 1); a missing entry or infrastructure refusal
+        // is no observation (unobserved, exit 2). Only a source that cannot be enumerated AT ALL
+        // still refuses the whole route (above) -- never an unobserved row for a claim we cannot name.
+        let resolved = match resolve_entry_with_index_typed(&index, &entry) {
+            Err(refusal) => Err(refusal),
             Ok((graph, source_indices)) => match closure_subject_for_entry(&index, &entry) {
-                Err(e) => Err(format!("closure subject {entry}: {e}")),
+                // The entry resolved; only the reference-closure subject read then failed. That is
+                // not the corpus's own name/type diagnostic, so it falls toward no observation.
+                Err(e) => Err(entry_resolve::EntryResolveRefusal::ResolveInfrastructure {
+                    message: format!("closure subject {entry}: {e}"),
+                }),
                 Ok(closure_subject) => Ok(((graph, source_indices), closure_subject)),
             },
         };
         match resolved {
-            Err(cause) => {
+            Err(refusal) => {
                 for function in functions {
                     members.push(ClaimRouteMember {
                         module_path: module_path.clone(),
                         function,
-                        outcome: ClaimOutcome::NotAttempted { halted_by: cause.clone() },
+                        outcome: ClaimMemberOutcome::Unresolved(refusal.clone()),
                         eval_steps: 0,
                         cpu_ms: 0,
                     });
@@ -20624,7 +20648,7 @@ pub fn run_claim_route(
                     members.push(ClaimRouteMember {
                         module_path: module_path.clone(),
                         function,
-                        outcome,
+                        outcome: ClaimMemberOutcome::Evaluated(outcome),
                         eval_steps: receipt.eval_steps,
                         cpu_ms: receipt.cpu_nanos / 1_000_000,
                     });
