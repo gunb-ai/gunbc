@@ -21,6 +21,13 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // field concept), so they are broken on main independently of this change. v1-runnable twins of concept_index_enumeration live in
 // test.claim.decl_facts_field_binder_witness and cover the record, defaulted-record and
 // coproduct-arm reads.
+// UPDATE 2026-11-22 (claim-entrypoints-cutover, gunbc#16872): three of the five — enforcement_live_witness,
+// enforcement/cost_coverage_witness, enforcement/grammar_coverage_witness — moved to dag/test/claim as
+// test.claim.* modules, so the interpreter's claim route now accepts their labels; the paths above were
+// repointed in the same change. That makes them NAMEABLE through `gunbc test`, which is what the trigger
+// asks for, but not YET EXECUTED by a required lane: their only caller is gunbc.offline_local_recipe, an
+// operator-run offline path. So this stall stays open and its drop belongs to whoever enrols the three in
+// a required lane; the two genuine v2 lens witnesses above are unaffected by the move.
 data v2_lens_witnesses_unreachable_stall: GuaranteeStall = GuaranteeStall {
   subject: "v2 lens witnesses that consume decl_facts fields through the node_query binder shape and execute on no reachable route",
   current: Mitigatable,
@@ -34,11 +41,11 @@ data v2_lens_witnesses_unreachable_stall: GuaranteeStall = GuaranteeStall {
       tail: Cons {
         head: "src/v2/test/claim/concept_index_enumeration/concept_index_enumeration.dag",
         tail: Cons {
-          head: "src/v2/test/claim/enforcement_live_witness.dag",
+          head: "dag/test/claim/enforcement_live_witness.dag",
           tail: Cons {
-            head: "src/v2/test/claim/enforcement/cost_coverage_witness.dag",
+            head: "dag/test/claim/enforcement/cost_coverage_witness.dag",
             tail: Cons {
-              head: "src/v2/test/claim/enforcement/grammar_coverage_witness.dag",
+              head: "dag/test/claim/enforcement/grammar_coverage_witness.dag",
               tail: Empty {}
             }
           }

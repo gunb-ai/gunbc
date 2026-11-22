@@ -1749,7 +1749,7 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "src/v2/test/claim/long/direct_rust_door_production_group.dag"
+            (entry as String) == "dag/test/claim/long/direct_rust_door_production_group.dag"
               && function == "direct_rust_door_production_group_closing_expectation_holds"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
@@ -1847,7 +1847,7 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "src/v2/test/claim/manual/test_migration_debt.dag"
+            (entry as String) == "dag/test/claim/manual/test_migration_debt.dag"
               && function == "retained_rust_kernel_wall_holds_against_live_tree"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false

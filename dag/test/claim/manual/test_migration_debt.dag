@@ -1,4 +1,4 @@
-module v2.test.claim.manual.test_migration_debt
+module test.claim.manual.test_migration_debt
 
 import std.types { List }
 import v2.lens.test_migration_debt {

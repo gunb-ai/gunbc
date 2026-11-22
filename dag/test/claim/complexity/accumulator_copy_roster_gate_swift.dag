@@ -1,4 +1,4 @@
-module v2.test.claim.complexity.accumulator_copy_roster_gate_swift
+module test.claim.complexity.accumulator_copy_roster_gate_swift
 
 import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
 

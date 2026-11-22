@@ -883,7 +883,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       leaf(label: "a deliberately missing emission rule refuses, typed, through the written-file route", days: 2),
     ],
     [
-      probe(label: "extend the closing contract to written source, rustc result, provenance and refusal; its subject must be the written artifact, not the in-memory string", days: 2, module_path: "v2.test.claim.long.direct_rust_door_production_group", decl_name: "direct_rust_door_production_group_closing_expectation_holds"),
+      probe(label: "extend the closing contract to written source, rustc result, provenance and refusal; its subject must be the written artifact, not the in-memory string", days: 2, module_path: "test.claim.long.direct_rust_door_production_group", decl_name: "direct_rust_door_production_group_closing_expectation_holds"),
     ],
     [
       leaf(label: "acceptance run at exact head; receipt", days: 1),
