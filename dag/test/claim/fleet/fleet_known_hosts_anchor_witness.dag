@@ -100,6 +100,39 @@ fn fixture_hop_context() -> FirstContactHopContext {
   }
 }
 
+fn fixture_other_host() -> HostIdentity { "witness-other-host" as HostIdentity }
+
+// A lease row that does NOT correspond to the matched hop observation (its host differs). The guard in
+// first_contact_ssh_target_in must refuse to dial it: this is the discriminating consumer of the
+// fork-closing guard -- the consistent fixture_hop_context resolves (see the_hop_admits_only_the_token_
+// holding_modes) while this one, differing only in the lease row's host, must NOT resolve.
+fn fixture_mismatched_hop_context() -> FirstContactHopContext {
+  FirstContactHopContext {
+    hop_rows: [ LanEndpointHostKey {
+      host: fixture_pre_anchor_host(),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAfixturehopkey",
+      sha256_fingerprint: "SHA256:fixturehopkey",
+      provenance: ScannedFirstContact { scanned_from: "witness fixture" as NonEmptyStr },
+    } ],
+    lease_row: Present { value: KnownHostKeyRow {
+      host: fixture_other_host(),
+      address: fixture_lease_address(),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAfixturehopkey",
+      sha256_fingerprint: "SHA256:fixturehopkey",
+      provenance: ScannedFirstContact { scanned_from: "witness fixture" as NonEmptyStr },
+    } },
+  }
+}
+
+test fn a_lease_row_from_another_host_does_not_resolve() -> Bool {
+  match first_contact_ssh_target_in(ctx: fixture_mismatched_hop_context(), host: fixture_pre_anchor_host(), principal: "ubuntu", admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
+    SshTargetResolved { target: _ } => false
+    SshTargetRefused { endpoint: _, refusal: _ } => true
+  }
+}
+
 // The SAME registry authored in two orders. These are one set of trusted keys, so they must be one
 // registry -- and before canonicalization they were two, because the identity was a function of the
 // list's traversal rather than of the enrollments it denotes.

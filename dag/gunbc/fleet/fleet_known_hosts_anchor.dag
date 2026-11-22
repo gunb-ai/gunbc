@@ -327,12 +327,14 @@ fn first_contact_admission_for_tailscale_join_mode() -> FirstContactAdmission
 // new parameter on every `_in` form (the compute_recover_attempt_in pattern,
 // gunbc.design_argument::witness_one_interface). The wrappers build it from the globals below; a
 // witness builds a self-contained fixture so the hop path keeps executing with a discriminating red
-// while the production hop population is empty (no host is pre-anchor right now). `lease_row` is the
-// address-bearing row `lan_endpoint_host_key_row` resolves for the host's hop observation, so the key
-// and fingerprint validation stays in that one authority. It deliberately holds NO runner/custody data:
-// this is the trust-anchor module, and pulling the runner module's closure here would drag the whole
-// CI/github/docker graph into every fleet consumer. `custody_host_in` takes the runner spec as its own
-// parameter (the custody module already owns that import).
+// while the production hop population is empty (no host is pre-anchor right now). `hop_rows` is the hop
+// population the fold scans; `lease_row` is the address-bearing row `lan_endpoint_host_key_row` resolves
+// for that same observation. `_in` does not trust the pairing: it dials `lease_row`'s address only when
+// its host, public key and fingerprint equal the observation the fold matched, so the address dialed and
+// the key verified cannot disagree and a context that forked the two resolves to nothing (fail_closed).
+// It deliberately holds NO runner/custody data: this is the trust-anchor module, and pulling the runner
+// module's closure here would drag the whole CI/github/docker graph into every fleet consumer.
+// `custody_host_in` takes the runner spec as its own parameter (the custody module already owns it).
 type FirstContactHopContext {
   hop_rows: List<LanEndpointHostKey>
   lease_row: KnownHostKeyRow?
@@ -384,11 +386,22 @@ fn first_contact_ssh_target_in(
         }
       }) {
         Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
-        Present { value: _ } =>
+        Present { value: o } =>
           match ctx.lease_row {
             Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
             Present { value: row } =>
-              SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
+              // The address is dialed ONLY when the lease row corresponds to the very observation the
+              // fold just matched: same host, same public key, same fingerprint. A context that tried to
+              // pair one host's hop row with another host's lease row resolves to nothing -- the fork the
+              // comment above forbids ("the address dialed and the key verified cannot disagree") is not
+              // merely detected, it is unwritable (fail_closed).
+              if host_identity_eq(a: row.host, b: o.host)
+                && row.public_key_base64 == o.public_key_base64
+                && row.sha256_fingerprint == o.sha256_fingerprint {
+                SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
+              } else {
+                SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
+              }
           }
       }
       }
