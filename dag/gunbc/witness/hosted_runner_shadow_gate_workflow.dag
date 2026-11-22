@@ -497,7 +497,7 @@ fn shadow_gate_plumbing_proof_run() -> String {
       join([
         "set -euo pipefail",
         "echo '--- remote gate step ---'",
-        concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
+        concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --source-root \"$GITHUB_WORKSPACE/dag\" --source-root \"$GITHUB_WORKSPACE/src/v2\" --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
         "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
       ], " && ")
   }
@@ -525,7 +525,7 @@ fn shadow_gate_remote_gate_step(row: EmittedSubjectBuildRow) -> Step {
       join([
         "set -uo pipefail",
         "rc=0",
-        concat(concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" --arg identity_file="), shadow_gate_ci_ssh_key_file), " || rc=$?"),
+        concat(concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --source-root \"$GITHUB_WORKSPACE/dag\" --source-root \"$GITHUB_WORKSPACE/src/v2\" --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" --arg identity_file="), shadow_gate_ci_ssh_key_file), " || rc=$?"),
         concat(concat("cat \"$RUNNER_TEMP/gate-", row.step_id), ".json\" || true"),
         "case \"$rc\" in",
         "  0) exit 0;;",

@@ -107,7 +107,11 @@ test fn the_emitted_workflow_runs_every_gate_row_with_the_agreed_exit_rendering(
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:self-host")
     && contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:v2-native-cli")
-    && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host'")
+    && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host'")    // THE CLIENT LINE CARRIES ITS SOURCE ROOTS (run 44985404044: the emitted client line had
+    // none and gunbc typed 'provide at least one --source-root' -- the first time that line ever
+    // executed, because earlier runs died upstream). The roots are the canonical pair every
+    // `gunbc run` invocation takes, absolute under the checkout.
+    && contains(haystack: rendered, needle: "run --source-root \"$GITHUB_WORKSPACE/dag\" --source-root \"$GITHUB_WORKSPACE/src/v2\" --entry dag/gunbc/compute/remote_build_client.dag")
     && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli'")
     && contains(haystack: rendered, needle: "gate-emit_build_self_host.json")
     && contains(haystack: rendered, needle: "gate-emit_build_v2_native_cli.json")
