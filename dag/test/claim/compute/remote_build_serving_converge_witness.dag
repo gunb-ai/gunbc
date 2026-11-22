@@ -41,7 +41,7 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -2231,7 +2231,7 @@ test fn converge_order_preserves_every_action_kind() -> Bool {
 test fn native_build_and_upload_collapse_on_one_path() -> Bool {
   let up = InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" }
   let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc", as_user: "gunbc-serve" }
-  converge_action_key(up) == converge_action_key(native) && length(converge_order([up, native])) == 1
+  converge_action_key(up) == converge_action_key(native) && length(converge_dedupe([up, native])) == 1
 }
 
 // The native build must still be ORDERED as a binary-leg write: after the checkout (rank 5) and the
