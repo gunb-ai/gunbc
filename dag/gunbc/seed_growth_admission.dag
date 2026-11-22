@@ -43,6 +43,7 @@ import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifi
 import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
 import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
 import gunbc.transport_shell_wall_deadline_field_seed_growth { transport_shell_wall_deadline_field_seed_growth_justification }
+import gunbc.adjudicate_measurement_receipt_cli_modes_seed_growth { adjudicate_measurement_receipt_cli_modes_seed_growth_justification }
 import gunbc.namespace_cut.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.namespace_cut.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
@@ -423,7 +424,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     // Enrolled at the time of authorship, not after a debt sweep: the field and its two fixture
     // arguments are this change's own hand growth, and the ruling that admits them is quoted inside the
     // row (2026-11-21, principal:google-oidc/accounts/116084671989231734979).
-    transport_shell_wall_deadline_field_seed_growth_justification
+    transport_shell_wall_deadline_field_seed_growth_justification,
+    adjudicate_measurement_receipt_cli_modes_seed_growth_justification
   ]
 }
 
