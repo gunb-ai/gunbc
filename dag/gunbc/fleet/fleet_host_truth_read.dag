@@ -17,10 +17,17 @@ import std.optional { Present, Absent }
 // THE FRONTIER, NAMED BECAUSE AN UNCONSUMED ENTRY IS ITS OWN DEFECT (gunbc.design_argument::consumption):
 // this entry is consumed by a later change -- the per-host observe-mode leg of the converge route, which
 // the operator put on the existing timer (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21,
-// words: "A is fine"). That mode is NOT in this repository yet and cannot be until the operator answers in
-// their own words the separate question of the budget raise a regenerated converge workflow carries
-// (gunbc.design_ruling::ci_job_budgets_closed_to_growth; the escalation on that raise closed APPROVED on
-// 2026-11-22 by the dashboard's 15-minute default with no operator words, which grants nothing). Until the
+// words: "A is fine"). That mode is not in this repository yet, and what stops it is arithmetic rather
+// than taste: giving the converge route a new step means regenerating .github/workflows/fleet-converge.yml,
+// and at this head a regeneration already emits a derived job-budget raise that no operator words approve
+// (the heal profile's 120-minute backstop raises the derived host cap step from the committed 6255 s to
+// 8055 s before any step of mine is added -- gunbc.design_ruling::ci_job_budgets_closed_to_growth; the
+// escalation that closed APPROVED on 2026-11-22 by the dashboard's 15-minute default carries no operator
+// words and grants nothing). The operator has since ruled the other way: the budgets go DOWN, heal from
+// 120 to 60 minutes and v2-bootstrap from 90 to 60, relayed by clever-raven-401 on 2026-11-22, the
+// lowering itself landing in another lane with its own ruling row. THAT is this mode's trigger -- once the
+// lowering is on main the derived bracket falls below the committed 6255 s, and the mode's own step delta
+// has room inside what the lowering frees, which the regeneration will show rather than assert. Until the
 // mode lands, the only consumer of a verdict is a claim, which is exactly what
 // dag/test/claim/fleet/fleet_host_truth_read_witness.dag is for: every arm is reachable on any machine,
 // because every input is supplied.
@@ -385,7 +392,7 @@ fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
   }
 }
 
-// THE INSTRUMENT, AS A ROW AND NOT A FLAG (gunbc.design_argument::proportionate_evidence): it names its
+// THE INSTRUMENT, AS A ROW AND NOT A FLAG (gunbc.design_argument::how_to_work, proportionate evidence): it names its
 // real consumer, its discriminator and the cost it may not exceed, and those facts live here as the
 // module's own terms rather than as data rows nothing folds -- a String-typed commentary row is
 // indistinguishable from program data (gunbc.design_argument::source_annotations), and registering an
