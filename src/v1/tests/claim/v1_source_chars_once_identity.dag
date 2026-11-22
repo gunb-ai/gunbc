@@ -1,0 +1,64 @@
+module v1.tests.claim.v1_source_chars_once_identity
+
+// ROADMAP NODE v1-source-chars-converted-once -- IDENTITY guard (semantics preserved).
+//
+// For every file in the ingest corpus, the newline index the NEW ingest path builds (from the
+// tokenizer's converted characters, V1LexArtifact.source_chars) must be IDENTICAL to the index
+// the OLD ingest path built (its own conversion of the raw source via build_newline_index):
+// same offsets, same char_codes, same file. If the split or the rewiring ever changed what the
+// newline index contains, this refuses. The token stream is identical before/after by
+// construction (the tokenizer's token-emission logic is byte-for-byte unchanged; the artifact
+// only gained a field), so the non-empty-token claim guards against a dropped stream.
+//
+// This module uses newline_index_from_char_codes, so it runs on the post-change head only --
+// it is the behavioural identity guard, not the red/green pivot.
+
+import extdeps.filesystem.filesystem_io { filesystem_read }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, List, Int, Bool }
+import v1.std.core { build_newline_index, newline_index_from_char_codes, NewlineIndex }
+import v1.compiler.tokenize { tokenize_artifact }
+
+// The compiler's own source population is the real ingest corpus: every file below is a .dag
+// source the v1 compiler tokenizes and indexes on the compile path.
+data corpus_files: List<String> = [
+  "src/v1/00_core.dag",
+  "src/v1/01_tokenize.dag",
+  "src/v1/02_parse.dag",
+  "src/v1/03_resolve.dag",
+  "src/v1/compile.dag",
+  "src/v1/05_emit_rust.dag",
+  "dag/test/claim/v1_source_audit_witness.dag"
+]
+
+fn read_source(path: String) -> String {
+  (filesystem_read(path: path)).content
+}
+
+// What the ingest builds NOW: the newline index from the tokenizer's converted characters.
+fn ingest_newline_index(path: String, source: String) -> NewlineIndex {
+  let artifact = tokenize_artifact(source: source, file: path, env: dag_parse_environment)
+  newline_index_from_char_codes(file: path, char_codes: artifact.source_chars)
+}
+
+// What the ingest built BEFORE: its own conversion of the raw source.
+fn prechange_newline_index(path: String, source: String) -> NewlineIndex {
+  build_newline_index(file: path, source: source)
+}
+
+fn all_bool(xs: List<Bool>) -> Bool {
+  fold(init: true, f: (acc, b) => acc && b, xs: xs)
+}
+
+test fn newline_index_identical_before_and_after_on_corpus() -> Bool {
+  corpus_files |> map(path =>
+    let source = read_source(path)
+    ingest_newline_index(path, source) == prechange_newline_index(path, source)
+  ) |> all_bool()
+}
+
+test fn tokenize_token_stream_nonempty_on_corpus() -> Bool {
+  corpus_files |> map(path =>
+    count(tokenize_artifact(source: read_source(path), file: path, env: dag_parse_environment).tokens) > 0
+  ) |> all_bool()
+}
