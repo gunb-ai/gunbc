@@ -1,0 +1,93 @@
+module v1.tests.claim.v1_source_chars_once_witness
+
+// ROADMAP NODE v1-source-chars-converted-once, v1 realization witness.
+//
+// The v1 ingest path converted each source file to character codes TWICE: once inside
+// `tokenize_artifact` (let c = chars(source)) and once inside `build_newline_index`
+// (let char_codes = source |> chars). The newline index is useful work; the SECOND
+// source->chars conversion was the repeated part. The fix carries the tokenizer's single
+// conversion on V1LexArtifact.source_chars and feeds it to newline_index_from_char_codes at
+// both ingest sites in src/v1/compile.dag (front_end_sources and
+// parse_revision_declarations_with_environment), so each ingested file pays ONE conversion.
+//
+// These controls do NOT change token or index semantics (node out_of_scope); they only
+// assert the conversion is performed once and that the index the ingest now builds is
+// identical to the index the ingest used to build, across the corpus.
+
+import extdeps.filesystem.filesystem_io { filesystem_read }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import std.types { String, List, Int, Bool }
+import v1.std.core { build_newline_index, newline_index_from_char_codes, NewlineIndex }
+import v1.compiler.tokenize { tokenize_artifact }
+
+// The compiler's own source population is the real ingest corpus: every file below is a
+// .dag source the v1 compiler tokenizes and indexes on the compile path. Reading them and
+// driving the production tokenize + index builders over each one is the corpus control.
+data corpus_files: List<String> = [
+  "src/v1/00_core.dag",
+  "src/v1/01_tokenize.dag",
+  "src/v1/02_parse.dag",
+  "src/v1/03_resolve.dag",
+  "src/v1/compile.dag",
+  "src/v1/05_emit_rust.dag",
+  "dag/test/claim/v1_source_audit_witness.dag"
+]
+
+data compile_path: String = "src/v1/compile.dag"
+
+fn read_source(path: String) -> String {
+  (filesystem_read(path: path)).content
+}
+
+// The character-code list the ingest now hands to the newline index is the tokenizer's
+// single conversion; this is what front_end_sources / parse_revision_declarations do.
+fn ingest_newline_index(path: String, source: String) -> NewlineIndex {
+  let artifact = tokenize_artifact(source: source, file: path, env: dag_parse_environment)
+  newline_index_from_char_codes(file: path, char_codes: artifact.source_chars)
+}
+
+// The index the ingest produced BEFORE the change: its own conversion of the raw source.
+fn prechange_newline_index(path: String, source: String) -> NewlineIndex {
+  build_newline_index(file: path, source: source)
+}
+
+fn all_bool(xs: List<Bool>) -> Bool {
+  fold(init: true, f: (acc, b) => acc && b, xs: xs)
+}
+
+// STRUCTURAL red/green pivot. Over the source of src/v1/compile.dag, the two ingest sites
+// must build the newline index from the tokenizer's converted characters, and the ingest
+// path must NOT convert the raw source for the index. Run on main's released parser this
+// is RED (the from-chars call is absent and the raw-source conversion is present); after
+// the change it is GREEN. This is a structural claim over the source (filesystem_read),
+// executed by claim_batch -- NOT a shell grep.
+test fn ingest_newline_index_consumes_tokenizer_chars_once() -> Bool {
+  let text = read_source(compile_path)
+  let ingests_from_tokenizer_chars =
+    string_contains(s: text, pattern: "newline_index_from_char_codes(file: s.path, char_codes: artifact.source_chars)")
+  let ingests_never_convert_raw_source =
+    !string_contains(s: text, pattern: "build_newline_index(file: s.path, source: s.content)")
+  ingests_from_tokenizer_chars && ingests_never_convert_raw_source
+}
+
+// IDENTITY guard (semantics preserved). For every corpus file, the newline index the NEW
+// ingest path builds (from the tokenizer's converted characters) must be identical to the
+// index the OLD ingest path built (its own conversion of the raw source): same offsets,
+// same char_codes, same file. If the split or the rewiring ever changed what the index
+// contains, this refuses.
+test fn newline_index_identical_before_and_after_on_corpus() -> Bool {
+  corpus_files |> map(path =>
+    let source = read_source(path)
+    ingest_newline_index(path, source) == prechange_newline_index(path, source)
+  ) |> all_bool()
+}
+
+// TOKENS unchanged by the change. The tokenizer's token computation is untouched (only the
+// artifact gained a field), so the token STREAM is identical before/after by construction;
+// this claim guards that the tokenizer still yields a non-empty stream for every corpus
+// file, so a regression that dropped the tokens entirely is caught.
+test fn tokenize_token_stream_nonempty_on_corpus() -> Bool {
+  corpus_files |> map(path =>
+    count(tokenize_artifact(source: read_source(path), file: path, env: dag_parse_environment).tokens) > 0
+  ) |> all_bool()
+}

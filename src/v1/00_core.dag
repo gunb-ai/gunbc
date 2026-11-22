@@ -2846,12 +2846,27 @@ type NewlineIndex {
   char_codes: List<Int>
 }
 
-fn build_newline_index(file: String, source: String) -> NewlineIndex {
-  let char_codes = source |> chars
+// Build the newline index from an already-converted character-code list. The offsets
+// fold is the whole useful work; converting the source to chars is NOT done here, so a
+// caller that already holds the converted characters (the tokenizer's
+// V1LexArtifact.source_chars) can hand them straight in. This is the single source->chars
+// consumption point on the ingest path (v1-source-chars-converted-once): the newline index
+// no longer re-converts the source.
+fn newline_index_from_char_codes(
+  file: String,
+  char_codes: List<Int>
+) -> NewlineIndex {
   let offsets = char_codes |> enumerate |> fold(init: [], f: (acc, pair) =>
     if pair.second == 10 { list_push(acc, pair.first) } else { acc }
   )
   NewlineIndex { file: file, offsets: offsets, char_codes: char_codes }
+}
+
+// Convenience wrapper for callers that hold the raw source and have no prior conversion
+// (tests, kernel builders). It performs the one conversion itself and delegates the offset
+// work to newline_index_from_char_codes, so its result is identical to before the split.
+fn build_newline_index(file: String, source: String) -> NewlineIndex {
+  newline_index_from_char_codes(file: file, char_codes: source |> chars)
 }
 
 fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {

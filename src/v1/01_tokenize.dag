@@ -70,6 +70,10 @@ type ScanStep
 type V1LexArtifact {
   tokens: List<Token>
   annotations: List<UnboundAnnotationCapture>
+  // The source text converted to character codes exactly once by the tokenizer.
+  // Carried on the artifact so the newline index can consume it instead of
+  // re-converting the same source (v1-source-chars-converted-once).
+  source_chars: List<Int>
 }
 
 type TokPos {
@@ -229,7 +233,8 @@ fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1L
   }
   V1LexArtifact {
     tokens: list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof)),
-    annotations: final_state.annotations
+    annotations: final_state.annotations,
+    source_chars: c
   }
 }
 

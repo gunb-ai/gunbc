@@ -23,7 +23,7 @@ import v1.std.core {
   OccurrenceTransportViolation,
   ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
   arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
-  UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
+  UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index, newline_index_from_char_codes,
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
   foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens,
   DeclarationMarker, Unmarked, TestMarked, TestCodeReferenced, FunctionValueBinding, LocalValueBinding, VariantValueBinding,
@@ -1322,7 +1322,7 @@ fn resolve_frontend_occurrence_transport(
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
     let artifact = tokenize_artifact(source: s.content, file: s.path, env: dag_parse_environment)
-    let si = build_newline_index(file: s.path, source: s.content)
+    let si = newline_index_from_char_codes(file: s.path, char_codes: artifact.source_chars)
     FrontendPrepared {
       tokens: artifact.tokens,
       newline_index: si,
@@ -1487,7 +1487,7 @@ fn parse_revision_declarations_with_environment(
     let artifact = tokenize_artifact(source: s.content, file: s.path, env: environment)
     let p = FrontendPrepared {
       tokens: artifact.tokens,
-      newline_index: build_newline_index(file: s.path, source: s.content),
+      newline_index: newline_index_from_char_codes(file: s.path, char_codes: artifact.source_chars),
     }
     let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
