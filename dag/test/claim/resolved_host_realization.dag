@@ -55,16 +55,17 @@ test fn a_callable_local_keeps_the_host_declaration_it_holds() -> Bool {
   call_through_local(text_of_chars: std.host_text.text_of_chars) == ""
 }
 
-// THE SIBLING OF trim ABOVE, AND THE ARM THAT KILLED THE srv15 ARRIVAL. utf8_decode_bytes' declared
-// body is the unreachable seam in std.encoding while its realization is
-// v1_rt::utf8_decode_bytes (fail-closed on invalid UTF-8), so the
-// projection row -- not the spelling -- is what makes a BOUND call evaluate the host. Bound is how
-// the Secret Manager read spells it: utf8_secret_from_access_payload imports std.encoding
-// in its utf8_secret_from_access_payload. Every other path hid it -- an UNBOUND call answers
-// from the builtin tier, and redact_response_body turns an undecodable payload into an empty body on
-// the refusal side -- so fleet-converge arrival-converge run 45059586538 was the first caller to
-// reach it, dying at step 7 with TypeError pure_dag_seam_unreachable on the SUCCESS side of the
-// version-1 access, having never contacted the BMC.
+// THE SIBLING OF trim ABOVE, AND THE ARM THAT STOPPED THE srv15 ARRIVAL. utf8_decode_bytes' declared
+// body is the unreachable seam in std.encoding while its realization is v1_rt::utf8_decode_bytes, so the
+// projection row -- not the spelling -- is what makes a BOUND call evaluate the host. With no row, a
+// bound call evaluated the placeholder and died with TypeError pure_dag_seam_unreachable: that is how
+// fleet-converge arrival-converge run 45059586538 ended at step 7, on the SUCCESS side of its version-1
+// Secret Manager access, having never contacted the BMC. The credential path itself now reads through
+// std.encoding's fallible pure decoder instead (test.claim.secret_manager_access_version_witness covers
+// that), so what this claim owns is the routing for every OTHER module that imports the seam --
+// gunbc.machine_intake.mtcollins1_ui_status_asset_observation, gunbc.roadmap.authority and the rest.
+// Nothing else caught the missing row because an UNBOUND call answers from the builtin tier, and
+// redact_response_body turns an undecodable payload into an empty body on the refusal side.
 test fn an_imported_utf8_decode_uses_its_declared_host_projection() -> Bool {
   utf8_decode_bytes(payload: octets_bytes(o: [104, 105])) == "hi"
     && utf8_decode_bytes(payload: octets_bytes(o: [195, 169, 97])) == "\u{00e9}a"
