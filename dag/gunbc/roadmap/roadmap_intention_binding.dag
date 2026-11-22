@@ -40,8 +40,8 @@ data first_customer_service_intention: String = "gunbc.plans.first_customer_serv
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 data remote_build_bandwidth_intention: String = "gunbc.plans.remote_build_bandwidth"
 
-  // @ref(gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan); its milestones are the rb-m* roadmap nodes.
-  // gunbc.plans.remote_build_bandwidth, section 4.
+data roadmap_intention_bindings: List<IntentionBinding> = [
+  // #gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan; its milestones are the rb-m* roadmap nodes.
   serves(node: "remote-build-srv3-srv4-first-served-build", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "remote-build-leg-failures-are-typed", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "remote-build-served-attempt-host-log-read", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
