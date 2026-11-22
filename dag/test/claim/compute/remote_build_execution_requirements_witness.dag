@@ -1,6 +1,7 @@
 module test.claim.compute.remote_build_execution_requirements_witness
 
-import std.types { Bool, List, FilePath }
+import std.types { Bool, List, NonEmptyStr, FilePath }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, RevocationAccepted }
@@ -10,6 +11,7 @@ import extdeps.toolchain.types { Aarch64, X86_64, architecture_diagnostic_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
 import gunbc.fabric.fabric_executor_class {
   ExecutorExecutionClass, HostArchitectureKnown, HostArchitectureUnclassified,
+  ExecutionClassStanding, ExecutionClassObserved, ExecutionClassExpected,
   ExecutionClassAdmitted, ExecutionClassArchitectureRefused, ExecutionClassUnclassified,
   admit_execution_class, executor_host_architecture, executor_execution_class_roster,
 }
@@ -22,7 +24,7 @@ import gunbc.compute.remote_build {
   remote_build_answer_moves_on, remote_build_next_step, remote_build_pinned_candidates,
 }
 import gunbc.compute.remote_build_client { remote_build_placement_gate, RemoteBuildPlacementOpen, RemoteBuildPlacementBlocked }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_serving_candidate_hosts }
 
 // HERMETIC CONTROLS for the request carrying its execution requirements and for placement checking them
 // against the fleet's executor-class authority (roadmap row
@@ -197,7 +199,13 @@ test fn a_refused_host_is_walked_past_rather_than_settling_the_run() -> Bool {
 // even when the request states no architecture: "nobody classified this" is not "this host can run it".
 test fn an_unclassified_host_refuses_with_its_own_typed_cause() -> Bool {
   let unclassified_roster: List<ExecutorExecutionClass> = [
-    ExecutorExecutionClass { host: operator_host_srv3, architecture: Aarch64 },
+    ExecutorExecutionClass {
+      host: operator_host_srv3,
+      architecture: Aarch64,
+      standing: ExecutionClassObserved {
+        evidence: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"),
+      },
+    },
   ]
   match admit_execution_class(requirements: x86_only(), roster: unclassified_roster, host: operator_host_e2d4b7) {
     ExecutionClassUnclassified { host: h, required: r } => h == operator_host_e2d4b7 && match r { Present { value: X86_64 } => true  Absent => false }
@@ -223,4 +231,39 @@ test fn the_execution_class_row_is_the_architecture_authority() -> Bool {
     // the CI-only host, neither on the dispatch roster nor on the candidate roster the serving converge
     // reads this row for.
     && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureUnclassified { host: h } => h == operator_host_srv14  _ => false }
+}
+
+// THE STANDING OF THE EVIDENCE IS IN THE ROW, NOT ONLY IN ITS COMMENT, because placement consumes these
+// rows as a hard fact and a comment cannot be checked. Every host the remote-build walk can be placed on
+// today -- the dispatch roster and the serving candidates -- carries Observed standing; the one host left
+// off the fleet roster carries no row at all rather than a guessed one. And standing is honesty, not
+// policy: the join never reads it, so a row cannot be quietly weakened into a refusal by editing it.
+test fn the_placed_upon_rows_cite_what_they_rest_on() -> Bool {
+  let placed = remote_build_serving_hosts()
+  let candidates = remote_build_serving_candidate_hosts()
+  all(placed, h => match executor_host_architecture(host: h) {
+        HostArchitectureKnown { host: _, arch: _ } => row_is_observed(host: h)
+        HostArchitectureUnclassified { host: _ } => false
+      })
+    && all(candidates, h => match executor_host_architecture(host: h) {
+        HostArchitectureKnown { host: _, arch: _ } => true
+        HostArchitectureUnclassified { host: _ } => false
+      })
+    && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureUnclassified { host: _ } => true  _ => false }
+}
+
+fn row_standing(host: HostIdentity) -> ExecutionClassStanding? {
+  fold(
+    executor_execution_class_roster,
+    init: none,
+    f: (acc, row) => if row.host == host { Present { value: row.standing } } else { acc },
+  )
+}
+
+fn row_is_observed(host: HostIdentity) -> Bool {
+  match row_standing(host: host) {
+    Present { value: ExecutionClassObserved { evidence: _ } } => true
+    Present { value: ExecutionClassExpected { catalog: _, what_would_ground_it: _ } } => false
+    Absent => false
+  }
 }
