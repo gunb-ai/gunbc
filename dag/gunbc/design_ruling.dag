@@ -1292,6 +1292,17 @@ data tailscale_acl_ssh_section_residue_2026_11_20: DesignRuling = DesignRuling {
   provenance: "Classifies the emitted ssh section of the tailnet policy as RESIDUE. Finding relayed by gentle-crab-832 (msg_c1605991, 2026-11-20): \"The tailnet policy's ssh section now has no consumer. Under the Consumption rule it should be dropped from what tailscale_acl_emit emits, or recorded as residue.\" The recorded disposition, agreed with gentle-crab-832 (msg_85c8392d: \"Recording the ssh section as residue with a consumer note is fine\"): KEEP emitting the rules unchanged, because the emitted document must equal the live tailnet policy -- the reconcile fixture test/fixture/tailscale_acl_reference.json carries them -- and dropping them from the emit before the tailnet drops them would invert the drift rather than remove it. DISSOLUTION CONDITION, typed by this row: when the tailnet read-back (tailscale_acl_reported reconcile) first reports the section ABSENT, the residue is gone and the emit drops with it; the reconcile route is the consumer that makes that moment visible instead of a comment.",
 }
 
+// Admits ONE seed change by PURPOSE under the v1 freeze, on the terms of DESIGN's
+// v1_seed_standing: the change removes a second, unmodeled authority rather than adding a capability.
+// It is not a general permission -- the declarations it covers are enumerated by the seed-growth rows
+// that cite it, and those rows say what else must be true for the admission to hold.
+data v1_seed_growth_for_declared_transport_ceiling_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_growth_for_declared_transport_ceiling_admitted"),
+  decided: "2026-11-21",
+  governs: decl_ref(module_path: "gunbc.v1.v1_maintenance_standing", decl_name: "v1_seed_standing"),
+  provenance: "Answers the PURPOSE objection raised by review 97148 (REQUEST_CHANGES) on gunb-ai/gunbc#16737, which asked whether a seed change passes the v1 semantics freeze. The operator's words, verbatim, given directly to the lane manager neat-badger-614 in chat on 2026-11-21: \"ah sorry - yes you can admit the seed change.\" principal:google-oidc/accounts/116084671989231734979. It covers both halves of that lane's seed growth: the transport-shell grammar field `wall_deadline:` on gunb-ai/gunbc#16842 (row gunbc.transport_shell_wall_deadline_field_seed_growth) and the interpreter's per-leg kill plus overrun decode on gunb-ai/gunbc#16737 (row carried there). The purposive case, in the lane's words: before the field, the seed armed a per-leg wall-clock kill by looking up a PARAMETER NAME at dispatch time, so the bound existed only where a caller happened to use one spelling and no bound at all otherwise; declaring the field on the transport retires that spelling as an authority. A transport that does not declare the field keeps main's behaviour byte for byte."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     one_source_tree_and_the_v2_namespace_dissolves,
@@ -1352,6 +1363,7 @@ fn design_rulings() -> List<DesignRuling> {
     runner_host_sudoers_is_installed,
     flex_first_recipe_is_flash_next,
     infrastructure_refusal_is_retried_to_a_bound,
+    v1_seed_growth_for_declared_transport_ceiling_admitted,
     conformance_needs_attention,
     consumption_interrogated_separately,
     dependencies_are_admitted_by_their_consumer,
