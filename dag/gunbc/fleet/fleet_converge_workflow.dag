@@ -36,6 +36,7 @@ import gunbc.fleet.site_pxe_edge_receipt_download {
   site_pxe_edge_admit_step_id, site_pxe_edge_download_step_id, site_pxe_edge_cite_step_id, site_pxe_edge_admitted_artifact_id_output,
   site_pxe_edge_download_dir, site_pxe_edge_pointer_env_name, site_pxe_edge_artifact_id_env_name, site_pxe_edge_download_path_env_name,
 }
+import extdeps.github.auth { github_token_env_name }
 import extdeps.github.action.download_artifact { download_artifact_artifact_ids_input, download_artifact_download_path_output }
 import gunbc.machine_intake.mtcollins1_probe_step { gunbc_ci_mtcollins1_fan_observe_boot_phase_invoke, gunbc_ci_mtcollins1_fan_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_observe_invoke, gunbc_ci_mtcollins1_kvm_observer_release_invoke, gunbc_ci_mtcollins1_ui_status_asset_observe_invoke }
 import gunbc.auth.secret_manager_shell_fetch { gunbc_ci_sm_max_time }
@@ -8742,6 +8743,15 @@ fn fleet_converge_arrival_converge_job() -> Job {
         run: gunbc_ci_arrival_converge_invoke(),
         shell: none,
         env: Present { value: [
+          // THE JOB TOKEN, for the one read the arrival fold makes of its OWN run: before the archive slot is
+          // taken the fold asks GitHub whether the run holding the slot has finished (gunbc.machine_intake
+          // .arrival_interlock::arrival_holder_run_liveness, through the declared github.WorkflowRuns.GetRun,
+          // whose bearer is read in-process as a Secret and never interpolated into argv). The variable's NAME
+          // is not typed here: extdeps.github.auth::github_token_env_name is the single authority, so the step
+          // cannot bind a variable the fold never reads. The job's permissions are contents: read,
+          // actions: read, id-token: write -- actions: read is already granted, is what this read needs, and
+          // no permission is added; the token is the job's own, scoped to this run, and the read is read-only.
+          kv(key: github_token_env_name() as String, value: "${{ github.token }}"),
           kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
           kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
           kv(key: fleet_converge_arrival_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.arrival_subject }}")),

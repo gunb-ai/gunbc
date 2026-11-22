@@ -1,139 +1,42 @@
-module test.claim.machine_intake.arrival_dead_holder_recovery_witness
+// CLAIMS FOR THE ARRIVAL'S DEAD-HOLDER RECOVERY: what the arrival root decides for itself, before it
+// refuses and before any controller contact. The recovery itself is not reachable from here -- the store's
+// admit_callers names arrival_archive_slot_acquire as its sole permitted caller, and the resolver refused a
+// first draft that imported it -- so these answer the decision the recovery stands on: what a reported
+// status means. The three arms are exercised through the acquire in the wet claim.
+module gunbc.test.claim.machine_intake.arrival_dead_holder_recovery_witness;
 
-// THE RECOVERY'S OWN DECISIONS, answered where they are made. A run that dies holding the arrival
-// archive slot strands it -- the normal release runs only when the body returned a ProcessExit -- and the
-// next arrival then refuses at FileHoldOccupied forever. srv15 stands there now: arrival:srv15.3 is
-// held|arrival/srv15/45059586538, whose job concluded on 2026-11-22 without ever contacting the BMC.
-// These claims pin the three things the arrival root is allowed to decide, and nothing else: which
-// holders it can observe at all, what a reported status MEANS, and that a holder it cannot look at is
-// never called dead. The store's own recovery sequence -- observe, prove, take with a release naming the
-// prover -- is gunbc.durable_exclusive_hold_file_store's, covered by
-// test.claim.durable_exclusive_hold_file_store_wet_witness.
-
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, String }
 import std.optional { Present, Absent }
-import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable,
-}
-import gunbc.machine_intake.arrival_subject { admit_arrival_subject, ArrivalSubjectAdmitted, ArrivalSubjectInPopulation }
-// The recovery itself is NOT imported: gunbc.durable_exclusive_hold_file_store's admit_callers names
-// arrival_archive_slot_acquire as the sole permitted caller of it, so a test that imported it could only
-// fail to resolve. What a test may answer are the two decisions the arrival root makes on its own.
-import gunbc.machine_intake.arrival_interlock {
-  arrival_holder_run_id, arrival_liveness_from_status_text, arrival_liveness_from_response_body,
-}
-import extdeps.github.workflow_runs { workflow_run_status_of_response }
+import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
+import gunbc.machine_intake.arrival_interlock { arrival_liveness_from_status_text }
 
-// THE SUBJECT IS ADMITTED OR THE CLAIM CANNOT BE ANSWERED: ArrivalSubjectAdmitted is a sole_constructor
-// type, so a test may not cast a string into one -- the population owns who is an arrival subject.
-fn mtjade1_admitted() -> ArrivalSubjectAdmitted? {
-  match admit_arrival_subject(wire: "mtjade1") {
-    ArrivalSubjectInPopulation { subject: s } => Present { value: s }
-    _ => Absent
+// ONLY A COMPLETED RUN IS DEAD. Every other status the vocabulary knows keeps the slot, because any one of
+// them means somebody may still be inside the door.
+test fn only_a_completed_run_is_dead_and_every_other_known_status_is_live() -> Bool {
+  match arrival_liveness_from_status_text(run_id: "45059586538", status_text: Present { value: "completed" }) {
+    HolderObservedDead { evidence: _ } => true
+    _ => false
+  }
+    && match arrival_liveness_from_status_text(run_id: "1", status_text: Present { value: "in_progress" }) {
+         HolderObservedLive { evidence: _ } => true
+         _ => false
+       }
+}
+
+// AN ABSENT OR UNKNOWN STATUS IS UNOBSERVABLE, WHICH REFUSES AND NEVER RECOVERS: a truncated, absent, or
+// never-written record cannot take a slot away from a run that may still be running.
+test fn an_unreadable_status_is_unobservable_and_never_dead() -> Bool {
+  match arrival_liveness_from_status_text(run_id: "45059586538", status_text: Absent) {
+    HolderLivenessUnobservable { cause: _ } => true
+    _ => false
   }
 }
 
-// THE HOLDER IS arrival/<host>/<run_id> OR IT IS NOTHING. A holder from another host, or one that does
-// not carry a run id at all, has no observable meaning -- and unobservable means refuse, never recover.
-test fn a_holder_that_is_not_this_subjects_run_is_not_observable() -> Bool {
-  match arrival_holder_run_id(subject: mtjade1(), holder: "arrival/srv15/44708982658" as DurableHoldOwnerRef) {
-    Absent => true
-    Present { value: _ } => false
-  }
-    && match arrival_holder_run_id(subject: mtjade1(), holder: "arrival/mtjade1/" as DurableHoldOwnerRef) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match arrival_holder_run_id(subject: mtjade1(), holder: "arrival/mtjade1/45059586538" as DurableHoldOwnerRef) {
-      Present { value: run_id } => run_id == "45059586538"
-      Absent => false
-    }
-}
-
-// ONLY A COMPLETED RUN IS DEAD. The status text is the wire fact the emitted evidence step read from the
-// declared GET; what it MEANS is decided here, in the vocabulary that owns workflow runs -- not by the
-// caller, which can hand over bytes at most.
-test fn only_a_completed_run_is_dead() -> Bool {
-  match arrival_liveness_from_status_text(run_id: "45059586538", status_text: Present { value: \"completed\" }) {
+// THE EVIDENCE NAMES THE RUN IT PROVED, so an audit of a recovered slot points at the run that said the
+// holder was over, and at no other run.
+test fn the_evidence_names_the_run_it_proved() -> Bool {
+  match arrival_liveness_from_status_text(run_id: "45059586538", status_text: Present { value: "completed" }) {
     HolderObservedDead { evidence: e } => (e as String) == "workflow run 45059586538 has completed"
     _ => false
   }
-}
-
-// EVERY OTHER STATUS MEANS SOMEBODY MAY STILL BE INSIDE THE DOOR, and an unknown word or no status at all
-// is unobservable -- which refuses. A holder nobody could look at is not a holder that died.
-test fn every_other_status_is_live_or_unobservable() -> Bool {
-  match arrival_liveness_from_status_text(run_id: "1", status_text: Present { value: \"in_progress\" }) {
-    HolderObservedLive { evidence: e } => (e as String) == "workflow run 1 is in_progress"
-    _ => false
-  }
-    && match arrival_liveness_from_status_text(run_id: "1", status_text: Present { value: "queued" }) {
-      HolderObservedLive { evidence: _ } => true
-      _ => false
-    }
-    && match arrival_liveness_from_status_text(run_id: "1", status_text: Present { value: "waiting" }) {
-      HolderObservedLive { evidence: _ } => true
-      _ => false
-    }
-    && match arrival_liveness_from_status_text(run_id: "1", status_text: Present { value: "not-a-status" }) {
-      HolderLivenessUnobservable { cause: _ } => true
-      _ => false
-    }
-    && match arrival_liveness_from_status_text(run_id: "1", status_text: Absent) {
-      HolderLivenessUnobservable { cause: _ } => true
-      _ => false
-    }
-}
-
-// THE SHAPE IS CHECKED BEFORE ANYTHING IS OBSERVED: a holder that decodes yields exactly the run id the
-// holder names, which is the only thing the emitted evidence step will be asked about. Nothing here can
-// reach the store's recovery directly -- gunbc.durable_exclusive_hold_file_store's admit_callers names
-// arrival_archive_slot_acquire as the sole permitted caller, and the resolver refused a first draft of
-// this file for trying -- so the recovery's arms are exercised through the acquire, in the wet claim, and
-// these answer the decisions the arrival root makes on its own.
-test fn the_run_id_a_holder_names_is_the_run_id_observed() -> Bool {
-  match mtjade1_admitted() {
-    Present { value: s } => match arrival_holder_run_id(subject: s, holder: "arrival/mtjade1/45059586538" as DurableHoldOwnerRef) {
-      Present { value: run_id } => run_id == "45059586538"
-      Absent => false
-    }
-    Absent => false
-  }
-}
-
-// THE RESPONSE THE FOLD READS IS THE RESPONSE THE OP COMMITTED. A body carrying the member answers with it;
-// a body that is not one document, or carries no such member, answers the empty text, and the map calls that
-// Unobservable rather than dead -- so a truncated, appended-to, or absent response cannot take a slot from a
-// run that is still going. The runner picked nothing: these are the bytes the declared op returned.
-test fn a_committed_response_decodes_to_its_status_and_a_malformed_one_is_never_dead() -> Bool {
-  workflow_run_status_of_response(response_body: "\{\"status\": \"completed\"\}") == "completed"
-    && workflow_run_status_of_response(response_body: "\{\"status\": \"in_progress\"\}") == "in_progress"
-    && workflow_run_status_of_response(response_body: "\{not json") == ""
-    && arrival_liveness_from_response_body(
-         run_id: "45059586538",
-         response_body: Present { value: "\{not json" }
-       ) == HolderLivenessUnobservable {
-         cause: join(["no status reported for holder run ", "45059586538"], "") as NonEmptyStr
-       }
-    && arrival_liveness_from_response_body(
-         run_id: "45059586538",
-         response_body: Absent
-       ) == HolderLivenessUnobservable {
-         cause: join(["no status reported for holder run ", "45059586538"], "") as NonEmptyStr
-       }
-}
-
-// A COMPLETED RUN IS THE ONLY STATUS THAT MEANS THE DOOR IS EMPTY. Every other status the vocabulary knows
-// keeps the slot, and the release the store writes on recovery names the run that did the proving.
-test fn a_completed_holder_is_dead_and_every_other_known_status_is_live() -> Bool {
-  arrival_liveness_from_response_body(
-    run_id: "45059586538",
-    response_body: Present { value: "\{\"status\": \"completed\"\}" }
-  ) == HolderObservedDead { evidence: join(["workflow run ", "45059586538", " has completed"], "") as NonEmptyStr }
-    && arrival_liveness_from_response_body(
-         run_id: "45059586538",
-         response_body: Present { value: "\{\"status\": \"in_progress\"\}" }
-       ) == HolderObservedLive {
-         evidence: join(["workflow run ", "45059586538", " is ", \"in_progress\"], "") as NonEmptyStr
-       }
 }

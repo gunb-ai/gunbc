@@ -8,8 +8,10 @@ import std.durable_exclusive_hold {
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable
 }
 import std.optional { Present, Absent }
-import gunbc.process_hold_identity { exact_text, ExactTextRead, ExactTextAbsent, ExactTextUnread }
 import extdeps.github.workflow_runs { parse_workflow_run_status, workflow_run_status_wire_label }
+import extdeps.github.auth { github_rest }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import gunbc.repository { gunbc_repository }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
   FileHoldAcquireOutcome,
@@ -144,10 +146,6 @@ type ArrivalArchiveSlotRelease
 // this model a HolderObservedDead: it hands over a file's bytes at most, and the vocabulary that reads
 // them is extdeps.github.workflow_runs, not the caller's opinion.
 
-fn arrival_liveness_evidence_path(root: NonEmptyStr, run_id: String) -> String {
-  join([root as String, "/arrival-liveness/", run_id], "")
-}
-
 // THE HOLDER IS arrival/<host>/<run_id>, and nothing else. A holder that does not decode to that exact
 // shape has no observable meaning, so it is never treated as dead: absence of evidence is not evidence
 // of death, it is absence.
@@ -189,37 +187,39 @@ fn arrival_liveness_from_status_text(run_id: String, status_text: String?) -> Du
   }
 }
 
-// WHAT THE EVIDENCE FILE HOLDS IS THE RESPONSE, not a runner's reading of it: the emitted step commits the
-// declared GET's body as returned and writes those bytes, and the decode below is the model's. A shell step
-// that picked the member out with jq would have moved a model decision into bash, where no witness reaches
-// it. Absent bytes and unparseable bytes are both Unobservable, so nothing can take a slot by writing a
-// truncated file.
-fn arrival_liveness_from_response_body(run_id: String, response_body: String?) -> DurableHoldHolderLiveness {
-  match response_body {
-    Absent => arrival_liveness_from_status_text(run_id: run_id, status_text: Absent)
-    Present { value: body } =>
+// THE READ THE FOLD ISSUES ITSELF, mid-fold, before the acquire and so before any BMC leg: the declared
+// read-only GET of the holder's own workflow run, through the same declared REST route every other GitHub
+// read in this repo uses. The token is not retyped or interpolated here -- extdeps.github.auth::github_token
+// reads the declared auth source's environment variable in-process and hands a Secret to the op's auth_input,
+// and it answers an ABSENT variable with a typed refusal that names the variable, which this turns into
+// Unobservable: no token means no recovery, and the controller is never touched on that path. An empty token
+// reaches the op and comes back refused, which is also Unobservable. The status arrives as the operation's
+// declared response type (WorkflowRun.status: WorkflowRunStatus), so there is no second decode to rot beside
+// the wire contract; the decision below is the only one being made.
+fn arrival_holder_run_liveness(run_id: String) -> DurableHoldHolderLiveness {
+  match github_rest(
+    call: token =>
+      github.WorkflowRuns.GetRun(
+        auth_token: token,
+        owner: gunbc_repository.owner,
+        repo: gunbc_repository.name,
+        run_id: run_id,
+      )
+  ) {
+    RestAnswered { answer: run } =>
       arrival_liveness_from_status_text(
         run_id: run_id,
-        status_text: match workflow_run_status_of_response(response_body: body) {
-          "" => Absent
-          s => Present { value: s }
-        }
+        status_text: Present { value: workflow_run_status_wire_label(status: run.status) }
       )
+    RestRefused { refusal: _ } =>
+      HolderLivenessUnobservable {
+        cause: join(
+          ["holder run ", run_id, "'s status could not be read through the declared run read"], ""
+        ) as NonEmptyStr
+      }
   }
 }
 
-// THE FILE THE EMITTED EVIDENCE STEP WRITES, read through the same exact-read seam
-// gunbc.process_hold_identity uses for /proc. An absent file and an unreadable file are both
-// unobservable -- a holder nobody could look at is not a holder that died.
-fn arrival_run_liveness(root: NonEmptyStr, run_id: String) -> DurableHoldHolderLiveness {
-  let path = arrival_liveness_evidence_path(root: root, run_id: run_id)
-  match exact_text(path: path) {
-    ExactTextAbsent => arrival_liveness_from_response_body(run_id: run_id, response_body: Absent)
-    ExactTextUnread { cause: c } =>
-      HolderLivenessUnobservable { cause: join([path, ": ", c as String], "") as NonEmptyStr }
-    ExactTextRead { text: t } => arrival_liveness_from_response_body(run_id: run_id, response_body: Present { value: t })
-  }
-}
 
 // THE RECOVERY'S OWN OUTCOME. The self-holder case is its own arm, not a live holder wearing a
 // different face: GitHub keeps the run id across a re-run attempt, so a re-run of a run that died
@@ -264,7 +264,7 @@ fn arrival_archive_slot_recover_dead_holder(
           holder: holder,
           generation: generation,
           released_by: join(["arrival-recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef,
-          live_owner: h => arrival_run_liveness(root: root, run_id: run_id),
+          live_owner: h => arrival_holder_run_liveness(run_id: run_id),
         ) {
           FileHoldDeadHolderRecovered { dead_holder: d, evidence: e } =>
             ArrivalArchiveSlotRecovered { holder_run_id: run_id, evidence: e }
