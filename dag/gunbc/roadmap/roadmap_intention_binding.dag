@@ -53,7 +53,6 @@ data remote_build_bandwidth_intention: String = "gunbc.plans.remote_build_bandwi
   serves(node: "remote-build-answer-is-a-fabric-receipt", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
   serves(node: "remote-build-per-claim-verdicts-in-receipts", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
   serves(node: "remote-build-ken-native-serve-admission", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
-  serves(node: "remote-build-bobo-admission", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
   serves(node: "remote-build-warm-target-cache", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
   serves(node: "remote-build-ci-bridge", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 2),
   // gunbc.plans.names_without_imports, section 3.

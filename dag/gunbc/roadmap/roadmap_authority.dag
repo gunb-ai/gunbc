@@ -6141,7 +6141,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "bobo's converge output, its roster row, and the pinned client compile read back at served=true.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "The host the install lane delivered becomes build capacity, by the same route srv4 and srv3 took."),
+      parent: in_project(project: "work-execution-redesign", contribution: "The host the install lane delivered becomes build capacity, by the same route srv4 and srv3 took."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/remote_build_hosts.dag, the roster's host rows, and the typed install legs #16779 carries."),
     ),
     roadmap_node(
@@ -6453,14 +6453,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/remote_build_bandwidth.dag"),
       line: ticket(t: fields(
         headline: "RB-M3: the remote build is typed against fabric and admits the mixed-architecture fleet with warm caches",
-        boundary: "What works at this milestone: a remote-build request states its product.fabric.work::ExecutionRequirements and is never placed on a host whose gunbc.fabric.fabric_executor_class row does not admit them, so a mixed-architecture roster cannot put work on the wrong architecture; the answer is a product.fabric.execution::Receipt carrying a verdict per claim; ken and bobo serve builds by that route; and a host reuses its previous target directory where std.materialization_ladder admits the reuse. Reached when every member has an accepted event.",
+        boundary: "What works at this milestone: a remote-build request states its product.fabric.work::ExecutionRequirements and is never placed on a host whose gunbc.fabric.fabric_executor_class row does not admit them, so a mixed-architecture roster cannot put work on the wrong architecture; the answer is a product.fabric.execution::Receipt carrying a verdict per claim; ken serves builds by that route; and a host reuses its previous target directory where std.materialization_ladder admits the reuse. Reached when every member has an accepted event.",
         displaced_cost: "a string receipt and an unchecked placement are what the work-execution-redesign route would have to re-derive, and cold target directories spend most of each served build recompiling dependencies.",
         first_slice: "None of its own: a milestone is a container, reached when every member has an accepted event.",
         red_control: "A request placed on a host whose executor class refuses its requirements, or a served answer that is not a fabric Receipt, keeps this open.",
         out_of_scope: "host selection policy, which stays the work-execution-redesign route's (select_supply at work-exec-2).",
         handback: "the member acceptances, a refused wrong-architecture placement, and a warm-cache served build's receipt.",
       )),
-      parent: in_project(project: "work-execution-redesign", contribution: "The remote build's request and answer in fabric's own types, so the work-execution-redesign route consumes them unchanged; ken and bobo join on that typing."),
+      parent: in_project(project: "work-execution-redesign", contribution: "The remote build's request and answer in fabric's own types, so the work-execution-redesign route consumes them unchanged; ken joins on that typing."),
     ),
   ], guarantee_ladder_nodes())
 }
@@ -6724,7 +6724,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "remote-build-ci-bridge", parent: "remote-build-butch-admission"),
     edge(child: "remote-build-ci-bridge", parent: "remote-build-shadow-gate-green-at-main"),
     edge(child: "remote-build-ci-bridge", parent: "remote-build-ken-native-serve-admission"),
-    edge(child: "remote-build-ci-bridge", parent: "remote-build-bobo-admission"),
     edge(child: "remote-build-ci-bridge", parent: "remote-build-per-claim-verdicts-in-receipts"),
     edge(child: "remote-build-ci-bridge", parent: "remote-build-warm-target-cache"),
     edge(child: "remote-build-ci-bridge", parent: "remote-build-leg-failures-are-typed"),
