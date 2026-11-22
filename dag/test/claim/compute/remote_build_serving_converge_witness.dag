@@ -36,7 +36,7 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, census_door_gate, CensusGateAsk, CensusGateDefer }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -2123,6 +2123,33 @@ test fn a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery() -> B
         && length(filter(ws, w => string_contains(s: converge_action_key(w), pattern: "checkout:"))) == 1
     }
   }
+}
+
+// THE GATE ITSELF, over supplied reads: ASK only when the checkout is established AT the dispatched
+// revision; DEFER otherwise, naming what made it unaskable — the stale revision it stands at, the
+// refusal of the revision read, or the revision never being established. The door the checkout does not
+// yet carry is never asked, and its absence is never dressed as an unknown (an unknown would dominate
+// the assessment and strand the checkout write that carries the door).
+test fn the_census_gate_asks_only_at_the_dispatched_revision() -> Bool {
+  let pin_sha = "0000000000000000000000000000000000000000"
+  let stale = "1111111111111111111111111111111111111111"
+  let asked = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => true
+    CensusGateDefer { reason: _ } => false
+  }
+  let deferred_stale = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: stale) && string_contains(s: r, pattern: pin_sha)
+  }
+  let deferred_refused = match census_door_gate(checkout_revision: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.revision", cause: "the revision read was refused" } } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "refused")
+  }
+  let deferred_unrun = match census_door_gate(checkout_revision: Absent, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "not established")
+  }
+  asked && deferred_stale && deferred_refused && deferred_unrun
 }
 
 // RED CONTROL (live holder): an established 'hold' entry — a live or too-early holder, which the model
