@@ -123,7 +123,8 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
   witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
   witness_locus_installed_roots_digest, witness_locus_key,
-  witness_sudo_elevation_available,
+  witness_sudo_elevation_available, witness_locus_install_refusal_cause,
+  witness_locus_fold_plan_refused_cause,
   witness_locus_install_spine, witness_fold_spine_dir_is_admissible,
 }
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
@@ -1399,21 +1400,51 @@ data wet_stage_trail_suffix: NonEmptyStr = ".log" as NonEmptyStr
 // THE ARGUMENT IS A PARAMETER, for the reason at `wet_claim_root_under`: a claim cannot set its own
 // environment (this codebase models only `shell.Env.Get`), so the claims that show a root-owned-but-foreign
 // base and a cross-run link are refused have to hand the decision a base they name, and do it through here.
-fn wet_stage_trail_base_is_owned(base: String) -> Bool {
+// A TRAILING SEPARATOR TURNS EVERY NO-FOLLOW READING INTO A FOLLOWING ONE, so it is removed before any
+// probe reads the candidate -- and the STRIPPED spelling is the one every probe reads and every writer uses.
+// `stat -c %F .../run-A/` and `find .../run-A/ ...` dereference an operand that ends in a separator: with
+// run-A standing as a symbolic link at another run's 0700 directory, the link-as-operand reading that refused
+// it becomes a directory-as-operand reading that admits it, and the trail appends into the other run's tree.
+// Stripping before the probes without carrying the stripped base into the append would leave the admitted
+// spelling and the written spelling different, which is the same gap wearing a different hat; `accepted` is
+// therefore the single value the probes, the directory and the path all agree on. A base that strips to ""
+// or to the root itself is refused outright -- neither can be a run's litter directory.
+fn wet_stage_trail_base_without_trailing_separator(base: String) -> String {
+  if base == "/" { base }
+  else if ends_with(s: base, suffix: "/") {
+    wet_stage_trail_base_without_trailing_separator(
+      base: substring(s: base, start: 0, end: string_length(s: base) - 1),
+    )
+  } else { base }
+}
+
+// THE ONE ACCEPTANCE, RETURNING THE BASE IT ADMITTED (stripped) OR "" WHEN IT ADMITTED NOTHING. Every reader
+// of the trail and every writer to it goes through this value, so the spelling that passed the three readings
+// -- resolves inside the declared scratch prefix and outside every production lab root, called a DIRECTORY by
+// a no-follow `stat -c %F`, owned by the principal running this witness -- is exactly the spelling the append
+// uses. `wet_stage_trail_base_is_owned` stays as the Bool view of the same decision.
+fn wet_stage_trail_base_accepted(base: String) -> String {
+  let candidate = wet_stage_trail_base_without_trailing_separator(base: base)
   let owner = wet_out(command: witness_effective_user_command())
-  base != ""
-    && !witness_supplied_root_is_refused(candidate: base)
+  if candidate != ""
+    && candidate != "/"
+    && !witness_supplied_root_is_refused(candidate: candidate)
     && owner != ""
-    && witness_path_is_run_owned_directory(candidate: base, owner: owner as NonEmptyStr)
+    && witness_path_is_run_owned_directory(candidate: candidate, owner: owner as NonEmptyStr)
+    { candidate } else { "" }
+}
+
+fn wet_stage_trail_base_is_owned(base: String) -> Bool {
+  wet_stage_trail_base_accepted(base: base) != ""
 }
 
 fn wet_stage_trail_dir_under(base: String) -> String {
-  if wet_stage_trail_base_is_owned(base: base) { base } else { "" }
+  wet_stage_trail_base_accepted(base: base)
 }
 
 fn wet_stage_trail_dir() -> String {
-  let sandbox = wet_environment_value(name: wet_sandbox_base_env_var)
-  if wet_stage_trail_base_is_owned(base: sandbox) {
+  let sandbox = wet_stage_trail_dir_under(base: wet_environment_value(name: wet_sandbox_base_env_var))
+  if sandbox != "" {
     sandbox
   } else {
     wet_stage_trail_dir_under(base: wet_environment_value(name: witness_batch_locus_env_var))
@@ -1434,9 +1465,11 @@ fn wet_stage_trail_dir() -> String {
 // and outside every production root, the trail resolves under that base, and the trail's own spelling is
 // `base` + "/" + two data literals this module owns -- no caller, and no navigation component, can enter it.
 fn wet_stage_trail_path_under(base: String) -> String {
-  let candidate = join([base, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
-  if wet_stage_trail_base_is_owned(base: base)
-    && witness_path_resolves_under(candidate: candidate, base: base) { candidate } else { "" }
+  let admitted = wet_stage_trail_base_accepted(base: base)
+  if admitted == "" { "" } else {
+    let candidate = join([admitted, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+    if witness_path_resolves_under(candidate: candidate, base: admitted) { candidate } else { "" }
+  }
 }
 
 fn wet_stage_trail_path() -> String {
@@ -2798,6 +2831,121 @@ test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bo
   )
 }
 
+// THE TRAILING SEPARATOR THAT TURNED EVERY NO-FOLLOW READING INTO A FOLLOWING ONE. The base below is not a
+// directory at all -- it is a symbolic link at ANOTHER RUN's 0700 directory, and it is spelled with a trailing
+// separator. `stat -c %F .../run-A/` and `find .../run-A/` dereference an operand that ends in a separator, so
+// the readings written to refuse a link reported the directory the link points at: owner matched, mode
+// matched, the prefix matched, and the trail appended into the other run through the link. The owned directory
+// is admitted first -- under the spellings that matter, `dir`, `dir/` and `dir//`, all naming the same
+// accepted destination and the same trail path -- so the refusal below cannot be credited to a base the run
+// could never possess; then the link, spelled with the separator and without it, records nothing and adds
+// nothing to the real base's trail while the real base stays admitted beside it.
+test fn a_trailing_slash_on_a_linked_trail_base_records_nothing() -> Bool {
+  let root = wet_claim_root(tag: "trail-trailing-slash-link" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let run_b = wet_out(command: mktemp_directory_command(
+    template: join([root, "/run-B-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let b_trail = join([run_b, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let run_a_link = join([root, "/run-A-link"], "")
+  let line_b = "trailing-slash-probe-in-B"
+  let line_a = "trailing-slash-escape-into-B"
+  let owned_ok = run_b != ""
+    && wet_stage_trail_dir_under(base: run_b) == run_b
+    && wet_stage_trail_dir_under(base: join([run_b, "/"], "")) == run_b
+    && wet_stage_trail_dir_under(base: join([run_b, "//"], "")) == run_b
+    && wet_stage_trail_path_under(base: join([run_b, "/"], "")) == b_trail
+    && wet_stage_under(base: join([run_b, "/"], ""), stage: line_b, ok: true)
+    && string_contains(s: wet_file_text(path: b_trail), pattern: line_b)
+  let planted = wet_ok(command: ln_symbolic_force_command(target: run_b, link_name: run_a_link))
+  let refused = wet_stage_trail_dir_under(base: join([run_a_link, "/"], "")) == ""
+    && wet_stage_trail_dir_under(base: run_a_link) == ""
+    && wet_stage_trail_path_under(base: join([run_a_link, "/"], "")) == ""
+    && !wet_stage_under(base: join([run_a_link, "/"], ""), stage: line_a, ok: true)
+    && !string_contains(s: wet_file_text(path: b_trail), pattern: line_a)
+    && wet_stage_trail_dir_under(base: run_b) == run_b
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && owned_ok && planted && refused,
+    roots: [root as NonEmptyStr],
+  )
+}
+
+// THE FOLD'S OWN DESTINATIONS ARE ADMITTED BEFORE ITS FIRST EFFECT, ON THE ROUTE THAT ACTUALLY WRITES
+// THEM. The side chat reproduced this escape by hand at review 6006308642: with `<locus>/src` a symbolic link
+// pointing outside, the five-name destination list stayed green -- `src` is an intermediate of `src/v2`, in no
+// list -- and `approval_broker_tree_install`, whose elevated realm admits its writer unconditionally
+// (`tree_install_realm_admits` answers true for `TreeInstallElevated`), ran `install -d` and `install -m`
+// through the link; the elevated readback that should see an escape fires only after the writes, certifying
+// the escaped tree as installed. So the guards here go through `witness_locus_install` itself -- the route
+// that hands the fold its locus -- and they measure the refusal it reports: THE PAIR RUNS FIRST, over loci
+// with no link standing in them, where the plan is admitted and the refusal the route reaches is the host's
+// missing elevation, never the plan cause (a route that admitted everything blindly is green there and dies
+// below, and one that refused everything was already dead at the pair). Then the two shapes of the hole: the
+// link at `<locus>/src` the side chat reproduced, and a deeper link under `<locus>/dag/sub` that no fixed
+// list could ever have named. Each refusal says WHICH cause it is -- the fold-plan cause, not the
+// five-destination cause, not the elevation excuse, which the admission now precedes -- and the escape
+// directories must have stayed EMPTY: no bytes through the link. Last, the removal: the same route over the
+// same locus admits its plan again once the link is gone, because what was being measured was the link.
+test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
+  let root = wet_claim_root(tag: "locus-fold-plan-link" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let away = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-fold-escape-XXXXXX" as NonEmptyStr,
+  ))
+  let away_deep = wet_out(command: mktemp_directory_command(
+    template: "/var/tmp/gunbc-witness-fold-escape-deep-XXXXXX" as NonEmptyStr,
+  ))
+  let planted = wet_plant_guest_sources(instance: inst)
+  let revision = witness_guest_tree_revision(instance: inst)
+  let plan_cause = witness_locus_fold_plan_refused_cause as String
+  let clean_key = "fold-plan-clean"
+  let clean_cause = witness_locus_install_refusal_cause(
+    verdict: witness_locus_install(instance: inst, locus_key: clean_key, revision_text: revision),
+  )
+  let clean_admitted = planted
+    && revision != ""
+    && away != ""
+    && away_deep != ""
+    && !string_contains(s: clean_cause, pattern: plan_cause)
+  let src_key = "fold-plan-src-link"
+  let src_locus = witness_locus_dir_text(instance: inst, locus_key: src_key as NonEmptyStr)
+  let src_staged = wet_ok(command: mkdir_parents_command(path: src_locus))
+  let src_linked = wet_ok(command: ln_symbolic_force_command(
+    target: away, link_name: join([src_locus, "/src"], ""),
+  ))
+  let src_cause = witness_locus_install_refusal_cause(
+    verdict: witness_locus_install(instance: inst, locus_key: src_key, revision_text: revision),
+  )
+  let src_refused = src_staged
+    && src_linked
+    && string_contains(s: src_cause, pattern: plan_cause)
+    && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  let deep_key = "fold-plan-dag-link"
+  let deep_locus = witness_locus_dir_text(instance: inst, locus_key: deep_key as NonEmptyStr)
+  let deep_staged = wet_ok(command: mkdir_parents_command(path: join([deep_locus, "/dag/sub"], "")))
+  let deep_linked = wet_ok(command: ln_symbolic_force_command(
+    target: away_deep, link_name: join([deep_locus, "/dag/sub/ghost"], ""),
+  ))
+  let deep_cause = witness_locus_install_refusal_cause(
+    verdict: witness_locus_install(instance: inst, locus_key: deep_key, revision_text: revision),
+  )
+  let deep_refused = deep_staged
+    && deep_linked
+    && string_contains(s: deep_cause, pattern: plan_cause)
+    && wet_out(command: ls_almost_all_one_per_line_command(path: away_deep)) == ""
+  let removed = wet_ok(command: rm_force_command(path: join([src_locus, "/src"], "")))
+  let removed_cause = witness_locus_install_refusal_cause(
+    verdict: witness_locus_install(instance: inst, locus_key: src_key, revision_text: revision),
+  )
+  let removal_admitted = removed && !string_contains(s: removed_cause, pattern: plan_cause)
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && clean_admitted && src_refused && deep_refused && removal_admitted,
+    roots: [root as NonEmptyStr],
+  )
+}
+
 // THE FOLD REFUSES A DESTINATION THAT IS ALREADY A SYMBOLIC LINK, AND ONLY THE LINK CHANGES. The five
 // destinations the gate admitted were the ones this fixture writes itself; the source-tree fold then created
 // some eleven thousand more beneath them, and none of those paths had ever been admitted. Two shapes of that
@@ -2884,6 +3032,18 @@ test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
     && !witness_tree_install_into_supplied_tree(
       source: source, destination: pipe_dest, parent: repo, root: repo)
     && !wet_path_exists(path: join([pipe_dest, "/odd/a|b"], ""))
+  // THE ILL-FORMED NAME IS REMOVED BEFORE THE LINK IS PLANTED, AND THE FOLD SUCCEEDS WITHOUT IT. With the
+  // pipe-named file still in the source, EVERY fold over that source refuses at the column arm -- so the
+  // refusal credited below to the absolute link would have happened with no link at all, and a route that
+  // had lost its link arm entirely would stay green. Clearing the source and seeing the fold admit it first
+  // makes the planted link the only reason left to refuse (and the clearing fold is the pipe arm's own
+  // counterpart: the same source, admitted once the report that cannot be parsed is gone).
+  let odd_cleared = wet_ok(command: rm_recursive_force_command(path: join([source, "/odd"], "")))
+  let cleared_dest = join([repo, "/probe-cleared"], "")
+  let cleared_admitted = odd_cleared
+    && witness_tree_install_into_supplied_tree(
+      source: source, destination: cleared_dest, parent: repo, root: repo)
+    && wet_path_exists(path: join([cleared_dest, "/nested/file.dag"], ""))
   let linked = wet_ok(command: ln_symbolic_force_command(
     target: join([escape, "/nowhere"], ""),
     link_name: join([source, "/abs-link"], ""),
@@ -2901,7 +3061,7 @@ test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
   )
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && admitted && pipe_refused && link_refused && missing_refused,
+      && root != "" && admitted && pipe_refused && cleared_admitted && link_refused && missing_refused,
     roots: [root as NonEmptyStr],
   )
 }

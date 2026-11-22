@@ -440,6 +440,48 @@ fn witness_locus_destinations_are_admitted(instance: HostDashboardInstance, locu
   )
 }
 
+// THE FOLD'S OWN DESTINATIONS, DERIVED FROM ITS OWN PLAN -- NOT FROM A REMEMBERED LIST.
+// `witness_locus_destinations` names the five paths this module writes by hand, and admitting them was the
+// first answer and it was not enough: the tree fold (`approval_broker_tree_install` -> `tree_install_in_realm`)
+// does NOT write only those five. It takes `source_root` and `release_locus_tree_subdirs` and, for every entry
+// `observe_tree_hashes` reports, writes `locus/<subdir>/<rel>` -- directories with `install -d`
+// (`tree_realm_directory_write`), files with `install -m` (`tree_realm_file_write`), links with `cp -P`. The
+// elevated realm admits EVERYTHING to its writer (`tree_install_realm_admits` returns true for
+// `TreeInstallElevated`, host_effect_realize:6935) and the approval-broker principal is root, so the elevated
+// `install -d` walks straight through a symlink standing at `<locus>/src` or at any deeper component under
+// `<locus>/dag/...` and lays bytes down wherever the link points -- the elevated readback that follows reports
+// the tree that was actually installed, so the escape is invisible after the fact. (The side chat reproduced
+// this at review 6006308642 with `install -d` and `install` by hand.) The five-path list cannot see this,
+// because the escaped path is a fold destination the list never names.
+//
+// SO ADMIT THE PLAN, NOT THE LIST. This function walks `source_root/<subdir>` for each of
+// `release_locus_tree_subdirs` -- the SAME enumeration the fold's observation walks -- maps each reported entry
+// to the path the fold will write it at, and admits every one of those destinations, plus the whole
+// `<locus>` subtree must be link-free, BEFORE the fold is handed the locus. It is the SAME predicate
+// (`witness_tree_install_destinations_are_admitted`) the guest-source plant is admitted by: one admission
+// interface, no private second one, so the fold cannot have a guard that is weaker than the plant's.
+data witness_locus_fold_plan_refused_cause: NonEmptyStr =
+  "the fold's install plan is not admitted: a destination the source walk reports -- a directory or file the elevated install would create, or a component on the way to one -- resolves outside the supplied tree, or a symbolic link stands in the locus subtree it would write into: " as NonEmptyStr
+
+fn witness_locus_fold_plan_destinations_are_admitted(
+  instance: HostDashboardInstance,
+  locus_key: String,
+) -> Bool {
+  let locus = witness_locus_dir_text(instance: instance, locus_key: locus_key)
+  let source_root = instance.repo_root as String
+  fold(
+    release_locus_tree_subdirs,
+    init: true,
+    f: (acc, subdir) =>
+      acc
+        && witness_tree_install_destinations_are_admitted(
+          source: join([source_root, "/", subdir], ""),
+          destination: join([locus, "/", subdir], ""),
+          root: locus,
+        ),
+  )
+}
+
 // THE SAME VERDICT FOR A KEY A CALLER SUPPLIES, before a fold is ever asked to create it -- so a caller can
 // name what it refused instead of discovering it as a fold that merely did not converge.
 fn witness_locus_target_is_admitted(instance: HostDashboardInstance, locus_key: String) -> Bool {
@@ -1244,25 +1286,48 @@ fn witness_locus_install(
       step: TreeStepSourceObserve,
       reason: "the guest tree names no commit: the plant's git add/commit did not land, so the fold's receipt could not record a candidate_revision",
     }
-  } else if !witness_sudo_elevation_available() {
-    TreeInstallRefused {
-      step: TreeStepInstallDirectory,
-      reason: witness_locus_needs_elevation_cause as String,
-    }
   } else if !witness_locus_destinations_are_admitted(instance: instance, locus_key: locus_key) {
-    // ADMITTED OR REFUSED, BEFORE THE FOLD IS ASKED FOR ANYTHING. The fold creates the locus directory and
-    // everything under it from a key this batch chose, so a guard that only ever judged the base never saw
-    // the path it was about to populate: an existing symlink at the target turned "install the release
-    // locus" into "install the release locus wherever that link points", and the fold reported success. The
-    // answer is the same predicate every writer uses -- one verdict -- and it is given BEFORE the effect, so
-    // no bytes are ever written through a link this lane could have refused. It is a REFUSAL with its step
-    // and its reason, not a silent false, and it carries no capability: nothing about the host was observed.
+    // ADMITTED OR REFUSED, BEFORE THE FOLD IS ASKED FOR ANYTHING -- AND BEFORE THE ELEVATION PROBE. The fold
+    // creates the locus directory and everything under it from a key this batch chose, so a guard that only
+    // ever judged the base never saw the path it was about to populate: an existing symlink at the target
+    // turned "install the release locus" into "install the release locus wherever that link points", and the
+    // fold reported success. The answer is the same predicate every writer uses -- one verdict -- and it is
+    // given BEFORE the effect, so no bytes are ever written through a link this lane could have refused. It
+    // is a REFUSAL with its step and its reason, not a silent false, and it carries no capability: nothing
+    // about the host was observed. THE ADMISSION IS JUDGED BEFORE THE ELEVATION PROBE ON PURPOSE: a link
+    // standing at a destination is a reason to refuse that exists on every host, privileged or not, and a
+    // locus that would have been refused for standing on a link must not get to report the missing-sudo
+    // excuse instead -- the same ordering lesson the locus-start arm learned, one interface later.
     TreeInstallRefused {
       step: TreeStepInstallDirectory,
       reason: join(
         [witness_locus_destination_refused_cause as String, witness_locus_dir_text(instance: instance, locus_key: locus_key)],
         "",
       ),
+    }
+  } else if !witness_locus_fold_plan_destinations_are_admitted(
+    instance: instance,
+    locus_key: locus_key,
+  ) {
+    // THE FOLD WRITES MORE THAN THE FIVE, AND ITS DESTINATIONS ARE ADMITTED FROM ITS OWN PLAN. See
+    // `witness_locus_fold_plan_destinations_are_admitted`: the elevated `install -d` and `install -m` walk
+    // `<locus>/src`, `<locus>/dag/...` and every entry the source observation reports; the elevated realm
+    // admits its writer unconditionally (`tree_install_realm_admits` answers true for `TreeInstallElevated`),
+    // so a pre-existing symbolic link at any of those paths was written through and the elevated readback
+    // certified the escaped tree as installed. The five-path list cannot name those destinations, so the
+    // PLAN is admitted instead -- the same source-walk predicate the guest plant is admitted by, over the
+    // same fold, judged here before the fold runs and before the elevation probe.
+    TreeInstallRefused {
+      step: TreeStepInstallDirectory,
+      reason: join(
+        [witness_locus_fold_plan_refused_cause as String, witness_locus_dir_text(instance: instance, locus_key: locus_key)],
+        "",
+      ),
+    }
+  } else if !witness_sudo_elevation_available() {
+    TreeInstallRefused {
+      step: TreeStepInstallDirectory,
+      reason: witness_locus_needs_elevation_cause as String,
     }
   } else {
     // THE LOCUS RECORD, MINTED HERE AND NOT THROUGH THE TWO SANCTIONED FOLDS, AND THAT IS THE POINT.

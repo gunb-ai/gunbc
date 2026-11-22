@@ -4314,6 +4314,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_trailing_slash_on_a_linked_trail_base_records_nothing" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_trailing_slash_on_a_linked_trail_base_records_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_locus_install_refuses_a_link_at_a_fold_destination" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_locus_install_refuses_a_link_at_a_fold_destination",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect",
