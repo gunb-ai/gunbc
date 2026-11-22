@@ -14,13 +14,14 @@ import std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, census_rows_of_class, census_total_count }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringMemberName, attempt_metering_member_name, attempt_metering_declared_member_name,
+  attempt_metering_member_name_segment,
 }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptMeteringRecordFile, attempt_state_member_name }
 
 fn mints_agree_with_the_law(raw: String) -> Bool {
   match attempt_metering_member_name(raw: raw) {
     Absent => !path_segment_is_safe(raw: raw)
-    Present { value: carrier } => (carrier as String) == raw && path_segment_is_safe(raw: raw)
+    Present { value: carrier } => (attempt_metering_member_name_segment(entry: carrier) as String) == raw && path_segment_is_safe(raw: raw)
   }
 }
 
@@ -33,7 +34,7 @@ test fn hostile_entry_spellings_never_mint_a_carrier() -> Bool {
 test fn declared_member_names_mint_and_round_trip() -> Bool {
   match attempt_metering_declared_member_name(member: AttemptMeteringRecordFile) {
     Absent => false
-    Present { value: carrier } => (carrier as String) == attempt_state_member_name(member: AttemptMeteringRecordFile)
+    Present { value: carrier } => (attempt_metering_member_name_segment(entry: carrier) as String) == attempt_state_member_name(member: AttemptMeteringRecordFile)
   }
     && all(["launch.a.json", "metering-roster.json"], n => mints_agree_with_the_law(raw: n))
 }
