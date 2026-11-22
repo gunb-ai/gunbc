@@ -63,7 +63,7 @@ import extdeps.ssh.openssh_client_commands { scp_upload_command }
 import extdeps.exec.command { ArgvCommand }
 import gunbc.fleet.fleet_host_key_enrollment {
   KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, known_host_row_field, host_key_provenance_label,
-  first_contact_lan_keys, lan_endpoint_host_key_row,
+  first_contact_lan_keys, lan_endpoint_host_key_row, LanEndpointHostKey,
 }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.fabric_reach { fabric_rail_known_host_rows }
@@ -323,7 +323,47 @@ fn first_contact_admission_for_tailscale_join_mode() -> FirstContactAdmission
 // (lan_endpoint_host_key_row), so the address dialed and the key verified cannot disagree -- the same
 // discipline anchored_ssh_target enforces for anchored modes. Every other mode calls
 // anchored_ssh_target and REFUSES pre-anchor.
-fn first_contact_ssh_target(
+// The hop-resolution inputs, carried as ONE context record so a later input is one field rather than a
+// new parameter on every `_in` form (the compute_recover_attempt_in pattern,
+// gunbc.design_argument::witness_one_interface). The wrappers build it from the globals below; a
+// witness builds a self-contained fixture so the hop path keeps executing with a discriminating red
+// while the production hop population is empty (no host is pre-anchor right now). `lease_row` is the
+// address-bearing row `lan_endpoint_host_key_row` resolves for the host's hop observation, so the key
+// and fingerprint validation stays in that one authority. It deliberately holds NO runner/custody data:
+// this is the trust-anchor module, and pulling the runner module's closure here would drag the whole
+// CI/github/docker graph into every fleet consumer. `custody_host_in` takes the runner spec as its own
+// parameter (the custody module already owns that import).
+type FirstContactHopContext {
+  hop_rows: List<LanEndpointHostKey>
+  lease_row: KnownHostKeyRow?
+}
+
+// Resolves the host's lease row through the real `lan_endpoint_host_key_row` (validation), if the host
+// sits in the hop population. A top-level fn (not a record-field `match`) so it typechecks like the
+// original first-contact code.
+fn hop_lease_row_for(host: HostIdentity) -> KnownHostKeyRow? {
+  match fold(first_contact_lan_keys, init: none, f: fn(acc, o) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if host_identity_eq(a: o.host, b: host) { Present { value: o } } else { none }
+    }
+  }) {
+    Present { value: o } => lan_endpoint_host_key_row(observation: o)
+    Absent => none
+  }
+}
+
+// The context builder, in the module that owns the hop. The fold and the real `lan_endpoint_host_key_row`
+// (validation) run here, so production and custody share one resolution path.
+fn first_contact_hop_context(host: HostIdentity) -> FirstContactHopContext {
+  FirstContactHopContext {
+    hop_rows: first_contact_lan_keys,
+    lease_row: hop_lease_row_for(host: host),
+  }
+}
+
+fn first_contact_ssh_target_in(
+  ctx: FirstContactHopContext,
   host: HostIdentity,
   principal: NonEmptyStr,
   admission: Optional<FirstContactAdmission>,
@@ -337,15 +377,15 @@ fn first_contact_ssh_target(
         Present { value: _ } =>
           SshTargetRefused { endpoint: host as String, refusal: FirstContactHopSupersededByAnchor { host: host as String } }
         Absent =>
-      match fold(first_contact_lan_keys, init: none, f: fn(acc, o) {
+      match fold(ctx.hop_rows, init: none, f: fn(acc, o) {
         match acc {
           Present { value: v } => Present { value: v }
           Absent => if host_identity_eq(a: o.host, b: host) { Present { value: o } } else { none }
         }
       }) {
         Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
-        Present { value: o } =>
-          match lan_endpoint_host_key_row(observation: o) {
+        Present { value: _ } =>
+          match ctx.lease_row {
             Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
             Present { value: row } =>
               SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
@@ -353,6 +393,22 @@ fn first_contact_ssh_target(
       }
       }
   }
+}
+
+// The production wrapper: byte-identical behavior for every caller, building the context from the
+// globals. It reads `first_contact_lan_keys` for the fold and resolves the lease row through the real
+// `lan_endpoint_host_key_row` (validation).
+fn first_contact_ssh_target(
+  host: HostIdentity,
+  principal: NonEmptyStr,
+  admission: Optional<FirstContactAdmission>,
+) -> SshTargetResolution {
+  first_contact_ssh_target_in(
+    ctx: first_contact_hop_context(host: host),
+    host: host,
+    principal: principal,
+    admission: admission,
+  )
 }
 
 fn fleet_known_hosts_fragment() -> String {
