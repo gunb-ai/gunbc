@@ -1,12 +1,16 @@
 module test.fixture.c_roadmap2_credential_reference_authority.car_stripped_definer
 
-// THE STRIPPED TWIN: car_definer.dag with the sole_constructor keyword stripped -- the same type as a
-// plain brand. Nothing else differs. This is the control that makes the sealed twin's refusal evidence
-// about the SEAL: with the seal removed, the very same forged casts compile clean.
+// THE STRIPPED TWIN: car_definer.dag with the sole_constructor keyword removed and NOTHING else changed --
+// the same record, the same field, the same forge_target. This is the control that makes the sealed twin's
+// refusal evidence about the SEAL: with the seal keyword gone, the very same forged casts compile clean.
+// (Side-chat Q1 at 512d875ff038: an earlier version of this file made the stripped type a branded alias,
+// which was a second changed variable, not the seal alone. It is now the record minus one keyword.)
 
 import std.types { Bool, PathSegment, String }
 
-type CredentialAttemptReference = PathSegment where brand("CredentialAttemptReference")
+type CredentialAttemptReference {
+  segment: PathSegment
+}
 
 fn forge_target(reference: CredentialAttemptReference) -> Bool {
   true
