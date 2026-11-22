@@ -10,7 +10,7 @@ import std.durable_exclusive_hold {
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs { parse_workflow_run_status, workflow_run_status_wire_label }
 import extdeps.github.auth { github_rest }
-import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, rest_refusal_text }
 import gunbc.repository { gunbc_repository }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
@@ -206,15 +206,18 @@ fn arrival_holder_run_liveness(run_id: String) -> DurableHoldHolderLiveness {
         run_id: run_id,
       )
   ) {
-    RestAnswered { answer: run } =>
+    RestAnswered { answer: got } =>
       arrival_liveness_from_status_text(
         run_id: run_id,
-        status_text: Present { value: workflow_run_status_wire_label(status: run.status) }
+        status_text: Present { value: workflow_run_status_wire_label(status: got.run.status) }
       )
-    RestRefused { refusal: _ } =>
+    // A REFUSAL IS UNOBSERVABLE, WITH ITS OWN NAME IN THE CAUSE: an absent or empty token, a 401/403, a
+    // 404 for a run that never was, and a transport failure all refuse the recovery and none of them may
+    // take the slot -- and none of them touches the controller.
+    RestRefused { refusal } =>
       HolderLivenessUnobservable {
         cause: join(
-          ["holder run ", run_id, "'s status could not be read through the declared run read"], ""
+          ["holder run ", run_id, "'s status could not be read: ", rest_refusal_text(o: refusal)], ""
         ) as NonEmptyStr
       }
   }
