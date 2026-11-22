@@ -14,9 +14,9 @@ data fabric_event_log_replay_has_no_compaction: IntegrationConcern = Integration
   identity: "fabric_event_log_replay_has_no_compaction",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
-    requirement: "a host's seat ledger stays admissible however many reservations it has served: active holds, fences and release obligations are recoverable from a snapshot or compacted state, so the read budget bounds the work of one replay rather than the host's lifetime of builds",
+    requirement: "completed reservation history does not permanently prevent acquiring or releasing otherwise admissible reservations under the declared replay budget; any state reduction preserves active holds, fences and release obligations",
     standing: RequirementEstablished {
-      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_partition_read_budget") },
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.remote_build_bandwidth", decl_name: "remote_build_bandwidth_plan") },
     },
   },
   affected: FreeSemigroup {

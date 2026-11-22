@@ -9,18 +9,18 @@ import std.optional { Present }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
 
-// THE ATTEMPT SLOT LIVES IN A FILE STORE BESIDE THE FABRIC EVENT LOG THE SEAT ALREADY WRITES TO. Recorded 2026-11-21 by the remote-build planning audit (#gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan).
+// THE REMOTE SERVE LEG BYPASSES THE SHARED DURABLE ATTEMPT CONTROLLER; STORAGE ALONE IS NOT THE OWNERSHIP GAP. Recorded 2026-11-21 by the remote-build planning audit (#gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan).
 data remote_build_attempt_store_is_beside_the_fabric_event_log: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_attempt_store_is_beside_the_fabric_event_log",
   kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization"),
-    requirement: "an attempt's lifecycle is recorded once, where the durable route's controller joins it to product.fabric.execution, rather than in a second store the seat's event log does not see",
+    model: decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "remote_build_provide_on"),
+    requirement: "a served attempt participates in the durable route's shared request and attempt ownership, fencing and cancellation, with grants and results admitted by their owning authorities; a file store beside the seat event log is not by itself evidence of duplicate authority",
     standing: RequirementEstablished {
-      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_store") },
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_delegate") },
     },
   },
   affected: FreeSemigroup {
-    head: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization"),
+    head: decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "remote_build_provide_on"),
     tail: [decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_attempt_in")],
   },
   question: "When work-exec-2 lands, does the serving host's attempt share one authority with the durable route for request ownership, fencing, cancellation, grants and result admission? The durable attempt controller's controller_store is itself a file-backed compare-and-set store, so moving onto it does not by itself put attempts in the fabric event log; the integration is the shared ownership and admission, not the store.",
@@ -36,14 +36,14 @@ data remote_build_attempt_store_is_beside_the_fabric_event_log: IntegrationConce
     tail: [],
   },
   disposition: Triaged {
-    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_store") },
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_delegate") },
     preserve: [
       PreservedObligation {
         holder: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization"),
         control: Present { value: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization") },
-        statement: "whatever store holds the attempt, an unreadable or unknown unit lifecycle keeps refusing the recovery write",
+        statement: "for an attempt that may have launched, an unreadable or unknown unit lifecycle cannot establish quiescence or authorize release; pre-launch recovery retains its declared deadline and compare-and-set fence",
       },
     ],
-    next: climbs_when(capability: "the serving host's attempts are recorded through the durable attempt controller on work-exec-2's route; this row then closes as integrated"),
+    next: climbs_when(capability: "the serving host's attempts participate in work-exec-2's shared request and attempt ownership, fencing and cancellation, with grants and results admitted by their owning authorities and the existing recovery refusals preserved; this row then closes as integrated"),
   },
 }
