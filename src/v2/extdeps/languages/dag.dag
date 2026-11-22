@@ -15,7 +15,7 @@ import std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, DeclarationMarkerNotTest, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, KeywordAsValueName, LetInExpressionDropped, NewlineBeforeDualRoleOperator, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, DeclarationMarkerNotTest, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, KeywordAsValueName, LetInExpressionDropped, ListElementSeparatorMissing, NewlineBeforeDualRoleOperator, ParseRefusalReason }
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
@@ -984,6 +984,33 @@ fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
+// A BRACKETED-LIST SEQUENCE WITH A REQUIRED SEPARATOR: `item (',' item)* ','?`. The bracketed list
+// literal and the subscript used dag_grammar_comma_list_expr, whose combinator makes EVERY inter-
+// element comma optional -- so `[a b c]` parsed as three juxtaposed elements and a dropped `,` silently
+// changed the list's arity (the measured below-floor census row; a program whose shape depends on which
+// commas the author typed is below the floor). This form requires the separator between elements and
+// still admits the trailing comma (a legitimate multi-line list is written with one), while a juxtaposed
+// element -- one that follows a complete element with no comma, the only thing that can sit where the
+// caller's `]` is expected -- refuses at parse as ListElementSeparatorMissing instead of joining the
+// list. Call-argument and record-init comma-lists are NOT this helper; only a bracketed list is.
+fn dag_grammar_list_literal_seq(item: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: item,
+    right: dag_grammar_sequence(
+      left: dag_grammar_repeat(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_comma),
+          right: item
+        )
+      ),
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
+        right: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
+      )
+    )
+  )
+}
+
 fn dag_grammar_module_header_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_module),
@@ -1914,7 +1941,7 @@ fn dag_grammar_field_pattern_list_helper() -> GrammarExpr {
 
 fn dag_grammar_expr_list_helper() -> GrammarExpr {
   dag_grammar_optional(
-    element: dag_grammar_comma_list_expr(item: dag_grammar_nonterminal(production: ^dag_production_expr))
+    element: dag_grammar_list_literal_seq(item: dag_grammar_nonterminal(production: ^dag_production_expr))
   )
 }
 
