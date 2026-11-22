@@ -59,7 +59,7 @@ test fn fan_policy_phase_early_failure_specimen_leaves_no_residue() -> Bool {
     concat(credential, mtcollins1_fan_credential_fetch_status_suffix),
   ]
   let prelude = match gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: true), set_e: false) {
-    Accepted { value: t } => t
+    Accepted { diagnostics: _, value: t } => t
     Rejected { diagnostics: _ } => ""
   }
   let written = Filesystem.Write(path: spec_path, content: prelude)
@@ -90,7 +90,7 @@ fn fan_boot_phase_tail_run(stem: String, receipt: String, plant: Bool, from_yml:
   let spec_path = concat(stem, ".sh")
   let out_path = concat(stem, "-output")
   let tail = match gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements(), set_e: false) {
-    Accepted { value: t } => t
+    Accepted { diagnostics: _, value: t } => t
     Rejected { diagnostics: _ } => ""
   }
   let _ = if from_yml {

@@ -1334,17 +1334,15 @@ fn fan_step_evaluates_to(github_path: fn(List<String>) -> GithubPathResolution, 
 }
 
 test fn the_fan_policy_step_still_runs_for_every_boot_mode_and_skips_only_the_cold_reset() -> Bool {
+  let ru = fleet_converge_fan_policy_phase_receipt_upload_step()
   match outcome_accepted_value(fleet_converge_fan_policy_phase_step()) {
     Absent => false
-    Present { value: fan } => match outcome_accepted_value(fleet_converge_fan_policy_phase_receipt_upload_step()) {
-      Absent => false
-      Present { value: ru } =>
-        fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
-          && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
-          && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
-          && step_if_text(s: fan) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
-          && step_if_text(s: ru) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
-    }
+    Present { value: fan } =>
+      fan_step_evaluates_to(github_path: dispatch_boot, runs: true)
+        && fan_step_evaluates_to(github_path: dispatch_discovery, runs: true)
+        && fan_step_evaluates_to(github_path: dispatch_cold_reset, runs: false)
+        && step_if_text(s: fan) == serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())
+        && step_if_text(s: ru) == join(["always() && ", serialize_expression(expression: fleet_converge_fan_policy_phase_step_if_expression())], "")
   }
 }
 

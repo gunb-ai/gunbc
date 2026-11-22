@@ -1008,23 +1008,32 @@ test fn the_srv15_read_consumes_only_its_own_mint() -> Bool {
 // universe lives in. A mutation re-adding an approval gate, or moving the steps back into the
 // converge job, must flip this claim.
 test fn the_srv15_read_runs_without_any_approval_gate() -> Bool {
-  let request = fleet_converge_gcp_iam_bootstrap_request_job()
-  let converge = fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)
-  let read = fleet_converge_srv15_bmc_secret_versions_read_step()
-  let ids = join(map(request.steps, s => step_id_text(step: s)), ",")
-  string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + (fleet_converge_srv15_versions_read_step_id as String) + ",," + "gcp_iam_bootstrap_request")
-  && !any(xs: converge.steps, where: st => step_id_text(step: st) == (fleet_converge_srv15_versions_read_step_id as String))
-  && match request.if_condition {
-       Present { value: jif } => string_contains(s: jif, pattern: "gcp_iam_converge") && !string_contains(s: jif, pattern: "approved")
-       Absent => false
-     }
-  && match read {
-       RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: ric }, continue_on_error: _, timeout_minutes: _ } =>
-         string_contains(s: ric, pattern: "gcp_iam_converge") && !string_contains(s: ric, pattern: "approved")
-       _ => false
-     }
-  && match request.environment {
-       Present { value: e } => e == (gcp_iam_converge_environment as String)
-       Absent => false
-     }
+  match outcome_accepted_value(fleet_converge_gcp_iam_bootstrap_request_job()) {
+    Absent => false
+    Present { value: request } =>
+      match outcome_accepted_value(fleet_converge_gcp_iam_converge_job_on(host: "srv1" as NonEmptyStr)) {
+        Absent => false
+        Present { value: converge } =>
+          match outcome_accepted_value(fleet_converge_srv15_bmc_secret_versions_read_step()) {
+            Absent => false
+            Present { value: read } =>
+              let ids = join(map(request.steps, s => step_id_text(step: s)), ",")
+              string_contains(s: ids, pattern: (fleet_converge_srv15_versions_read_wif_step_id as String) + "," + (fleet_converge_srv15_versions_read_step_id as String) + ",," + "gcp_iam_bootstrap_request")
+              && !any(xs: converge.steps, where: st => step_id_text(step: st) == (fleet_converge_srv15_versions_read_step_id as String))
+              && match request.if_condition {
+                   Present { value: jif } => string_contains(s: jif, pattern: "gcp_iam_converge") && !string_contains(s: jif, pattern: "approved")
+                   Absent => false
+                 }
+              && match read {
+                   RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: Present { value: ric }, continue_on_error: _, timeout_minutes: _ } =>
+                     string_contains(s: ric, pattern: "gcp_iam_converge") && !string_contains(s: ric, pattern: "approved")
+                   _ => false
+                 }
+              && match request.environment {
+                   Present { value: e } => e == (gcp_iam_converge_environment as String)
+                   Absent => false
+                 }
+          }
+      }
+  }
 }
