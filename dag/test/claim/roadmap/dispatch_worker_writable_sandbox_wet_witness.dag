@@ -116,6 +116,8 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_locus_receipt_path, witness_locus_binary_path, witness_locus_source_roots,
   witness_locus_receipt_seal_path, witness_seal_locus_receipt, witness_file_sha256_hex,
   witness_locus_destination_is_admitted, witness_locus_destinations_are_admitted,
+  witness_path_resolves_under, witness_path_is_run_owned_directory,
+  witness_tree_install_into_supplied_tree, witness_file_install_into_supplied_tree,
   witness_batch_locus_base, witness_batch_locus_env_var,
   witness_release_stage_dir, witness_release_stage_member, witness_stage_release_binary,
   witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
@@ -504,25 +506,35 @@ fn wet_plant_guest_sources_sized(instance: HostDashboardInstance, subdirs: List<
     // symbolic link in the source as a LINK, so a tree holding a relative link and a dangling one
     // comes back with both still `symbolic link` under `stat -c %F`, where `-rL` turns the first into
     // a copied directory and fails outright on the second ("cannot stat ...: No such file or
-    // directory"). The plant therefore cannot be used to pull the target of a link into the root it is
-    // planting into: links arrive inert, and the guest reads only what it actually opens.
+    // directory"). A source link therefore arrives inert -- and inert is not the same as admitted: the writer
+    // refuses a source tree holding a link whose target is absolute or walks out with `..`, and requires the
+    // destination subtree to hold no link of its own before it copies, so the planted tree carries no symbolic
+    // link at all. The plant cannot be used to pull the target of a link into the root it is planting into,
+    // and the guest can only read what it actually opens.
+    // THE TWO DIRECTORIES THIS FOLD NEEDS BELOW `repo` ARE MADE HERE, and they are not the write the paragraph
+    // above refuses: `mkdir` does not follow a symbolic link in a path's FINAL component (mkdir(2)), so
+    // creating `<repo>/src` where a link stands makes nothing through it -- it succeeds against the link's
+    // target if one is there and reports EEXIST if it dangles. What does write through a link is a `mkdir -p`
+    // of a path BELOW one, which is exactly the per-subtree parent, and that mkdir lives inside the writer,
+    // after the admission.
     && wet_ok(command: mkdir_parents_command(path: repo))
     && wet_ok(command: mkdir_parents_command(path: join([repo, "/src"], "")))
-    // EVERY NAMED SUBTREE GOES IN THROUGH THE FLEET'S ONE COPY ROUTE, one argv per subtree: a caller
-    // that names fewer subtrees plants a smaller tree by the same rule and nothing else about a plant
-    // changes. `src/` exists before the fold because `src/v2` is a two-level destination.
-    // EACH NAMED SUBTREE IS COPIED INTO A PARENT THAT EXISTS. `cp -r src dst` needs dst's PARENT, and a
-    // caller may name a two-level subtree -- the cost probe plants "dag/extdeps" and "src/v2/std", and at
-    // the first attempt the whole small point of the curve died here, silently, because `cp -r` cannot
-    // create `dst`'s parent and the plant had only ever been asked for one-level destinations ("dag",
-    // "src/v2" with `src/` made above). The parent is made per subtree, from the same route, so the size
-    // parameter stays the only difference between a big plant and a small one.
+    // EVERY NAMED SUBTREE GOES IN THROUGH THE ADMITTED WRITER, one decision per subtree: a caller that names
+    // fewer subtrees plants a smaller tree by the same rule and nothing else about a plant changes.
+    // EACH NAMED SUBTREE IS COPIED INTO A PARENT THAT EXISTS -- and the parent is made by the WRITER, after
+    // its destinations have been admitted, not here. `cp -r src dst` needs dst's parent, and a caller may name
+    // a two-level subtree (the cost probe plants "dag/extdeps" and "src/v2/std", and at the first attempt the
+    // whole point of the curve died here silently), so the parent used to be mkdir'd per subtree in front of
+    // the copy. That ordering was a second way out of the supplied tree: with a symbolic link already standing
+    // at the destination's parent, `mkdir -p` writes the new directory THROUGH it before any gate is reached.
+    // The size parameter stays the only difference between a big plant and a small one.
     && fold(subdirs, init: true, f: (ok, sub) =>
-      ok && wet_ok(command: mkdir_parents_command(path: path_parent_directory(path: join([repo, "/", sub], ""))))
-        && shell.Copy.Recursive(
-          source: join([checkout, "/", sub], "") as FilePath,
-          destination: join([repo, "/", sub], "") as FilePath,
-        ).success)
+      ok && witness_tree_install_into_supplied_tree(
+        source: join([checkout, "/", sub], ""),
+        destination: join([repo, "/", sub], ""),
+        parent: path_parent_directory(path: join([repo, "/", sub], "")),
+        root: repo,
+      ))
     // THE MANIFEST IS PART OF THE TREE A GUEST CAN RUN FROM. The CLI keys its module graph by a path
     // RELATIVE to a workspace root and finds that root by walking up from its starting directory
     // looking for `Cargo.toml` beside `dag/` (cli_run.rs `resolve_process_workspace_root`; it refuses
@@ -532,10 +544,11 @@ fn wet_plant_guest_sources_sized(instance: HostDashboardInstance, subdirs: List<
     // carrying Cargo.toml beside dag/" and exit 2 -- the guest could not run at all, which is the
     // fixture's defect and not a sandbox verdict. A plant that cannot be run from is not a plant, so
     // the manifest the real attempt worktree carries goes in too, before the repository is made.
-    && shell.Copy.Recursive(
-      source: join([checkout, "/Cargo.toml"], "") as FilePath,
-      destination: join([repo, "/Cargo.toml"], "") as FilePath,
-    ).success
+    && witness_file_install_into_supplied_tree(
+      source: join([checkout, "/Cargo.toml"], ""),
+      destination: join([repo, "/Cargo.toml"], ""),
+      root: repo,
+    )
     && wet_make_source_repository(instance: instance)
 }
 
@@ -1358,38 +1371,76 @@ fn wet_root_launcher_is_available() -> Bool {
 // verdict, and an outside symlink makes a leg's "host lacks the capability" line a claim someone else can
 // write, while a leg's own FAILED line can be pointed into a file nobody reads. (2) One unowned pathname
 // shared by every run mixes runs and lets a stale run's lines be read as this run's.
-// The trail now lives UNDER THE RUN'S OWN SUPPLIED BASE (the same runner-owned directory the claim roots
-// hang under, named by GUNBC_WITNESS_SANDBOX_BASE, or the scratch prefix), is named with the run's token so
-// two runs cannot share it, and is admitted with `witness_supplied_root_is_refused` -- which RESOLVES the
-// pathname, so a symlink at it resolves outside the supplied tree and is refused. A refused destination is
-// NO TRAIL AND A FALSE STAGE, never a fallback to a shared fixed path: a stage that cannot be recorded
-// cannot be audited, and an unauditable stage is not a pass (DESIGN 5, no silent pass-through).
+// The trail now lives under a base THIS RUN OWNS, is admitted against THAT base rather than against the
+// scratch prefix every run on the host shares, and a refused destination is NO TRAIL AND A FALSE STAGE, never
+// a fallback to a shared fixed path: a stage that cannot be recorded cannot be audited, and an unauditable
+// stage is not a pass (DESIGN 5, no silent pass-through).
 data wet_stage_trail_stem: NonEmptyStr = "gunbc-sandbox-witness-stages" as NonEmptyStr
 data wet_stage_trail_suffix: NonEmptyStr = ".log" as NonEmptyStr
 
-// WHAT MAKES THE TRAIL THIS RUN'S, IN PREFERENCE ORDER. (1) GUNBC_WITNESS_SANDBOX_BASE, the directory the
-// runner created for this batch and removes itself. (2) WITNESS_LOCUS_BASE, which the S1 script mktemps once
-// per run and exports to both batches, so it is per-run even on a runner that never claimed the litter.
-// (3) only then the scratch prefix, which IS shared between runs -- and that third tier is exactly why the
-// admission below is mandatory rather than advisory: the fallback keeps the witness's byte-for-byte
-// behaviour when no runner has taken ownership, and the resolution check is what stops that shared name
-// from being a shared weakness. Each tier is admitted before use; a refused tier is not used, and the
-// writer never invents a path of its own.
+// WHICH BASE THE TRAIL LIVES UNDER, OR NOTHING. Two spellings are accepted, and both must be a directory
+// somebody created for THIS batch: (1) GUNBC_WITNESS_SANDBOX_BASE, the litter directory the wet runner makes
+// and removes itself; (2) WITNESS_LOCUS_BASE, the directory the S1 script mktemps once per run and exports to
+// both batches. Naming one is not enough, and the tier deleted here is why: the old third tier fell through
+// to `wet_claim_root_base()`, which is the scratch prefix, so a run on a host where no runner had taken
+// ownership wrote `/tmp/gunbc-sandbox-witness-stages.log` -- the shared fixed pathname this trail was moved
+// off, back again with no run token and no fresh create, one symlink away from pointing the batch's verdict
+// elsewhere. There is now no fallback at all: no owned base means no trail, every stage answers false, and
+// the tally adjudicates a false stage as the refusal it is.
+//
+// A candidate base is accepted only when all three readings agree, through the one interface the fixture owns
+// (`witness_path_is_run_owned_directory` and `witness_supplied_root_is_refused`): it RESOLVES inside the
+// declared scratch prefix and outside every production lab root; `stat -c %F` calls it a DIRECTORY, not a
+// symbolic link (without -L/-H, coreutils stat reports the operand itself, so a link aimed at another run's
+// tree inside /tmp is refused as a link rather than admitted as the directory it points at -- the ancestry
+// test alone admits it, because the resolved text is inside /tmp); and `stat -c %U` says the principal
+// running this witness OWNS it, which is the reading that separates "a directory" from "this run's
+// directory". Any reading that fails -- or fails to answer -- rejects the tier, and the next tier is tried.
+//
+// THE ARGUMENT IS A PARAMETER, for the reason at `wet_claim_root_under`: a claim cannot set its own
+// environment (this codebase models only `shell.Env.Get`), so the claims that show a root-owned-but-foreign
+// base and a cross-run link are refused have to hand the decision a base they name, and do it through here.
+fn wet_stage_trail_base_is_owned(base: String) -> Bool {
+  let owner = wet_out(command: witness_effective_user_command())
+  base != ""
+    && !witness_supplied_root_is_refused(candidate: base)
+    && owner != ""
+    && witness_path_is_run_owned_directory(candidate: base, owner: owner as NonEmptyStr)
+}
+
+fn wet_stage_trail_dir_under(base: String) -> String {
+  if wet_stage_trail_base_is_owned(base: base) { base } else { "" }
+}
+
 fn wet_stage_trail_dir() -> String {
   let sandbox = wet_environment_value(name: wet_sandbox_base_env_var)
-  if sandbox != "" && !witness_supplied_root_is_refused(candidate: sandbox) {
+  if wet_stage_trail_base_is_owned(base: sandbox) {
     sandbox
   } else {
-    let locus = wet_environment_value(name: witness_batch_locus_env_var)
-    if locus != "" && !witness_supplied_root_is_refused(candidate: locus) { locus } else { wet_claim_root_base() }
+    wet_stage_trail_dir_under(base: wet_environment_value(name: witness_batch_locus_env_var))
   }
 }
 
-// THE ONE PATH WRITERS AND READERS AGREE ON. Empty string means the destination was refused: it is never
-// created, never written, and never read, so there is no way for a stage line to reach an outside file.
+// THE ONE PATH WRITERS AND READERS AGREE ON, FOR A BASE ALREADY ACCEPTED. Empty string means the destination
+// was refused: it is never created, never written, and never read, so there is no way for a stage line to
+// reach an outside file.
+//
+// THE DESTINATION IS ADMITTED RELATIVE TO THE SELECTED BASE, not relative to the scratch prefix -- which is
+// the half the previous version missed. `witness_path_resolves_under` resolves BOTH the trail and the base
+// and requires the trail under the base, so `/tmp/run-A/gunbc-sandbox-witness-stages.log` standing as a
+// symbolic link at `/tmp/run-B/gunbc-sandbox-witness-stages.log` is refused: the resolved text is under
+// run-B, and run-B is not this run's base, even though both sides sit comfortably inside `/tmp` and both
+// pass every prefix test the scratch prefix can pose. The separate call to `witness_supplied_root_is_refused`
+// on the trail is NOT repeated here, because it is implied: the base has already resolved inside the prefix
+// and outside every production root, the trail resolves under that base, and the trail's own spelling is
+// `base` + "/" + two data literals this module owns -- no caller, and no navigation component, can enter it.
+fn wet_stage_trail_path_under(base: String) -> String {
+  let candidate = join([base, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  if base != "" && witness_path_resolves_under(candidate: candidate, base: base) { candidate } else { "" }
+}
+
 fn wet_stage_trail_path() -> String {
-  let candidate = join([wet_stage_trail_dir(), "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
-  if witness_supplied_root_is_refused(candidate: candidate) { "" } else { candidate }
+  wet_stage_trail_path_under(base: wet_stage_trail_dir())
 }
 
 // A STAGE SPELLING THAT A CLAIM ASSERTS IS DECLARED HERE, ONCE, and read by BOTH the emitter and the
@@ -1406,22 +1457,33 @@ fn wet_stage_trail_path() -> String {
 data witness_stage_exit_record_check_absent: NonEmptyStr = "exit-record-check-absent: no record at " as NonEmptyStr
 
 fn wet_stage(stage: String, ok: Bool) -> Bool {
+  wet_stage_under(base: wet_stage_trail_dir(), stage: stage, ok: ok)
+}
+
+// THE ONE STAGE WRITER, WITH THE BASE IT WRITES UNDER AS AN ARGUMENT. `wet_stage` above is the batch's own
+// call -- it takes the base from the environment, which is all a running claim can do -- and this is the same
+// decision with the base named, which is the only way a CLAIM can put a base under the guard: `shell.Env.Get`
+// is the only environment operation this codebase models, so a claim cannot export GUNBC_WITNESS_SANDBOX_BASE
+// for itself and would otherwise be unable to show an unowned base or a cross-run link being refused. Same
+// code path, same readings, one argument moved: what the batch depends on is what the claim exercises.
+fn wet_stage_under(base: String, stage: String, ok: Bool) -> Bool {
   let note = join([stage, if ok { " ok" } else { " FAILED" }], "")
-  // ADMIT THE APPEND DESTINATION BEFORE WRITING, IN THAT ORDER. `wet_stage_trail_path` has already RESOLVED
-  // the pathname and refused it unless it lands inside the run's supplied tree, so `tee` is only ever handed
-  // a path this lane decided was inside: a symlink planted at the historical fixed /tmp name can no longer
-  // redirect the batch's capability evidence into a file the witness does not read. The directory is created
-  // only for the admitted trail's own parent -- never a mkdir of a fixed "/tmp" the write then ignored --
-  // and only after that decision. A refused destination records nothing and answers false, and false is
-  // where it is adjudicated: every caller folds wet_stage's Bool into a typed refusal or into the outcome
-  // tally, so a stage that could not be recorded can never be tallied as a pass (DESIGN 5, no silent
-  // pass-through). The trail file is the only record this takes -- there is no second trace to drift from it.
-  let trail = wet_stage_trail_path()
+  // ADMIT THE APPEND DESTINATION BEFORE WRITING, IN THAT ORDER, AGAINST THE ONE BASE THIS CALL RESOLVED.
+  // `wet_stage_trail_path_under` has already required that the base is a real directory this principal owns
+  // and that the trail RESOLVES UNDER THAT BASE, so `tee` is only ever handed a path inside this run's own
+  // tree: a symlink planted at the historical fixed /tmp name, or at run-A's name pointing into run-B, can no
+  // longer redirect the batch's capability evidence into a file the witness does not read. Nothing is mkdir'd
+  // here any more -- the base is not created by the writer, it is created by the runner and its existence as
+  // an owned directory is what the admission read observed, so a `mkdir -p` of it would be a second, later
+  // opinion about a fact the guard already had, and it is the mkdir of a shared "/tmp" that gets mistaken for
+  // ownership. A refused destination records nothing and answers false, and false is where it is adjudicated:
+  // every caller folds wet_stage's Bool into a typed refusal or into the outcome tally, so a stage that could
+  // not be recorded can never be tallied as a pass (DESIGN 5, no silent pass-through). The trail file is the
+  // only record this takes -- there is no second trace to drift from it.
+  let trail = wet_stage_trail_path_under(base: base)
   if trail == "" {
     false
   } else {
-    let dir = mkdir_parents_command(path: wet_stage_trail_dir())
-    let _ = shell.Exec.RunArgv(program: dir.program.invocation as String, arguments: dir.arguments)
     let append = tee_append_command(path: trail)
     let written = shell.Exec.RunArgvStdin(
       program: append.program.invocation as String,
@@ -1431,10 +1493,9 @@ fn wet_stage(stage: String, ok: Bool) -> Bool {
     if written.exit_code != 0 {
       // ONE RETRY OF THE SAME APPEND TO THE SAME ALREADY-ADMITTED PATH, then false. A vanished stage
       // directory used to silence the trail for the whole run, which is how srv2 lost the not-observed lines
-      // and left the tally unadjudicable. The retry never redirects to another file, and a second failure
-      // still answers false -- this records evidence, it does not invent it.
-      let retry_dir = mkdir_parents_command(path: wet_stage_trail_dir())
-      let _ = shell.Exec.RunArgv(program: retry_dir.program.invocation as String, arguments: retry_dir.arguments)
+      // and left the tally unadjudicable. The retry never redirects to another file and never re-admits
+      // anything -- same path, same decision -- and a second failure still answers false: this records
+      // evidence, it does not invent it.
       let retry = shell.Exec.RunArgvStdin(
         program: append.program.invocation as String,
         arguments: append.arguments,
@@ -2648,6 +2709,195 @@ test fn the_stage_trail_that_is_a_pre_existing_symlink_records_nothing_outside_t
     verdict: wet_claim_is_confined(instance: inst, root: root)
       && root != "" && away != "" && green && arms_split && refused && nothing_outside && restored,
     roots: [root as NonEmptyStr, away as NonEmptyStr],
+  )
+}
+
+// NO SHARED FALL-BACK: A BASE THIS RUN CANNOT EXCLUSIVELY POSSESS RECORDS NOTHING. The trail used to fall
+// through to the scratch prefix when neither GUNBC_WITNESS_SANDBOX_BASE nor WITNESS_LOCUS_BASE was exported,
+// and the scratch prefix is `/tmp` -- so such a run appended its capability tally to
+// `/tmp/gunbc-sandbox-witness-stages.log`, the exact shared fixed pathname the trail was moved off, with no
+// run token and nothing fresh created. The shared name is the CONTROL here, and it is the honest one: `/tmp`
+// is a real directory, inside the declared prefix and outside every production lab root, and on a
+// single-account host it is even owned by the principal running the witness -- the only reading that refuses
+// it is that 1777 lets any other tenant create that filename first, and whoever creates the trail owns the
+// verdict recorded in it. The pair runs FIRST, because a claim that only measures a refusal is satisfiable by
+// a writer that never worked: a base this run created with `mktemp -d` is accepted and a line really written
+// under it is really read back. Then the same writer is handed `/tmp`, and then no base at all (the unset
+// environment, which is the case the old third tier silently absorbed): both must record nothing and answer
+// false -- and the shared pathname must read exactly as it was found, which is the assertion that the bytes
+// did not go there after all. No file outside the run's own tree is created or deleted by this claim.
+test fn a_trail_base_the_run_cannot_exclusively_possess_records_nothing() -> Bool {
+  let root = wet_claim_root(tag: "trail-base-ownership" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let ours = wet_out(command: mktemp_directory_command(
+    template: join([root, "/run-owned-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let ours_trail = join([ours, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let shared = "/tmp"
+  let shared_trail = join([shared, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let shared_before = wet_file_text(path: shared_trail)
+  let line = "trail-base-ownership-probe"
+  let admitted = ours != ""
+    && wet_stage_trail_dir_under(base: ours) == ours
+    && wet_stage_trail_path_under(base: ours) == ours_trail
+    && wet_stage_under(base: ours, stage: line, ok: true)
+    && string_contains(s: wet_file_text(path: ours_trail), pattern: line)
+  let foreign_refused = wet_stage_trail_dir_under(base: shared) == ""
+    && wet_stage_trail_path_under(base: shared) == ""
+    && !wet_stage_under(base: shared, stage: "trail-base-ownership-escape", ok: true)
+    && wet_file_text(path: shared_trail) == shared_before
+  let nameless_refused = wet_stage_trail_dir_under(base: "") == ""
+    && wet_stage_trail_path_under(base: "") == ""
+    && !wet_stage_under(base: "", stage: "trail-base-ownership-escape", ok: true)
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && ours != "" && admitted && foreign_refused && nameless_refused,
+    roots: [root as NonEmptyStr],
+  )
+}
+
+// A TRAIL THAT LINKS INTO ANOTHER RUN OF THE SAME BATCH IS REFUSED, INSIDE THE SHARED PREFIX. Both directories
+// below are under `/tmp`, both were made by this principal with `mktemp -d`, and both pass every prefix and
+// production-root test the batch can pose -- which is precisely why comparing the trail against
+// `witness_scratch_prefix` was not a run boundary: two runs live in the same prefix, and a link at run A's
+// trail name pointing at run B's trail made run A's evidence land in run B's file while every lexical and
+// prefix reading stayed green. The pair runs first (both bases admitted, run B really taking a line that
+// reads back), then the link is planted and NOTHING ELSE CHANGES: run A's destination must be refused, its
+// stage must answer false, run B's trail must not have gained run A's line, and removing the link must bring
+// run A's destination back -- a refusal that only lasted while the link was there is a refusal about the link.
+test fn a_trail_that_links_into_another_run_of_the_same_batch_is_refused() -> Bool {
+  let root = wet_claim_root(tag: "trail-cross-run-link" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let run_a = wet_out(command: mktemp_directory_command(
+    template: join([root, "/run-A-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let run_b = wet_out(command: mktemp_directory_command(
+    template: join([root, "/run-B-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let a_trail = join([run_a, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let b_trail = join([run_b, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
+  let line_b = "cross-run-link-probe-in-B"
+  let line_a = "cross-run-link-escape-in-A"
+  let admitted = run_a != "" && run_b != ""
+    && wet_stage_trail_dir_under(base: run_a) == run_a
+    && wet_stage_trail_dir_under(base: run_b) == run_b
+    && wet_stage_trail_path_under(base: run_a) == a_trail
+    && wet_stage_under(base: run_b, stage: line_b, ok: true)
+    && string_contains(s: wet_file_text(path: b_trail), pattern: line_b)
+  let planted = wet_ok(command: rm_force_command(path: a_trail))
+    && wet_ok(command: ln_symbolic_force_command(target: b_trail, link_name: a_trail))
+  let refused = wet_stage_trail_path_under(base: run_a) == ""
+    && !wet_stage_under(base: run_a, stage: line_a, ok: true)
+    && !string_contains(s: wet_file_text(path: b_trail), pattern: line_a)
+  let restored = wet_ok(command: rm_force_command(path: a_trail))
+    && wet_stage_trail_path_under(base: run_a) == a_trail
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && admitted && planted && refused && restored,
+    roots: [root as NonEmptyStr],
+  )
+}
+
+// THE FOLD REFUSES A DESTINATION THAT IS ALREADY A SYMBOLIC LINK, AND ONLY THE LINK CHANGES. The five
+// destinations the gate admitted were the ones this fixture writes itself; the source-tree fold then created
+// some eleven thousand more beneath them, and none of those paths had ever been admitted. Two shapes of that
+// hole are reproduced here, at the two depths that matter, because fixing only one of them is the mistake the
+// review made visible: `<repo>/src` -- the PARENT of a destination the fold prepares with `mkdir -p` -- and a
+// link nested deep inside an already-planted tree at `<repo>/dag/extdeps`. In each case the destination's
+// parent is a link to a directory outside the supplied tree, so the old fold's own preparation step wrote
+// through it: `mkdir -p <repo>/src/v2` created `<escape>/v2`, `cp -r` filled it, and the elevated containment
+// readback that detects an escape arrived only once the bytes had landed. Each refusal is paired with the same
+// plant into the same tree succeeding once the link is removed, so what is being measured is the link, and not
+// a writer that never worked.
+test fn the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link() -> Bool {
+  let root = wet_claim_root(tag: "fold-destination-link" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let repo = inst.repo_root as String
+  let escape = wet_out(command: mktemp_directory_command(
+    template: join([root, "/escape-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let deep_file = join([repo, "/src/v2/workflow/local_repo_wet_terminal.dag"], "")
+  let nested_file = join([repo, "/dag/extdeps/tools/findutils.dag"], "")
+  let clean_planted = wet_plant_guest_sources_sized(instance: inst, subdirs: ["dag", "src/v2"])
+    && wet_path_exists(path: deep_file)
+    && wet_path_exists(path: nested_file)
+  let src_path = join([repo, "/src"], "")
+  let top_removed = wet_ok(command: rm_force_command(path: src_path))
+  let top_linked = wet_ok(command: ln_symbolic_force_command(target: escape, link_name: src_path))
+  let top_refused = !wet_plant_guest_sources_sized(instance: inst, subdirs: ["src/v2"])
+    && !wet_path_exists(path: join([escape, "/v2"], ""))
+    && !wet_path_exists(path: deep_file)
+  let top_restored = wet_ok(command: rm_force_command(path: src_path))
+    && wet_plant_guest_sources_sized(instance: inst, subdirs: ["src/v2"])
+    && wet_path_exists(path: deep_file)
+    && !wet_path_exists(path: join([escape, "/v2"], ""))
+  let nested_path = join([repo, "/dag/extdeps"], "")
+  let nested_removed = wet_ok(command: rm_force_command(path: nested_path))
+  let nested_linked = wet_ok(command: ln_symbolic_force_command(target: escape, link_name: nested_path))
+  let nested_refused = !wet_plant_guest_sources_sized(instance: inst, subdirs: ["dag"])
+    && !wet_path_exists(path: join([escape, "/extdeps"], ""))
+  let nested_restored = wet_ok(command: rm_force_command(path: nested_path))
+    && wet_plant_guest_sources_sized(instance: inst, subdirs: ["dag"])
+    && wet_path_exists(path: nested_file)
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && escape != "" && clean_planted
+      && top_removed && top_linked && top_refused && top_restored
+      && nested_removed && nested_linked && nested_refused && nested_restored,
+    roots: [root as NonEmptyStr],
+  )
+}
+
+// THE DESTINATIONS ARE THE ONES THE WALK REPORTED, NOT THE ONES A CALLER NAMED. The fold's admission is only
+// as real as the source walk behind it, and a walk that answered nothing -- no such directory, a refused
+// spawn, a nonzero exit -- must refuse rather than wave the copy through on an empty list; a line whose column
+// count is not the row's means the source holds a name carrying the column separator, and deciding on shifted
+// columns is deciding about paths the walk never reported. Three refusals, each paired with the same writer
+// admitting and really planting an ordinary source: a clean tree of a directory and a file goes in and reads
+// back; a source entry named `a|b` refuses the install; a source symlink whose target is absolute refuses it
+// (the copy would arrive it as a link naming a host path, inert but unreadable from inside and outside the
+// tree it was admitted to); and a source that does not exist refuses it.
+test fn the_tree_fold_admits_only_what_the_source_walk_reports() -> Bool {
+  let root = wet_claim_root(tag: "fold-source-walk" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let repo = inst.repo_root as String
+  let source = join([root, "/source-probe"], "")
+  let escape = wet_out(command: mktemp_directory_command(
+    template: join([root, "/escape-XXXXXX"], "") as NonEmptyStr,
+  ))
+  let built = wet_ok(command: mkdir_parents_command(path: join([source, "/nested"], "")))
+    && Filesystem.Write(path: join([source, "/nested/file.dag"], ""), content: "x" as NonEmptyStr).success
+  let good_dest = join([repo, "/probe-good"], "")
+  let admitted = built && escape != ""
+    && witness_tree_install_into_supplied_tree(
+      source: source, destination: good_dest, parent: repo, root: repo)
+    && wet_path_exists(path: join([good_dest, "/nested/file.dag"], ""))
+  let piped = wet_ok(command: mkdir_parents_command(path: join([source, "/odd"], "")))
+    && Filesystem.Write(path: join([source, "/odd/a|b"], ""), content: "x" as NonEmptyStr).success
+  let pipe_dest = join([repo, "/probe-pipe"], "")
+  let pipe_refused = piped
+    && !witness_tree_install_into_supplied_tree(
+      source: source, destination: pipe_dest, parent: repo, root: repo)
+    && !wet_path_exists(path: join([pipe_dest, "/odd/a|b"], ""))
+  let linked = wet_ok(command: ln_symbolic_force_command(
+    target: join([escape, "/nowhere"], ""),
+    link_name: join([source, "/abs-link"], ""),
+  ))
+  let link_dest = join([repo, "/probe-link"], "")
+  let link_refused = linked
+    && !witness_tree_install_into_supplied_tree(
+      source: source, destination: link_dest, parent: repo, root: repo)
+    && !wet_path_exists(path: join([link_dest, "/abs-link"], ""))
+  let missing_refused = !witness_tree_install_into_supplied_tree(
+    source: join([root, "/no-such-source"], ""),
+    destination: join([repo, "/probe-missing"], ""),
+    parent: repo,
+    root: repo,
+  )
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: wet_claim_is_confined(instance: inst, root: root)
+      && root != "" && admitted && pipe_refused && link_refused && missing_refused,
+    roots: [root as NonEmptyStr],
   )
 }
 

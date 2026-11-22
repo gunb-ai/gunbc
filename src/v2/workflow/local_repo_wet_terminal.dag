@@ -4290,6 +4290,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_trail_base_the_run_cannot_exclusively_possess_records_nothing" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_trail_base_the_run_cannot_exclusively_possess_records_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_trail_that_links_into_another_run_of_the_same_batch_is_refused" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "a_trail_that_links_into_another_run_of_the_same_batch_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_tree_fold_admits_only_what_the_source_walk_reports" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_tree_fold_admits_only_what_the_source_walk_reports",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "the_locus_destination_that_is_a_pre_existing_symlink_is_refused_before_any_effect",

@@ -37,6 +37,17 @@ import extdeps.tools.gnu_coreutils {
   realpath_canonicalize_missing_command,
 }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
+// THE TWO READINGS A BASE NEEDS AND THE ANCESTRY GUARD CANNOT GIVE IT -- what the name IS, and who it
+// belongs to. Both rows come from the module that owns its program's grammar, per extdeps/tools/README.md;
+// the reason a resolved-ancestry test is not enough is at `witness_path_is_run_owned_directory`.
+import extdeps.tools.stat {
+  stat_file_type_command, stat_file_type_reading, StatFileTypeRead, StatFileTypeUnanswered,
+  StatFileKind, DirectoryKind, RegularFileKind, SymbolicLinkKind, SocketKind, FifoKind,
+  CharacterDeviceKind, BlockDeviceKind, UnknownKind,
+}
+import extdeps.tools.findutils {
+  find_untrusted_entries_command, find_tree_entry_metadata_command, find_symlink_targets_command,
+}
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardLocalProvision,
@@ -362,8 +373,20 @@ fn parse_principal_numbers(uid_text: String, gid_text: String) -> Optional<Princ
 // this guard writes into the live lab root. Every claim that takes a witness root checks it through this one
 // decision.
 fn witness_supplied_root_is_refused(candidate: String) -> Bool {
-  witness_path_spelling_is_refused(candidate: candidate)
+  witness_path_is_outside_supplied_tree(candidate: candidate)
     || witness_resolved_root_is_refused(candidate: candidate)
+}
+
+// THE LEXICAL HALF, ON ITS OWN, FOR CALLERS THAT HAVE ALREADY RESOLVED WHAT THEY NEEDED TO RESOLVE. The five
+// tests are the same five and they live here and nowhere else; the resolution half is the part a caller may
+// not duplicate, and the part it may also not need eleven thousand times. A recursive install derives its
+// destinations from one source walk under one root whose RESOLVED spelling that root's own admission has
+// already judged, so the destinations are judged lexically here and the root carries the resolution -- the
+// reasoning, including the one case that makes it sound (no symbolic link below the root), is at
+// `witness_tree_install_destinations_are_admitted`. Splitting the two halves is also what lets a caller state
+// which of them it has paid for.
+fn witness_path_is_outside_supplied_tree(candidate: String) -> Bool {
+  witness_path_spelling_is_refused(candidate: candidate)
     || is_under(text: candidate, root: srv1_dashboard_lab_provision_parent as String)
     || is_under(text: candidate, root: srv1_dashboard_lab_root as String)
     || is_under(text: candidate, root: host_capacity_home_root as String)
@@ -460,11 +483,18 @@ fn witness_path_spelling_is_refused(candidate: String) -> Bool {
 // that cannot create in it, which is a claim going RED for a host reason and not a confinement hole. And it means
 // the silence case is not reachable by arranging a bad component: it is reached when the tool produced nothing at
 // all, which is the only state in which reading no answer as permission is possible.
+// THE RESOLVED SPELLING OF A PATH THAT NEED NOT EXIST YET, or the empty string when the host answered with
+// nothing. One helper, one row: this arm and `witness_path_resolves_under` below both need the resolved text of
+// a path before it is created, and a second call site spelling the `realpath -m` argv itself would be a second
+// authority for what "resolved" means. Silence -- the tool unspawnable, an argument the tool refuses -- is the
+// empty string, and every caller here reads that as a refusal rather than as permission.
+fn witness_resolved_path(candidate: String) -> String {
+  wet_out(command: realpath_canonicalize_missing_command(path: candidate))
+}
+
 fn witness_resolved_root_is_refused(candidate: String) -> Bool {
-  let resolved = wet_out(command: realpath_canonicalize_missing_command(path: candidate))
-  let resolved_prefix = wet_out(
-    command: realpath_canonicalize_missing_command(path: witness_scratch_prefix as String),
-  )
+  let resolved = witness_resolved_path(candidate: candidate)
+  let resolved_prefix = witness_resolved_path(candidate: witness_scratch_prefix as String)
   resolved == ""
     || resolved_prefix == ""
     || is_under(text: resolved, root: srv1_dashboard_lab_provision_parent as String)
@@ -479,6 +509,257 @@ fn witness_resolved_root_is_refused(candidate: String) -> Bool {
 // merely shares a prefix with a production root. So: equal, or begins with the root followed by a separator.
 fn is_under(text: String, root: String) -> Bool {
   text == root || starts_with(s: text, prefix: join([root, "/"], ""))
+}
+
+// A PATH BELONGS TO A RUN WHEN IT RESOLVES UNDER *THIS RUN'S OWN* BASE -- the directory created for this
+// batch, not the scratch prefix that every run on the host shares. The distinction is the defect this exists
+// for: the stage trail's own guard asked whether the trail lay under `witness_scratch_prefix`, and two runs
+// both live under `/tmp`, so a symbolic link planted at run A's trail name pointing into run B's directory
+// answered "yes" and run A appended its capability evidence into run B's trail. A prefix test against the
+// selected base is not enough either, for the reason the `-m` arm above already states: the link's own text
+// is inside the base. So resolve BOTH sides with the same row the rest of this fixture judges by, and compare
+// the resolved texts. Either side unanswered refuses -- no answer is not an answer.
+fn witness_path_resolves_under(candidate: String, base: String) -> Bool {
+  let resolved = witness_resolved_path(candidate: candidate)
+  let resolved_base = witness_resolved_path(candidate: base)
+  resolved != "" && resolved_base != "" && is_under(text: resolved, root: resolved_base)
+}
+
+// WHAT THE NAME AT A BASE ACTUALLY IS, AND WHETHER THIS RUN CAN EXCLUSIVELY POSSESS IT -- the two readings
+// the ancestry guard cannot stand in for. `witness_supplied_root_is_refused` says where a path RESOLVES: a
+// symbolic link standing at a base resolves to whatever it points at, and a link aimed at another tenant's
+// tree inside `/tmp` resolves inside the declared prefix and passes every ancestry test ever written. Ask the
+// two questions directly, through rows the fleet already owns.
+//
+// THE POSSESSION QUESTION IS `find_untrusted_entries_command`, the same row `gunbc.host.host_effect_realize`
+// puts on its dark-install readback legs to ask whether a locus is trustworthy: with `top_only` it tests the
+// operand itself (`-maxdepth 0`, and with -P -- find's default -- a starting point is not followed, so a link
+// at the base is seen AS a link) and prints it when it is not owned by `owner`, carries a group- or
+// other-write bit (`-perm /022`), or is a symbolic link. Empty stdout is the only admitting answer; a nonzero
+// exit is an observation failure and refuses.
+//
+// This is why a prefix test and an ownership read are each necessary and neither is enough. On a
+// single-account host `/tmp` is a directory inside the declared prefix AND owned by the very principal
+// running the witness -- the reading that refuses it is the write bit: 1777 means any other tenant can create
+// `/tmp/gunbc-sandbox-witness-stages.log` first, and whoever creates the trail name owns the capability
+// verdict recorded in it. And `stat -c %F` is asked WITHOUT -L and -H, which coreutils stat(1) documents as
+// reporting the operand rather than dereferencing it, so a base that is a plain file, or a link, is refused
+// as what it is rather than as what it points at. BOTH READINGS MUST ANSWER: a failed observation is not an
+// observation of something safe.
+fn witness_path_is_run_owned_directory(candidate: String, owner: NonEmptyStr) -> Bool {
+  witness_path_is_directory(candidate: candidate)
+    && witness_path_is_exclusively_possessed(candidate: candidate, owner: owner)
+}
+
+fn witness_path_is_directory(candidate: String) -> Bool {
+  let probe = stat_file_type_command(path: candidate)
+  let read = shell.Exec.RunArgvOutcome(
+    program: probe.program.invocation as String,
+    arguments: probe.arguments,
+  )
+  match stat_file_type_reading(success: read.exit_code == 0, output: read.stdout) {
+    StatFileTypeRead { kind: kind } => witness_kind_is_directory(kind: kind)
+    StatFileTypeUnanswered { cause: _ } => false
+  }
+}
+
+fn witness_path_is_exclusively_possessed(candidate: String, owner: NonEmptyStr) -> Bool {
+  let probe = find_untrusted_entries_command(
+    roots: [candidate],
+    top_only: true,
+    owner: owner as String,
+  )
+  let read = shell.Exec.RunArgvOutcome(
+    program: probe.program.invocation as String,
+    arguments: probe.arguments,
+  )
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => read.exit_code == 0 && trim(s: read.stdout) == ""
+  }
+}
+
+fn witness_kind_is_directory(kind: StatFileKind) -> Bool {
+  match kind {
+    DirectoryKind => true
+    RegularFileKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+// THE ACTUAL DESTINATIONS OF A RECURSIVE INSTALL, READ OFF THE SOURCE AND ADMITTED BEFORE THE FIRST WRITE.
+//
+// WHY THE FIXED LIST OF DESTINATIONS WAS NOT ENOUGH. `witness_locus_destinations` names the five paths this
+// fixture itself writes -- the receipt, the seal, the binary, and the two top-level tree roots -- and the
+// gate admitted exactly those. The source-tree fold then copies `dag/` and `src/v2/` INTO them, which
+// creates some eleven thousand directories, files and links whose paths no admission ever saw. A
+// pre-existing symbolic link at `<locus>/src` pointing outside the scratch tree, or one nested under
+// `<locus>/dag`, is not any of the five, so it passed the whole gate; `cp -r` follows a link at the
+// destination's own name and descends through one below it, so the fold wrote THROUGH it, and the elevated
+// containment readback that catches an escape arrived only after the bytes had landed. Adding `src/v2` to
+// the fixed list would have been the same mistake one level down: the paths that matter are the ones the
+// fold is about to create, and the only authority for that set is the source tree being copied.
+//
+// So the destination set is DERIVED -- one walk of the source, through the fleet's own tree-entry row
+// (`find -xdev -printf "%P|%y|%m|%u|%g|%l|%s"` in extdeps/tools/findutils.dag: relative path, type letter,
+// mode, owner, group, LINK TARGET, size), which is the shape the recursive copy mirrors. Every derived
+// destination is then judged by the SAME lexical rule the supplied root is judged by
+// (`witness_path_is_outside_supplied_tree`, factored out of `witness_supplied_root_is_refused` so there is
+// one home for it and the fold cannot have a private one), and the destination ROOT by the full rule
+// including resolution. What makes eleven thousand per-path resolutions unnecessary is the last leg: NO
+// SYMBOLIC LINK AT ALL may stand in the supplied tree before the copy -- the same subtree walk the review
+// reproduced the escape with, and the same row `gunbc.host.host_effect_realize` puts on its dark-install
+// readback legs. Resolution leaves a tree only by following a link; with the root resolved inside the
+// supplied tree and no link anywhere below it, no derived destination can resolve outside, and a link
+// created DURING the fold arrives only from the source, where the link arm below refuses it. The
+// post-fold containment readback stays in place as the after-the-fact arm: what this closes is the no-race
+// case, where the link was simply there already.
+//
+// A SOURCE ENTRY WHOSE NAME CONTAINS THE COLUMN SEPARATOR shifts every field after it, so a line whose
+// column count is not the row's refuses the whole install rather than being read on shifted columns: a
+// decision about a path the walk never reported. Likewise a source walk that failed, was refused, or
+// printed nothing certifies nothing -- an empty tree is not a tree the witness is installing.
+data witness_tree_entry_field_count: Int = 7
+data witness_tree_entry_relative_path_field: Int = 0
+data witness_tree_entry_type_field: Int = 1
+data witness_tree_entry_link_target_field: Int = 5
+data witness_tree_entry_column: NonEmptyStr = "|"
+data witness_tree_type_symlink_letter: NonEmptyStr = "l"
+
+fn witness_tree_entry_lines(root: String) -> List<String> {
+  let probe = find_tree_entry_metadata_command(root: root)
+  let read = shell.Exec.RunArgvOutcome(
+    program: probe.program.invocation as String,
+    arguments: probe.arguments,
+  )
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => []
+    ShellExited =>
+      if read.exit_code != 0 {
+        []
+      } else {
+        fold(split(s: read.stdout, delimiter: "\n"), init: [], f: (acc, line) =>
+          if line == "" { acc } else { concat(acc, [line]) })
+      }
+  }
+}
+
+fn witness_tree_entry_field(lines: String, index: Int) -> String {
+  match list_at_optional(xs: split(s: lines, delimiter: witness_tree_entry_column as String), index: index) {
+    Present { value: field } => field
+    Absent => ""
+  }
+}
+
+fn witness_tree_entry_is_well_formed(line: String) -> Bool {
+  length(split(s: line, delimiter: witness_tree_entry_column as String)) == witness_tree_entry_field_count
+}
+
+fn witness_tree_destination_for(destination: String, line: String) -> String {
+  join([destination, "/", witness_tree_entry_field(lines: line, index: witness_tree_entry_relative_path_field)], "")
+}
+
+fn witness_tree_destinations_are_admitted(destination: String, lines: List<String>) -> Bool {
+  fold(lines, init: true, f: (ok, line) =>
+    ok
+      && witness_tree_entry_is_well_formed(line: line)
+      && !witness_path_is_outside_supplied_tree(candidate: witness_tree_destination_for(
+        destination: destination,
+        line: line,
+      )))
+}
+
+// A LINK COMING FROM THE SOURCE IS THE ONE DESTINATION THIS FOLD CANNOT PREDICT BY LOOKING AT PATHS ALONE.
+// `cp -r` copies a source symlink AS a link (it does not follow it), so what lands is a name the witness
+// admits and a target it may not: an absolute target names a host path directly, and a relative one walks
+// out of the directory the link sits in if it carries a `..` component. Both are refused. This is lexical on
+// purpose -- the link arrives inert and nothing here opens it -- and it is the same no-link rule the
+// destination walk enforces from the other side, so the planted tree carries no symbolic link at all and the
+// guest can only read what it actually opens.
+fn witness_tree_source_links_stay_inside(destination: String, lines: List<String>) -> Bool {
+  fold(lines, init: true, f: (ok, line) =>
+    ok
+      && (witness_tree_entry_field(lines: line, index: witness_tree_entry_type_field)
+          != witness_tree_type_symlink_letter as String
+        || {
+          let target = witness_tree_entry_field(lines: line, index: witness_tree_entry_link_target_field)
+          target != ""
+            && !starts_with(s: target, prefix: "/")
+            && !string_contains(s: target, pattern: "/..")
+            && target != ".."
+            && !witness_path_is_outside_supplied_tree(candidate: join([destination, "/", target], ""))
+        }))
+}
+
+// NO SYMBOLIC LINK MAY BE STANDING IN THE SUPPLIED TREE BEFORE THE COPY. Empty stdout is the only admitting
+// answer; a refused spawn or a nonzero exit is an observation that did not happen and refuses too.
+fn witness_tree_destination_subtree_is_link_free(root: String) -> Bool {
+  let probe = find_symlink_targets_command(root: root)
+  let read = shell.Exec.RunArgvOutcome(
+    program: probe.program.invocation as String,
+    arguments: probe.arguments,
+  )
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => read.exit_code == 0 && trim(s: read.stdout) == ""
+  }
+}
+
+fn witness_tree_install_destinations_are_admitted(source: String, destination: String, root: String) -> Bool {
+  let lines = witness_tree_entry_lines(root: source)
+  lines != []
+    && witness_locus_destination_is_admitted(candidate: destination)
+    && witness_tree_destinations_are_admitted(destination: destination, lines: lines)
+    && witness_tree_source_links_stay_inside(destination: destination, lines: lines)
+    && witness_tree_destination_subtree_is_link_free(root: root)
+}
+
+// THE ONE RECURSIVE INSTALL ROUTE INTO A SUPPLIED TREE, AND THE ONLY ONE. The fold used to call
+// `shell.Copy.Recursive` itself and the gate ran somewhere else, over a fixed list, which is how the checked
+// set and the written set came to disagree. Here the SAME VALUE answers both: the walk's lines are handed to
+// the admission, the copy runs only if that decision was yes, and nothing re-derives the set in between --
+// the relationship the review asked to keep through the writer interface is kept by there being no second
+// derivation to drift.
+//
+// THE ORDER IS THE DEFECT. `mkdir -p` of the destination's parent goes FIRST AFTER the decision and never
+// before it, because `mkdir -p` writes through a symbolic link: with `<locus>/src` already a link at an empty
+// directory elsewhere, the mkdir that prepares `<locus>/src/v2` creates `<elsewhere>/v2` -- a mutation
+// outside the supplied tree performed by the code that was supposed to precede the copy, with no gate in
+// front of it. Admitting the destination covers the parent too, since the destination's admission RESOLVES
+// its whole ancestor chain. A caller that wants a subtree planted calls this and folds its own verdict from
+// the Bool; a caller that calls `shell.Copy.Recursive` into a supplied root directly has re-opened the hole
+// this function exists to close.
+fn witness_tree_install_into_supplied_tree(
+  source: String,
+  destination: String,
+  parent: String,
+  root: String,
+) -> Bool {
+  witness_tree_install_destinations_are_admitted(source: source, destination: destination, root: root)
+    && wet_ok(command: mkdir_parents_command(path: parent))
+    && shell.Copy.Recursive(
+      source: source as FilePath,
+      destination: destination as FilePath,
+    ).success
+}
+
+// THE SINGLE-FILE SIBLING, BECAUSE THE MANIFEST IS COPIED BY THE SAME TOOL. `Cargo.toml` arrives through
+// `cp` as the trees do, so it is admitted the same way -- its own destination spelling under the same rule,
+// and no link standing in the tree it is being written into. Leaving one `cp` outside the writer because it
+// copies one file instead of a subtree is how a second, ungated route survives a fix like this one.
+fn witness_file_install_into_supplied_tree(source: String, destination: String, root: String) -> Bool {
+  witness_locus_destination_is_admitted(candidate: destination)
+    && !witness_path_is_outside_supplied_tree(candidate: destination)
+    && witness_tree_destination_subtree_is_link_free(root: root)
+    && shell.Copy.Recursive(
+      source: source as FilePath,
+      destination: destination as FilePath,
+    ).success
 }
 
 // THE INSTANCE UNDER TEST, AT THE ROOT THE WITNESS SUPPLIED. Every field that is a function of the root is
