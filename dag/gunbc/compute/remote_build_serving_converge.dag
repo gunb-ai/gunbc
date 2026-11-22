@@ -77,7 +77,8 @@ import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIden
 import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
-import extdeps.tools.uname { uname_machine_command }
+import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
+import gunbc.fabric.fabric_executor_class { executor_host_architecture, HostArchitecture, HostArchitectureKnown, HostArchitectureUnclassified }
 // The user-work slice leg reads these: the reservation ceiling, the emitted unit render, the model's
 // slice name/swap floor/high derivation, srv1's slice install path, and the unit serializer.
 import std.measure { ByteSize, byte_size_count }
@@ -364,7 +365,13 @@ fn serving_local_trimmed(cmd: ArgvCommand) -> String? {
 // the wet entry exits_failure rather than assessing a host against an unpin.
 fn serving_plan_pin_read() -> ServingPlanInput? {
   let sha = serving_local_first_token(cmd: sha256sum_file_command(path: "target/release/gunbc"))
-  let arch = serving_local_trimmed(cmd: uname_machine_command())
+  // The executor's own arch, projected to the ONE Architecture type via the upstream uname -m projection.
+  // An unparseable spelling is NOT defaulted: it makes the whole pin read `none`, so the run is refused
+  // (never assessed against an untrusted expected arch) -- the same shape as any other unread field.
+  let arch = match serving_local_trimmed(cmd: uname_machine_command()) {
+    Absent => none
+    Present { value: sp } => uname_linux_machine_architecture(spelling: sp)
+  }
   let rev = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => Present { value: v }
     ActionsVariableAbsent => none
@@ -1028,18 +1035,37 @@ fn converge_install_user_work_slice_plan(acc: ConvergeDraft, d: RemoteBuildServi
 }
 
 fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDraft {
+  // The source (pool upload vs native build) is realization dispatch, decided by the ONE host-architecture
+  // authority -- the per-host Architecture row on gunbc.fabric.fabric_executor_class keyed on d.host --
+  // compared enum==enum against the executor's Architecture (pin.executor_arch). The on-host uname read is
+  // NOT consulted here: it is only the assessment's consistency check (serving_assess host.arch), so this
+  // decision has a single source and cannot drift from the check.
+  //   row arch == executor arch  -> the host can receive the pool binary: the upload pair (unchanged).
+  //   row arch != executor arch  -> the host must build its own at the pinned revision: BuildServeBinary
+  //                                 (the executor installs the built binary + records identity from the
+  //                                 sha it reads back off the host, so no separate RecordServeIdentity).
+  //   no authored row (Unclassified) -> a TYPED refusal, NEVER a silent default to upload (ruling 1A).
+  // An unread on-host arch (should already be a blocking unknown upstream) keeps the prior refuse-don't-guess.
   match target_arch {
-    ObservationEstablished { observed: a } => match a == pin.executor_arch {
-      true => converge_bin_parent_dir(
-        ConvergeDraft { writes: concat([
-          RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
-          InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
-        ], acc.writes), unhandled: acc.unhandled },
-        d,
-      )
-      false => converge_draft_unhandled(acc, "serve_binary.sha256")
-    }
     ObservationRefused { cause: _ } => converge_draft_unhandled(acc, "serve_binary.sha256")
+    ObservationEstablished { observed: _ } => match executor_host_architecture(host: d.host) {
+      HostArchitectureUnclassified { host: _ } => converge_draft_unhandled(acc, "serve_binary.architecture")
+      HostArchitectureKnown { host: _, arch: row_arch } => match row_arch == pin.executor_arch {
+        true => converge_bin_parent_dir(
+          ConvergeDraft { writes: concat([
+            RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
+            InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
+          ], acc.writes), unhandled: acc.unhandled },
+          d,
+        )
+        false => converge_bin_parent_dir(
+          ConvergeDraft { writes: concat([
+            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: "gunbc", bin: "gunbc", target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary, as_user: d.account_name },
+          ], acc.writes), unhandled: acc.unhandled },
+          d,
+        )
+      }
+    }
   }
 }
 

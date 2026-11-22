@@ -28,6 +28,8 @@ import std.optional { Present, Absent }
 import std.list { first_where }
 import std.algebra { trim, skip, non_empty_to_list }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named, etc_group_name_of, EtcGroupEntry }
+import extdeps.tools.uname { uname_linux_machine_architecture }
+import gunbc.fabric.fabric_executor_class { executor_host_architecture, HostArchitecture, HostArchitectureKnown, HostArchitectureUnclassified }
 import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_entry_named }
 
 import product.host_identity { HostIdentity }
@@ -1341,7 +1343,25 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256),
           serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
         ),
-        serving_expected_deviation(item: "host.arch", expected: pin.executor_arch, leg: o.target_arch),
+        // RB-M3: the on-host `uname -m` is a CONSISTENCY CHECK only, projected to Architecture with the
+        // SAME upstream projection the executor's spelling uses (uname_linux_machine_architecture) and
+        // compared enum==enum against the ONE host-architecture authority (executor_host_architecture row).
+        // It is never the upload/native decision (that is the plan step); it refuses a host whose read
+        // disagrees with its authored row. An unauthored host (Unclassified) mints nothing here — the plan
+        // step's typed refusal owns it. An unparseable read cannot be trusted, so it is a mismatch.
+        match o.target_arch {
+          ObservationEstablished { observed: v } => match uname_linux_machine_architecture(spelling: v) {
+            Absent => [ExpectedMismatch { item: "host.arch", desired: "the host's authored architecture", observed: v }]
+            Present { value: read_arch } => match executor_host_architecture(host: d.host) {
+              HostArchitectureUnclassified { host: _ } => []
+              HostArchitectureKnown { host: _, arch: row_arch } => match read_arch == row_arch {
+                true => []
+                false => [ExpectedMismatch { item: "host.arch", desired: "the host's authored architecture", observed: v }]
+              }
+            }
+          }
+          ObservationRefused { cause: _ } => []
+        },
       )
       // the ledger, joined to the observe's per-row reads by path (see serving_ledger_judge).
       let ledger = serving_ledger_judge(d: d, rows: o.ledger_rows)
@@ -1728,7 +1748,7 @@ fn serving_seat_census_unknown(leg: RecoverCatalogLegReading) -> List<ServingUnk
 // pinned rustup channel from rust-toolchain.toml.
 type ServingPlanInput {
   dispatched_revision: String
-  executor_arch: String
+  executor_arch: Architecture
   local_binary_sha256: String
   toolchain_channel: String
 }
