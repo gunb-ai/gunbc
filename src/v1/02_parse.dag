@@ -4163,6 +4163,28 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
       // THE PER-LEG CEILING IS A DECLARED TRANSPORT FIELD, like `stdin`: a transport that names one
       // carries a ceiling, one that does not runs as it always did. The caller's parameter spelling
       // decides nothing (review 96999).
+      // THE FIELD NAMES A DURATION, IT DOES NOT CARRY A NUMBER (review 97265; DESIGN.md
+      // 'Worked examples -> A Google operation within a budget'; gunbc.design_argument::single_authority).
+      // A bare literal here would leave the unit -- seconds? milliseconds? -- to be decided implicitly by
+      // whatever the consumer does with the value, which is the mis-typed-budget defect that specimen
+      // names; and std.measure::Second admits zero, so `wall_deadline: 0` would silently mean a real
+      // zero-length ceiling or, worse, whatever a consumer chooses to read zero as. So the grammar
+      // refuses literal shapes at this field and names the carrier: the value must be a declared
+      // duration expression (a std.measure `Second`, in this corpus produced by the one fleet authority
+      // fleet_leg_wall_deadline, whose zero refusal is asserted by test.claim.live_deploy.deployed_tree_leg_deadline_witness).
+      let hd = token_stream_first(stream: r2.tokens)
+      let bare_literal = match hd {
+        Present { value: t } => match t.shape {
+          ShLitInt => true
+          ShLitFloat => true
+          ShLitStr => true
+          _ => false
+        }
+        Absent => false
+      }
+      if bare_literal {
+        return TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: Present { value: parse_error(msg: "transport shell field `wall_deadline:` must name a duration (std.measure Second), not a bare literal: a bare number leaves the unit to the consumer, which is the mis-typed-budget defect (gunbc.design_argument::single_authority)", span: token_span(tok: hd)) } }
+      }
       let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
       let e = eat(tokens: r3.tokens, expected: ExpectComma)

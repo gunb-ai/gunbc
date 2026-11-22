@@ -56,6 +56,7 @@ use crate::std_target_representation::VariantParentIdentity::VariantParentBefore
 pub use crate::std_types::{is_container_type, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::transport_wall_deadline_key;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -10338,10 +10339,24 @@ pub fn parse_shell_fields(
                         }
                     } else {
                         if (fname.clone() == transport_wall_deadline_key()) {
-                            // THE PER-LEG CEILING IS A DECLARED TRANSPORT FIELD, like `stdin`: a
-                            // transport that names one carries a ceiling, one that does not runs as
-                            // it always did. The caller's parameter spelling decides nothing
-                            // (review 96999).
+                            let hd = token_stream_first(r2.tokens.clone());
+                            let bare_literal = match hd.clone() {
+                                Some(t) => match t.shape.clone() {
+                                    TokenShape::ShLitInt => true,
+                                    TokenShape::ShLitFloat => true,
+                                    TokenShape::ShLitStr => true,
+                                    _ => false,
+                                },
+                                std::option::Option::None => false,
+                            };
+                            if bare_literal.clone() {
+                                return Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: r2.tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("transport shell field `wall_deadline:` must name a duration (std.measure Second), not a bare literal: a bare number leaves the unit to the consumer, which is the mis-typed-budget defect (gunbc.design_argument::single_authority)".to_string(), token_span(hd.clone()))),
+});
+                            }
                             let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
                             if has_err(r3.err.clone()) {
                                 return Rc::new(TransportResult {
@@ -10371,21 +10386,11 @@ pub fn parse_shell_fields(
                             }
                         } else {
                             break Rc::new(TransportResult {
-                                transport: dummy.clone(),
-                                tokens: r2.tokens.clone(),
-                                ctx: ctx.clone(),
-                                err: Some(parse_error(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "transport shell has no field `".to_string(),
-                                            fname.clone(),
-                                        ),
-                                        "`; the declared fields are `argv`, `stdin` and `wall_deadline`"
-                                            .to_string(),
-                                    ),
-                                    r.span.clone(),
-                                )),
-                            });
+    transport: dummy.clone(),
+    tokens: r2.tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("transport shell has no field `".to_string(), fname.clone()), "`; the declared fields are `argv`, `stdin` and `wall_deadline`".to_string()), r.span.clone())),
+});
                         }
                     }
                 }

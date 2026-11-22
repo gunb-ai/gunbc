@@ -3529,10 +3529,6 @@ pub fn shell_transport_node(
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
-        // A shell transport's per-leg wall-clock ceiling is a DECLARED FIELD of the transport block,
-        // read back by `transport_wall_deadline` at the dispatch. What arms the kill is the transport
-        // saying so -- never a parameter spelled a particular way in the caller (review 96999). A
-        // transport that does not declare it keeps main's behavior byte for byte.
         let deadline_props = match wall_deadline.clone() {
             Some(d) => Rc::new(vec![make_field_init_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),

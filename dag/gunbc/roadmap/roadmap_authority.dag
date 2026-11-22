@@ -808,6 +808,45 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
+    // ---- gunbc.plans.claim_execution_consolidation (operator, 2026-11-22,
+    // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint): two slices. The cutover depends on the
+    // result contract (edge below), and its public authority transition stays one atomic change.
+    roadmap_node(
+      identity: "rn_E730R1GNB3TG65E6TWZKBWEKAJ",
+      id: "claim-result-contract",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/claim_execution_consolidation.dag"),
+      line: ticket(t: fields(
+          headline: "gunbc test reports one located outcome per selected claim, and its seed adapter realizes the existing verdict rule",
+          boundary: "Serves gunbc.plans.claim_execution_consolidation, layer 0. Keep the verdict policy in gunbc.target_invocation and repair its seed realization: claim_route_verdict stops reading every ExitFailure as did-not-hold, so a typed ProcessExit failure with code 2 is unobserved. The claim route establishes the selected claim identities once, gives each exactly one outcome, and derives both the printed lines and the exit status from that collection; a resolve failure is located and the other claims still run.",
+          displaced_cost: "The same witness reads red, unreached or absent depending on the tool that ran it, so every caller and reviewer pays to know which reading they hold; a short report can read as held.",
+          first_slice: "Fixture claims for held, false, non-Bool, runtime error, unwind, budget interrupt and ExitFailure code 2 and code 1, each run through the real gunbc test path with its printed verdict and exit status asserted; then the identity-keyed result collection in the seed claim route.",
+          red_control: "Held, false and unobserved each map as gunbc.target_invocation says; false together with unobserved exits 1 and reports both; an empty selection exits 2; ExitFailure code 2 exits 2; A holds, B cannot resolve, C holds runs A and C, locates B and does not exit 0; a duplicated outcome for A cannot satisfy B. The checks execute the seed adapter and invocation path, not only the model's pure fold.",
+          out_of_scope: "Repeated operands, the execution-mode option, caller migration and the deletion of claim_batch and gunbc run --claim-run (claim-entrypoints-cutover). Any change to the verdict policy itself, which already exists.",
+          handback: "The repaired adapter and the identity-keyed result path, with each red control's command, revision and output; executed locally or on a fleet host and stated as such, not as required-CI enforcement."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "One meaning for a claim result, the factory's most trusted verdict channel."),
+      centering: plan(text: "Work in src/v1/stage0/src/target_invocation_host.rs and the seed claim route in cli_run.rs against dag/gunbc/target_invocation.dag; author the fixture claims under dag/test/claim; run them with gunbc test on a fleet host under the memory envelope, one claim run at a time."),
+    ),
+    roadmap_node(
+      identity: "rn_GZNX0MEATVZC3JHN1ZF1E8AG4M",
+      id: "claim-entrypoints-cutover",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/claim_execution_consolidation.dag"),
+      line: ticket(t: fields(
+          headline: "Every claim_batch and gunbc run --claim-run caller names claims through gunbc test, and both old entrypoints are deleted in one change",
+          boundary: "Serves gunbc.plans.claim_execution_consolidation, layer 1. Give every caller named in the plan's observation a disposition: migrated, retired, or blocked on native support, whose route then stays frozen. gunbc test accepts several operands and runs exactly the claims they denote in one process, with overlapping operands selected once and no widening to a subtree. Add only the execution-mode option (std.execution_mode::ExecutionMode, Hermetic by default) and fixture-store support callers need; unsupported route combinations refuse. Never send a //v2/... label to the interpreter.",
+          displaced_cost: "Three argument grammars and three outcome readings for one evaluator; every caller, instrument and release roster carries a second binary and its build.",
+          first_slice: "The disposition of each named caller, read from its source: what observation its consumer needs, which source roots it passes and whether they matter, and whether any src/v2/test/claim or out-of-universe function it evaluates needs claim evaluation or native-execution evidence.",
+          red_control: "A caller with no disposition, or one whose observation is lost, keeps the cutover open; a sparse request widened to :all or a subtree, or split into one process per claim, is refused; a mode the native or instrument route cannot honour refuses explicitly; a //v2/... label reaching the interpreter is refused. The cost comparison (one exact label against claim_batch on github_pull_request_decode_witness, and one representative pooled request) shows no repeated closure construction, unrelated discovery or material resource regression.",
+          out_of_scope: "The verdict and result-collection repair (claim-result-contract); native claim execution itself; adding any CI claim-executing step, which gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears forbids.",
+          handback: "The caller disposition table, the migrated callers, the deletion of claim_batch, gunbc run --claim-run, their build and release entries and their own witnesses, a cited grep stating what it inspected, and the two cost readings with producer and revision."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "One command for running claims, inherited unchanged by the native compiler."),
+      centering: plan(text: "Read each named caller first and write the disposition table into the pull request before any deletion; land the operand and mode support, the caller migrations and the deletions as one change; measure on a fleet host under the memory envelope."),
+    ),
     roadmap_node(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
@@ -6108,6 +6147,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
     // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):

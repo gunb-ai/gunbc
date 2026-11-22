@@ -199,9 +199,13 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   // srv14/butch had four InstalledGpuCapIntent rows here, each citing one srv14_a2_cap_decision at 35 W. They
   // are GONE: the operator's 2026-11-17 report says all four A2s were physically removed from butch to be sold
   // and that butch is CI only, no serving, so there is no serving shape left to cap and no card to cap. The live
-  // a2-power-cap.service that enforced them reads FAILED and is residue for the converge dispatch named in this
-  // PR's follow-up (routed through the butch CI runner lane) -- not a reason to keep an intent row that nothing
-  // can satisfy. Where the two retired records actually live, since neither is restated here: the operator's
+  // a2-power-cap.service that enforced them is residue the operator retired BY HAND on 2026-11-21, outside the
+  // converge route (ruling gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21) -- it is
+  // NOT a reason to keep an intent row nothing can satisfy. The retirement is not a fleet-converge dispatch and is
+  // not routed through any butch CI runner lane: butch runs no CI runner lane to route through. The boot-enable
+  // receipts for the serving units it reached live typed in
+  // gunbc.serving.serving_reservation srv14_serving_unit_boot_states. Where the two retired GPU records live,
+  // since neither is restated here: the operator's
   // decision is quoted below this list at its own retirement note, and the 2026-11-10 device readings that
   // admitted it are held TYPED -- unchanged, field for field -- in
   // #gunbc.fleet.gpu_device_observation::retired_gpu_device_observations, which no current-state consumer

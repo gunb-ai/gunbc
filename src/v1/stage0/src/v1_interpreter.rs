@@ -29851,6 +29851,8 @@ mod argv_arg_limit_test {
             ]),
             Rc::new(im_vec![]),
             None,
+            // The transport's declared wall_deadline field is absent here: these fixtures build a
+            // shell transport with no ceiling, which is exactly main's behaviour.
             None,
             span,
         )
@@ -29975,6 +29977,8 @@ mod argv_arg_limit_test {
             )]),
             Rc::new(im_vec![]),
             None,
+            // The transport's declared wall_deadline field is absent here: these fixtures build a
+            // shell transport with no ceiling, which is exactly main's behaviour.
             None,
             span,
         )
