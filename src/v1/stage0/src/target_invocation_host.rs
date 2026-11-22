@@ -4153,9 +4153,9 @@ mod claim_route_result_contract_tests {
             // B: its entry imports a module the subject does not hold, so the entry cannot resolve.
             ("zz_broken.dag", "module test.claim.zz_broken\nimport test.claim.zz_nonexistent_module_xyz { phantom_fn }\n\ntest fn zz_b() -> Bool {\n  phantom_fn()\n}\n"),
             // The code-2 repair, end to end: a held claim and an unobserved ProcessExit code 2.
-            ("zz_exits.dag", "module test.claim.zz_exits\n\ntest fn held() -> Bool {\n  true\n}\n\ntest fn unreached() -> ProcessExit {\n  ExitFailure { code: 2, reason: \"the subject was not reached\" }\n}\n"),
+            ("zz_exits.dag", "module test.claim.zz_exits\nimport std.process { ProcessExit, ExitSuccess, ExitFailure }\n\ntest fn held() -> Bool {\n  true\n}\n\ntest fn unreached() -> ProcessExit {\n  ExitFailure { code: 2, reason: \"the subject was not reached\" }\n}\n"),
             // The value-returning outcomes the real runner produces.
-            ("zz_truths.dag", "module test.claim.zz_truths\n\ntest fn passes() -> Bool {\n  true\n}\n\ntest fn fails() -> Bool {\n  false\n}\n\ntest fn nonbool() -> Int {\n  5\n}\n\ntest fn refused() -> ProcessExit {\n  ExitFailure { code: 1, reason: \"a definite refusal\" }\n}\n"),
+            ("zz_truths.dag", "module test.claim.zz_truths\nimport std.process { ProcessExit, ExitSuccess, ExitFailure }\n\ntest fn passes() -> Bool {\n  true\n}\n\ntest fn fails() -> Bool {\n  false\n}\n\ntest fn nonbool() -> Int {\n  5\n}\n\ntest fn refused() -> ProcessExit {\n  ExitFailure { code: 1, reason: \"a definite refusal\" }\n}\n"),
         ]);
 
         let outcome_of = |name: &str| -> M {
