@@ -4051,16 +4051,18 @@ mod claim_route_result_contract_tests {
     // at the workspace root, a cargo test at the crate), so each run pins it to the workspace root
     // -- the value the seed's own `run_claim_route` sets it to anyway.
     //
-    // They are `#[ignore]`d because they index the whole `.dag` corpus locally. They are run on a
-    // FLEET HOST under the memory envelope, one claim run at a time, never by required CI
-    // (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears):
-    //     cargo test -p v1-compiler --lib claim_route_result_contract_tests -- --ignored --test-threads=1
+    // They are `#[ignore]`d because they index the whole `.dag` corpus. They are run LOCALLY, one
+    // test at a time, single-threaded (manager ruling msg_e18dfb78: srv1 is closed to ad hoc runs,
+    // and a single-route scratch run is ~1 GB RSS -- not a floor run, not a memory risk), and never
+    // by required CI (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears).
+    // Each control is run on its own so its command and output stand alone as evidence:
+    //     cargo test -p v1-compiler --lib claim_route_result_contract_tests::<name> -- --ignored --test-threads=1
     //
     // ONE scratch corpus carries every scenario; a single route run selects them all and returns the
     // ONE collection every assertion below is drawn from -- so the contract is checked over the very
     // collection the route produced, not a hand-assembled one.
     #[test]
-    #[ignore = "indexes the whole .dag corpus; run on a fleet host, one claim at a time (see the module comment)"]
+    #[ignore = "indexes the whole .dag corpus; run locally, one test at a time (see the module comment)"]
     fn the_real_route_gives_each_selected_identity_one_located_outcome() {
         let members = real_route(&[
             // A and C: resolvable entries, both hold.
@@ -4135,7 +4137,7 @@ mod claim_route_result_contract_tests {
 
     // ---- an empty selection through the real route is the subject unreached ---------------
     #[test]
-    #[ignore = "indexes the whole .dag corpus; run on a fleet host, one claim at a time (see the module comment)"]
+    #[ignore = "indexes the whole .dag corpus; run locally, one test at a time (see the module comment)"]
     fn an_empty_selection_through_the_real_route_is_the_subject_unreached() {
         let members =
             real_route_named("zz_ac.dag", "module test.claim.zz_ac\n\ntest fn zz_a() -> Bool {\n  true\n}\n", "test.claim.zz_matches_nothing");
