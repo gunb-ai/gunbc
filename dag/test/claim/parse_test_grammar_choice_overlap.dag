@@ -5,7 +5,7 @@ import v2.compiler.parse {
   PreparedModeled,
   PreparedVoidGrammar,
   grammar_choice_ambiguity_roster_from_analysis,
-  grammar_validate_for_parse
+  grammar_validate_and_analyze
 }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.std.diagnostic { Accepted, Rejected, declaration_locus, invariant_port_locus, locus_eq }
@@ -75,7 +75,7 @@ data overlap_fixture_root: GrammarRoot = GrammarRoot {
 }
 
 test fn a_grammar_with_one_overlapping_choice_is_refused_at_its_production() -> Bool {
-  match grammar_validate_for_parse(
+  match grammar_validate_and_analyze(
     root: overlap_fixture_root,
     at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_choice_overlap_fixture_contract)
   ) {

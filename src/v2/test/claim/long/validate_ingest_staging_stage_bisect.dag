@@ -13,7 +13,7 @@ import v2.compiler.infer { infer, InferredTree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.parse {
   grammar_lookup_production,
-  grammar_validate_for_parse,
+  grammar_validate_and_analyze,
   parse,
   parse_expr,
   parse_production_tree,
@@ -115,7 +115,7 @@ fn bisect_through_grammar_validate() -> Outcome<ValidatedGrammarRoot> {
   let lm = dag_language_model()
   match lm.grammar {
     ModeledGrammar { root: root } =>
-      grammar_validate_for_parse(root: root, at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^validate_ingest_staging_stage_bisect_test_grammar_contract))
+      grammar_validate_and_analyze(root: root, at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^validate_ingest_staging_stage_bisect_test_grammar_contract))
     _ =>
       Rejected {
         diagnostics: diagnostics_singleton(
