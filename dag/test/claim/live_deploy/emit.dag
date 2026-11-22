@@ -131,7 +131,7 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.live_deploy.emit {
   live_deploy_approval_broker_unit_file, approval_broker_unit_emission, BrokerUnitBound, deployment_serve_route_command, install_d_shared_mode, path_parent_dir, live_deploy_systemd_unit_for, live_deploy_remote_mutation_service_op_realization_dissolution_trigger, live_deploy_intent_dependency_graph_emit_dissolution_trigger, live_deploy_publication_path_unit_file,
-  live_deploy_belt_service_unit_file, live_deploy_publication_service_unit_file,
+  live_deploy_belt_service_unit_file, live_deploy_publication_service_unit_file, live_deploy_fabric_storage_unit_file,
   install_d_owned_render_for, render_install_line, shell_inert_absolute_path,
   InstallLine, InstallLineRefused, RefusalEmpty, RefusalNotAbsolute, RefusalUnsafeBytes,
 }
@@ -1024,39 +1024,46 @@ test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() ->
 // A per-release serve binary cannot be handed to a fixed-only renderer: DeploymentSpec.service is typed over
 // AdmittedFixedServeBinary, which only admit_fixed_serve_path mints. No fixture here executes that refusal for this type (the generic
 // sole_constructor probes execute the wall; a type-specific RED is a declared frontier). What executes here is the other half: every fixed-only renderer, reached by a non-apply route
-// (the belt and publication unit files, not desired_apply_host_checked), emits a production spec with no marker, while the
-// broker's per-release unit resolves its own locus path.
+// (the belt, publication and fabric-storage unit files, not desired_apply_host_checked), emits a production
+// spec with no marker, while the broker's per-release unit resolves its own locus path.
 test fn the_fixed_only_renderers_emit_no_unbound_marker_off_the_apply_route() -> Bool {
   let marker = "__GUNBC_DEPLOY_UNREACHABLE__"
   let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let fabric = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: rev, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
   let belt = serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec))
   let publication = serialize_systemd_unit_file(file: live_deploy_publication_service_unit_file(spec: spec))
-  !string_contains(s: belt, pattern: marker)
+  !string_contains(s: fabric, pattern: marker)
+    && !string_contains(s: belt, pattern: marker)
     && !string_contains(s: publication, pattern: marker)
     && string_contains(s: belt, pattern: fixed_serve_binary_path(binary: spec.service.serve_binary))
 }
 
-// THE FABRIC DB ENDPOINT IS ROUTED BY TAILSCALE TO ITS DOOR SOCKET, AND THE DEPLOYMENT COMPOSES NO UNIT FOR
-// IT. The route is tailscale serve's 10000 listener at the root mount, proxying to exactly the socket the
-// endpoint listens on -- never a TCP listener, and never a loopback port any local account could reach with a
-// forged identity header. The unit half of the claim this replaces was deleted with its carrier: since the
-// operator's ruling of 2026-11-10 (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10)
-// the endpoint's systemd unit is the host's own, so what is asserted here is that the holder's deployment
-// composes the route and nothing else -- exactly one member, and no FabricStorageServeUnit among it. Checking
-// only for the absence would be satisfied by a deployment that composes nothing at all, so the count is pinned.
-test fn the_fabric_storage_route_proxies_to_the_door_socket_and_the_deployment_composes_no_unit() -> Bool {
+// THE FABRIC DB ENDPOINT'S UNIT IS COMPOSED BY THE DEPLOYMENT, RUNS `gunbc run` ON THE INGRESS BINDING over
+// its door socket, IS ROUTED BY TAILSCALE, AND IS A MEMBER OF THE PLAN (gunbc.design_ruling::
+// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, reversing the 11-10 exclusion). Its
+// unit runs the fabric ingress binding constructor (there is no `gunbc serve` any more -- 72808ffd2c deleted it),
+// bound to the placement's unix socket -- never a TCP listener, and never a loopback port any local account could
+// reach with a forged identity header -- and the tailscale route proxies to exactly that socket. The check pins
+// the member COUNT at two (unit + route) so it is not satisfied by a deployment that composes nothing, and pins
+// the argv to the `run` entry/function/handler the current binary actually serves.
+test fn the_fabric_storage_unit_is_composed_binds_its_door_socket_and_the_route_proxies_to_it() -> Bool {
   let spec = deployment_spec_srv1()
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
   let door = fabric_storage_door_socket(instance: srv1_live_dashboard_instance())
+  let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: spec, revision: rev, door_socket: door))
   let route = deployment_fabric_storage_serve_endpoint(door_socket: door)
   let members = deployment_fabric_storage_steps(holding: spec.role_singletons, names: spec.names)
-  route.https_port == fabric_storage_https_port
+  string_contains(s: unit, pattern: "--entry dag/gunbc/fabric/fabric_storage_ingress.dag --function fabric_storage_ingress --arg handler=fabric_storage_serve_handle")
+    && string_contains(s: unit, pattern: join(["--arg listener=unix:", door as String], ""))
+    && !string_contains(s: unit, pattern: "listener=tcp:")
+    && route.https_port == fabric_storage_https_port
     && (route.backend as String) == join(["unix:", door as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
-    && count(members) == 1
+    && count(members) == 2
     && count(filter(members, s => match s {
          DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: _ } => true
-         DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: _ } => false
-         _ => false })) == 0
+         _ => false })) == 1
 }
 
 // Leftover timer retirement: present is disable+rm+reload+not-found readback; absent is the same

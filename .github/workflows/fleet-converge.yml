@@ -2607,6 +2607,20 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'runner_host_file_observe'
         timeout-minutes: 15
+      - name: "Split precondition, by the dispatched mode's rule: a drain mode refuses a run whose executor host is its own subject (self-drain deadlock, run 40085967610) or names no subject; a serving mode must at least name the machine it serves and the lane it runs on"
+        id: fleet_converge_executor_subject_split_gate
+        run: |
+          set -e
+          if '[' "$FLEET_CONVERGE_SUBJECT_RULE" '=' 'required_and_distinct' ']' && ('[' '-z' "$FLEET_CONVERGE_SUBJECT_HOST" ']' || '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'); then 'echo' 'REFUSED: fleet-converge subject absent: a mode that drains its subject must name both' >&2; exit 1; fi
+          if '[' '-z' "$FLEET_CONVERGE_SUBJECT_RULE" ']' || ('[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'not_applicable' ']' && '[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'required_and_distinct' ']' && '[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'may_be_executors_own' ']'); then 'echo' 'REFUSED: fleet-converge subject absent: FLEET_CONVERGE_SUBJECT_RULE carries no rule the facts table declares' >&2; exit 1; fi
+          if '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'; then 'echo' 'REFUSED: fleet-converge executor identity absent: the dispatch named no executor lane' >&2; exit 1; fi
+          if '[' "$FLEET_CONVERGE_SUBJECT_RULE" '=' 'required_and_distinct' ']' && '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
+          'echo' 'split precondition holds for the dispatched mode'\''s rule'
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
+          FLEET_CONVERGE_SUBJECT_RULE: ${{ github.event.inputs.mode == 'remote_build_serving_observe' && 'may_be_executors_own' || github.event.inputs.mode == 'remote_build_serving_converge' && 'may_be_executors_own' || github.event.inputs.mode == 'runner_host_file_converge' && 'required_and_distinct' || github.event.inputs.mode == 'runner_host_withdraw' && 'required_and_distinct' || github.event.inputs.mode == 'runner_host_restore' && 'required_and_distinct' || 'not_applicable' }}
+        if: github.event.inputs.mode == 'remote_build_serving_observe' || github.event.inputs.mode == 'remote_build_serving_converge' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore'
       - name: "Remote-build serving: read one roster host's serving setup over fleet SSH against the derived desired state; emit a per-host plan receipt (no writes)"
         id: remote_build_serving_observe
         run: |-
@@ -2616,6 +2630,7 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
+          FLEET_CONVERGE_SUBJECT_RULE: may_be_executors_own
         if: github.event.inputs.mode == 'remote_build_serving_observe'
         timeout-minutes: 15
       - name: "Remote-build serving: converge one roster host's serving setup to the derived desired state (plan-decided, re-observed settled, refused unless every arm is handled and the seed-binary arch matches)"
@@ -2627,6 +2642,7 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
+          FLEET_CONVERGE_SUBJECT_RULE: may_be_executors_own
         if: github.event.inputs.mode == 'remote_build_serving_converge'
         timeout-minutes: 15
       - name: Upload remote-build serving plan receipt
@@ -2669,20 +2685,6 @@ jobs:
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'fleet_host_key_scan')
         timeout-minutes: 10
-      - name: "Split precondition, by the dispatched mode's rule: a drain mode refuses a run whose executor host is its own subject (self-drain deadlock, run 40085967610) or names no subject; a serving mode must at least name the machine it serves and the lane it runs on"
-        id: fleet_converge_executor_subject_split_gate
-        run: |
-          set -e
-          if '[' "$FLEET_CONVERGE_SUBJECT_RULE" '=' 'required_and_distinct' ']' && ('[' '-z' "$FLEET_CONVERGE_SUBJECT_HOST" ']' || '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'); then 'echo' 'REFUSED: fleet-converge subject absent: a mode that drains its subject must name both' >&2; exit 1; fi
-          if '[' '-z' "$FLEET_CONVERGE_SUBJECT_RULE" ']' || ('[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'not_applicable' ']' && '[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'required_and_distinct' ']' && '[' "$FLEET_CONVERGE_SUBJECT_RULE" '!=' 'may_be_executors_own' ']'); then 'echo' 'REFUSED: fleet-converge subject absent: FLEET_CONVERGE_SUBJECT_RULE carries no rule the facts table declares' >&2; exit 1; fi
-          if '[' '-z' "$FLEET_CONVERGE_EXPECTED_HOST" ']'; then 'echo' 'REFUSED: fleet-converge executor identity absent: the dispatch named no executor lane' >&2; exit 1; fi
-          if '[' "$FLEET_CONVERGE_SUBJECT_RULE" '=' 'required_and_distinct' ']' && '[' "$FLEET_CONVERGE_EXPECTED_HOST" '=' "$FLEET_CONVERGE_SUBJECT_HOST" ']'; then 'echo' 'REFUSED: fleet-converge self-subject' >&2; exit 1; fi
-          'echo' 'split precondition holds for the dispatched mode'\''s rule'
-        env:
-          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
-          FLEET_CONVERGE_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
-          FLEET_CONVERGE_SUBJECT_RULE: ${{ github.event.inputs.mode == 'remote_build_serving_observe' && 'may_be_executors_own' || github.event.inputs.mode == 'remote_build_serving_converge' && 'may_be_executors_own' || github.event.inputs.mode == 'runner_host_file_converge' && 'required_and_distinct' || github.event.inputs.mode == 'runner_host_withdraw' && 'required_and_distinct' || github.event.inputs.mode == 'runner_host_restore' && 'required_and_distinct' || 'not_applicable' }}
-        if: github.event.inputs.mode == 'remote_build_serving_observe' || github.event.inputs.mode == 'remote_build_serving_converge' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore'
       - name: "Runner host files: write what differs as the administrator, reload if the drop-in changed, read the loaded teardown back"
         id: runner_host_file_converge
         run: |-
@@ -3555,7 +3557,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 314
+    timeout-minutes: 344
     if: github.event.inputs.mode == 'dashboard_deploy' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3704,7 +3706,7 @@ jobs:
           RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
-        timeout-minutes: 30
+        timeout-minutes: 60
       - name: Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)
         id: dashboard_receipt_assert
         run: |-

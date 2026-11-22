@@ -2,8 +2,8 @@ module extdeps.posix.test_utility
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { String, NonEmptyStr, Int }
-import std.algebra { trim }
+import std.types { String, NonEmptyStr, Int, List }
+import std.algebra { trim, Cons, Empty }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -165,6 +165,11 @@ fn entry_existence_reading(link: PathExistenceReading, follow: PathExistenceRead
 // absent-or-unstattable is a subtree nothing can be read under, and for a SANITATION question that
 // is still not "gone": it is "unreadable". Only a parent that is PRESENT and readable makes the
 // child's false mean absent, because then the directory was searched and the child was not in it.
+//
+// ONE LEVEL, which is what a lone parent reading can carry: the parent's own false is exactly as
+// ambiguous as the child's, and where the walk may not stop is the question
+// absent_under_nearest_present_ancestor below answers -- the same law, one level at a time, until an
+// ancestor that IS present and searchable is reached or the ancestors run out.
 type ContainedExistence
   = ContainedAbsent
   | ContainedPresent
@@ -199,6 +204,164 @@ fn absent_under(path: String, parent: String, parent_reading: PathExistenceReadi
           "`test -e ", path, "` is false and its parent ", parent, " could not be read (", r as String,
           "), so the path's absence is not established",
         ], "") as NonEmptyStr,
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE ANCESTOR WALK: how a `test -e` false becomes an ABSENCE when the parent is absent too.
+//
+// `absent_under` stops at the immediate parent. For ONE parent reading that is right -- an
+// absent-or-unstattable parent cannot carry an inheritance it cannot itself prove. It stops one level
+// too early as the END of the proof, because the walk does not have to stop there. Absence is
+// established by the nearest ancestor that IS present and SEARCHABLE: that directory was searched, the
+// component of the path under it was not in it, so that component is absent; and a component that is
+// absent has no subtree, so everything below it -- including the path the probe was asked about -- is
+// absent with it. Requiring the ancestor to be searchable, and not merely present, is what makes the
+// search claim real: `test -e` true says the entry exists, not that anything under it can be looked up.
+//
+// What the walk may NOT do is run PAST an ancestor that is present but not searchable. `test -x` false
+// is the same two-valued ambiguity as `test -e` false -- absent OR unsearchable -- and an ancestor that
+// exists with its search bit off (mode 000, the very shape the sanitation guarantee exists for) may
+// still hold the whole subtree. So every level the walk passes is read TWICE: `test -x` for
+// present-and-searchable, and, only where that is false, the ENTRY (`test -L` or `test -e`,
+// entry_existence_reading) to tell "not in its parent" from "there, but I may not look inside". An
+// ancestor that is present and not searchable stops the walk WITHOUT an answer, and the path stays
+// ContainedUnreadable, exactly as it did before the walk existed.
+//
+// The chain is NEAREST FIRST and the walk stops at the first ancestor that answers: a refusal below a
+// searchable ancestor is still a refusal, so a farther reading never overwrites a nearer one, and no
+// amount of readable ground above an unreadable directory repairs it.
+
+// WHAT ONE LEVEL OF THE WALK ANSWERED, declared as a coproduct rather than as a reading plus a
+// presence rule. Two fields -- a `test -x` reading and an optional entry -- would make the illegal
+// combinations writable: an ancestor absent-or-unstattable with NO entry reading, or a searchable one
+// carrying an entry nobody asked for. The first is precisely the ambiguity this walk exists to refuse,
+// so refusing it at run time would be a second representation of a constraint the model can simply
+// carry: `AncestorNotSearchable` cannot be written without the entry reading that settles it, and
+// `AncestorSearchable` cannot carry one at all (gunbc.design_argument::fail_closed section 5).
+type AncestorSearchReading
+  = AncestorSearchable
+  | AncestorSearchUnreadable { reason: NonEmptyStr }
+  | AncestorNotADirectory { cause: AncestorNotADirectoryCause }
+  | AncestorNotSearchable { entry: PathExistenceReading }
+
+// WHY A LEVEL THAT `test -x` ANSWERED PRESENT STILL CANNOT HAVE BEEN SEARCHED. This is a declared sum
+// rather than a `directory` reading sitting beside a `link` reading for the same reason the level itself
+// is one: two independent readings would make "is a directory AND is not a link" -- the searchable case --
+// writable as a refusal, and every mixed pair with it. Each cause below is a fact one probe answered, and
+// the law owns the wording of what it refuses.
+//
+//  - A file's OWN execute bit answers `test -x` with 0, so a level can be present-and-"executable" and
+//    still have no entries to search: `stat` under a regular file is ENOTDIR, which is not "searched and
+//    not found". Whether the verdict turns on this is not something a mode bit should decide.
+//  - A symlink answers `test -x` (and `test -d`) by following ITSELF, so such a level reports on its
+//    referent while the removal works at the link's own name. This module reads an entry as the entry it
+//    is, not as whatever it points at, and a level that resolves elsewhere cannot vouch for what lives
+//    under this name.
+//  - And where the directory probe itself was not answered, nothing was established either way.
+type AncestorNotADirectoryCause
+  = AncestorDirectoryReadingUnreadable { reason: NonEmptyStr }
+  | AncestorIsNotADirectory
+  | AncestorIsASymlink
+
+// One ancestor of the path: which level it is, and what its two readings settled.
+type AncestorExistenceProbe {
+  ancestor: String
+  search: AncestorSearchReading
+}
+
+// What one ancestor's readings say about the walk.
+type AncestorWalkStep
+  = AncestorEstablishesAbsence
+  | AncestorRefuses { reason: NonEmptyStr }
+  | AncestorIsAbsentOrUnstattable
+
+fn ancestor_walk_step(path: String, probe: AncestorExistenceProbe) -> AncestorWalkStep {
+  match probe {
+    AncestorExistenceProbe { ancestor: ancestor, search: search } =>
+      match search {
+        // Present AND searchable: the component toward the path was searched for and not found.
+        AncestorSearchable => AncestorEstablishesAbsence
+        AncestorSearchUnreadable { reason: r } =>
+          AncestorRefuses {
+            reason: join([
+              "`test -x ", ancestor, "` could not be read while establishing the absence of ", path,
+              " (", r as String, "), so the path's absence is not established",
+            ], "") as NonEmptyStr,
+          }
+        AncestorNotADirectory { cause: cause } =>
+          match cause {
+            AncestorIsNotADirectory =>
+              AncestorRefuses {
+                reason: join([
+                  "`test -d ", ancestor, "` is false while establishing the absence of ", path,
+                  ": the level is present and `test -x` answered for it, but it is not a directory and has",
+                  " no entries that could have been searched, and a reading of ENOTDIR under it is not a",
+                  " search that did not find the component",
+                ], "") as NonEmptyStr,
+              }
+            AncestorIsASymlink =>
+              AncestorRefuses {
+                reason: join([
+                  "`", ancestor, "` is a symlink while establishing the absence of ", path,
+                  ": `test -x` and `test -d` follow the link, so the level answered for what it POINTS AT",
+                  " and not for itself, and a level that resolves elsewhere cannot vouch for what lives",
+                  " under this name",
+                ], "") as NonEmptyStr,
+              }
+            AncestorDirectoryReadingUnreadable { reason: r } =>
+              AncestorRefuses {
+                reason: join([
+                  "`test -d ", ancestor, "` could not be read while establishing the absence of ", path,
+                  " (", r as String, "), so the level was never established to be a directory that could",
+                  " have been searched",
+                ], "") as NonEmptyStr,
+              }
+          }
+        AncestorNotSearchable { entry: entry } =>
+          match entry {
+            // There, but not searchable (or unreadable): the walk stops WITHOUT an answer, because
+            // nothing under this ancestor could have been searched, so its child's false proves nothing.
+            PathPresent =>
+              AncestorRefuses {
+                reason: join([
+                  "`test -x ", ancestor, "` is false while establishing the absence of ", path,
+                  " and the ancestor is present, so it is not searchable and nothing under it could be",
+                  " searched: the path's absence is not established",
+                ], "") as NonEmptyStr,
+              }
+            PathExistenceUnreadable { reason: r } =>
+              AncestorRefuses {
+                reason: join([
+                  "`test -x ", ancestor, "` is false and its entry could not be read while establishing",
+                  " the absence of ", path, " (", r as String, "), so the path's absence is not established",
+                ], "") as NonEmptyStr,
+              }
+            // Not in its own parent: the answer waits for the level above, which is why the walk climbs.
+            PathAbsentOrUnstattable => AncestorIsAbsentOrUnstattable
+          }
+      }
+  }
+}
+
+// THE WALK, PURE OVER THE CHAIN a driver collected nearest-first. The first ancestor that answers
+// decides; when none answers present-and-searchable the absence is NOT established, and the answer is
+// ContainedUnreadable rather than a quiet ContainedAbsent.
+fn absent_under_nearest_present_ancestor(path: String, chain: List<AncestorExistenceProbe>) -> ContainedExistence {
+  match chain {
+    Empty =>
+      ContainedUnreadable {
+        reason: join([
+          "`test -e ", path, "` is false and no ancestor of it read present and searchable, so nothing",
+          " searched for ", path, " and the path's absence is not established",
+        ], "") as NonEmptyStr,
+      }
+    Cons { head: probe, tail: rest } =>
+      match ancestor_walk_step(path: path, probe: probe) {
+        AncestorEstablishesAbsence => ContainedAbsent
+        AncestorRefuses { reason: r } => ContainedUnreadable { reason: r }
+        AncestorIsAbsentOrUnstattable => absent_under_nearest_present_ancestor(path: path, chain: rest)
       }
   }
 }

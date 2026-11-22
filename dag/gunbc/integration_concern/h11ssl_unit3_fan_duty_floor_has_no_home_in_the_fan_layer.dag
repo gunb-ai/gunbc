@@ -1,0 +1,51 @@
+module gunbc.integration_concern.h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at this merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, h11ssl_unit3_reach_report_sighting_revision }
+
+// A COOLING REQUIREMENT THAT IS TODAY A HAND SETTING ON ONE BOX.
+//
+// The reported cards need the fans held at full duty and the board parks them at an idle floor until asked;
+// the operator's hand setting reverts at every power-off. The fan layer has no row that can hold a duty
+// floor for this family, so the requirement is registered rather than minted as an invented expectation.
+data h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer: IntegrationConcern = IntegrationConcern {
+  identity: "h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_fan_tach_expectation", decl_name: "fleet_fan_tach_expectations"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_fan_converge_routes", decl_name: "supermicro_fan_converge_route"),
+      decl_ref(module_path: "gunbc.fleet.fleet_fan_converge_routes", decl_name: "fan_converge_route_for_family"),
+      decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_bmc_firmware_family_standing"),
+      decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
+    ],
+  },
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_fan_tach_expectation", decl_name: "fleet_fan_tach_expectations"),
+    requirement: "A duty floor for this family has to be a row the fleet reads and converges -- the fan-mode read (mode and duty per zone) beside a board-profile figure for the idle floor, with the cooling lane's board-function and BMC fan-mode rows as its home -- not a setting an operator re-enters after each power-off. Until that row exists the reported cards run at the mercy of a hand setting that does not survive a power cycle, and the fleet's own fan check refuses to speak about a rostered host that has no expectation row.",
+    standing: RequirementUnestablished {
+      decided_by: "the cooling lane, not this one: a fan-mode read row for this board family beside a board-profile figure for its idle floor, which is what would settle both the shape and the number. Until that exists the requirement cannot be established from a duty percent reported by the operator with no receipt -- the tach-expectation grain pins rpm at a named tach header and accepts only receipt-backed figures, so minting an expectation from this report would invent a header and an rpm.",
+    },
+  },
+  question: "What read and what control carry a fan duty floor for this family, given the OEM fan protocol is undocumented in Supermicro's public manual -- and who owns the board-function and fan-mode rows that would hold it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: h11ssl_unit3_reach_report_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_needed_reported"),
+        },
+        tail: [CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation", decl_name: "supermicro_h11ssl_unit3_fan_zone_duty_after_power_off_reported"),
+        }],
+      },
+      account: "Transcribed from the operator's report of 2026-11-16, relayed in smart-crane-730's message to this lane: the hand install could not bring the GPUs up because the board holds its fans at a 20% idle floor until something asks for more, the operator set fan zones A and B to 100% from the BMC's own control, and that setting reverts to the floor on every power-off. Nothing in this repository has read or written this board's fan control, and this row asks no one to: it names the requirement and leaves the mode row to the cooling lane, which owns the board-function and fan-mode grain this belongs to. The figures themselves stay transcribed-and-unclosed in gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

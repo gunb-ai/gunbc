@@ -1056,22 +1056,33 @@ pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     v
 }
 
+pub fn text_of_chars(scalars: &Rc<Vec<i64>>) -> String {
+    scalar_window_to_text(scalars, 0, scalars.len(), "text_of_chars")
+}
+
 pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let len = chars.len();
     let start = (start.max(0) as usize).min(len);
     let end = (end.max(0) as usize).min(len).max(start);
-    let units = (end.saturating_sub(start)) as u64;
-    record_source_chars_slice_walked(units);
-    // Focus caches the current RRB chunk, so per-char access is contiguous-slice
-    // speed; a plain iter().skip(start) walks O(start) per call, which summed
-    // quadratically across a tokenize pass (profiled 2026-07-06).
+    scalar_window_to_text(chars, start, end, "chars_to_string")
+}
+
+// Both declared whole-list writing and legacy clamped windows use this one linear writer.
+fn scalar_window_to_text(
+    chars: &Rc<Vec<i64>>,
+    start: usize,
+    end: usize,
+    operation: &str,
+) -> String {
+    record_source_chars_slice_walked((end - start) as u64);
+    // Focus retains the current RRB chunk; do not walk the prefix for every window.
     let mut focus = chars.focus();
     let mut out = String::with_capacity(end - start);
     for i in start..end {
         let cp = *focus.index(i);
         match u32::try_from(cp).ok().and_then(char::from_u32) {
             Some(ch) => out.push(ch),
-            None => panic!("chars_to_string: {} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it", cp),
+            None => panic!("{}: {} is not a Unicode scalar value: runtime representation-invariant violation; refusing to drop or substitute it", operation, cp),
         }
     }
     out

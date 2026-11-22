@@ -20,6 +20,7 @@ module gunbc.site.gunb_ai_content
 // so an edit that accidentally breaks the sentence structure goes red rather than shipping.
 
 import std.types { String, List }
+import std.filesystem { path_basename }
 import std.algebra { string_contains }
 
 // ── Identity ────────────────────────────────────────────────────────────────────────────────
@@ -140,9 +141,7 @@ fn install_commands() -> List<String> {
 // (this language has no indexing). If the URL ever gains a trailing slash, the fold keeps the
 // last NON-EMPTY segment, so "cd" still names a real directory.
 fn repository_slug() -> String {
-  fold(split(s: repository_url, delimiter: "/"), init: "", f: fn(acc, seg) {
-    if seg == "" { acc } else { seg }
-  })
+  path_basename(path: repository_url)
 }
 
 fn install_second_command() -> String {

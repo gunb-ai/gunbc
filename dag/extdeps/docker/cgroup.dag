@@ -1,6 +1,7 @@
 module extdeps.docker.cgroup
 
 import std.types { NonEmptyStr, Bool, Int, List }
+import std.filesystem { path_basename }
 import std.content_hash { content_hash_validate_lower_hex_syntax, content_hash_validate_lower_hex_length }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -67,7 +68,7 @@ fn docker_container_id_syntax_ok(text: String) -> Bool {
 }
 
 fn docker_cgroup_last_segment(relative_path: NonEmptyStr) -> String {
-  fold(split(s: relative_path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+  path_basename(path: relative_path as String)
 }
 
 fn docker_cgroup_parent_segment(relative_path: NonEmptyStr) -> String {

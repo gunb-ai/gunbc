@@ -46,7 +46,11 @@ import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionCont
   SshTargetRefused,
   SshTargetResolved,
   fleet_ssh_target_at_standard_port,
+  first_contact_ssh_target,
+  first_contact_admission_for_hostname_mode,
+  FirstContactAdmission,
 }
+import gunbc.fleet.fleet_converge_mode_wires { hostname_converge_wire }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextReady,
@@ -64,7 +68,9 @@ data gunbc_host_hostname_converge_scope_disposition: Disposition = std.dispositi
 // THE MODE NAME IS HELD BY THE SUBJECT, not by the emitter, so the emitter consumes the mode instead
 // of naming it (gunbc.design_argument::single_authority). gunbc.fleet.fleet_converge_workflow wires
 // this string; no arm spells the mode name independently.
-data hostname_converge_mode: NonEmptyStr = "hostname_converge"
+// The wire name of THIS mode, in ONE place (gunbc.fleet.fleet_converge_mode_wires); this datum is the
+// mode's own handle on it, and the workflow's mode facts reference THIS.
+data hostname_converge_mode: NonEmptyStr = hostname_converge_wire
 
 // THE INPUTS ARE ENVIRONMENT INPUTS OF THE PEER JOB, named once here so the emitted step and the entry
 // cannot drift apart (single authority). The executing peer is read from the dispatch, NEVER from the
@@ -665,9 +671,8 @@ fn hostname_converge_bind_transport(
   host: ComputeHost,
   context: FleetSshExecutionContext,
 ) -> HostnameConvergeResolution {
-  let endpoint = fleet_probe_endpoint_for(host: target as String)
-  match fleet_ssh_target_at_standard_port(endpoint: endpoint, principal: host_identity_operator_principal_name()) {
-    SshTargetRefused { endpoint: _, refusal: _ } =>
+  match hostname_converge_transport_target(target: target) {
+    SshTargetRefused { endpoint: endpoint, refusal: _ } =>
       ResolutionRefused { cause: SshRouteRefused { host: target as NonEmptyStr, endpoint: endpoint } }
     SshTargetResolved { target: ssh_target } =>
       PairResolved {
@@ -681,6 +686,30 @@ fn hostname_converge_bind_transport(
           transport: FleetSsh {kind: ActuationLeg, target: ssh_target, context: context },
         ),
       }
+  }
+}
+
+// THE ONE TRANSPORT DECISION of this mode, callable by witnesses without the plan fixtures.
+// THE HOP FIRST -- safe because the hop function ITSELF refuses any host the registry already anchors
+// (FirstContactHopSupersededByAnchor): srv1-srv4 are anchored, so their resolution falls to the
+// ORIGINAL probe route below, byte-for-byte unchanged in address source AND operator principal -- the
+// claim fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host), principal:
+// OPERATOR) is verbatim main's route at 1a78eac11c93 (witness-pinned:
+// host_credential_custody_converge_witness hostname_and_custody_targets_are_unchanged_for_anchored_hosts).
+// Only an UNANCHORED host with a pinned key, reached by a token-holding mode, is admitted over the
+// hop; the hop rows retire at the flip, after which even srv14 falls through to the probe route.
+fn hostname_converge_transport_target(target: HostIdentity) -> SshTargetResolution {
+  match first_contact_ssh_target(
+    host: target,
+    principal: host_identity_operator_principal_name(),
+    // The token, held by exactly this mode (review 96277): the type, not a string, is the admission.
+    admission: Present { value: first_contact_admission_for_hostname_mode() },
+  ) {
+    SshTargetResolved { target: ssh_target } => SshTargetResolved { target: ssh_target }
+    SshTargetRefused { endpoint: _, refusal: _ } => fleet_ssh_target_at_standard_port(
+      endpoint: fleet_probe_endpoint_for(host: target as String),
+      principal: host_identity_operator_principal_name(),
+    )
   }
 }
 

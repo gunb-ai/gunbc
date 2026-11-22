@@ -1,0 +1,47 @@
+module gunbc.integration_concern.group_membership_append_spelled_by_two_tools
+
+// One row of the integration-concern register.
+// Its authorities are the sealed region group_membership_append_spelled_by_two_tools_authorities in module gunbc.integration_concern
+// (the seal forbids building a DistinctAuthorities value outside that module). The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to. Ported from main's block in gunbc.integration_concern
+// at merge 23: main 7f27f475982 (#16632).
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, group_membership_append_spelled_by_two_tools_authorities, remote_build_serving_converge_merge_revision }
+
+data group_membership_append_spelled_by_two_tools: IntegrationConcern = IntegrationConcern {
+  identity: "group_membership_append_spelled_by_two_tools",
+  kind: SuspectedFork {
+    authorities: group_membership_append_spelled_by_two_tools_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
+    tail: [decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv")],
+  },
+  question: "Appending one login to one group is spelled usermod -aG GROUP LOGIN by the shadow-suite builder (consumed by the runner-account and remote-build serving routes) and gpasswd -a LOGIN GROUP by the custody readers route. Is that one operation with one builder, and which tool does it use?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: remote_build_serving_converge_merge_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv") }],
+      },
+      account: "Review 96118 on PR 5(b) consolidated groupadd, useradd and usermod into extdeps.shadow.account_creation. The custody route's gpasswd -a was left in place, because moving it would change the tool a live route runs, and that belongs in its own change with its own witness.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.shadow.account_creation", decl_name: "usermod_append_group_argv") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "custody_group_add_member_argv"),
+        control: Absent,
+        statement: "the custody readers converge only ever appends a member; it never replaces the group's member list",
+      },
+    ],
+    next: climbs_when(capability: "the custody readers leg builds its membership append through extdeps.shadow.account_creation, and custody_group_add_member_argv is deleted"),
+  },
+}

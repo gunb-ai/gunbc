@@ -469,6 +469,57 @@ fn remote_build_admitted_candidates(standing: RemoteBuildHostStanding) -> List<R
   }
 }
 
+// THE HOST PIN -- an operator's or a hosted runner's choice to send ONE request to ONE named
+// host, rather than letting the walk pick. It is a typed refusal carrier: resolving a pin either
+// lands the host on the DISPATCH roster (remote_build_serving_hosts -- the live dispatch gate,
+// gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold) or it does not, and a
+// host that is NOT on that roster is refused by name -- NEVER silently widened back out to the
+// whole roster. A host that is only on the CANDIDATE row (remote_build_serving_candidate_hosts)
+// is exactly such a refusal: it may hold a checkout, but the dispatch gate does not admit it, so
+// pinning to it must stop AT the pin rather than fall through to srv3/srv4.
+type RemoteBuildHostPin
+  = PinRostered { host: HostIdentity }
+  | PinOffRoster { pin: String, roster: List<HostIdentity> }
+
+// Resolve an optional `--arg host=` against the DISPATCH roster, the ONLY authority that says a
+// host may be dispatched to. Absent text means no pin -- the ordinary roster walk. A host the
+// roster admits becomes PinRostered so exactly it is tried; anything else -- a candidate-only host
+// (srv1/srv2/ken), a typo, a name not on the roster at all -- is PinOffRoster, which the caller
+// turns into a self-explaining refusal. It is a carrier, not a throw: the caller must handle both.
+fn remote_build_host_pin(text: String?) -> RemoteBuildHostPin? {
+  match text {
+    Absent => none
+    Present { value: pinned } =>
+      let roster = remote_build_serving_hosts()
+      match roster |> filter(h => h as String == pinned) |> first {
+        Present { value: admitted } => Present { value: PinRostered { host: admitted } }
+        Absent => Present { value: PinOffRoster { pin: pinned, roster: roster } }
+      }
+  }
+}
+
+// THE ROSTER WALKED FOR ONE REQUEST. No pin walks the whole roster, in roster order -- identical
+// to remote_build_candidates(), so the existing selection claims keep their route. A rostered pin
+// walks EXACTLY that one host (never the whole roster, never a second host); an off-roster pin
+// walks nothing at all, so even if a caller forgot to refuse it first the walk can never dispatch.
+fn remote_build_pinned_candidates(pin: RemoteBuildHostPin?) -> List<RemoteBuildCandidate> {
+  let roster = remote_build_candidates()
+  match pin {
+    Absent => roster
+    Present { value: PinRostered { host } } => roster |> filter(c => c.host == host)
+    Present { value: PinOffRoster { pin: _, roster: _ } } => []
+  }
+}
+
+// THE REFUSAL, self-explaining on the receipt: it names BOTH the pin that was refused AND the
+// roster that was checked, so a reader sees which host was asked for and against which gate it
+// failed -- without having to re-derive the roster from the source.
+fn remote_build_pin_refusal(pin: String, roster: List<HostIdentity>) -> String {
+  let names = roster |> map(h => h as String) |> join(", ")
+  join(["host pin \"", pin, "\" is not on the remote-build DISPATCH roster (", names,
+        "); a pinned host must be on the roster itself -- pinning never falls through to the whole roster"], "")
+}
+
 // ── WHICH HOST NEXT ──────────────────────────────────────────────────────────────────────────────────
 //
 // What one host answered. A full pool, a host that cannot serve (its checkout, store or toolchain) and
@@ -582,7 +633,8 @@ data remote_build_ssh_key_fingerprint: NonEmptyStr = "SHA256:k67OfQZ5M/BbWBDP2Qq
 // WHO MINTS EACH KEY:
 //   operator  — the operator host (the existing key, minted outside any custody system before this model)
 //   session   — ctrl mints; the private half never leaves ctrl's custody; gentle-crab-832 owns provisioning
-//   hosted-ci — the operator mints; private half stored as a GitHub Actions secret (GUNBC_REMOTE_BUILD_CI_SSH_KEY)
+//   hosted-ci — ctrl minted it (gentle-crab-832); the operator stores the private half in Secret Manager
+//               (remote_build_ci_ssh_privkey_secret). NEVER a GitHub Actions secret; see the custody note.
 //
 // Each new member lands in the change that carries its REAL public half (clever-raven-401, 2026-11-19:
 // a placeholder public key is a fabricated value; an admission list carrying one is worse than a shorter
@@ -612,11 +664,17 @@ data remote_build_client_key_session: RemoteBuildClientKey = RemoteBuildClientKe
   fingerprint: "SHA256:/ufkCsksYwFQOdqvHgaKCYA1LrLuLtxyvB1iGbjO1Fo",
 }
 
-// The hosted-CI key — minted by the OPERATOR (2026-11-19); the private half is stored as the GitHub
-// Actions secret GUNBC_REMOTE_BUILD_CI_SSH_KEY, and setting that secret is the operator's step, not this
-// model's. The material and fingerprint below are the operator's relayed REAL values, admitted per the
-// rule that a member lands only in the change carrying its real public half (fail_closed — no placeholder).
-// ssh-keygen -lf over this material prints exactly this fingerprint, and the serve witness
+// The hosted-CI key — MINTED 2026-11-20 04:23Z by session gentle-crab-832 (ssh-keygen in its container),
+// because swift-bear-417's handoff claimed a CI key existed while none had been minted. Its public half was
+// admitted here and converged onto srv1/srv3/srv4 by fleet-converge's remote_build_serving_converge
+// (srv3 44697398771, srv4 44699734546, srv1 44706597108, all success), and it authenticates as gunbc-build
+// (forced command) on all three — on srv1 rechecked through plain sshd after Tailscale SSH was turned off.
+// The PRIVATE HALF IS NOT a GitHub Actions secret: the GitHub secret GUNBC_REMOTE_BUILD_CI_SSH_KEY was
+// NEVER SET and the key has never been in GitHub. The operator stored the private half 2026-11-20 ~19:35Z
+// in Secret Manager (remote_build_ci_ssh_privkey_secret below) and the session copy was shredded 19:40Z.
+// The material and fingerprint below are the relayed REAL values, admitted per the rule that a member lands
+// only in the change carrying its real public half (fail_closed — no placeholder). ssh-keygen -lf over this
+// material prints exactly this fingerprint, and the serve witness
 // (test.claim.compute.remote_build_serve_witness::the_ci_key_has_the_relayed_fingerprint) re-derives it
 // from the material, so a mistyped key and a mistyped fingerprint cannot both stand.
 data remote_build_client_key_ci: RemoteBuildClientKey = RemoteBuildClientKey {
@@ -629,11 +687,56 @@ data remote_build_client_key_ci: RemoteBuildClientKey = RemoteBuildClientKey {
   fingerprint: "SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM",
 }
 
+// THE HOSTED-CI PRIVATE HALF — ITS SINGLE HOME, SECRET MANAGER.
+//
+// PROVENANCE (verified by gentle-crab-832, 2026-11-20; cited, not re-derived here). Minted 2026-11-20
+// 04:23Z by session gentle-crab-832 with ssh-keygen in its container, because swift-bear-417's handoff
+// claimed a CI key existed while none had been minted. The public half was admitted as
+// remote_build_client_key_ci in remote_build_admitted_client_keys (gunbc #16770, merged 088e6446) and
+// converged onto srv1/srv3/srv4 by fleet-converge's remote_build_serving_converge (srv3 44697398771,
+// srv4 44699734546, srv1 44706597108, all success); it authenticates as gunbc-build (forced command) on
+// all three, on srv1 rechecked through plain sshd after Tailscale SSH was turned off. The OPERATOR stored
+// the private half 2026-11-20 ~19:35Z as projects/582015116396/secrets/remote-build-ci-ssh-key in OpenSSH
+// private-key format; the session copy was shredded 19:40Z. THE KEY HAS NEVER BEEN IN GITHUB and the
+// GitHub Actions secret GUNBC_REMOTE_BUILD_CI_SSH_KEY WAS NEVER SET — the earlier note that named it was
+// wrong and is corrected here.
+//
+// This is the custody ledger's row for the secret; the session key's row (remote_build_ssh_privkey_secret)
+// is the pattern. Like that row, matched by secret name against fleet_secrets_gcp_project (Secret Manager
+// names a project by number or id interchangeably, extdeps.cloud.gcp.secret_ref). The secret VERSION is
+// not in the EARLIER relayed facts, so the row kept "pending" per review 95989 (a version written before
+// it is read is a guess). THE OPERATOR RELAYED IT ON 2026-11-20 (gcloud secrets versions list: v1, enabled,
+// created 2026-11-20T19:36:30Z; nothing newer exists). The ONE pin site is the constant
+// hosted_ci_ssh_key_secret_version in gunbc.auth.hosted_ci_secrets_federation, feeding both the accessor
+// grant and the gate's fetch URL; this row stays "pending" so the version is never decided twice
+// (review 97015 — two pin sites fork).
+//
+// WHO READS IT (the single consumer): the hosted-runner shadow gate
+// (gunbc.witness.hosted_runner_shadow_gate_workflow), over GitHub→GCP workload identity as the dedicated
+// low-privilege hosted-ci-secrets service account (gunbc.hosted_ci_secrets_federation), which holds a
+// pinned-version secretmanager.secretAccessor grant for THIS secret. It is not read from a GitHub Actions
+// secret.
+//
+// ROTATION. If this key is lost or leaked: (1) mint a new ed25519 pair (ssh-keygen -t ed25519 -C
+// gunbc-remote-build-ci); (2) update remote_build_client_key_ci's material AND fingerprint to the new
+// public half (the serve witness re-derives the fingerprint from the material, so a mismatch is caught);
+// (3) re-converge the forced-command authorized_keys onto srv1, srv3 and srv4 with
+// fleet-converge's remote_build_serving_converge and re-run the live gunbc-build authentication check;
+// (4) add the new private half as a NEW VERSION of projects/582015116396/secrets/remote-build-ci-ssh-key
+// (never overwrite history), then re-point the pinned accessor grant to that version; (5) destroy/ disable
+// the leaked version.
+data remote_build_ci_ssh_privkey_secret: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "remote-build-ci-ssh-key" as NonEmptyStr,
+  version: "pending",
+  hash_state: HashPending,
+}
+
 // THE CLOSED LIST. Three members: operator, session, and hosted-ci. Each joins in the change that
 // carries its REAL public half — never a placeholder (a placeholder is a fabricated value; an admission
 // list carrying one is worse than a shorter list — gunbc.design_argument::fail_closed). The hosted-ci key
-// landed with its operator-minted public half on 2026-11-19; its private half is the GitHub Actions secret
-// GUNBC_REMOTE_BUILD_CI_SSH_KEY, which the operator sets.
+// landed with its public half on 2026-11-19 (admitted in gunbc #16770, merged 088e6446); its private half
+// is the Secret Manager secret remote_build_ci_ssh_privkey_secret, NOT a GitHub Actions secret.
 data remote_build_admitted_client_keys: List<RemoteBuildClientKey> = [
   remote_build_client_key_operator,
   remote_build_client_key_session,
