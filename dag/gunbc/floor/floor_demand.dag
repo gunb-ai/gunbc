@@ -18,7 +18,7 @@ import product.fabric.envelope { MemoryRequirement, StorageRequirement, Resource
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, ControlPlaneCapacity, TrustDomainRef,
- WarmResidencyRequired,
+ CapabilityManifestRef, WarmResidencyRequired,
 }
 
 data floor_demand_disposition: ConstructionMechanism = SingleAuthority
@@ -1807,6 +1807,11 @@ fn floor_isolation_requirement() -> IsolationProfile {
 // the selection silently widen or narrow.
 data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
 
+// THE ONE LINUX/RUST TOOLCHAIN CAPABILITY THE FLEET DEMANDS, spelled here rather than at each call
+// site for the same reason as the row above: the fabric decides fungibility by exact equality of
+// capability references, so two spellings of it is two capabilities wearing the same name.
+data linux_rust_toolchain_capability: CapabilityManifestRef = "gunbc.capabilities.linux-rust-toolchain" as CapabilityManifestRef
+
 // OUR FLOOR IS arm64. THE CLASS IS NOT.
 //
 // This function previously spelled the architecture INSIDE a capability tag --
@@ -1879,7 +1884,7 @@ fn floor_execution_requirements() -> ExecutionRequirements {
         network: none,
       },
     },
-    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    capabilities: linux_rust_toolchain_capability,
     trust_domain: gunbc_internal_fleet_trust_domain,
     isolation: floor_isolation_requirement(),
     revocation: WarmResidencyRequired,

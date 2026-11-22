@@ -39,12 +39,17 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_p
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
-  CapabilityManifestRef, TrustDomainRef, RevocationStanding, RevocationAccepted,
+  RevocationStanding, RevocationAccepted,
 }
 import product.fabric.envelope { ResourceEnvelope, CpuRequirement }
 import product.fabric.isolation { IsolationProfile, FreshWritableRoot }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+// The fleet's own trust domain and toolchain capability are READ from their authorities, not re-spelled
+// here: gunbc.floor.floor_demand::gunbc_internal_fleet_trust_domain is the row the cell-grant planner
+// admits against, and a second copy of either literal would let the two drift apart and the arm widen or
+// narrow silently (gunbc.design_argument::single_authority).
+import gunbc.floor.floor_demand { gunbc_internal_fleet_trust_domain, linux_rust_toolchain_capability }
 import gunbc.fabric.fabric_executor_class {
   ExecutorExecutionClass, ExecutionClassAdmission, ExecutionClassAdmitted,
   ExecutionClassArchitectureRefused, ExecutionClassUnclassified,
@@ -208,8 +213,8 @@ fn remote_build_execution_requirements(architecture: Architecture?) -> Execution
         network: none,
       },
     },
-    capabilities: "gunbc.capabilities.linux-rust-toolchain" as CapabilityManifestRef,
-    trust_domain: "gunbc.trust.internal-fleet" as TrustDomainRef,
+    capabilities: linux_rust_toolchain_capability,
+    trust_domain: gunbc_internal_fleet_trust_domain,
     isolation: IsolationProfile { guarantees: [FreshWritableRoot] },
     revocation: RevocationAccepted,
   }

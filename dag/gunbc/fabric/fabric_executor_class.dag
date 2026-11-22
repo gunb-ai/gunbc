@@ -197,9 +197,13 @@ type ExecutorExecutionClass {
 //   (test.claim.runner.runner_slot_allocation_witness::cpu_width_is(host: srv2, expected:
 //   altra_max_m12830_catalog.cores)) -- a check that could only ever hold on an Altra Max. srv2 is here
 //   although it has never been on the DISPATCH roster because it is on the CANDIDATE roster
-//   (gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), and the serving converge
-//   reads this row to choose between uploading a serve binary and building one on the host: an
-//   unclassified srv2 would turn today's upload into a refusal, which is a regression dressed as safety.
+//   (gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), and the next PR in this
+//   lane -- ken's native serve build, sequenced directly behind this one -- reads THIS row to choose
+//   between uploading a serve binary and building one on the host. It does not do so yet: today's
+//   converge decides from the host's own uname read against the pinned executor arch
+//   (remote_build_serving_converge.dag:1012), so nothing here changes serving behaviour at this head.
+//   The row is authored now, with the standing its evidence actually has, because when that PR lands an
+//   unclassified srv2 would turn today's upload into a refusal -- a regression dressed as safety.
 //
 // No host is added without a citation, and no citation is dressed above what it is.
 data executor_execution_class_roster: List<ExecutorExecutionClass> = [
@@ -281,6 +285,19 @@ fn host_execution_architecture(
 // not classified it. Anything that needs to know which instruction set a host runs -- the serving
 // converge deciding between uploading a binary and building one there, a placement check, a label
 // repair -- calls THIS and nothing else, so there is one answer to give.
+//
+// WHO ACTUALLY CALLS IT, AT THIS HEAD, WITHOUT DRESSING IT UP: the production placement route reaches
+// the roster through admit_execution_class, which walks it with host_execution_architecture above; the
+// only call site of THIS entry point is the witness. Its named consumer and that consumer's trigger are
+// the same PR: the ken native-serve-build lane (gunbc.compute.remote_build_serving_converge choosing its
+// upload arm against a native-build arm, and remote_build_serving_setup comparing the host's uname read
+// against the row). That lane is not speculative -- session/lively-owl-722 already imports this lookup
+// and calls it at remote_build_serving_converge.dag:1051 and remote_build_serving_setup.dag:1355, and its
+// PR is sequenced directly behind this one. Until it lands, the converge on main still decides from the
+// host's own uname read (remote_build_serving_converge.dag:1012), which is why nothing here changes
+// serving behaviour at this head. It is published rather than left private because
+// the alternative is the fork this module exists to prevent: a second module walking
+// executor_execution_class_roster by hand, giving a second answer to one question.
 fn executor_host_architecture(host: HostIdentity) -> HostArchitecture {
   host_execution_architecture(roster: executor_execution_class_roster, host: host)
 }
