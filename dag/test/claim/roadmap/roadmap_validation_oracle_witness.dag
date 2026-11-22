@@ -923,7 +923,12 @@ fn receipt_for(verdict: ValidationVerdict) -> String {
           command: ModeledValidationCommand {
             label: "gunbc-claim" as NonEmptyStr,
             program: "/opt/gunbc/bin/gunbc" as FilePath,
-            args: ["run", "--claim-run"],
+            args: [
+              "test",
+              "--source-root", "dag",
+              "--source-root", "src/v2",
+              "//test/claim/roadmap/roadmap_validation_oracle_witness:verify_lamp_stays_pending_without_a_receipt",
+            ],
           },
           exit_code: if validation_verdict_key(verdict: verdict) == "failed" { 1 } else { 0 },
           stdout: if validation_verdict_key(verdict: verdict) == "passed" { "true\n" } else { "" },
