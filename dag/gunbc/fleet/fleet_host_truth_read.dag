@@ -3,7 +3,6 @@ module gunbc.fleet.fleet_host_truth_read
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.list { first_where }
 import std.optional { Present, Absent }
-import std.measure { Millisecond, millisecond }
 
 // ONE READ OF A MACHINE, FIVE COMPARES, AND A REFUSAL THAT CANNOT BE MISTAKEN FOR QUIET.
 //
@@ -77,11 +76,18 @@ fn host_truth_axes() -> List<HostTruthAxis> {
   ]
 }
 
-// Axes are compared through their rule text rather than by constructor identity because the axes are a
-// closed sum with no declared equality; the projection is total, so two axes agree exactly when their
-// rules do.
+// WHICH AXIS IS WHICH, by constructor and nothing else. This is deliberately NOT a comparison of the
+// rule text above: a display string that also decides identity would be a second, unchecked authority
+// for which axis is two, and rewording a rule would silently move the pairing refusal below -- fail-closed
+// asks for the state to be unwritable, not merely caught.
 fn host_truth_axes_match(left: HostTruthAxis, right: HostTruthAxis) -> Bool {
-  host_truth_axis_rule(axis: left) == host_truth_axis_rule(axis: right)
+  match left {
+    TruthDeclaredHardwareEnumerates => match right { TruthDeclaredHardwareEnumerates => true other => false }
+    TruthEnabledUnitHasItsHardware => match right { TruthEnabledUnitHasItsHardware => true other => false }
+    TruthIdentityAnchoredNotAddressed => match right { TruthIdentityAnchoredNotAddressed => true other => false }
+    TruthCapBindsDeclaredWorkingSet => match right { TruthCapBindsDeclaredWorkingSet => true other => false }
+    TruthSlotSwapBackingDeclared => match right { TruthSlotSwapBackingDeclared => true other => false }
+  }
 }
 
 fn host_truth_host_text(host: NonEmptyStr) -> String {
@@ -344,11 +350,23 @@ fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
   }
 }
 
-// THE INSTRUMENT AS A ROW, NOT A FLAG (gunbc.design_argument::proportionate_evidence, ruling
-// gunbc.design_ruling::instrument_is_a_row_not_a_flag): a measurement that warrants an instrument names
-// its real consumer, its discriminator, and the cost it may not exceed.
-data fleet_host_truth_read_consumer: String = "admission to the build and serving rosters: every leg of the converge route that admits a host by name asks this verdict first, and a refusal there keeps the host off the roster rather than warning about it -- which is the plan's done-when: a planted divergence on any axis removes the host from admission."
-
-data fleet_host_truth_read_discriminator: String = "one comparison per host per axis, discriminated eight ways -- agrees, divergent, unread, blank, no read supplied, no expectation for a read, nothing declared, pairing refused -- so a partial read, a mispaired read, a gap in the model and a genuine drift are four different answers instead of one."
-
-data fleet_host_truth_read_cost_ceiling: Millisecond = millisecond(count: 120000)
+// THE INSTRUMENT, AS A ROW AND NOT A FLAG (gunbc.design_argument::proportionate_evidence): it names its
+// real consumer, its discriminator and the cost it may not exceed, and those facts live here as the
+// module's own terms rather than as data rows nothing folds -- a String-typed commentary row is
+// indistinguishable from program data (gunbc.design_argument::source_annotations), and registering an
+// entry in gunbc.instrument_targets means binding a gunbc.target_binding TargetProducer that produces an
+// addressable build target, which a per-host read of a machine is not until the converge mode that reads
+// hosts exists to produce it. That mode is the consumer named in this file's header.
+//
+// CONSUMER: admission to the build and serving rosters. Every leg of the converge route that admits a host
+// by name asks this verdict first, and a refusal there keeps the host off the roster rather than warning
+// about it -- the plan's done-when is that a planted divergence on any axis removes the host from admission.
+//
+// DISCRIMINATOR: one comparison per host per axis, discriminated eight ways -- agrees, divergent, unread,
+// blank, no read supplied, no expectation for a read, nothing declared, pairing refused -- so a partial
+// read, a mispaired read, a gap in the model and a genuine drift are four different answers, not one.
+//
+// COST: the mode reads each host once per axis over a single ssh round trip, so a host's five compares are
+// bounded by that round trip's own converge step budget rather than by a number invented here; the step
+// that hosts it is where a budget belongs, and it is the number the operator has not yet ruled (see the
+// header's frontier).
