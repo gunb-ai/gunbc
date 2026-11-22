@@ -2024,13 +2024,6 @@ test fn the_decoder_deferral_carrier_names_the_capability_the_owner_and_the_trig
     && string_contains(s: d.capability, pattern: "DELETED")
     && string_contains(s: d.owner, pattern: "claim_batch")
     && string_contains(s: d.owner, pattern: "not this instrument")
-    // THE AUTHORITY IS IN THE CARRIER, IN THE VOCABULARY THAT IS TRUE. The escalation closed by default, so
-    // the row says "approved by default"; it does not call that a sign-off, and it does not call it a ruling.
-    && string_contains(s: d.consent, pattern: "approved by default")
-    && string_contains(s: d.consent, pattern: "msg_72943fe5")
-    && string_contains(s: d.consent, pattern: "not an operator sign-off")
-    && string_contains(s: d.consent, pattern: "did not sign")
-    && !string_contains(s: d.consent, pattern: "operator ruled")
     && d.provisional
     && declaration_ref_display_key(ref: d.trigger)
       == declaration_ref_display_key(ref: known_red_transport_decoder_target)

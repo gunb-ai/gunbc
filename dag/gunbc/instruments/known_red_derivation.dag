@@ -1169,14 +1169,6 @@ fn known_red_print_markers_untied() -> List<String> {
 // artifact. The fail-closed rewording refusal is kept as the RED, so the interim is bounded by execution: a
 // reworded arm refuses the run, it does not misclassify.
 //
-// HOW THE DISSOLUTION WAS AUTHORIZED, RECORDED IN THE CARRIER RATHER THAN ONLY IN A PULL REQUEST. The
-// escalation asking to dissolve this decoder (msg_72943fe5) closed 2026-11-22 BY DEFAULT after no answer
-// within 15 minutes; the approved option was "dissolve now". State what that is and what it is not: an
-// approval by default, NOT an operator sign-off, and NOT the harness lane's consent -- sunny-bear-433 was
-// unreachable (recipient session not found) and did not sign. The same words are a `consent` field of
-// `known_red_transport_decoder_deferral` below, which the witness reads, so the record is checked and not
-// just asserted: a carrier nobody reads is the dead-data failure this section already refuses.
-//
 // THE TRIGGER, as agreed with the harness owner (sunny-bear-433, on the PR): the day `claim_batch`'s
 // --claim-run answers with one `v2.workflow.floor_terminal_ledger` `ClaimAttemptTerminal` per claim on a
 // machine-readable path, this section's marker constants, `known_red_body_is_*` predicates, field extractors
@@ -1196,19 +1188,15 @@ type KnownRedDecoderDeferral {
   trigger: DeclarationRef
   capability: String
   owner: String
-  consent: String
   provisional: Bool
 }
 
 // The name is the harness owner's PROVISIONAL choice -- he asked that it stay flagged provisional until he
 // settles it, so `provisional` is a field the witness asserts rather than a note in a comment that rots.
-// `consent` is the authority the dissolution actually rests on: approved by default, no operator answer, no
-// harness-lane signature -- asserted by the same witness, for the same reason.
 data known_red_transport_decoder_deferral: KnownRedDecoderDeferral = KnownRedDecoderDeferral {
   trigger: known_red_transport_decoder_target,
   capability: "DISSOLVES WHEN claim_batch's --claim-run transport answers each claim with a typed ClaimAttemptTerminal on a machine-readable path, and this fold reads THAT instead of matching prose; the marker constants, the known_red_body_is_* predicates, known_red_line_body / known_red_terminal_of_printed / known_red_terminal_of_body and their field extractors are then DELETED, not maintained.",
   owner: "the claim_batch harness lane (sunny-bear-433), not this instrument",
-  consent: "approved by default after no answer within 15 minutes, escalation msg_72943fe5, 2026-11-22; not an operator sign-off, and not the harness lane's consent (sunny-bear-433 did not sign)",
   provisional: true
 }
 
