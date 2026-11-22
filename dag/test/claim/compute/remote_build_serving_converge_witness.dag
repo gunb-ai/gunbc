@@ -36,7 +36,10 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.host.user_session_runtime { user_session_runtime_dir }
+import gunbc.cli_invoke { NamedArgumentRequest }
 import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
@@ -2173,6 +2176,33 @@ fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
     RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
   ]
 }
+// The recovery doors are RUN AS THE SERVING ACCOUNT through sudo, and a door that bears host effects is
+// refused by its OWN user-work-scope gate unless that account's user manager is reachable to wrap it
+// into the capped gunbc-user-work.slice: a sudo'd command with no session gets exit 2 "cannot wrap into
+// gunbc-user-work.slice (UserSessionAbsent)" from the seed (src/v1/stage0/src/cli_run/user_work_scope.rs)
+// before it reads a seat — which is how the first srv1 live proof refused. GREEN: the door argv binds
+// the account's OWN session environment (gunbc.host.user_session_runtime) beside the workspace root —
+// one contiguous env-prefix block ahead of the door — so the engine wraps the door into the slice this
+// converge installs and caps, instead of skipping the bound.
+test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => match converge_gunbc_door_argv(
+      d: d,
+      function: "compute_recover_catalog_cli",
+      arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }],
+      runtime_dir: user_session_runtime_dir(uid: 999)
+    ) {
+      Absent => false
+      Present { value: argv } => {
+        let words = join(argv, " ")
+        let bindings = concat(concat(concat(concat(concat(gunbc_workspace_root_env_name, "="), d.checkout_dir as String), " XDG_RUNTIME_DIR=/run/user/999"), " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/999/bus"), " ")
+        string_contains(s: words, pattern: bindings) && string_contains(s: words, pattern: "compute_recover_catalog_cli")
+      }
+    }
+  }
+}
+
 test fn converge_order_preserves_every_action_kind() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
