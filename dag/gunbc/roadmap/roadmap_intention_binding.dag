@@ -39,6 +39,7 @@ data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
+data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
@@ -51,6 +52,9 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "v2-uncontested-families-renamed", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
   serves(node: "v2-extdeps-reconciled", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
   serves(node: "v2-namespace-dissolved", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 6),
+  // gunbc.plans.claim_execution_consolidation: layer is the edge depth.
+  serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
+  serves(node: "claim-entrypoints-cutover", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 1),
   // gunbc.plans.names_without_imports, section 3.
   serves(node: "namespace-occurrence-transport", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-binding-kernel", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
@@ -167,6 +171,7 @@ type IntentionTerminals {
 }
 
 data intention_terminals: List<IntentionTerminals> = [
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },

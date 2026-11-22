@@ -15,6 +15,9 @@ import gunbc.compute.remote_build {
 import gunbc.compute.remote_build_hosts {
   remote_build_serving_hosts, remote_build_serving_candidate_hosts,
 }
+import gunbc.compute.test_run {
+  snapshot_commit_tree_args, compute_snapshot_author_name, compute_snapshot_author_email,
+}
 import gunbc.compute.remote_build_client {
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
   remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean,
@@ -251,4 +254,19 @@ test fn an_unrostered_host_pin_is_refused_and_walks_nothing() -> Bool {
         p == "srv-not-a-rostered-host" && count(remote_build_pinned_candidates(pin: pin)) == 0
     }
   }
+}
+
+// The snapshot commit carries its identity IN THE ARGV, not from the box. A runner with no git config
+// at all (GitHub-hosted runner, run 45003889136: 'empty ident name (for <runner@...>) not allowed')
+// dies in the snapshot before a byte is sent, and ambient config is also forgeable input on shared
+// boxes. The `-c user.name=` / `-c user.email=` pair rides the commit-tree invocation itself, before
+// the subcommand; this pins the shape AND the modeled values.
+test fn the_snapshot_commit_argv_carries_its_identity_not_the_box_s() -> Bool {
+  snapshot_commit_tree_args(tree: "TREE", message: "msg") ==
+    [
+      "-c", join(["user.name=", compute_snapshot_author_name], ""),
+      "-c", join(["user.email=", compute_snapshot_author_email], ""),
+      "commit-tree", "TREE", "-p", "HEAD", "-m", "msg",
+    ]
+  && compute_snapshot_author_email == "snapshot@compute.gunbc.invalid"
 }
