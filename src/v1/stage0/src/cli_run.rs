@@ -20676,12 +20676,13 @@ pub fn run_claim_route(
         floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
             .map_err(|refusal| refusal.rendered())?;
     let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
-    // THE SELECTED CLAIM IDENTITIES ARE ESTABLISHED ONCE. An identity is its module path and
-    // its function; if discovery enrolls one under two entries, it is enrolled under the entry
-    // that first carried it and every later naming is dropped, so the route owes exactly one
-    // outcome per identity -- and a second outcome for A can never stand in for a missing B.
-    let mut enrolled: std::collections::HashSet<(String, String)> =
-        std::collections::HashSet::new();
+    // THE ONE FOLD IS THE SINGLE AUTHORITY OVER IDENTITY UNIQUENESS -- the producer does NOT dedup.
+    // Every selected discovery row is enrolled as-is; if discovery names one claim under two entries,
+    // BOTH reach `claim_route_fold`, which drops the duplicate and fails the run closed as
+    // `SubjectUnreached` (fail_closed: a silent drop here would be an uncounted degradation, and a
+    // second outcome for A can never stand in for a missing B). The route owes exactly one outcome per
+    // identity BY THE FOLD'S REFUSAL, not by a producer-side `continue` that hides the discovery
+    // defect. In the normal case each identity is enrolled once, so this changes nothing.
     for row in rows {
         let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
             return Err(format!(
@@ -20691,9 +20692,6 @@ pub fn run_claim_route(
             ));
         };
         if !claim_selected(module_path, &row.function) {
-            continue;
-        }
-        if !enrolled.insert((module_path.clone(), row.function.clone())) {
             continue;
         }
         match groups.last_mut() {
