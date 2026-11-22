@@ -33,6 +33,8 @@ data a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on: RecurringFail
 
     "THE OTHER HALF, WHICH IS MINE AND NOT THAT MODULE'S: nothing on the read side refuses an untagged member. A host may sit in the fleet's inventories -- hardware, units, runner slot, memory envelope all present and correct -- while being unreachable by the identity those rows assume. The identity axis of gunbc.plans.desired_state_follows_the_machine is where that is closed: per host, read the node's own tags and the fingerprint it answers with, and refuse admission where they do not match what the model claims.",
 
+    "THE SPECIMEN HAS SINCE MOVED, AND THE ROW MOVES WITH IT (2026-11-21, gunbc.design_ruling::butch_tailnet_join_is_operator_handled_2026_11_21): asked whether butch's join waits on the modelled join route (PR 16820, itself held behind the fleet-converge budget question), the operator said, verbatim, \"I will do the tailnet join + engine retirement now\", and then, verbatim, \"but you'll need to record/model that in the repo\". Butch joins by hand, deliberately, and the repository owes the model the RESULT -- that host's tailnet identity as its fleet anchor -- grounded in reads of the host, never in that row. This sharpens rather than softens the ceiling below: the guarantee was never 'membership arrives only through the route' (a hand-join is legitimate, expected, and now ruled); it is that a hand-joined member is READ, and one carrying no fleet tag is refused by every judgment that relies on the grant. That is the identity axis, not the route.",
+
     "RUNG, CEILING, AND WHY NOT HIGHER THAN IT IS: found at Mitigatable (re-join the node through the route, or tag it). The ceiling is StructurallyGuaranteed because an untagged fleet member can be made unnameable: if membership is only ever granted by the route that carries the tag, and the reach judgment refuses rather than guesses when a member carries no tag, the state has no route in. It is NOT StructurallyImpossible: an operator can always run `tailscale up` by hand on a host, and this repository does not own the operator's keyboard -- the guarantee is that such a host is refused, not that it cannot happen.",
 
     "NEXT TRIGGER: the per-host identity read of gunbc.plans.desired_state_follows_the_machine running over both the build and serving rosters and refusing a member outside every grant -- or any further host found reachable-by-ping and refused-by-grant, which is the discovery this row was written from.",
@@ -41,5 +43,6 @@ data a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on: RecurringFail
   evidence: [
     DeclarationRef { module_path: "gunbc.tailscale_join_converge", decl_name: "tailscale_join_converge_mode", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "enrolled_fingerprint_for", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "butch_tailnet_join_is_operator_handled_2026_11_21", field: WholeDeclaration },
   ]
 }
