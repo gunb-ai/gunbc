@@ -110,6 +110,161 @@ fn test_operand_set_form_refusal_rendered(operand: String) -> String {
   )
 }
 
+// THE BATCH IS SUPPLIED, NOT DERIVED, AND THE TWO NO-WIDENING OBLIGATIONS SIT ON DIFFERENT SIDES.
+//
+// `gunbc.plans.claim_execution_consolidation` §2 line 25: "One invocation runs an exact supplied batch. `gunbc test`
+// accepts several operands and runs exactly the claims they denote, in one process ... Overlapping operands select each
+// claim identity once. No caller widens a sparse request to `:all` or a subtree to fit the interface, and none spawns
+// one process per claim." Three facts decide where each half of that sentence is enforced, and getting them apart is
+// the point of this fold:
+//
+//   * THE ROUTE ADMITS SET FORMS. §1 line 15 gives the interface as `gunbc test <target-pattern>...`, and a pattern
+//     that denotes many claims is a legitimate request -- `//test/claim/...` means exactly the claims under it. So a
+//     fold that refused subtree forms would be refusing something the plan asks for.
+//   * `TestOperandSetForm` CANNOT SERVE AS A WIDENING GUARD even if one were wanted: it fires only when the set form
+//     lies OUTSIDE both universes. A subtree inside the claim universe is admitted as `TestOperandClaimRoute` and
+//     carried to the executor, which selects the discovered claims the pattern contains. A reviewer who assumed
+//     otherwise would have a guard that never fires.
+//   * THE NO-WIDENING DUTY IS THE CALLER'S, so it is checkable where a reviewer can read it -- on each migrated argv
+//     (a caller that wants three claims passes three exact labels). The caller table of gunb-ai/gunbc#16872 is that
+//     control. It is not enforced here, and this comment says so rather than leaving the absence to be discovered.
+//
+// AN EMPTY BATCH IS ITS OWN CAUSE, AND THE FIRST REFUSAL WINS. `TestOperandsEmpty` and `TestOperandsRefused` have
+// different remedies: one says the invocation asked for nothing, the other names an operand to repair -- the state-space
+// conflation this repository keeps finding. A refusal is never overwritten by a later operand, because the first cause
+// is the one a reader can act on while the rest of the input is still in front of them. There is no "run everything"
+// fallback: `gunbc run --claim-run`'s no-`--entry` branch ran every test function in the roots, and it is deleted
+// rather than ported.
+//
+// OVERLAP IS DEDUPLICATED ON OPERAND TEXT, AND THAT IS THE WHOLE OF WHAT THIS FOLD CAN DO. Two occurrences of one
+// operand denote one claim, so the second adds nothing. Deduplication across DIFFERENT operand forms -- a subtree and
+// an exact label naming the same claim -- needs the discovered population, which lives with the executor, not with an
+// admission over text; the seed's control (gunb-ai/gunbc#16872, controls table) is the case that pins it, and this
+// layer deliberately does not claim a property it cannot see.
+type TestOperandSelection
+  = TestOperandsSelected { exact: List<Label>, native: List<TargetPattern>, claim: List<TargetPattern>, seen: List<String> }
+  | TestOperandsEmpty
+  | TestOperandsRefused { operand: String, cause: TestOperandFoldRefusal }
+
+// THE FOLD CARRIES THE AUTHORITY'S CAUSE, TYPED, WITH ONE ADDITION OF ITS OWN. `FoldPatternRefused` wraps the pattern
+// authority's own `TargetPatternRefusal` rather than paraphrasing it, for the reason given above at
+// `test_operand_refusal_rendered`. `FoldSetFormOutsideEveryUniverse` is the fold's own fact: a set form outside both
+// universes is refused by `admit_test_operand` as `TestOperandSetForm`, which carries the pattern and no cause, so the
+// fold names what it knows -- the operand, and the pattern that denoted nothing any executor enumerates.
+type TestOperandFoldRefusal
+  = FoldPatternRefused { cause: TargetPatternRefusal }
+  | FoldSetFormOutsideEveryUniverse { pattern: TargetPattern }
+
+// ONE OPERAND, ADMITTED ALONE. Every arm of `admit_test_operand` maps to exactly one arm here, with the contributing
+// item in a one-element list so `test_operands_merge` has a uniform shape to merge into an accumulator.
+fn test_operands_admit_one(
+  operand: String,
+  native_universe: TargetPattern,
+  claim_universe: TargetPattern
+) -> TestOperandSelection {
+  match admit_test_operand(operand: operand, native_universe: native_universe, claim_universe: claim_universe) {
+    TestOperandExactTarget { label: l } =>
+      TestOperandsSelected { exact: [l], native: [], claim: [], seen: [operand] }
+    TestOperandNativeRoute { pattern: p } =>
+      TestOperandsSelected { exact: [], native: [p], claim: [], seen: [operand] }
+    TestOperandClaimRoute { pattern: p } =>
+      TestOperandsSelected { exact: [], native: [], claim: [p], seen: [operand] }
+    TestOperandSetForm { pattern: p } =>
+      TestOperandsRefused { operand: operand, cause: FoldSetFormOutsideEveryUniverse { pattern: p } }
+    TestOperandRefused { operand: o, cause: c } =>
+      TestOperandsRefused { operand: o, cause: FoldPatternRefused { cause: c } }
+  }
+}
+
+// A refusal absorbs everything: once a batch is refused, no later operand can make it admissible, and the located cause
+// stays the one the reader sees.
+fn test_operands_merge(acc: TestOperandSelection, next: TestOperandSelection) -> TestOperandSelection {
+  match acc {
+    TestOperandsRefused { operand: o, cause: c } => TestOperandsRefused { operand: o, cause: c }
+    TestOperandsEmpty => next
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } => match next {
+      TestOperandsSelected { exact: e2, native: n2, claim: c2, seen: s2 } => TestOperandsSelected {
+        exact: fold(e2, init: e, f: (a1, x) => append(a1, x)),
+        native: fold(n2, init: n, f: (a2, x) => append(a2, x)),
+        claim: fold(c2, init: c, f: (a3, x) => append(a3, x)),
+        seen: fold(s2, init: s, f: (a4, x) => append(a4, x))
+      }
+      TestOperandsEmpty => TestOperandsSelected { exact: e, native: n, claim: c, seen: s }
+      TestOperandsRefused { operand: o, cause: c2 } => TestOperandsRefused { operand: o, cause: c2 }
+    }
+  }
+}
+
+// THE BATCH, ADMITTED. Total over the operand list, with no reach for a population or a row: `native_universe` and
+// `claim_universe` stay parameters for the reason stated at the top of this module (a fold that pulled in the lane's own
+// rows would be checkable only against a transcription of them, which is the change detector DESIGN's oracle rule
+// rejects). `TestOperandsSelected.seen` is the fold's bookkeeping for the overlap rule and carries no meaning after
+// admission.
+fn admit_test_operands(
+  operands: List<String>,
+  native_universe: TargetPattern,
+  claim_universe: TargetPattern
+) -> TestOperandSelection {
+  if length(operands) == 0 {
+    TestOperandsEmpty
+  } else {
+    fold(
+      operands,
+      init: TestOperandsSelected { exact: [], native: [], claim: [], seen: [] },
+      f: (acc, operand) => match acc {
+        TestOperandsRefused { operand: o, cause: c } => TestOperandsRefused { operand: o, cause: c }
+        TestOperandsEmpty =>
+          test_operands_admit_one(operand: operand, native_universe: native_universe, claim_universe: claim_universe)
+        TestOperandsSelected { exact: e, native: n, claim: c, seen: s } =>
+          if any(s, t => t == operand) {
+            TestOperandsSelected { exact: e, native: n, claim: c, seen: s }
+          } else {
+            test_operands_merge(
+              acc: acc,
+              next: test_operands_admit_one(
+                operand: operand, native_universe: native_universe, claim_universe: claim_universe
+              )
+            )
+          }
+      }
+    )
+  }
+}
+
+// WHICH BATCH A SELECTION IS, DECIDED FROM WHAT IT CONTAINS RATHER THAN FROM A SPELLING. The option admissions below
+// (`admit_test_execution_mode`, `admit_test_source_roots`) refuse on this, and the refusal must name a batch that
+// exists: an option belonging to the claim route is refused on a native batch, an instrument batch, or a batch that
+// mixes the two -- mixing is not something the plan asks for, so it is refused rather than silently routed to whichever
+// executor would take part of it.
+type TestBatchRoute
+  = ClaimBatch
+  | NativeBatch
+  | InstrumentBatch
+  | MixedBatch { native: Int, claim: Int, instrument: Int }
+
+fn test_selection_batch_route(selection: TestOperandSelection) -> TestBatchRoute {
+  match selection {
+    // An empty batch has no route, and no option can be admitted onto nothing: it reports as the mixed/none case so the
+    // option admission refuses before anything is evaluated.
+    TestOperandsEmpty => MixedBatch { native: 0, claim: 0, instrument: 0 }
+    TestOperandsRefused { operand: o, cause: c } => MixedBatch { native: 0, claim: 0, instrument: 0 }
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } =>
+      if length(n) > 0 && (length(c) > 0 || length(e) > 0) {
+        MixedBatch { native: length(n), claim: length(c), instrument: length(e) }
+      } else if length(c) > 0 && (length(n) > 0 || length(e) > 0) {
+        MixedBatch { native: length(n), claim: length(c), instrument: length(e) }
+      } else if length(n) > 0 {
+        NativeBatch
+      } else if length(c) > 0 {
+        ClaimBatch
+      } else if length(e) > 0 {
+        InstrumentBatch
+      } else {
+        MixedBatch { native: 0, claim: 0, instrument: 0 }
+      }
+  }
+}
+
 // A CLAIM-ROOT SOURCE THE ROUTE CANNOT READ IS NO OBSERVATION, AND ITS CAUSE IS NOT A TYPO'S.
 //
 // `gunbc test //test/claim/x:c` selects a claim by the module name a file declares, and paths follow
