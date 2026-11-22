@@ -34,7 +34,7 @@ import gunbc.compute.remote_build_serving_setup {
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
 import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
@@ -2059,7 +2059,7 @@ test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
 // cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
 // an unmet identity refuses the recovery alongside it.
 
-fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading) -> ServingObserved {
+fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading, checkout_rev: String) -> ServingObserved {
   serving_observed_from_reads(
     elevation: est_elevation(), account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
@@ -2067,7 +2067,7 @@ fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: Obs
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
     scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
-    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(checkout_rev) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
     serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
     serve_identity: sidecar,
@@ -2081,7 +2081,7 @@ fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: Obs
 }
 
 fn plan_census(d: RemoteBuildServingDesired, census: RecoverCatalogLegReading, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
-  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census, checkout_rev: pin_rev()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
 }
 
 fn count_recover(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecoverStaleSeat { reference: _ } => true  _ => false })) }
@@ -2102,6 +2102,25 @@ test fn a_stale_seat_plans_the_recovery_when_identity_is_met() -> Bool {
       let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegStale { reference: "gunbc-build.job#1" as NonEmptyStr }] }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
       let ws = plan_writes(plan)
       plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 1 && count_identity(ws) == 0 && planned_recover_reference(ws) == "gunbc-build.job#1"
+    }
+  }
+}
+
+// GREEN (measured stall, srv1 run 44984397614): a checkout NOT at the dispatched revision DEFERS the
+// census — the recovery door is carried by that checkout, so it does not exist to ask. The plan carries
+// NO recovery write, is neither refused nor unhandled (the assessment stays reportable, not
+// indeterminate), and the checkout detach that CARRIES the door is written this run; the next assessment
+// asks the door. The census is never fabricated as empty, and the deferral is never dressed as an
+// unknown — an unknown would dominate the assessment, plan nothing, and strand the door forever.
+test fn a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let observed = fully_matched_census(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded(pin_sha()) }, census: RecoverCatalogLegDeferred { reason: "the checkout is not at the pin" }, checkout_rev: "0000000000000000000000000000000000000000")
+      let plan = converge_plan(d: d, a: serving_assess(d: d, o: observed, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 0
+        && length(filter(ws, w => string_contains(s: converge_action_key(w), pattern: "checkout:"))) == 1
     }
   }
 }

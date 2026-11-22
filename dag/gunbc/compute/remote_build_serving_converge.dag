@@ -31,7 +31,7 @@ import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_o
 // the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
 // shape every host-side door run shares. The leg itself decides nothing.
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegUnknown, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
@@ -583,6 +583,24 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationEstablished { observed: false } => Absent
     _ => Present { value: serving_leg_checkout_revision(item: "checkout.revision", target: target, context: context, dir: d.checkout_dir, owner: d.account_name) }
   }
+  // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists. The recovery doors
+  // (compute_recover_catalog_cli and its two apply siblings) live in the checkout's dag; a checkout not
+  // yet detached at the dispatched revision does not contain them, and asking its stale tree answers
+  // "function compute_recover_catalog_cli is not in the loaded entry" — measured on srv1, run
+  // 44984397614, 2026-11-22. An unknown census dominates the assessment (fail_closed), and an
+  // indeterminate assessment plans nothing — so asking a door that cannot exist would strand the very
+  // checkout write that carries it, forever. The leg therefore DEFERS the census with the reason when the
+  // checkout is not established AT the pin: no door runs, the plan carries no recovery write, the receipt
+  // says so, and the next assessment — with the checkout detached at the pin — asks the door. Never a
+  // fabricated empty census, and never an unknown for a door that was simply not asked.
+  let seat_census = match checkout_revision_value {
+    Present { value: ObservationEstablished { observed: v } } => match v == pin.dispatched_revision {
+      true => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
+      false => RecoverCatalogLegDeferred { reason: join(["the serving checkout stands at ", v, ", not the dispatched revision ", pin.dispatched_revision, "; the recovery door lives in the checkout, so the census waits for the assessment after the checkout write detaches it"], "") }
+    }
+    Absent => RecoverCatalogLegDeferred { reason: join(["the serving checkout's revision is not established against the dispatched revision ", pin.dispatched_revision, "; the census door is asked only from a checkout known to carry it"], "") }
+    Present { value: ObservationRefused { cause: c } } => RecoverCatalogLegDeferred { reason: join(["the serving checkout's revision read was refused (", c.cause, "), so the census door — which that checkout carries — cannot be known to exist"], "") }
+  }
   // A3: the file-mode legs, gated the same way — stat runs only under a confirmed-present file. The
   // authorized_keys reader mints the established empty string exactly when the file was confirmed
   // absent, so established-non-empty IS the subject; a refused content read runs the stat anyway.
@@ -657,7 +675,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
-    seat_census: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid),
+    seat_census: seat_census,
   )
   ServingObservedView { desired: d, observed: o }
 }
@@ -1281,6 +1299,12 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // classify step refuses rather than silently dropping the write.
     StaleSeatDetected { reference: ref } =>
       ConvergeDraft { writes: concat([RecoverStaleSeat { reference: ref }], acc.writes), unhandled: acc.unhandled }
+    // The census was deferred (the checkout does not carry the door yet): NO recovery write, and NOT
+    // unhandled — there is nothing for a human to do; the checkout write this same plan carries is the
+    // remedy, and the next assessment asks the door. It can never stand alone as the only divergence:
+    // deferring means the checkout is not at the pin, which is itself the checkout drift that plans the
+    // detach (an unreadable revision is an unknown, which indeterminate-blocks before this fold).
+    StaleSeatCensusDeferred { reason: _ } => acc
   }
 }
 
