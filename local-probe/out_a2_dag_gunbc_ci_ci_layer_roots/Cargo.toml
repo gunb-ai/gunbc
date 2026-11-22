@@ -1,0 +1,36 @@
+[package]
+name = "v1_compiled"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+im = { version = "15.1", features = ["serde"] }
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+libc = "0.2"
+stacker = "0.1"
+lazy_static = "1"
+ureq = { version = "2", features = ["json"] }
+v2-emitted-runtime = { path = "src/v1/v2-emitted-runtime" }
+v2-emitted-policy-unit-0 = { path = "src/v1/v2-emitted-policy-unit-0" }
+v2-emitted-policy-unit-1 = { path = "src/v1/v2-emitted-policy-unit-1" }
+v2-emitted-policy-unit-2 = { path = "src/v1/v2-emitted-policy-unit-2" }
+v2-emitted-policy-unit-3 = { path = "src/v1/v2-emitted-policy-unit-3" }
+v2-emitted-policy-unit-4 = { path = "src/v1/v2-emitted-policy-unit-4" }
+v2-emitted-policy-unit-5 = { path = "src/v1/v2-emitted-policy-unit-5" }
+v2-emitted-policy-unit-6 = { path = "src/v1/v2-emitted-policy-unit-6" }
+
+[workspace]
+resolver = "2"
+members = [
+    "src/v1/v2-emitted-runtime",
+    "src/v1/v2-emitted-policy-unit-0",
+    "src/v1/v2-emitted-policy-unit-1",
+    "src/v1/v2-emitted-policy-unit-2",
+    "src/v1/v2-emitted-policy-unit-3",
+    "src/v1/v2-emitted-policy-unit-4",
+    "src/v1/v2-emitted-policy-unit-5",
+    "src/v1/v2-emitted-policy-unit-6",
+]
