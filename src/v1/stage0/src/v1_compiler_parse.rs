@@ -101,7 +101,6 @@ pub use crate::v1_std_core::{
     transport_auth_basic_key, transport_body_key, transport_headers_key, transport_method_key,
     transport_path_key, transport_path_template_key, transport_query_key,
     transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
-    transport_wall_deadline_key,
     type_param_kind_property_name, undeclared_transport_node, unlocated_cause_phrase,
     variant_node_fields, variant_node_name_at, with_required_cardinality, Cardinality,
     CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData, ExprErrorKind,
