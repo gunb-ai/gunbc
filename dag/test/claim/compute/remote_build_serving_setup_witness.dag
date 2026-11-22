@@ -19,6 +19,9 @@ import std.goal_assessment {
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7 }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegEstablished,
+}
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, serving_ledger_service_user,
   serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
@@ -275,7 +278,8 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
     user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: converged_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn has_deviation(a: ServingAssessment, item: String) -> Bool {
@@ -352,7 +356,8 @@ test fn wrong_uid_diverges_the_account() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "account.uid") && serving_assessment_runnable(a: a)
     }
@@ -384,7 +389,8 @@ test fn group_without_the_account_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "group.members")
     }
@@ -416,7 +422,8 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "authorized_keys.forced_command")
     }
@@ -451,7 +458,8 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && serving_assessment_terminal(a: a) == "drift" && has_deviation(a: a, item: "authorized_keys.forced_command")
     }
@@ -486,7 +494,8 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && !is_indeterminate(a) && serving_assessment_runnable(a: a) && has_deviation(a: a, item: "store.root")
     }
@@ -525,7 +534,8 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a) && !is_diverged(a) && !serving_assessment_settled(a: a)
         && serving_assessment_runnable(a: a) == false && serving_assessment_terminal(a: a) == "indeterminate"
@@ -560,7 +570,8 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a) && serving_assessment_runnable(a: a) == false
     }
@@ -594,7 +605,8 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let r = serving_assessment_receipt_text(a: serving_assess(d: d, o: o, pin: pin_ok()))
       starts_with(s: r, prefix: "remote-build-serving-plan: indeterminate")
         && starts_with(s: r, prefix: "remote-build-serving-plan: drift") == false
@@ -677,7 +689,8 @@ fn reads_over(
     user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: ledger,
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // the settled baseline: pin legs established to the pin, ledger every row matched.
@@ -907,7 +920,8 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       serving_assessment_settled(a: a)
     }
@@ -936,7 +950,8 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gunbc-build.gid")
     }
@@ -965,7 +980,8 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gid_taken")
     }
@@ -995,7 +1011,8 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gunbc-build")
         && has_deviation(a: a, item: "group.gunbc-compute")
@@ -1031,7 +1048,8 @@ test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a)
         && serving_assessment_terminal(a: a) == "indeterminate"
@@ -1066,7 +1084,8 @@ test fn refused_elevation_beats_a_real_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a) && !is_diverged(a) && serving_assessment_runnable(a: a) == false
     }
@@ -1095,7 +1114,8 @@ test fn established_elevation_still_reports_store_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "store.root")
     }
@@ -1141,7 +1161,8 @@ fn fresh_host_observed(d: RemoteBuildServingDesired) -> ServingObserved {
     target_arch: pin_arch_leg(),
     ledger_rows: absent_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // THE FRESH-HOST WITNESS: every absence is PROVEN, so the assessment is Diverged (the presence
@@ -1186,7 +1207,8 @@ fn wrong_channel_observed(dline: String, d: RemoteBuildServingDesired) -> Servin
     user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: converged_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 test fn rustup_home_with_wrong_channel_is_a_toolchain_deviation() -> Bool {
@@ -1241,7 +1263,8 @@ test fn rustup_leg_unreadable_is_an_unknown() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       match serving_assess(d: d, o: o, pin: pin_ok()) {
         GoalIndeterminate { known_deviations: _, unknowns: us } => any(non_empty_to_list(us), x => x.item == "toolchain.remediation")
         _ => false
@@ -1285,7 +1308,8 @@ test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && !serving_assessment_runnable(a: a) && has_unknown(a: a, item: "serve_binary.sha256")
     }
@@ -1320,7 +1344,8 @@ test fn unread_subject_presence_leaves_the_value_leg_unread() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && !serving_assessment_runnable(a: a)
         && has_unknown(a: a, item: "serve_binary.sha256") && has_unknown(a: a, item: "serve.binary.mode")
@@ -1356,7 +1381,8 @@ test fn present_subject_with_never_read_value_is_indeterminate() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && has_unknown(a: a, item: "serve_binary.sha256")
     }
@@ -1394,7 +1420,8 @@ test fn world_writable_authorized_keys_with_right_line_is_a_drift() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && !serving_assessment_settled(a: a) && has_deviation(a: a, item: "authorized_keys.mode")
     }
@@ -1425,7 +1452,8 @@ test fn world_writable_serve_binary_with_right_hash_is_a_drift() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && !serving_assessment_settled(a: a) && has_deviation(a: a, item: "serve.binary.mode")
     }
@@ -1458,7 +1486,8 @@ test fn declared_spellings_of_the_same_file_mode_are_settled() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       serving_assessment_settled(a: a)
     }
@@ -1491,7 +1520,8 @@ test fn unreadable_file_mode_under_present_subject_is_indeterminate() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && has_unknown(a: a, item: "authorized_keys.mode")
     }
