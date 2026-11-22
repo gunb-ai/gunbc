@@ -1,0 +1,67 @@
+module gunbc.integration_concern.filesystem_bare_name_census_cannot_separate_sibling_homonyms
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.types { CommitSha }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+// The main revision the resolve refusal was reproduced against (manager decision 2026-11-21, ad hoc
+// node adhoc-ef5256c2-9eb): an unimported `Filesystem.<op>` cleared resolve until the closure also
+// reached `std.resources`, whose resource `Filesystem` is a second candidate for the bare name.
+data filesystem_bare_name_census_sighting_revision: CommitSha = "28eb4ff01d9d390537af77ced881bc49e548ccd9"
+
+// THE BARE-NAME CENSUS COLLIDES SIBLING HOMONYMS. `extdeps.filesystem.filesystem_io` declares
+// `service Filesystem` (the host file transport: Write/Read/List/Delete/LinkCreateNew, external-authority
+// anchored) and `std.resources` declares `resource Filesystem` (a capability grant: acquire/release with
+// lowercase capability ops probe/read/read_bytes/write). Both are legitimate single-authority names in
+// their own scopes; the refusal is not a meaning fork. It is the resolver's unimported-name rule: a bare
+// name is answered by a corpus-wide candidate census keyed on the leaf name, tie-broken by nearest-ancestor
+// containment, which cannot separate two declarations that live in neither the referencing module's chain
+// nor each other's. Every genuine call site uses a SERVICE op (all uppercase); the resource's lowercase
+// capability ops never appear bare, so the resource is never the intended callee -- it only collides.
+data filesystem_bare_name_census_cannot_separate_sibling_homonyms: IntegrationConcern = IntegrationConcern {
+  identity: "filesystem_bare_name_census_cannot_separate_sibling_homonyms",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"),
+    requirement: "an unimported reference to a service operation resolves to exactly the provider the author intends, so two same-named declarations in distinct scopes never render the service call ambiguous -- the plan's end state is a fully qualified reference with no bare-name pool, no ambient table, no candidate search",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+    tail: [
+      decl_ref(module_path: "std.resources", decl_name: "Filesystem"),
+    ],
+  },
+  question: "Which boundary is unjustified -- the two names, or the rule that resolves an unimported name by a leaf-name candidate census? Evidence says the rule: the two declarations are distinct contracts in distinct scopes (a transport service and a capability resource), each a legitimate single-authority name; only the bare-name census, keyed on the leaf name across the closure, makes a service call refuse. The unwritable fix is the plan's fully-qualified-reference end state that retires the corpus bare-name pool. Interim: every at-risk site binds the provider explicitly. Bounded census of CODE uses (string literals and //, block comments stripped): population 8,663 .dag files under dag/; command: for each .dag, match /(?<![A-Za-z0-9_.])Filesystem\\.[A-Z][A-Za-z0-9_]*\\(/ on the code region; at-risk when Filesystem is not a named member of an explicit import from EITHER extdeps.filesystem.filesystem_io OR std.resources. Result: 52 genuine at-risk sites (20 further matches were string/comment prose, excluded); 47 of them resolve against BOTH providers and refuse. Roadmap note (manager decision 2026-11-21): the interim binds all 51 external sites (the 52nd is the declaring module itself); 0 of them sit in the remote_build_serving_setup/converge witness closures.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: filesystem_bare_name_census_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.roadmap.roadmap_authority", decl_name: "witness_committed_fixture_bytes_are_the_encoders_own") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_launching_uid") },
+        ],
+      },
+      account: "Reproduced twice on main. (1) gunbc.compute.host_capacity: a bare Filesystem.<op> refused once its closure reached std.resources -- fixed by naming the provider (#16843). (2) test.claim.roadmap.roadmap_authority, the committed-bytes witness: the bare receiver refused with \"ambiguous reference 'Filesystem': 2 candidates: std.resources, extdeps.filesystem.filesystem_io -- qualify by containment path, alias, or rename\" (engine 28eb4ff01d9), blocking every witness that imports the module (row/frontier/presentation/hierarchy_view). The resolver's own remedy names qualification, which is exactly the direction gunbc.plans.names_without_imports is driving. 47 at-risk files reach both providers (census above); the same one-line explicit binding clears each.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+        control: Absent,
+        statement: "neither Filesystem is renamed: the transport service and the capability resource are distinct contracts in distinct scopes, each a legitimate single-authority name; the resolver's unimported-name rule is changed (or the call sites qualified), not the names",
+      },
+    ],
+    next: climbs_when(capability: "gunbc.plans.names_without_imports lands the fully-qualified-reference end state (a bare name is a lexical binder and nothing else, with no corpus bare-name pool), after which the per-site explicit bindings are removable and this refusal can no longer be written"),
+  },
+}
