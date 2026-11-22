@@ -11100,6 +11100,30 @@ impl WitnessRuntimeCause {
     }
 }
 
+/// The KIND of a panic payload, decided at the catch site where the raw `Box<dyn Any>` is still in
+/// hand. `panic_payload_text` collapses every payload to a `String` for display, so without carrying
+/// this beside the text a non-string panic (e.g. `panic_any(42u32)`) is indistinguishable from a
+/// string one once it reaches `ClaimOutcome::Panicked` -- and the route's `cause=` line field, a
+/// machine key parsers rely on, would be wrong for the non-string case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanicPayloadKind {
+    /// The payload downcast to `&str` or `String` -- the real text is on the line.
+    StringPayload,
+    /// Anything else: `panic_payload_text` substituted the placeholder, so only the panic hook's
+    /// stderr carries the message.
+    NonStringPayload,
+}
+
+impl PanicPayloadKind {
+    /// The closed cause token for the route line (a machine key; never Rust `Debug`).
+    pub fn token(self) -> &'static str {
+        match self {
+            PanicPayloadKind::StringPayload => "string_payload",
+            PanicPayloadKind::NonStringPayload => "non_string_payload",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimOutcome {
     Pass,
@@ -11196,6 +11220,7 @@ pub enum ClaimOutcome {
     /// FAILED the witness at exit 1. Could-not-measure already had a home; could-not-run did not.
     Panicked {
         payload: String,
+        payload_kind: PanicPayloadKind,
     },
     /// PLANNED, AND THE FOLD NEVER REACHED IT, because a sibling claim's unwind stopped the line.
     ///
@@ -16621,15 +16646,89 @@ pub fn seed_runner_bool_false_failure_detail(
 /// `String` respectively and nothing else does in this crate; an unrecognised payload type is
 /// named as such rather than rendered as an empty message, because a blank detail field would
 /// read as "the panic said nothing" when the truth is "this runner could not read what it said".
-fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> String {
+fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> (String, PanicPayloadKind) {
     if let Some(s) = payload.downcast_ref::<&'static str>() {
-        (*s).to_string()
+        ((*s).to_string(), PanicPayloadKind::StringPayload)
     } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
+        (s.clone(), PanicPayloadKind::StringPayload)
     } else {
-        "panic payload is not a string; see the panic hook's stderr line for the message and \
-         location"
-            .to_string()
+        (
+            "panic payload is not a string; see the panic hook's stderr line for the message and \
+             location"
+                .to_string(),
+            PanicPayloadKind::NonStringPayload,
+        )
+    }
+}
+
+/// THE PRODUCTION PANIC CLASSIFIER. `catch_unwind` hands back a `Box<dyn Any + Send>`; the payload
+/// KIND is decided on the Box's CONTENTS, not the Box itself. Passing `&payload` would coerce to
+/// `&dyn Any` pointing AT THE BOX, whose concrete type is neither `&str` nor `String`, so every
+/// string panic would be mislabelled `non_string_payload` with the placeholder text (the pre-existing
+/// defect this closes). `payload.as_ref()` dereferences to the contained `dyn Any`, so the downcasts
+/// see the real payload. `run_claim_evaluation` maps the caught Box through THIS function; the control
+/// feeds a real `catch_unwind` Box through the same function.
+pub(crate) fn classify_claim_panic(
+    payload: Box<dyn std::any::Any + Send>,
+) -> (String, PanicPayloadKind) {
+    panic_payload_text(payload.as_ref())
+}
+
+#[cfg(test)]
+mod panic_payload_kind_tests {
+    use super::*;
+
+    /// THE PRODUCER, through the production catch. Real panics run through `catch_unwind` and the
+    /// caught `Box<dyn Any + Send>` is fed to the SAME function the route uses (`classify_claim_panic`),
+    /// NOT the `panic_payload_text` helper directly -- so the bug where the catch classified the Box
+    /// rather than its contents (every string panic becoming `non_string_payload`) is caught HERE, at
+    /// the seam production actually uses. A `&'static str` and a `String` keep their text and give
+    /// `string_payload`; `panic_any(42u32)` gives `non_string_payload`. A real floor claim crashes this
+    /// way, so the label is a machine `cause=` key, not a cosmetic one.
+    #[test]
+    fn the_panic_catch_labels_each_payload_by_its_real_kind() {
+        // Silence the default panic hook so the intentional panics do not spam test stderr.
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let caught_str = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any("a borrowed message")
+        }));
+        let caught_string = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any(String::from("a real message"))
+        }));
+        let caught_u32 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any(42u32)
+        }));
+        std::panic::set_hook(prev);
+
+        // `&'static str`: the string arm, its text preserved -- NOT mislabelled non-string.
+        let (text, kind) = classify_claim_panic(caught_str.expect_err("&'static str must unwind"));
+        assert_eq!(kind, PanicPayloadKind::StringPayload);
+        assert_eq!(
+            text, "a borrowed message",
+            "the borrowed-str text is preserved"
+        );
+        assert_eq!(kind.token(), "string_payload");
+
+        // `String`: the string arm, its text preserved.
+        let (text, kind) = classify_claim_panic(caught_string.expect_err("String must unwind"));
+        assert_eq!(kind, PanicPayloadKind::StringPayload);
+        assert_eq!(text, "a real message", "the String text is preserved");
+        assert_eq!(kind.token(), "string_payload");
+
+        // A non-`String` payload: the absence of a string, placeholder text, `non_string_payload`.
+        let (text, kind) =
+            classify_claim_panic(caught_u32.expect_err("panic_any(42u32) must unwind"));
+        assert_eq!(
+            kind,
+            PanicPayloadKind::NonStringPayload,
+            "a u32 payload is not a string"
+        );
+        assert!(
+            text.contains("not a string"),
+            "the placeholder explains the absence: {text}"
+        );
+        assert_eq!(kind.token(), "non_string_payload");
     }
 }
 
@@ -16644,7 +16743,12 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
     let _ = v1_interpreter::take_raise_path();
     let evaluated = match run_claim_evaluation(ctx, function) {
         Ok(result) => result,
-        Err(payload) => return ClaimOutcome::Panicked { payload },
+        Err((payload, payload_kind)) => {
+            return ClaimOutcome::Panicked {
+                payload,
+                payload_kind,
+            }
+        }
     };
     match evaluated {
         Ok(v1_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
@@ -19171,7 +19275,7 @@ pub fn project_witness_cost_receipt(
                 // AN UNWIND IS A REFUSAL EVENT, NOT A FAILED ONE. `failed` carries a semantic
                 // verdict the claim reached; neither of these reached one, so they take the
                 // refused constructor with the fact that distinguishes them as the diagnostic.
-                ClaimOutcome::Panicked { payload } => {
+                ClaimOutcome::Panicked { payload, .. } => {
                     args.push((
                         Some("diagnostic".to_string()),
                         str_value(format!("panicked during evaluation: {payload}")),
@@ -20442,9 +20546,6 @@ fn parse_floor_discovery_producer_result(
     }
 }
 
-/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
-/// module name (read off the `module` line by the module index), which is what the claim's label
-/// is minted from (`gunbc.discovery_census` `site_label`).
 /// One member's result in the claim route -- the route's OWN outcome type, deliberately NOT a
 /// `ClaimOutcome` variant. A member either reports what the runner evaluated, or reports the typed
 /// reason its entry could not be resolved at all.
@@ -20453,9 +20554,11 @@ fn parse_floor_discovery_producer_result(
 /// documented as "planned, never reached, because a sibling claim's unwind stopped the line," with
 /// `halted_by` naming the claim whose panic stopped it -- which the floor and CI renderers read that
 /// way. A resolve refusal is not that (`gunbc.design_argument::single_authority`), so the route carries
-/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority already
-/// sets: a closure diagnostic is a finding (did not hold); a missing entry or infrastructure refusal is
-/// no observation. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
+/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority and the
+/// plan set (section 2): EVERY refusal -- a closure diagnostic, a missing entry, or an infrastructure
+/// refusal -- is the ABSENCE of an observation (unobserved), the refusal's kind staying on the line as
+/// the typed `outcome=` and its text as `detail=`. A resolve finding is not evidence the claim evaluated
+/// and did not hold. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimMemberOutcome {
     /// The runner reached the claim and evaluated it.
@@ -20486,6 +20589,21 @@ pub fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
     }
 }
 
+/// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
+/// module name (read off the `module` line by the module index), which is what the claim's label
+/// is minted from (`gunbc.discovery_census` `site_label`).
+/// One member's result in the claim route -- the route's OWN outcome type, deliberately NOT a
+/// `ClaimOutcome` variant. A member either reports what the runner evaluated, or reports the typed
+/// reason its entry could not be resolved at all.
+///
+/// Reusing `ClaimOutcome::NotAttempted` for a resolve failure would give one name two meanings: it is
+/// documented as "planned, never reached, because a sibling claim's unwind stopped the line," with
+/// `halted_by` naming the claim whose panic stopped it -- which the floor and CI renderers read that
+/// way. A resolve refusal is not that (`gunbc.design_argument::single_authority`), so the route carries
+/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority already
+/// sets: a closure diagnostic is a finding (did not hold); a missing entry or infrastructure refusal is
+/// no observation. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClaimRouteMember {
     pub module_path: String,
     pub function: String,
@@ -20602,12 +20720,13 @@ pub fn run_claim_route(
         floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
             .map_err(|refusal| refusal.rendered())?;
     let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
-    // THE SELECTED CLAIM IDENTITIES ARE ESTABLISHED ONCE. An identity is its module path and
-    // its function; if discovery enrolls one under two entries, it is enrolled under the entry
-    // that first carried it and every later naming is dropped, so the route owes exactly one
-    // outcome per identity -- and a second outcome for A can never stand in for a missing B.
-    let mut enrolled: std::collections::HashSet<(String, String)> =
-        std::collections::HashSet::new();
+    // THE ONE FOLD IS THE SINGLE AUTHORITY OVER IDENTITY UNIQUENESS -- the producer does NOT dedup.
+    // Every selected discovery row is enrolled as-is; if discovery names one claim under two entries,
+    // BOTH reach `claim_route_fold`, which drops the duplicate and fails the run closed as
+    // `SubjectUnreached` (fail_closed: a silent drop here would be an uncounted degradation, and a
+    // second outcome for A can never stand in for a missing B). The route owes exactly one outcome per
+    // identity BY THE FOLD'S REFUSAL, not by a producer-side `continue` that hides the discovery
+    // defect. In the normal case each identity is enrolled once, so this changes nothing.
     for row in rows {
         let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
             return Err(format!(
@@ -20617,9 +20736,6 @@ pub fn run_claim_route(
             ));
         };
         if !claim_selected(module_path, &row.function) {
-            continue;
-        }
-        if !enrolled.insert((module_path.clone(), row.function.clone())) {
             continue;
         }
         match groups.last_mut() {
@@ -20633,10 +20749,12 @@ pub fn run_claim_route(
         // failure for ONE entry is a LOCATED outcome, not a fatal error: the claims discovery
         // enrolled under it are known identities (from discovery's own rows, never invented here),
         // so each gets exactly one outcome carrying the refusal and the OTHER entries still run.
-        // The fold then reads the refusal by the rule the resolve authority already sets: a closure
-        // diagnostic is a finding (did not hold, exit 1); a missing entry or infrastructure refusal
-        // is no observation (unobserved, exit 2). Only a source that cannot be enumerated AT ALL
-        // still refuses the whole route (above) -- never an unobserved row for a claim we cannot name.
+        // The fold then reads the refusal by the rule the resolve authority and the plan (section 2)
+        // set: EVERY refusal kind -- closure diagnostic, missing entry, or infrastructure refusal -- is
+        // the ABSENCE of an observation (unobserved; exit 2 on its own, its kind on the line as
+        // `outcome=`). A resolve finding is not a claim that evaluated and did not hold. Only a source
+        // that cannot be enumerated AT ALL still refuses the whole route (above) -- never an unobserved
+        // row for a claim we cannot name.
         let resolved = match resolve_entry_with_index_typed(&index, &entry) {
             Err(refusal) => Err(refusal),
             Ok((graph, source_indices)) => match closure_subject_for_entry(&index, &entry) {

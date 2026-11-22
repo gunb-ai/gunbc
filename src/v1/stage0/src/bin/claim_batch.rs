@@ -442,7 +442,7 @@ fn report_outcome(
         // AN UNWIND IS ITS OWN LINE, NOT A FAIL. `FAIL` asserts the witness answered false;
         // the host unwound here, so the claim answered nothing. Reported as a failed run
         // (`any_failed`) because the line must still stop — what changes is what the line says.
-        ClaimOutcome::Panicked { payload } => {
+        ClaimOutcome::Panicked { payload, .. } => {
             println!(
                 "PANICKED {} (the host unwound during evaluation: {})",
                 function, payload
@@ -563,7 +563,7 @@ fn outcome_row_facts(
             }
             .to_string(),
         ),
-        ClaimOutcome::Panicked { payload } => (payload.clone(), String::new(), String::new()),
+        ClaimOutcome::Panicked { payload, .. } => (payload.clone(), String::new(), String::new()),
         ClaimOutcome::NotAttempted { halted_by } => {
             (halted_by.clone(), String::new(), String::new())
         }
@@ -1494,7 +1494,9 @@ mod cli_path_resolution_wiring_tests {
     }
 
     fn one_of_every_claim_outcome() -> Vec<v1_compiler::cli_run::ClaimOutcome> {
-        use v1_compiler::cli_run::{BudgetKind, ClaimOutcome, WitnessRuntimeCause};
+        use v1_compiler::cli_run::{
+            BudgetKind, ClaimOutcome, PanicPayloadKind, WitnessRuntimeCause,
+        };
         use v1_compiler::v1_interpreter::{EffectRefusalGround, RaisePath};
         vec![
             ClaimOutcome::Pass,
@@ -1525,6 +1527,7 @@ mod cli_path_resolution_wiring_tests {
             },
             ClaimOutcome::Panicked {
                 payload: "p".into(),
+                payload_kind: PanicPayloadKind::StringPayload,
             },
             ClaimOutcome::NotAttempted {
                 halted_by: "h".into(),
