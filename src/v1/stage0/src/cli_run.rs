@@ -20559,6 +20559,12 @@ pub fn run_claim_route(
         floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
             .map_err(|refusal| refusal.rendered())?;
     let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
+    // THE SELECTED CLAIM IDENTITIES ARE ESTABLISHED ONCE. An identity is its module path and
+    // its function; if discovery enrolls one under two entries, it is enrolled under the entry
+    // that first carried it and every later naming is dropped, so the route owes exactly one
+    // outcome per identity -- and a second outcome for A can never stand in for a missing B.
+    let mut enrolled: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
     for row in rows {
         let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
             return Err(format!(
@@ -20570,6 +20576,9 @@ pub fn run_claim_route(
         if !claim_selected(module_path, &row.function) {
             continue;
         }
+        if !enrolled.insert((module_path.clone(), row.function.clone())) {
+            continue;
+        }
         match groups.last_mut() {
             Some((entry, _, functions)) if *entry == row.entry => functions.push(row.function),
             _ => groups.push((row.entry, module_path.clone(), vec![row.function])),
@@ -20577,25 +20586,50 @@ pub fn run_claim_route(
     }
     let mut members = Vec::new();
     for (entry, module_path, functions) in groups {
-        let (graph, source_indices) = resolve_entry_with_index(&index, &entry)
-            .map_err(|e| format!("resolve {entry}: {e}"))?;
-        let closure_subject = closure_subject_for_entry(&index, &entry)
-            .map_err(|e| format!("closure subject {entry}: {e}"))?;
-        let ctx = make_eval_context(
-            &graph,
-            source_indices,
-            v1_interpreter::ExecutionMode::Hermetic,
-        );
-        for function in functions {
-            let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
-            v1_interpreter::eval_call_memo_frame_exit(&ctx);
-            members.push(ClaimRouteMember {
-                module_path: module_path.clone(),
-                function,
-                outcome,
-                eval_steps: receipt.eval_steps,
-                cpu_ms: receipt.cpu_nanos / 1_000_000,
-            });
+        // Resolve this entry's reference closure ONCE. A resolve failure for ONE entry is a
+        // LOCATED outcome, not a fatal error: the claims discovery enrolled under it are known
+        // identities (they came from discovery's own rows, never invented here), so each gets
+        // exactly one unobserved outcome and the OTHER entries still run. Only when a claim's
+        // SOURCE cannot be enumerated at all does the route refuse (above): that is a source or
+        // selection failure, not something to paper over with an unobserved row for a claim we
+        // cannot name.
+        let resolved = match resolve_entry_with_index(&index, &entry) {
+            Err(e) => Err(format!("resolve {entry}: {e}")),
+            Ok((graph, source_indices)) => match closure_subject_for_entry(&index, &entry) {
+                Err(e) => Err(format!("closure subject {entry}: {e}")),
+                Ok(closure_subject) => Ok(((graph, source_indices), closure_subject)),
+            },
+        };
+        match resolved {
+            Err(cause) => {
+                for function in functions {
+                    members.push(ClaimRouteMember {
+                        module_path: module_path.clone(),
+                        function,
+                        outcome: ClaimOutcome::NotAttempted { halted_by: cause.clone() },
+                        eval_steps: 0,
+                        cpu_ms: 0,
+                    });
+                }
+            }
+            Ok(((graph, source_indices), closure_subject)) => {
+                let ctx = make_eval_context(
+                    &graph,
+                    source_indices,
+                    v1_interpreter::ExecutionMode::Hermetic,
+                );
+                for function in functions {
+                    let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
+                    v1_interpreter::eval_call_memo_frame_exit(&ctx);
+                    members.push(ClaimRouteMember {
+                        module_path: module_path.clone(),
+                        function,
+                        outcome,
+                        eval_steps: receipt.eval_steps,
+                        cpu_ms: receipt.cpu_nanos / 1_000_000,
+                    });
+                }
+            }
         }
     }
     Ok(members)
