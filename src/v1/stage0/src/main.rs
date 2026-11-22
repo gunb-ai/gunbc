@@ -46,15 +46,40 @@ enum RetainedCommands {
         measured_root_demands: Option<String>,
     },
 
-    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
-    /// report the standing its own producer answers in. An exact label routes to its
-    /// bound producer. A set form is admitted and refused with status 2: it runs only
-    /// through the native test route, never the interpreter. An unadmitted form or an
-    /// unknown target refuses.
+    /// Run a BATCH of targets named by absolute labels or bazel-style target PATTERNS,
+    /// and report the standing their own producers answer in. Several operands run
+    /// exactly the claims they denote, in ONE process; overlapping operands select each
+    /// claim identity once. An exact label outside the claim universes routes to its bound
+    /// producer (one operand only). A set form inside the claim universes selects the
+    /// discovered claims it contains; a set form outside them refuses, as does a batch that
+    /// mixes routes. With no mode flag the batch runs hermetically.
     Test {
-        /// Absolute label of one target, or a pattern denoting a set.
-        #[arg(value_name = "TARGET_PATTERN")]
-        target: String,
+        /// Absolute labels of the targets to run, or patterns denoting sets.
+        #[arg(value_name = "TARGET_PATTERN", required = true)]
+        operands: Vec<String>,
+
+        /// Run hermetically: host effects are refused. This is the DEFAULT, so spelling it
+        /// changes nothing; it exists so a caller may state what it relies on.
+        #[arg(long)]
+        hermetic: bool,
+
+        /// Run wet: the claims' host effects execute.
+        #[arg(long)]
+        wet: bool,
+
+        /// Run in record mode: effects execute and fixtures are written to --fixture-store.
+        #[arg(long)]
+        record: bool,
+
+        /// Fixture store directory. A store NAMES the mode it belongs to: it is accepted with
+        /// --record (write) or --hermetic (replay), and refused with neither.
+        #[arg(long)]
+        fixture_store: Option<String>,
+
+        /// The corpus the batch's labels are looked up in, REPLACING the default
+        /// witness-layer roots. Claim batches only: any other route refuses it.
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
     },
 
     /// Execute a .dag program directly (interpreter)
@@ -410,7 +435,20 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
     }
 
     fn invoke_bound_target_producer(&self, target: String) -> ! {
-        retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
+        // The producer hand-off names ONE target and asks for no options: the default corpus, the
+        // default (hermetic) mode. A batch or a spelled mode is a caller's request, not something
+        // this hand-off invents.
+        retained_dispatch(
+            RetainedCommands::Test {
+                operands: vec![target],
+                hermetic: false,
+                wet: false,
+                record: false,
+                fixture_store: None,
+                source_roots: Vec::new(),
+            },
+            self.dry_run,
+        )
     }
 }
 
@@ -754,8 +792,24 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // `test_standing_verdict` and the Blaze status export are deliberately NOT consulted --
         // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
-        RetainedCommands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb_checked(&target);
+        RetainedCommands::Test {
+            operands,
+            hermetic,
+            wet,
+            record,
+            fixture_store,
+            source_roots,
+        } => {
+            let outcome = cli_run::target_invocation_host::test_verb_checked(
+                &cli_run::target_invocation_host::TestInvocationOptions {
+                    operands,
+                    hermetic,
+                    wet,
+                    record,
+                    fixture_store,
+                    source_roots,
+                },
+            );
             Verdict {
                 status: cli_run::target_invocation_host::invocation_exit_status(
                     outcome.termination,

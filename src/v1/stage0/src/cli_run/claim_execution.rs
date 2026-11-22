@@ -47,6 +47,21 @@ pub fn execution_mode_for(
     }
 }
 
+/// THE FIXTURE STORE, OPENED THE ONE WAY A CLAIM EVALUATION OPENS IT. `claim_batch` had its own two
+/// lines for this; the route needs the same store and a second construction would be a second
+/// authority over where recorded fixtures live -- and the two entrypoints are being consolidated, so
+/// the copy moves HERE rather than being forked. `RecordedFixtureStore::open` is the store's own
+/// authority for a path; nothing is read until a claim's effect asks for a key.
+pub fn claim_fixture_store_rc(
+    path: &Option<std::path::PathBuf>,
+) -> Option<Rc<crate::recorded_fixture::RecordedFixtureStore>> {
+    path.as_ref().map(|p| {
+        Rc::new(crate::recorded_fixture::RecordedFixtureStore::open(
+            p.clone(),
+        ))
+    })
+}
+
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

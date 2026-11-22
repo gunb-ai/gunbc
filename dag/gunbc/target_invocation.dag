@@ -215,7 +215,11 @@ fn admit_test_operands(
       f: (acc, operand) => match acc {
         TestOperandsRefused { operand: o, cause: c } => TestOperandsRefused { operand: o, cause: c }
         TestOperandsEmpty =>
-          test_operands_admit_one(operand: operand, native_universe: native_universe, claim_universe: claim_universe)
+          test_operands_admit_one(
+            operand: operand,
+            native_universe: native_universe,
+            claim_universe: claim_universe
+          )
         TestOperandsSelected { exact: e, native: n, claim: c, seen: s } =>
           if any(s, t => t == operand) {
             TestOperandsSelected { exact: e, native: n, claim: c, seen: s }
@@ -223,7 +227,9 @@ fn admit_test_operands(
             test_operands_merge(
               acc: acc,
               next: test_operands_admit_one(
-                operand: operand, native_universe: native_universe, claim_universe: claim_universe
+                operand: operand,
+                native_universe: native_universe,
+                claim_universe: claim_universe
               )
             )
           }
@@ -237,31 +243,42 @@ fn admit_test_operands(
 // exists: an option belonging to the claim route is refused on a native batch, an instrument batch, or a batch that
 // mixes the two -- mixing is not something the plan asks for, so it is refused rather than silently routed to whichever
 // executor would take part of it.
+// WHICH BATCH A SELECTION IS, DECIDED FROM WHAT IT CONTAINS RATHER THAN FROM A SPELLING. The option admissions below
+// (`admit_test_execution_mode`, `admit_test_source_roots`) refuse on this, and the refusal must name a batch that
+// exists: an option belonging to the claim route is refused on a native batch, a registry batch, or a batch that mixes
+// them -- mixing is not something the plan asks for, so it is refused rather than silently routed to whichever executor
+// would take part of it.
+//
+// THE REGISTRY POPULATION IS ITS OWN ARM BECAUSE IT IS NOT THE NATIVE ONE. `TestOperandAdmission`'s exact arm is what
+// `admit_test_operand` yields for a label inside NEITHER universe, and that is where the instrument subjects live
+// (`//gunbc/instruments:<name>` is outside `//v2/...` and outside `//test/claim/...`): they run today, through a
+// `gunbc.instrument_targets` binding and one `Producer` arm. Folding them into `NativeBatch` would let an instrument
+// target inherit native behaviour, and refusing them in the fold would delete a working entry point -- both are
+// regressions the field names hide, so the arm is named for who answers it.
 type TestBatchRoute
   = ClaimBatch
   | NativeBatch
-  | InstrumentBatch
-  | MixedBatch { native: Int, claim: Int, instrument: Int }
+  | InstrumentRegistryBatch { exact: Int }
+  | MixedBatch { native: Int, claim: Int, exact: Int }
+  | NoOperandsSelected
 
 fn test_selection_batch_route(selection: TestOperandSelection) -> TestBatchRoute {
   match selection {
-    // An empty batch has no route, and no option can be admitted onto nothing: it reports as the mixed/none case so the
-    // option admission refuses before anything is evaluated.
-    TestOperandsEmpty => MixedBatch { native: 0, claim: 0, instrument: 0 }
-    TestOperandsRefused { operand: o, cause: c } => MixedBatch { native: 0, claim: 0, instrument: 0 }
+    // An empty batch, or a refused one, has no route: NoOperandsSelected makes the option admission refuse the whole
+    // invocation before anything is evaluated, rather than letting an option be admitted onto nothing.
+    TestOperandsEmpty => NoOperandsSelected
+    TestOperandsRefused { operand: o, cause: c } => NoOperandsSelected
     TestOperandsSelected { exact: e, native: n, claim: c, seen: s } =>
-      if length(n) > 0 && (length(c) > 0 || length(e) > 0) {
-        MixedBatch { native: length(n), claim: length(c), instrument: length(e) }
-      } else if length(c) > 0 && (length(n) > 0 || length(e) > 0) {
-        MixedBatch { native: length(n), claim: length(c), instrument: length(e) }
-      } else if length(n) > 0 {
-        NativeBatch
-      } else if length(c) > 0 {
+      if length(c) > 0 && length(n) == 0 && length(e) == 0 {
         ClaimBatch
-      } else if length(e) > 0 {
-        InstrumentBatch
+      } else if length(n) > 0 && length(c) == 0 && length(e) == 0 {
+        NativeBatch
+      } else if length(e) > 0 && length(n) == 0 && length(c) == 0 {
+        InstrumentRegistryBatch { exact: length(e) }
+      } else if length(n) == 0 && length(c) == 0 && length(e) == 0 {
+        NoOperandsSelected
       } else {
-        MixedBatch { native: 0, claim: 0, instrument: 0 }
+        MixedBatch { native: length(n), claim: length(c), exact: length(e) }
       }
   }
 }

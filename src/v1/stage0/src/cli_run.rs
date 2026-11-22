@@ -20564,6 +20564,8 @@ pub fn run_claim_route(
     source_roots: &[String],
     module_selected: &dyn Fn(&str) -> bool,
     claim_selected: &dyn Fn(&str, &str) -> bool,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
 ) -> Result<Vec<ClaimRouteMember>, String> {
     // The ONE module-index walk, taken fallibly: an unreadable source is no observation, not a
     // wrong label and not a failed claim. The walk fills the shared path-index cache on success,
@@ -20659,10 +20661,17 @@ pub fn run_claim_route(
                 }
             }
             Ok(((graph, source_indices), closure_subject)) => {
-                let ctx = make_eval_context(
+                // THE ONE EXECUTION MODE THE BATCH ASKED FOR. The hard-coded Hermetic here was the
+                // route's whole story: it could not run a wet or recorded claim, which is why
+                // `claim_batch` had to exist for those. The mode now arrives from the invocation
+                // through `cli_run::execution_mode_for` (whose default for a claim is still Hermetic,
+                // so an unspelled batch behaves exactly as before); a mode this route could not honour
+                // is refused at admission and never reaches here.
+                let ctx = make_eval_context_with_fixture_store(
                     &graph,
                     source_indices,
-                    v1_interpreter::ExecutionMode::Hermetic,
+                    execution_mode,
+                    fixture_store.clone(),
                 );
                 for function in functions {
                     let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);

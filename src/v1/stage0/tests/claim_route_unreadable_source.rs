@@ -36,11 +36,22 @@ fn route(scratch: String) -> Result<usize, String> {
         &roots,
         &|module| module == "test.claim.zz_scratch",
         &|_, _| true,
+        // What an unspelled `gunbc test` asks for: `execution_mode_for`'s Hermetic claim default, and no
+        // fixture store. This control is about an unreadable source, not about a mode.
+        v1_compiler::v1_interpreter::ExecutionMode::Hermetic,
+        None,
     )
     .map(|members| {
         members
             .iter()
-            .filter(|m| matches!(m.outcome, v1_compiler::cli_run::ClaimMemberOutcome::Evaluated(v1_compiler::cli_run::ClaimOutcome::Pass)))
+            .filter(|m| {
+                matches!(
+                    m.outcome,
+                    v1_compiler::cli_run::ClaimMemberOutcome::Evaluated(
+                        v1_compiler::cli_run::ClaimOutcome::Pass
+                    )
+                )
+            })
             .count()
     })
 }
