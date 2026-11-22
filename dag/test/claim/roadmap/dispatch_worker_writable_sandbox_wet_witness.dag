@@ -511,14 +511,13 @@ fn wet_plant_guest_sources_sized(instance: HostDashboardInstance, subdirs: List<
     // destination subtree to hold no link of its own before it copies, so the planted tree carries no symbolic
     // link at all. The plant cannot be used to pull the target of a link into the root it is planting into,
     // and the guest can only read what it actually opens.
-    // THE TWO DIRECTORIES THIS FOLD NEEDS BELOW `repo` ARE MADE HERE, and they are not the write the paragraph
-    // above refuses: `mkdir` does not follow a symbolic link in a path's FINAL component (mkdir(2)), so
-    // creating `<repo>/src` where a link stands makes nothing through it -- it succeeds against the link's
-    // target if one is there and reports EEXIST if it dangles. What does write through a link is a `mkdir -p`
-    // of a path BELOW one, which is exactly the per-subtree parent, and that mkdir lives inside the writer,
-    // after the admission.
+    // ONLY `repo` ITSELF IS MADE HERE. `mkdir` does not follow a symbolic link in a path's FINAL component
+    // (mkdir(2)), so making `<repo>` is not a way out of the supplied tree whatever stands inside it. What IS
+    // such a way is a `mkdir -p` of a path BELOW a link, and that is exactly the per-subtree parent -- so no
+    // `<repo>/src` is pre-created here, however many claims name "src/v2": with a link standing at `<repo>/src`
+    // that mkdir succeeds against the link's target and puts a directory outside the tree before any gate is
+    // reached. Every parent a fold needs is made by the writer, after its destinations have been admitted.
     && wet_ok(command: mkdir_parents_command(path: repo))
-    && wet_ok(command: mkdir_parents_command(path: join([repo, "/src"], "")))
     // EVERY NAMED SUBTREE GOES IN THROUGH THE ADMITTED WRITER, one decision per subtree: a caller that names
     // fewer subtrees plants a smaller tree by the same rule and nothing else about a plant changes.
     // EACH NAMED SUBTREE IS COPIED INTO A PARENT THAT EXISTS -- and the parent is made by the WRITER, after
@@ -1436,7 +1435,8 @@ fn wet_stage_trail_dir() -> String {
 // `base` + "/" + two data literals this module owns -- no caller, and no navigation component, can enter it.
 fn wet_stage_trail_path_under(base: String) -> String {
   let candidate = join([base, "/", wet_stage_trail_stem as String, wet_stage_trail_suffix as String], "")
-  if base != "" && witness_path_resolves_under(candidate: candidate, base: base) { candidate } else { "" }
+  if wet_stage_trail_base_is_owned(base: base)
+    && witness_path_resolves_under(candidate: candidate, base: base) { candidate } else { "" }
 }
 
 fn wet_stage_trail_path() -> String {
@@ -2822,7 +2822,12 @@ test fn the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link() -> Boo
     && wet_path_exists(path: deep_file)
     && wet_path_exists(path: nested_file)
   let src_path = join([repo, "/src"], "")
-  let top_removed = wet_ok(command: rm_force_command(path: src_path))
+  // THE OLD TREE IS REMOVED RECURSIVELY, and that is the difference between planting a link and failing to.
+  // `rm -f` refuses a directory and `ln -sfnT` refuses to overwrite one ("cannot overwrite directory"), so the
+  // first version of this claim never got a link at all: both commands exited nonzero, the fold saw an ordinary
+  // directory, and the claim went red for the wrong reason. `rm -rf` on the component the link is about to
+  // become, then `ln -sfnT`, is the sequence that actually leaves a symbolic link where a directory was.
+  let top_removed = wet_ok(command: rm_recursive_force_command(path: src_path))
   let top_linked = wet_ok(command: ln_symbolic_force_command(target: escape, link_name: src_path))
   let top_refused = !wet_plant_guest_sources_sized(instance: inst, subdirs: ["src/v2"])
     && !wet_path_exists(path: join([escape, "/v2"], ""))
@@ -2832,7 +2837,7 @@ test fn the_tree_fold_refuses_a_destination_that_is_a_pre_existing_link() -> Boo
     && wet_path_exists(path: deep_file)
     && !wet_path_exists(path: join([escape, "/v2"], ""))
   let nested_path = join([repo, "/dag/extdeps"], "")
-  let nested_removed = wet_ok(command: rm_force_command(path: nested_path))
+  let nested_removed = wet_ok(command: rm_recursive_force_command(path: nested_path))
   let nested_linked = wet_ok(command: ln_symbolic_force_command(target: escape, link_name: nested_path))
   let nested_refused = !wet_plant_guest_sources_sized(instance: inst, subdirs: ["dag"])
     && !wet_path_exists(path: join([escape, "/extdeps"], ""))

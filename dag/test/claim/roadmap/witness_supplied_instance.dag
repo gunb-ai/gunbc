@@ -34,7 +34,7 @@ import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_l
 import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, whoami_command,
   install_file_mode_command, mkdir_parents_command,
-  realpath_canonicalize_missing_command,
+  realpath_canonicalize_missing_command, rm_recursive_force_command,
 }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 // THE TWO READINGS A BASE NEEDS AND THE ANCESTRY GUARD CANNOT GIVE IT -- what the name IS, and who it
@@ -697,7 +697,8 @@ fn witness_tree_source_links_stay_inside(destination: String, lines: List<String
 }
 
 // NO SYMBOLIC LINK MAY BE STANDING IN THE SUPPLIED TREE BEFORE THE COPY. Empty stdout is the only admitting
-// answer; a refused spawn or a nonzero exit is an observation that did not happen and refuses too.
+// answer; a refused spawn or a refused exec is an observation that did not happen and refuses too -- except for
+// the one case below, where there is nothing yet to observe.
 fn witness_tree_destination_subtree_is_link_free(root: String) -> Bool {
   let probe = find_symlink_targets_command(root: root)
   let read = shell.Exec.RunArgvOutcome(
@@ -706,7 +707,15 @@ fn witness_tree_destination_subtree_is_link_free(root: String) -> Bool {
   )
   match read.outcome {
     ShellSpawnRefused { program: _, cause: _ } => false
-    ShellExited => read.exit_code == 0 && trim(s: read.stdout) == ""
+    // A tree that is not there yet holds no link. The fold CREATES its destination, so a `find` that answers
+    // "No such file or directory" for a destination never planted is not a refused observation: there is no
+    // subtree for a link to stand in, and every path the source walk reported is admitted on its own spelling
+    // and resolution before anything is created. The existence read is consulted ONLY here, on a failed scan,
+    // so a tree that does exist and still cannot be scanned stays a refusal -- trading the scan for a check that
+    // skips it would be the fail-open version of this.
+    ShellExited => (read.exit_code == 0 && trim(s: read.stdout) == "")
+      || (read.exit_code != 0
+        && shell.Exec.RunArgv(program: "test", arguments: ["-e", root]).exit_code != 0)
   }
 }
 
@@ -734,6 +743,16 @@ fn witness_tree_install_destinations_are_admitted(source: String, destination: S
 // its whole ancestor chain. A caller that wants a subtree planted calls this and folds its own verdict from
 // the Bool; a caller that calls `shell.Copy.Recursive` into a supplied root directly has re-opened the hole
 // this function exists to close.
+// THE FOLD MAKES THE DESTINATION THE SOURCE, NOT A DIRECTORY INSIDE IT. `cp -r SOURCE DESTINATION` is
+// shape-dependent: cp(1) says that if DESTINATION is an existing directory, SOURCE is copied INTO it -- so a
+// fold onto a destination that a previous plant left behind produced `<repo>/dag/dag/...` and the claim read
+// `<repo>/dag/extdeps/tools/findutils.dag` as missing (measured 2026-11-22 on the P1 claim, where the nested
+// leg replanted `dag` after removing a link from under it). The fold is the fixture's only route from a source
+// tree to a locus tree, and a route whose result depends on what was already there is not an admission, so the
+// destination is removed first. The removal is safe for exactly the reason the gate above exists: the same
+// decision that admits the fold established that NO SYMBOLIC LINK STANDS in the destination subtree, so the
+// recursive delete cannot be pointed outside the supplied tree -- which is why it goes after the admission and
+// not before it, and why a destination that is not there yet is left alone rather than deleted.
 fn witness_tree_install_into_supplied_tree(
   source: String,
   destination: String,
@@ -742,6 +761,8 @@ fn witness_tree_install_into_supplied_tree(
 ) -> Bool {
   witness_tree_install_destinations_are_admitted(source: source, destination: destination, root: root)
     && wet_ok(command: mkdir_parents_command(path: parent))
+    && (shell.Exec.RunArgv(program: "test", arguments: ["-e", destination]).exit_code != 0
+      || wet_ok(command: rm_recursive_force_command(path: destination)))
     && shell.Copy.Recursive(
       source: source as FilePath,
       destination: destination as FilePath,
