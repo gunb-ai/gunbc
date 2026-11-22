@@ -52,6 +52,21 @@ fn test_exec(git: String, workdir: String, args: List<String>) -> gunbc.compute.
 // the same staging the belt performs when it commits the attempt, so the snapshot IS the tree the
 // belt would commit; the commit object is reachable only by its id and is garbage the moment nothing
 // names it, which is what "moves no ref" means.
+// THE SNAPSHOT COMMIT'S IDENTITY IS MODELED, NEVER AMBIENT. `git commit-tree` needs an author and a
+// committer; a box with no git user.name/user.email -- a GitHub-hosted runner, a fresh machine -- kills the
+// snapshot outright ('empty ident name ... not allowed', run 45003889136). The snapshot moves no ref and is
+// garbage when the run ends, so WHO signs it is a modeled constant, not a fact about the machine: passed as
+// `-c` config on the invocation itself, the snapshot is identical on every box and cannot be steered by a
+// hostile ambient config. (The same class bit ctrl's isolated dashboard tests; ctrl commit 79cacb5f.)
+data compute_snapshot_author_name: String = "gunbc compute snapshot"
+data compute_snapshot_author_email: String = "snapshot@compute.gunbc.invalid"
+
+// THE ONE commit-tree argv shape for attempt snapshots. Pure and checkable (the witness pins it);
+// snapshot_worktree is the only caller.
+fn snapshot_commit_tree_args(tree: String, message: String) -> List<String> {
+  ["-c", join(["user.name=", compute_snapshot_author_name], ""), "-c", join(["user.email=", compute_snapshot_author_email], ""), "commit-tree", tree, "-p", "HEAD", "-m", message]
+}
+
 fn snapshot_worktree(git: String, worktree: String) -> SnapshotResolution {
   match test_exec(git: git, workdir: worktree, args: ["add", "-A"]) {
     gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git add -A", detail: join([to_string(value: exit_code), ": ", stderr], "") }
@@ -59,7 +74,7 @@ fn snapshot_worktree(git: String, worktree: String) -> SnapshotResolution {
       match test_exec(git: git, workdir: worktree, args: ["write-tree"]) {
         gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git write-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
         gunbc.compute.work_provider_local.ComputeExecOk { stdout: tree, stderr: _ } =>
-          match test_exec(git: git, workdir: worktree, args: ["commit-tree", trim(s: tree), "-p", "HEAD", "-m", "gunbc compute snapshot of the attempt worktree"]) {
+          match test_exec(git: git, workdir: worktree, args: snapshot_commit_tree_args(tree: trim(s: tree), message: "gunbc compute snapshot of the attempt worktree")) {
             gunbc.compute.work_provider_local.ComputeExecFailed { exit_code, stdout: _, stderr } => SnapshotRefused { step: "git commit-tree", detail: join([to_string(value: exit_code), ": ", stderr], "") }
             gunbc.compute.work_provider_local.ComputeExecOk { stdout: commit, stderr: _ } =>
               if trim(s: commit) == "" { SnapshotRefused { step: "git commit-tree", detail: "printed no commit id" } } else { SnapshotResolved { commit: trim(s: commit) } }
