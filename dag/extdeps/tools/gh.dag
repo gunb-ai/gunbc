@@ -69,11 +69,13 @@ fn gh_commit_ancestry_command(api_path: String) -> ArgvCommand {
 // THE RUNS THAT PUBLISHED A NAMED ARTIFACT ON ONE BRANCH: `gh api repos/<repo>/actions/artifacts?name=<artifact>...`
 // filtered to unexpired artifacts whose producing run's head_branch is <branch>, one "<run-id>TAB<head-sha>" line each
 // (docs.github.com/rest/actions/artifacts#list-artifacts-for-a-repository). An artifact existing says nothing about
-// whether the job that uploaded it succeeded; that is gh_run_job_conclusion_command's question.
+// whether the job that uploaded it succeeded; that is gh_run_job_conclusion_command's question. `--paginate` reads
+// every page: the API cannot filter artifacts by branch, so a first page filled by other branches' artifacts must not
+// read as "nothing built on <branch>" (review 97377). Artifact retention bounds the number of pages.
 fn gh_branch_artifact_runs_argv(api_path: String, branch: String) -> List<String> {
   [
     gh_program().invocation as String,
-    "api", api_path, "--jq",
+    "api", "--paginate", api_path, "--jq",
     join([
       ".artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == \"", branch,
       "\") | \"\\(.workflow_run.id)\\t\\(.workflow_run.head_sha)\"",

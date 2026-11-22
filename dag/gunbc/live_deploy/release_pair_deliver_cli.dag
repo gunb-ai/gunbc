@@ -125,7 +125,8 @@ fn release_pair_ancestry_api_path(slug: NonEmptyStr, head: NonEmptyStr) -> Strin
   join(["repos/", slug, "/commits?sha=", head as String, "&per_page=", int_to_decimal_string(value: release_pair_ancestry_window)], "")
 }
 
-// The runs that published release-bins (only fleet-converge's build job uploads an artifact of that name).
+// The runs that published release-bins (only fleet-converge's build job uploads an artifact of that name). The
+// command pages through every result, so per_page here only sets the page size, not a window.
 fn release_pair_built_runs_api_path(slug: NonEmptyStr) -> String {
   join(["repos/", slug, "/actions/artifacts?name=", ci_release_bins_artifact_name, "&per_page=", int_to_decimal_string(value: release_pair_ancestry_window)], "")
 }
