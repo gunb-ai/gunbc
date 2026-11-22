@@ -20,6 +20,7 @@ import test.fixture.text_scan { occurs_before, occurrences }
 import gunbc.witness.hosted_runner_shadow_gate_workflow {
   expected_hosted_runner_shadow_gate_yml,
   shadow_gate_source_root_args,
+  shadow_gate_first_serving_host,
   ShadowGateWorkflowGenerationOutcome,
   ShadowGateWorkflowGenerated,
   ShadowGateWorkflowGenerationRefused,
@@ -33,6 +34,16 @@ fn contains(haystack: String, needle: String) -> Bool {
 
 // The emitted YAML, or false when the emitter refuses (a refusal is claimed elsewhere: the emitted
 // artifact must exist for this gate to ship, and the drift watch enforces the bytes).
+// THE HOST PIN THE MODEL RENDERS INTO EVERY REMOTE STEP -- the same typed roster selection the
+// emitter uses, not a retyped token (run 44995124241: CallContractMismatch 'missing required
+// argument host (4 of 5)' -- the deleted probe had carried the target and it went with it).
+fn host_pin_needle() -> String {
+  match shadow_gate_first_serving_host() {
+    Absent => "__model_names_no_host__"
+    Present { value: h } => concat(" --arg host=", h)
+  }
+}
+
 fn emitted_yaml_or_empty() -> String {
   match expected_hosted_runner_shadow_gate_yml() {
     ShadowGateWorkflowGenerated { content } => content
@@ -114,6 +125,7 @@ test fn the_emitted_workflow_runs_every_gate_row_with_the_agreed_exit_rendering(
     // executed, because earlier runs died upstream). The pair is ONE value in the emitter, rendered
     // from gunbc.source_layout; this claim checks THE VALUE appears, not a retyped copy.
     && contains(haystack: rendered, needle: shadow_gate_source_root_args)
+    && contains(haystack: rendered, needle: host_pin_needle())
     && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli'")
     && contains(haystack: rendered, needle: "gate-emit_build_self_host.json")
     && contains(haystack: rendered, needle: "gate-emit_build_v2_native_cli.json")
