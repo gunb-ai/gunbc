@@ -6087,7 +6087,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Two host receipts -- the converge output and the pinned compile at served=true, for srv4 and then srv3 -- and the one live //gunbc/instruments:v2-native-cli receipt the remote gate client read back.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "The bridge's first slice performed on real serving hosts: one live label compiled remotely, measured rather than asserted."),
+      parent: in_project(project: "rb-m1-builds-served-on-prepared-hosts", contribution: "The bridge's first slice performed on real serving hosts: one live label compiled remotely, measured rather than asserted."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/remote_build_serving_converge.dag, whose converge route installs and settles a serving host, and dag/gunbc/compute/remote_build_client.dag, whose remote_gate_cli dispatches one label."),
     ),
     roadmap_node(
@@ -6105,7 +6105,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "srv1's seat census before and after, the converge output naming RecoverStaleSeat, and the roster row showing srv1 dispatchable again at or after 2387c5493bb9.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "A converge that cannot recover a host it can see is not a converge; this is the leg that returns srv1's capacity on its own."),
+      parent: in_project(project: "rb-m1-builds-served-on-prepared-hosts", contribution: "A converge that cannot recover a host it can see is not a converge; this is the leg that returns srv1's capacity on its own."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/remote_build_serving_converge.dag, where ConvergeAction's ranks are the order the converge executes."),
     ),
     roadmap_node(
@@ -6123,7 +6123,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "butch's converge output at the serving revision, its roster row, and one pinned client compile read back at served=true on it.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "A host the operator has prepared by hand still has no capacity until the model reads it back; this row is that read-back."),
+      parent: in_project(project: "rb-m1-builds-served-on-prepared-hosts", contribution: "A host the operator has prepared by hand still has no capacity until the model reads it back; this row is that read-back."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/host/host_model.dag, where butch's engines and memory rows live, and dag/gunbc/compute/remote_build_serving_converge.dag, which settles a serving host."),
     ),
     roadmap_node(
@@ -6141,7 +6141,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "bobo's converge output, its roster row, and the pinned client compile read back at served=true.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "The host the install lane delivered becomes build capacity, by the same route srv4 and srv3 took."),
+      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "The host the install lane delivered becomes build capacity, by the same route srv4 and srv3 took."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/remote_build_hosts.dag, the roster's host rows, and the typed install legs #16779 carries."),
     ),
     roadmap_node(
@@ -6159,7 +6159,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the native build's receipt from ken, the confirmed LAN and tailnet identity, the converge output, and ken's roster row.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "The ruling's capacity is host-side compile on whatever the fleet owns; a host refused because of its architecture is capacity the ruling promised and the route does not deliver."),
+      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "The ruling's capacity is host-side compile on whatever the fleet owns; a host refused because of its architecture is capacity the ruling promised and the route does not deliver."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/remote_build_serving_converge.dag, whose upload route draws the architecture-equality refusal and whose ranks already install the pinned Rust toolchain."),
     ),
     roadmap_node(
@@ -6177,7 +6177,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the run id, the label it dispatched, and the receipt carrying the remote verdict the client read back.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "The shadow gate is the bridge's witness at head; unwatched it proves only that the file exists."),
+      parent: in_project(project: "rb-m2-required-label-served-and-shadowed", contribution: "The shadow gate is the bridge's witness at head; unwatched it proves only that the file exists."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/witness/hosted_runner_shadow_gate_workflow.dag, the gate's own model, whose committed workflow the model regenerates."),
     ),
     roadmap_node(
@@ -6195,7 +6195,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the typed field with its refusals, the bounded render with claims_truncated where it bound, and the client's PASS and FAIL lines.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "The bridge's verdict is only as honest as the receipt that carries it; per-claim verdicts are what makes a green mean something."),
+      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "The bridge's verdict is only as honest as the receipt that carries it; per-claim verdicts are what makes a green mean something."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/work_provider_local.dag, where ProvideResult and its endings live, and dag/gunbc/compute/remote_build_client.dag, whose compute_provide parses what serve rendered."),
     ),
     roadmap_node(
@@ -6249,7 +6249,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the two measures from one host, the eviction rule as model state, and the receipt showing the warm path taken.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "Remote execution earns its keep only when the host's own cache is warm; a cold rebuild on a remote host is the pool's cost with extra steps."),
+      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "Remote execution earns its keep only when the host's own cache is warm; a cold rebuild on a remote host is the pool's cost with extra steps."),
       centering: plan(text: "hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign: a hosted job's build runs on a fleet host, so a host nobody has watched serve a compile is not yet capacity. Target: dag/gunbc/compute/work_provider_local.dag, where the served build's scratch root and target directory are named."),
     ),
     roadmap_node(
@@ -6339,7 +6339,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the typed leg record, and a replay of the exit-6 probe showing it in the receipt.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "Remote-build bandwidth, layer 0: the remote build's receipt is its only evidence, so a leg failure it does not carry is a failure nobody can count."),
+      parent: in_project(project: "rb-m1-builds-served-on-prepared-hosts", contribution: "The remote build's receipt is its only evidence, so a leg failure it does not carry is a failure nobody can count."),
       centering: plan(text: "gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan: The remote build's receipt is its only evidence, so a leg failure it does not carry is a failure nobody can count. Target: dag/gunbc/compute/remote_build_client.dag"),
     ),
     roadmap_node(
@@ -6357,7 +6357,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the route, its refusals, and the gate-label attempt's log read back through it.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "Remote-build bandwidth, layer 0: a remote failure nobody can read is a failure nobody can fix without breaking the host-mutation rule."),
+      parent: in_project(project: "rb-m1-builds-served-on-prepared-hosts", contribution: "A remote failure nobody can read is a failure nobody can fix without breaking the host-mutation rule."),
       centering: plan(text: "gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan: A remote failure nobody can read is a failure nobody can fix without breaking the host-mutation rule. Target: dag/gunbc/compute/remote_build_serve.dag"),
     ),
     roadmap_node(
@@ -6375,7 +6375,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the diagnosis with its log excerpt, the repair, and served-clean gate receipts from srv4 and srv3.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "Remote-build bandwidth, layer 0: the bridge's first slice is this label served; until it passes remotely the bridge carries nothing."),
+      parent: in_project(project: "rb-m2-required-label-served-and-shadowed", contribution: "The bridge's first slice is this label served; until it passes remotely the bridge carries nothing."),
       centering: plan(text: "gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan: The bridge's first slice is this label served; until it passes remotely the bridge carries nothing. Target: dag/gunbc/compute/remote_build_client.dag"),
     ),
     roadmap_node(
@@ -6393,7 +6393,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the request field, the check, and a refusing and an admitting pair.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "Remote-build bandwidth, layer 1: a mixed-architecture roster needs placement to know the work's requirements, and fabric already owns that join."),
+      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "A mixed-architecture roster needs placement to know the work's requirements, and fabric already owns that join."),
       centering: plan(text: "gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan: A mixed-architecture roster needs placement to know the work's requirements, and fabric already owns that join. Target: dag/gunbc/compute/remote_build.dag"),
     ),
     roadmap_node(
@@ -6411,8 +6411,56 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "the typed answer, its decode and refusals, and one served receipt read back typed.",
       )),
       dispatch: dispatchable(),
-      parent: in_project(project: "work-execution-redesign", contribution: "Remote-build bandwidth, layer 1: the bridge's evidence is only consumable by its successor if it is in the successor's type."),
+      parent: in_project(project: "rb-m3-typed-against-fabric-on-the-mixed-fleet", contribution: "The bridge's evidence is only consumable by its successor if it is in the successor's type."),
       centering: plan(text: "gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan: The bridge's evidence is only consumable by its successor if it is in the successor's type. Target: dag/gunbc/compute/remote_build.dag"),
+    ),
+    roadmap_node(
+      identity: "rn_YRY65GGMH6T69D11R84AYXAWBJ",
+      id: "rb-m1-builds-served-on-prepared-hosts",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/remote_build_bandwidth.dag"),
+      line: ticket(t: fields(
+        headline: "RB-M1: builds are served on every host already prepared, and every failure is readable",
+        boundary: "What works at this milestone: a pinned gunbc compile or claim run sent through the remote build is served on srv3, srv4, srv1 and butch, and each reads back a served receipt; a host whose build seat was left held recovers it in the serving converge without the operator; a failed probe or leg leaves a typed record in the receipt instead of being skipped; and a failed served attempt's host-side log is fetched by a modelled read route, so a remote failure says why. Reached when every member has an accepted event.",
+        displaced_cost: "the hosted pool and fixed runner slots carry builds that four converged serving hosts could take, and every remote failure costs the operator a hand login to read a log.",
+        first_slice: "None of its own: a milestone is a container, reached when every member has an accepted event.",
+        red_control: "A rostered host that has never read back served, or a member accepted without its own red control passing, keeps this open.",
+        out_of_scope: "the required check, and hosts not yet admitted (ken, bobo).",
+        handback: "the member acceptances, and one served receipt per rostered host.",
+      )),
+      parent: in_project(project: "work-execution-redesign", contribution: "The bandwidth the fleet already has, on hosts already prepared: the first of the remote-build-bandwidth milestones."),
+    ),
+    roadmap_node(
+      identity: "rn_DY7E528WGBTW91NP7MZEANCWPM",
+      id: "rb-m2-required-label-served-and-shadowed",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/remote_build_bandwidth.dag"),
+      line: ticket(t: fields(
+        headline: "RB-M2: the required check's label passes when served remotely, and the shadow gate runs it on every pull request",
+        boundary: "What works at this milestone: //gunbc/instruments:v2-native-cli, served remotely on a fleet host, passes as it does in CI (it answered exit 101 on srv4 on 2026-11-21, diagnosed from the host log RB-M1 makes readable); and the hosted-runner shadow gate drives that label through the remote build over the tailnet on every pull request and is green at main end to end, alongside the required job and refusing nothing. Reached when every member has an accepted event.",
+        displaced_cost: "until the label passes remotely the bridge has nothing to carry, and until the shadow gate is green at main no one has watched the remote route hold under real pull-request load.",
+        first_slice: "None of its own: a milestone is a container, reached when every member has an accepted event.",
+        red_control: "A shadow run green while the served label exits non-zero, or a label pass taken on a host the shadow gate cannot reach, keeps this open.",
+        out_of_scope: "making the shadow gate required; that is the bridge's own slice.",
+        handback: "the member acceptances, and a green shadow-gate run at a named main sha with its remote receipt.",
+      )),
+      parent: in_project(project: "work-execution-redesign", contribution: "The required check's own label proven on the remote route before it carries anything."),
+    ),
+    roadmap_node(
+      identity: "rn_QRYDCV124Y4MM6E7RX4KH6A684",
+      id: "rb-m3-typed-against-fabric-on-the-mixed-fleet",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/remote_build_bandwidth.dag"),
+      line: ticket(t: fields(
+        headline: "RB-M3: the remote build is typed against fabric and admits the mixed-architecture fleet with warm caches",
+        boundary: "What works at this milestone: a remote-build request states its product.fabric.work::ExecutionRequirements and is never placed on a host whose gunbc.fabric.fabric_executor_class row does not admit them, so a mixed-architecture roster cannot put work on the wrong architecture; the answer is a product.fabric.execution::Receipt carrying a verdict per claim; ken and bobo serve builds by that route; and a host reuses its previous target directory where std.materialization_ladder admits the reuse. Reached when every member has an accepted event.",
+        displaced_cost: "a string receipt and an unchecked placement are what the work-execution-redesign route would have to re-derive, and cold target directories spend most of each served build recompiling dependencies.",
+        first_slice: "None of its own: a milestone is a container, reached when every member has an accepted event.",
+        red_control: "A request placed on a host whose executor class refuses its requirements, or a served answer that is not a fabric Receipt, keeps this open.",
+        out_of_scope: "host selection policy, which stays the work-execution-redesign route's (select_supply at work-exec-2).",
+        handback: "the member acceptances, a refused wrong-architecture placement, and a warm-cache served build's receipt.",
+      )),
+      parent: in_project(project: "work-execution-redesign", contribution: "The remote build's request and answer in fabric's own types, so the work-execution-redesign route consumes them unchanged; ken and bobo join on that typing."),
     ),
   ], guarantee_ladder_nodes())
 }
