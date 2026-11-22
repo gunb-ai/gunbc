@@ -2317,7 +2317,8 @@ fn claim_route_termination(verdicts: &[ClaimRouteVerdict]) -> Termination {
 ///
 /// The fold keys on the claim IDENTITY (module path and function), so the contract "exactly one
 /// outcome per identity" is enforced at the only place that turns outcomes into a result: a second
-/// outcome for identity A is dropped and the route fails closed, so a duplicated outcome for A can
+/// outcome for identity A is dropped and the run cannot certify SUCCESS -- though a definite failure
+/// still keeps precedence over the duplicate in the exit status -- so a duplicated outcome for A can
 /// never stand in for a missing B. Every kept identity's verdict is folded by the EXISTING rule
 /// `claim_route_termination` -- the policy is not redesigned here.
 struct ClaimRouteFold {

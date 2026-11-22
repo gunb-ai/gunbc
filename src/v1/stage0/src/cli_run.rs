@@ -20551,9 +20551,11 @@ fn parse_floor_discovery_producer_result(
 /// documented as "planned, never reached, because a sibling claim's unwind stopped the line," with
 /// `halted_by` naming the claim whose panic stopped it -- which the floor and CI renderers read that
 /// way. A resolve refusal is not that (`gunbc.design_argument::single_authority`), so the route carries
-/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority already
-/// sets: a closure diagnostic is a finding (did not hold); a missing entry or infrastructure refusal is
-/// no observation. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
+/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority and the
+/// plan set (section 2): EVERY refusal -- a closure diagnostic, a missing entry, or an infrastructure
+/// refusal -- is the ABSENCE of an observation (unobserved), the refusal's kind staying on the line as
+/// the typed `outcome=` and its text as `detail=`. A resolve finding is not evidence the claim evaluated
+/// and did not hold. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimMemberOutcome {
     /// The runner reached the claim and evaluated it.
@@ -20730,10 +20732,12 @@ pub fn run_claim_route(
         // failure for ONE entry is a LOCATED outcome, not a fatal error: the claims discovery
         // enrolled under it are known identities (from discovery's own rows, never invented here),
         // so each gets exactly one outcome carrying the refusal and the OTHER entries still run.
-        // The fold then reads the refusal by the rule the resolve authority already sets: a closure
-        // diagnostic is a finding (did not hold, exit 1); a missing entry or infrastructure refusal
-        // is no observation (unobserved, exit 2). Only a source that cannot be enumerated AT ALL
-        // still refuses the whole route (above) -- never an unobserved row for a claim we cannot name.
+        // The fold then reads the refusal by the rule the resolve authority and the plan (section 2)
+        // set: EVERY refusal kind -- closure diagnostic, missing entry, or infrastructure refusal -- is
+        // the ABSENCE of an observation (unobserved; exit 2 on its own, its kind on the line as
+        // `outcome=`). A resolve finding is not a claim that evaluated and did not hold. Only a source
+        // that cannot be enumerated AT ALL still refuses the whole route (above) -- never an unobserved
+        // row for a claim we cannot name.
         let resolved = match resolve_entry_with_index_typed(&index, &entry) {
             Err(refusal) => Err(refusal),
             Ok((graph, source_indices)) => match closure_subject_for_entry(&index, &entry) {
