@@ -20445,10 +20445,51 @@ fn parse_floor_discovery_producer_result(
 /// One selected claim and what its evaluation observed. `module_path` is the entry's AUTHORED
 /// module name (read off the `module` line by the module index), which is what the claim's label
 /// is minted from (`gunbc.discovery_census` `site_label`).
+/// One member's result in the claim route -- the route's OWN outcome type, deliberately NOT a
+/// `ClaimOutcome` variant. A member either reports what the runner evaluated, or reports the typed
+/// reason its entry could not be resolved at all.
+///
+/// Reusing `ClaimOutcome::NotAttempted` for a resolve failure would give one name two meanings: it is
+/// documented as "planned, never reached, because a sibling claim's unwind stopped the line," with
+/// `halted_by` naming the claim whose panic stopped it -- which the floor and CI renderers read that
+/// way. A resolve refusal is not that (`gunbc.design_argument::single_authority`), so the route carries
+/// the `EntryResolveRefusal` itself and the one fold reads it by the rule the resolve authority already
+/// sets: a closure diagnostic is a finding (did not hold); a missing entry or infrastructure refusal is
+/// no observation. No new public `ClaimOutcome` variant is added, so the seed's surface does not grow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClaimMemberOutcome {
+    /// The runner reached the claim and evaluated it.
+    Evaluated(ClaimOutcome),
+    /// The claim's entry could not be resolved; the typed refusal says what kind of failure this is.
+    Unresolved(EntryResolveRefusal),
+}
+
+/// THE CLOSED OUTCOME-KIND VOCABULARY for the route's per-claim line. One name per `ClaimOutcome`
+/// variant; the line prints `outcome=<name>` and NEVER Rust `Debug` output (Debug is not a schema and
+/// changes whenever a field does). This is the SINGLE source -- it lives on the route, which is the
+/// thing that prints the line, cross-checked against
+/// `v2.workflow.floor_terminal_ledger_wire`'s `outcome_kind_roster`. `claim_batch` consumes it; it
+/// owns no copy (`gunbc.design_argument::single_authority`).
+pub fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
+    match outcome {
+        ClaimOutcome::Pass => "Pass",
+        ClaimOutcome::Fail => "Fail",
+        ClaimOutcome::NotBool { .. } => "NotBool",
+        ClaimOutcome::RuntimeError { .. } => "RuntimeError",
+        ClaimOutcome::BudgetInterrupted { .. } => "BudgetInterrupted",
+        ClaimOutcome::CompletedOverBudget { .. } => "CompletedOverBudget",
+        ClaimOutcome::HostToolUnresolved { .. } => "HostToolUnresolved",
+        ClaimOutcome::HostEffectRefused { .. } => "HostEffectRefused",
+        ClaimOutcome::Panicked { .. } => "Panicked",
+        ClaimOutcome::NotAttempted { .. } => "NotAttempted",
+        ClaimOutcome::ExitFailure { .. } => "ExitFailure",
+    }
+}
+
 pub struct ClaimRouteMember {
     pub module_path: String,
     pub function: String,
-    pub outcome: ClaimOutcome,
+    pub outcome: ClaimMemberOutcome,
     pub eval_steps: u64,
     pub cpu_ms: u128,
 }
@@ -20559,6 +20600,12 @@ pub fn run_claim_route(
         floor_discovery_rows_over_sources(&frame, selected.iter().map(|(_, sf)| sf.as_ref()))
             .map_err(|refusal| refusal.rendered())?;
     let mut groups: Vec<(String, String, Vec<String>)> = Vec::new();
+    // THE SELECTED CLAIM IDENTITIES ARE ESTABLISHED ONCE. An identity is its module path and
+    // its function; if discovery enrolls one under two entries, it is enrolled under the entry
+    // that first carried it and every later naming is dropped, so the route owes exactly one
+    // outcome per identity -- and a second outcome for A can never stand in for a missing B.
+    let mut enrolled: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
     for row in rows {
         let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
             return Err(format!(
@@ -20570,6 +20617,9 @@ pub fn run_claim_route(
         if !claim_selected(module_path, &row.function) {
             continue;
         }
+        if !enrolled.insert((module_path.clone(), row.function.clone())) {
+            continue;
+        }
         match groups.last_mut() {
             Some((entry, _, functions)) if *entry == row.entry => functions.push(row.function),
             _ => groups.push((row.entry, module_path.clone(), vec![row.function])),
@@ -20577,25 +20627,55 @@ pub fn run_claim_route(
     }
     let mut members = Vec::new();
     for (entry, module_path, functions) in groups {
-        let (graph, source_indices) = resolve_entry_with_index(&index, &entry)
-            .map_err(|e| format!("resolve {entry}: {e}"))?;
-        let closure_subject = closure_subject_for_entry(&index, &entry)
-            .map_err(|e| format!("closure subject {entry}: {e}"))?;
-        let ctx = make_eval_context(
-            &graph,
-            source_indices,
-            v1_interpreter::ExecutionMode::Hermetic,
-        );
-        for function in functions {
-            let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
-            v1_interpreter::eval_call_memo_frame_exit(&ctx);
-            members.push(ClaimRouteMember {
-                module_path: module_path.clone(),
-                function,
-                outcome,
-                eval_steps: receipt.eval_steps,
-                cpu_ms: receipt.cpu_nanos / 1_000_000,
-            });
+        // Resolve this entry's reference closure ONCE, with the refusal kept TYPED. A resolve
+        // failure for ONE entry is a LOCATED outcome, not a fatal error: the claims discovery
+        // enrolled under it are known identities (from discovery's own rows, never invented here),
+        // so each gets exactly one outcome carrying the refusal and the OTHER entries still run.
+        // The fold then reads the refusal by the rule the resolve authority already sets: a closure
+        // diagnostic is a finding (did not hold, exit 1); a missing entry or infrastructure refusal
+        // is no observation (unobserved, exit 2). Only a source that cannot be enumerated AT ALL
+        // still refuses the whole route (above) -- never an unobserved row for a claim we cannot name.
+        let resolved = match resolve_entry_with_index_typed(&index, &entry) {
+            Err(refusal) => Err(refusal),
+            Ok((graph, source_indices)) => match closure_subject_for_entry(&index, &entry) {
+                // The entry resolved; only the reference-closure subject read then failed. That is
+                // not the corpus's own name/type diagnostic, so it falls toward no observation.
+                Err(e) => Err(entry_resolve::EntryResolveRefusal::ResolveInfrastructure {
+                    message: format!("closure subject {entry}: {e}"),
+                }),
+                Ok(closure_subject) => Ok(((graph, source_indices), closure_subject)),
+            },
+        };
+        match resolved {
+            Err(refusal) => {
+                for function in functions {
+                    members.push(ClaimRouteMember {
+                        module_path: module_path.clone(),
+                        function,
+                        outcome: ClaimMemberOutcome::Unresolved(refusal.clone()),
+                        eval_steps: 0,
+                        cpu_ms: 0,
+                    });
+                }
+            }
+            Ok(((graph, source_indices), closure_subject)) => {
+                let ctx = make_eval_context(
+                    &graph,
+                    source_indices,
+                    v1_interpreter::ExecutionMode::Hermetic,
+                );
+                for function in functions {
+                    let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &function);
+                    v1_interpreter::eval_call_memo_frame_exit(&ctx);
+                    members.push(ClaimRouteMember {
+                        module_path: module_path.clone(),
+                        function,
+                        outcome: ClaimMemberOutcome::Evaluated(outcome),
+                        eval_steps: receipt.eval_steps,
+                        cpu_ms: receipt.cpu_nanos / 1_000_000,
+                    });
+                }
+            }
         }
     }
     Ok(members)

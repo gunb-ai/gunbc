@@ -7,8 +7,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    closure_subject_for_entry, entry_closure_source_paths, make_eval_context_with_runtime_options,
-    peak_rss_vhwm_bytes, precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
+    claim_outcome_kind, closure_subject_for_entry, entry_closure_source_paths,
+    make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
+    precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
     resolve_entry_with_index_typed, run_claim_measured, ClaimOutcome, EntryResolveRefusal,
     MultiEntryIndex,
 };
@@ -510,27 +511,6 @@ fn report_outcome(
             );
             *any_failed = true;
         }
-    }
-}
-
-/// THE NAME OF THE `ClaimOutcome` VARIANT, AND NOTHING ELSE. The wire authority
-/// (`v2.workflow.floor_terminal_ledger_wire derive_outcome_row`) owns what each kind means: its
-/// tag, its detail and its disposition. This match is exhaustive with no wildcard on purpose, so a
-/// variant added to `ClaimOutcome` stops compiling here until it is named, and the unit test
-/// below cross-checks these names against the wire's `outcome_kind_roster`.
-fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
-    match outcome {
-        ClaimOutcome::Pass => "Pass",
-        ClaimOutcome::Fail => "Fail",
-        ClaimOutcome::NotBool { .. } => "NotBool",
-        ClaimOutcome::RuntimeError { .. } => "RuntimeError",
-        ClaimOutcome::BudgetInterrupted { .. } => "BudgetInterrupted",
-        ClaimOutcome::CompletedOverBudget { .. } => "CompletedOverBudget",
-        ClaimOutcome::HostToolUnresolved { .. } => "HostToolUnresolved",
-        ClaimOutcome::HostEffectRefused { .. } => "HostEffectRefused",
-        ClaimOutcome::Panicked { .. } => "Panicked",
-        ClaimOutcome::NotAttempted { .. } => "NotAttempted",
-        ClaimOutcome::ExitFailure { .. } => "ExitFailure",
     }
 }
 
