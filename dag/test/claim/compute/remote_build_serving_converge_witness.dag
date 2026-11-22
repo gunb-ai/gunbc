@@ -2173,6 +2173,10 @@ fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
     InstallUserWorkSlice { unit_name: user_work_slice_unit_name, unit_path: "/run/systemd/user/gunbc-user-work.slice", memory_max: byte_size(1), memory_high: byte_size(1), memory_swap_max: byte_size(1), expected_content: "[Unit]" },
     InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" },
     RecordServeIdentity { install_path: "/opt/gunbc/bin/gunbc", revision: "deadbeef", sha256: "aaa" },
+    // A DISTINCT install_path here so the "every kind" ordering test keeps every action: BuildServeBinary
+    // shares InstallServeBinary's "binary:"+path dedup key, so on the SAME path the two collapse (the
+    // dedicated dedup witness below proves that); on a different path both survive as distinct kinds.
+    BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native", as_user: "gunbc-serve" },
     RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
   ]
 }
@@ -2212,4 +2216,25 @@ test fn converge_order_preserves_every_action_kind() -> Bool {
       length(ordered) == length(all) && length(filter(all, e => list_member(xs: ordered, x: e, eq: (a, b) => converge_action_key(a) == converge_action_key(b)))) == length(all)
     }
   }
+}
+
+// RB-M3 native-build arm: the native build and the pool upload are the SAME binary leg of a path -- they
+// share the "binary:"+install_path dedup key, so a host settles its serve binary through exactly ONE of
+// them. If both were ever drafted for one path (a plan bug, or a flip-flopping host), converge_order
+// collapses them to a single write rather than letting the host receive a pool binary AND build its own.
+// Arch-independent (pure model), so it is written before the architecture authority lands.
+test fn native_build_and_upload_collapse_on_one_path() -> Bool {
+  let up = InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" }
+  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc", as_user: "gunbc-serve" }
+  converge_action_key(up) == converge_action_key(native) && length(converge_order([up, native])) == 1
+}
+
+// The native build must still be ORDERED as a binary-leg write: after the checkout (rank 5) and the
+// pinned toolchain (ranks 6/7) it builds from, so a build can never be dispatched ahead of the source it
+// compiles. This pins the rank arm I added for BuildServeBinary (rank 9, the binary leg).
+test fn native_build_ranks_after_its_checkout_and_toolchain() -> Bool {
+  let checkout = EnsureCheckout { dir: "/srv/gunbc/checkout", clone_url: "https://example.invalid/gunbc.git", revision: "deadbeef", as_user: "gunbc-serve" }
+  let toolchain = EnsureToolchain { channel: "1.95.0", as_user: "gunbc-serve" }
+  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native", as_user: "gunbc-serve" }
+  converge_kind_rank(native) > converge_kind_rank(checkout) && converge_kind_rank(native) > converge_kind_rank(toolchain)
 }
