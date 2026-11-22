@@ -6119,7 +6119,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "butch's capacity sits idle while its memory is still priced against engines the operator retired by hand, and the hosted pool keeps paying for builds a machine with memory to spare could take.",
         first_slice: "Drop strata-pool@a, strata-pool@b and strata-expert-lock from butch's desired state and read host_memory_observe back from butch.",
         red_control: "A capacity figure for butch that was not read from host_memory_observe is refused, as is a roster row for a tailnet node that does not carry tag:ci -- a host admitted on an anchor the operator named by hand, without the tag, is folklore wearing a row.",
-        out_of_scope: "the retirement and the join, which are the operator's; butch's executor-route width (butch-executor-route-under-the-ci-ruling); and any runner on butch beyond what that row admits.",
+        out_of_scope: "retiring srv14's LAN lease row (srv14_host_lan_endpoint) and re-triaging the integration concerns whose premise the join resolves (fleet_reach_endpoint_ignores_the_modeled_lan_address and the citation in srv11_spark_b66c_reported_sold_its_lan_endpoint_row_still_stands), which belong to the register and gunbc.plans.fleet_machine_authority section 2.3; the retirement and the join, which are the operator's; butch's executor-route width (butch-executor-route-under-the-ci-ruling); and any runner on butch beyond what that row admits.",
         handback: "butch's converge output at the serving revision, its roster row, and one pinned client compile read back at served=true on it.",
       )),
       dispatch: dispatchable(),
