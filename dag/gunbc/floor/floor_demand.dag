@@ -1808,8 +1808,13 @@ fn floor_isolation_requirement() -> IsolationProfile {
 data gunbc_internal_fleet_trust_domain: TrustDomainRef = "gunbc.trust.internal-fleet" as TrustDomainRef
 
 // THE ONE LINUX/RUST TOOLCHAIN CAPABILITY THE FLEET DEMANDS, spelled here rather than at each call
-// site for the same reason as the row above: the fabric decides fungibility by exact equality of
-// capability references, so two spellings of it is two capabilities wearing the same name.
+// site for the same reason as the row above: it is a name that other code matches on
+// (#product.fabric.work::CapabilityManifestRef is a branded string, so a demand satisfies an offer when
+// the two spellings agree), and a second place that spells it independently is a second place that can
+// change it -- the two then drift and nothing under either spelling knows. Two inline spellings remain
+// in gunbc.instruments.fabric_control_plane_live_probe; that lane's owner folds them in, and they are
+// named in the PR rather than left silent. What this row does NOT claim: that any host offers this
+// capability. It records what the fleet DEMANDS; offering is the supplier's record.
 data linux_rust_toolchain_capability: CapabilityManifestRef = "gunbc.capabilities.linux-rust-toolchain" as CapabilityManifestRef
 
 // OUR FLOOR IS arm64. THE CLASS IS NOT.

@@ -201,7 +201,8 @@ type ExecutorExecutionClass {
 //   lane -- ken's native serve build, sequenced directly behind this one -- reads THIS row to choose
 //   between uploading a serve binary and building one on the host. It does not do so yet: today's
 //   converge decides from the host's own uname read against the pinned executor arch
-//   (remote_build_serving_converge.dag:1012), so nothing here changes serving behaviour at this head.
+//   (#gunbc.compute.remote_build_serving_converge::converge_install_binary), so nothing here changes
+//   serving behaviour at this head.
 //   The row is authored now, with the standing its evidence actually has, because when that PR lands an
 //   unclassified srv2 would turn today's upload into a refusal -- a regression dressed as safety.
 //
@@ -288,14 +289,18 @@ fn host_execution_architecture(
 //
 // WHO ACTUALLY CALLS IT, AT THIS HEAD, WITHOUT DRESSING IT UP: the production placement route reaches
 // the roster through admit_execution_class, which walks it with host_execution_architecture above; the
-// only call site of THIS entry point is the witness. Its named consumer and that consumer's trigger are
-// the same PR: the ken native-serve-build lane (gunbc.compute.remote_build_serving_converge choosing its
-// upload arm against a native-build arm, and remote_build_serving_setup comparing the host's uname read
-// against the row). That lane is not speculative -- session/lively-owl-722 already imports this lookup
-// and calls it at remote_build_serving_converge.dag:1051 and remote_build_serving_setup.dag:1355, and its
-// PR is sequenced directly behind this one. Until it lands, the converge on main still decides from the
-// host's own uname read (remote_build_serving_converge.dag:1012), which is why nothing here changes
-// serving behaviour at this head. It is published rather than left private because
+// only call site of THIS entry point is the witness. THE FRONTIER, NAMED AS A ROW AND NOT A BRANCH:
+// roadmap row `remote-build-ken-native-serve-admission` (milestone RB-M3, dag/gunbc/roadmap/
+// roadmap_authority.dag -- both that row and the plan below land with PR #16859), whose plan is
+// gunbc.plans.remote_build_bandwidth section 2; its trigger is that
+// row's implementation landing, which will call this lookup from
+// #gunbc.compute.remote_build_serving_converge::converge_install_binary (choosing the upload arm against
+// a native-build arm) and from #gunbc.compute.remote_build_serving_setup::serving_assess (comparing the
+// host's own uname read against the row, as a check that refuses when they disagree and never as a second
+// source). The implementation is in flight on session/lively-owl-722 and is sequenced directly behind this
+// PR; it is cited as the proof the frontier is real, not as the frontier itself. Until it lands, the
+// converge on main still decides from the uname read alone, which is why nothing here changes serving
+// behaviour at this head. It is published rather than left private because
 // the alternative is the fork this module exists to prevent: a second module walking
 // executor_execution_class_roster by hand, giving a second answer to one question.
 fn executor_host_architecture(host: HostIdentity) -> HostArchitecture {
