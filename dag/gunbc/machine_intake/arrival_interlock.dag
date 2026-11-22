@@ -189,16 +189,35 @@ fn arrival_liveness_from_status_text(run_id: String, status_text: String?) -> Du
   }
 }
 
+// WHAT THE EVIDENCE FILE HOLDS IS THE RESPONSE, not a runner's reading of it: the emitted step commits the
+// declared GET's body as returned and writes those bytes, and the decode below is the model's. A shell step
+// that picked the member out with jq would have moved a model decision into bash, where no witness reaches
+// it. Absent bytes and unparseable bytes are both Unobservable, so nothing can take a slot by writing a
+// truncated file.
+fn arrival_liveness_from_response_body(run_id: String, response_body: String?) -> DurableHoldHolderLiveness {
+  match response_body {
+    Absent => arrival_liveness_from_status_text(run_id: run_id, status_text: Absent)
+    Present { value: body } =>
+      arrival_liveness_from_status_text(
+        run_id: run_id,
+        status_text: match workflow_run_status_of_response(response_body: body) {
+          "" => Absent
+          s => Present { value: s }
+        }
+      )
+  }
+}
+
 // THE FILE THE EMITTED EVIDENCE STEP WRITES, read through the same exact-read seam
 // gunbc.process_hold_identity uses for /proc. An absent file and an unreadable file are both
 // unobservable -- a holder nobody could look at is not a holder that died.
 fn arrival_run_liveness(root: NonEmptyStr, run_id: String) -> DurableHoldHolderLiveness {
   let path = arrival_liveness_evidence_path(root: root, run_id: run_id)
   match exact_text(path: path) {
-    ExactTextAbsent => arrival_liveness_from_status_text(run_id: run_id, status_text: Absent)
+    ExactTextAbsent => arrival_liveness_from_response_body(run_id: run_id, response_body: Absent)
     ExactTextUnread { cause: c } =>
       HolderLivenessUnobservable { cause: join([path, ": ", c as String], "") as NonEmptyStr }
-    ExactTextRead { text: t } => arrival_liveness_from_status_text(run_id: run_id, status_text: Present { value: t })
+    ExactTextRead { text: t } => arrival_liveness_from_response_body(run_id: run_id, response_body: Present { value: t })
   }
 }
 
