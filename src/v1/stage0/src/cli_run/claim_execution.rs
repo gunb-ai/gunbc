@@ -281,7 +281,7 @@ pub(crate) fn run_claim_evaluation(
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         v1_interpreter::run_in_context(ctx, function, false)
     }))
-    .map_err(|payload| panic_payload_text(&payload))
+    .map_err(classify_claim_panic)
 }
 
 #[cfg(test)]

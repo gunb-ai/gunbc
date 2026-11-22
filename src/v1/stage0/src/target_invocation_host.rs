@@ -2253,18 +2253,21 @@ enum ClaimRouteVerdict {
 const CLAIM_RUNNER_UNREACHED_EXIT_CODE: i32 = 2;
 
 /// One member's outcome as the route's verdict. An evaluated claim is read by the claim-arm rule
-/// below; an unresolved entry is read by the rule the resolve authority already sets -- a closure
-/// diagnostic is a finding (did not hold, exit 1), while a missing entry or infrastructure refusal is
-/// the absence of an observation (unobserved, exit 2). Wildcard-free on both layers so a new arm must
-/// be classified here.
+/// below. A known selected claim that cannot execute is ALWAYS the absence of an observation -- an
+/// unobserved outcome carrying its cause (plan `claim_execution_consolidation` section 2: "A known
+/// selected claim that cannot execute gets an unobserved outcome with its cause") -- a resolve
+/// finding is not evidence that the claim evaluated and did not hold. Wildcard-free on both layers
+/// so a new arm must be classified here.
 fn claim_route_verdict(outcome: &cli_run::ClaimMemberOutcome) -> ClaimRouteVerdict {
     use cli_run::{ClaimMemberOutcome as M, EntryResolveRefusal as R};
     match outcome {
         M::Evaluated(o) => evaluated_claim_verdict(o),
-        M::Unresolved(R::ClosureDiagnostics { .. }) => ClaimRouteVerdict::ClaimDidNotHold,
-        M::Unresolved(R::EntryMissing { .. } | R::ResolveInfrastructure { .. }) => {
-            ClaimRouteVerdict::ClaimUnobserved
-        }
+        // Every resolve refusal is the absence of an observation, not a failing claim. The refusal's
+        // kind (ClosureDiagnostics / EntryMissing / ResolveInfrastructure) stays on the line as the
+        // typed `outcome=` and its text as `detail`; only the VERDICT is uniformly unobserved.
+        M::Unresolved(R::ClosureDiagnostics { .. })
+        | M::Unresolved(R::EntryMissing { .. })
+        | M::Unresolved(R::ResolveInfrastructure { .. }) => ClaimRouteVerdict::ClaimUnobserved,
     }
 }
 
@@ -2328,14 +2331,18 @@ impl ClaimRouteFold {
         self.verdicts.iter().filter(|x| **x == verdict).count()
     }
 
-    /// THE ONE EXIT STATUS. A duplicated identity is a broken contract -- the route owes exactly
-    /// one outcome per claim identity -- so it cannot certify success and fails closed as the
-    /// subject unreached; otherwise the existing `claim_route_termination` rule decides.
+    /// THE ONE EXIT STATUS. The existing `claim_route_termination` rule decides: a definite failure
+    /// dominates (exit 1), otherwise an unobserved member or an empty selection is the subject
+    /// unreached (exit 2), otherwise success (exit 0). A duplicated identity is a broken
+    /// one-outcome-per-claim contract, so it blocks SUCCESS only: it upgrades a would-be success to
+    /// the subject unreached, but it never overrides a definite failure (which still exits 1) and
+    /// never softens an unobserved/empty result (which already exits 2).
     fn termination(&self) -> Termination {
-        if self.duplicate.is_some() {
+        let base = claim_route_termination(&self.verdicts);
+        if self.duplicate.is_some() && base == Termination::ObservationHeld {
             Termination::SubjectUnreached
         } else {
-            claim_route_termination(&self.verdicts)
+            base
         }
     }
 }
@@ -4033,32 +4040,56 @@ mod claim_route_result_contract_tests {
         assert!(fold.verdicts.is_empty());
     }
 
-    // ---- a resolve failure is NOT one verdict: the authority already split it -------------
+    // ---- a resolve failure is NOT a finding: it is the absence of an observation -------------
     //
-    // The route calls the TYPED resolve, so each refusal carries its own kind and the fold maps it
-    // by `gunbc.target_invocation`'s rule: a closure diagnostic is a finding (the corpus has a defect
-    // the claim stands on), while a missing entry or an infrastructure refusal never reached a
-    // subject. `NotAttempted` is NOT reused here -- it means "a sibling's unwind stopped the line."
+    // The route calls the TYPED resolve, so each refusal carries its own kind, and the fold maps
+    // EVERY unresolved entry to UNOBSERVED (plan section 2: a known selected claim that cannot
+    // execute gets an unobserved outcome with its cause). A resolve finding is not evidence the claim
+    // evaluated and did not hold. `NotAttempted` is NOT reused here -- it means "a sibling's unwind
+    // stopped the line."
     #[test]
-    fn a_closure_diagnostic_is_a_finding_not_no_observation() {
-        let (lines, status, fold) = route_fold(&[unresolved_member(
-            "test.claim.zz",
-            "b_broken",
-            R::ClosureDiagnostics {
-                message: "name 'phantom_fn' not found in test.claim.zz_broken".into(),
-            },
-        )]);
+    fn a_closure_diagnostic_is_unobserved_and_held_siblings_still_run() {
+        // The brief's A/B/C case: A holds, B cannot resolve, C holds. A and C run; B is located as
+        // an unobserved outcome carrying its cause; the aggregate is subject unreached (exit 2), not
+        // success and not a finding.
+        let (lines, status, fold) = route_fold(&[
+            member("test.claim.zz", "a_holds", O::Pass),
+            unresolved_member(
+                "test.claim.zz",
+                "b_broken",
+                R::ClosureDiagnostics {
+                    message: "name 'phantom_fn' not found in test.claim.zz_broken".into(),
+                },
+            ),
+            member("test.claim.zz", "c_holds", O::Pass),
+        ]);
         assert_eq!(
-            status, 1,
-            "a closure defect is a finding: did-not-hold, exit 1"
+            status, 2,
+            "one unobserved among held siblings, no definite failure -> subject unreached (exit 2)"
         );
-        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimHeld), 2, "A and C still run");
+        assert_eq!(
+            fold.count(ClaimRouteVerdict::ClaimUnobserved),
+            1,
+            "B is an absence of an observation, not a finding"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 0);
         assert!(
-            lines[0].contains("DID-NOT-HOLD")
-                && lines[0].contains("outcome=ClosureDiagnostics")
-                && lines[0].contains("phantom_fn"),
-            "the located arm and its text are on the line (arm keyed, text in detail): {lines:?}"
+            lines
+                .iter()
+                .any(|l| l.contains("b_broken")
+                    && l.contains("UNOBSERVED")
+                    && l.contains("outcome=ClosureDiagnostics")
+                    && l.contains("phantom_fn")),
+            "B is located as unobserved with its typed arm keyed and text in detail: {lines:?}"
         );
+        // A and C report their own held lines -- one resolve failure does not abort the others.
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("a_holds") && l.contains("HELD")));
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("c_holds") && l.contains("HELD")));
     }
 
     #[test]
@@ -4123,6 +4154,28 @@ mod claim_route_result_contract_tests {
         ]);
         assert_eq!(status2, 0);
         assert!(fold2.duplicate.is_none());
+    }
+
+    // ---- a duplicate blocks success but NEVER overrides a definite failure -----------------
+    #[test]
+    fn a_duplicate_does_not_override_a_definite_failure() {
+        // A Pass, A Pass (the second dropped as a duplicate), B Fail. The rule gives exit 1 (a
+        // definite failure dominates), NOT the subject unreached a lone duplicate would give.
+        let (lines, status, fold) = route_fold(&[
+            member("test.claim.zz", "a", O::Pass),
+            member("test.claim.zz", "a", O::Pass),
+            member("test.claim.zz", "b", O::Fail),
+        ]);
+        assert_eq!(status, 1, "a definite failure still gives 1 despite the duplicate");
+        assert!(
+            fold.duplicate.as_deref().is_some(),
+            "the duplicate is still recorded (it blocks success)"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
+        assert!(
+            lines.iter().any(|l| l.contains("b") && l.contains("DID-NOT-HOLD")),
+            "B's definite failure is reported on its own line: {lines:?}"
+        );
     }
 
     // ---- the real selection-and-execution path, end to end ------------------------------
@@ -4196,14 +4249,15 @@ mod claim_route_result_contract_tests {
             ),
             "the code-2 claim must arrive as a typed ProcessExit, not a Bool"
         );
-        // B's entry cannot resolve: a phantom import is a CLOSURE DIAGNOSTIC -- a finding, not a
-        // no-observation -- carried as the typed refusal, on exactly one located line.
+        // B's entry cannot resolve: a phantom import is a CLOSURE DIAGNOSTIC carried as the typed
+        // refusal -- an ABSENCE of an observation (unobserved) with its cause, NOT a finding that the
+        // claim evaluated and did not hold (plan section 2) -- on exactly one located line.
         assert!(
             matches!(
                 outcome_of("zz_b"),
                 M::Unresolved(R::ClosureDiagnostics { .. })
             ),
-            "B's phantom import must be a located closure finding: {:?}",
+            "B's phantom import must be a located closure refusal: {:?}",
             outcome_of("zz_b")
         );
 
@@ -4214,11 +4268,15 @@ mod claim_route_result_contract_tests {
         assert_eq!(fold.count(ClaimRouteVerdict::ClaimHeld), 4); // zz_a, zz_c, held, passes
         assert_eq!(
             fold.count(ClaimRouteVerdict::ClaimDidNotHold),
-            4,
-            "fails, nonbool, refused(1), and B's closure diagnostic -- a finding"
+            3,
+            "the definite observations: fails, nonbool, refused(1)"
         );
-        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1); // only the code-2 exit
-                                                                       // A definite failure is present, so the route exits 1 -- and A and C still ran, B is located.
+        assert_eq!(
+            fold.count(ClaimRouteVerdict::ClaimUnobserved),
+            2,
+            "the code-2 exit AND B's unresolved closure -- both absences of an observation"
+        );
+        // A definite failure is present, so the route exits 1 -- and A and C still ran, B is located.
         assert_eq!(status, 1);
         assert_eq!(lines.len(), 9);
         assert!(
@@ -4229,9 +4287,9 @@ mod claim_route_result_contract_tests {
         );
         assert!(
             lines.iter().any(|l| l.contains("zz_b")
-                && l.contains("DID-NOT-HOLD")
+                && l.contains("UNOBSERVED")
                 && l.contains("outcome=ClosureDiagnostics")),
-            "B is located on its own finding line: {lines:?}"
+            "B is located on its own unobserved line with its typed cause: {lines:?}"
         );
         assert!(lines
             .iter()

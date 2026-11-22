@@ -16661,30 +16661,61 @@ fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> (String, PanicPay
     }
 }
 
+/// THE PRODUCTION PANIC CLASSIFIER. `catch_unwind` hands back a `Box<dyn Any + Send>`; the payload
+/// KIND is decided on the Box's CONTENTS, not the Box itself. Passing `&payload` would coerce to
+/// `&dyn Any` pointing AT THE BOX, whose concrete type is neither `&str` nor `String`, so every
+/// string panic would be mislabelled `non_string_payload` with the placeholder text (the pre-existing
+/// defect this closes). `payload.as_ref()` dereferences to the contained `dyn Any`, so the downcasts
+/// see the real payload. `run_claim_evaluation` maps the caught Box through THIS function; the control
+/// feeds a real `catch_unwind` Box through the same function.
+pub(crate) fn classify_claim_panic(
+    payload: Box<dyn std::any::Any + Send>,
+) -> (String, PanicPayloadKind) {
+    panic_payload_text(payload.as_ref())
+}
+
 #[cfg(test)]
 mod panic_payload_kind_tests {
     use super::*;
 
-    /// THE PRODUCER (the catch seam). Run a real `std::panic::panic_any(42u32)` through the same
-    /// `catch_unwind` + `panic_payload_text` the route uses, and the payload must be labelled
-    /// `NonStringPayload` -- this is what the route's `cause=` field turns into. A real floor claim
-    /// crashes this way (a non-`String` payload), so mislabelling it `string_payload` is a wrong
-    /// machine key, not a cosmetic one. A `String` payload is the string arm with its text intact.
+    /// THE PRODUCER, through the production catch. Real panics run through `catch_unwind` and the
+    /// caught `Box<dyn Any + Send>` is fed to the SAME function the route uses (`classify_claim_panic`),
+    /// NOT the `panic_payload_text` helper directly -- so the bug where the catch classified the Box
+    /// rather than its contents (every string panic becoming `non_string_payload`) is caught HERE, at
+    /// the seam production actually uses. A `&'static str` and a `String` keep their text and give
+    /// `string_payload`; `panic_any(42u32)` gives `non_string_payload`. A real floor claim crashes this
+    /// way, so the label is a machine `cause=` key, not a cosmetic one.
     #[test]
     fn the_panic_catch_labels_each_payload_by_its_real_kind() {
         // Silence the default panic hook so the intentional panics do not spam test stderr.
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
-        let non_string = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            std::panic::panic_any(42u32)
+        let caught_str = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any("a borrowed message")
         }));
-        let string = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let caught_string = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             std::panic::panic_any(String::from("a real message"))
+        }));
+        let caught_u32 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any(42u32)
         }));
         std::panic::set_hook(prev);
 
-        let non_string = non_string.expect_err("panic_any(42u32) must unwind");
-        let (text, kind) = panic_payload_text(non_string.as_ref());
+        // `&'static str`: the string arm, its text preserved -- NOT mislabelled non-string.
+        let (text, kind) = classify_claim_panic(caught_str.expect_err("&'static str must unwind"));
+        assert_eq!(kind, PanicPayloadKind::StringPayload);
+        assert_eq!(text, "a borrowed message", "the borrowed-str text is preserved");
+        assert_eq!(kind.token(), "string_payload");
+
+        // `String`: the string arm, its text preserved.
+        let (text, kind) = classify_claim_panic(caught_string.expect_err("String must unwind"));
+        assert_eq!(kind, PanicPayloadKind::StringPayload);
+        assert_eq!(text, "a real message", "the String text is preserved");
+        assert_eq!(kind.token(), "string_payload");
+
+        // A non-`String` payload: the absence of a string, placeholder text, `non_string_payload`.
+        let (text, kind) =
+            classify_claim_panic(caught_u32.expect_err("panic_any(42u32) must unwind"));
         assert_eq!(
             kind,
             PanicPayloadKind::NonStringPayload,
@@ -16695,12 +16726,6 @@ mod panic_payload_kind_tests {
             "the placeholder explains the absence: {text}"
         );
         assert_eq!(kind.token(), "non_string_payload");
-
-        let string = string.expect_err("panic_any(String) must unwind");
-        let (text, kind) = panic_payload_text(string.as_ref());
-        assert_eq!(kind, PanicPayloadKind::StringPayload);
-        assert_eq!(text, "a real message", "the real text is preserved");
-        assert_eq!(kind.token(), "string_payload");
     }
 }
 
