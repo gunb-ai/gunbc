@@ -3,7 +3,6 @@ module v2.test.claim.parse.corpus_list_separator_no_regression
 import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
 import v2.std.text { String, char_eq }
 import std.algebra { is_prefix_of, count_where, length }
-import v2.std.live_read { filesystem_read }
 import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_walk }
 
 // CORPUS PARSE RECEIPT for the list-separator wall. The wall only ADDS a refusal -- it turns a bracketed
@@ -30,15 +29,16 @@ fn all_corpus_paths() -> List<String> {
 }
 
 fn classify_corpus_module(path: String) -> String {
-  parse_acceptance_of_text(text: filesystem_read(path: path).content, path: path)
+  let result = filesystem_read(path: path)
+  parse_acceptance_of_text(text: result.content, path: path)
 }
 
 test fn corpus_has_no_juxtaposed_list_and_still_parses_holds() -> Bool {
-  let classifications = map(all_corpus_paths(), classify_corpus_module)
-  let separator_refusals =
-    count_where(classifications, fn(c) {
-      is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: c, eq: char_eq)
-    })
-  let accepted = count_where(classifications, fn(c) { c == "accepted" })
-  (length(classifications) > 5000) && (separator_refusals == 0) && (accepted > 1000)
+  let classifications = map(all_corpus_paths(), fn(path) { classify_corpus_module(path) })
+  let separator_refusals = count_where(
+    xs: classifications,
+    predicate: fn(c) { is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: c, eq: char_eq) }
+  )
+  let accepted = count_where(xs: classifications, predicate: fn(c) { c == "accepted" })
+  (length(xs: classifications) > 5000) && (separator_refusals == 0) && (accepted > 1000)
 }
