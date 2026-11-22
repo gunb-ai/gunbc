@@ -8,7 +8,18 @@ import gunbc.ci.ci_layer_roots {
   witness_exclusion_frontier,
   witness_layer_roots
 }
-import gunbc.cli_invoke { source_root_transport_argv }
+import gunbc.cli_invoke { gunbc_bin_name, invocation_words_bare, source_root_transport_argv }
+import gunbc.gunbc_cli_command {
+  TestBatchMode,
+  HermeticBatch,
+  WetBatch,
+  gunbc_test_batch_invocation_words,
+}
+import gunbc.instruments.host_prelude {
+  ClaimOperand,
+  ClaimOperandUnnameable,
+  claim_identity_operand,
+}
 import std.witness_admission { OfflineLocalRecipe, witness_consumer_cadence_eq }
 
 // THE LOCAL RECIPE IS THE CONSUMER OF RECORD FOR AN OFFLINE-CLASSIFIED WITNESS, AND
@@ -422,41 +433,133 @@ fn every_defect_row_has_a_recipe() -> Bool {
 // subject has no argv of its own -- there is no entry to name -- so it returns the empty
 // argv and its residents render through recipe_argv_for_entry, which is the honest shape:
 // the recipe genuinely is a template until a resident is chosen.
-data claim_batch_bin_name: String = "claim_batch"
+// THE PROGRAM WORD AND THE WORDS, BOTH FROM THE MODULES THAT OWN THEM. The recipe documents a command
+// a person runs offline; its first word is the release binary and the rest are the CLI module's words.
+// `claim_batch` is gone from both: the verb is `test`, the program is `gunbc.cli_invoke`'s
+// `gunbc_bin_name`, and the operand/mode/root words come from
+// `gunbc.gunbc_cli_command.gunbc_test_batch_invocation_words` -- the same function the admitted
+// `ArgvCommand` realization renders from, so a documented recipe and a machine-checked command cannot
+// drift into two spellings of one interface.
+//
+// THREE OUTCOMES, NOT ONE LIST. An empty argv used to mean two different things at once: "this row has
+// no subject yet" (RecipeHome, RecipeCallerChosen) and, indistinguishably, anything else that failed to
+// produce words. A recipe is a promise about a command someone will type, so the states are separated:
+// built, nothing chosen yet, or REFUSED with the operand and the reason. The legacy binary exited 2 on
+// an `--entry` with no `--function` (`src/v1/stage0/src/bin/claim_batch.rs`: "has no --function or
+// --functions"), so a `RecipeCallerChosen` row never had a runnable command either; it keeps the
+// "nothing chosen yet" state rather than acquiring a `:all` form the legacy route refused to offer --
+// inventing one here would be a caller widening its request, which the plan's section 2 forbids. And
+// `Record` refuses: it names a fixture store this row type does not carry, and `gunbc test` refuses
+// `--record` without one, so the recipe must not promise a command it cannot name. (No row uses Record
+// today: `grep -n "mode: " <this file>` gives 9 Wet and 5 Hermetic.)
+type RecipeArgv
+  = RecipeArgvBuilt { argv: List<String> }
+  | RecipeArgvNothingChosen { subject: NonEmptyStr, reason: NonEmptyStr }
+  | RecipeArgvRefused { subject: NonEmptyStr, operand: NonEmptyStr, reason: NonEmptyStr }
 
-fn recipe_selection_argv(selection: RecipeSelection) -> List<String> {
-  match selection {
-    RecipeCallerChosen => []
-    RecipeFunctions { names: names } =>
-      fold(names, init: [], f: fn(acc, name) { concat(acc, ["--function", name]) })
-  }
-}
+type RecipeMode
+  = RecipeModeGranted { mode: TestBatchMode }
+  | RecipeModeUnsupported { mode_word: NonEmptyStr, reason: NonEmptyStr }
 
-fn recipe_mode_argv(mode: ExecutionMode) -> List<String> {
+// THE ROW'S MODE, RENDERED AS THE ROUTE'S MODE. `std.execution_mode::ExecutionMode` stays the row's
+// vocabulary -- the roster does not change for a caller migration -- and this is the one place that maps
+// it onto the batch mode the words are built from. `Hermetic` and `Wet` map through; `Record` has no
+// batch form available here because the row carries no store, and a silent Hermetic fallback for a row
+// that asked to record would run a different subject than the one the roster describes.
+fn recipe_batch_mode(mode: ExecutionMode) -> RecipeMode {
   match mode {
-    Hermetic => []
-    Wet => ["--wet"]
-    Record => ["--record"]
+    Hermetic => RecipeModeGranted { mode: HermeticBatch }
+    Wet => RecipeModeGranted { mode: WetBatch }
+    Record => RecipeModeUnsupported {
+      mode_word: "record" as NonEmptyStr,
+      reason: "Record names a fixture store this row does not carry, and gunbc test refuses --record without one" as NonEmptyStr,
+    }
   }
 }
 
-fn recipe_argv_for_entry(row: OfflineLocalRecipeRow, entry: NonEmptyStr) -> List<String> {
-  concat(
-    concat(
-      concat([claim_batch_bin_name], recipe_mode_argv(mode: row.mode)),
-      source_root_transport_argv(roots: witness_layer_roots)
-    ),
-    concat(["--entry", entry], recipe_selection_argv(selection: row.selection))
+type RecipeOperands
+  = RecipeOperandsBuilt { operands: List<String> }
+  | RecipeOperandsRefused { operand: NonEmptyStr, reason: NonEmptyStr }
+
+// ONE OPERAND PER RESIDENT NAME, THROUGH THE ROUTE'S OWN IDENTITY RULE. The row still carries a module
+// path and function names; what changes is that the words produced are labels admitted by
+// `claim_identity_operand`, the function `gunbc test`'s pooled builder admits rows through. A row that
+// names something outside the claim universe therefore refuses here, where the row is, with the reason,
+// instead of producing a documented command whose child only exits 2 later.
+fn recipe_operand_words(entry: NonEmptyStr, names: List<NonEmptyStr>) -> RecipeOperands {
+  fold(
+    names,
+    init: RecipeOperandsBuilt { operands: [] },
+    f: (acc, name) => match acc {
+      RecipeOperandsRefused { operand: held, reason: why } => RecipeOperandsRefused { operand: held, reason: why }
+      RecipeOperandsBuilt { operands: built } => match claim_identity_operand(entry: entry, function: name) {
+        ClaimOperand { label: label } => RecipeOperandsBuilt { operands: concat(built, [label]) }
+        ClaimOperandUnnameable { entry: _, function: named, reason: why } => RecipeOperandsRefused {
+          operand: named,
+          reason: why,
+        }
+      }
+    }
   )
 }
 
-fn recipe_argv(row: OfflineLocalRecipeRow) -> List<String> {
+fn recipe_argv(row: OfflineLocalRecipeRow) -> RecipeArgv {
   match row.subject {
-    RecipeEntry { path: p } => recipe_argv_for_entry(row: row, entry: p)
-    RecipeHome { path_prefix: _ } => []
+    RecipeHome => RecipeArgvNothingChosen {
+      subject: "home" as NonEmptyStr,
+      reason: "a HOME subject has no argv of its own: there is no entry to name" as NonEmptyStr,
+    }
+    RecipeEntry { path: path } => recipe_argv_for_entry(row: row, entry: path)
   }
 }
 
+fn recipe_argv_for_entry(row: OfflineLocalRecipeRow, entry: NonEmptyStr) -> RecipeArgv {
+  match recipe_batch_mode(mode: row.mode) {
+    RecipeModeUnsupported { mode_word: word, reason: why } => RecipeArgvRefused {
+      subject: recipe_subject_path(subject: row.subject),
+      operand: word,
+      reason: why,
+    }
+    RecipeModeGranted { mode: mode } => match row.selection {
+      RecipeCallerChosen => RecipeArgvNothingChosen {
+        subject: recipe_subject_path(subject: row.subject),
+        reason: "the selection belongs to the caller: no function name is resident, so no claim is named" as NonEmptyStr,
+      }
+      RecipeFunctions { names: names } => match recipe_operand_words(entry: entry, names: names) {
+        RecipeOperandsRefused { operand: operand, reason: why } => RecipeArgvRefused {
+          subject: recipe_subject_path(subject: row.subject),
+          operand: operand,
+          reason: why,
+        }
+        RecipeOperandsBuilt { operands: operands } => RecipeArgvBuilt {
+          argv: concat(
+            [gunbc_bin_name],
+            invocation_words_bare(
+              words: gunbc_test_batch_invocation_words(
+                operands: operands,
+                mode: mode,
+                source_roots: witness_layer_roots
+              )
+            )
+          ),
+        }
+      }
+    }
+  }
+}
+
+// THE ENTRY, SPOTTED AS A LABEL. The argv no longer carries `--entry <path>.dag`; it carries labels, and
+// the label for a function of this module begins with this prefix. Built the same way
+// `claim_identity_operand` builds a label -- replace, not slice, for the reason recorded there -- so the
+// two cannot disagree about what "names this entry" means. An entry outside the claim universe yields a
+// prefix no label can start with, which is the correct false.
+fn entry_label_prefix(entry: NonEmptyStr) -> String {
+  let rest = entry.replace(from: "dag/test/claim/", to: "")
+  let package_path = rest.replace(from: ".dag", to: "").replace(from: "/", to: ".")
+  concat(concat("//", package_path), ":")
+}
+
 fn argv_names_the_entry(argv: List<String>, entry: NonEmptyStr) -> Bool {
-  fold(argv, init: false, f: fn(found, word) { found || (word == entry) })
+  let head = entry_label_prefix(entry: entry)
+  fold(argv, init: false, f: fn(found, word) { found || word.starts_with(head) })
 }
