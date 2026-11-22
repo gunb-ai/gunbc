@@ -188,7 +188,11 @@ import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
 import gunbc.roadmap.roadmap_spawner { readiness_graph, node_readiness_in_graph }
 import gunbc.roadmap.roadmap_readiness { NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, GapDependencies }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.filesystem.filesystem_io
+// The provider is named explicitly, not left to the bare-name candidate search. This module's closure also
+// reaches `std.resources`'s resource `Filesystem`, so a bare `Filesystem.Read` is answered by TWO candidates
+// (std.resources, extdeps.filesystem.filesystem_io) and refuses; importing the service by name binds the
+// receiver uniquely to the transport contract this witness actually calls (it reads committed artifact bytes).
+import extdeps.filesystem.filesystem_io { Filesystem }
 // THE COMMITTED EVENT LOG, AS A GENERATED ARTIFACT. This module reads the fixture and never produces it: the
 // roster (gunbc.generated_artifact) owns where the files live, the producer
 // (gunbc.roadmap.roadmap_authority_fixture) owns what their bytes are, the gate
