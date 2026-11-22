@@ -31,7 +31,7 @@ import extdeps.tailscale.serve { ServeRootMount, ServeSetPath }
 import gunbc.roadmap.roadmap_site_surface_observe {
   RoadmapSiteSurfaceBundleObservation,
   RoadmapSiteSurfaceBundleRendered,
-  roadmap_site_surface_bundle_observation,
+  roadmap_site_surface_bundle_observation_for_launcher,
 }
 import gunbc.roadmap.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
@@ -465,7 +465,7 @@ fn live_deploy_proxied_readiness(spec: DeploymentSpec, candidate: CandidateRelea
     Present { value: url } =>
       observe_service_readiness_from_healthz(
         read: live_deploy_healthz_get_for_url(url: url, spec: spec, transport: transport),
-        observation: roadmap_site_surface_bundle_observation(),
+        observation: roadmap_site_surface_bundle_observation_for_launcher(),
         expected_revision: candidate.revision,
         expected_surface_identity: candidate.expected_surface_identity,
       )
@@ -781,7 +781,7 @@ fn live_deploy_service_ready_once_for_deploy(
             spec: spec,
             transport: transport,
           ),
-          observation: roadmap_site_surface_bundle_observation(),
+          observation: roadmap_site_surface_bundle_observation_for_launcher(),
           expected_revision: candidate.revision,
           expected_surface_identity: candidate.expected_surface_identity,
         ),
@@ -792,7 +792,7 @@ fn live_deploy_service_ready_once_for_deploy(
             Present { value: socket } =>
               observe_service_readiness_from_healthz(
                 read: live_deploy_healthz_get_for_socket(socket: socket, spec: spec, transport: transport),
-                observation: roadmap_site_surface_bundle_observation(),
+                observation: roadmap_site_surface_bundle_observation_for_launcher(),
                 expected_revision: candidate.revision,
                 expected_surface_identity: candidate.expected_surface_identity,
               )

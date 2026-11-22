@@ -104,19 +104,28 @@ fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, gi
 // read (roadmap_event_carrier_sync: fetch <remote> <branch>; reset --hard FETCH_HEAD), so the remote's tip of the
 // roadmap-events branch IS the shared authority — a divergent local head on either host is discarded, never
 // rendered. This layout points the carrier at the runner's OWN checkout so the git it runs writes only the
-// runner's repository: repo_root and instance_root are the CI checkout, remote is "origin" and branch is
-// "roadmap-events" — identical to the instance layout, which reads the same remote branch. The capability
-// programs are taken from the instance layout, because those executables are realized by the runtime image and
-// are not the briansrls-owned paths the dubious-ownership refusal was about. No host edit: the runner is the
-// principal here. gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_binding is the
-// sibling family (principal axis rather than binding axis).
+// runner's repository: repo_root is the CI checkout (where ls-remote and fetch run — both touch only REFS,
+// never the working tree, so `git status` and the deploy cleanliness check, which read tracked content, stay
+// clean, and no tracked path changes), and the carrier WORKTREE is created in a fresh runner-owned `mktemp -d`
+// scratch OUTSIDE the deploy checkout, so `git worktree add` / the branch snapshot never materialize inside the
+// deploying tree. The event content the read renders from is a further private snapshot (roadmap_event_private_
+// snapshot) under its own mktemp dir. A unique scratch per read — NOT a fixed shared /tmp path — because
+// extdeps.git.inspect::Toplevel records a review that found a fixed per-revision /tmp path reused across runs;
+// concurrent reads must not collide. If mktemp itself fails the scratch path is empty and roadmap_event_carrier_
+// _ensure refuses downstream, so a failed scratch is a refusal, never a read against the deploy checkout. remote
+// is "origin" and branch is "roadmap-events" — identical to the instance layout, which reads the same remote
+// branch. The capability programs are taken from the instance layout, because those executables are realized by
+// the runtime image and are not the briansrls-owned paths the dubious-ownership refusal was about. No host edit:
+// the runner is the principal here. gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_
+// binding is the sibling family (principal axis rather than binding axis).
 fn roadmap_event_carrier_ci_layout(
   checkout_root: FilePath,
   instance_layout: RoadmapEventCarrierLayout,
 ) -> RoadmapEventCarrierLayout {
+  let scratch = shell.Mktemp.Dir()
   roadmap_event_carrier_layout(
     repo_root: checkout_root,
-    instance_root: checkout_root,
+    instance_root: scratch.path,
     git_program: instance_layout.git_program,
     directory_program: instance_layout.directory_program,
   )

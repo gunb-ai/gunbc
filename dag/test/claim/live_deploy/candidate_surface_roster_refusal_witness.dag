@@ -1,6 +1,6 @@
 module test.claim.live_deploy.candidate_surface_roster_refusal_witness
 
-import std.types { Bool, String, CommitSha, List, NonEmptyStr }
+import std.types { Bool, String, CommitSha, List, NonEmptyStr, FilePath }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.readiness { Ready, Pending, Refused }
 import gunbc.live_deploy.readiness { observe_service_readiness_from_healthz, ServiceSurfaceUnobserved }
@@ -24,6 +24,11 @@ import gunbc.roadmap.roadmap_site_surface_observe {
 import gunbc.roadmap.roadmap_authority { roadmap_authority_projection_with, RoadmapAuthorityProjection, RoadmapAuthorityProjectionRefused }
 import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoaded }
 import gunbc.roadmap.roadmap_event_log { RetiredNodeIdsLoaded }
+import gunbc.roadmap.roadmap_event_carrier {
+  roadmap_event_carrier_layout,
+  roadmap_event_carrier_layout_for_instance,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 
 // THE SUBJECT IS `{ roster read refused, expected surface identity minted }` MUST NOT BE CONSTRUCTIBLE.
 //
@@ -172,4 +177,32 @@ test fn the_readiness_gate_refuses_a_refused_roster_read_and_never_renders_a_ver
     Pending { cause: _ } => false
     Ready { evidence: _ } => false
   }
+}
+
+// RED BEFORE THE CHANGE, AT THE DEPLOY ROUTE'S LAYOUT SHAPE. The candidate, the cutover readiness gate and the
+// launch receipt step all derive the expectation through ONE builder — roadmap_event_carrier_ci_layout over the
+// runner's git.Inspect.Toplevel() checkout (roadmap_site_surface_bundle_observation_for_launcher). Before the
+// change the readiness gate read through roadmap_event_carrier_layout_for_instance, whose repo_root is the
+// briansrls-owned /opt/gunbc service tree: as the CI runner principal that read refuses with "detected dubious
+// ownership", so the cutover gate would only have renamed the deterministic failure to a late
+// ServiceSurfaceUnobserved. And the carrier read is NOT read-only (worktree add / fetch / reset --hard), so the
+// old CI layout (instance_root = the checkout) would have created the worktree INSIDE the deploying tree. This
+// control builds the SAME layout the route builds through the PURE constructor with the runner's shapes (a
+// checkout repo_root and a separate scratch instance_root) — the hermetic claim host mocks git/mktemp, so the
+// real ghrunner fetch+read is exercised in CI, not here — and pins the two facts the two findings hinge on:
+// repo_root is the runner checkout, a DIFFERENT tree from the service layout the readiness gate used before the
+// change; and the carrier worktree derives from the scratch instance_root, OUTSIDE the deploy checkout.
+test fn the_launcher_layout_reads_the_runner_checkout_and_keeps_the_carrier_worktree_outside_it() -> Bool {
+  let checkout = "/home/ghrunner/actions-runner/_work/gunbc/gunbc"
+  let scratch = "/tmp/gunbc-roadmap-events-carrier-0123456789abcdef"
+  let service = roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance())
+  let runner = roadmap_event_carrier_layout(
+    repo_root: checkout as FilePath,
+    instance_root: scratch as FilePath,
+    git_program: service.git_program,
+    directory_program: service.directory_program,
+  )
+  (runner.repo_root as String) == checkout
+    && (runner.repo_root as String) != (service.repo_root as String)
+    && !string_contains(s: runner.worktree as String, pattern: checkout)
 }

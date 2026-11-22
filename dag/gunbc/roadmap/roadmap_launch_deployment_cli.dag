@@ -57,7 +57,7 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap.roadmap_site_surface_observe {
   RoadmapSiteSurfaceBundleReadRefused,
   RoadmapSiteSurfaceBundleRendered,
-  roadmap_site_surface_bundle_observation,
+  roadmap_site_surface_bundle_observation_for_launcher,
 }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
@@ -673,7 +673,7 @@ fn rlm_launch_deployment_receipt_bound(
   }
   let binding = match healthz_routed {
     HealthzServed { body: _, identity: id } =>
-      match roadmap_site_surface_bundle_observation() {
+      match roadmap_site_surface_bundle_observation_for_launcher() {
         // The launch CLI mints the EXPECTED surface for the binding. Over a refused roster read there is no
         // expectation to bind to, so this is an unobserved binding, not one carrying a fabricated identity
         // (same fail-closed as the candidate and the readiness gate).

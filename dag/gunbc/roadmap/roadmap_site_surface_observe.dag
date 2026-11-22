@@ -1,7 +1,12 @@
 module gunbc.roadmap.roadmap_site_surface_observe
 
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection, roadmap_plan_projection_over_layout }
-import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout,
+  roadmap_event_carrier_ci_layout,
+  roadmap_event_carrier_layout_for_instance,
+}
+import extdeps.git
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
@@ -180,15 +185,38 @@ fn roadmap_site_surface_bundle_observation_of_layout(
   }
 }
 
-// Observe the site surface over the SRV1 instance carrier layout — the authority the live service renders
-// from. THIS is what an expectation-minting launcher (the readiness gate, the launch and belt CLIs) must
-// call: it returns the same bundle the old `materialize_live_roadmap_site_surface_bundle` returned whenever
-// the read opens, and a TYPED REFUSAL instead of a fabricated identity when it does not. The candidate
-// does NOT use this — it reads origin's roadmap-events branch under the CI job's principal via
-// `roadmap_site_surface_bundle_observation_of_layout` with the CI/runner layout (gunbc.live_deploy.candidate),
-// because the runner cannot open the instance tree. Same fold, same law, chosen by which principal runs.
+// Observe the site surface over the SRV1 INSTANCE carrier layout (/opt/gunbc, the service principal's tree) —
+// the authority the live service renders from. This is the observation for a caller that runs AS THE INSTANCE
+// PRINCIPAL and reads its own instance tree: the belt serve gate (roadmap_belt_tick_cli, run under the belt
+// service's principal/slice/spawn root) and the healthz_validate comparison. It returns the same bundle the old
+// `materialize_live_roadmap_site_surface_bundle` returned whenever the read opens, and a TYPED REFUSAL instead
+// of a fabricated identity when it does not. A caller that runs in the CI DEPLOY JOB (the candidate, the
+// cutover readiness gate, the launch receipt CI step) must NOT use this — the runner cannot open the instance
+// tree, and reading it there just moves the failure to a typed refusal. Those call
+// `roadmap_site_surface_bundle_observation_for_launcher` below. Same fold, same law; the layout is chosen by
+// which principal actually runs the read (gunbc.design_argument::earliest_unjustified_boundary).
 fn roadmap_site_surface_bundle_observation() -> RoadmapSiteSurfaceBundleObservation {
   roadmap_site_surface_bundle_observation_of_layout(
     layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()),
+  )
+}
+
+// Observe the site surface over the LAUNCHER (CI-runner) carrier layout — for every expectation-minting site
+// that runs in the fleet-converge DEPLOY JOB as the runner principal (ghrunner) inside the job's own checkout:
+// the candidate (gunbc.live_deploy.candidate), the cutover readiness gate (gunbc.live_deploy.readiness) and the
+// launch receipt step (roadmap_launch_deployment_cli). The runner cannot open the instance tree (briansrls-
+// owned), so it reads the SAME authority the service renders from — origin's roadmap-events branch, which the
+// service fetch+reset --hard onto on every read — into its own checkout, under the principal that owns that
+// checkout. The candidate, the readiness gate and the launch step therefore share ONE layout for the one
+// roster question (roadmap_event_carrier_ci_layout: repo_root = the runner checkout, carrier worktree in
+// scratch), which is the point — the readback expectation is derived under the same principal as the read it
+// must match, not re-derived under a different one (gunbc.design_argument::earliest_unjustified_boundary,
+// gunbc.recurring_failure_mode.readback_expectation_rendered_over_a_refused_read_under_the_wrong_principal).
+fn roadmap_site_surface_bundle_observation_for_launcher() -> RoadmapSiteSurfaceBundleObservation {
+  roadmap_site_surface_bundle_observation_of_layout(
+    layout: roadmap_event_carrier_ci_layout(
+      checkout_root: git.Inspect.Toplevel().path,
+      instance_layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()),
+    ),
   )
 }
