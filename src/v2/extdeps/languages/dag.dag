@@ -992,7 +992,12 @@ fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 // still admits the trailing comma (a legitimate multi-line list is written with one), while a juxtaposed
 // element -- one that follows a complete element with no comma, the only thing that can sit where the
 // caller's `]` is expected -- refuses at parse as ListElementSeparatorMissing instead of joining the
-// list. Call-argument and record-init comma-lists are NOT this helper; only a bracketed list is.
+// list. The guard is a RefuseOnMatch WRAPPED IN Optional: a RefuseOnMatch rejects (soft-fails) where its
+// element cannot match, so the optional lets a legitimate list -- where the only thing after the
+// elements is the caller's `]`, never a bare element -- pass through it untouched; and where the element
+// DOES match (the juxtaposition) it raises a REFUSAL, which the optional preserves in the parse table
+// rather than swallowing, so the refusal still stops the parse. Call-argument and record-init
+// comma-lists are NOT this helper; only a bracketed list is.
 fn dag_grammar_list_literal_seq(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: item,
@@ -1005,7 +1010,9 @@ fn dag_grammar_list_literal_seq(item: GrammarExpr) -> GrammarExpr {
       ),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
-        right: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
+        right: dag_grammar_optional(
+          element: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
+        )
       )
     )
   )
