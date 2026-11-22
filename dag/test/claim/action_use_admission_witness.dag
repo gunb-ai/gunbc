@@ -1,6 +1,6 @@
 module test.claim.action_use_admission_witness
 
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io
 import std.types { Bool, Int, List, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions {

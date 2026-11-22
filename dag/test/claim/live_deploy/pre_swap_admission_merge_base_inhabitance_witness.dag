@@ -18,7 +18,7 @@ import gunbc.git_workdir_free_route {
 }
 import extdeps.shell
 import extdeps.shell.exec
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

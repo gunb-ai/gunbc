@@ -15,7 +15,7 @@ import gunbc.parse_verdict_schema {
   parse_verdict_stored_accepted_line,
   parse_verdict_pr2_restore_frontier,
 }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io
 
 data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
 
