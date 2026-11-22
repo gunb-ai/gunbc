@@ -681,19 +681,30 @@ fn witness_tree_destinations_are_admitted(destination: String, lines: List<Strin
 // purpose -- the link arrives inert and nothing here opens it -- and it is the same no-link rule the
 // destination walk enforces from the other side, so the planted tree carries no symbolic link at all and the
 // guest can only read what it actually opens.
+// THE TARGET TEST ITSELF, ONE NAMED PREDICATE OVER THE LINK'S OWN TWO FACTS. It is a function and not a
+// block inside the fold because the G0 grammar keeps `block_expr` ABOVE `binary_expr` (see
+// `v2.std.grammar` / `extdeps.languages.dag`'s precedence note: a block-shaped operand beside a binary
+// operator reads as a record literal, so the forms live above the table, not in an operand position): a
+// `{ let ... }` written as the right operand of `||` is not a legal operand, and the strict parse answers
+// `parse_g0_tokens_remain` at it. The rule is unchanged -- a target must exist, be relative, carry no `..`
+// leg, and the joined path must still resolve inside the supplied tree.
+fn witness_tree_source_link_is_inside(target: String, destination: String) -> Bool {
+  target != ""
+    && !starts_with(s: target, prefix: "/")
+    && !string_contains(s: target, pattern: "/..")
+    && target != ".."
+    && !witness_path_is_outside_supplied_tree(candidate: join([destination, "/", target], ""))
+}
+
 fn witness_tree_source_links_stay_inside(destination: String, lines: List<String>) -> Bool {
   fold(lines, init: true, f: (ok, line) =>
     ok
       && (witness_tree_entry_field(lines: line, index: witness_tree_entry_type_field)
-          != witness_tree_type_symlink_letter as String
-        || {
-          let target = witness_tree_entry_field(lines: line, index: witness_tree_entry_link_target_field)
-          target != ""
-            && !starts_with(s: target, prefix: "/")
-            && !string_contains(s: target, pattern: "/..")
-            && target != ".."
-            && !witness_path_is_outside_supplied_tree(candidate: join([destination, "/", target], ""))
-        }))
+            != witness_tree_type_symlink_letter as String
+        || witness_tree_source_link_is_inside(
+          target: witness_tree_entry_field(lines: line, index: witness_tree_entry_link_target_field),
+          destination: destination,
+        )))
 }
 
 // NO SYMBOLIC LINK MAY BE STANDING IN THE SUPPLIED TREE BEFORE THE COPY. Empty stdout is the only admitting
