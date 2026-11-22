@@ -1,0 +1,71 @@
+module gunbc.transport_shell_wall_deadline_interpreter_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the HAND RUST this program puts in the v1 seed INTERPRETER, as distinct
+// from the grammar field row (gunbc.transport_shell_wall_deadline_field_seed_growth, gunb-ai/gunbc#16842)
+// that admits the declared `wall_deadline:` field itself. Two obligations, two rows: one is a roster
+// field, this one is the runtime that arms a kill from that field and reports an overrun as a value.
+//
+// WHAT THE SUBJECT IS. The seed interpreter's shell leg: the transport node is dispatched in
+// dispatch_shell, the child is waited on by wait_child_honoring_wall_deadline, the group is killed by
+// kill_shell_process_group, and the observation is turned into the interpreter's ShellResult by
+// shell_result_from_capture / shell_evidence_value. shell_result_of_observation is also touched, but its
+// hand growth is already claimed by gunbc.modeled_operation_realization_seed_growth, and the roster refuses
+// a declaration claimed twice (seed_growth_roster_has_duplicate_keys), so this row names the item in prose and
+// leaves the key with that row. Before this change
+// the seed had ONE bound, the whole-call wall_clock_limit, and no per-leg ceiling at all: a fleet leg
+// that hung held the transport open until the whole call's bound tripped, and the fleet corpus had no
+// way to say how long one leg may take.
+//
+// WHAT WAS ADMITTED. The seed now reads the ceiling from the transport DECLARATION (declared_shell_leg_ceiling),
+// arms the process-group kill only where a declaration exists, and returns an overrun as a value
+// (ShellLegExec::Overran { wall_deadline_seconds }) that the .dag transport wrappers decode into their
+// own non-success arm. No 0-means-none, no exit-124 sentinel, and no InterpError for an overrun: an
+// overrun is a fact about the leg, not a fault in the program. A transport that does not declare the
+// field keeps main's behaviour byte for byte.
+//
+// WHY ADMITTED AGAINST THE v1 FREEZE (gunbc.v1.v1_maintenance_standing v1_seed_standing): by PURPOSE,
+// under the recorded ruling gunbc.design_ruling.v1_seed_growth_for_declared_transport_ceiling_admitted,
+// which carries the operator's words, the principal and the date; this row cites that record and does
+// not restate it. WHAT THE PURPOSIVE TEST ACTUALLY PASSES: the change removes a second, unmodeled
+// authority rather than adding a capability. Review 96999 (REQUEST_CHANGES) is what moved the ceiling
+// from a parameter spelling (param_env.lookup(ctx.sym("wall_deadline"))) into the transport
+// declaration, where a caller that names a parameter by accident no longer arms a kill and a caller
+// that means a ceiling must declare one. It adds no language behaviour: no new syntax beyond the
+// admitted field, no flag, no new error kind.
+//
+// HOW THE CLAIM IS EXECUTED, NOT ASSERTED. mod wall_deadline_kill_tests holds the red/green pair:
+// green_leg_under_per_leg_deadline_exits_zero_not_overran and per_leg_deadline_trip_is_overran_within_bound
+// (a leg under its ceiling is Completed, a tripped ceiling is Overran carrying that ceiling),
+// the_ceiling_is_the_transport_declaration_not_a_parameter_spelling (a caller that merely NAMES a
+// parameter wall_deadline arms nothing), group_is_armed_only_where_a_ceiling_exists (an undeclared
+// transport behaves as main's does) and drain_stall_on_overrun_never_returns_error (the overrun path
+// cannot turn into an interpreter error). mod map_shell_outputs_optional_stream_tests covers the
+// channel shape the overrun travels through. The .dag side of the same fact is executed by
+// test.claim.live_deploy.deployed_tree_leg_deadline_witness: the incident leg (deployed_tree_leg,
+// git rev-parse HEAD, ProbeLeg) overrunning maps to TreeLegDeadlineExceeded and writes a receipt.
+data transport_shell_wall_deadline_interpreter_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "ShellResult", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "dispatch_shell", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "declared_shell_leg_ceiling", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "wait_child_honoring_wall_deadline", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "kill_shell_process_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_result_from_capture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "shell_evidence_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.wall_deadline_kill_tests", decl_name: "the_ceiling_is_the_transport_declaration_not_a_parameter_spelling", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.wall_deadline_kill_tests", decl_name: "per_leg_deadline_trip_is_overran_within_bound", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.wall_deadline_kill_tests", decl_name: "green_leg_under_per_leg_deadline_exits_zero_not_overran", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.wall_deadline_kill_tests", decl_name: "group_is_armed_only_where_a_ceiling_exists", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.wall_deadline_kill_tests", decl_name: "drain_stall_on_overrun_never_returns_error", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter.map_shell_outputs_optional_stream_tests", decl_name: "optional_stdout_surfaces_text_on_success", field: WholeDeclaration }
+  ],
+  reason: "The per-leg wall-clock ceiling cannot be expressed above the seed: arming the process-group kill from the transport declaration and returning an overrun as a value are both inside the interpreter's own shell dispatch, which is hand Rust. Admitted by PURPOSE under the recorded ruling gunbc.design_ruling.v1_seed_growth_for_declared_transport_ceiling_admitted (the operator's 2026-11-21 ruling answering review 97148), because the change retires a second unmodeled authority instead of adding a capability: review 96999 refused the version where the seed armed the kill by looking up a PARAMETER NAME, so the bound existed only where a spelling matched. The overrun is a sum arm (ShellLegExec::Overran), never an InterpError, never exit 124, never 0-means-none, and a transport that declares no ceiling keeps main's behaviour byte for byte.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Dissolves when the seed interpreter's shell dispatch is re-authored as modeled .dag over a transport whose dispatch is a modeled operation -- i.e. when ShellLegExec and the kill arming live in a .dag transport authority and the seed only executes it, at which point every DeclarationRef listed here is deleted rather than maintained. What does NOT dissolve them: adding a further leg kind, renaming ShellResult, or moving the tests to another hand file -- each keeps the same hand-written dispatch.",
+  current_boundary: "src/v1/stage0/src/v1_interpreter.rs (ShellResult, dispatch_shell, declared_shell_leg_ceiling, wait_child_honoring_wall_deadline, kill_shell_process_group, shell_result_of_observation, shell_result_from_capture, shell_evidence_value, mod wall_deadline_kill_tests, mod map_shell_outputs_optional_stream_tests); src/v1/05_emit_rust.dag and src/v1/05_emit.dag (the compiled-path ShellResultChannel arms); extdeps/ssh/session.dag, extdeps/ssh/password_session.dag, gunbc/typed_argv_exec.dag and the fleet wrappers (the .dag side that declares the ceiling and decodes Overran); dag/gunbc/transport_shell_wall_deadline_interpreter_seed_growth.dag"
+}

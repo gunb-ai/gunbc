@@ -42,6 +42,7 @@ import gunbc.exit_failure_outcome_seed_growth { exit_failure_outcome_seed_growth
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
 import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
 import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
+import gunbc.transport_shell_wall_deadline_interpreter_seed_growth { transport_shell_wall_deadline_interpreter_seed_growth_justification }
 import gunbc.namespace_cut.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.namespace_cut.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
@@ -418,7 +419,11 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     // justification is hand Rust the join cannot see, which is the whole displaced cost of this
     // node. test.claim.seed_growth_roster_hygiene_witness is what keeps them here.
     class_b_accidental_coverage_seed_growth_justification,
-    memory_cgroup_binding_seed_growth_justification
+    memory_cgroup_binding_seed_growth_justification,
+    // The interpreter half of the fleet leg ceiling: the seed's own kill arming and overrun decode. Enrolled at
+    // authorship under the recorded ruling gunbc.design_ruling.v1_seed_growth_for_declared_transport_ceiling_admitted,
+    // not after a debt sweep.
+    transport_shell_wall_deadline_interpreter_seed_growth_justification
   ]
 }
 
