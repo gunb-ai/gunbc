@@ -48,6 +48,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "remote-build-serving-converge-stale-seat-recovery", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "remote-build-executes-the-bound-source", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "remote-build-ledger-headroom-and-workload-samples", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
+  serves(node: "remote-build-worker-guidance-in-ctrl", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 0),
   serves(node: "remote-build-worker-loop-exercised", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
   serves(node: "remote-build-gate-label-passes-remotely", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),
   serves(node: "remote-build-request-carries-execution-requirements", module_path: remote_build_bandwidth_intention, plan: "remote_build_bandwidth_plan", layer: 1),

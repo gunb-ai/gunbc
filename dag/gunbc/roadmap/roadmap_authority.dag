@@ -6403,7 +6403,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/remote_build_bandwidth.dag"),
       line: ticket(t: fields(
         headline: "RB-M1: an ordinary worker can use remote builds on the existing hosts and trust what comes back",
-        boundary: "What works at this milestone: on the hosts already on the dispatch roster (srv3, srv4, and srv1 once its seat recovers), a worker submits a pinned compile or a representative claim run, the host executes exactly the source the request was identified by, and the worker gets back a receipt and the host log that say whether the work failed, the infrastructure refused, or the outcome is uncertain; a seat left held recovers without the operator, and the ledger's real headroom and the work's real memory use are read, so the useful concurrency is a reported number rather than the nominal seat count. Reached when remote-build-worker-loop-exercised is accepted. Not here: more hosts, warm caches, and anything about the required check.",
+        boundary: "What works at this milestone: on the hosts already on the dispatch roster (srv3, srv4, and srv1 once its seat recovers), a worker, told how by the session guidance ctrl ships (which names no host of its own and runs a current client), submits a pinned compile or a representative claim run, the host executes exactly the source the request was identified by, and the worker gets back a receipt and the host log that say whether the work failed, the infrastructure refused, or the outcome is uncertain; a seat left held recovers without the operator, and the ledger's real headroom and the work's real memory use are read, so the useful concurrency is a reported number rather than the nominal seat count. Reached when remote-build-worker-loop-exercised is accepted. Not here: more hosts, warm caches, and anything about the required check.",
         displaced_cost: "workers keep building on the hosted pool and fixed runner slots, or call the operator to read a remote log or clear a stuck seat, while converged serving hosts sit idle.",
         first_slice: "None of its own: a milestone is a container, reached when every member has an accepted event.",
         red_control: "A worker loop that needed a manual seat cleanup or a hand login to read a failure, or a retried request that executed a modified checkout under a clean identity, keeps this open.",
@@ -6530,6 +6530,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "A dispatch order needs an acyclic edge set; the roadmap should refuse a cycle rather than rely on someone drawing it."),
+    ),
+    roadmap_node(
+      identity: "rn_NC928NWF4A065HFH8YQ7GACTF7",
+      id: "remote-build-worker-guidance-in-ctrl",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_client.dag"),
+      line: ticket(t: fields(
+        headline: "A worker session knows the remote build exists, when to use it, and how to read what comes back, from guidance that cannot drift from the gunbc model",
+        boundary: "Read on ctrl main 2026-11-22: ctrl already ships a `remote-build` command (scripts/session-dashboard/container/remote-build.sh, `compile` and `test`, receipt in target/remote-build/) and one line of session brief (control_plane_messages.mjs) telling workers to use it. Three gaps make RB-M1's worker loop not yet usable unaided. (1) The brief hand-writes the host list as srv1/srv3/srv4, while gunbc's dispatch roster (gunbc.compute.remote_build_hosts::remote_build_serving_hosts) has srv1 suspended: a second authority for one fact (gunbc.design_argument::single_authority). (2) The client pin (remote-build-gunbc.ref, 4fc3f1f1608 of 2026-11-20) predates the served build of 2026-11-21 and every RB-M1 fix; workers run an older client than the one that served. (3) The brief says nothing about reading the receipt's outcome (work failed, infrastructure refused, outcome uncertain), fetching a failed attempt's host log, attaching to identical work, or when remote is the wrong tool; and sessions whose container predates the command have neither it nor the brief line. The repair, in ctrl: the brief's remote-build guidance names no host and points at the client's own `where`/roster answer; the pin advances to a gunbc revision that carries RB-M1's typed outcomes and host-log read, as part of accepting those rows; the brief states how to read an outcome and fetch a log in the client's own words; and a session without the command is told so rather than left guessing.",
+        displaced_cost: "workers either never use the remote build, or use an outdated client against a host list that is wrong, and ask the operator how to read what came back.",
+        first_slice: "Replace the brief's hand-written host list with a pointer to the client's roster answer, and advance the pin to a gunbc revision at or after the first served build.",
+        red_control: "A brief that names a host not on gunbc's dispatch roster, a pin older than the gunbc revision whose receipt the worker loop was accepted on, or a worker in the RB-M1 loop who had to ask how to read an outcome or fetch a log, keeps this open.",
+        out_of_scope: "the client's behaviour itself (the gunbc rows), cargo or ctrl builds (the remote build is for gunbc .dag compiles and claim runs only), and container image rollout policy beyond saying when the command is absent.",
+        handback: "the ctrl PR, the brief text as a session receives it, the advanced pin with the gunbc revision it names, and the worker-loop session's transcript showing it used the guidance unaided.",
+      )),
+      dispatch: Present { value: Dispatchable { repo: "ctrl", acceptance: ManualAcceptance } },
+      parent: in_project(project: "rb-m1-workers-use-remote-builds", contribution: "Workers can only use a route they are told about correctly; the guidance is part of the service."),
+      centering: plan(text: "gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan: Workers can only use a route they are told about correctly. Target: ctrl scripts/session-dashboard/control_plane_messages.mjs and scripts/session-dashboard/container/remote-build-gunbc.ref, read against dag/gunbc/compute/remote_build_client.dag"),
     ),
   ], guarantee_ladder_nodes())
 }
@@ -6797,6 +6815,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "remote-build-worker-loop-exercised", parent: "remote-build-serving-converge-stale-seat-recovery"),
     edge(child: "remote-build-worker-loop-exercised", parent: "remote-build-executes-the-bound-source"),
     edge(child: "remote-build-worker-loop-exercised", parent: "remote-build-ledger-headroom-and-workload-samples"),
+    edge(child: "remote-build-worker-loop-exercised", parent: "remote-build-worker-guidance-in-ctrl"),
   ], guarantee_ladder_edges())
 }
 
