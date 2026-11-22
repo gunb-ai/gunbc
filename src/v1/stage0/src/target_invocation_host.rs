@@ -2364,30 +2364,64 @@ fn claim_route_fold(members: &[cli_run::ClaimRouteMember]) -> ClaimRouteFold {
             ClaimRouteVerdict::ClaimDidNotHold => "DID-NOT-HOLD",
             ClaimRouteVerdict::ClaimUnobserved => "UNOBSERVED",
         };
-        // A held claim needs no detail. An evaluated non-held claim carries its typed outcome; a
-        // runtime error also carries the STABLE cause token the resolve/wire authority already mints
-        // (`WitnessRuntimeCause::token`, the same one claim_batch prints) so consumers classify
-        // without matching rendered prose. An unresolved entry prints the LOCATED cause from the
-        // typed refusal, so the line names why the claim was neither held nor simply absent.
-        let detail = match &m.outcome {
-            cli_run::ClaimMemberOutcome::Evaluated(cli_run::ClaimOutcome::Pass) => String::new(),
-            cli_run::ClaimMemberOutcome::Evaluated(
-                other @ cli_run::ClaimOutcome::RuntimeError { .. },
-            ) => match other {
-                cli_run::ClaimOutcome::RuntimeError { cause, .. } => {
-                    format!(" outcome={other:?} cause={}", cause.token())
+        // THE ONE LINE, per the ruled schema:
+        //   <label> <VERDICT> outcome=<kind> [cause=<token>] [code=<n>] [at=<file:line:col>] [detail="<quoted>"] eval_steps=<n> cpu_ms=<n>
+        // `outcome` is the CLOSED kind name (never Rust Debug, which is not a schema); `cause` and
+        // `code` are the only machine keys beyond the verdict; every free-text fact goes to `detail`,
+        // the LAST field, double-quoted and single-line, and parsers never key on it. `at=` is emitted
+        // only where a file:line:col is known -- on this revision no claim outcome carries one (the
+        // raise path records a byte offset, not a line/col; a panic carries no location), so it stays
+        // absent rather than fabricated. Populating it once a source location is carried on the
+        // outcome is the deferred trigger, not this item.
+        use cli_run::{ClaimMemberOutcome as M, ClaimOutcome as O, EntryResolveRefusal as R};
+        let (kind, cause, code, detail): (&str, Option<String>, Option<i32>, Option<String>) =
+            match &m.outcome {
+                M::Evaluated(o) => {
+                    let cause = match o {
+                        O::RuntimeError { cause, .. } => Some(cause.token().to_string()),
+                        // `Panicked` on this revision carries a String payload, so the typed cause is
+                        // always the string-payload arm; a non-string payload needs the outcome to
+                        // carry one (it does not here), which is when `non_string_payload` would appear.
+                        O::Panicked { .. } => Some("string_payload".to_string()),
+                        _ => None,
+                    };
+                    let code = match o {
+                        O::ExitFailure { code, .. } => Some(*code),
+                        _ => None,
+                    };
+                    let detail = match o {
+                        O::RuntimeError { message, .. } => Some(message.clone()),
+                        O::Panicked { payload } => Some(payload.clone()),
+                        O::ExitFailure { reason, .. } => reason.clone(),
+                        O::NotBool { got } => Some(got.clone()),
+                        O::NotAttempted { halted_by } => Some(halted_by.clone()),
+                        O::HostToolUnresolved { name, .. } => Some(name.clone()),
+                        O::HostEffectRefused { operation, .. } => Some(operation.clone()),
+                        _ => None,
+                    };
+                    (cli_run::claim_outcome_kind(o), cause, code, detail)
                 }
-                _ => unreachable!("matched as RuntimeError above"),
-            },
-            cli_run::ClaimMemberOutcome::Evaluated(other) => format!(" outcome={other:?}"),
-            cli_run::ClaimMemberOutcome::Unresolved(refusal) => {
-                format!(" cause={:?}", refusal.message())
-            }
-        };
-        lines.push(format!(
-            "{label} {word} eval_steps={} cpu_ms={}{detail}",
-            m.eval_steps, m.cpu_ms
-        ));
+                M::Unresolved(r) => {
+                    let kind = match r {
+                        R::EntryMissing { .. } => "EntryMissing",
+                        R::ClosureDiagnostics { .. } => "ClosureDiagnostics",
+                        R::ResolveInfrastructure { .. } => "ResolveInfrastructure",
+                    };
+                    (kind, None, None, Some(r.message().to_string()))
+                }
+            };
+        let mut line = format!("{label} {word} outcome={kind}");
+        if let Some(cause) = &cause {
+            line.push_str(&format!(" cause={cause}"));
+        }
+        if let Some(code) = code {
+            line.push_str(&format!(" code={code}"));
+        }
+        if let Some(detail) = &detail {
+            line.push_str(&format!(" detail={}", quote_detail(detail)));
+        }
+        line.push_str(&format!(" eval_steps={} cpu_ms={}", m.eval_steps, m.cpu_ms));
+        lines.push(line);
         verdicts.push(verdict);
     }
     ClaimRouteFold {
@@ -2395,6 +2429,25 @@ fn claim_route_fold(members: &[cli_run::ClaimRouteMember]) -> ClaimRouteFold {
         verdicts,
         duplicate,
     }
+}
+
+/// The `detail` field: one double-quoted, escaped, single-line string, so the human text (panic
+/// payload verbatim, error message, exit reason, refusal message) is on the line for a reader but is
+/// always the LAST free-text field a parser ignores. Backslashes and quotes are escaped and any line
+/// break is folded to a space so the record stays one line.
+fn quote_detail(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' | '\r' | '\t' => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// THE CLAIM ROUTE: select the discovered claims the operand's pattern contains, evaluate each,
@@ -3717,6 +3770,86 @@ mod claim_route_result_contract_tests {
         (fold.lines.clone(), status, fold)
     }
 
+    // ---- the line schema (gunbc ruling, manager msg_1c4665df) -----------------------------
+    // <label> <VERDICT> outcome=<kind> [cause=<token>] [code=<n>] [at=<file:line:col>] [detail="<quoted>"] eval_steps=<n> cpu_ms=<n>
+    // Parsers key ONLY on label, verdict, outcome, cause, code, at -- never on detail.
+
+    /// A runtime-error line carries the CLOSED kind and the typed cause token, NOT Rust `Debug`
+    /// output (Debug is not a schema -- it re-renders whenever a field is added). The frozen policy
+    /// reads a runtime error as NO OBSERVATION (exit 2), never as a definite failure: a raise is the
+    /// subject not producing an answer, not the subject answering false.
+    #[test]
+    fn a_runtime_error_line_carries_the_closed_kind_and_cause_not_debug() {
+        let (lines, status, _) = route_fold(&[member("test/claim/x", "boom", runtime_error())]);
+        assert_eq!(status, 2, "a runtime error is no observation, not a failure");
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with("//test/claim/x:boom"))
+            .expect("one located line for the identity");
+        // Fields parsers key on, verbatim.
+        assert!(line.contains("UNOBSERVED"), "the verdict word: {line}");
+        assert!(line.contains("outcome=RuntimeError"), "closed kind: {line}");
+        assert!(
+            line.contains("cause=division-by-zero"),
+            "the closed cause token: {line}"
+        );
+        // The human text is in detail, and it is the last free-text field before the counters.
+        assert!(
+            line.contains("detail=\"division by zero\""),
+            "quoted detail: {line}"
+        );
+        assert!(
+            line.trim_end().ends_with("eval_steps=0 cpu_ms=0"),
+            "counters last: {line}"
+        );
+        // Debug output would open the arm with a brace -- the kind name must not.
+        assert!(
+            !line.contains("outcome=RuntimeError {"),
+            "no Debug rendering: {line}"
+        );
+    }
+
+    /// The `detail` field is one double-quoted, escaped, SINGLE-LINE string and always the last
+    /// free-text field: a panic payload carrying a quote, a backslash and a newline stays on one
+    /// line and never leaks a raw newline that would break a parser's per-line read.
+    #[test]
+    fn a_detail_is_one_escaped_single_line_field_last() {
+        let payload = "boom\nsay \"hi\" \\ done";
+        let panicked = O::Panicked {
+            payload: payload.to_string(),
+        };
+        let (lines, status, _) = route_fold(&[member("test/claim/x", "pan", panicked)]);
+        assert_eq!(status, 2, "a panic is no observation");
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with("//test/claim/x:pan"))
+            .expect("one located line for the identity");
+        assert!(line.contains("UNOBSERVED"), "a panic is unobserved: {line}");
+        assert!(line.contains("outcome=Panicked"), "closed kind: {line}");
+        // On this revision the payload is a String, so the typed cause is always the string arm.
+        assert!(line.contains("cause=string_payload"), "closed cause: {line}");
+        // The whole record is ONE physical line even though the payload carried a newline.
+        assert!(!line.contains('\n'), "single line: {line:?}");
+        let after_detail = line.split("detail=").nth(1).expect("a detail field");
+        assert!(after_detail.starts_with('"'), "detail opens quoted");
+        assert!(
+            after_detail.ends_with(" eval_steps=0 cpu_ms=0"),
+            "detail precedes the trailing counters: {after_detail}"
+        );
+        // The payload's inner quote is escaped, so the quoted field does not terminate early.
+        assert!(
+            after_detail.contains("\\\"hi\\\""),
+            "the inner quote is escaped: {after_detail}"
+        );
+        assert!(
+            !after_detail.contains("boom\n"),
+            "no raw newline from the payload survives"
+        );
+        // The words survived the escaping round trip.
+        assert!(after_detail.contains("boom") && after_detail.contains("done"));
+    }
+
+
     // ---- held ---------------------------------------------------------------------------
     #[test]
     fn a_held_claim_is_held_and_the_route_exits_zero() {
@@ -3846,8 +3979,8 @@ mod claim_route_result_contract_tests {
         assert_eq!(status, 1, "a closure defect is a finding: did-not-hold, exit 1");
         assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
         assert!(
-            lines[0].contains("DID-NOT-HOLD") && lines[0].contains("cause=") && lines[0].contains("phantom_fn"),
-            "the located cause is printed on the line: {lines:?}"
+            lines[0].contains("DID-NOT-HOLD") && lines[0].contains("outcome=ClosureDiagnostics") && lines[0].contains("phantom_fn"),
+            "the located arm and its text are on the line (arm keyed, text in detail): {lines:?}"
         );
     }
 
@@ -3862,7 +3995,12 @@ mod claim_route_result_contract_tests {
         )]);
         assert_eq!(status, 2);
         assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
-        assert!(lines[0].contains("UNOBSERVED") && lines[0].contains("cause="), "{lines:?}");
+        assert!(
+            lines[0].contains("UNOBSERVED")
+                && lines[0].contains("outcome=EntryMissing")
+                && lines[0].contains("detail=\"entry "),
+            "the located arm is keyed and the refusal text is in detail: {lines:?}"
+        );
     }
 
     #[test]
@@ -3989,7 +4127,7 @@ mod claim_route_result_contract_tests {
         assert!(lines.iter().any(|l| l.contains("unreached") && l.contains("UNOBSERVED")),
             "code 2 must be reported unobserved, never as a failing claim: {lines:?}");
         assert!(
-            lines.iter().any(|l| l.contains("zz_b") && l.contains("DID-NOT-HOLD") && l.contains("cause=")),
+            lines.iter().any(|l| l.contains("zz_b") && l.contains("DID-NOT-HOLD") && l.contains("outcome=ClosureDiagnostics")),
             "B is located on its own finding line: {lines:?}"
         );
         assert!(lines.iter().any(|l| l.contains("zz_a") && l.contains("HELD")));

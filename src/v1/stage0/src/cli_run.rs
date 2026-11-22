@@ -20464,6 +20464,28 @@ pub enum ClaimMemberOutcome {
     Unresolved(EntryResolveRefusal),
 }
 
+/// THE CLOSED OUTCOME-KIND VOCABULARY for the route's per-claim line. One name per `ClaimOutcome`
+/// variant; the line prints `outcome=<name>` and NEVER Rust `Debug` output (Debug is not a schema and
+/// changes whenever a field does). This is the SINGLE source -- it lives on the route, which is the
+/// thing that prints the line, cross-checked against
+/// `v2.workflow.floor_terminal_ledger_wire`'s `outcome_kind_roster`. `claim_batch` consumes it; it
+/// owns no copy (`gunbc.design_argument::single_authority`).
+pub fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
+    match outcome {
+        ClaimOutcome::Pass => "Pass",
+        ClaimOutcome::Fail => "Fail",
+        ClaimOutcome::NotBool { .. } => "NotBool",
+        ClaimOutcome::RuntimeError { .. } => "RuntimeError",
+        ClaimOutcome::BudgetInterrupted { .. } => "BudgetInterrupted",
+        ClaimOutcome::CompletedOverBudget { .. } => "CompletedOverBudget",
+        ClaimOutcome::HostToolUnresolved { .. } => "HostToolUnresolved",
+        ClaimOutcome::HostEffectRefused { .. } => "HostEffectRefused",
+        ClaimOutcome::Panicked { .. } => "Panicked",
+        ClaimOutcome::NotAttempted { .. } => "NotAttempted",
+        ClaimOutcome::ExitFailure { .. } => "ExitFailure",
+    }
+}
+
 pub struct ClaimRouteMember {
     pub module_path: String,
     pub function: String,
