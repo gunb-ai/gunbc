@@ -38,8 +38,19 @@ data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
 data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
+data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
+  // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
+  // 5 the renames and the extdeps reconciliation, 6 the terminal). one-standard-library is a prerequisite of the
+  // terminal but stays bound to gunbc.plans.v2_self_host, which already owns it.
+  serves(node: "source-workspace-manifest", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 1),
+  serves(node: "harness-runs-in-the-workspace", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 2),
+  serves(node: "workspace-derived-source-roots", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 3),
+  serves(node: "one-source-tree-cut", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 4),
+  serves(node: "v2-uncontested-families-renamed", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
+  serves(node: "v2-extdeps-reconciled", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
+  serves(node: "v2-namespace-dissolved", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 6),
   // gunbc.plans.names_without_imports, section 3.
   serves(node: "namespace-occurrence-transport", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-binding-kernel", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
@@ -160,6 +171,7 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff"), nid(s: "v1-zero-hand-maintained-rust")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"), terminals: [nid(s: "v2-namespace-dissolved")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"), terminals: [nid(s: "service-evidence-capture")] },
   // planning_consolidation's terminals are the sinks of the dispatch-from-the-simulated-execution
   // units: the page that renders the projection, and the three units whose acceptance is itself the
