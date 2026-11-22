@@ -536,7 +536,7 @@ test fn the_live_reads_are_clean_while_the_sizing_lane_is_open() -> Bool {
 // 1 x days -- a fabricated member count -- so it was NOT in the answer's unsized list; the fix leaves it UNSIZED
 // (listed, never priced). THIS witness uses only the stable estimate_answer(...) shape (unchanged by the fix), so it
 // COMPILES against BOTH main and the fix: false on main, true on the fix. A VALUE-level red, not a compile error --
-// exactly what @ref(gunbc.design_ruling::estimates_are_one_representation_derived_upward) demands.
+// exactly what #gunbc.design_ruling::estimates_are_one_representation_derived_upward demands.
 test fn an_unprobed_findings_item_is_listed_as_unsized() -> Bool {
   match estimate_answer(nodes: declared_roadmap_nodes(), entries: roadmap_estimate_entries) {
     Answered { rows: _, unsized: unsized, dangling_containment: _, redundant_revocations: _ } =>

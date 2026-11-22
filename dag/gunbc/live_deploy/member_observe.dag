@@ -5,6 +5,7 @@ import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, FilePath }
 import std.measure { Second }
 import std.optional { Optional, Present, Absent }
 import std.algebra { trim }
+import std.filesystem { path_basename }
 import std.content_hash { content_hash_atom }
 import extdeps.crypto.hash { Digest, sha256sum_argv, sha256sum_line_digest }
 import extdeps.sudo.elevation { sudo_elevate_argv }
@@ -184,9 +185,8 @@ type ParentWalk {
   acc: List<String>
 }
 
-fn path_basename(path: String) -> String {
-  fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
-}
+// path_basename is the single std.filesystem fold -- member_observe imports it (root_generalization);
+// the former local copy was a byte-for-byte duplicate and is gone.
 
 // THE TWO PURE HALVES OF A TRANSPORT LISTING, named so a caller that must supply its OWN transport
 // consumes them rather than re-minting them: gunbc.runner.runner_host_file_converge's tree-presence

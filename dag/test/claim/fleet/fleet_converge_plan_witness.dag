@@ -21,8 +21,14 @@ import gunbc.runner.runner_slot_provision {
   SlotProvenanceObserved,
   SlotUnregistered,
 }
-import std.content_hash { serialize_content_hash }
+import std.content_hash { serialize_content_hash, compare_content_hash, ContentHashEqual }
 import std.algebra { string_contains, length }
+import gunbc.executor_privileged_operation {
+  EnsureOwnedDirectory,
+  RemoveDirectoryTree,
+  executor_managed_directory_mode,
+  executor_privileged_operation_shell_command,
+}
 import gunbc.fleet.fleet_converge_plan {
   fleet_converge_member_set_drift_text,
   fleet_converge_retirement_drift_text,
@@ -83,9 +89,11 @@ import gunbc.fabric.fabric_cell_converge {
   fabric_cell_expected_slots,
   FabricCellObservationRefusal,
   FabricCellUnexpectedCellEvidence,
+  fabric_cell_slice_name,
+  fabric_cell_desired_state_digest,
 }
 import product.host_identity { HostIdentity }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet.fleet_converge_plan {
@@ -94,6 +102,7 @@ import gunbc.fleet.fleet_converge_plan {
   fabric_cell_observation_refusal_line,
   TimerRetirementMember,
   FleetConvergePlanSubject,
+  fleet_converge_plan_subject,
   fleet_converge_plan_artifact,
   fleet_converge_plan_artifact_hash,
   fleet_converge_observed_baseline_matches,
@@ -154,7 +163,8 @@ import gunbc.fleet.fleet_converge_plan {
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
   fleet_converge_slot_lines,
-  fleet_converge_slot_refusal_count
+  fleet_converge_slot_refusal_count,
+  slot_apply_lines
 }
 import gunbc.fabric.fabric_cell_effect {
   fabric_cell_realization, CellPlanRealizable, CellPlanRefused, fabric_cell_slice_desired_directives_for_slot,
@@ -1129,8 +1139,22 @@ test fn ci_runner_grants_derive_from_the_closed_vocabulary() -> Bool {
 // than merely threaded through it.
 // ---------------------------------------------------------------------------------------------
 
+// THE FABRIC SUBJECT IS srv1, THE ONLY HOST THAT CARRIES FABRIC CELLS. gunbc.design_ruling::
+// srv3_srv4_fabric_slots_serve_ci (PR #16137) handed srv3's and srv4's slots to GitHub Actions, so
+// fabric_execution_slot_identities() now holds only srv1's cells and srv3-06/07 are no longer
+// members. The fixtures used to read srv3-06 as the varied cell; they now read srv1's, and srv3/
+// srv4 revert to being the foreign, no-fabric hosts the cross-host rows name. The witness slot is
+// the lowest-index expected slot on srv1, read from the same authority the kernel reads, so no
+// literal slot index rots when the roster moves.
 fn fabric_witness_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+  fold(
+    fabric_cell_expected_slots(host: operator_host_srv1),
+    init: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 0 },
+    f: (acc, s) => if (s.slot_index as Int) == 0 { acc }
+         else if (acc.slot_index as Int) == 0 { s }
+         else if (s.slot_index as Int) < (acc.slot_index as Int) { s }
+         else { acc },
+  )
 }
 
 // THE WITNESS SLOT IS ONE MEMBER OF srv3'S EXPECTED CELLS, NOT ALL OF THEM, AND THE FIXTURES BELOW
@@ -1143,7 +1167,7 @@ fn fabric_witness_slot() -> RunnerSlotIdentity {
 // (fabric_cell_expected_slots), so a third cell is covered the day it lands and the witness slot
 // stays the only cell whose state each row varies.
 fn fabric_witness_companion_slots() -> List<RunnerSlotIdentity> {
-  filter(fabric_cell_expected_slots(host: operator_host_srv3), s => s.slot_index != fabric_witness_slot().slot_index)
+  filter(fabric_cell_expected_slots(host: operator_host_srv1), s => s.slot_index != fabric_witness_slot().slot_index)
 }
 
 fn fabric_converged_address_entries(slot: RunnerSlotIdentity) -> List<FabricCellAddressProbeEntry> {
@@ -1157,13 +1181,15 @@ fn fabric_converged_address_entries(slot: RunnerSlotIdentity) -> List<FabricCell
   )
 }
 
-// AN INDEX THAT IS NOT AN EXPECTED srv3 CELL, derived rather than written. The unexpected-evidence
-// rows used srv3-07 as their "unexpected" cell; #11625 made srv3-07 EXPECTED, so it stopped being
-// evidence the kernel refuses and those rows went red. The index is now one past the highest
-// expected cell, so growing the roster can never again turn the fixture into a member.
-fn unexpected_srv3_slot(offset: Int) -> RunnerSlotIdentity {
-  let top = fold(fabric_cell_expected_slots(host: operator_host_srv3), init: 0, f: (acc, s) => if (s.slot_index as Int) > acc { s.slot_index as Int } else { acc })
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: top + 1 + offset }
+// AN INDEX THAT IS NOT AN EXPECTED FABRIC CELL ON THE SUBJECT HOST, derived rather than written.
+// The unexpected-evidence rows once used srv3-07 as their "unexpected" cell; #11625 made srv3-07
+// EXPECTED and those rows went red, so the index became one past the highest expected cell. With
+// gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci moving the subject to srv1, it is now one
+// past the highest srv1 cell, on srv1 -- a genuine non-member of the same roster the kernel reads,
+// so growing the roster can never again turn the fixture into a member.
+fn unexpected_fabric_slot(offset: Int) -> RunnerSlotIdentity {
+  let top = fold(fabric_cell_expected_slots(host: operator_host_srv1), init: 0, f: (acc, s) => if (s.slot_index as Int) > acc { s.slot_index as Int } else { acc })
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: top + 1 + offset }
 }
 
 // THESE POPULATIONS ARE MINTED FROM A PROBE, NOT ASSERTED BY LITERAL, AND EACH TIGHTENING HERE WAS
@@ -1174,7 +1200,7 @@ fn unexpected_srv3_slot(offset: Int) -> RunnerSlotIdentity {
 // side and silent about discovery. Now there is one route for everyone: a probe goes in, and what
 // comes out is what a production caller would get from the same bytes.
 fn fabric_cell_readbacks_all_present() -> List<FabricCellReadback> {
-  map(fabric_cell_expected_slots(host: operator_host_srv3), slot => FabricCellReadback {
+  map(fabric_cell_expected_slots(host: operator_host_srv1), slot => FabricCellReadback {
     slot: slot,
     observations: map(
       fabric_cell_desired_members_for_slot(slot: slot),
@@ -1198,7 +1224,7 @@ fn fabric_probe_with_slice(
 ) -> FabricCellHostProbe {
   let companions = fabric_witness_companion_slots()
   FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: concat(
       [
         FabricCellNamespaceProbeEntry {
@@ -1297,7 +1323,7 @@ fn fabric_cells_observed_converged() -> FabricCellObservationDecision {
 // slice namespace enumerates empty. Read-and-empty then reaches all three addresses honestly.
 fn fabric_cells_observed_empty() -> FabricCellObservationDecision {
   admit_fabric_cell_probe(probe: FabricCellHostProbe {
-    host: operator_host_srv3,
+    host: operator_host_srv1,
     namespaces: [
       FabricCellNamespaceProbeEntry {
         namespace: FabricCellsRootNamespace,
@@ -1320,7 +1346,7 @@ fn fabric_fingerprint_with(population: FabricCellObservationDecision) -> String 
   serialize_content_hash(
     hash: fleet_converge_member_set_fingerprint(
       request: FullHostConverge {
-        host: "srv3" as NonEmptyStr,
+        host: "srv1" as NonEmptyStr,
         observed_timers: [],
         observed_caps: [],
         observed_slots: [],
@@ -1328,7 +1354,7 @@ fn fabric_fingerprint_with(population: FabricCellObservationDecision) -> String 
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
       observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
-      observed_host_grants: witness_grants_rendered(host: "srv3" as NonEmptyStr),
+      observed_host_grants: witness_grants_rendered(host: "srv1" as NonEmptyStr),
       },
     ),
   ) as String
@@ -1407,7 +1433,7 @@ test fn witness_fabric_cell_fingerprint_is_stable_under_observation_order() -> B
 // approved under one admits under the other. The refused arm contributes its own baseline row
 // precisely so this comparison can fail.
 test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool {
-  fabric_fingerprint_with(population: fabric_cell_observation_unobserved(host: operator_host_srv3))
+  fabric_fingerprint_with(population: fabric_cell_observation_unobserved(host: operator_host_srv1))
     != fabric_fingerprint_with(population: fabric_cells_observed_empty())
 }
 
@@ -1425,25 +1451,25 @@ test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool 
 // work it can perform would never report convergence.
 test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool {
   let refused_lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    host: "srv1" as NonEmptyStr,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv1),
   )
   let empty_lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
+    host: "srv1" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
   length(xs: refused_lines) == 1
-    && length(xs: empty_lines) == length(xs: fabric_cell_desired_members(host: operator_host_srv3)) + 1
+    && length(xs: empty_lines) == length(xs: fabric_cell_desired_members(host: operator_host_srv1)) + 1
     && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        host: "srv1" as NonEmptyStr,
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv1),
       ) == 1
     && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
+        host: "srv1" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_converged(),
       ) == 0
     && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
+        host: "srv1" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_empty(),
       ) == 0
 }
@@ -1456,21 +1482,21 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
 // false. No command or plan line is re-authored in the witness.
 test fn witness_fabric_cell_plan_and_apply_project_the_same_effects() -> Bool {
   let actions: List<MemberAction<FabricCellMember, String>> = map(
-    fabric_cell_desired_members(host: operator_host_srv3),
+    fabric_cell_desired_members(host: operator_host_srv1),
     m => MemberAdded { at: fabric_cell_member_key(member: m), to: m },
   )
   match fabric_cell_realization(actions: actions) {
     CellPlanRealizable { effects: es } =>
       fleet_converge_fabric_cell_lines(
-        host: "srv3" as NonEmptyStr,
+        host: "srv1" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_empty(),
       ) == fabric_cell_effect_plan_lines(effects: es)
-        && fabric_cell_apply_executable_lines(host: "srv3" as NonEmptyStr, effects: es)
+        && fabric_cell_apply_executable_lines(host: "srv1" as NonEmptyStr, effects: es)
           == concat(
             [fabric_cell_apply_effects_header],
             fabric_cell_effect_apply_command_lines(
               effects: es,
-              job_user: wt_srv3_deploy().job_user,
+              job_user: wt_srv1_deploy().job_user,
             ),
           )
     CellPlanRefused { refusals: _ } => false
@@ -1481,8 +1507,8 @@ test fn witness_fabric_cell_plan_and_apply_project_the_same_effects() -> Bool {
 // everything" unconditionally and every other row here would still pass.
 test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
   length(
-    items: fleet_converge_fabric_cell_lines(
-      host: "srv3" as NonEmptyStr,
+    xs: fleet_converge_fabric_cell_lines(
+      host: "srv1" as NonEmptyStr,
       observed_fabric_cells: fabric_cells_observed_converged(),
     )
   ) == 0
@@ -1530,11 +1556,11 @@ fn fabric_cells_observed_on_srv4() -> FabricCellObservationDecision {
 
 test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconciled() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
+    host: "srv1" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_on_srv4(),
   )
   let count = fleet_converge_fabric_cell_refusal_count(
-    host: "srv3" as NonEmptyStr,
+    host: "srv1" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_on_srv4(),
   )
   length(xs: lines) == 1
@@ -1596,9 +1622,9 @@ fn refused_read_probe(address: FabricCellResourceAddress, cause: String) -> Fabr
 // the renderer whose ordering these rows are about. What a fixture cannot do, and what these rows
 // therefore no longer do, is push a hand-built readback through to an ACCEPTED population.
 fn fabric_refusals_of(entries: List<FabricCellReadback>) -> List<FabricCellObservationRefusal> {
-  let readback = FabricCellHostReadback { host: operator_host_srv3, cell_readbacks: entries }
+  let readback = FabricCellHostReadback { host: operator_host_srv1, cell_readbacks: entries }
   let c = classify_fabric_cell_host(
-    expected_slots: fabric_cell_expected_slots(host: operator_host_srv3),
+    expected_slots: fabric_cell_expected_slots(host: operator_host_srv1),
     readback: readback,
   )
   fabric_cell_canonical_refusals(refusals: concat(
@@ -1667,7 +1693,7 @@ fn fabric_cell_line_occurrences(lines: List<String>, target: String) -> Int {
 
 fn fabric_boundary_desired_key() -> String {
   fold(
-    fabric_cell_desired_members(host: operator_host_srv3),
+    fabric_cell_desired_members(host: operator_host_srv1),
     init: "",
     f: (acc, m) =>
       if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
@@ -1727,7 +1753,7 @@ fn fabric_boundary_realize_line() -> String {
 
 test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
+    host: "srv1" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()),
   )
   length(xs: lines) == 2
@@ -1740,7 +1766,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
         target: fabric_boundary_realize_line(),
       ) == 0
     && fleet_converge_fabric_cell_refusal_count(
-        host: "srv3" as NonEmptyStr,
+        host: "srv1" as NonEmptyStr,
         observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()),
       ) == 1
 }
@@ -1752,7 +1778,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
 // -- and gains the positive control that the remedy is realized rather than refused.
 test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
+    host: "srv1" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()),
   )
   length(xs: lines) == 2
@@ -1819,7 +1845,7 @@ test fn witness_fabric_cell_kernel_conserves_every_expected_ref() -> Bool {
     init: true,
     f: (acc, n) => acc && (
       length(
-        items: classify_fabric_cell_host(
+        xs: classify_fabric_cell_host(
           expected_slots: synthetic_fabric_slots(count: n),
           readback: synthetic_host_readback(slots: synthetic_fabric_slots(count: n)),
         ).standings
@@ -1854,7 +1880,7 @@ test fn witness_fabric_cell_kernel_conserves_unexpected_supplied_evidence() -> B
 test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> Bool {
   let slots = synthetic_fabric_slots(count: 21)
   length(
-    items: classify_fabric_cell_host(
+    xs: classify_fabric_cell_host(
       expected_slots: slots,
       readback: synthetic_host_readback(slots: slots),
     ).unexpected
@@ -1880,7 +1906,7 @@ test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() 
     && fabric_refusal_count_of(entries: with_unexpected) == 1
     && string_contains(
         s: fabric_refusal_lines(entries: with_unexpected),
-        pattern: join(["unexpected-cell ", runner_slot_instance_name(slot: unexpected_srv3_slot(offset: 0))], ""),
+        pattern: join(["unexpected-cell ", runner_slot_instance_name(slot: unexpected_fabric_slot(offset: 0))], ""),
       )
 }
 
@@ -1895,7 +1921,7 @@ test fn witness_fabric_cell_unexpected_readback_refuses_rather_than_vanishing() 
 // must still count two, or a kernel that collapsed everything to one would satisfy the first two
 // perfectly.
 fn unexpected_readback_at(offset: Int) -> FabricCellReadback {
-  synthetic_absent_readback_for(slot: unexpected_srv3_slot(offset: offset))
+  synthetic_absent_readback_for(slot: unexpected_fabric_slot(offset: offset))
 }
 
 test fn witness_fabric_cell_duplicate_unexpected_readbacks_are_one_subject() -> Bool {
@@ -1944,7 +1970,7 @@ test fn witness_fabric_cell_cross_host_readback_refuses_as_a_mismatch_not_as_une
 // untouched, which is the point -- the defect was a denominator, not a comparator.
 test fn witness_fabric_cell_cross_host_pair_is_order_independent() -> Bool {
   let same_index_srv3 = unexpected_readback_at(offset: 0)
-  let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: unexpected_srv3_slot(offset: 0).slot_index })
+  let same_index_srv4 = synthetic_absent_readback_for(slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: unexpected_fabric_slot(offset: 0).slot_index })
   let forward = concat(fabric_cell_readbacks_all_present(), [same_index_srv3, same_index_srv4])
   let reversed = concat(fabric_cell_readbacks_all_present(), [same_index_srv4, same_index_srv3])
   fabric_refusal_lines(entries: forward) == fabric_refusal_lines(entries: reversed)
@@ -2008,8 +2034,8 @@ test fn witness_fabric_cell_contradiction_remedy_is_not_the_unread_remedy() -> B
     ],
   }])
   let unread_lines = fleet_converge_fabric_cell_lines(
-    host: "srv3" as NonEmptyStr,
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    host: "srv1" as NonEmptyStr,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv1),
   )
   string_contains(s: contradicted_lines, pattern: "WAS read and its observations disagree")
     && fold(unread_lines, init: true, f: (acc, l) => acc && !string_contains(s: l, pattern: "WAS read and its observations disagree"))
@@ -2878,6 +2904,13 @@ fn wt_missing_deploy() -> RunnerHostDeploy {
 
 fn wt_srv3_deploy() -> RunnerHostDeploy {
   match admitted_deploy_for(host: operator_host_srv3) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
+}
+
+fn wt_srv1_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv1) {
     Present { value: d } => d
     Absent => wt_missing_deploy()
   }

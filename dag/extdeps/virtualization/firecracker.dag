@@ -6,6 +6,7 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.disposition { Disposition, Terminal }
 import std.measure { ByteSize, byte_size, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.filesystem { path_basename }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
@@ -365,7 +366,7 @@ fn firecracker_jailer_run_command(
 // names inside that root (`/work.img`), while the supervisor still has to CREATE the files
 // at the host path below. The basename is the last `/`-separated segment of `--exec-file`.
 fn firecracker_jailer_exec_file_basename(exec_file: String) -> String {
-  fold(split(s: exec_file, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+  path_basename(path: exec_file)
 }
 
 fn firecracker_jailer_chroot_root(

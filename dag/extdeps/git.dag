@@ -9,6 +9,7 @@ import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmpty
 import std.env_binding { EnvBinding, EnvSet }
 import extdeps.tools.env { env_bindings_argv }
 import std.algebra { length, skip, trim }
+import std.filesystem { path_basename }
 import std.resources { Network }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -1045,8 +1046,34 @@ fn shape_git_add_argv() -> List<String> {
 // deferral.
 data git_program_word: String = "git"
 
+// The git program name as a NonEmptyStr, for a caller that invokes git on a spawn route that takes a
+// non-empty program directly (gunbc.git_workdir_free_route). Derived from git_program_word -- the one
+// authority for the spelling -- so the two cannot drift (single_authority).
+data git_program_name: NonEmptyStr = git_program_word as NonEmptyStr
+
 fn git_program() -> ProgramIdentity = uncataloged_program(invocation: git_program_word as NonEmptyStr)
 
+// CLASSIFY ANY PROGRAM SPELLING AS GIT: basename-equality, so "/usr/bin/git", "/usr/local/bin/git",
+// or "./git" are all caught. The dispatch sandbox (command_runner) uses this to gate the route wall
+// before transport, closing the absolute-path bypass the #16810-era exact-spelling check left open.
+fn is_git_program(invocation: String) -> Bool {
+  // BOTH SIDES ARE BASENAMED. The caller's invocation may be any spelling ("/usr/bin/git"); the
+  // declared git_program_word is normalized through the same fold so the comparison is basename-to-
+  // basename and a configured word that ever carries a path segment cannot silently fail to classify.
+  path_basename(path: invocation) == path_basename(path: git_program_word)
+}
+
+// A git ProgramIdentity at an arbitrary path and a generic (identity, argv) ArgvCommand builder are
+// DELIBERATELY NOT offered here. Minting a ProgramIdentity from an arbitrary caller path (the former
+// git_program_at) and a passthrough argv_command wrapper (the former git_argv_command_at) were a public
+// way around the program-identity seal: any importer of extdeps.git could mint an identity for ANY
+// binary and skip the uncataloged-program census, and argv_command(program, arguments) is a plain alias
+// -- a second path beside a modeled route (gunbc.design_argument::how_to_work / fail_closed). The
+// absolute-path red controls that needed them build their identities/commands in the witness itself,
+// as NULLARY fixed-spelling fixtures (each identity row a single literal invocation, each command a
+// named argv constructor), admitted individually -- NOT a parameterised path/argv passthrough, which
+// caller-admission-by-enclosing-decl would hand to any importer. Only `is_git_program` (a classifier)
+// and the typed git builders live here.
 fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
   git_argv_of_args(args: ["commit", "--no-verify", "--no-edit"])
 }
@@ -1117,9 +1144,14 @@ fn git_checkout_revision_command(repository_dir: String, revision: String) -> Ar
 // THE TREE A REVISION NAMES, read from the object store: `rev-parse --verify <rev>^{tree}` prints the
 // tree id or refuses, so a caller compares a printed id rather than trusting the revision.
 // `git hash-object <path>`: the blob object id of the file's bytes (git-hash-object(1)), printed on
-// stdout. Without -w it writes nothing, so it needs no repository.
-fn git_hash_object_command(path: String) -> ArgvCommand {
-  argv_command(program: git_program(), arguments: ["hash-object", path])
+// stdout. The no-`-w` form writes nothing. It is dressed with `-C <repository_dir>` (like every
+// sibling mutating builder) so the route wall admits it via in-repo dressing rather than by widening
+// the closed read-only allowlist: `hash-object -w` WOULD write the object DB, so the subcommand word
+// is not uniformly read-only and does not earn an allowlist slot. For the no-`-w` form the named
+// repository is not consulted for the hash, so any existing directory is behavior-identical; the
+// caller passes the repository whose working tree holds `path`, keeping the relative path resolution.
+fn git_hash_object_command(repository_dir: String, path: String) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: ["-C", repository_dir, "hash-object", path])
 }
 
 fn git_rev_parse_tree_command(repository_dir: String, revision: String) -> ArgvCommand {
@@ -1156,9 +1188,19 @@ fn git_add_all_force_command(repository_dir: String) -> ArgvCommand {
 }
 
 fn git_commit_snapshot_command(repository_dir: String, identity_name: String, identity_email: String, message: String) -> ArgvCommand {
+  // THE IN-REPO DRESSING COMES FIRST. git_argv_route_wall::git_argv_is_in_repo_dressed locates the
+  // repository ONLY at argv[0] (a leading `-C <repo>` / `--git-dir <repo>`). If a `-c user.*` identity
+  // setting leads instead, argv[0] is not a dressing token, so the predicate does not recognise the
+  // argv as in-repo; `commit` is mutating (not on the read-only allowlist), so the whole argv is
+  // classified as a bare mutating command and refused -- even though it is in fact pinned to <repo>
+  // further along. (The leading-subcommand walk itself is fine: it correctly consumes `-c`'s operand
+  // and lands on `commit`.) Putting `-C <repo>` at argv[0] lets the dressing predicate see it. `-C`
+  // before `-c` is valid git (both are global options ahead of the subcommand) and mirrors
+  // `shape_git_commit_allow_empty_silent_in_repo_args`, which already leads `-C`.
   argv_command(program: git_program(), arguments: [
+    "-C", repository_dir,
     "-c", concat("user.name=", identity_name), "-c", concat("user.email=", identity_email),
-    "-C", repository_dir, "commit", "-q", "--allow-empty", "--no-verify", "-m", message,
+    "commit", "-q", "--allow-empty", "--no-verify", "-m", message,
   ])
 }
 
@@ -2447,6 +2489,91 @@ fn shape_git_remote_add_in_repo_args(
   url: String,
 ) -> List<String> {
   concat(["-C", repo as String], shape_git_remote_add_args(remote: remote, url: url))
+}
+
+// ---- Sanctioned IN-REPO argv for the workdir-FREE route ------------------------------------
+// A git step that carries no working directory must name the repository it acts on: the wall
+// (`gunbc/git_argv_route_wall.dag`) admits a workdir-free argv only when it is dressed `-C <dir>` /
+// `--git-dir <dir>`, or its verb is a safe read-only inspection. These builders produce exactly that
+// dressing so a step reaching the sanctioned spawn route (`gunbc/git_workdir_free_route.dag`) names
+// its place. They live with the other `shape_git_*` argv so a route never hand-spells a word list
+// (`gunbc.design_argument::interface_realization_policy`); they build a word list only -- no spawn,
+// no grounding, no policy (`extdeps/git.dag` stays anemic).
+
+// `git init` a fresh repository at `<parent>/<leaf>`, expressed as the wall's sanctioned dressing
+// (cd into the already-existing `<parent>`, init the relative leaf) rather than a bare `init <path>`
+// -- which carries no place and is refused at a workdir-free route. Identical result.
+fn shape_git_init_in_parent_args(parent: String, leaf: String) -> List<String> {
+  ["-C", parent, "init", "-q", leaf]
+}
+
+fn shape_git_init_bare_in_parent_args(parent: String, leaf: String) -> List<String> {
+  ["-C", parent, "init", "-q", "--bare", leaf]
+}
+
+fn shape_git_init_default_branch_in_parent_args(
+  parent: String,
+  branch: String,
+  leaf: String,
+) -> List<String> {
+  ["-C", parent, "init", "-q", "-b", branch, leaf]
+}
+
+fn shape_git_config_set_in_repo_args(repo: String, key: String, value: String) -> List<String> {
+  ["-C", repo, "config", key, value]
+}
+
+fn shape_git_commit_allow_empty_silent_in_repo_args(repo: String, message: String) -> List<String> {
+  ["-C", repo, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", message]
+}
+
+fn shape_git_diff_quiet_head_in_repo_args(repo: String) -> List<String> {
+  ["-C", repo, "diff", "--quiet", "HEAD", "--"]
+}
+
+fn shape_git_branch_create_in_repo_args(repo: String, branch: String, sha: String) -> List<String> {
+  ["-C", repo, "branch", branch, sha]
+}
+
+fn shape_git_update_ref_in_repo_args(repo: String, ref: String, value: String) -> List<String> {
+  ["-C", repo, "update-ref", ref, value]
+}
+
+fn shape_git_pack_refs_in_repo_args(repo: String) -> List<String> {
+  ["-C", repo, "pack-refs", "--all", "--prune"]
+}
+
+fn shape_git_push_in_repo_args(repo: String, remote: String, refspec: String) -> List<String> {
+  ["-C", repo, "push", "-q", remote, refspec]
+}
+
+fn shape_git_checkout_detached_in_repo_args(repo: String, revision: String) -> List<String> {
+  ["-C", repo, "checkout", "-q", "--detach", revision]
+}
+
+fn shape_git_read_tree_in_repo_args(repo: String, revision: String) -> List<String> {
+  ["-C", repo, "read-tree", revision]
+}
+
+// A commit into a named repository given by BOTH its git-dir and its work-tree (the sandbox-commit
+// dressing). Admitted by the wall on the strength of `--git-dir` naming the repository, never on
+// `--work-tree` (see `git_argv_is_in_repo_dressed`).
+fn shape_git_commit_in_git_dir_work_tree_args(
+  git_dir: String,
+  work_tree: String,
+  user_email: String,
+  user_name: String,
+  message: String,
+) -> List<String> {
+  [
+    "--git-dir", git_dir, "--work-tree", work_tree,
+    "-c", concat("user.email=", user_email), "-c", concat("user.name=", user_name),
+    "commit", "--allow-empty", "-q", "-m", message,
+  ]
+}
+
+fn shape_git_worktree_add_detached_in_repo_args(repo: String, path: String) -> List<String> {
+  ["-C", repo, "worktree", "add", "--detach", "--", path, "HEAD"]
 }
 
 fn shape_git_fetch_unshallow_argv(

@@ -1,0 +1,58 @@
+module gunbc.integration_concern.cas_generation_expectation_admitted_twice
+
+// THE CAS GENERATION RULE IS DECIDED TWICE. Whether an attempt's expectation is admissible against what
+// a compare-and-set slot holds is answered by std.durable_compare_and_set's cas_expectation_admits AND,
+// independently, by the ProbedAbsent arm of gunbc.durable_cas_file_store's cas_compare_and_set_outcome.
+// The fork is measured, not inferred: a mutation that makes the std arm admit ExpectSlotGeneration against
+// an absent observation leaves EVERY row of test.claim.durable_cas_file_store_wet_witness green (branch
+// sharp-otter-429/d6-witness-main-mutant-stdfold at 2167708a09307e9c24dc0718401e02570d4b690f, six rows
+// PASS), while the same retired ordering restored in the store's own arm turns exactly the empty-store row
+// red and leaves the other five green (505c4b6e2839beefe999a13cea3502b1d7822df2). A mutation of the std
+// rule cannot reach the store's rows at all, which is what a duplicated rule looks like in execution. The
+// std fold's only consumer is gunbc.roadmap.roadmap_event_carrier's roadmap_event_parent_admitted.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, SuspectedFork, Triaged, cas_generation_expectation_admitted_twice_authorities, d6_witness_measurement_revision }
+
+data cas_generation_expectation_admitted_twice: IntegrationConcern = IntegrationConcern {
+  identity: "cas_generation_expectation_admitted_twice",
+  kind: SuspectedFork {
+    authorities: cas_generation_expectation_admitted_twice_authorities,
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+    tail: [
+      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_event_carrier", decl_name: "roadmap_event_parent_admitted"),
+      decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+    ],
+  },
+  question: "Which declaration decides whether an attempt's generation expectation is admissible against what a compare-and-set slot holds, and in particular who refuses ExpectSlotGeneration against a slot that was never created?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: d6_witness_measurement_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution") },
+        ],
+      },
+      account: "Six rows of the store's wet witness were run at two heads. Mutating the std fold's absent arm to admit a generation expectation: six green, no row moved. Mutating the store's own ProbedAbsent arm to commit a generation expectation at the successor of the EXPECTED generation -- the ordering the store's header retires -- reddened exactly the empty-store row. The store reads the slot and decides inline; it never calls the std fold. So the rule the store enforces and the rule the std fold enforces are two rules, kept in agreement by nothing.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+        control: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+        statement: "an ExpectSlotGeneration attempt against a store holding nothing refuses, the refusal names the absence rather than a competing version, and the store is left with no slot file at all",
+      },
+    ],
+    next: climbs_when(capability: "the file store's absent-slot arm consumes std.durable_compare_and_set's cas_expectation_admits and its inline copy is deleted, so a mutation of that one rule reddens a store row -- measured today, a mutation of that rule reddens none"),
+  },
+}

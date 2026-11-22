@@ -1,0 +1,43 @@
+module gunbc.integration_concern.qualified_corpus_reference_minted_as_kernel
+
+// The E0369 / generic-application equality line (#15992, re-landed by #16122 as the one equality-admissible
+// authority) exposed one residual that #16122 does NOT close: a fully qualified reference to a CORPUS
+// declaration is minted with a KernelMinted provenance, hiding that declaration's by-target entry. Main
+// fails CLOSED on it (no unsound raw '=='), so it is recorded as a gap not yet shown to bite, with the
+// walk-by-target-vs-close_fn_fields consistency control named as the reading that would decide it.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data qualified_corpus_reference_minted_as_kernel: IntegrationConcern = IntegrationConcern {
+  identity: "qualified_corpus_reference_minted_as_kernel",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    requirement: "a qualified reference to a CORPUS declaration carries that declaration's own provenance, so equality admission reaches the declaration's by-target entry and judges the equality wherever it is written; type_reference_provenance instead classifies a fully qualified corpus spelling as KernelMinted (minting an identity of the form '<kernel:Module.Name>'), so equality_argument_by_target cannot read that reference's by-target entry",
+    standing: RequirementUnestablished { decided_by: "a self-host consistency control over the closed corpus: every type the equality walk records as EqualityByTarget must have close_fn_fields=false, and the disagreement set lists any type compared with a raw Rust '==' that transitively reaches an fn field; an empty disagreement at head shows the misclassification is failing closed rather than emitting an unsound equality, and the reading that would establish the requirement is a corpus member that legitimately needs a qualified equality and is refused for it" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target"),
+      decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields"),
+    ],
+  },
+  question: "Does a fully qualified cross-module corpus reference, admitted as a type argument, get refused an equality it should carry because its KernelMinted provenance hides the declaration's by-target entry -- and should the qualified-spelling mint route through the symbol index to the declaration's provenance (one authority) instead of minting '<kernel:Module.Name>' for a corpus name?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "94670a013bb7e8a14cd53c0ccf6e9e683c173aa2",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.std.core", decl_name: "type_reference_provenance") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_argument_by_target") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer_emit_info", decl_name: "close_fn_fields") },
+        ],
+      },
+      account: "Raised during the equality-admission work that became #16143, superseded by #16122 (one authority for the equality-admissible set). A probe during that work showed a QUALIFIED corpus spelling reached inside another module's field (for example 'v2.std.diagnostic.Outcome' inside a host_run record) is classified by type_reference_provenance as KernelMinted, so its type_reference_identity is the '<kernel:...>' form rather than the corpus declaration's. Under #16122 equality_argument_by_target then either finds the by-target table answers false for that key, or descends its Conj/Disj children, while the sibling declaration walk equality_resolved_declaration_structure emits EqualityMemberUnjudgeable for a routed member inside a generic application it cannot model -- in both cases FAIL-CLOSED, so no raw '==' is emitted over an unjudged member; this is the difference from the pre-#16122 state where the same opaque by-target produced a Rust '==' over a routed member (the E0369 / DemandEngine line #15992 re-lands). The only remaining cost is over-refusal: a program that legitimately needs equality on a type named by a fully qualified cross-module reference is refused it. Recorded as a gap not yet shown to bite: the consistency control in the standing decides whether any corpus member actually needs a qualified equality. A candidate fix, not yet designed, is to resolve a qualified corpus spelling to the CorpusDeclared declaration it names (qualified names are already keyed through symbol_index_lookup in the infer and lookup layers) and feed that declaration's by-target entry into equality_argument_by_target, rather than minting a kernel identity for it (one has-== authority).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

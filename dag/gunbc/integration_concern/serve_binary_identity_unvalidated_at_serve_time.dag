@@ -1,0 +1,35 @@
+module gunbc.integration_concern.serve_binary_identity_unvalidated_at_serve_time
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.types { CommitSha }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data serve_binary_identity_unvalidated_at_serve_time: IntegrationConcern = IntegrationConcern {
+  identity: "serve_binary_identity_unvalidated_at_serve_time",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "remote_build_forced_command_words"),
+    requirement: "the binary the remote-build account's SSH forced command execs is checked against the identity the serving converge pinned at the instant a serve request is handled, not only whenever a serving converge last ran",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "remote_build_serve_provide") } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "remote_build_forced_command_words"),
+    tail: [decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"), decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "parse_serve_binary_identity")],
+  },
+  question: "What proves, at the moment a remote-build request is served, that the file the forced command execs is the binary the serving converge pinned -- and who closes the window between a converge reading that file's digest and the serve route execing whatever the path holds when a request arrives?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "767af989deb2a5ee96345a8fe09e53d343dc8b96" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serve", decl_name: "remote_build_forced_command_words") }, CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build_serving_setup", decl_name: "serving_subject_value_deviation") }],
+      },
+      account: "A fleet serving converge of 2026-11-20 (run 44779656976, head 767af989deb2) reported srv3's serve binary as settled -- all items met, InstallServeBinary a no-op -- yet a live gate against srv3's serve that same evening refused an equality mainline had admitted since caeac322c7b7, while seeds built at 2387c5493bb9 accept it. The converge's identity for that binary is a single digest of the file the forced command execs, read at observe time and compared to the job's freshly built pin; its arms mint the comparison only when the file is present and the digest was read, and reach settled only on equality, so at the observe instant that file matched the current build. srv4's converge (run 44782848445) likewise scored the binary Met, yet a ctrl remote-build client dispatch of current main to srv4 also refused the same equality at compute_seat_ensure.dag:167. BINARY STALENESS IS DISPROVEN. srv4's observed serve digest 3824a0664f2f564751cb8ff8ae168ec76e300ba54333573f8e75f1c2cffffefe equals the job's release-bins pin for head a6ba84b0dded, a build that postdates caeac322c7b7, so the file the forced command execs IS the current pinned binary, not a stale or swapped one; the release-bins and sccache stale-cause routes are cleared. The refusal is not in the binary at all: main 0d1fe46b782c with a post-#16122 engine (b0e3cd54 at 8d2880448cc4) fails to RESOLVE remote_build_serve.dag since 13d2196d958 (gunbc#16781, 2026-11-20 09:47Z) added import gunbc.compute.compute_seat_ensure to the serve closure -- a current compiler refuses current code, so every serving host refuses every request whatever binary it holds. That import is being cut (the serve-side seat knock reverted), and the serve entry resolves again at that head. What is established is narrower and is the gap this row names: within the model the sole governed writer of that path is converge_install_binary (RecordServeIdentity writes only the sidecar; live_deploy serve_binary is a different artifact and the remote-build serving instance is actuation: DashboardObserveOnly), and the converge fixes the binary's identity as a one-time digest at observe time -- nothing re-validates the file the forced command execs against that pinned identity when a request is actually served, so a serve route can refuse semantics the pinned identity would not predict and still read settled until the next converge. That discriminator ran to its conclusion: the pinned binary matched the digest and the refusal traced to the gunbc#16781 import, not to a stale binary or to host state. The gap this row names is therefore independent of that refusal and stands open on its own: the forced command execs a file that nothing re-validates against the pinned identity at request time.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

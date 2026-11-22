@@ -7,10 +7,12 @@ import extdeps.network.ipv4 { ipv4_address }
 import extdeps.network.mac { mac_address, mac_addresses_are_equal }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.fleet_host_identity {
-  operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv9, operator_host_e2d4b7,
+  operator_host_e2d4b7, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv14, operator_host_srv9,
 }
+import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enrollments, known_host_row_field }
+import gunbc.fleet.fleet_known_hosts_anchor { first_contact_known_host_rows, fleet_known_hosts_rows, known_hosts_file_rows }
 import gunbc.fleet.fleet_intent_network {
-  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
+  fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv14_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
 }
 import product.network_topology {
   BmcManagement,
@@ -23,6 +25,7 @@ import product.network_topology {
   FabricationAppliance,
   HostLan,
   HostOperatingSystem,
+  Lan,
   NetworkEndpoint,
   network_reachability,
 }
@@ -142,10 +145,28 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
 // later reader conclude the address belongs to the sold cage. The claim was renamed rather than silently
 // narrowed, so the rung drop's comment and any later audit see that this fixture population shrank.
 
+// srv14 (butch) is reached by its DERIVED TAILNET NAME; its LAN row is a DHCP LEASE OBSERVATION, the
+// address of the first-contact hop (fleet_host_key_enrollment, host key gunbc#16276). THE ADDRESS IS NOT PINNED
+// (msg_6859afc9): .238 is a dated lease the operator observed (msg_db7db143); copying it into a claim makes a
+// change detector, not a referent (gunbc.design_argument::fail_closed). What IS pinned is the row's KIND --
+// srv14's operating system on the LAN -- and its reach discipline: the ONLY rows in the verification registry
+// that may carry srv14's LAN address are the first-contact hop rows, never an anchored row (the anchored row
+// appears only when srv14 joins, at the DERIVED tailnet name). Sold Group B absence is covered by the guard
+// above; this claim replaces the srv11 conjuncts my branch carried before main's Group B deletion landed.
+test fn fleet_intent_network_srv14_lease_row_holds_kind_and_hop_discipline() -> Bool {
+  srv14_host_lan_endpoint.label == "srv14-host-lan"
+    && srv14_host_lan_endpoint.role == HostOperatingSystem
+    && srv14_host_lan_endpoint.locality == Lan
+    && srv14_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv14 }
+    && !any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String))
+    && all(first_contact_known_host_rows(), r => any(known_hosts_file_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
+    && host_lan_address(host: operator_host_srv11) == none
+}
+
 // GROUP B IS SOLD, SO NO SOLD HOST HOLDS AN ENDPOINT ROW. The operator's ruling of 2026-10-10
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10) is explicit -- "Group B (srv9-srv12) is sold
+// #gunbc.spark.dgx_procurement::dgx_spark_group_b_sale_2026_10_10 is explicit -- "Group B (srv9-srv12) is sold
 // too: every one of the eight procured units is now sold, and none may remain a reachable fleet host" -- and
-// @ref(gunbc.spark.dgx_procurement::dgx_spark_disposed_units) carries each router label at its former slot.
+// #gunbc.spark.dgx_procurement::dgx_spark_disposed_units carries each router label at its former slot.
 //
 // This replaces fleet_intent_network_srv10_enrolled_at_its_reserved_address, which pinned 192.168.1.237 to srv10.
 // That claim was itself part of the defect: a test that kept a sold cage addressable. It is deleted rather than
@@ -184,7 +205,7 @@ test fn fleet_intent_network_no_sold_group_b_host_holds_an_endpoint_row() -> Boo
 // declaration of any kind, and that shape is why retired rows should be deleted rather than left standing outside
 // the roster.
 //
-// Single pass by construction: @ref(std.list::first_duplicate_by_key) folds once, carrying the keys it has seen,
+// Single pass by construction: #std.list::first_duplicate_by_key folds once, carrying the keys it has seen,
 // and stops at the first repeat. Review 96631 caught the first version re-filtering the whole roster once per row
 // -- a quadratic fold -- which gunbc.design_argument::how_to_work forbids regardless of how small n is today.
 test fn fleet_intent_network_no_two_endpoint_rows_hold_one_address() -> Bool {

@@ -10,7 +10,8 @@ module test.claim.compute.remote_build_serving_converge_witness
 //     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
 
 import std.optional { Present, Absent }
-import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host }
+import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, compute_root }
+import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_work_slice_unit_name, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
 import gunbc.live_deploy.spec { gunbc_user_work_slice_unit_path }
 import std.measure { byte_size_count }
@@ -19,7 +20,7 @@ import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimitValue, CgroupMemoryLimi
 import std.algebra { string_contains, non_empty_to_list }
 import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import std.list { first_duplicate_by_key, first_where }
+import std.list { first_duplicate_by_key, first_where, list_member }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
@@ -27,10 +28,19 @@ import gunbc.compute.remote_build_serving_setup {
   ServingLegFailure, serving_forced_command_line,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
+  serving_scratch_root_mode_octal,
+  SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded,
 }
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld,
+}
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
+import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.host.user_session_runtime { user_session_runtime_dir }
+import gunbc.cli_invoke { NamedArgumentRequest }
+import gunbc.compute.unit_bounds { user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 
@@ -81,6 +91,11 @@ fn store_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, Ser
   est_s(text: serving_store_dir_mode_octal(d: d))
 }
 
+// The scratch dir fixture: present, at the mode the model declares (never a literal here).
+fn scratch_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, ServingLegFailure> {
+  est_s(text: serving_scratch_root_mode_octal(d: d))
+}
+
 fn store_mode_absent() -> ObservationAttempt<String, ServingLegFailure> {
   est_s(text: "")
 }
@@ -100,6 +115,7 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     group: est_s(converged_groups()),
     authorized_keys: est_s(dline),
     store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -107,8 +123,11 @@ fn drifted_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObser
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // A converged /etc/group carries BOTH required groups at their declared gids: the ledger group
@@ -212,6 +231,7 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -219,8 +239,11 @@ test fn a_converged_host_receipt_reports_settled() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-      ), pin: pin_ok())
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok())
       let body = serving_receipt_body(host_name: "srv1.example", probed_at: "T", context_receipt: "", assessment: a)
       string_contains(s: body, pattern: "remote-build-serving-plan: settled")
     }
@@ -269,6 +292,7 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: refused_b(), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -276,8 +300,11 @@ test fn unread_leg_plans_nothing_and_refuses() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-      )
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) && length(plan_writes(plan)) == 0
@@ -304,6 +331,7 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -311,8 +339,11 @@ test fn host_arch_mismatch_is_unhandled_not_written() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
-      )
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
@@ -374,14 +405,18 @@ fn fresh_absent_observed(dline: String, d: RemoteBuildServingDesired) -> Serving
     group: est_s("root:x:0:\n"),
     authorized_keys: est_s(""),
     store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+    scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
     checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
     serve_binary_sha256: Absent, checkout_revision: Absent,
     authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: false },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // A TRULY FRESH HOST (no account, so no rustup) plans the rustup bootstrap: the pinned rustup-init for
@@ -440,13 +475,17 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
       let o = serving_observed_from_reads(
         elevation: est_elevation(), account_name: d.account_name, passwd: est_s(""), group: est_s("root:x:0:\n"), authorized_keys: est_s(""),
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+        scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
         checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
         serve_binary_sha256: Absent, checkout_revision: Absent, authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s("riscv64"), ledger_rows: matched_ledger(d: d),
-      )
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let plan = converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin), pin: pin, target_arch: est_s("riscv64"), rustup: est_absent())
       match plan {
         ConvergeUnhandled { items: us } => length(plan_writes(plan)) == 0
@@ -469,6 +508,7 @@ test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
         passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
         group: est_s(converged_groups()), authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_absent(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -476,8 +516,11 @@ test fn present_rustup_plans_the_toolchain_and_no_bootstrap() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-      )
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let ws = plan_writes(converge_plan(d: d, a: serving_assess(d: d, o: o, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok()))
       length(ws) == 1 && has_toolchain_write(ws: ws, channel: pin_ok().toolchain_channel, as_user: d.account_name) && rank_of_rustup(ws: ws) == -1
     }
@@ -536,6 +579,7 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
         authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -543,8 +587,11 @@ test fn uid_mismatch_is_unhandled_not_planned_as_useradd() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-      )
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_unhandled(plan) && length(plan_writes(plan)) == 0
@@ -570,14 +617,18 @@ test fn refused_elevation_plans_nothing_and_refuses() -> Bool {
         group: est_s(converged_groups()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
+        scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
         checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
         serve_binary_sha256: Absent, checkout_revision: Absent,
         authorized_keys_mode: Absent, serve_binary_mode: Absent,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
         target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-      )
+      
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) && length(plan_writes(plan)) == 0
@@ -607,6 +658,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           group: est_s(converged_groups()),
           authorized_keys: est_s(line),
           store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+          scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
           checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -614,8 +666,11 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
           target_arch: est_s("x86_64"), ledger_rows: matched_ledger(d: d),
-        ), pin: pin_ok()),
+        
+          serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s("x86_64"), rustup: est_ok())
       let refused = converge_plan(
         d: d,
@@ -626,6 +681,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           group: est_s(converged_groups()),
           authorized_keys: est_s(line),
           store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+          scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
           checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -633,8 +689,11 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-        ), pin: pin_ok()),
+        
+          serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       let planned = converge_plan(
         d: d,
@@ -645,6 +704,7 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
           group: est_s(converged_groups()),
           authorized_keys: est_s(line),
           store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+          scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
           checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
           serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
           authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -652,8 +712,11 @@ test fn a_refusal_or_unhandled_divergence_carries_nothing_to_execute() -> Bool {
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
           target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-        ), pin: pin_ok()),
+        
+          serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },), pin: pin_ok()),
         pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       // The two non-plan arms must offer the executor nothing, and the plan arm must offer it
       // something — otherwise the two assertions above are vacuous.
@@ -678,6 +741,7 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     group: est_s(converged_groups()),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_root_mode, store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -685,8 +749,11 @@ fn fully_matched_store(d: RemoteBuildServingDesired, line: String, store_root_mo
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: String) -> ServingObserved {
@@ -697,6 +764,7 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     group: est_s(converged_groups()),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -704,8 +772,48 @@ fn fully_matched_passwd(d: RemoteBuildServingDesired, line: String, passwd: Stri
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+// A host settled in EVERY leg except the scratch root's presence and mode, which the caller supplies.
+// The sibling of fully_matched_store for the scratch item: the pair of claims below share one fixture and
+// differ only in these two legs, so a passing green cell cannot come from some other deviation.
+fn fully_matched_scratch(d: RemoteBuildServingDesired, line: String, scratch_root: ObservationAttempt<Bool, ServingLegFailure>, scratch_root_mode: ObservationAttempt<String, ServingLegFailure>) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+    serve_binary: est_ok(),
+    scratch_root: scratch_root, scratch_root_mode: scratch_root_mode,
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+// An EnsureDirectory write carrying EXACTLY this path, owner pair and mode. The owner pair is asserted,
+// not assumed: the point of the scratch root is that the serving ACCOUNT can write in it, so a write that
+// re-creates it root-owned would fix nothing and this helper would go red.
+fn has_account_owned_directory(ws: List<ConvergeAction>, path: String, owner_user: String, owner_group: String, mode: String) -> Bool {
+  length(filter(ws, a => match a {
+    EnsureDirectory { path: p, owner_user: u, owner_group: g, mode: m } =>
+      p == path && u == owner_user && g == owner_group && file_mode_octal(mode: m) == mode
+    _ => false
+  })) > 0
 }
 
 // Whether the write list contains an EnsureDirectory on PATH carrying exactly MODE. The declared mode is
@@ -759,6 +867,129 @@ test fn store_mode_matched_plans_no_store_directory() -> Bool {
       let a = serving_assess(d: d, o: fully_matched_store(d: d, line: line, store_root_mode: store_mode_ok(d: d)), pin: pin_ok())
       let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
       plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE ACCOUNT'S SCRATCH ROOT (the one directory of the serving account's own tree the converge owns
+// into existence). Every remote compile on BOTH serving hosts died here, one step after the ledger and
+// principal checks passed:
+//   mkdir: cannot create directory '/home/gunbc-build/.local/share/gunbc-remote-build/compute':
+//   Permission denied        (receipt /tmp/live-compile-receipt.json, runs 44915773851 / 44917055618)
+// The parents of that tree are root-owned BY DESIGN (InstallServeBinary / RecordServeIdentity install the
+// binary the forced command execs, and a build the account runs must never be able to replace it), so no
+// amount of account-side effort can create the provider's compute root: only the converge can, and it
+// must create it AS THE ACCOUNT. These claims are the difference between "a directory the model names"
+// and "a directory the apply will create with the right owner, and will not create on a guess".
+// ---------------------------------------------------------------------------
+
+// The provider's own root, not a path this witness re-derives: the declared scratch dir is exactly what
+// gunbc.compute.work_provider_local::compute_resolve_subject runs 'mkdir -p <it>/subject' on, read from
+// the same host_capacity call. If the converge ever spells its own path, the write lands somewhere the
+// serve route never asks for and this goes red.
+test fn the_scratch_root_is_the_provider_s_own_compute_root() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let provider_root = compute_root(instance: remote_build_serving_instance(host: operator_host_srv1)) as String
+      d.scratch_root_dir == provider_root
+        // ...and it is NOT one of the ledger dirs: that list is judged as ledger ROWS, and no ledger row
+        // lives under a scratch root. Riding there would have the row judge demand a name/slot posture
+        // this directory can never satisfy.
+        && length(filter(d.ledger_dirs, t => owned_directory_path(t: t) == d.scratch_root_dir)) == 0
+    }
+  }
+}
+
+// A confirmed-absent scratch root plans EXACTLY ONE write, and that write carries the serving account as
+// owner and its primary group as group -- the account-writability the serve route needs, asserted field by
+// field rather than assumed from "a directory was planned".
+test fn a_missing_scratch_root_plans_one_account_owned_write() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let a = serving_assess(
+        d: d,
+        o: fully_matched_scratch(d: d, line: line, scratch_root: est_absent(), scratch_root_mode: store_mode_absent()),
+        pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false
+        && plan_is_unhandled(plan) == false
+        && length(plan_writes(plan)) == 1
+        && has_account_owned_directory(
+             ws: plan_writes(plan),
+             path: d.scratch_root_dir,
+             owner_user: d.account_name,
+             owner_group: d.account_group_name,
+             mode: serving_scratch_root_mode_octal(d: d))
+    }
+  }
+}
+
+// THE red control for the presence leg: the same host, scratch root PRESENT at the declared mode, plans
+// NOTHING. Without this pair the cell above proves only that "some host state" produced a write.
+test fn scratch_root_present_at_declared_mode_plans_nothing() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let a = serving_assess(
+        d: d,
+        o: fully_matched_scratch(d: d, line: line, scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d)),
+        pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// A scratch root that exists at the WRONG mode (0700 declared, something looser observed) is a proved mode
+// drift, remediated through the SAME builder at the declared owner and mode -- not unhandled, and never a
+// per-arm literal mode.
+test fn scratch_root_mode_drift_plans_the_same_write_at_the_declared_mode() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let declared = serving_scratch_root_mode_octal(d: d)
+      let a = serving_assess(
+        d: d,
+        o: fully_matched_scratch(d: d, line: line, scratch_root: est_ok(), scratch_root_mode: est_s(text: "0777")),
+        pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false
+        && plan_is_unhandled(plan) == false
+        && length(plan_writes(plan)) == 1
+        && has_account_owned_directory(
+             ws: plan_writes(plan),
+             path: d.scratch_root_dir,
+             owner_user: d.account_name,
+             owner_group: d.account_group_name,
+             mode: declared)
+    }
+  }
+}
+
+// THE red control that no write is minted from an unread leg: the scratch root's presence read is REFUSED
+// while every other leg settles, so the assessment is indeterminate and the plan writes nothing and
+// refuses (gunbc.design_argument::fail_closed -- an apply never writes an item it never observed).
+test fn an_unread_scratch_root_leg_writes_nothing_and_refuses() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let line = forced_line(d)
+      let a = serving_assess(
+        d: d,
+        o: fully_matched_scratch(
+          d: d,
+          line: line,
+          scratch_root: ObservationRefused { cause: ServingLegFailure { item: "scratch.root", cause: "ssh refused" } },
+          scratch_root_mode: store_mode_absent()),
+        pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
     }
   }
 }
@@ -1064,6 +1295,7 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     group: est_s(group_text),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -1071,8 +1303,11 @@ fn matched_with_group(d: RemoteBuildServingDesired, line: String, group_text: St
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 test fn ledger_group_extra_member_is_unhandled_not_planned() -> Bool {
@@ -1107,6 +1342,7 @@ fn slice_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     group: est_s(converged_groups()),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -1114,8 +1350,11 @@ fn slice_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> Servin
     user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
     user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn is_install_slice(a: ConvergeAction) -> Bool {
@@ -1242,6 +1481,7 @@ fn slice_refused_max_observed(d: RemoteBuildServingDesired, line: String) -> Ser
     group: est_s(converged_groups()),
     authorized_keys: est_s(line),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
     authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
@@ -1249,8 +1489,11 @@ fn slice_refused_max_observed(d: RemoteBuildServingDesired, line: String) -> Ser
     user_work_slice_max: ObservationRefused { cause: ServingLegFailure { item: "user_work.slice.memory_max", cause: "ssh refused" } },
     user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
-  )
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 test fn refused_slice_max_plans_no_install_leg() -> Bool {
@@ -1270,12 +1513,13 @@ test fn refused_slice_max_plans_no_install_leg() -> Bool {
 }
 
 // After the unit file is installed, the leg hands systemd exactly two verbs in order: daemon-reload (so
-// systemd reads the new unit) THEN start (so the slice's cgroup exists). daemon-reload alone never
-// instantiates a never-active slice's cgroup, so without the start the cgroup readback would wait on a
-// directory that never appears. Both reach the serving ACCOUNT's user manager via the --machine=UID@
-// connector (bare --user would reload root's manager), and the start names the reader's own slice, so the
-// settled cgroup is the very unit the wrap binds into. install (upload) and the cgroup readback bracket
-// these two structurally in the wet leg; this fixes their order and content so leg and reader cannot drift.
+// systemd reads the new unit) THEN start (so the slice is active under the account's manager and work can
+// be placed into it). Both reach the serving ACCOUNT's user manager via the --machine=UID@ connector (bare
+// --user would reload root's manager), and the start names the reader's own slice. The readback that
+// follows reads the slice's DECLARED properties (systemctl show, witnessed separately), so an installed,
+// active-but-empty slice settles from what the loaded unit declares rather than waiting on a cgroup file
+// its empty membership never creates. install (upload) and the readback bracket these two verbs
+// structurally in the wet leg; this fixes their order and content so leg and reader cannot drift.
 test fn install_slice_reloads_then_starts_the_reader_unit() -> Bool {
   let uid = 4242
   let verbs = user_work_slice_install_command_argv(uid: uid)
@@ -1305,6 +1549,173 @@ fn settled_slice_high(ceiling: ByteSize) -> ObservationAttempt<CgroupMemoryLimit
   match user_work_slice_memory_high_of(memory_max: ceiling) {
     UserWorkSliceHighDerived { bytes: h } => ObservationEstablished { observed: CgroupMemoryLimited { bytes: h } }
     UserWorkSliceHighGapExceedsMax => ObservationEstablished { observed: CgroupMemoryLimited { bytes: byte_size(0) } }
+  }
+}
+
+// ── EnsureUserManagerLinger: the live manager the slice cgroup needs ──
+//
+// An empty user slice does not persist its cgroup unless the serving account's user manager is lingering;
+// the transient manager can tear the slice's cgroup down before the readback, so a daemon-reload and start
+// that both succeed still read back uncapped. The converge therefore enables lingering BEFORE the
+// slice, and the executor halts at the first failed write -- so a manager that never lingers stops the pass
+// before a slice is ever written behind it. These claims pin the plan side: the not-lingering arm is a real
+// deviation that plans exactly one enable leg, that leg sorts ahead of the slice, and a REFUSED linger read
+// is an unknown that plans nothing (UNKNOWNs WIN -- a state nobody read never drives a write).
+
+fn is_enable_linger(a: ConvergeAction) -> Bool {
+  match a {
+    EnsureUserManagerLinger { account: _ } => true
+    _ => false
+  }
+}
+
+fn is_ensure_account(a: ConvergeAction) -> Bool {
+  match a {
+    EnsureAccount { name: _ } => true
+    _ => false
+  }
+}
+
+// Everything but the slice cap is correct AND the user manager is proven not lingering: the minimal-delta
+// positive for the enable arm. It carries BOTH deviations (uncapped slice + not-lingering), so one plan
+// proves the enable leg appears and (via the order cell) that it lands ahead of the slice it unblocks.
+fn not_lingering_uncapped_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_manager_linger: ObservationEstablished { observed: false },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+// The same host, but the Linger read is REFUSED (an ssh/sudo failure): the minimal-delta control. An
+// unlingering manager that was READ is a drift the converge fixes; one nobody could read is an unknown the
+// converge refuses to write toward -- so exactly this fixture plans NO enable leg.
+fn refused_linger_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()),
+    authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    user_work_slice_max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    user_manager_linger: ObservationRefused { cause: ServingLegFailure { item: "user_manager.linger", cause: "ssh refused" } },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+// A proven-not-lingering manager assesses as a real drift and plans exactly ONE enable leg (refused and
+// unhandled both false), alongside the slice leg the same fixture still needs.
+test fn not_lingering_plans_exactly_one_enable_leg() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: not_lingering_uncapped_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          plan_is_refused(plan) == false
+            && plan_is_unhandled(plan) == false
+            && length(filter(plan_writes(plan), x => is_enable_linger(x))) == 1
+        }
+      }
+    }
+  }
+}
+
+// The enable leg sorts ahead of the slice write: converge_order places its rank (7) before the slice's (8),
+// so the executor keeps the manager live first and a slice that never settles is stopped behind a manager
+// that never lingered, never ahead of one.
+test fn install_linger_sorts_before_slice() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: not_lingering_uncapped_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          match filter(plan_writes(plan), x => is_enable_linger(x)) {
+            Cons { head: linger, tail: _ } => {
+              match filter(plan_writes(plan), x => is_install_slice(x)) {
+                Cons { head: slice, tail: _ } =>
+                  converge_kind_rank(linger) < converge_kind_rank(slice)
+                    && match converge_order([slice, linger]) {
+                         Cons { head: h0, tail: Cons { head: h1, tail: _ } } => is_enable_linger(h0) && is_install_slice(h1)
+                         _ => false
+                       }
+                Empty => false
+              }
+            }
+            Empty => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// RED CONTROL. A Linger state nobody could read is an UNKNOWN, not drift: this host (slice still unbounded,
+// Linger REFUSED) must plan NO enable leg. The minimal-delta opposite of not_lingering_plans_exactly_one_-
+// enable_leg (there linger is established-false -> exactly one enable; here it is refused -> none), so a
+// refused read can never masquerade as 'not lingering' and drive an enable toward an unread manager.
+test fn refused_linger_writes_no_enable_leg() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let asmt = serving_assess(d: d, o: refused_linger_observed(d: d, line: line), pin: pin_ok())
+          let plan = converge_plan(d: d, a: asmt, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+          length(filter(plan_writes(plan), x => is_enable_linger(x))) == 0
+        }
+      }
+    }
+  }
+}
+
+// RED-CONTROL PARTNER for the account-presence gate on the linger read. On a fresh host the serving account
+// is proven absent (passwd ''), so the linger read is gated OFF and yields established-false -- never an
+// unknown. The plan must therefore still run and carry the enable leg beside the account leg. If a future
+// change let an absent account's linger read refuse, this host would go indeterminate and this cell goes red.
+test fn fresh_host_with_absent_account_plans_enable_not_refused() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let a = serving_assess(d: d, o: fresh_absent_observed(forced_line(d), d), pin: pin_ok())
+      let plan = converge_plan(d: d, a: a, pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      plan_is_refused(plan) == false
+        && plan_is_unhandled(plan) == false
+        && length(plan_writes(plan)) > 0
+        && length(filter(plan_writes(plan), x => is_enable_linger(x))) == 1
+        && length(filter(plan_writes(plan), x => is_ensure_account(x))) != 0
+    }
   }
 }
 
@@ -1343,4 +1754,467 @@ test fn the_identity_key_is_distinct_from_the_binary_key() -> Bool {
   let ident = RecordServeIdentity { install_path: "/srv/gunbc/bin/gunbc", revision: pin_rev(), sha256: pin_sha() }
   converge_action_key(ident) == concat("identity:", "/srv/gunbc/bin/gunbc")
     && converge_action_key(ident) != converge_action_key(b3_binary())
+}
+
+// ── the slice cap is read from the UNIT's declared properties, not its cgroup files ───────────────────
+// An installed, ACTIVE-but-empty slice has no memory.max cgroup file (systemd materialises a slice's cgroup
+// only when a member unit starts), so reading the cgroup file refused a correctly-capped slice forever --
+// the srv3 failure. The leg now reads `systemctl --user --machine=UID@ show <slice>` of the unit's OWN
+// MemoryMax / MemoryHigh / MemorySwapMax, which the manager answers from the loaded unit whether or not the
+// cgroup has populated. These witnesses pin that read: the ceiling decodes to capped, an unbounded/absent
+// control to uncapped (which licenses the install), an unreachable manager to uncapped (never an unknown),
+// and the read-back argv is the user-bus `show` of the three properties.
+
+// The body a `systemctl show` prints for a slice that carries exactly the ceiling: MemoryMax the ceiling,
+// MemoryHigh its derived value, MemorySwapMax the forbidden-swap value -- the same three values the settled
+// observation fixtures hand-build, so 'reads capped' agrees between the property read and the direct field.
+fn capped_show_body(ceiling: ByteSize) -> String {
+  let max_line = concat("MemoryMax=", to_string(byte_size_count(ceiling)))
+  let high_line = match user_work_slice_memory_high_of(memory_max: ceiling) {
+    UserWorkSliceHighDerived { bytes: h } => concat("MemoryHigh=", to_string(byte_size_count(h)))
+    UserWorkSliceHighGapExceedsMax => "MemoryHigh=infinity"
+  }
+  let swap_line = concat("MemorySwapMax=", to_string(byte_size_count(user_work_slice_memory_swap_max)))
+  concat(max_line, concat("\n", concat(high_line, concat("\n", swap_line))))
+}
+
+fn ceiling_high_expected(ceiling: ByteSize) -> ByteSize? {
+  match user_work_slice_memory_high_of(memory_max: ceiling) {
+    UserWorkSliceHighDerived { bytes: h } => Present { value: h }
+    UserWorkSliceHighGapExceedsMax => Absent
+  }
+}
+
+fn slice_value_unbounded(v: CgroupMemoryLimitValue) -> Bool {
+  match v {
+    CgroupMemoryUnlimited => true
+    _ => false
+  }
+}
+
+// The ceiling the loaded unit DECLARES decodes to SliceCapped: this is the reading that lets an installed,
+// active-but-empty slice settle where the cgroup-file read refused it. RED today: serving_slice_cap_of_show
+// does not exist on the old code (the slice was read from cgroup files).
+test fn the_declared_ceiling_read_back_settles_the_slice() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let cap = serving_slice_cap_of_show(text: capped_show_body(ceiling: ceiling))
+      match user_work_slice_cgroup_admission(max: cap.max, high: cap.high, swap: cap.swap, ceiling: ceiling, high_expected: ceiling_high_expected(ceiling: ceiling)) {
+        SliceCapped => true
+        SliceUncapped { reason: _ } => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// RED CONTROL: a control spelling 'infinity' (systemctl's unbounded) is a control we DID read that is not the
+// ceiling -> SliceUncapped, which licenses the install -- it is NOT an unknown. A slice nobody started must
+// install, not stall the whole converge on indeterminacy.
+test fn an_infinity_ceiling_read_back_is_uncapped_not_unread() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let cap = serving_slice_cap_of_show(text: "MemoryMax=infinity\nMemoryHigh=infinity\nMemorySwapMax=infinity")
+      match user_work_slice_cgroup_admission(max: cap.max, high: cap.high, swap: cap.swap, ceiling: ceiling, high_expected: ceiling_high_expected(ceiling: ceiling)) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// RED CONTROL: a PRESENT account whose user manager is unreachable has no cap in force, so the read is
+// established-UNCAPPED (installs), never an unknown that would make the host indeterminate. This is the
+// one-way direction the leg guarantees: an unreachable manager installs the slice; it is never silently capped.
+test fn an_unreachable_manager_reads_uncapped_never_unknown() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let cap = serving_slice_cap_unreachable_manager()
+      match user_work_slice_cgroup_admission(max: cap.max, high: cap.high, swap: cap.swap, ceiling: ceiling, high_expected: ceiling_high_expected(ceiling: ceiling)) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+// The systemctl value for an unbounded control ('infinity', 'max', empty, or an absent key) is the slice's
+// OWN unlimited value -- systemctl's spellings map onto the same unbounded the cgroup file spells 'max'.
+test fn the_property_value_maps_every_unbounded_spelling() -> Bool {
+  slice_value_unbounded(serving_slice_property_value(value: Absent))
+    && slice_value_unbounded(serving_slice_property_value(value: Present { value: "infinity" }))
+    && slice_value_unbounded(serving_slice_property_value(value: Present { value: "max" }))
+    && slice_value_unbounded(serving_slice_property_value(value: Present { value: "   " }))
+}
+
+// RED CONTROL (fail_closed, review 96983): a NON-ZERO `systemctl show` is classified by WHAT the command
+// said, not by the exit code alone. The same exit 1 -- a proven user-bus-down spelling -- reads established
+// UNCAPPED (an unreachable manager has no cap in force, so it installs + enables linger); a sudo denial or a
+// malformed invocation is REFUSED, so on a host that is ALREADY capped a failure nobody read cannot mint an
+// install + linger write. Goes RED the moment the non-zero arm is blanket-uncapped again.
+test fn a_non_zero_read_is_classified_by_stderr_not_the_exit_code() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let ceiling = user_work_slice_memory_max_for_host(host: d.host)
+      let high_expected = ceiling_high_expected(ceiling: ceiling)
+      let down = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "Failed to connect to bus: Host is down")
+      let down_uncapped = match user_work_slice_cgroup_admission(max: down.max, high: down.high, swap: down.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUncapped { reason: _ } => true
+        SliceCapped => false
+        SliceUnknown { control: _, cause: _ } => false
+      }
+      let denied = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "sudo: a password is required")
+      let denied_unknown = match user_work_slice_cgroup_admission(max: denied.max, high: denied.high, swap: denied.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUnknown { control: _, cause: _ } => true
+        SliceCapped => false
+        SliceUncapped { reason: _ } => false
+      }
+      let malformed = serving_slice_cap_of_exec(exit_code: 1, stdout: "", stderr: "systemctl: unknown operation 'shwo'")
+      let malformed_unknown = match user_work_slice_cgroup_admission(max: malformed.max, high: malformed.high, swap: malformed.swap, ceiling: ceiling, high_expected: high_expected) {
+        SliceUnknown { control: _, cause: _ } => true
+        SliceCapped => false
+        SliceUncapped { reason: _ } => false
+      }
+      down_uncapped && denied_unknown && malformed_unknown
+    }
+  }
+}
+
+// The read-back is the user-bus `show` of the three named properties of the reader's own slice, through the
+// account's --machine=UID@ connector. RED today: user_work_slice_show_command_argv does not exist on the old
+// code. It is the LAST step (a read), distinct from the install/reload/start writes, so 'settled' is judged
+// by what the unit declares -- exactly what the reader admits the wrap against.
+test fn the_slice_readback_shows_the_units_declared_properties() -> Bool {
+  let uid = 4242
+  let j = join(user_work_slice_show_command_argv(uid: uid), " ")
+  let connector = systemctl_user_machine_connector(uid: uid)
+  string_contains(s: j, pattern: "systemctl")
+    && string_contains(s: j, pattern: "--user")
+    && string_contains(s: j, pattern: connector)
+    && string_contains(s: j, pattern: "show")
+    && string_contains(s: j, pattern: "--property=MemoryMax,MemoryHigh,MemorySwapMax")
+    && string_contains(s: j, pattern: user_work_slice_unit_name)
+}
+
+// The full ordered shape of the leg: install hands [daemon-reload, start] and the read-back is a separate
+// `show` (a read, never a second start). Together with install_slice_reloads_then_starts_the_reader_unit
+// (which fixes reload-then-start), this witnesses install -> reload -> start -> read-back end to end.
+test fn the_slice_leg_orders_install_reload_start_then_readback() -> Bool {
+  let uid = 4242
+  let install = user_work_slice_install_command_argv(uid: uid)
+  let readback = user_work_slice_show_command_argv(uid: uid)
+  let first_is_reload = match install.first() {
+    Absent => false
+    Present { value: v } => string_contains(s: join(v, " "), pattern: "daemon-reload")
+  }
+  let start_is_last = match reverse(install).first() {
+    Absent => false
+    Present { value: v } => string_contains(s: join(v, " "), pattern: "start")
+  }
+  let readback_join = join(readback, " ")
+  let readback_is_show = string_contains(s: readback_join, pattern: "show") && string_contains(s: readback_join, pattern: "start") == false
+  install.length() == 2 && first_is_reload && start_is_last && readback_is_show
+}
+
+// ── the identity sidecar drifts on a SETTLED binary (PR-1c: record alone) ────────────────────────────
+// The gap PR-1c closes: a host already at the desired binary (no reinstall) never recorded its identity
+// sidecar, so its receipts read as unattested. These controls hold the REAL producer (serving_assess ->
+// converge_plan) to the rule: a MISSING, MALFORMED, or STALE-sha sidecar on a settled binary plans
+// RecordServeIdentity ALONE -- no InstallServeBinary -- and a matching sha (even at an older revision)
+// is a NO-OP, while a REFUSED read is an unknown that writes nothing. A settled host with the sidecar
+// simply not spoken to (skipped) stays a no-op, so the pre-PR-1c tallies are untouched.
+
+// A fully-settled host (binary present at the pin sha, ledger matched, slice capped, lingering) with the
+// identity leg supplied EXPLICITLY. `sidecar` is Absent to leave it unspoken (a no-op), else the decoded
+// SidecarRead reading (SidecarAbsent / SidecarMalformed / SidecarRecorded{sha256}).
+fn fully_matched_identity(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(), account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    serve_identity: sidecar,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+  
+  seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+fn sidecar_absent() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarAbsent } }
+fn sidecar_malformed() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarMalformed } }
+fn sidecar_recorded(sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { sha256: sha } } }
+fn sidecar_refused() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationRefused { cause: ServingLegFailure { item: "serve.binary.identity", cause: "ssh read refused" } } }
+
+fn count_identity(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false })) }
+fn count_binary_install(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true  _ => false })) }
+fn planned_identity_sha(ws: List<ConvergeAction>) -> String {
+  match first_where(ws, keep: a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false }) {
+    Absent => ""
+    Present { value: a } => match a { RecordServeIdentity { install_path: _, revision: _, sha256: s } => s  _ => "" }
+  }
+}
+
+fn plan_identity(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_identity(d: d, line: line, sidecar: sidecar), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+}
+
+// GREEN: a settled binary with a CONFIRMED-ABSENT sidecar plans the identity ALONE -- one RecordServeIdentity
+// carrying the binary's sha + the dispatched revision, and NO reinstall.
+test fn a_missing_sidecar_records_the_identity_alone() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && count_identity(ws) == 1 && count_binary_install(ws) == 0 && planned_identity_sha(ws) == pin_sha()
+    }
+  }
+}
+
+// GREEN: a sidecar recording a sha OTHER than the binary's is stale -> re-recorded (alone).
+test fn a_stale_sha_sidecar_re_records_the_identity() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded(other) })
+      let ws = plan_writes(plan)
+      count_identity(ws) == 1 && count_binary_install(ws) == 0 && planned_identity_sha(ws) == pin_sha()
+    }
+  }
+}
+
+// RED CONTROL: a sidecar whose sha MATCHES the binary is settled even though its recorded revision is not
+// the dispatched one (revision is NOT a drift signal: a .dag-only main yields a byte-identical binary and
+// would rewrite the sidecar for nothing). The identity leg carries only the sha, so a matching sha here IS
+// 'same sha, older revision' -> NO identity write at all (the host stays settled).
+test fn a_matching_sha_sidecar_is_a_no_op_regardless_of_revision() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      plan_is_settled(plan) && count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// GREEN: a sidecar present but NOT the documented two-member object is malformed -> re-recorded.
+test fn a_malformed_sidecar_re_records_the_identity() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_malformed() })
+      count_identity(plan_writes(plan)) == 1 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL: a REFUSED sidecar read is an unknown, NEVER a rewrite -- a bug that conflated 'unreadable'
+// with 'absent' would mint an identity write here and go red.
+test fn a_refused_sidecar_read_writes_nothing() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_refused() })
+      count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL on the gate: with the sidecar simply NOT spoken to (skipped), a settled host stays a no-op --
+// so PR-1c did not start recording an identity it has no reading of, and the pre-PR-1c tallies are intact.
+test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_identity(d: d, line: forced_line(d), sidecar: Absent)
+      plan_is_settled(plan) && count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// ---- THE SEAT RECOVERY LEG (increment 2) ----
+// The census arrives ALREADY JUDGED: its entries come from
+// gunbc.compute.attempt_lifecycle::recovery_write_authorization through the recovery door
+// (gunbc.compute.work_provider_local::compute_recover_catalog_cli), rendered and parsed back through
+// the door's own grammar. The plan only RENDERS them, and only when the identity leg is Met. These
+// cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
+// an unmet identity refuses the recovery alongside it.
+
+fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(), account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    serve_identity: sidecar,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
+    seat_census: census,
+  )
+}
+
+fn plan_census(d: RemoteBuildServingDesired, census: RecoverCatalogLegReading, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+}
+
+fn count_recover(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecoverStaleSeat { reference: _ } => true  _ => false })) }
+fn planned_recover_reference(ws: List<ConvergeAction>) -> String {
+  match first_where(ws, keep: a => match a { RecoverStaleSeat { reference: _ } => true  _ => false }) {
+    Absent => ""
+    Present { value: a } => match a { RecoverStaleSeat { reference: r } => r as String  _ => "" }
+  }
+}
+
+// GREEN: an established census entry the model AUTHORIZED — a terminal unit whose release is due —
+// plans the recovery: exactly one RecoverStaleSeat carrying that reference, no identity write, when the
+// identity leg is Met (a sidecar recording the binary's own sha).
+test fn a_stale_seat_plans_the_recovery_when_identity_is_met() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegStale { reference: "gunbc-build.job#1" as NonEmptyStr }] }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 1 && count_identity(ws) == 0 && planned_recover_reference(ws) == "gunbc-build.job#1"
+    }
+  }
+}
+
+// RED CONTROL (live holder): an established 'hold' entry — a live or too-early holder, which the model
+// DECLINED — is legitimately held and plans NOTHING. The host stays settled; recovering it would take
+// a seat from under its holder, which is the exact harm #16827's authorization exists to prevent.
+test fn a_legitimately_held_seat_plans_nothing() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegHeld { reference: "gunbc-build.job#2" as NonEmptyStr }] }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      plan_is_settled(plan) && count_recover(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL (unreadable slot): a census that could not establish itself — an unreadable slot, or one
+// reference sitting in two seat directories — is an unknown; unknowns dominate, the assessment is
+// indeterminate, and the plan REFUSES. The ARM is the assertion: a refused plan has nothing to
+// execute, so recovery never runs against a half-read seat pool (fail_closed).
+test fn an_unreadable_seat_census_refuses_the_plan() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegUnknown { detail: "one reference sits in two seat directories" }, sidecar: Present { value: sidecar_recorded(pin_sha()) })
+      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// RED CONTROL (the identity gate, deferred not refused): the recovery is planned ONLY when the identity
+// leg is Met. With the sidecar absent the identity leg still needs its write, and the recovery CLI IS
+// the binary the identity documents — so THIS run carries the identity write and defers the recovery
+// (review 97280, finding 1: refusing the whole plan would stall the host on every run). The deferral
+// is not a loss: the next assessment, with identity Met, plans the recovery — which is what the green
+// cell above asserts.
+test fn a_stale_seat_with_an_unmet_identity_defers_the_recovery() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegStale { reference: "gunbc-build.job#3" as NonEmptyStr }] }, sidecar: Present { value: sidecar_absent() })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_identity(ws) == 1 && count_recover(ws) == 0
+    }
+  }
+}
+
+// ---- converge_order regression guard (rank-bucket drop; clever-raven-401) ----
+// converge_order once concatenated a FIXED list of rank buckets (r0..r9), so every ConvergeAction kind
+// past the largest bucket was silently filtered out of the ordered plan -- the rank-10 identity write,
+// and any rank added later (e.g. a seat-recovery leg landing after rank 10). The fix orders by rank with
+// a STABLE sort so a kind at ANY rank survives. This is the net that catches that class of regression:
+// build ONE representative of EVERY ConvergeAction kind, order them, and JOIN the output back to the
+// input by structural equality -- plan in = writes out. A kind filtered out by a missing bucket fails
+// the join, which a bare count would not distinguish.
+fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
+  [
+    EnsureGroup { name: "gunbc-serve", gid: 900 },
+    EnsureAccount { name: "gunbc-serve", uid: 900, gid: 900, primary_group: "gunbc-serve", home: "/home/gunbc-serve", shell: "/bin/sh", supplementary: [] },
+    EnsureGroupMembership { group_name: "gunbc-serve", group_gid: 900, member: "gunbc-serve" },
+    EnsureDirectory { path: "/srv/gunbc/store", owner_user: "gunbc-serve", owner_group: "gunbc-serve", mode: d.serve_binary_mode },
+    EnsureAuthorizedKeys { path: "/home/gunbc-serve/.ssh/authorized_keys", owner_user: "gunbc-serve", content: "ssh-ed25519 AAAAKEY gunbc-serve" },
+    EnsureLedgerDirectory { path: "/srv/gunbc/ledger", owner_user: "gunbc-serve", owner_group: "gunbc-serve", mode: d.authorized_keys_mode },
+    EnsureCheckout { dir: "/srv/gunbc/checkout", clone_url: "https://example.invalid/gunbc.git", revision: "deadbeef", as_user: "gunbc-serve" },
+    EnsureToolchain { channel: "1.95.0", as_user: "gunbc-serve" },
+    EnsureRustup { installer_url: "https://static.rust-lang.org/rustup-init", expected_sha256: "aaa", as_user: "gunbc-serve", rustup_home: "/home/gunbc-serve/.rustup", cargo_home: "/home/gunbc-serve/.cargo" },
+    EnsureUserManagerLinger { account: "gunbc-serve" },
+    InstallUserWorkSlice { unit_name: user_work_slice_unit_name, unit_path: "/run/systemd/user/gunbc-user-work.slice", memory_max: byte_size(1), memory_high: byte_size(1), memory_swap_max: byte_size(1), expected_content: "[Unit]" },
+    InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" },
+    RecordServeIdentity { install_path: "/opt/gunbc/bin/gunbc", revision: "deadbeef", sha256: "aaa" },
+    RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
+  ]
+}
+// The recovery doors are RUN AS THE SERVING ACCOUNT through sudo, and two measured refusals on srv1
+// (runs 44976395909, 44980662577, 2026-11-22) name the two seams this claim holds shut. (1) A door that
+// bears host effects is refused by its OWN user-work-scope gate unless the account's user manager is
+// reachable to wrap it into the capped gunbc-user-work.slice — exit 2 "cannot wrap into
+// gunbc-user-work.slice (UserSessionAbsent)" — so the argv binds the account's own session environment
+// (gunbc.host.user_session_runtime). (2) The seed's workspace-root scaffold treats a SET
+// GUNBC_WORKSPACE_ROOT as the release-locus authority and refuses a plain checkout for lack of a tree
+// receipt — so the argv binds NOTHING there and instead STARTS the door in the serving checkout
+// (env -C), where the .git walk binds the root, exactly as the admitted serve route's forced command
+// starts its door (gunbc.compute.remote_build_serve remote_build_forced_command_words). GREEN: "-C
+// <checkout>" and the two session bindings form one contiguous env-prefix block ahead of the door, and
+// GUNBC_WORKSPACE_ROOT appears nowhere in it.
+test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => match converge_gunbc_door_argv(
+      d: d,
+      function: "compute_recover_catalog_cli",
+      arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }],
+      runtime_dir: user_session_runtime_dir(uid: 999)
+    ) {
+      Absent => false
+      Present { value: argv } => {
+        let words = join(argv, " ")
+        string_contains(s: words, pattern: concat(concat(concat("-C ", d.checkout_dir as String), " XDG_RUNTIME_DIR=/run/user/999"), " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/999/bus"))
+          && (!string_contains(s: words, pattern: concat(gunbc_workspace_root_env_name, "=")))
+          && string_contains(s: words, pattern: "compute_recover_catalog_cli")
+      }
+    }
+  }
+}
+
+test fn converge_order_preserves_every_action_kind() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let all = every_converge_action(d)
+      let ordered = converge_order(all)
+      length(ordered) == length(all) && length(filter(all, e => list_member(xs: ordered, x: e, eq: (a, b) => converge_action_key(a) == converge_action_key(b)))) == length(all)
+    }
+  }
 }

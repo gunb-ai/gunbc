@@ -19,7 +19,7 @@ pub fn chars(text: std::string::String) -> Rc<Vec<i64>> {
 }
 
 pub fn text_of_chars(scalars: Rc<Vec<i64>>) -> std::string::String {
-    v1_rt::chars_to_string(&scalars, 0, (scalars.clone().len() as i64))
+    v1_rt::text_of_chars(&scalars)
 }
 
 pub fn string_length(text: std::string::String) -> Nat {
@@ -55,7 +55,7 @@ pub fn substring(text: std::string::String, start: Nat, end: Nat) -> std::string
                 }
             },
         );
-        text_of_chars(crate::std_algebra::list_reverse(window.kept.clone()))
+        v1_rt::text_of_chars(&crate::std_algebra::list_reverse(window.kept.clone()))
     }
 }
 
@@ -63,6 +63,6 @@ pub fn char_at(text: std::string::String, pos: Nat) -> Option<std::string::Strin
     match crate::std_algebra::list_head(crate::std_algebra::skip(v1_rt::chars(&text), pos.clone()))
     {
         std::option::Option::None => std::option::Option::None,
-        Some(scalar) => Some(text_of_chars(Rc::new(vec![scalar.clone()]))),
+        Some(scalar) => Some(v1_rt::text_of_chars(&Rc::new(vec![scalar.clone()]))),
     }
 }

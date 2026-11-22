@@ -23,6 +23,9 @@ import std.durable_exclusive_hold {
 import gunbc.host.network_install {
   HoldFree, HoldHeldBy, HoldUnreadable, NetworkInstallHoldReading,
 }
+import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_ci_install_requests, site_pxe_edge_no_install_requests,
+}
 import gunbc.host.network_install_store {
   EdgeFileNotAmongTheRun, EdgeFileSettled, EdgeFileUnsettled, NetworkInstallEdgeFileStanding,
   network_install_edge_file_settled, network_install_edge_file_standing, network_install_edge_install_admitted,
@@ -247,4 +250,18 @@ test fn w_a_slot_nobody_can_read_is_never_free() -> Bool {
     HoldFree => false
     HoldHeldBy { owner: _ } => false
   }
+}
+
+// REVIEW 96920 (REQUEST_CHANGES): the withdraw step used to mint its OWN bare [] at its run_site_pxe_edge call,
+// a second path deciding "serve nothing" beside the entry that had just been bound to the committed row. It now
+// reaches the same site_pxe_edge_ci_install_requests the wet entry calls, so one authority decides the list and
+// the comment's claim is true at every call site. This claim pins that authority's value: the served set is the
+// committed withdrawal row and nothing else. RED control: any standing install request returning through either
+// name -- the row or the accessor -- turns this red (length AND equality), which is precisely the repeat-wipe
+// path the row exists to close. Positive control on real input: the accessor's returned list is the same value
+// the standing-witness folds over in test.claim.fleet.site_pxe_edge_converge_witness, where the fold binds none
+// of the fleet's two real NICs.
+test fn the_withdraw_requests_come_from_the_one_committed_row() -> Bool {
+  let served = site_pxe_edge_ci_install_requests()
+  length(served) == 0 && served == site_pxe_edge_no_install_requests
 }

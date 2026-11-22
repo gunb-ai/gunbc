@@ -25,11 +25,13 @@ import gunbc.compute.host_capacity {
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, ComputeBuildPool,
   compute_capacity_root,
 }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_host_is_serving, remote_build_host_is_serving_candidate }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_memory_max }
 import gunbc.compute.remote_build { RemoteBuildCandidate, remote_build_candidates, remote_build_serving_instance }
 import gunbc.compute.remote_build_serve {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused, remote_build_serve_principal_of,
+  RemoteBuildServeLedgerOwner, ServeLedgerOwnerDeclared, ServeLedgerOwnerUndeclared, remote_build_serve_ledger_owner,
 }
 
 // HERMETIC CONTROLS for the remote-build account (operator, 2026-11-15): the account row, the principal
@@ -106,6 +108,59 @@ test fn the_ledger_gid_under_another_name_is_not_admitted() -> Bool {
 test fn a_ledger_group_without_the_service_user_is_not_admitted() -> Bool {
   let without = "briansrls:x:1000:\ngunbc-build:x:1005:\ngunbc-compute:x:1006:gunbc-build\n"
   !w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: without, service_user: fleet_posix_operator_user.name))
+}
+
+// ── whose ledger the serving entry authorizes ──────────────────────────────────────────────────────
+// The service user the principal check demands is the owner of the capacity home the ledger lives in --
+// the same carrier the ledger subject resolves through -- and NOT a separate dashboard-instance lookup.
+// A host that runs a dashboard instance keeps that instance's owner; a serving host with none takes the
+// host home's declared owner; a host with neither names no owner and is refused.
+
+fn w_owner_matches_instance_owner(host: String) -> Bool {
+  match dashboard_instance_for_host(host: host) {
+    DashboardInstanceForHost { instance: ledger } =>
+      match remote_build_serve_ledger_owner(host: host) {
+        ServeLedgerOwnerDeclared { service_user: owner } => (owner as String) == (ledger.directory_owner.user as String)
+        ServeLedgerOwnerUndeclared { host: _ } => false
+      }
+    DashboardInstanceHostUnknown { host: _ } => false
+  }
+}
+
+// srv1 and srv2 RUN a dashboard instance, so their ledger is that instance's home and its owner names the
+// service user -- the name the instance lookup returned before, unchanged.
+test fn a_dashboard_host_keeps_its_instance_owner_as_the_ledger_service_user() -> Bool {
+  ["srv1", "srv2"] |> all(name => w_owner_matches_instance_owner(host: name))
+}
+
+// srv3 and srv4 have NO dashboard instance to ask, and that used to end the request: the serving entry
+// refused with "no ledger instance is declared for host" while the ledger subject it would have written
+// resolved happily at the host home. Red control: this reds the moment the owner comes from an instance
+// lookup again -- the instance arm here is proven absent, so only the host home can answer.
+test fn a_serving_host_with_no_dashboard_instance_names_its_host_home_owner() -> Bool {
+  ["srv3", "srv4"] |> all(name => {
+    match dashboard_instance_for_host(host: name) {
+      DashboardInstanceForHost { instance: _ } => false
+      DashboardInstanceHostUnknown { host: _ } => {
+        let home = host_capacity_ledger_home(host: (name as String) as NonEmptyStr, build_seat: host_capacity_build_seat(host: (name as String) as HostIdentity))
+        match remote_build_serve_ledger_owner(host: name) {
+          ServeLedgerOwnerUndeclared { host: _ } => false
+          ServeLedgerOwnerDeclared { service_user: owner } =>
+            (owner as String) == (home.directory_owner.user as String)
+              && w_admitted(p: remote_build_serve_principal_of(status: w_status(uid: 1005, groups: "1005 1006 "), group_file: w_group_file, service_user: owner))
+        }
+      }
+    }
+  })
+}
+
+// A host that is neither rostered nor runs an instance has no ledger to authorize: the owner is not
+// defaulted to the remote-build account or to any instance, it is refused.
+test fn a_host_with_neither_a_home_nor_an_instance_names_no_ledger_owner() -> Bool {
+  match remote_build_serve_ledger_owner(host: "srv14") {
+    ServeLedgerOwnerUndeclared { host: other } => other == "srv14"
+    ServeLedgerOwnerDeclared { service_user: _ } => false
+  }
 }
 
 // ── the serving instance ───────────────────────────────────────────────────────────────────────────
@@ -193,6 +248,22 @@ test fn the_shared_ledger_grants_exactly_its_two_areas() -> Bool {
     && count(live |> filter(t => w_area_is_group_shared(t: t))) == 2
     && count(other |> filter(t => w_area_is_group_shared(t: t))) == 0
     && count(other |> filter(t => w_area_is_service_only(t: t, instance: deploy))) == 3
+}
+
+// A SUSPENDED DISPATCH STANDING IS NOT A WITHDRAWN SERVING ROUTE. The two questions now have separate rows to
+// answer (gunbc.compute.remote_build_hosts: remote_build_serving_hosts is the live dispatch gate,
+// remote_build_serving_candidate_hosts is where the serving route is provisioned), and srv1 sits on one and not
+// the other. Both halves asserted, because a reader who conflates them re-keys the ledger posture and silently
+// rewrites a live host's permissions: the account, the capacity home and an unsettled seat are still on that
+// disk, and the remote-build account still has to reach its own ledger. The claim above is this one's red
+// control -- key the posture back to the dispatch gate and srv1's areas stop being group-shared.
+test fn a_suspended_host_is_still_a_provisioned_candidate() -> Bool {
+  !remote_build_host_is_serving(host: operator_host_srv1)
+    && remote_build_host_is_serving_candidate(host: operator_host_srv1)
+    && match compute_ledger_sharing(instance: srv1_live_dashboard_instance()) {
+      ComputeLedgerSharedWithRemoteBuild => true
+      ComputeLedgerServiceOnly => false
+    }
 }
 
 // THE LEDGER MUST BE REACHABLE BY AN ACCOUNT THAT IS NOT ITS OWNER, and a ledger inside another

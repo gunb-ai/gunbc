@@ -93,21 +93,10 @@ data specimen_8_foreign_null: DeclarationRef = specimen_ref(name: "specimen_fore
 
 data specimen_9_foreign_invalid: DeclarationRef = specimen_ref(name: "specimen_foreign_member_invalid_text")
 
-// SPECIMEN 10, POSITION READ AS TYPED ABSENCE: the cardinality meaning the lane enrolls is char_at's,
-// which v2 declares at std.host_text as a read of one code point that answers Absent past the end. At
-// this revision NOTHING realizes that Optional on the evaluator path: the checker binds the call to
-// std.host_text's declaration, while the interpreter picks the VALUE of a free call by SPELLING, so the
-// ambient builtin's empty text answers a read past the end — MEASURED at this head by the executed probe
-// the_end_of_a_text_reads_as_a_present_until_resolved_target_dispatch_lands in
-// v2.test.claim.cardinality_realization_specimens, which asserts that answer rather than the contract so
-// this lane does not land a red. The declaration's own interim .dag body (chars, std.algebra skip and
-// list_head, text_of_chars) is not what the evaluator runs today, and neither is a seed primitive seam:
-// the projection row primitive_projection_row(primitive: primitive_char_at, fidelity: HostRealizedSeam)
-// is declared, but its seed binding (the v1 interpreter's char_at arm returning the Optional, and the
-// regenerated dispatch that calls it) is the follow-up once primitive_char_at is on main. The rows below
-// therefore record what is TRUE NOW, and the follow-up flips them to the seam realization. Enrolled
-// because a typed refusal with no realization row is exactly the unstamped state this lane exists to
-// prevent.
+// SPECIMEN 10: the declared position read preserves typed absence. The resolved-declaration
+// interpreter change replaces the historical wrong-answer probe with
+// the_end_of_a_text_is_absent_under_resolved_target_dispatch. The dated seed-Rust and native
+// observations below remain historical receipts; interpreter execution cannot rewrite them.
 data specimen_10_char_at_position: DeclarationRef = specimen_ref(name: "specimen_char_at_position")
 
 data all_specimens: List<DeclarationRef> = [

@@ -212,6 +212,7 @@ import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnix
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
   roadmap_ingress_function, approval_broker_ingress_function,
+  fabric_storage_ingress_entry_file, fabric_storage_ingress_function, fabric_storage_handler_function,
   HoldsProdRoleSingletons, HoldsNoRoleSingleton, deployment_fabric_storage_door_socket,
   deployment_slice_unit_name, deployment_slice_unit_path,
   deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
@@ -642,6 +643,47 @@ fn live_deploy_serve_unit_file_over_listener(
       ) },
       Restart { policy: "on-failure" as NonEmptyStr },
     ]))),
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+// THE FABRIC DB ENDPOINT'S UNIT (gunbc.design_ruling::
+// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, reversing
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10). THE SAME INVOCATION SHAPE the other roadmap units
+// now emit: `gunbc run` on an ingress binding module CONSTRUCTOR (there is no `gunbc serve` any more --
+// 72808ffd2c deleted it; an entry is served by its deployment binding, realized by `gunbc run`). Here the
+// binding module is gunbc.fabric.fabric_storage_ingress and its constructor fabric_storage_ingress, answering
+// every request through the ONE .dag handler gunbc.fabric.fabric_storage_serve.fabric_storage_serve_handle,
+// bound to the deployment's fabric door socket. No OIDC environment: this door answers only over the unix
+// socket, so it needs no OIDC readback and has no refused arm -- its only absence is the no-prod-role case,
+// which the plan handles before the unit is ever composed.
+fn live_deploy_fabric_storage_unit_file(
+  spec: DeploymentSpec, revision: ReleaseRevisionBinding, door_socket: NonEmptyStr,
+) -> SystemdUnitFile {
+  let svc = spec.service
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc fabric DB endpoint (gunbc run, ingress binding)" as NonEmptyStr },
+      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: concat([
+      ServiceType { mode: SimpleMode },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: deployment_slice_unit_name(names: spec.names) },
+      WorkingDirectory { path: svc.repo_root },
+    ], concat(user_manager_environment_directives(uid: svc.service_uid), [
+      ExecStart { command: live_deploy_ingress_execstart(
+        binary: fixed_serve_binary_path(binary: svc.serve_binary),
+        entry: fabric_storage_ingress_entry_file, binding_function: fabric_storage_ingress_function,
+        handler: fabric_storage_handler_function,
+        listener: HttpIngressUnixSocket { path: door_socket, mode: http_ingress_unix_socket_mode },
+        revision: revision,
+        cpu_limit: svc.serve_cpu_limit, wall_limit: svc.serve_wall_limit,
+      ) },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ])),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }
 }
@@ -1256,7 +1298,7 @@ fn live_deploy_belt_credential_recovery_timer_unit_file(spec: DeploymentSpec) ->
 }
 
 // THE PERIODIC STANDINGS REFRESH (node://adhoc-5752c35f-e54), per the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). It reuses `belt_observe_once_cli` — the SAME
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16. It reuses `belt_observe_once_cli` — the SAME
 // zero-arg entry the operator runs by hand to force one observation pass — which runs exactly
 // `served_observation_observe_and_write_for_instance` (the fold) and nothing else: no spawn, no
 // launch, no teardown. This is deliberately NOT the retired belt timer (the event-units ruling heads
@@ -1657,31 +1699,20 @@ fn render_user_work_slice_from_max(max: ByteSize) -> UserWorkSliceUnitFile {
   }
 }
 
-fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
-  match user_work_pool_slots() {
-    UserWorkPoolSlotsDerived { slots } => {
-      let max = user_work_slice_memory_max_of(slots: slots)
-      match user_work_cgroup_peak_check(bound: max) {
-        PeakBoundExceeded { excess: _ } =>
-          UserWorkSliceUnitFileRefused {
-            cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
-          }
-        PeakBoundHolds { margin: _ } => render_user_work_slice_from_max(max: max)
-      }
-    }
-  }
-}
-
-// THE PER-HOST RENDER (node adhoc-c0a6f401-440). The remote-build serve-converge leg renders the
+// THE PER-HOST RENDER (node adhoc-c0a6f401-440). The remote-build serve-converge leg and the
+// live-deploy apply plan BOTH render the
 // gunbc-user-work.slice for the host it is acting on, with the ceiling read from the carve
 // (gunbc.compute.host_capacity user_work_slice_memory_max_for_host) and passed here as a number, so
 // emit keeps a single import surface and never imports compute. It SHARES render_user_work_slice_from_max
 // with the srv1 route, so MemoryHigh/MemorySwapMax derive identically; an inhabitance claim on this entry
-// goes through the SAME code the srv1 receipt attests. It deliberately does NOT apply srv1's recorded
+// goes through the SAME code the srv1 receipt attests. The renderer itself does NOT apply srv1's recorded
 // cgroup peak check: that receipt is srv1's OWN observed user-work peak (its standing 2 x 22 GiB pool),
 // which is the wrong bound for a carved host whose ceiling is its reservation-derived appropriation. The
-// host's bound is the ceiling the caller read from the reservation row; the fail-closed guarantee is the
-// readback in the converge leg (settle only when MemoryMax and MemorySwapMax=0 read back equal), not here.
+// host's bound is the ceiling the caller read from the reservation row. The fail-closed guarantees differ by
+// caller and live OUTSIDE this renderer: the serve-converge leg settles only when MemoryMax and
+// MemorySwapMax=0 read back equal, and the live-deploy apply plan applies the srv1 recorded-peak admission
+// (refuse, never widen) gated to the uncarved branch (gunbc.live_deploy.apply_legs
+// deploy_apply_user_work_slice_unit_file).
 fn user_work_slice_unit_file_for_host_ceiling(memory_max: ByteSize) -> UserWorkSliceUnitFile {
   render_user_work_slice_from_max(max: memory_max)
 }
