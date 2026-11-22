@@ -1,0 +1,49 @@
+module gunbc.integration_concern.remote_build_attempt_store_is_beside_the_fabric_event_log
+
+// One row of the integration-concern register. The roster derives the row from this file (module
+// gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Present }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+// THE ATTEMPT SLOT LIVES IN A FILE STORE BESIDE THE FABRIC EVENT LOG THE SEAT ALREADY WRITES TO. Recorded 2026-11-21 by the remote-build planning audit (gunbc.plans.remote_build_bandwidth section 2).
+data remote_build_attempt_store_is_beside_the_fabric_event_log: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_attempt_store_is_beside_the_fabric_event_log",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization"),
+    requirement: "an attempt's lifecycle is recorded once, where the durable route's controller joins it to product.fabric.execution, rather than in a second store the seat's event log does not see",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_store") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization"),
+    tail: [decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_recover_attempt_in")],
+  },
+  question: "Does the serving host's attempt slot move onto the durable attempt controller (which already joins attempt_lifecycle to product.fabric.execution) when work-exec-2 lands, so recovery reads one record instead of a compare-and-set file beside the fabric event log?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7711690f3f55ae40d41fbee3fc856e13b65c3c95",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_store") }],
+      },
+      account: "Read at this revision: recovery_write_authorization and compute_recover_attempt_in decide recovery over a compare-and-set file store (gunbc.durable_cas_file_store, std.durable_exclusive_hold); only the seat release returns through gunbc.fabric.fabric_event_log. gunbc.compute.durable_attempt_controller joins attempt_lifecycle to product.fabric.execution, and no remote-build module imports it.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.durable_attempt_controller", decl_name: "controller_store") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization"),
+        control: Present { value: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "recovery_write_authorization") },
+        statement: "whatever store holds the attempt, an unreadable or unknown unit lifecycle keeps refusing the recovery write",
+      },
+    ],
+    next: climbs_when(capability: "the serving host's attempts are recorded through the durable attempt controller on work-exec-2's route; this row then closes as integrated"),
+  },
+}

@@ -1,0 +1,49 @@
+module gunbc.integration_concern.remote_build_host_choice_is_beside_select_supply
+
+// One row of the integration-concern register. The roster derives the row from this file (module
+// gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Present }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+// THE REMOTE BUILD CHOOSES A HOST BY WALKING A ROSTER, BESIDE FABRIC'S SELECTION. Recorded 2026-11-21 by the remote-build planning audit (gunbc.plans.remote_build_bandwidth section 2); the divergence is admitted by the scaffold ruling and stated in the module header, and this row is what makes it discoverable from the register.
+data remote_build_host_choice_is_beside_select_supply: IntegrationConcern = IntegrationConcern {
+  identity: "remote_build_host_choice_is_beside_select_supply",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.remote_build", decl_name: "remote_build_next_step"),
+    requirement: "choosing which supplier serves one demand is a selection through the fabric selection authority, not a roster walk or a pin beside it",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.compute.remote_build", decl_name: "remote_build_next_step"),
+    tail: [decl_ref(module_path: "gunbc.compute.remote_build", decl_name: "remote_build_host_pin")],
+  },
+  question: "When work-exec-2's durable route replaces the SSH transport, does host choice move to select_supply with the remote build's request as the demand, and is anything of the roster walk and the pin kept? Until then the walk and the pin are the admitted scaffold of gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold, and no selection policy is added to them.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7711690f3f55ae40d41fbee3fc856e13b65c3c95",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.remote_build", decl_name: "remote_build_next_step") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply") }],
+      },
+      account: "Read at this revision: remote_build_next_step folds over the dispatch roster in order and remote_build_host_pin narrows it to one host; no module under dag/gunbc/compute imports product.fabric.selection, gunbc.fabric.fabric_control_plane or gunbc.fabric.fabric_executor_class (git grep over dag/gunbc/compute). The remote_build module header states the divergence with its reason.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.selection", decl_name: "select_supply") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.compute.remote_build", decl_name: "remote_build_next_step"),
+        control: Present { value: decl_ref(module_path: "gunbc.compute.remote_build", decl_name: "remote_build_next_step") },
+        statement: "until the durable route lands, a pin to a host off the dispatch roster stays a refusal and never widens to the roster",
+      },
+    ],
+    next: climbs_when(capability: "work-exec-2-durable-route-first-consumer serves remote-build requests and host choice reads select_supply; this row then closes as integrated"),
+  },
+}

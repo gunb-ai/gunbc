@@ -17,6 +17,7 @@ import gunbc.plans.closure_consolidation { closure_consolidation_plan }
 import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
 import gunbc.plans.new_server_bringup { new_server_bringup_plan }
+import gunbc.plans.remote_build_bandwidth { remote_build_bandwidth_plan }
 import gunbc.plans.v2_self_host { v2_self_host_plan }
 import gunbc.plans.factory_dogfood { factory_dogfood_plan }
 import gunbc.plans.debt_payoff { debt_payoff_plan }
@@ -39,6 +40,8 @@ import gunbc.plans.first_customer_service { first_customer_service_plan }
 // new_server_bringup is the site's boot and management edge program: it holds the intention and cites its design
 // evidence, and its realization is carried as work items under site-boot-and-management-edge on the roadmap at
 // dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention.
+// remote_build_bandwidth is the remote-build lane's intention (operator, 2026-11-21): its work items are roadmap nodes
+// bound to it in gunbc.roadmap.roadmap_intention_binding, and it retires with the bridge into work-exec-2 and work-exec-5.
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
@@ -47,5 +50,5 @@ data all_plans: List<Plan> = [
   read_set_convergence_plan, fleet_machine_authority_plan, closure_consolidation_plan,
   planning_consolidation_plan, declaration_acquisition_plan, v2_self_host_plan,
   factory_dogfood_plan, debt_payoff_plan, names_without_imports_plan, first_customer_service_plan,
-  new_server_bringup_plan,
+  new_server_bringup_plan, remote_build_bandwidth_plan,
 ]
