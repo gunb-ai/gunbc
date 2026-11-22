@@ -19,6 +19,7 @@ import std.types { Bool, Int, String }
 import test.fixture.text_scan { occurs_before, occurrences }
 import gunbc.witness.hosted_runner_shadow_gate_workflow {
   expected_hosted_runner_shadow_gate_yml,
+  shadow_gate_source_root_args,
   ShadowGateWorkflowGenerationOutcome,
   ShadowGateWorkflowGenerated,
   ShadowGateWorkflowGenerationRefused,
@@ -108,6 +109,11 @@ test fn the_emitted_workflow_runs_every_gate_row_with_the_agreed_exit_rendering(
   contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:self-host")
     && contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:v2-native-cli")
     && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host'")
+    // THE CLIENT LINE CARRIES ITS SOURCE ROOTS (run 44985404044: the emitted client line had
+    // none and gunbc typed 'provide at least one --source-root' -- the first time that line ever
+    // executed, because earlier runs died upstream). The pair is ONE value in the emitter, rendered
+    // from gunbc.source_layout; this claim checks THE VALUE appears, not a retyped copy.
+    && contains(haystack: rendered, needle: shadow_gate_source_root_args)
     && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli'")
     && contains(haystack: rendered, needle: "gate-emit_build_self_host.json")
     && contains(haystack: rendered, needle: "gate-emit_build_v2_native_cli.json")
