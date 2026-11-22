@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_host_truth_read
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.list { first_where }
+import std.list { first_where, distinct_by_key }
 import std.optional { Present, Absent }
 
 // ONE READ OF A MACHINE, FIVE COMPARES, AND A REFUSAL THAT CANNOT BE MISTAKEN FOR QUIET.
@@ -209,15 +209,16 @@ fn host_truth_compare(read: HostTruthRead, expectation: HostTruthExpectation) ->
   }
 }
 
-// THE VERDICT OVER A HOST ROSTER. Divergence outranks refusal outranks nothing-read: a host that both
-// drifted and could not be read is reported as drifted, because the drift is what the roster has to act
-// on. Agreement requires a read for every expectation and an expectation for every read: a comparison
-// population that is empty, or one-sided, refuses.
+// THE VERDICT IS PER HOST, because that is the grain its consumer acts at: admission takes one host at a
+// time, and a fleet-wide verdict would let a clean host cover a drifted one. Divergence outranks refusal
+// outranks nothing-read -- a host that both drifted and could not be read is reported as drifted, because
+// drift is what the roster has to act on. Agreement requires a read for every expectation, an expectation
+// for every read, and at least one comparison that actually compared something.
 type HostTruthVerdict
-  = FleetTruthFollowsDesiredState { compared: Int, undeclared: Int }
-  | FleetTruthDiverges { divergences: List<HostTruthComparison> }
-  | FleetTruthRefused { refusals: List<HostTruthComparison> }
-  | FleetTruthNothingRead { why: String }
+  = HostTruthFollowsDesiredState { host: NonEmptyStr, compared: Int, undeclared: Int }
+  | HostTruthDiverges { host: NonEmptyStr, divergences: List<HostTruthComparison> }
+  | HostTruthRefused { host: NonEmptyStr, refusals: List<HostTruthComparison> }
+  | HostTruthNothingRead { host: NonEmptyStr, why: String }
 
 fn host_truth_is_divergence(comparison: HostTruthComparison) -> Bool {
   match comparison {
@@ -305,35 +306,69 @@ fn host_truth_compare_roster(reads: List<HostTruthRead>, expectations: List<Host
   from_expectations.concat(orphan_reads)
 }
 
-fn fleet_host_truth_verdict(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> HostTruthVerdict {
-  if reads.length() == 0 || expectations.length() == 0 {
-    FleetTruthNothingRead { why: "a fleet-truth read that compares nothing reports nothing, and that is a refusal rather than a pass" }
+fn host_truth_reads_for(host: NonEmptyStr, reads: List<HostTruthRead>) -> List<HostTruthRead> {
+  reads.filter(read => host_truth_host_text(host: host_of_read(read: read)) == host_truth_host_text(host: host))
+}
+
+fn host_truth_expectations_for(host: NonEmptyStr, expectations: List<HostTruthExpectation>) -> List<HostTruthExpectation> {
+  expectations.filter(expectation => host_truth_host_text(host: host_of_expectation(expectation: expectation)) == host_truth_host_text(host: host))
+}
+
+// ONE HOST'S VERDICT, which is the grain admission asks at.
+fn fleet_host_truth_verdict_for_host(host: NonEmptyStr, reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> HostTruthVerdict {
+  let host_reads = host_truth_reads_for(host: host, reads: reads)
+  let host_expectations = host_truth_expectations_for(host: host, expectations: expectations)
+  if host_reads.length() == 0 && host_expectations.length() == 0 {
+    HostTruthNothingRead { host: host, why: "neither a read nor a declaration was supplied for this host, so nothing about it is known" }
   } else {
-    let compared = host_truth_compare_roster(reads: reads, expectations: expectations)
+    let compared = host_truth_compare_roster(reads: host_reads, expectations: host_expectations)
     let divergences = compared.filter(comparison => host_truth_is_divergence(comparison: comparison))
     let refusals = compared.filter(comparison => host_truth_is_refusal(comparison: comparison))
+    let undeclared = compared.filter(comparison => host_truth_is_undeclared(comparison: comparison))
     if divergences.length() > 0 {
-      FleetTruthDiverges { divergences: divergences }
+      HostTruthDiverges { host: host, divergences: divergences }
     } else if refusals.length() > 0 {
-      FleetTruthRefused { refusals: refusals }
+      HostTruthRefused { host: host, refusals: refusals }
+    } else if undeclared.length() == compared.length() {
+      // Every axis asked about this host answered "nothing declared". Nothing was compared, and a pass
+      // made out of an empty comparison set is what fail-closed refuses: this host is not in agreement, it
+      // is unknown, and unknown does not admit.
+      HostTruthNothingRead { host: host, why: "every axis asked about this host is undeclared in the model, so there is no comparison to pass" }
     } else {
-      FleetTruthFollowsDesiredState {
-        compared: compared.length(),
-        undeclared: compared.filter(comparison => host_truth_is_undeclared(comparison: comparison)).length(),
-      }
+      HostTruthFollowsDesiredState { host: host, compared: compared.length(), undeclared: undeclared.length() }
     }
   }
 }
 
-// THE ONLY ARM THAT ADMITS A HOST. Named as a function so a roster cannot admit on
-// "not-different" -- a refusal and a divergence both fail this.
-fn fleet_truth_admits(verdict: HostTruthVerdict) -> Bool {
+// THE HOSTS A ROSTER ASKED ABOUT: anything named on either side. A host named only by a read -- nothing
+// declared about it anywhere -- appears here and refuses below, which is where an instrument starts to
+// fail open: read by everything, consulted by nothing.
+fn fleet_truth_roster_hosts(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<NonEmptyStr> {
+  let named = reads.map(read => host_of_read(read: read))
+    .concat(expectations.map(expectation => host_of_expectation(expectation: expectation)))
+  distinct_by_key(xs: named, key: fn(host) { host_truth_host_text(host: host) })
+}
+
+fn fleet_truth_roster_verdicts(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthVerdict> {
+  fleet_truth_roster_hosts(reads: reads, expectations: expectations)
+    .map(host => fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations))
+}
+
+// THE ONLY ARM THAT ADMITS, and it admits exactly one host: a roster cannot admit on "not different", and
+// one host's verdict says nothing about another's.
+fn fleet_truth_admits_host(verdict: HostTruthVerdict) -> Bool {
   match verdict {
-    FleetTruthFollowsDesiredState { compared: _, undeclared: _ } => true
-    FleetTruthDiverges { divergences: _ } => false
-    FleetTruthRefused { refusals: _ } => false
-    FleetTruthNothingRead { why: _ } => false
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => true
+    HostTruthDiverges { host: _, divergences: _ } => false
+    HostTruthRefused { host: _, refusals: _ } => false
+    HostTruthNothingRead { host: _, why: _ } => false
   }
+}
+
+// THE ROSTER'S ANSWER, per host: every host that does not admit, carrying the arm that refused it.
+fn fleet_truth_roster_refusals(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthVerdict> {
+  fleet_truth_roster_verdicts(reads: reads, expectations: expectations)
+    .filter(verdict => fleet_truth_admits_host(verdict: verdict) == false)
 }
 
 // WHAT A REFUSAL SAYS OUT LOUD: the axis's recognition rule and the host, never a count alone.
@@ -359,8 +394,10 @@ fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
 // hosts exists to produce it. That mode is the consumer named in this file's header.
 //
 // CONSUMER: admission to the build and serving rosters. Every leg of the converge route that admits a host
-// by name asks this verdict first, and a refusal there keeps the host off the roster rather than warning
-// about it -- the plan's done-when is that a planted divergence on any axis removes the host from admission.
+// by name asks that host's verdict first (fleet_host_truth_verdict_for_host), and a refusal there keeps the
+// host off the roster rather than warning about it -- the plan's done-when is that a planted divergence on
+// any axis removes the host from admission. The roster helpers above exist so a batch of hosts is admitted
+// one at a time, never on an average.
 //
 // DISCRIMINATOR: one comparison per host per axis, discriminated eight ways -- agrees, divergent, unread,
 // blank, no read supplied, no expectation for a read, nothing declared, pairing refused -- so a partial

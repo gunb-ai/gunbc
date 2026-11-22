@@ -40,12 +40,15 @@ import gunbc.fleet.fleet_host_truth_read {
   host_truth_is_undeclared,
   host_truth_divergence_locator,
   HostTruthVerdict,
-  FleetTruthFollowsDesiredState,
-  FleetTruthDiverges,
-  FleetTruthRefused,
-  FleetTruthNothingRead,
-  fleet_host_truth_verdict,
-  fleet_truth_admits,
+  HostTruthFollowsDesiredState,
+  HostTruthDiverges,
+  HostTruthRefused,
+  HostTruthNothingRead,
+  fleet_host_truth_verdict_for_host,
+  fleet_truth_admits_host,
+  fleet_truth_roster_hosts,
+  fleet_truth_roster_refusals,
+  host_truth_host_text,
 }
 
 // EVERY INPUT IS SUPPLIED, so all eight arms of the comparison and all four of the verdict are reachable
@@ -229,53 +232,81 @@ test fn RED_a_mispaired_read_and_declaration_refuse_though_the_values_match() ->
     }
 }
 
-// RED -- A ROSTER THAT ASKED ABOUT A HOST AND DID NOT READ IT refuses. This is the difference between the
+// RED -- A HOST THE ROSTER ASKED ABOUT AND DID NOT READ refuses. This is the difference between the
 // instrument and a flag: the gap between the question and the answer is itself a finding.
 test fn RED_an_expectation_with_no_read_supplied_refuses() -> Bool {
-  let verdict = fleet_host_truth_verdict(
+  let verdict = fleet_host_truth_verdict_for_host(
+    host: "srv4" as NonEmptyStr,
     reads: [],
     expectations: [declared(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: "memory.high=56G", by: "the serving grant's slot")],
   )
   match verdict {
-    FleetTruthNothingRead { why: _ } => true
-    FleetTruthFollowsDesiredState { compared: _, undeclared: _ } => false
-    FleetTruthDiverges { divergences: _ } => false
-    FleetTruthRefused { refusals: _ } => false
+    HostTruthRefused { host: h, refusals: r } => host_truth_host_text(host: h) == "srv4"
+      && r.all(comparison => match comparison { TruthNoReadSupplied { host: _, axis: _ } => true TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false TruthUnread { host: _, axis: _, cause: _ } => false TruthReadBlank { host: _, axis: _ } => false TruthNoExpectationForRead { host: _, axis: _ } => false TruthOutsideTheModel { host: _, axis: _, because: _ } => false TruthPairingRefused { why: _, pairing: _ } => false })
+    HostTruthNothingRead { host: _, why: _ } => false
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthDiverges { host: _, divergences: _ } => false
   }
-    && fleet_truth_admits(verdict: verdict) == false
+    && fleet_truth_admits_host(verdict: verdict) == false
 }
 
-// RED -- A READ NOBODY WILL CONSULT also refuses: an instrument starts failing open the day its output has
-// no consumer attached to it.
+// RED -- A HOST NEITHER READ NOR DECLARED ANYTHING ABOUT is unknown, not clean.
+test fn RED_a_host_neither_read_nor_declared_is_not_admitted() -> Bool {
+  let verdict = fleet_host_truth_verdict_for_host(host: "ken" as NonEmptyStr, reads: [], expectations: [])
+  match verdict {
+    HostTruthNothingRead { host: h, why: _ } => host_truth_host_text(host: h) == "ken"
+    HostTruthRefused { host: _, refusals: _ } => false
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthDiverges { host: _, divergences: _ } => false
+  }
+    && fleet_truth_admits_host(verdict: verdict) == false
+}
+
+// RED -- A READ WITH NOTHING DECLARED AGAINST IT refuses the host it was read from: an instrument begins
+// to fail open the day its output has no consumer attached to it.
 test fn RED_a_read_with_nothing_declared_against_it_refuses_the_roster() -> Bool {
-  let verdict = fleet_host_truth_verdict(
+  let verdict = fleet_host_truth_verdict_for_host(
+    host: "dan" as NonEmptyStr,
     reads: [observed(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: "strata-expert-lock=enabled,gpu=a16-count=0")],
     expectations: [declared(host: "dan" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: "memory.high=48G", by: "the build roster's slot row")],
   )
   match verdict {
-    FleetTruthRefused { refusals: r } => r.all(comparison =>
-      match comparison {
-        TruthNoExpectationForRead { host: _, axis: _ } => true
-        TruthNoReadSupplied { host: _, axis: _ } => true
-        TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
-        TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
-        TruthUnread { host: _, axis: _, cause: _ } => false
-        TruthReadBlank { host: _, axis: _ } => false
-        TruthOutsideTheModel { host: _, axis: _, because: _ } => false
-        TruthPairingRefused { why: _, pairing: _ } => false
-      }
-    )
-    FleetTruthNothingRead { why: _ } => false
-    FleetTruthFollowsDesiredState { compared: _, undeclared: _ } => false
-    FleetTruthDiverges { divergences: _ } => false
+    HostTruthRefused { host: h, refusals: r } => host_truth_host_text(host: h) == "dan"
+      && r.length() == 2
+      && r.all(comparison => match comparison { TruthNoExpectationForRead { host: _, axis: _ } => true TruthNoReadSupplied { host: _, axis: _ } => true TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false TruthUnread { host: _, axis: _, cause: _ } => false TruthReadBlank { host: _, axis: _ } => false TruthOutsideTheModel { host: _, axis: _, because: _ } => false TruthPairingRefused { why: _, pairing: _ } => false })
+    HostTruthNothingRead { host: _, why: _ } => false
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthDiverges { host: _, divergences: _ } => false
   }
-    && fleet_truth_admits(verdict: verdict) == false
+    && fleet_truth_admits_host(verdict: verdict) == false
+    && fleet_truth_roster_hosts(
+      reads: [observed(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: "strata-expert-lock=enabled,gpu=a16-count=0")],
+      expectations: [declared(host: "dan" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: "memory.high=48G", by: "the build roster's slot row")],
+    ).length() == 1
 }
 
-// A CLEAN ROSTER ADMIITS, and says how much of it the model does not actually declare -- the count that
-// keeps "we agree" from hiding the axes nobody has written a rule for yet.
-test fn a_clean_roster_admits_and_counts_what_the_model_leaves_undeclared() -> Bool {
-  let verdict = fleet_host_truth_verdict(
+// RED -- A HOST WHOSE EVERY AXIS IS UNDECLARED IS NOT ADMITTED. Nothing was compared about it, and a pass
+// made out of an empty comparison set is admission fabricated from silence: the host is unknown, not clean.
+test fn RED_a_host_whose_every_axis_is_undeclared_is_not_admitted() -> Bool {
+  let verdict = fleet_host_truth_verdict_for_host(
+    host: "butch" as NonEmptyStr,
+    reads: [observed(host: "butch" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: "strata-pool@a=enabled,gpu=nvidia-functions=0")],
+    expectations: [nothing_declared(host: "butch" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, because: "its serving engines are retired and nothing is declared about the units")],
+  )
+  match verdict {
+    HostTruthNothingRead { host: h, why: _ } => host_truth_host_text(host: h) == "butch"
+    HostTruthRefused { host: _, refusals: _ } => false
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthDiverges { host: _, divergences: _ } => false
+  }
+    && fleet_truth_admits_host(verdict: verdict) == false
+}
+
+// A HOST WITH SOMETHING COMPARED AND SOMETHING UNDECLARED admits, and says how much of it the model does
+// not declare -- the count that keeps "we agree" from hiding the axes nobody has written a rule for yet.
+test fn a_host_admits_and_counts_what_the_model_leaves_undeclared() -> Bool {
+  let verdict = fleet_host_truth_verdict_for_host(
+    host: "srv3" as NonEmptyStr,
     reads: [
       observed(host: "srv3" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: "memory.high=48G"),
       observed(host: "srv3" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: "nvidia-functions=1"),
@@ -286,18 +317,18 @@ test fn a_clean_roster_admits_and_counts_what_the_model_leaves_undeclared() -> B
     ],
   )
   match verdict {
-    FleetTruthFollowsDesiredState { compared: c, undeclared: u } => c == 2 && u == 1
-    FleetTruthNothingRead { why: _ } => false
-    FleetTruthDiverges { divergences: _ } => false
-    FleetTruthRefused { refusals: _ } => false
+    HostTruthFollowsDesiredState { host: h, compared: c, undeclared: u } => host_truth_host_text(host: h) == "srv3" && c == 2 && u == 1
+    HostTruthNothingRead { host: _, why: _ } => false
+    HostTruthRefused { host: _, refusals: _ } => false
+    HostTruthDiverges { host: _, divergences: _ } => false
   }
-    && fleet_truth_admits(verdict: verdict)
+    && fleet_truth_admits_host(verdict: verdict)
 }
 
-// DRIFT OUTRANKS REFUSAL: a host that both drifted and could not be read is reported as drifted, because
-// that is what the roster has to act on, and neither arm admits.
-test fn a_roster_that_drifted_and_could_not_be_read_reports_the_drift() -> Bool {
-  let verdict = fleet_host_truth_verdict(
+// DRIFT OUTRANKS REFUSAL for the same host, and neither arm admits.
+test fn a_host_that_drifted_and_could_not_be_read_reports_the_drift() -> Bool {
+  let verdict = fleet_host_truth_verdict_for_host(
+    host: "butch" as NonEmptyStr,
     reads: [
       observed(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: "nvidia-functions=0"),
       refused(host: "butch" as NonEmptyStr, axis: TruthIdentityAnchoredNotAddressed, cause: HostTruthHostUnreachable { route: "butch.tailnet" }),
@@ -308,12 +339,36 @@ test fn a_roster_that_drifted_and_could_not_be_read_reports_the_drift() -> Bool 
     ],
   )
   match verdict {
-    FleetTruthDiverges { divergences: d } => d.length() == 1 && d.all(comparison => host_truth_is_divergence(comparison: comparison))
-    FleetTruthNothingRead { why: _ } => false
-    FleetTruthFollowsDesiredState { compared: _, undeclared: _ } => false
-    FleetTruthRefused { refusals: _ } => false
+    HostTruthDiverges { host: h, divergences: d } => host_truth_host_text(host: h) == "butch" && d.length() == 1 && d.all(comparison => host_truth_is_divergence(comparison: comparison))
+    HostTruthNothingRead { host: _, why: _ } => false
+    HostTruthRefused { host: _, refusals: _ } => false
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
   }
-    && fleet_truth_admits(verdict: verdict) == false
+    && fleet_truth_admits_host(verdict: verdict) == false
+}
+
+// RED -- THE ROSTER ADMITS HOST BY HOST. A clean srv3 does not carry a drifted butch: the verdict is per
+// host because admission is per host, and a batch that averaged them would put a drifting machine on the
+// roster behind a healthy one.
+test fn RED_a_clean_host_does_not_carry_a_drifted_one_onto_the_roster() -> Bool {
+  let reads = [
+    observed(host: "srv3" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: "memory.high=48G"),
+    observed(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: "nvidia-functions=0"),
+  ]
+  let expectations = [
+    declared(host: "srv3" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: "memory.high=48G", by: "the build roster's slot row"),
+    declared(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, expected: "nvidia-functions=4", by: "the serving layout's pool row"),
+  ]
+  fleet_truth_roster_hosts(reads: reads, expectations: expectations).length() == 2
+    && fleet_truth_roster_refusals(reads: reads, expectations: expectations).length() == 1
+    && fleet_truth_roster_refusals(reads: reads, expectations: expectations).all(verdict =>
+      match verdict {
+        HostTruthDiverges { host: h, divergences: _ } => host_truth_host_text(host: h) == "butch"
+        HostTruthNothingRead { host: _, why: _ } => false
+        HostTruthRefused { host: _, refusals: _ } => false
+        HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+      }
+    )
 }
 
 // THE REFUSAL NAMES THE RULE AND THE HOST, never a count: a divergence on srv4's cap has to be actionable
