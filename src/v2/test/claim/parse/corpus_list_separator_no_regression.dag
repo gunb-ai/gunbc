@@ -1,0 +1,44 @@
+module v2.test.claim.parse.corpus_list_separator_no_regression
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.text { String, char_eq }
+import std.algebra { is_prefix_of, count_where, length }
+import v2.std.live_read { filesystem_read }
+import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_walk }
+
+// CORPUS PARSE RECEIPT for the list-separator wall. The wall only ADDS a refusal -- it turns a bracketed
+// list whose elements are juxtaposed (no `,`) from silently-accepted into refused; it removes no accepted
+// parse. So a regression on the real corpus could manifest in exactly ONE way: some corpus module now
+// classifies as `refused parse_list_element_separator_missing ...`. This witness enumerates every source
+// module under the three source roots (dag, src/v1, src/v2 -- the same roots the claim runs over),
+// classifies each through the corpus's parser (v2.compiler.parse, the grammar in v2.extdeps.languages.dag),
+// and asserts the new reason fires on NONE of them, while still accepting thousands -- so the enumeration
+// is real and the classifier is live on actual files. A legitimate corpus list that the wall broke would
+// raise the new reason here and fail this witness.
+
+data corpus_roots: List<String> = ["dag", "src/v1", "src/v2"]
+
+fn corpus_walk_tasks() -> List<SourceRootWalkTask> {
+  map(corpus_roots, fn(root) { SourceRootWalkTask { path: root, root: true, origin: root } })
+}
+
+fn all_corpus_paths() -> List<String> {
+  match source_root_walk(pending: corpus_walk_tasks(), paths: [], suffix: ".dag") {
+    SourceRootPathsRead { paths: walked } => map(walked, fn(w) { w.path })
+    SourceRootPathsRefused { path: _, kind: _, cause: _ } => []
+  }
+}
+
+fn classify_corpus_module(path: String) -> String {
+  parse_acceptance_of_text(text: filesystem_read(path: path).content, path: path)
+}
+
+test fn corpus_has_no_juxtaposed_list_and_still_parses_holds() -> Bool {
+  let classifications = map(all_corpus_paths(), classify_corpus_module)
+  let separator_refusals =
+    count_where(classifications, fn(c) {
+      is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: c, eq: char_eq)
+    })
+  let accepted = count_where(classifications, fn(c) { c == "accepted" })
+  (length(classifications) > 5000) && (separator_refusals == 0) && (accepted > 1000)
+}
