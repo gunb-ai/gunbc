@@ -1295,18 +1295,23 @@ fn converge_classify(draft: ConvergeDraft) -> ConvergeDecision {
     ConvergeUnhandled { items: draft.unhandled }
   } else {
     let ordered = converge_order(converge_dedupe(draft.writes))
-    // IDENTITY-MET GATE: a stale-seat recovery requires the identity leg to be Met. If the fold produced
-    // both RecordServeIdentity and RecoverStaleSeat, the identity was NOT Met (it needs a write), so the
-    // plan refuses rather than running the recovery CLI on a binary whose identity is unsettled.
-    let has_recover = any(ordered, w => match w { RecoverStaleSeat { reference: _ } => true _ => false })
+    // IDENTITY-MET GATE: a stale-seat recovery requires the identity leg to be Met — the recovery CLI
+    // IS the binary the identity documents. When the identity still needs its write, the recovery is
+    // DEFERRED, not the plan refused (review 97280, finding 1): the RecordServeIdentity write is safe
+    // and admissible NOW, and refusing the whole plan would stall the host on every run — a refusal the
+    // model did not need (gunbc.design_argument::fail_closed refuses when the answer is unavailable;
+    // here it is). The deferral cannot be lost: the census deviation is re-derived from the host every
+    // observe, so the next assessment — with identity Met — plans the recovery by itself. Rank 11 after
+    // rank 10 already orders the two writes correctly for the run that carries both.
     let has_identity_write = any(ordered, w => match w { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true _ => false })
-    if has_recover && has_identity_write {
-      converge_refuse("recovery refused: the identity leg is not Met (RecordServeIdentity planned); the stale seat cannot be recovered until the identity sidecar is settled")
+    let planned = if has_identity_write {
+      filter(ordered, w => match w { RecoverStaleSeat { reference: _ } => false  _ => true })
     } else {
-      match ordered {
-        Cons { head: first, tail: rest } => ConvergePlan { writes: FreeSemigroup { head: first, tail: rest } }
-        Empty {} => converge_refuse("the assessment reported drift that yielded neither a write nor an unhandled item")
-      }
+      ordered
+    }
+    match planned {
+      Cons { head: first, tail: rest } => ConvergePlan { writes: FreeSemigroup { head: first, tail: rest } }
+      Empty {} => converge_refuse("the assessment reported drift that yielded neither a write nor an unhandled item")
     }
   }
 }
@@ -1420,7 +1425,16 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
         let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
         match outcome {
           TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
-          TypedArgvExecConverged { result: r } => recover_catalog_leg_reading(text: r.stdout)
+          // The exit is read through the SAME declared table as the other two doors (review 97280,
+          // finding 2): the census door speaks 0 when established and 2 when unknown, and this leg
+          // honors the number before the rendering — an exit the table does not speak is an unknown
+          // census even if stdout would have parsed.
+          TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
+            RecoverDoorSettled => recover_catalog_leg_reading(text: r.stdout)
+            RecoverDoorDeclined => RecoverCatalogLegUnknown { detail: "the census door declined at exit 1, which its contract does not speak" }
+            RecoverDoorUnknown => RecoverCatalogLegUnknown { detail: join(["the census door answered unknown: ", trim(s: r.stderr)], "") }
+            RecoverDoorUnmapped { code: c } => RecoverCatalogLegUnknown { detail: join(["the census door exited ", to_string(c), ", outside the declared mapping (0/2)"], "") }
+          }
         }
       }
     }

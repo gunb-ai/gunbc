@@ -2130,15 +2130,19 @@ test fn an_unreadable_seat_census_refuses_the_plan() -> Bool {
   }
 }
 
-// RED CONTROL (the identity gate): the recovery is planned ONLY when the identity leg is Met. With the
-// sidecar absent the identity leg still needs its write, and the recovery CLI IS the binary the identity
-// documents — so the plan refuses the recovery alongside it, and the stale seat waits for the next run.
-test fn a_stale_seat_with_an_unmet_identity_refuses_the_plan() -> Bool {
+// RED CONTROL (the identity gate, deferred not refused): the recovery is planned ONLY when the identity
+// leg is Met. With the sidecar absent the identity leg still needs its write, and the recovery CLI IS
+// the binary the identity documents — so THIS run carries the identity write and defers the recovery
+// (review 97280, finding 1: refusing the whole plan would stall the host on every run). The deferral
+// is not a loss: the next assessment, with identity Met, plans the recovery — which is what the green
+// cell above asserts.
+test fn a_stale_seat_with_an_unmet_identity_defers_the_recovery() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
       let plan = plan_census(d: d, census: RecoverCatalogLegEstablished { entries: [CatalogLegStale { reference: "gunbc-build.job#3" as NonEmptyStr }] }, sidecar: Present { value: sidecar_absent() })
-      plan_is_refused(plan) && length(plan_writes(plan)) == 0
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_identity(ws) == 1 && count_recover(ws) == 0
     }
   }
 }
