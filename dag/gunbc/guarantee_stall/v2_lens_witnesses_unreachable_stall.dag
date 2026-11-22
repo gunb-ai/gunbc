@@ -43,9 +43,9 @@ data v2_lens_witnesses_unreachable_stall: GuaranteeStall = GuaranteeStall {
         tail: Cons {
           head: "dag/test/claim/enforcement_live_witness.dag",
           tail: Cons {
-            head: "dag/test/claim/enforcement/cost_coverage_witness.dag",
+            head: "dag/test/claim/enforcement_cost_coverage_witness.dag",
             tail: Cons {
-              head: "dag/test/claim/enforcement/grammar_coverage_witness.dag",
+              head: "dag/test/claim/enforcement_grammar_coverage_witness.dag",
               tail: Empty {}
             }
           }

@@ -1,4 +1,4 @@
-module test.claim.self_host.emitter_producer_provenance_witness
+module test.claim.self_host_emitter_producer_provenance_witness
 
 import v2.compiler.self_host.emitter_producer_provenance {
   mint_v2_interpreted_receipt_with_seed_closure_refuses,

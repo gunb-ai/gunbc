@@ -19,7 +19,7 @@ import gunbc.instruments.host_prelude { ClaimRun }
 
 data uri_witness_entry: String = "dag/test/claim/uri_witness.dag"
 
-data corpus_scan_entry: String = "dag/test/claim/lens/mandatory_tag/corpus_scan_witness.dag"
+data corpus_scan_entry: String = "dag/test/claim/mandatory_tag_corpus_scan_witness.dag"
 
 data cgroup_v2_memory_events_files_entry: String = "dag/test/claim/cgroup_v2_memory_events_files.dag"
 // The heartbeat witness is the executing tie between the authority and a rendered observation:

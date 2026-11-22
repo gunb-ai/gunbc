@@ -88,13 +88,13 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   },
   OfflineLocalRecipeRow {
     policy: "enforcement_coverage_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/enforcement/cost_coverage_witness.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/enforcement_cost_coverage_witness.dag" },
     selection: RecipeCallerChosen,
     mode: Hermetic
   },
   OfflineLocalRecipeRow {
     policy: "enforcement_coverage_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/enforcement/grammar_coverage_witness.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/enforcement_grammar_coverage_witness.dag" },
     selection: RecipeCallerChosen,
     mode: Hermetic
   },
@@ -112,7 +112,7 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   },
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/complexity/accumulator_copy_roster_gate.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/complexity_accumulator_copy_roster_gate.dag" },
     selection: RecipeFunctions {
       names: [
         "roster_compile_stage_file_gate_walk",
@@ -124,19 +124,19 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   },
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/complexity/accumulator_copy_roster_gate_std.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/complexity_accumulator_copy_roster_gate_std.dag" },
     selection: RecipeCallerChosen,
     mode: Wet
   },
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/complexity/accumulator_copy_roster_gate_lean_bash.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/complexity_accumulator_copy_roster_gate_lean_bash.dag" },
     selection: RecipeFunctions { names: ["roster_lean_file_gate_walk", "roster_bash_file_gate_walk"] },
     mode: Wet
   },
   OfflineLocalRecipeRow {
     policy: "accumulator_copy_roster_gate_exclusion_note",
-    subject: RecipeEntry { path: "dag/test/claim/complexity/accumulator_copy_roster_gate_swift.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/complexity_accumulator_copy_roster_gate_swift.dag" },
     selection: RecipeFunctions { names: ["roster_swift_file_gate_walk"] },
     mode: Wet
   },

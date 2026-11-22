@@ -1,4 +1,4 @@
-module test.claim.complexity.accumulator_copy_roster_gate_std
+module test.claim.complexity_accumulator_copy_roster_gate_std
 
 import v2.lens.complexity_accumulator_copy.roster_gate {
   RosterGateDisposition,

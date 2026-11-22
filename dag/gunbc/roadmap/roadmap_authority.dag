@@ -377,7 +377,7 @@ fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemE
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/self_host/emitter_producer_provenance_witness.dag" as FilePath,
+    entry: "dag/test/claim/self_host_emitter_producer_provenance_witness.dag" as FilePath,
     function: "witness_restored_binding_without_executed_receipt_does_not_authorize_reds" as NonEmptyStr,
   )
 }
@@ -492,7 +492,7 @@ fn v1_seed_honesty_decision_execution_contract() -> WorkItemExecutionContract {
 
 fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/manual/test_migration_debt.dag" as FilePath,
+    entry: "dag/test/claim/manual_test_migration_debt.dag" as FilePath,
     function: "retained_rust_kernel_wall_holds_against_live_tree" as NonEmptyStr,
   )
 }

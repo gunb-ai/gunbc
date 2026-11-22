@@ -1,4 +1,4 @@
-module test.claim.enforcement.cost_coverage_witness
+module test.claim.enforcement_cost_coverage_witness
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

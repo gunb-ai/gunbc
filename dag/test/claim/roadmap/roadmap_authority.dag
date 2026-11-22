@@ -1847,7 +1847,7 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "dag/test/claim/manual/test_migration_debt.dag"
+            (entry as String) == "dag/test/claim/manual_test_migration_debt.dag"
               && function == "retained_rust_kernel_wall_holds_against_live_tree"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
