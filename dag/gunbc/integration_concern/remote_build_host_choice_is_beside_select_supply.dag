@@ -9,7 +9,7 @@ import std.optional { Present }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
 
-// THE REMOTE BUILD CHOOSES A HOST BY WALKING A ROSTER, BESIDE FABRIC'S SELECTION. Recorded 2026-11-21 by the remote-build planning audit (gunbc.plans.remote_build_bandwidth section 2); the divergence is admitted by the scaffold ruling and stated in the module header, and this row is what makes it discoverable from the register.
+// THE REMOTE BUILD CHOOSES A HOST BY WALKING A ROSTER, BESIDE FABRIC'S SELECTION. Recorded 2026-11-21 by the remote-build planning audit (#gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan); the divergence is admitted by the scaffold ruling and stated in the module header, and this row is what makes it discoverable from the register.
 data remote_build_host_choice_is_beside_select_supply: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_host_choice_is_beside_select_supply",
   kind: SuspectedCapabilityGap {

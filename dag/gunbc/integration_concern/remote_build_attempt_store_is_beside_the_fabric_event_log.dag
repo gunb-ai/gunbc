@@ -9,7 +9,7 @@ import std.optional { Present }
 import gunbc.guarantee_stall { climbs_when }
 import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
 
-// THE ATTEMPT SLOT LIVES IN A FILE STORE BESIDE THE FABRIC EVENT LOG THE SEAT ALREADY WRITES TO. Recorded 2026-11-21 by the remote-build planning audit (gunbc.plans.remote_build_bandwidth section 2).
+// THE ATTEMPT SLOT LIVES IN A FILE STORE BESIDE THE FABRIC EVENT LOG THE SEAT ALREADY WRITES TO. Recorded 2026-11-21 by the remote-build planning audit (#gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan).
 data remote_build_attempt_store_is_beside_the_fabric_event_log: IntegrationConcern = IntegrationConcern {
   identity: "remote_build_attempt_store_is_beside_the_fabric_event_log",
   kind: SuspectedCapabilityGap {
