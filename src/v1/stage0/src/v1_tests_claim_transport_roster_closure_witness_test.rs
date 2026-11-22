@@ -77,6 +77,7 @@ pub fn shell_transport_classifies_as_shell() -> bool {
         Rc::new(vec![str_expr("ls".to_string())]),
         Rc::new(vec![]),
         std::option::Option::None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )) == "shell".to_string())
 }

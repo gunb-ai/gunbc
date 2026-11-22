@@ -3282,6 +3282,15 @@ pub fn transport_stdin_key() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn transport_wall_deadline_key() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "wall_deadline".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn transport_verb_key() -> String {
     thread_local! {
         static CACHED: String = {
@@ -3481,6 +3490,7 @@ pub fn shell_transport_node(
     argv: Rc<Vec<Rc<Node>>>,
     env: Rc<Vec<Rc<Node>>>,
     stdin: Option<Rc<Node>>,
+    wall_deadline: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
@@ -3519,7 +3529,20 @@ pub fn shell_transport_node(
             )]),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
+        let deadline_props = match wall_deadline.clone() {
+            Some(d) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                transport_wall_deadline_key(),
+                d.clone(),
+                zero_span.clone(),
+                zero_span.clone(),
+            )]),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let all_props = v1_rt::concat(
+            v1_rt::concat(env.clone(), stdin_props.clone()),
+            deadline_props.clone(),
+        );
         Rc::new(Node {
             ident: std::option::Option::None,
             occurrence_identity: occurrence_identity.clone(),
@@ -3923,7 +3946,7 @@ pub fn transport_response_format(
 }
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    ((((((((((((((name.clone() == transport_url_key())
+    (((((((((((((((name.clone() == transport_url_key())
         || (name.clone() == transport_path_key()))
         || (name.clone() == transport_auth_scheme_key()))
         || (name.clone() == transport_auth_header_key()))
@@ -3933,6 +3956,7 @@ pub fn is_config_reserved_key(name: String) -> bool {
         || (name.clone() == transport_query_key()))
         || (name.clone() == transport_body_key()))
         || (name.clone() == transport_stdin_key()))
+        || (name.clone() == transport_wall_deadline_key()))
         || (name.clone() == transport_response_format_key()))
         || (name.clone() == transport_headers_key()))
         || (name.clone() == transport_auth_basic_key()))
