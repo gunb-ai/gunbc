@@ -11,7 +11,7 @@ use v1_compiler::cli_run::{
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
     resolve_entry_with_index_typed, run_claim_measured, ClaimOutcome, EntryResolveRefusal,
-    MultiEntryIndex, PanicPayloadKind,
+    MultiEntryIndex,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -1506,7 +1506,7 @@ mod cli_path_resolution_wiring_tests {
     }
 
     fn one_of_every_claim_outcome() -> Vec<v1_compiler::cli_run::ClaimOutcome> {
-        use v1_compiler::cli_run::{BudgetKind, ClaimOutcome, WitnessRuntimeCause};
+        use v1_compiler::cli_run::{BudgetKind, ClaimOutcome, PanicPayloadKind, WitnessRuntimeCause};
         use v1_compiler::v1_interpreter::{EffectRefusalGround, RaisePath};
         vec![
             ClaimOutcome::Pass,
