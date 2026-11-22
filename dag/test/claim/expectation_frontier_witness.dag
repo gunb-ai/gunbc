@@ -7,7 +7,9 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.output_policy { ExpectSuccess }
 import std.logic { Bool }
 import std.types { String }
-import gunbc.instruments.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
+import gunbc.instruments.host_prelude { ClaimRun, gunbc_test_claims_argv, witness_bin_release_path }
+import gunbc.gunbc_cli_command { TestBatchMode, WetBatch }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -18,19 +20,27 @@ data subject_source_roots_note: String = "witness_layer_roots (dag + src/v2), NO
 
 data frontier_marker: String = "[expectation-frontier]"
 
-fn claim_batch_path() -> String {
+fn verb_path() -> String {
   let root = git.Inspect.Toplevel()
-  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+  witness_bin_release_path(root: root.path, bin_name: gunbc_release_bin_name)
 }
 
+// THE SUBJECT RUNS AS A REAL `gunbc test` CHILD, WET, AND ITS STDERR IS THE OBSERVATION. Wet is the
+// mode the subject needs (its effects reach Filesystem.Read); hermetic would refuse the effects and
+// the entry would dispatch nothing, which reds this witness for a reason unrelated to the mechanism
+// under test -- the same false-red trap the roots note above records. The receipt the claim route
+// prints is rendered by the ONE function in `v1_interpreter` that the legacy batch called, so
+// migrating the child does not quietly change the line: a rename or a dropped count fails the
+// consumer, not the counter.
 fn run_entry_capturing_stderr(entry: String, function: String) -> String {
   let root = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: root.path,
-    bin_path: claim_batch_path(),
-    args: claim_batch_claims_argv(
+    bin_path: verb_path(),
+    args: gunbc_test_claims_argv(
       source_roots: witness_layer_roots,
-      claims: [ClaimRun { entry: entry, function: function }]
+      claims: [ClaimRun { entry: entry, function: function }],
+      mode: WetBatch
     ),
     expect: ExpectSuccess
   )

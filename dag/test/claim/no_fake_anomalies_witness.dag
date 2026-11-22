@@ -7,7 +7,9 @@ import gunbc.ci.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectSuccess }
 import std.logic { Bool }
 import std.types { String }
-import gunbc.instruments.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
+import gunbc.instruments.host_prelude { ClaimRun, gunbc_test_claims_argv, witness_bin_release_path }
+import gunbc.gunbc_cli_command { TestBatchMode, WetBatch }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -17,19 +19,30 @@ data no_fake_anomalies_note: String = "THE WALL for the expectation backfill (op
 data anomaly_glyph_emoji: String = "❌"
 data anomaly_glyph_ascii: String = "✗"
 
-fn claim_batch_path() -> String {
+fn verb_path() -> String {
   let root = git.Inspect.Toplevel()
-  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+  witness_bin_release_path(root: root.path, bin_name: gunbc_release_bin_name)
 }
 
+// THE CHILD IS THE ONE ROUTE, WET, AND THE GLYPH IS NOT THE ROUTE'S TO LOSE. The anomaly glyph this
+// witness greps for is rendered by the interpreter itself -- `v1_interpreter`
+// `render_shell_effect_failed_line_mirror`, the shell-effect failure line -- not by whichever
+// entrypoint was invoked, so switching the child from the legacy binary to `gunbc test` cannot make
+// the red control vacuously false: a subject whose shell effect fails still prints the glyph. Wet is
+// what keeps that true -- Hermetic would refuse the effect before it ran, and the absence of a glyph
+// would then measure the mode rather than the subject, which is the false-green shape this witness
+// exists to catch. It runs through `gunbc_test_claims_argv`, the pooled builder, rather than a
+// hand-spelled argv: the shape of a request is pinned once, in
+// `dag/test/claim/gunbc_test_batch_argv_witness.dag`.
 fn run_corpus_capturing_stderr(entry: String, function: String) -> String {
   let root = git.Inspect.Toplevel()
   let result = gunbc.WitnessBin.Run(
     workdir: root.path,
-    bin_path: claim_batch_path(),
-    args: claim_batch_claims_argv(
+    bin_path: verb_path(),
+    args: gunbc_test_claims_argv(
       source_roots: compile_clean_source_roots(),
-      claims: [ClaimRun { entry: entry, function: function }]
+      claims: [ClaimRun { entry: entry, function: function }],
+      mode: WetBatch
     ),
     expect: ExpectSuccess
   )

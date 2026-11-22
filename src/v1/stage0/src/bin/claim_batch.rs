@@ -1322,20 +1322,8 @@ fn run(process_started: Instant) -> Result<ExitCode, ExitCode> {
     // dispatched declared its arm, which is also the dissolution condition for
     // the `UntracedDefault` arm itself.
     {
-        let frontier = v1_compiler::v1_interpreter::untraced_expectation_frontier();
-        if !frontier.is_empty() {
-            let total: u64 = frontier.iter().map(|(_, n)| *n).sum();
-            let rendered = frontier
-                .iter()
-                .map(|(k, n)| format!("{k}={n}"))
-                .collect::<Vec<_>>()
-                .join(" ");
-            eprintln!(
-                "[expectation-frontier] {} site(s), {} dispatch(es) undeclared: {}",
-                frontier.len(),
-                total,
-                rendered,
-            );
+        if let Some(line) = v1_compiler::v1_interpreter::expectation_frontier_receipt_line() {
+            eprintln!("{line}");
         }
     }
     let partition_verdict: v1_compiler::cli_run::CostAccountingVerdict;

@@ -2510,6 +2510,17 @@ fn run_claim_batch(
     for line in &fold.lines {
         println!("{line}");
     }
+    // The expectation frontier, AFTER the located lines and ON STDERR. The two channels are the
+    // boundary: stdout is the machine-readable line schema a decoder keys on, and this receipt is a
+    // diagnostic about the subject, not an outcome — putting it on stdout would make a parser decide
+    // whether an unrelated line is a claim. It is the same call the legacy batch made, through the one
+    // renderer in `v1_interpreter`, so the consumer at
+    // `dag/test/claim/expectation_frontier_witness.dag` reads the identical line from a `gunbc test`
+    // child and the claim route is not a route that loses an observation on the way to becoming the
+    // only one. Empty tally prints nothing: the negative half of that pair is the point.
+    if let Some(line) = crate::v1_interpreter::expectation_frontier_receipt_line() {
+        eprintln!("{line}");
+    }
     let held = fold.count(ClaimRouteVerdict::ClaimHeld);
     let did_not_hold = fold.count(ClaimRouteVerdict::ClaimDidNotHold);
     let unobserved = fold.count(ClaimRouteVerdict::ClaimUnobserved);

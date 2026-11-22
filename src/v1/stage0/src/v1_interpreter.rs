@@ -17873,6 +17873,67 @@ pub fn untraced_expectation_frontier() -> Vec<(String, u64)> {
     UNTRACED_EXPECTATION_SITES.with(|m| m.borrow().iter().map(|(k, v)| (k.clone(), *v)).collect())
 }
 
+/// The `[expectation-frontier]` receipt, rendered in ONE place.
+///
+/// The tally above is a declared interim frontier only if something PRINTS it — a counter that is
+/// never read is the same lie as no counter — and the line's format is the contract a consumer
+/// parses: `dag/test/claim/expectation_frontier_witness.dag` reads it out of a real child's stderr,
+/// and `gunbc.ci.ci_layer_roots` carries the row that bills that read. Having the claim route and
+/// the legacy batch each format it is how a receipt and its counter start to disagree, which is the
+/// same two-renderers defect this cutover deletes elsewhere; so neither call site formats, both
+/// call this. `None` is the dissolution condition: every effect this process dispatched declared its
+/// arm, and silence is then the correct output rather than an empty line to parse.
+pub fn expectation_frontier_receipt_line() -> Option<String> {
+    let frontier = untraced_expectation_frontier();
+    if frontier.is_empty() {
+        return None;
+    }
+    let total: u64 = frontier.iter().map(|(_, count)| *count).sum();
+    let rendered = frontier
+        .iter()
+        .map(|(site, count)| format!("{site}={count}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "[expectation-frontier] {} site(s), {} dispatch(es) undeclared: {}",
+        frontier.len(),
+        total,
+        rendered
+    ))
+}
+
+#[cfg(test)]
+mod expectation_frontier_receipt_tests {
+    use super::{expectation_frontier_receipt_line, record_untraced_expectation_site};
+
+    /// An empty tally renders NOTHING, not an empty receipt. The line's presence is the
+    /// observation, and a fully-annotated subject is the negative half of the pair at
+    /// `dag/test/claim/expectation_frontier_witness.dag`: were the empty case rendered as a line,
+    /// that control would pass on a counter that always fires.
+    #[test]
+    fn an_untouched_tally_renders_no_receipt_line() {
+        assert!(expectation_frontier_receipt_line().is_none());
+    }
+
+    /// The format is the consumer's contract, byte for byte: marker, site count, dispatch total,
+    /// then `service.op=count` ascending by key. Two sites and a repeat pin the plural forms and the
+    /// ordering, so a rename of the marker or a dropped count cannot pass by coincidence. Each Rust
+    /// test runs on its own thread and the tally is thread-local, so this records without
+    /// disturbing the empty-tally control above.
+    #[test]
+    fn the_receipt_names_sites_dispatches_and_each_located_site() {
+        record_untraced_expectation_site("Filesystem", "Write");
+        record_untraced_expectation_site("Filesystem", "Read");
+        record_untraced_expectation_site("Filesystem", "Read");
+        let line = expectation_frontier_receipt_line()
+            .expect("a tally with entries must render a receipt");
+        assert_eq!(
+            line,
+            "[expectation-frontier] 2 site(s), 3 dispatch(es) undeclared: Filesystem.Read=2 Filesystem.Write=1"
+        );
+    }
+}
+
 /// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an effect
 /// would do. Deliberately no `ExpectAny`: an unknown expectation makes every observation
 /// agree, the empty set the untyped `exit != 0` proxy assumed (gunbc.design_argument::fail_closed — a failure arm
