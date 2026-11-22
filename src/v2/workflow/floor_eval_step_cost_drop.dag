@@ -160,6 +160,28 @@ data floor_eval_step_cost_drop_interpreted_crypto_rows: List<EvalStepCostDropMea
     identity: "test.claim.p256_dag_ecdsa_witness.the_base_point_is_on_the_curve" as NonEmptyStr,
     measured_by: "required floor run 35708011844 (gunbc#11981), artifact required-ci-measurement-receipt; planned_as_changed_witness, verdict pass, well inside the wall deadline and over the new-witness eval-step budget. The billed work is one P-256 curve equation over the published base point as 11-limb bignat folds on an interpreter that reifies no machine width. It is a MEMBER BECAUSE IT WAS SPLIT OUT of a claim that also asserted n*G = infinity: that conjunction crossed the 8000ms wall deadline and was INTERRUPTED BEFORE ANY VERDICT, so both facts were being lost; the scalar multiplication left the floor for the native row the frontier names, and this cheap half now reaches a verdict. The standing figure is whatever this identity's row reads in the artifact named above, never a number copied into this field" as NonEmptyStr,
   },
+  // RECEIPTS THAT NAME THE LEGACY ENTRYPOINT, LEFT VERBATIM, AND THE EQUIVALENCE THAT LETS THEM STAY.
+  // Nineteen rows in this ledger cite `claim_batch` in `measured_by` -- at this revision,
+  // `grep -n 'claim_batch' src/v2/workflow/floor_eval_step_cost_drop.dag`, all nineteen inside a `measured_by`
+  // string, none of them an argv this file builds (no `"claim_batch"` token and no `--claim-run` token appears
+  // anywhere in it). Their text is deliberately not re-spelled for the cutover: `measured_by` is the provenance of
+  // a number taken at a named floor run, BuildBuddy invocation or branch head, and rewriting it would attribute a
+  // past measurement to a command that never produced it -- the one defect this ledger exists to prevent.
+  //
+  // What these rows bill is an IDENTITY, and the identity is the same on either entrypoint.
+  // `--entry dag/test/claim/<pkg>/<module>.dag --function <fn>` denotes exactly the claim the route names
+  // `//test/claim/<pkg>/<module>:<fn>`: the `.dag` suffix belongs to the module's file, not to the module's name,
+  // `--functions a,b` is one row per name, and nothing else in those invocations selects a subject. A re-run of any
+  // row therefore needs only its identity plus the mode the row names -- no mode flag and `--hermetic` both admit
+  // Hermetic, `--wet` admits Wet -- with `--source-root` replacing the default pair as it did before.
+  //
+  // WHAT IS NOT EQUIVALENT, WHICH IS WHY A ROW IS QUOTED RATHER THAN RENAMED. Most of these receipts quote
+  // `claim_batch`'s own second renderer: its `[witness]` prose and its PASS/FAIL/PANICKED tokens. That taxonomy
+  // differs from the route's exactly where #16873 moved the rule -- a crashed claim and a claim that cannot execute
+  // are UNOBSERVED on the route, and the route's line is keyed by label -- so a number taken under the old renderer
+  // stays valid AS A MEASUREMENT of the identity it names, while any NEW measurement comes from the route's located
+  // line. A receipt is evidence about the past, not a template a later run reproduces; that is the distinction this
+  // block records, and it is why the rows above and below keep their original wording.
   EvalStepCostDropMeasurement {
     identity: "test.claim.p384_dag_ecdsa_witness.doubling_and_adding_the_base_point_stay_on_the_curve" as NonEmptyStr,
     measured_by: "claim_batch --hermetic [witness] receipt on session/nimble-eagle-216-step3 (added for review 69917 after run 35678328407): verdict pass, wall under the 8 s deadline, over the new-witness eval-step budget; the billed work is one Jacobian doubling, one addition and two projective curve-equation checks at 16 limbs" as NonEmptyStr,
