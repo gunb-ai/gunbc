@@ -240,6 +240,9 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
           root: unit_hold_store_path(tree: host_state_tree()),
           subject: subject,
           owner: join(["arrival/", subject.host as String, "/", run_id], "") as DurableHoldOwnerRef,
+          // The same run id the owner is minted from: it is what lets the interlock tell "somebody else
+          // is inside the door" from "this run re-ran while still holding the slot".
+          self_run_id: run_id,
         ),
         body: fn() {
           arrival_run_wet_after_hold(subject: subject, run_wire: run_id as NonEmptyStr)

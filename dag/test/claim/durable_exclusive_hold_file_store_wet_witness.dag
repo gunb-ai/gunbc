@@ -370,6 +370,7 @@ test fn w_after_acquire_invokes_the_real_slot_release() -> Bool {
           root: root,
           subject: s,
           owner: "arrival-release-inhabitance" as DurableHoldOwnerRef,
+          self_run_id: "wet-witness-run",
         ),
         body: fn() { ExitSuccess },
         release_fn: fn(h) { arrival_archive_slot_release(root: root, held: h) },
@@ -381,6 +382,7 @@ test fn w_after_acquire_invokes_the_real_slot_release() -> Bool {
             root: root,
             subject: s,
             owner: "arrival-release-inhabitance-2" as DurableHoldOwnerRef,
+            self_run_id: "wet-witness-run",
           ) {
             ArrivalArchiveSlotAcquireRefused { cause: _ } =>
               shell.Remove.RecursiveForce(path: root_path).success && false
