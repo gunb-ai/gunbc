@@ -3,6 +3,7 @@ module gunbc.gunbc_cli_command
 import extdeps.exec.program { uncataloged_program }
 
 import std.types { String, List, NonEmptyStr }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import std.optional { Present, Absent, Optional }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import gunbc.compute.unit_bounds { gunbc_user_work_scope_command }
@@ -10,6 +11,7 @@ import extdeps.systemd.systemd_run { SystemdRunCommandReading }
 import gunbc.cli_invoke {
   InvocationWord, LiteralWord,
   invocation_words_bare,
+  source_root_invocation_words,
   gunbc_run_invocation_words_with_functions,
   NamedArgument, NamedArgumentRequest,
   NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator, admit_named_argument,
@@ -155,5 +157,108 @@ fn gunbc_run_user_work_scope_command(entry: String, functions: List<String>) -> 
   gunbc_user_work_scope_command(
     properties: [],
     command_argv: gunbc_command_argv(cmd: gunbc_run_command(entry: entry, functions: functions)),
+  )
+}
+
+// THE ONE `gunbc test` BATCH SHAPE: SEVERAL OPERANDS, ONE MODE, ONE CORPUS, ONE INVOCATION. This is the
+// caller contract the two legacy entrypoints are being folded into, and it is the durable part: whatever runs
+// claims after the native compiler arrives inherits these operands, these options and this exit-status meaning,
+// so it is spelled once here rather than at each call site (gunbc.design_argument::single_authority). A caller
+// that spells its own `--wet` could differ from a caller that spells `--record` about what the same roster
+// means; the two legacy entrypoints are exactly that fork, one harness with its own parser and one verb.
+//
+// WHY THE MODE CARRIES ITS OWN FIXTURE STORE IN THE ARM. `Record` writes fixtures, so a recorded batch with
+// nowhere to write them is not a request -- and the CLI on the other side of this boundary refuses precisely
+// that shape (`gunbc.target_invocation` `admit_test_execution_mode`, `RecordWithoutFixtureStore`). Making it
+// unspellable here rather than renderable-and-refused-later is what keeps a caller from paying for a runner,
+// a built binary and a child process to discover a typo. `HermeticBatch` adds NO flag: hermetic is the route's
+// default (`execution_mode_for(None, is_claim = true)`), so a flag for it would be a second spelling of the
+// default -- and the same reason the harness's own builder gives today.
+//
+// WHY THE MODE IS NOT AN `ExecutionMode` PARAMETER HERE. `std.execution_mode` `ExecutionMode` stays the single
+// authority on WHAT the batch runs as (`test_batch_execution_mode` below reads it out); this sum exists because
+// one arm of that axis needs an argument that the axis itself does not carry. It adds no judgment, and it is
+// total over the three arms, so a fourth arm in the authority is a compile error here rather than a silently
+// hermetic batch.
+type TestBatchMode
+  = HermeticBatch
+  | WetBatch
+  | RecordBatch { fixture_store: String }
+
+// THE MODE, READ BACK OUT AS THE AUTHORITY'S OWN VALUE. A consumer that needs to ask "is this the wet lane"
+// asks `std.execution_mode`, not this module -- so the axis is never compared through a spelling.
+fn test_batch_execution_mode(mode: TestBatchMode) -> ExecutionMode {
+  match mode {
+    HermeticBatch => Hermetic
+    WetBatch => Wet
+    RecordBatch { fixture_store: _ } => Record
+  }
+}
+
+fn gunbc_test_batch_mode_words(mode: TestBatchMode) -> List<InvocationWord> {
+  match mode {
+    HermeticBatch => []
+    WetBatch => [LiteralWord { spelling: "--wet" }]
+    RecordBatch { fixture_store: store } => [
+      LiteralWord { spelling: "--record" },
+      LiteralWord { spelling: "--fixture-store" },
+      LiteralWord { spelling: store },
+    ]
+  }
+}
+
+// THE WORDS, IN THE ORDER THE ROUTE READS THEM: corpus first, then the operands, then the mode. The corpus
+// words are `gunbc.cli_invoke`'s own `source_root_invocation_words`, the same ones `gunbc run` renders, so the
+// flag spelling has one home; the operands are POSITIONAL, which is what makes them operands rather than
+// options -- the batch's subject is the caller's fact, and an option that could name a different corpus while
+// reporting the same standing is the thing the single-label builder already refuses.
+//
+// AN EMPTY OPERAND LIST IS NOT REFUSED HERE, and that is deliberate rather than an oversight: the refusal lives
+// in the route's admission (`gunbc.target_invocation` `admit_test_operands` -> `TestOperandsEmpty`, and the CLI's
+// `names at least one target`), which is one place instead of a second copy at every builder. A builder that
+// refused too would be a second authority over the same request, and the two would drift.
+fn gunbc_test_batch_invocation_words(
+  operands: List<String>,
+  mode: TestBatchMode,
+  source_roots: List<String>
+) -> List<InvocationWord> {
+  let operand_words = map(operands, o => LiteralWord { spelling: o })
+  concat(
+    concat([LiteralWord { spelling: "test" }], source_root_invocation_words(roots: source_roots)),
+    concat(operand_words, gunbc_test_batch_mode_words(mode: mode))
+  )
+}
+
+// THE ARGV REALIZATION, built the same way `gunbc_test_command` is: the release binary derived from
+// `gunbc.cli_invoke`'s two facts, and every word rendered quoted through `invocation_words_bare` for the same
+// reason given there -- an instrument or claim label carries a `:`, which the unquoted step emitter's alphabet
+// refuses, and widening that wall to admit one's own input is what gunbc.design_argument::fail_closed names.
+fn gunbc_test_batch_command(
+  operands: List<String>,
+  mode: TestBatchMode,
+  source_roots: List<String>
+) -> ArgvCommand {
+  argv_command(
+    program: uncataloged_program(invocation: release_bin_rel_path(bin_name: gunbc_bin_name) as NonEmptyStr),
+    arguments: invocation_words_bare(
+      words: gunbc_test_batch_invocation_words(operands: operands, mode: mode, source_roots: source_roots)
+    ),
+  )
+}
+
+// THE POOLED RUN IN ITS OWN CHILD-PROCESS BOUNDARY. `gunbc test` re-execs itself into the user work slice when
+// it owes one (`target_invocation_host` `reexec_into_user_work_slice_if_owed`), and this is the spelling for a
+// caller that must place the whole batch in a scope of its own instead -- the pooled host-prelude request, whose
+// memory envelope the consolidation preserves rather than replaces.
+fn gunbc_test_batch_user_work_scope_command(
+  operands: List<String>,
+  mode: TestBatchMode,
+  source_roots: List<String>
+) -> SystemdRunCommandReading {
+  gunbc_user_work_scope_command(
+    properties: [],
+    command_argv: gunbc_command_argv(cmd: gunbc_test_batch_command(
+      operands: operands, mode: mode, source_roots: source_roots
+    )),
   )
 }

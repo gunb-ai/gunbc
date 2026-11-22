@@ -1,0 +1,150 @@
+module test.claim.gunbc_test_batch_argv_witness
+
+// THE CALLER CONTRACT THE TWO LEGACY CLAIM ENTRYPOINTS ARE BEING FOLDED INTO, RECEIVED AS A SHAPE.
+//
+// `claim_batch --entry E --function F --claim-run` and `gunbc run E --function F --claim-run` are being deleted
+// in one change (gunbc.plans.claim_execution_consolidation, node claim-entrypoints-cutover), and what their
+// callers inherit is this argv: one `test` verb, one process, one operand per claim named by LABEL, the corpus
+// spelled before the operands and the mode after them. The native compiler inherits the same words, so the
+// words are the durable part and they are received here rather than trusted: the pooled host-prelude request is
+// built by `gunbc.gunbc_cli_command` `gunbc_test_batch_invocation_words` and assembled for the instrument by
+// `gunbc.instruments.host_prelude` `gunbc_test_claims_argv`, and a caller that could not see what it was asking
+// for is how the two entrypoints came to mean two things by one roster.
+//
+// WHY A SHAPE AND NOT A CHILD RUN. These controls assert the REQUEST, so they run in milliseconds and fail with
+// the exact argv that was wrong. The claim that the request RUNS — that a batch of operands really is one
+// process over one corpus, producing one result per claim keyed by its full label — is executed where it can be
+// observed, in the Rust controls at `target_invocation_host.rs`
+// `test_batch_admission_controls::one_process_runs_the_named_claims_once_each_and_keys_them_by_label`. Splitting
+// them that way is deliberate: a shape control cannot tell a running route from a printing one, and a child run
+// is too expensive to be where you look for a missing flag.
+
+import gunbc.gunbc_cli_command { TestBatchMode, HermeticBatch, WetBatch, RecordBatch }
+import gunbc.instruments.host_prelude {
+  ClaimRun, TestClaimsArgvBuilt, TestClaimsArgvRefused, ClaimOperand, ClaimOperandUnnameable,
+  claim_identity_operand, gunbc_test_claims_argv
+}
+import std.logic { Bool }
+import std.types { String }
+
+data pooled_claims_note: String = "Three rows over two roots, in the shape the prelude's roster carries them: a module FILE and a function. One is nested (`nested/beta`) on purpose — a label built by concatenating a path with dots would turn `dag/test/claim/nested/beta.dag` into a package with a `nested/beta` segment, and the route would answer `no module declares` for a module that exists. The nested row is the only one that can tell those two builders apart."
+
+fn pooled_claims() -> List<ClaimRun> {
+  [
+    ClaimRun { entry: "dag/test/claim/alpha_witness.dag", function: "alpha_claim_holds" },
+    ClaimRun { entry: "dag/test/claim/nested/beta_witness.dag", function: "beta_claim_holds" },
+    ClaimRun { entry: "dag/test/claim/gamma_witness.dag", function: "gamma_claim_holds" },
+  ]
+}
+
+fn pooled_argv(mode: TestBatchMode) -> List<String> {
+  match gunbc_test_claims_argv(
+    source_roots: ["dag", "src/v2"],
+    claims: pooled_claims(),
+    mode: mode
+  ) {
+    // A refusal is rendered INTO the compared text rather than swallowed: an assertion that fails because a
+    // legitimate roster was refused has to say which row it refused, and `false` alone would not.
+    TestClaimsArgvBuilt { argv: argv } => argv
+    TestClaimsArgvRefused { entry: entry, function: function, reason: reason } =>
+      ["REFUSED", entry, function, reason]
+  }
+}
+
+// THE WHOLE REQUEST, PINNED AS ONE STRING: verb first, corpus words next, then the three operands in roster
+// order, then the mode. Pinned as a whole rather than field by field because the ORDER is part of the contract:
+// the operands are positional, so an option word landing among them changes what the verb reads as its subject,
+// and a field-by-field assertion passes on an argv the route would misread.
+data wet_request_note: String = "The pooled wet request, which is what host_prelude's pooled prelude observation actually asks for today (`claim_batch_claims_argv` appends `--wet`): the same request, on the route, with the labels in place of the --entry/--function pairs and --claim-run gone -- `--claim-run` selected the interpreter route on an entrypoint whose whole purpose was the interpreter, so the flag has no meaning on the verb and no migrated argv carries it."
+
+test fn the_pooled_wet_request_is_one_test_verb_over_named_claims_holds() -> Bool {
+  join(pooled_argv(mode: WetBatch), " ") ==
+    "test --source-root dag --source-root src/v2 //test/claim/alpha_witness:alpha_claim_holds //test/claim/nested/beta_witness:beta_claim_holds //test/claim/gamma_witness:gamma_claim_holds --wet"
+}
+
+// HERMETIC ADDS NO FLAG. It is the route's default (`execution_mode_for(None, is_claim = true)`), and the
+// pooled hermetic request is the request a contributor already makes when they type `gunbc test <label>`. A flag
+// for the default would be a second spelling of one value, and a caller that spelled both would be refused for
+// conflicting modes it never meant to choose.
+test fn the_hermetic_request_carries_no_mode_flag_holds() -> Bool {
+  let argv = pooled_argv(mode: HermeticBatch)
+  let request = join(argv, " ")
+  // THE REQUEST ENDS ON THE LAST LABEL, read as `ends_with` rather than as an index: indexing a list is
+  // optional in this language, and a control that has to handle "there was no last word" is a control that can
+  // pass by not looking.
+  !string_contains(s: request, pattern: "--wet") &&
+    !string_contains(s: request, pattern: "--record") &&
+    !string_contains(s: request, pattern: "--hermetic") &&
+    request.ends_with("//test/claim/gamma_witness:gamma_claim_holds")
+}
+
+// RECORD CARRIES ITS STORE IN THE SAME SHAPE, three words as one group. A recorded batch whose fixtures go
+// nowhere is not a request, and the CLI refuses that shape (`RecordWithoutFixtureStore`); carrying the store in
+// the arm means the caller never builds a runner, a binary and a child process to discover it.
+test fn the_record_request_carries_the_fixture_store_with_the_mode_holds() -> Bool {
+  let argv = pooled_argv(mode: RecordBatch { fixture_store: "/tmp/keen-fox-230-store" })
+  let joined = join(argv, " ")
+  string_contains(s: joined, pattern: "--record --fixture-store /tmp/keen-fox-230-store") &&
+    !string_contains(s: joined, pattern: "--wet")
+}
+
+// THE OPERANDS ARE EXACT LABELS, NEVER A SET FORM. The plan's obligation on a migrated caller is that no caller
+// widens a sparse request to `:all` or a subtree to fit the interface
+// (gunbc.plans.claim_execution_consolidation section 2); the route may legitimately be *asked* for a subtree, but
+// a roster that already names claims has no business asking for a population it cannot enumerate. This walks the
+// operands rather than the whole argv so a mode word containing `:` could not satisfy it either way.
+data no_widening_note: String = "Counted forward with a fold rather than looked up with a search, because the claim is about every operand: one operand that slipped through as `:all` would run the whole claim universe under the name of three claims, and that is a widening the caller would not see in its own report."
+
+test fn no_operand_widens_to_a_set_form_holds() -> Bool {
+  let argv = pooled_argv(mode: HermeticBatch)
+  let operands = fold(
+    argv,
+    init: "",
+    f: fn(acc, word) {
+      if word == "test" || word == "--source-root" || word == "dag" || word == "src/v2" {
+        acc
+      } else {
+        // TWO-ARGUMENT `concat` IS STRING CONCATENATION here; the one-argument list form joins lists, which is
+        // what the pooled builder itself uses for its argv.
+        concat(concat(acc, word), "|")
+      }
+    }
+  )
+  !string_contains(s: operands, pattern: ":all") &&
+    !string_contains(s: operands, pattern: "/...") &&
+    string_contains(s: operands, pattern: "//test/claim/nested/beta_witness:beta_claim_holds|")
+}
+
+// A ROW THAT IS NOT A CLAIM MODULE REFUSES THE WHOLE BATCH, with the row and the reason. The alternative -- a
+// plausible-looking label for a module outside the claim universe -- is a child process that exits 2 minutes
+// later, and a pooled observation that quietly measured less than the roster asked for is precisely the failure
+// this instrument exists to catch in other people's harnesses.
+data unnameable_note: String = "`src/v2/test/claim/...` is the shape that tempts a builder, because the interpreter's claim universe and the native universe have the same tail. A `//v2/...` label must never reach the interpreter, and a row whose entry is outside `dag/test/claim` is refused HERE rather than routed there: the refusal is the wall."
+
+test fn a_row_outside_the_claim_universe_refuses_the_batch_holds() -> Bool {
+  match gunbc_test_claims_argv(
+    source_roots: ["dag", "src/v2"],
+    claims: [ClaimRun { entry: "src/v2/test/claim/native_witness.dag", function: "native_claim_holds" }],
+    mode: HermeticBatch
+  ) {
+    TestClaimsArgvBuilt { argv: _ } => false
+    TestClaimsArgvRefused { entry: entry, function: function, reason: reason } =>
+      entry == "src/v2/test/claim/native_witness.dag" &&
+        function == "native_claim_holds" &&
+        string_contains(s: reason, pattern: "claim universe") &&
+        !string_contains(s: reason, pattern: "//v2/")
+  }
+}
+
+// THE LABEL IS THE ROUTE'S OWN RENDERING, not a path with dots: `extdeps.bazel.label` `render_label` is what the
+// route reports on its result line, so an instrument that built its label another way could be watching a claim
+// that no line names.
+test fn the_operand_is_the_route_s_own_label_rendering_holds() -> Bool {
+  match claim_identity_operand(
+    entry: "dag/test/claim/nested/beta_witness.dag",
+    function: "beta_claim_holds"
+  ) {
+    ClaimOperand { label: label } => label == "//test/claim/nested/beta_witness:beta_claim_holds"
+    ClaimOperandUnnameable { entry: _, function: _, reason: _ } => false
+  }
+}

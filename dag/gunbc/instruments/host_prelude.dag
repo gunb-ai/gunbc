@@ -7,7 +7,11 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import gunbc.cli_services
-import gunbc.cli_invoke { source_root_transport_argv }
+import gunbc.cli_invoke { source_root_transport_argv, invocation_words_bare }
+import gunbc.gunbc_cli_command {
+  TestBatchMode, HermeticBatch, WetBatch, RecordBatch, gunbc_test_batch_invocation_words
+}
+import extdeps.bazel.label { LabelParse, LabelParsed, LabelRefused, parse_label, render_label, label_refusal_text }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.ci.ci_release_bins { release_bin_is_enrolled }
 import std.logic { Bool }
@@ -15,6 +19,7 @@ import std.logic { Bool }
 // boolean local to this builder: `std.execution_mode` owns that axis, and the harness's own parser
 // (`claim_batch.rs`, the `--wet` / `--hermetic` / `--record` arms) reads the same three-valued thing.
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet }
+import std.optional { Optional, Present, Absent, optional_present }
 
 data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/gunbc/instruments transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Inspect.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14). This module no longer has a shell path at all: toolchain_provision_shell_exec was its last one, and it is deleted. Its three callers in gunbc.instruments.emit_host_transport now run shell.Exec.Run directly, because they need the script's STDOUT -- the byte count and probe marker they compare in-substrate -- and a helper returning only Bool is exactly the collapse those call sites exist to undo."
 
@@ -287,6 +292,145 @@ fn claim_batch_claims_argv_route(
     Record => ["--claim-run", "--record"]
   }
   concat(concat(source_root_transport_argv(roots: source_roots), grouped.args), route_flags)
+}
+
+// THE SAME REQUEST ON THE ONE ROUTE: `gunbc test` with one operand per claim, one mode, one corpus, ONE
+// process. This is the invocation that replaces `claim_batch ... --claim-run` for the pooled prelude, and it is
+// spelled by `gunbc.gunbc_cli_command` `gunbc_test_batch_invocation_words` rather than here -- this module's
+// business is WHICH claims and on which route, never how the verb's flags are written (a call site that spelled
+// its own `--wet` is how two entrypoints came to mean two things by the same roster).
+//
+// THE MEMORY BOUNDARY MOVES RATHER THAN DISAPPEARING. `claim_batch` ran the pooled set in one process of its
+// own; the verb re-execs itself into the user work slice when it owes one (`target_invocation_host`
+// `reexec_into_user_work_slice_if_owed`, then `apply_memory_cgroup_bind`), so the pooled batch keeps a child
+// process with the envelope, and one process still: the operands are a list, not a loop over `gunbc test`.
+//
+// WHY AN OPERAND IS DERIVED FROM THE CLAIM RATHER THAN TYPED. `ClaimRun` is the roster's row: a module FILE and
+// a function. The route names claims by LABEL, and a label typed at a call site can name a target that does not
+// exist and still look like a conforming call -- so the derivation is one function, it is total, and a row whose
+// entry is not a claim module is REFUSED loudly rather than rendered into a plausible-looking label.
+type ClaimOperandAdmission
+  = ClaimOperand { label: String }
+  | ClaimOperandUnnameable { entry: String, function: String, reason: String }
+
+// THE CLAIM'S IDENTITY, AS THE ROUTE READS IT: `//test/claim/<module>:<function>`, rendered by
+// `extdeps.bazel.label` `render_label` rather than by concatenation, so the label this instrument runs is the
+// label the route reports and the label the corpus declares. The entry must be a `test/claim/` module under the
+// `dag/` root: that is where the route's universe lives (`claim_route_universe`), and an entry from anywhere
+// else means the roster row is not a claim module -- which is refused, because the alternative is a wrong label
+// that the child process refuses late with exit 2 after a runner has been paid for.
+fn claim_identity_operand(entry: String, function: String) -> ClaimOperandAdmission {
+  let prefix = "dag/test/claim/"
+  if !entry.starts_with(prefix) {
+    ClaimOperandUnnameable {
+      entry: entry,
+      function: function,
+      reason: "the entry is not a module under the dag/test/claim claim universe",
+    }
+  } else if !entry.ends_with(".dag") {
+    ClaimOperandUnnameable {
+      entry: entry, function: function, reason: "the entry is not a .dag module path"
+    }
+  } else {
+    // THE PATH IS REBUILT BY REPLACING, NOT SLICED. A list index in this language is optional and an
+    // off-by-one in a slice is silent, while `replace` on a string that was just checked to carry the
+    // marker once is total. The count check is what keeps "once" honest: `split` on the marker yields
+    // n+1 pieces, so a module name carrying `.dag` twice is refused rather than guessed about -- and a
+    // name like that is a roster row this instrument should not be improvising a label for.
+    let rest = entry.replace(from: prefix, to: "")
+    if count(rest.split(delimiter: ".dag")) != 2 {
+      ClaimOperandUnnameable {
+        entry: entry,
+        function: function,
+        reason: "the module name carries more than one .dag suffix",
+      }
+    } else {
+      let package_path = rest.replace(from: ".dag", to: "").replace(from: "/", to: ".")
+      match parse_label(text: concat(concat(concat("//", package_path), ":"), function)) {
+        // THE LABEL IS PARSED, NOT ASSUMED. `extdeps.bazel.label` is the authority on what a label is, and
+        // it refuses the set forms (`TargetPattern`), a `.` segment, a relative path, a repository
+        // qualifier. Asking it is what makes "the operands are exact labels" a property of the builder
+        // rather than a hope about the roster: a row whose function was spelled `:all` -- the widening the
+        // plan forbids a caller to do -- arrives here as a refusal with the authority's own reason.
+        LabelParsed { label: label } => ClaimOperand { label: render_label(l: label) }
+        LabelRefused { cause: cause } => ClaimOperandUnnameable {
+          entry: entry, function: function, reason: label_refusal_text(r: cause)
+        }
+      }
+    }
+  }
+}
+
+type TestClaimsArgv
+  = TestClaimsArgvBuilt { argv: List<String> }
+  | TestClaimsArgvRefused { entry: String, function: String, reason: String }
+
+// THE POOLED REQUEST, ADMITTED BEFORE IT IS RUN. Every operand is derived first and the FIRST unnameable row
+// refuses the whole batch: a batch that silently dropped a claim would report the pooled observation as complete
+// while measuring less than the roster asked for, which is the failure this instrument exists to catch in other
+// people's harnesses. Overlaps are the route's to resolve (it selects from the discovered corpus, so a claim two
+// operands denote is enrolled once); this builder does not de-duplicate, because a roster that repeats a row is
+// reporting its own shape and the fold's duplicate detector is the authority on what that means.
+fn gunbc_test_claims_argv(
+  source_roots: List<String>,
+  claims: List<ClaimRun>,
+  mode: TestBatchMode
+) -> TestClaimsArgv {
+  let admitted = fold(
+    claims,
+    init: TestClaimsOperandAcc { operands: [], refused: Absent },
+    f: fn(st, c) {
+      // THE FIRST UNNAMEABLE ROW IS KEPT AND THE REST ARE NOT EXAMINED FOR A VERDICT, though their operands
+      // still accumulate: what the caller must see is the row that made the batch unrunnable, and `Absent`
+      // rather than an empty string is what distinguishes "nothing was refused" from "something was refused
+      // whose text happened to be empty" -- a refusal carried as a string would collapse the two.
+      match st.refused {
+        Present { value: row } => TestClaimsOperandAcc { operands: st.operands, refused: optional_present(value: row) }
+        Absent => match claim_identity_operand(entry: c.entry, function: c.function) {
+          ClaimOperand { label: label } =>
+            TestClaimsOperandAcc { operands: concat(st.operands, [label]), refused: Absent }
+          ClaimOperandUnnameable { entry: entry, function: function, reason: reason } =>
+            TestClaimsOperandAcc {
+              operands: st.operands,
+              refused: optional_present(value: TestClaimsArgvRefusalParts {
+                entry: entry, function: function, reason: reason
+              }),
+            }
+        }
+      }
+    }
+  )
+  match admitted.refused {
+    Present { value: parts } => TestClaimsArgvRefused {
+      entry: parts.entry, function: parts.function, reason: parts.reason
+    }
+    Absent => TestClaimsArgvBuilt {
+      argv: invocation_words_bare(
+        words: gunbc_test_batch_invocation_words(
+          operands: admitted.operands, mode: mode, source_roots: source_roots
+        )
+      )
+    }
+  }
+}
+
+// THE FOLD'S STATE. The refusal is an `Optional` over the operand list, not a list of refusals and not a string:
+// a list needs an index to read (optional in this language, so the read would need its own refusal arm) and a
+// string would let a row containing the separator look like a clean batch.
+// WHAT THE FOLD REMEMBERS ABOUT A REFUSAL. The row's three facts are copied into their own record rather than
+// carried as `ClaimOperandUnnameable`, because that sum has a second arm this fold can never store, and matching
+// it again at the end would require an arm for a case whose only meaning is "the fold put the wrong thing in the
+// slot" -- a branch that can only ever report a bug in the function that contains it. Matching the `Optional`
+// alone is exhaustive, and the invariant is in the type instead of in a comment.
+type TestClaimsArgvRefusalParts {
+  entry: String
+  function: String
+  reason: String
+}
+
+type TestClaimsOperandAcc {
+  operands: List<String>
+  refused: Optional<TestClaimsArgvRefusalParts>
 }
 
 type ClaimBatchArgvAcc {
