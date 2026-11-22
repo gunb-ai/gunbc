@@ -36,9 +36,7 @@ import gunbc.compute.work_provider_local {
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
 }
-import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command, gunbc_command_argv }
-import extdeps.tools.env { env_prefixed_argv }
-import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
@@ -64,7 +62,7 @@ import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
-import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command, env_prefixed_command_in }
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
@@ -1395,18 +1393,29 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
     arguments: arguments
   ) {
     Absent => Absent
-    Present { value: cmd } => Present { value: env_prefixed_argv(
-      // The account's OWN user-session bindings, beside the workspace root. A door run through sudo
-      // inherits neither XDG_RUNTIME_DIR nor the session bus (gunbc.host.user_session_runtime), and a
-      // door that bears host effects is REFUSED before it reads anything unless its user manager is
-      // reachable to wrap it into the capped gunbc-user-work.slice — the seed's user-work-scope gate
+    Present { value: cmd } => Present { value: argv_words(command: env_prefixed_command_in(
+      // THE DOOR STARTS IN THE SERVING CHECKOUT, and GUNBC_WORKSPACE_ROOT is NOT bound. Two measured
+      // refusals on srv1 (runs 44976395909 and 44980662577, 2026-11-22) name this seam: the seed's
+      // cli_run workspace-root scaffold (src/v1/stage0/src/cli_run.rs, workspace_root_resolve) treats a
+      // SET GUNBC_WORKSPACE_ROOT as THE AUTHORITY and validates it as a release locus — a plain git
+      // checkout like the serving one has no .gunbc-tree-receipt, and the scaffold refuses rather than
+      // falling back ("A fallback to a different directory is a false success"). Unset, it binds by the
+      // .git walk from the STARTING DIRECTORY — so the door is started in the checkout, exactly how the
+      // admitted serve route's forced command runs its door (gunbc.compute.remote_build_serve
+      // remote_build_forced_command_words, same refusal observed there on 2026-11-15). env -C is
+      // extdeps.tools.env's own chdir flag through extdeps.exec.command's one env builder.
+      directory: repo,
+      // The account's OWN user-session bindings. A door run through sudo inherits neither
+      // XDG_RUNTIME_DIR nor the session bus (gunbc.host.user_session_runtime), and a door that bears
+      // host effects is REFUSED before it reads anything unless its user manager is reachable to wrap
+      // it into the capped gunbc-user-work.slice — the seed's user-work-scope gate
       // (src/v1/stage0/src/cli_run/user_work_scope.rs) answers exit 2 "cannot wrap into
       // gunbc-user-work.slice (UserSessionAbsent)" for such a command. These bindings are the account's
       // login environment for that one manager: they grant no privilege and skip no bound — with them
-      // the door RUNS INSIDE the slice this converge itself installs and caps.
-      bindings: concat([EnvSet { name: gunbc_workspace_root_env_name, value: repo }], user_session_launcher_env(runtime_dir: runtime_dir)),
-      command_argv: gunbc_command_argv(cmd: cmd)
-    ) }
+      // the door RUNS INSIDE the slice this converge itself installs and caps (measured: run-r…scope).
+      bindings: user_session_launcher_env(runtime_dir: runtime_dir),
+      command: cmd
+    )) }
   }
 }
 

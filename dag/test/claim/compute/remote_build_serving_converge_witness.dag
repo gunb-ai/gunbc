@@ -2176,14 +2176,18 @@ fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
     RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
   ]
 }
-// The recovery doors are RUN AS THE SERVING ACCOUNT through sudo, and a door that bears host effects is
-// refused by its OWN user-work-scope gate unless that account's user manager is reachable to wrap it
-// into the capped gunbc-user-work.slice: a sudo'd command with no session gets exit 2 "cannot wrap into
-// gunbc-user-work.slice (UserSessionAbsent)" from the seed (src/v1/stage0/src/cli_run/user_work_scope.rs)
-// before it reads a seat — which is how the first srv1 live proof refused. GREEN: the door argv binds
-// the account's OWN session environment (gunbc.host.user_session_runtime) beside the workspace root —
-// one contiguous env-prefix block ahead of the door — so the engine wraps the door into the slice this
-// converge installs and caps, instead of skipping the bound.
+// The recovery doors are RUN AS THE SERVING ACCOUNT through sudo, and two measured refusals on srv1
+// (runs 44976395909, 44980662577, 2026-11-22) name the two seams this claim holds shut. (1) A door that
+// bears host effects is refused by its OWN user-work-scope gate unless the account's user manager is
+// reachable to wrap it into the capped gunbc-user-work.slice — exit 2 "cannot wrap into
+// gunbc-user-work.slice (UserSessionAbsent)" — so the argv binds the account's own session environment
+// (gunbc.host.user_session_runtime). (2) The seed's workspace-root scaffold treats a SET
+// GUNBC_WORKSPACE_ROOT as the release-locus authority and refuses a plain checkout for lack of a tree
+// receipt — so the argv binds NOTHING there and instead STARTS the door in the serving checkout
+// (env -C), where the .git walk binds the root, exactly as the admitted serve route's forced command
+// starts its door (gunbc.compute.remote_build_serve remote_build_forced_command_words). GREEN: "-C
+// <checkout>" and the two session bindings form one contiguous env-prefix block ahead of the door, and
+// GUNBC_WORKSPACE_ROOT appears nowhere in it.
 test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
@@ -2196,8 +2200,9 @@ test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
       Absent => false
       Present { value: argv } => {
         let words = join(argv, " ")
-        let bindings = concat(concat(concat(concat(concat(gunbc_workspace_root_env_name, "="), d.checkout_dir as String), " XDG_RUNTIME_DIR=/run/user/999"), " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/999/bus"), " ")
-        string_contains(s: words, pattern: bindings) && string_contains(s: words, pattern: "compute_recover_catalog_cli")
+        string_contains(s: words, pattern: concat(concat(concat("-C ", d.checkout_dir as String), " XDG_RUNTIME_DIR=/run/user/999"), " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/999/bus"))
+          && (!string_contains(s: words, pattern: concat(gunbc_workspace_root_env_name, "=")))
+          && string_contains(s: words, pattern: "compute_recover_catalog_cli")
       }
     }
   }
