@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_site_surface_observe
 
-import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection, roadmap_plan_projection_over_layout }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
@@ -138,5 +139,32 @@ fn live_roadmap_site_surface_bundle() -> LiveRoadmapSiteSurfaceBundle {
   LiveRoadmapSiteSurfaceBundle {
     subject: roadmap_site_surface_subject,
     bundle: materialize_live_roadmap_site_surface_bundle(),
+  }
+}
+
+// A FAILED ROSTER READ IS NOT A SURFACE. `render_roadmap_site_surface_bundle_for_projection` renders a bundle
+// over ANY projection, and `subject_identity_for_projection` gives a refused projection its own tagged identity
+// — so minting a bundle_identity from `RoadmapAuthorityProjectionRefused` fabricates an expectation the live
+// service (which reads the real roster and renders a DIFFERENT identity) can never meet. That is the fail-open
+// the srv1 cutover gate caught as a deterministic ProcessSurfaceMismatch. This observation folds the plan read
+// exactly once (gunbc.live_deploy.candidate_identity) and names the refusal INSTEAD of a bundle, so a caller that
+// needs an expectation can refuse the candidate rather than mint a wrong one. A read that cannot be opened is a
+// refusal, never an empty roster — the same law roadmap_retired_node_ids_load states one fold up.
+type RoadmapSiteSurfaceBundleObservation
+  = RoadmapSiteSurfaceBundleRendered { bundle: RoadmapSiteSurfaceBundle }
+  | RoadmapSiteSurfaceBundleReadRefused { detail: String }
+
+// Observe the site surface over a caller-supplied carrier layout — the single plan read, typed. Used by the
+// live-deploy candidate (which reads origin's roadmap-events branch under the CI job's principal) and by the
+// controls that exercise both arms deterministically.
+fn roadmap_site_surface_bundle_observation_of_layout(
+  layout: RoadmapEventCarrierLayout,
+) -> RoadmapSiteSurfaceBundleObservation {
+  let proj = roadmap_plan_projection_over_layout(layout: layout)
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      RoadmapSiteSurfaceBundleReadRefused { detail: detail }
+    RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } =>
+      RoadmapSiteSurfaceBundleRendered { bundle: render_roadmap_site_surface_bundle_for_projection(proj: proj) }
   }
 }

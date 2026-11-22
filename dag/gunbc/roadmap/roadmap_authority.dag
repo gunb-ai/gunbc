@@ -60,7 +60,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
 }
 import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
 import gunbc.roadmap.roadmap_event_carrier {
-  roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused,
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
@@ -6595,8 +6595,17 @@ data acceptance_history_replay_refused_detail: String = "acceptance history repl
 // hands back an empty history as if nobody had accepted anything. This is the single acceptance-fact
 // load; nothing else reads node acceptance. The board it feeds is the live dashboard's, so the load
 // resolves the event log through the same pinned instance every other production roadmap fold names.
+// THE LAYOUT-PARAMETERIZED ACCEPTANCE LOAD. The production loader below resolves the log through the pinned
+// live instance; this one reads the SAME carrier route under a layout the caller supplies, so an observer that
+// runs as a different principal — the live-deploy candidate in the CI job, which is not the instance principal —
+// can read the same authority the service renders from without reaching into a directory it cannot read. Same
+// law, same typed refusal: a log that cannot be read is a LoadRefused, never an empty history.
+fn roadmap_acceptance_event_history_load_over(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
+  roadmap_operator_close_history(layout: layout)
+}
+
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
-  roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
+  roadmap_acceptance_event_history_load_over(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
 }
 
 // THE OTHER HALF OF THE ONE LOG, read the same way the acceptance history is read: the same carrier,
@@ -6604,11 +6613,15 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // — never empty — when the log cannot be read at all: an empty retired set read off a log nobody opened
 // is the fail-open this whole change exists to close
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
-fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))) {
+fn roadmap_retired_node_ids_load_over(layout: RoadmapEventCarrierLayout) -> RoadmapRetiredNodeIds {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
     AllEventsReadRefused { step, reason } => RetiredNodeIdsRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
     AllEventsRead { envelopes } => roadmap_retired_node_ids_of(envs: envelopes)
   }
+}
+
+fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
+  roadmap_retired_node_ids_load_over(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
 }
 
 // roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading every

@@ -2,7 +2,20 @@ module gunbc.roadmap.roadmap_runtime_plan
 
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection, roadmap_authority_projection_with, roadmap_acceptance_event_history_load,
-  roadmap_retired_node_ids_load,
+  roadmap_acceptance_event_history_load_over, roadmap_retired_node_ids_load, roadmap_retired_node_ids_load_over,
+}
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout }
+
+// THE ONE PLAN, folded over a caller-supplied carrier layout. Same rows, same folding, same typed refusal —
+// only WHICH principal reads the log changes. This is the seam the live-deploy candidate uses: it renders the
+// expected surface from the SAME remote branch the service syncs to, under the CI job's own principal, instead
+// of reading through the instance layout it cannot read (gunbc.live_deploy.candidate). The single-read property
+// (gunbc.live_deploy.candidate_identity) is preserved: exactly one plan projection per candidate observation.
+fn roadmap_plan_projection_over_layout(layout: RoadmapEventCarrierLayout) -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(
+    history: roadmap_acceptance_event_history_load_over(layout: layout),
+    runtime: [],
+    retired: roadmap_retired_node_ids_load_over(layout: layout))
 }
 
 // THE ONE PLAN: the declared rows and closing-contract pairs of gunbc.roadmap.roadmap_authority, with the
