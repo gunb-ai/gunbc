@@ -1,13 +1,22 @@
 module gunbc.roadmap.roadmap_site_healthz_validate
 
 import extdeps.languages.json.grammar { json_text_trim_trailing_lf }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  materialize_live_roadmap_site_surface_bundle,
+  RoadmapSiteSurfaceBundleReadRefused,
+  RoadmapSiteSurfaceBundleRendered,
+  roadmap_site_surface_bundle_observation,
+}
 import gunbc.roadmap.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
   roadmap_site_healthz_surface_is_current,
 }
 import gunbc.roadmap.roadmap_site_surface_types { RoadmapSiteSurfaceBundle }
 
+// SERVE-SIDE WELL-FORMEDNESS, NOT AN EXPECTATION. This checks that the bytes the process itself serves are
+// parseable JSON; it mints nothing that is compared across a CI/host boundary, so it renders its own body
+// directly. (A comparison would route through the typed observation; see
+// roadmap_site_healthz_surface_is_current_from_observed_body just below.)
 fn roadmap_site_healthz_body_parses() -> Bool {
   roadmap_site_healthz_json_string_parses(
     body: materialize_live_roadmap_site_surface_bundle().healthz_body
@@ -23,6 +32,13 @@ fn roadmap_site_healthz_surface_is_current_for_bundle(
 }
 
 fn roadmap_site_healthz_surface_is_current_from_observed_body(observed_body: String) -> Bool {
-  let bundle = materialize_live_roadmap_site_surface_bundle()
-  roadmap_site_healthz_surface_is_current_for_bundle(bundle: bundle, observed_body: observed_body)
+  // A COMPARISON, so it observes the expected side through the typed observation: when the roster read is
+  // refused there is no expected surface to be current against, and the answer is NOT-current (never a
+  // currentness claimed against a fabricated bundle). Callers treat false as "rebind/retry", which is the
+  // safe direction; the refused detail is carried so a gate can name why.
+  match roadmap_site_surface_bundle_observation() {
+    RoadmapSiteSurfaceBundleReadRefused { detail: _ } => false
+    RoadmapSiteSurfaceBundleRendered { bundle: bundle } =>
+      roadmap_site_healthz_surface_is_current_for_bundle(bundle: bundle, observed_body: observed_body)
+  }
 }

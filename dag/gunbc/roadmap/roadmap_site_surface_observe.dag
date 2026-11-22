@@ -1,7 +1,8 @@
 module gunbc.roadmap.roadmap_site_surface_observe
 
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection, roadmap_plan_projection_over_layout }
-import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
@@ -131,6 +132,16 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
   }
 }
 
+// THE SERVE-SIDE RENDERER. This renders the bytes the process actually serves — its own healthz body and
+// served-surface digests — and is correct for that: the serving process IS the authority, so it reads its
+// own roster and emits what it has. It is NOT for minting an expectation: a caller that will compare an
+// identity across the CI/host boundary must call `roadmap_site_surface_bundle_observation` (or the
+// *_of_layout fold) so a refused roster read becomes a typed refusal instead of a fabricated identity. The
+// two surviving serve-only callers (roadmap_static_site's healthz body / served-surface digest, and
+// roadmap_site_healthz_validate's fresh-body currentness check) render the OBSERVED side, not an expected
+// one; if either ever gains an expectation-minting use, the trigger is exactly that, and it moves onto the
+// observation. (gunbc.recurring_failure_mode
+// readback_expectation_rendered_over_a_refused_read_under_the_wrong_principal.)
 fn materialize_live_roadmap_site_surface_bundle() -> RoadmapSiteSurfaceBundle {
   render_roadmap_site_surface_bundle_for_projection(proj: roadmap_plan_projection())
 }
@@ -167,4 +178,17 @@ fn roadmap_site_surface_bundle_observation_of_layout(
     RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } =>
       RoadmapSiteSurfaceBundleRendered { bundle: render_roadmap_site_surface_bundle_for_projection(proj: proj) }
   }
+}
+
+// Observe the site surface over the SRV1 instance carrier layout — the authority the live service renders
+// from. THIS is what an expectation-minting launcher (the readiness gate, the launch and belt CLIs) must
+// call: it returns the same bundle the old `materialize_live_roadmap_site_surface_bundle` returned whenever
+// the read opens, and a TYPED REFUSAL instead of a fabricated identity when it does not. The candidate
+// does NOT use this — it reads origin's roadmap-events branch under the CI job's principal via
+// `roadmap_site_surface_bundle_observation_of_layout` with the CI/runner layout (gunbc.live_deploy.candidate),
+// because the runner cannot open the instance tree. Same fold, same law, chosen by which principal runs.
+fn roadmap_site_surface_bundle_observation() -> RoadmapSiteSurfaceBundleObservation {
+  roadmap_site_surface_bundle_observation_of_layout(
+    layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()),
+  )
 }

@@ -54,7 +54,11 @@ import gunbc.live_deploy.deployed_tree_observation {
   observe_deployed_tree_at, deployed_root_tree_standing, deployed_tree_unobservable_text,
 }
 import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBindingUnobserved }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  RoadmapSiteSurfaceBundleReadRefused,
+  RoadmapSiteSurfaceBundleRendered,
+  roadmap_site_surface_bundle_observation,
+}
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_publication_path_unit_name, deployment_publication_service_unit_name, deployment_tailnet_url }
@@ -669,11 +673,21 @@ fn rlm_launch_deployment_receipt_bound(
   }
   let binding = match healthz_routed {
     HealthzServed { body: _, identity: id } =>
-      deployed_release_binding(
-        observation: tree,
-        identity: id,
-        expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
-      )
+      match roadmap_site_surface_bundle_observation() {
+        // The launch CLI mints the EXPECTED surface for the binding. Over a refused roster read there is no
+        // expectation to bind to, so this is an unobserved binding, not one carrying a fabricated identity
+        // (same fail-closed as the candidate and the readiness gate).
+        RoadmapSiteSurfaceBundleReadRefused { detail } =>
+          ReleaseBindingUnobserved {
+            cause: join(["roadmap roster read refused; expected surface unobservable: ", detail], ""),
+          }
+        RoadmapSiteSurfaceBundleRendered { bundle: bundle } =>
+          deployed_release_binding(
+            observation: tree,
+            identity: id,
+            expected_surface: bundle.bundle_identity,
+          )
+      }
     HealthzRefused { detail: d } => ReleaseBindingUnobserved { cause: join(["routed healthz probe refused: ", d], "") }
   }
   let readiness = match healthz_routed {

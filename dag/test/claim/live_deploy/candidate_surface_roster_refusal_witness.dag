@@ -1,6 +1,10 @@
 module test.claim.live_deploy.candidate_surface_roster_refusal_witness
 
-import std.types { Bool, String, CommitSha, List }
+import std.types { Bool, String, CommitSha, List, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.readiness { Ready, Pending, Refused }
+import gunbc.live_deploy.readiness { observe_service_readiness_from_healthz, ServiceSurfaceUnobserved }
+import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead }
 import gunbc.live_deploy.candidate {
   CandidateObservation,
   CandidateObserved,
@@ -142,4 +146,30 @@ test fn rendering_over_a_refused_projection_mints_an_identity_the_service_could_
     proj: RoadmapAuthorityProjectionRefused { detail: "event log read refused at ls-remote: detected dubious ownership" })
   let projected_bundle = render_roadmap_site_surface_bundle_for_projection(proj: projected_empty_authority())
   refused_bundle.bundle_identity != projected_bundle.bundle_identity
+}
+
+// RED BEFORE THE CHANGE, AT THE SHARED GATE. observe_service_readiness_from_healthz used to take a bare
+// RoadmapSiteSurfaceBundle, so a refused roster read — rendered to a bundle with a fabricated identity — was
+// silently compared against the served body; the gate reported Pending (identity-not-yet-matched) over a
+// comparison it had no authority to make, and the refused detail never surfaced. It now takes the typed
+// observation and returns Refused{ServiceSurfaceUnobserved} before the served body is judged at all, so a
+// launcher running as a principal that cannot open the log STOPS with a named refusal instead of churning on
+// a false Pending. This is the root-generalized fail-closed: the repair is in the shared gate, not re-done at
+// each readiness site.
+test fn the_readiness_gate_refuses_a_refused_roster_read_and_never_renders_a_verdict() -> Bool {
+  let gate = observe_service_readiness_from_healthz(
+    read: HealthzBodyRead { body: "irrelevant body; the refusal short-circuits before the read is judged" },
+    observation: RoadmapSiteSurfaceBundleReadRefused {
+      detail: "event log read refused at ls-remote: detected dubious ownership",
+    },
+    expected_revision: a_fixture_revision(),
+    expected_surface_identity: Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr },
+  )
+  match gate {
+    Refused { cause: ServiceSurfaceUnobserved { detail } } =>
+      string_contains(s: detail, pattern: "detected dubious ownership")
+    Refused { cause: _ } => false
+    Pending { cause: _ } => false
+    Ready { evidence: _ } => false
+  }
 }
