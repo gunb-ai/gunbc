@@ -3516,6 +3516,148 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's driver is a demand over its universe, so a run pays only for what changed. The engine is how v2 stays affordable as the required route."),
     ),
+    // ---- heal's regeneration round, realizing gunbc.plans.read_set_convergence (2026-11-22, operator, after an
+    // external review relayed in session stern-wren-746). The P7 milestone and the work that serves it, plus
+    // reuse and terminal-emission elision as separately accepted items. The base-start bootstrap
+    // (gunbc.recurring_failure_mode::heal_round_one_bootstraps_from_the_mirror_the_change_must_repair) and the
+    // compatibility-aware stage planner (v2.workflow.regen_convergence_transaction regen_plan_next_stage) are kept;
+    // no item replaces either. Edges encode only real prerequisites, not an implementation order.
+    roadmap_node(
+      identity: "rn_NFVQAYKT70VJF1T47S6AJRYPS6",
+      id: "heal-scope-relation-without-typecheck",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/plans/read_set_convergence.dag"),
+      line: ticket(t: fields(
+        headline: "Heal's scope reads the same dependency relation without typechecking the pool",
+        boundary: "gunbc.plans.read_set_convergence P7 (1). The scope child (required_regen_host regen_module_edges) builds a whole-pool index that typechecks every module to read its edges: 9 to 12 minutes and about 16 GB per heal run. Derive the SAME relation, dotted references (imports included) and bare references, from parsing and name resolution alone, using the authoritative resolution semantics and its refusals.",
+        displaced_cost: "Every heal run, including one that changes nothing, pays 9 to 12 minutes and about 16 GB to read edges a parse and a resolve already give.",
+        first_slice: "An equivalence test against the current whole-pool edge index over the live pool: the edge sets are equal, with a bare-reference specimen an imports-only graph would miss.",
+        red_control: "A bare-reference edge dropped by the cheaper path makes the equivalence test fail; a reference the cheaper path cannot resolve refuses the scope instead of being dropped; a planted ambiguous bare name refuses rather than picking one binding.",
+        out_of_scope: "Recorded per-mirror read sets (P4) and the add/delete rule (heal-scope-population-evidence). No new CI job and no raised time or memory budget.",
+        handback: "The equivalence receipt over the live pool, the refusal outputs, a before/after heal scope-step time and peak memory, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The file-grain dependency relation heal scopes by is the demand engine's read set at its first consumer; deriving it without typechecking is what makes a scope cheap enough to ask every run."),
+    ),
+    roadmap_node(
+      identity: "rn_APDCTBWQY09JWTACX5M07SYZS4",
+      id: "heal-scope-population-evidence",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/regen_affected_change.dag"),
+      line: ticket(t: fields(
+        headline: "An added or deleted .dag file widens heal's round only when the dependency and output evidence says it must",
+        boundary: "gunbc.regen_affected_change regen_affected_set_over_change answers WholePopulation for any added or deleted .dag file. Replace that rule with one derived from old and new evidence: what was reachable from the seed roots before and after, whether any resolved dependency changed, and which outputs must be created, regenerated or retired. WholePopulation stays where it is the derived answer, and a scope that cannot be established refuses. Exclusion follows from dependencies, never from a directory or category name. This can be established on the current authoritative graph; it does not wait for heal-scope-relation-without-typecheck.",
+        displaced_cost: "In the six sampled heal runs (2026-11-22), every run that did work used the whole population, each because it added a .dag file, including two plan-only pull requests: about 35 minutes each where an unrelated addition needs none.",
+        first_slice: "The five cases below as discriminating controls against the current graph, then the rule switched in regen_affected_change.",
+        red_control: "An added module unreachable from the seed roots selects no mirror; an added module that becomes reachable is emitted and admitted; a deleted reachable module whose old mirror is still committed is regenerated or retired, never left orphaned; a changed binding between files that were already members selects the affected mirrors; a new bare-name ambiguity or an unresolvable reference refuses.",
+        out_of_scope: "Making the relation cheaper (heal-scope-relation-without-typecheck); recorded read sets (P4).",
+        handback: "The five control outputs, one real heal receipt for an unrelated plan-file addition answering NoAffectedMirrors, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "Population changes are invalidations of the read set like any other; deciding them from evidence keeps the selection denominated in the change."),
+    ),
+    roadmap_node(
+      identity: "rn_4BRXDWRM94116QCG25DENVJ2NT",
+      id: "heal-seed-build-artifacts-scoped",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_candidate_stage0.dag"),
+      line: ticket(t: fields(
+        headline: "Heal regenerates a seed-build artifact only when its generator's read set changed",
+        boundary: "gunbc.plans.read_set_convergence P7 (3). Each of the 13 seed-build artifacts (gunbc.seed_build_artifact_emit seed_build_artifacts) gets the read set its generator reads, validated through the read-set authority with the product-validity states of the plan's section 2.3: cold, stale, result diverged and missing result all regenerate; only all checks passing is valid.",
+        displaced_cost: "About a minute per heal run regenerating artifacts no input of which changed; and a no-op heal cannot be declared while the artifacts are always rebuilt.",
+        first_slice: "Read sets for the 13 artifacts, then the heal tail regenerating only the invalid ones.",
+        red_control: "A change outside every artifact's read set regenerates none; a change to one artifact's input regenerates that one; a hand-edited artifact under a valid read set is result diverged and regenerates; a missing artifact regenerates.",
+        out_of_scope: "Mirror scoping. No change to the publication boundary.",
+        handback: "The four control outputs, a real heal receipt showing zero artifacts regenerated for an unrelated change, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The seed-build artifacts are file-grain products validated by the same read-set rule as the mirrors."),
+    ),
+    roadmap_node(
+      identity: "rn_BPQ3Q3CTSK0TP02ECZC74B8ZDP",
+      id: "heal-noop-before-regenerator-build",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "Heal decides a no-op before it builds the regenerator",
+        boundary: "gunbc.plans.read_set_convergence P7 (2). After recovering any interrupted round, heal decides whether any of its products (mirrors and seed-build artifacts) needs work, and a valid no-op ends the job before the regenerator's cargo build. A no-op needs valid inputs AND valid outputs (the plan's section 2.3): an unchanged read set does not excuse a missing or hand-edited product. A change that touches a seed build input still builds and runs its own regenerator.",
+        displaced_cost: "About 5 minutes of cargo build on every heal run whose answer is that nothing needs regenerating.",
+        first_slice: "Answer the scope with an already-built binary that is valid for the question (main's native CLI from the fast-lane unit, as P7 (2) names), then move the regenerator build behind that answer in gunbc.heal_workflow.",
+        red_control: "A planning-only change ends before the regenerator build with a NoAffectedMirrors receipt; a change to a seed build input still builds; a missing or hand-edited mirror under unchanged sources is not a no-op; an interrupted round's journal is recovered before a no-op is declared.",
+        out_of_scope: "Bootstrap-executable reuse for affected rounds (heal-bootstrap-seed-reuse).",
+        handback: "The four control outputs, a real planning-only heal log with no regenerator build step, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "Deciding validity before paying for the producer is the demand engine's order: a valid product costs a lookup, not a build."),
+    ),
+    roadmap_node(
+      identity: "rn_7ETF92EY55VC9N781F531F4NSD",
+      id: "heal-planning-only-in-a-minute",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/plans/read_set_convergence.dag"),
+      line: ticket(t: fields(
+        headline: "A planning-only heal completes in about a minute, including plan-file additions and deletions",
+        boundary: "The acceptance of gunbc.plans.read_set_convergence P7, unchanged in owner and in bar: a real planning-only pull request's heal completes in about one minute with a NoAffectedMirrors receipt and no regenerator build, a one-module edit still regenerates exactly the mirrors the dry run names, and a seed-input edit still builds and runs its own regenerator. The evidence is broadened so an edit-only example cannot stand for the whole claim: one real pull request that edits a plan file, one that adds one, and one that deletes one.",
+        displaced_cost: "Every planning-only pull request pays 10 minutes of heal, or about 35 if it adds a file, for no regenerated byte.",
+        first_slice: "Run the three planning-only pull requests and the two ordinary controls once the members have landed, and record the receipts.",
+        red_control: "Any of the three planning-only heals taking a regenerator build or selecting a mirror fails acceptance; the one-module edit selecting more or fewer mirrors than the dry run fails it; the seed-input edit skipping its regenerator fails it.",
+        out_of_scope: "Affected-round savings: reuse and terminal-emission elision are accepted on their own.",
+        handback: "Five heal run receipts with their step timings, at one named revision."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The first consumer whose cost is visibly denominated in the change: a planning edit costs heal a minute."),
+    ),
+    roadmap_node(
+      identity: "rn_SWYW46X2J67VK4597BVQ2CGJ80",
+      id: "heal-observation-reuse-by-subject",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: fields(
+        headline: "Heal observes its source closure once per identified subject and carries the observation",
+        boundary: "One heal run computes the stage0 source closure several times: the scope child, the checkpoint-subject child and every generation's corpus load. Share one file observation with correctly identified views, each naming its source snapshot, roots and discovery population, parser and resolver semantics, configuration, and the relation it supplies. The dag+src/v2 versus src/v1+dag shared-index refusal is a real subject mismatch and stays a refusal. Carry compact identities, edges and digests across processes, never a resident previous generation.",
+        displaced_cost: "About 3.5 minutes for the checkpoint subject and about 3.5 minutes per generation re-deriving a closure an earlier step of the same run already observed.",
+        first_slice: "State the observation identity and its validity contract, then carry it from the checkpoint subject to generation 0.",
+        red_control: "A reused observation under a changed root set, resolver identity or source snapshot is invalidated and re-observed; a generation whose generator changes parsing or name resolution invalidates the views it computed; an observation offered for a different pool refuses; the slot's memory peak does not rise.",
+        out_of_scope: "The cheaper relation itself (heal-scope-relation-without-typecheck); bootstrap-executable reuse.",
+        handback: "The invalidation control outputs, before/after phase times and peak memory from one affected heal run, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "One observation per subject, reused only while its identity holds, is the demand engine's reuse rule applied to heal's own inputs."),
+    ),
+    roadmap_node(
+      identity: "rn_R4QMB048BX168JHDZZXXV355HW",
+      id: "heal-bootstrap-seed-reuse",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: fields(
+        headline: "Heal reuses the base-policy bootstrap executable under its complete build identity",
+        boundary: "Round 1 builds the seed from the base commit's whole src/v1/stage0 crate on every affected heal run, and pull requests on one base build the same artifact. Reuse a valid artifact, or build that same artifact on a miss: a miss changes how it is obtained, never which bootstrap policy runs. Its identity is every effective build input (restored base crate, kept head-added paths, manifests and lockfile, toolchain, target, profile, flags, relevant environment), through the existing materialization identity (std.materialization_provider request_key, std.computation_identity), not a new cache key.",
+        displaced_cost: "4 to 5.5 minutes of identical cargo build per affected heal run on a shared base.",
+        first_slice: "Write the bootstrap artifact's identity from the existing materialization authority and show that two heal runs on one base derive the same identity and different bases derive different ones.",
+        red_control: "A changed toolchain, lockfile, build flag or head-added path under stage0 invalidates the reuse and rebuilds; a reused artifact whose digest disagrees with its recorded identity refuses; the base-start policy is unchanged on a hit and on a miss.",
+        out_of_scope: "Changing where generation 0 starts (the base-start ruling stands). A store that needs a new CI job or a raised budget is not admitted here and goes to the operator first.",
+        handback: "The identity derivation, the invalidation control outputs, two heal runs on one base with the second reusing, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "A build product reused under its derived identity is the materialization ladder's provider step, admitted only once the identity is complete."),
+    ),
+    roadmap_node(
+      identity: "rn_23V8SF4BCP22Y499DQE08TZCAE",
+      id: "heal-terminal-emission-elision",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v2/workflow/regen_convergence_transaction.dag"),
+      line: ticket(t: fields(
+        headline: "Heal's convergence skips a terminal emission only when the next emitting computation is established to be unchanged",
+        boundary: "A stopping rule inside the existing planner (v2.workflow.regen_convergence_transaction regen_plan_next_stage), keeping its compatibility and stage-admission rules. Compare the executable that would perform the next emission, after all required installations and builds, with the executable that produced the retained candidate, and validate that candidate's complete emission inputs and result binding at the same boundary; only when both hold is the next emission skipped. Correct mirrors on disk are not evidence about the producing executable. Skipping an emission never skips an undischarged build or publication obligation. The first identity is the executable's own.",
+        displaced_cost: "An affected round pays a final confirming generation (about 15 minutes) whose answer an earlier fact already established; heal run 44976008640 is the specimen to read, not a proof that its passes were redundant.",
+        first_slice: "The discriminating pair below as planner-level controls, then the stopping rule.",
+        red_control: "Positive: the next producer and the complete emission inputs are unchanged, so no further emission runs. Negative: the head's mirrors are correct on disk but the candidate came from the older base-built producer, so the round must advance. A terminal stage whose final candidate has not been built still builds.",
+        out_of_scope: "A semantic-equivalence classifier for producers; caching, scoping and the bootstrap policy. It does not depend on heal-bootstrap-seed-reuse or heal-observation-reuse-by-subject.",
+        handback: "The pair's outputs, one affected heal run's receipt showing the elided generation and the build still performed, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "Not recomputing a result whose producer and inputs are unchanged is the demand engine's first question, asked of heal's own fixed-point loop."),
+    ),
     roadmap_node(
       identity: "rn_CFZ5DNH7FEND59ZAXKRZS55XAR",
       id: "convergence-coverage",
@@ -6301,6 +6443,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "factory", parent: "factory-dogfood-route"),
     edge(child: "factory", parent: "work-exec-6-one-ledger-per-host"),
     edge(child: "factory", parent: "serve-held-open-response"),
+    // ---- heal's regeneration round (gunbc.plans.read_set_convergence): only the real prerequisites. A no-op needs
+    // the artifacts' validity; the P7 milestone needs the cheap relation, the population rule and the early no-op.
+    edge(child: "heal-noop-before-regenerator-build", parent: "heal-seed-build-artifacts-scoped"),
+    edge(child: "heal-planning-only-in-a-minute", parent: "heal-noop-before-regenerator-build"),
+    edge(child: "heal-planning-only-in-a-minute", parent: "heal-scope-relation-without-typecheck"),
+    edge(child: "heal-planning-only-in-a-minute", parent: "heal-scope-population-evidence"),
     edge(child: "fabric-worker-event-log", parent: "factory-dogfood-route"),
     edge(child: "external-specimen-compiles", parent: "universe-ingest-replaces-file-acquisition"),
     edge(child: "external-specimen-compiles", parent: "one-declaration-identity-carrier"),
