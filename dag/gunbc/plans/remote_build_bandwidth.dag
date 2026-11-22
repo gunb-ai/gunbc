@@ -3,7 +3,7 @@ module gunbc.plans.remote_build_bandwidth
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
-import gunbc.markdown_helpers { h2, p, li, ul, ol, quote }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
 
 fn remote_build_bandwidth_body() -> List<MarkdownBlock> {
   [
@@ -42,15 +42,7 @@ fn remote_build_bandwidth_body() -> List<MarkdownBlock> {
       li(text: "**A question the bridge's evidence now bears on.** work-exec-1 selects a placement backend by spike (k3s with Kueue first, else Nomad, else gunbc's own allocator). The bridge has since served a compile through gunbc's own seat ledger and fabric event log; whether that changes which candidate the spike tries first is the operator's call, not this plan's."),
       li(text: "**Shadow evidence feeds work-exec-5 by text, not by edge.** work-exec-5's first slice is a shadow job on every pull request, which is what the hosted-runner shadow gate is; the ruling keeps dissolution out of the edge set, so the link is stated here and in the nodes' text only."),
     ]),
-    h2(text: "4. Layers"),
-    p(text: "The dependency reading the bindings carry. Layer 0 is bandwidth on the hosts already prepared; layer 1 types the request and the answer against fabric and admits hosts that need that typing; layer 2 is the bridge's own first slice, the plan's terminal."),
-    ol(items: [
-      li(text: "**Layer 0:** the first served build on srv4 and srv3; a typed record of every probe and leg failure; a modelled read route for a served attempt's host log; stale-seat recovery in the serving converge (returns srv1); butch's admission; the shadow gate green at main."),
-      li(text: "**Layer 0, on the critical path:** the gate label passes when served remotely, diagnosed from the host log rather than guessed."),
-      li(text: "**Layer 1:** the request carries ExecutionRequirements and placement checks the executor class; the answer is a fabric Receipt; per-claim verdicts on that receipt; ken's native-architecture admission (needs the requirements check); bobo's admission (after its first-boot handoff); the warm target cache through the materialization ladder."),
-      li(text: "**Layer 2 (terminal):** remote-build-ci-bridge, the required check's label served remotely under a measured reservation."),
-    ]),
-    h2(text: "5. Open questions for the operator"),
+    h2(text: "4. Open questions for the operator"),
     ul(items: [
       li(text: "The work-exec-4 versus bridge ordering in section 3."),
       li(text: "Which placement candidate work-exec-1 tries first, given section 3."),
