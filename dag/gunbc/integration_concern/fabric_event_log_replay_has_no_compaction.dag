@@ -1,0 +1,49 @@
+module gunbc.integration_concern.fabric_event_log_replay_has_no_compaction
+
+// One row of the integration-concern register. The roster derives the row from this file (module
+// gunbc.integration_concern.roster); there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Present }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+// A HOST'S SEAT LEDGER REPLAYS ITS WHOLE EVENT HISTORY UNDER A FIXED READ BUDGET, AND NOTHING COMPACTS IT. Recorded 2026-11-22 by the remote-build planning audit (#gunbc.plans.remote_build_bandwidth::remote_build_bandwidth_plan).
+data fabric_event_log_replay_has_no_compaction: IntegrationConcern = IntegrationConcern {
+  identity: "fabric_event_log_replay_has_no_compaction",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
+    requirement: "a host's seat ledger stays admissible however many reservations it has served: active holds, fences and release obligations are recoverable from a snapshot or compacted state, so the read budget bounds the work of one replay rather than the host's lifetime of builds",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_partition_read_budget") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
+    tail: [decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_release")],
+  },
+  question: "Where does the fabric event log keep a snapshot or compacted state of a partition (active holds, fences, release obligations) so that acquisition and release stop replaying the full history under compute_partition_read_budget?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8ac28255d5359317fcfb2bbc2bb0f789f0c727bf",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_partition_read_budget") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire") }, CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_release") }],
+      },
+      account: "Read at this revision, not measured live: compute_partition_read_budget is 4096; fabric_seat_acquire and fabric_seat_release both replay the partition's event history and refuse when that read budget is exhausted, and no compaction was found on the inspected path. A completed reservation contributes an acquire and a release event and a build can make several, so this is an eventual availability boundary, not a build count; the current depth on srv3 and srv4 is unknown and is read by the roadmap node remote-build-ledger-headroom-and-workload-samples.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire"),
+        control: Present { value: decl_ref(module_path: "gunbc.fabric.fabric_event_log", decl_name: "fabric_seat_acquire") },
+        statement: "a compacted state keeps every active hold, fence and release obligation, and a replay that cannot establish them still refuses rather than admitting",
+      },
+    ],
+    next: climbs_when(capability: "the fabric event log reads a partition from a snapshot or compacted state that preserves active holds, fences and release obligations; this row then closes as integrated"),
+  },
+}
