@@ -127,6 +127,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut regen_emission_scope_carried = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
+    let mut adjudicate_measurement_receipt_path: Option<String> = None;
+    let mut measurement_receipt_path: Option<String> = None;
+    let mut measurement_unreached_receipt_path: Option<String> = None;
+    let mut measurement_unreached_cause: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -265,6 +269,26 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(2));
                 }
             }
+            "--adjudicate-measurement-receipt" => {
+                i += 1;
+                adjudicate_measurement_receipt_path =
+                    Some(require_value(&args, i, "--adjudicate-measurement-receipt")?);
+            }
+            "--measurement-receipt" => {
+                i += 1;
+                measurement_receipt_path =
+                    Some(require_value(&args, i, "--measurement-receipt")?);
+            }
+            "--measurement-unreached-receipt" => {
+                i += 1;
+                measurement_unreached_receipt_path =
+                    Some(require_value(&args, i, "--measurement-unreached-receipt")?);
+            }
+            "--measurement-unreached-cause" => {
+                i += 1;
+                measurement_unreached_cause =
+                    Some(require_value(&args, i, "--measurement-unreached-cause")?);
+            }
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -376,6 +400,51 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
+    if let Some(receipt_path) = &measurement_unreached_receipt_path {
+        let cause = match &measurement_unreached_cause {
+            Some(c) => c.clone(),
+            None => {
+                eprintln!(
+                    "claim_executor: --measurement-unreached-receipt requires --measurement-unreached-cause"
+                );
+                return Err(ExitCode::from(2));
+            }
+        };
+        let receipt = v1_compiler::cli_run::required_ci_measurement::
+            RequiredCiMeasurementReceipt::MeasurementUnreached {
+                cause,
+            };
+        if let Err(e) = v1_compiler::cli_run::required_ci_measurement::
+            write_required_ci_measurement_receipt(receipt_path, receipt)
+        {
+            eprintln!("claim_executor --measurement-unreached-receipt: {e}");
+            return Err(ExitCode::from(1));
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    if let Some(receipt_path) = &adjudicate_measurement_receipt_path {
+        let admission =
+            v1_compiler::cli_run::required_ci_measurement::adjudicate_required_ci_measurement_receipt_file(
+                receipt_path,
+            );
+        for line in admission.diagnostics() {
+            eprintln!("{line}");
+        }
+        return if admission.is_admitted() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
+    }
+
+    if measurement_receipt_path.is_some() && !required_admitted_set_mode {
+        eprintln!(
+            "claim_executor: --measurement-receipt is only valid with --required-ci"
+        );
+        return Err(ExitCode::from(2));
+    }
+
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
@@ -385,9 +454,32 @@ fn run() -> Result<ExitCode, ExitCode> {
     // (`source_root_ingest_module_identities_for_ci`). Read-only. Refusal of the ingestion is rc 1
     // with the cause, never rc 2 -- rc 2 is reserved for arguments this binary does not parse.
     if required_admitted_set_mode {
-        return match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(
+        let result = v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(
             &source_roots,
-        ) {
+        );
+        if let Some(ref path) = measurement_receipt_path {
+            let receipt = match &result {
+                Ok(_) => v1_compiler::cli_run::required_ci_measurement::
+                    completed_required_ci_measurement_receipt(Vec::new()),
+                Err(ref cause) => {
+                    v1_compiler::cli_run::required_ci_measurement::
+                        completed_required_ci_measurement_receipt(vec![
+                            v1_compiler::cli_run::required_ci_measurement::RequiredCiBlocker {
+                                phase: "required-ci".to_string(),
+                                identity: "source-root-ingest".to_string(),
+                                cause: cause.to_string(),
+                            },
+                        ])
+                }
+            };
+            if let Err(e) = v1_compiler::cli_run::required_ci_measurement::
+                write_required_ci_measurement_receipt(path, receipt)
+            {
+                eprintln!("claim_executor --required-ci: {e}");
+                return Err(ExitCode::from(1));
+            }
+        }
+        return match result {
             Ok(identities) => {
                 for identity in &identities {
                     println!("admitted-module-identities: {identity}");
