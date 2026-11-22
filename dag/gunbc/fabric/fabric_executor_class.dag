@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_executor_class
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
 import product.fabric.work {
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, capacity_class_eq, capacity_class_wire,
@@ -8,6 +9,7 @@ import product.fabric.work {
 import gunbc.runner.runner_slot_allocation { identity_is_workspace_execution_member }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import product.host_identity { HostIdentity, host_identity_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 
@@ -154,6 +156,7 @@ fn capacity_admission_wire(admission: CapacityClassAdmission) -> NonEmptyStr {
 type ExecutorExecutionClass {
   host: HostIdentity
   architecture: Architecture
+  standing: ExecutionClassStanding
 }
 
 // THE FLEET'S EXECUTION CLASSES FOR THE HOSTS THE FLEET RUNS SHARED-OS. Each row cites its own
@@ -169,17 +172,19 @@ type ExecutorExecutionClass {
 //   authored now rather than when it rejoins: srv1 left the dispatch roster (remote_build_serving_hosts)
 //   and is returning as soon as its stale-seat proof reads back, and a host with no row here is refused
 //   as unclassified the moment it is placed on.
-// - srv3: EXPECTED, CORROBORATED BY AN arm64-ONLY INSTALL ROUTE.
-//   gunbc.fleet.fleet_physical_inventory::fleet_processor_expectations names
-//   extdeps.cpu.ampere::altra_max_m12830_catalog for it, whose own architecture field is the cited Ampere
-//   Altra Max fact; and gunbc.runner.runner_host_deploy::runner_host_gpu_container_toolchain_rows puts
-//   srv3 on extdeps.container.docker_ce::docker_ce_apt_repo_noble_arm64, the arm64 pocket of a repository
-//   whose packages do not exist for x86 -- measured on the host 2026-10-25.
-// - srv4: EXPECTED, SAME AUTHORITY. The same processor-expectation row names the same Altra Max catalog
-//   row; its in-band SMBIOS read (artifacts/host-observations/srv4-inband-smbios-2026-11-11/) confirms the
-//   machine is the board we bind it to. No arm64-only install route is on file for srv4 -- its
-//   gpu-container toolchain row is GpuContainerToolchainUnmeasured -- so its row rests on the expectation
-//   alone, which is the weakest citation here and is marked as such rather than dressed up.
+// - srv3, srv4: OBSERVED BY THE SERVING ROUTE ITSELF. Each host settled the executor's uploaded serve
+//   binary, and gunbc.compute.remote_build_serving_converge::converge_install_binary installs an uploaded
+//   binary ONLY when the arch read on the host equals the executor's -- on disagreement it leaves the
+//   write unhandled rather than installing. An installed, serving arm64 binary is therefore a reading of
+//   what the host executes, not an assumption: srv1, srv3 and srv4 were each converged from their own
+//   executor lane with host = the machine served (runs 44656574939, 44660458690, 44658646391, recorded at
+//   gunbc.compute.remote_build_serving_converge::remote_build_serving_converge_ci_wet), and srv4 served a
+//   compile on 2026-11-21. Corroborating, and no longer load-bearing: the
+//   gunbc.fleet.fleet_physical_inventory::fleet_processor_expectations rows naming
+//   extdeps.cpu.ampere::altra_max_m12830_catalog, and for srv3 the
+//   gunbc.runner.runner_host_deploy::runner_host_gpu_container_toolchain_rows row putting it on
+//   extdeps.container.docker_ce::docker_ce_apt_repo_noble_arm64 -- the arm64 pocket of a repository with
+//   no x86 packages, measured on the host 2026-10-25.
 // - host-e2d4b7 (ken): gunbc.machine_intake::h11ssl_x86_bringup_frontier -- the fleet's one Supermicro
 //   H11SSL unit, admitted through the x86_64 UEFI spellings of extdeps.toolchain.types::Architecture;
 //   the same fact gunbc.integration_concern.fleet_converge_arm64_label_blocks_x86_executor_host and
@@ -198,12 +203,58 @@ type ExecutorExecutionClass {
 //
 // No host is added without a citation, and no citation is dressed above what it is.
 data executor_execution_class_roster: List<ExecutorExecutionClass> = [
-  ExecutorExecutionClass { host: operator_host_srv1, architecture: Aarch64 },
-  ExecutorExecutionClass { host: operator_host_srv2, architecture: Aarch64 },
-  ExecutorExecutionClass { host: operator_host_srv3, architecture: Aarch64 },
-  ExecutorExecutionClass { host: operator_host_srv4, architecture: Aarch64 },
-  ExecutorExecutionClass { host: operator_host_e2d4b7, architecture: X86_64 },
+  ExecutorExecutionClass {
+    host: operator_host_srv1,
+    architecture: Aarch64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.fleet.gpu_interconnect_observation", decl_name: "gpu_interconnect_observation"),
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_srv2,
+    architecture: Aarch64,
+    standing: ExecutionClassExpected {
+      catalog: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_max_m12830_catalog"),
+      what_would_ground_it: "a dmidecode -t processor receipt on srv2 naming the Altra Max, or the arm64-only docker-ce pocket route srv3 already has",
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_srv3,
+    architecture: Aarch64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"),
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_srv4,
+    architecture: Aarch64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"),
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_e2d4b7,
+    architecture: X86_64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.machine_intake.h11ssl_x86_bringup_frontier", decl_name: "h11ssl_x86_bringup_frontier"),
+    },
+  },
 ]
+
+// HOW THE ROW KNOWS WHAT IT SAYS. Placement consumes these rows as a hard fact, so the standing of the
+// evidence belongs IN THE ROW and not only in its comment: a comment cannot be checked, and a row that
+// reads the same whether it rests on a reading of the silicon or on a modeled intent is a row that can be
+// weakened in review without anything changing under it. The shape follows
+// extdeps.external_authority::CitedFigureStanding -- cited, or observed by a receipt, or transcribed with
+// the obligation to ground it spelled out.
+//
+// STANDING IS HONESTY, NOT POLICY: admit_execution_class does NOT read it, and no row is refused for
+// being Expected. Refusing on standing would turn "we have not read this host's processor" into an outage
+// on hosts that are demonstrably running the work, which is the wrong direction for an epistemic field.
+// What it is for is the reader, and the claim that the fleet's placed-upon hosts are all Observed.
+type ExecutionClassStanding
+  = ExecutionClassObserved { evidence: DeclarationRef }
+  | ExecutionClassExpected { catalog: DeclarationRef, what_would_ground_it: NonEmptyStr }
 
 // WHAT A HOST EXECUTES, AS A TYPE THAT CANNOT SAY "UNKNOWN" BY ACCIDENT.
 type HostArchitecture
@@ -253,9 +304,9 @@ type ExecutionClassAdmission
       required: Architecture,
       host_arch: Architecture,
     }
-  | ExecutionClassUnclassified { host: HostIdentity, required: Architecture }
+  | ExecutionClassUnclassified { host: HostIdentity, required: Architecture? }
 
-fn execution_class_required_architecture(requirements: ExecutionRequirements) -> Architecture? {
+fn execution_class_required_architecture(requirements: ExecutionRequirements) -> Optional<Architecture> {
   match requirements.shape.envelope.cpu {
     Present { value: cpu } => cpu.architecture
     Absent => Absent
@@ -295,13 +346,13 @@ fn admit_execution_class(
 // THE LEDGER LINE. Rendered, never compared: the diagnostics name is what
 // extdeps.toolchain.types::architecture_diagnostic_name is for, and this is the only place it is
 // reached from this module's decision path.
-fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> NonEmptyStr {
+fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> String {
   match admission {
     ExecutionClassAdmitted { host: h, host_arch: a } =>
       concat(
         concat(concat("admitted ", h as String), " executes "),
         architecture_diagnostic_name(arch: a) as String,
-      ) as NonEmptyStr
+      )
     ExecutionClassArchitectureRefused { host: h, required: r, host_arch: a } =>
       concat(
         concat(
@@ -309,7 +360,7 @@ fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> NonEmpt
           architecture_diagnostic_name(arch: r) as String,
         ),
         concat(", host executes ", architecture_diagnostic_name(arch: a) as String),
-      ) as NonEmptyStr
+      )
     ExecutionClassUnclassified { host: h, required: r } =>
       match r {
         Present { value: required } =>
@@ -319,9 +370,9 @@ fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> NonEmpt
               architecture_diagnostic_name(arch: required) as String,
             ),
             " and the host is unclassified",
-          ) as NonEmptyStr
+          )
         Absent =>
-          concat(concat("refused ", h as String), ": no fleet execution class for this host") as NonEmptyStr
+          concat(concat("refused ", h as String), ": no fleet execution class for this host")
       }
   }
 }

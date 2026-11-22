@@ -22,6 +22,11 @@ import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.list { first_duplicate_by_key, first_where, list_member }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+// RB-M3: ServingPlanInput.executor_arch is now an Architecture (projected from uname -m by the producer).
+// Witnesses construct the variant directly from the upstream enum module; target_arch stays a String
+// spelling (it models the raw `uname -m` read), and its value must agree with the host's authored row or
+// serving_assess's host.arch consistency check fires.
+import extdeps.toolchain.types { Aarch64, Riscv64 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
@@ -74,7 +79,7 @@ fn pin_sha() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 fn pin_rev() -> String { "0123456789abcdef0123456789abcdef01234567" }
 fn pin_arch() -> String { "aarch64" }
 fn pin_ok() -> ServingPlanInput {
-  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: pin_arch(), local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: Aarch64, local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
 }
 fn matched_ledger(d: RemoteBuildServingDesired) -> List<ServingLedgerRowObserved> {
   map(d.ledger_dirs, t => ServingLedgerRowObserved {
@@ -471,7 +476,7 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let pin = ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: "riscv64", local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+      let pin = ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: Riscv64, local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
       let o = serving_observed_from_reads(
         elevation: est_elevation(), account_name: d.account_name, passwd: est_s(""), group: est_s("root:x:0:\n"), authorized_keys: est_s(""),
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),

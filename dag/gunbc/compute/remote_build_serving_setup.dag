@@ -1340,7 +1340,21 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       )
       let pin_deviations = concat(
         concat(
-          serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256),
+          // RB-M3 native settle: a host whose authored architecture DIFFERS from the executor's can never
+          // carry the pool binary, so its serve-binary sha must never be demanded to equal the pool pin
+          // (pin.local_binary_sha256) -- that comparison would fire forever and rebuild the host endlessly.
+          // Such a host settles instead on: the checkout pinned at the dispatched revision (below), the
+          // identity sidecar matching the binary the host actually runs (host-relative, judged in
+          // serving_serve_identity_deviation), and the binary being present (the seed deviation). An upload
+          // host (row arch == executor arch) and an unauthored host (Unclassified, whose plan step refuses
+          // it upstream) both keep the pin-sha comparison exactly as before. Same match shape as host.arch.
+          match executor_host_architecture(host: d.host) {
+            HostArchitectureUnclassified { host: _ } => serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
+            HostArchitectureKnown { host: _, arch: row_arch } => match row_arch == pin.executor_arch {
+              true => serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
+              false => []
+            }
+          },
           serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
         ),
         // RB-M3: the on-host `uname -m` is a CONSISTENCY CHECK only, projected to Architecture with the

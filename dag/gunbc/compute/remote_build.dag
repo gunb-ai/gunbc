@@ -201,7 +201,7 @@ fn remote_build_execution_requirements(architecture: Architecture?) -> Execution
     shape: Shape {
       hard: HardRequirements { threads: hardware_thread_count(count: 1) },
       envelope: ResourceEnvelope {
-        cpu: Present { value: CpuRequirement { architecture: architecture, model_number: Absent } },
+        cpu: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: 1), architecture: architecture } },
         gpu: none,
         memory: none,
         storage: none,
@@ -698,14 +698,19 @@ fn remote_build_host_placement(
   requirements: ExecutionRequirements,
   classes: List<ExecutorExecutionClass>,
   host: HostIdentity,
-) -> RemoteBuildHostAnswer? {
-  match admit_execution_class(requirements: requirements, roster: classes, host: host) {
-    ExecutionClassAdmitted { host: _, host_arch: _ } => none
-    refused =>
+) -> Optional<RemoteBuildHostAnswer> {
+  let admission = admit_execution_class(requirements: requirements, roster: classes, host: host)
+  match admission {
+    // The host executes what the work needs; nothing to say about it, and the walk proceeds as it
+    // always has -- this function adds a refusal, never a permission the roster did not already give.
+    ExecutionClassAdmitted { host: _, host_arch: _ } => Absent
+    // The verdict is carried, not paraphrased: the answer holds fabric's own admission and the ledger
+    // line rendered FROM it, so the walk cannot restate the reason into something softer.
+    _ =>
       Present {
         value: HostExecutionClassRefused {
-          admission: refused,
-          detail: execution_class_admission_wire(admission: refused) as String,
+          admission: admission,
+          detail: execution_class_admission_wire(admission: admission),
         },
       }
   }
