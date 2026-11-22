@@ -1,7 +1,7 @@
 module test.claim.eval_model_probe
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.logic { Bool }
 import std.types { Int }
 

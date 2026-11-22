@@ -27,7 +27,7 @@ module test.claim.approve_ios_vectors_envelope_witness
 
 import std.types { Bool, String, List }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.auth.approval_device_redemption_fixtures { envelope_vectors_fixed }
 import gunbc.approve_ios_swift_protocol_vector_tests { expected_approve_ios_protocol_vector_tests_swift }

@@ -1,4 +1,5 @@
 module test.claim.filesystem_write_witness
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 import v2.extdeps.file_system { Filesystem }
 
