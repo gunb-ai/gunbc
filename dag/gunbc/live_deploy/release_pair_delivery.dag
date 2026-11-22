@@ -58,7 +58,7 @@ import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
 
 // THE OBSERVED OUTCOME OF THE FETCH STAGE. Produced ONLY by running the fetch argv; downstream stages consume this
 // observation and never a free boolean. PackAbsent is a REFUSAL, never "not built yet": the fetch runs only after a
-// SUCCESSFUL run was found (RunLookupNoneForHead already returns the benign wait upstream), so an absent pack means
+// SUCCESSFUL run was found (RunLookupNoBuiltAncestor already returns the benign wait upstream), so an absent pack means
 // the download was refused (expired gh auth, network) or the digest was unreadable (full disk) — reason names which.
 // install_plan maps every fold refusal to PlanKeepsLastGood (red); there is no benign pack-absent arm (review 96234).
 // PackPresent carries the pack's OBSERVED digest, the directory it landed in, and the path of the file it produced.
@@ -298,7 +298,7 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
         revision: rev,
       }
     // EVERY PairRefused is a REFUSAL (red) — there is no benign arm here. A head whose release bins are simply NOT
-    // BUILT YET never reaches install_plan: the entry short-circuits it upstream as RunLookupNoneForHead (a benign
+    // BUILT YET never reaches install_plan: the entry short-circuits it upstream as RunLookupNoBuiltAncestor (a benign
     // PlanWaits), so install_plan is reached only after a SUCCESSFUL run was FOUND. A fold refusal past that point
     // means either an absent pack from a refused download / unreadable digest (expired gh auth, full disk) or a
     // present pack the fold refused (unverified digest, source/binary drift, missing member) — all real defects that
