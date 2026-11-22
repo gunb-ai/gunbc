@@ -6086,7 +6086,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Both rosters admit only hosts whose current read agrees with the model, saying which arm diverges; each of the five arms has an owner and a witness; the enrolled-key roster is closed over every host in either roster; and drift is refused rather than discovered."
       )),
       dispatch: dispatchable(),
-      parent: admitted_root(),
+      parent: in_project(project: "gunbc-project-root", contribution: "A fleet whose repository says things about each host without ever reading that host is a fleet that finds out by collision. Joining what is claimed to what is read, and refusing where they diverge, is what makes admitting a host to the build or serving roster a claim anyone can stand behind."),
       centering: plan(text: "desired_state_follows_the_machine_plan: the model names what each host runs and nothing reads the machine, so desired state and the machine drift on three axes and every drift is found by collision. Target: the plan carrier, whose done-when is written as one consumer refusing rather than as four hosts repaired."),
     ),
     roadmap_node(
