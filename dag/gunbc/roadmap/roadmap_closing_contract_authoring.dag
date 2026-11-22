@@ -45,6 +45,9 @@ import gunbc.roadmap.roadmap_validation_oracle {
   validation_oracle_first_incomplete,
 }
 import extdeps.rust.cargo { cargo_default_release_dir_rel }
+import std.process { ExitFailure, ExitSuccess, ProcessExit }
+import extdeps.process.gnu_bash_exit { exit_code_misuse }
+import extdeps.process.posix_exit { exit_code_general_error }
 import gunbc.instruments.host_prelude {
   ClaimOperand,
   ClaimOperandUnnameable,
@@ -103,9 +106,12 @@ import gunbc.instruments.host_prelude {
 // toplevel of the checkout this predicate itself runs in (belt verify's detached attempt worktree,
 // or the operator's own checkout by hand), with the contract's own claim_source_root_args, so the
 // executed witness is the same tree the pin observed. WET STANDING: the execution arm spawns a
-// subprocess, so closing_contract_authored is claim-runnable only where the interpreter admits real
-// host effects -- belt verify and `gunbc run --claim-run` by hand, never the hermetic discovery
-// batch; the behavioral discrimination witnesses for this arm are enrolled as a wet row in
+// subprocess, so the driver runs only where the interpreter admits real host effects. An ordinary
+// `gunbc run` is Wet (gunbc.std.execution_mode execution_mode_for(None, false, dry_run)), which is what a
+// driver needs; the legacy `--claim-run` spelling this validation carried selected HERMETIC instead, so the
+// child this driver spawns was refused by its own envelope -- the move to the process entry (closing_contract_authoring_exit)
+// is also the move from a mode that could not run to the mode that can. Never the hermetic discovery batch;
+// the behavioral discrimination witnesses for this arm are enrolled as a wet row in
 // gunbc.ci.ci_layer_roots beside the other exit-status witnesses.
 
 type ClosingContractAuthoringVerdict
@@ -594,6 +600,35 @@ fn closing_contract_execution_detail_for(target: String, runner: String = "") ->
   closing_contract_execution_verdict_detail(
     verdict: closing_contract_execution_verdict(target: target, runner: runner),
   )
+}
+
+// THE DRIVER ANSWERS THE WAY A PROGRAM ANSWERS. `closing_contract_execution_verdict` executes the
+// contract's bound witnesses as children (`closing_contract_execute_oracle`): that makes it a driver, and a
+// caller that spawns a driver consumes an EXIT CODE, not a rendered Bool. The codes are the ones the surviving
+// claim route already uses for the same three situations -- `0` for the outcome, `1` for a definite refusal
+// (did-not-hold), and `gunbc.extdeps.process.gnu_bash_exit` `exit_code_misuse` (2) for not-observed, the value
+// the route itself terminates with when a known claim could not be reached. A caller that reads the result of
+// this driver and of the route is therefore reading ONE vocabulary, and a runner that cannot be resolved is
+// reported as "nothing was observed" rather than as a failure of the contract.
+//
+// ONE VERDICT, NOT TWO CLASSIFIERS: the Bool predicate `closing_contract_authored` below stays the witness's
+// spelling and is defined over the same verdict; this entry adds a projection of that verdict, never a second
+// decision about what authoring means.
+fn closing_contract_authoring_exit(
+  target: String,
+  runner: String = "",
+) -> ProcessExit {
+  let verdict = closing_contract_execution_verdict(target: target, runner: runner)
+  let detail = closing_contract_execution_verdict_detail(verdict: verdict)
+  match verdict {
+    ClosingContractExecutionAuthored { target: _ } => ExitSuccess
+    ClosingContractExecutionTextuallyRefused { verdict: _ } =>
+      ExitFailure { code: exit_code_general_error, reason: detail }
+    ClosingContractExecutionWitnessRefused { target: _, blocking: _ } =>
+      ExitFailure { code: exit_code_general_error, reason: detail }
+    ClosingContractExecutionRunnerUnavailable { target: _, detail: _ } =>
+      ExitFailure { code: exit_code_misuse, reason: detail }
+  }
 }
 
 fn closing_contract_authored(target: String, runner: String = "") -> Bool {

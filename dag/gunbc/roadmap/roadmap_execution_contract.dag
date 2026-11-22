@@ -359,7 +359,11 @@ fn gunbc_claims_execution_contract(
 
 data closing_contract_authoring_entry: FilePath = "dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag" as FilePath
 
-data closing_contract_authoring_function: NonEmptyStr = "closing_contract_authored" as NonEmptyStr
+// THE ENTRY THE VALIDATION SPAWNS IS THE DRIVER'S PROCESS ENTRY, not the Bool predicate. A validation is
+// executed by a host that reads an exit code, and `closing_contract_authoring_exit` gives the verdict the
+// process result the host can consume -- 0 authored, 1 refused, 2 not observed (the same rule as the claim
+// route's termination). The predicate itself stays where its witness uses it.
+data closing_contract_authoring_function: NonEmptyStr = "closing_contract_authoring_exit" as NonEmptyStr
 
 fn closing_contract_authoring_contract(
   target: NonEmptyStr,
@@ -573,7 +577,6 @@ fn validation_operation_command(
                 "--function", closing_contract_authoring_function as String,
                 "--arg", join(["target=", target as String], ""),
                 "--arg", join(["runner=", realization.executable as String], ""),
-                "--claim-run",
               ],
             ),
           } }
