@@ -65,7 +65,7 @@ import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   DeliveryPlan, PlanKeepsLastGood, PlanToInstall, PlanWaits,
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
-  release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
+  release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop, release_pair_already_at_head_reason,
   ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
   release_pair_occupied_link_benign,
   SourceReceiptWrite,
@@ -335,13 +335,6 @@ fn release_pair_decode_build_job(outcome: ProcessOutcome) -> ReleasePairBuildJob
   }
 }
 
-// Whether the serving pair is already bound to this revision (the after-selection no-op).
-fn release_pair_serving_is(serving: ReleaseRevisionBinding, revision: NonEmptyStr) -> Bool {
-  match serving {
-    RevisionBoundAtEmission { revision: r } => (r as String) == (revision as String)
-    RevisionNotInstalled => false
-  }
-}
 
 // THE DIGEST BINDING: the observed `sha256sum` line's first field, admitted only as a valid lower_hex_64 through
 // extdeps.crypto.hash::sha256sum_line_digest (the same parser the belt's member_observe uses — never re-parsed here);
@@ -441,7 +434,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
       // means the head is new (or the tree is not installed), so the entry proceeds to discovery and the fetch. The
       // fold still checks source/binary drift on the ticks that DO fetch, so short-circuiting a healthy pair cannot
       // mask a real mismatch.
-      match release_pair_converged_noop(serving: serving, head: main_head) {
+      match release_pair_converged_noop(serving: serving, head: main_head, reason: release_pair_already_at_head_reason) {
         Present { value: noop } => noop
         none => {
       let ancestry_outcome = run_shell_command_capture(
@@ -464,9 +457,9 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
         // Nothing built inside the window yet is a BENIGN WAIT (review 96214), not a refusal: keep serving, retry.
         RunLookupNoBuiltAncestor => PlanWaits { kept: serving, reason: release_pair_no_built_ancestor_reason }
         RunLookupFound { run } =>
-          if release_pair_serving_is(serving: serving, revision: run.head_sha) {
-            PlanWaits { kept: serving, reason: release_pair_at_newest_built_ancestor_reason }
-          } else {
+          match release_pair_converged_noop(serving: serving, head: run.head_sha, reason: release_pair_at_newest_built_ancestor_reason) {
+            Present { value: noop } => noop
+            none => {
           match release_pair_decode_build_job(
             outcome: run_shell_command_capture(
               command: gh_run_job_conclusion_command(
@@ -630,6 +623,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
           }
             }
           }
+            }
           }
       }
       }

@@ -122,18 +122,19 @@ type DeliveryPlan
   | PlanWaits { kept: ReleaseRevisionBinding, reason: NonEmptyStr }
 
 // THE STEADY-STATE SHORT-CIRCUIT DECISION (review 96219 / 96225), as a PURE route the entry calls BEFORE any fetch.
-// Given the OBSERVED serving binding and the OBSERVED origin/main head: if the serving tree's revision already
-// equals the head, this tick has nothing to deliver — return the benign PlanWaits no-op (carrying the last-good
+// Given the OBSERVED serving binding and a revision this tick could deliver (origin/main's head, or the newest built
+// ancestor the entry selected), with the wait reason that names which: if the serving tree's revision already
+// equals it, this tick has nothing to deliver — return the benign PlanWaits no-op (carrying the last-good
 // binding and the already-at-head reason) so the timer neither re-downloads the same pack nor reds on the existing
 // create-only hard link. Absent means the head is NOT already served (or the tree is not installed at all) and the
 // entry must proceed to run discovery and the fetch. RevisionNotInstalled never short-circuits: the first deploy is
 // never a no-op. Witnessed against the real producer (release_pair_deliver_serving over the serve gate's observed
 // DeployedReleaseBinding) in release_pair_delivery_plan_witness.
-fn release_pair_converged_noop(serving: ReleaseRevisionBinding, head: NonEmptyStr) -> DeliveryPlan? {
+fn release_pair_converged_noop(serving: ReleaseRevisionBinding, head: NonEmptyStr, reason: NonEmptyStr) -> DeliveryPlan? {
   match serving {
     RevisionBoundAtEmission { revision: r } =>
       if (r as String) == (head as String) {
-        Present { value: PlanWaits { kept: serving, reason: release_pair_already_at_head_reason } }
+        Present { value: PlanWaits { kept: serving, reason: reason } }
       } else {
         none
       }
