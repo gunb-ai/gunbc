@@ -451,6 +451,13 @@ data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Nonemptiness is constructed or proved, then consumed. `FreeSemigroup` is used where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by roadmap node `cardinality-vertical-slice`; its Required activation is `extended-admission-cardinality`.",
 }
 
+data lab_tracks_main_lab_dev_retired_2026_11_22: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "lab_tracks_main_lab_dev_retired_2026_11_22"),
+  decided: "2026-11-22",
+  governs: decl_ref(module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "srv1_lab_publication_base_branch"),
+  provenance: "Operator, 2026-11-22, to session neat-badger-614, relayed to session stern-wren-746. The srv1 lab (srv1-lab-codex-feedback-v0, the daily workspace every lane reads and accepts into) still served source from 2026-11-16, so no roadmap node added since was visible; its pair-delivery timer (roadmap node lab-converges-release-pair, PR 16682) had never been installed. Offered option A, bring the lab up to current main through the modelled route keeping its event log, the operator answered, verbatim: \"A is fine but it needs to happen regularly as well\". DECIDED: the lab tracks main on a schedule. CONSEQUENCE: the lab half of gunbc.design_ruling::production_is_main_only_lab_admits_integration is superseded; the lab's admitted and publication branch is main, and bright-moth-475/lab-dev is retired (no commit after 2026-10-31; the session bright-moth-475 no longer exists). INTERPRETATION (neat-badger-614 and stern-wren-746, not the operator's words): that 'regularly' means the pair-delivery timer, and that main replaces lab-dev rather than lab-dev being fast-forwarded. Production's half (main only) is unchanged.",
+}
+
 data production_is_main_only_lab_admits_integration: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration"),
   decided: "2026-10-13",
@@ -1398,6 +1405,7 @@ fn design_rulings() -> List<DesignRuling> {
     operator_delegates_fan_control_to_the_fleet_policy,
     v1_seed_emitted_byte_write_exception,
     production_is_main_only_lab_admits_integration,
+    lab_tracks_main_lab_dev_retired_2026_11_22,
     tailscale_ssh_off_on_fleet_build_hosts_2026_11_20,
     tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20,
     tailscale_acl_ssh_section_residue_2026_11_20,
