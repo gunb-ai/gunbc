@@ -1,0 +1,354 @@
+module gunbc.fleet.fleet_host_truth_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.list { first_where }
+import std.optional { Present, Absent }
+import std.measure { Millisecond, millisecond }
+
+// ONE READ OF A MACHINE, FIVE COMPARES, AND A REFUSAL THAT CANNOT BE MISTAKEN FOR QUIET.
+//
+// THE GAP THIS CLOSES (gunbc.plans.desired_state_follows_the_machine): the repository names what each
+// host runs, and nothing reads the machine, so desired state and the machine drift on three axes --
+// units against hardware, address against identity, caps against working set. Every specimen in the
+// operator's report of 2026-11-21 was found by collision, not by a read: butch's strata-pool@a/b sat
+// enabled over four A2s already gone from PCI; dan's strata-expert-lock pinned GiB for A16s removed a
+// month earlier; butch's .238 held another machine's host key; srv4's expert set fell out of residency
+// under a 40 GiB MemoryHigh and answered 5.1 tok/s with no alarm.
+//
+// THE FRONTIER, NAMED BECAUSE AN UNCONSUMED ENTRY IS ITS OWN DEFECT (gunbc.design_argument::consumption):
+// this entry is consumed by a later change -- the per-host observe-mode leg of the converge route, which
+// the operator put on the existing timer (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21,
+// words: "A is fine"). That mode is NOT in this repository yet and cannot be until the operator answers in
+// their own words the separate question of the budget raise a regenerated converge workflow carries
+// (gunbc.design_ruling::ci_job_budgets_closed_to_growth; the escalation on that raise closed APPROVED on
+// 2026-11-22 by the dashboard's 15-minute default with no operator words, which grants nothing). Until the
+// mode lands, the only consumer of a verdict is a claim, which is exactly what
+// dag/test/claim/fleet/fleet_host_truth_read_witness.dag is for: every arm is reachable on any machine,
+// because every input is supplied.
+//
+// NOTHING HERE READS A HOST. The mode reads the host and supplies observations; this module decides what
+// they mean, which is what makes the reds reachable and is the same split as gunbc.host.memory_envelope.
+// The reads the mode will supply already exist as separate authorities: gunbc.fleet.fleet_physical_inventory
+// and gunbc.fleet.gpu_device_observation for hardware, gunbc.systemctl_show_read for unit state,
+// gunbc.fleet.fleet_host_key_enrollment for the anchor, gunbc.host.host_axis_caps and
+// gunbc.fleet.fleet_converge_plan for the cap that binds a role.
+//
+// THE FAIL-OPEN RULE, which is why the comparison type has arms instead of a Bool: an instrument that
+// cannot read must produce a refusal, not an absence
+// (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent -- the benchmark GPU sampler
+// shelled out to nvidia-smi, threw per-sample on a background thread, and left empty power columns that
+// were then read as "no power data"). An empty population of comparisons is therefore never agreement, a
+// blank projection is never zero, and a read with nothing to compare it to is never a pass.
+//
+// WHAT IS DELIBERATELY NOT AN AXIS: host-level swap. The memory envelope judges swap at the SLOT CGROUP
+// (gunbc.host.memory_envelope::memory_envelope_verdict over memory.swap.current, .peak and .max, with the
+// runner slot declaring a swap maximum of zero), so a host swapfile is not a divergence -- the report's
+// 3.3 was a mis-stated premise, host swap read as cgroup swap (clever-raven-401, 2026-11-21). A reader
+// that wants host swap as an axis must first name the judgment that consults it.
+
+// THE FIVE COMPARES. A row is one host on one axis, so a read that covered three of five is visible as
+// three of five -- which is the difference between this and a boolean flag bolted onto a host record.
+type HostTruthAxis
+  = TruthDeclaredHardwareEnumerates
+  | TruthEnabledUnitHasItsHardware
+  | TruthIdentityAnchoredNotAddressed
+  | TruthCapBindsDeclaredWorkingSet
+  | TruthSlotSwapBackingDeclared
+
+// THE RECOGNITION RULE, per axis, in the report's own words where it had them. These strings are what a
+// refusal says out loud, so a divergence is actionable without opening this file.
+fn host_truth_axis_rule(axis: HostTruthAxis) -> String {
+  match axis {
+    TruthDeclaredHardwareEnumerates => "does the hardware desired state names enumerate on the machine (PCI class count, driver present)"
+    TruthEnabledUnitHasItsHardware => "for each enabled unit, does the hardware that unit depends on enumerate"
+    TruthIdentityAnchoredNotAddressed => "is the host reached by a fleet name gated on its enrolled key fingerprint, and does the key it presents match that anchor"
+    TruthCapBindsDeclaredWorkingSet => "does the binding cgroup cap on the leaf that runs the role sit at or above the working set that role declares"
+    TruthSlotSwapBackingDeclared => "does the slot cgroup's swap backing match what the envelope declares for that slot"
+  }
+}
+
+fn host_truth_axes() -> List<HostTruthAxis> {
+  [
+    TruthDeclaredHardwareEnumerates,
+    TruthEnabledUnitHasItsHardware,
+    TruthIdentityAnchoredNotAddressed,
+    TruthCapBindsDeclaredWorkingSet,
+    TruthSlotSwapBackingDeclared,
+  ]
+}
+
+// Axes are compared through their rule text rather than by constructor identity because the axes are a
+// closed sum with no declared equality; the projection is total, so two axes agree exactly when their
+// rules do.
+fn host_truth_axes_match(left: HostTruthAxis, right: HostTruthAxis) -> Bool {
+  host_truth_axis_rule(axis: left) == host_truth_axis_rule(axis: right)
+}
+
+fn host_truth_host_text(host: NonEmptyStr) -> String {
+  host as String
+}
+
+// WHY A READ DID NOT HAPPEN, typed, and every arm refuses. The first arm is the vendor-probe case: the
+// fleet is NVIDIA and AMD, so a probe specific to one vendor is ABSENT on the rest, and absence is a
+// refusal rather than a zero.
+type HostTruthReadCause
+  = HostTruthProbeAbsent { probe: String }
+  | HostTruthProbeThrew { where: String }
+  | HostTruthHostUnreachable { route: String }
+  | HostTruthOutputUnparseable { raw: String }
+
+fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
+  match cause {
+    HostTruthProbeAbsent { probe: p } => "the probe this axis needs is not on that host: " + p
+    HostTruthProbeThrew { where: w } => "the probe threw away from the sampling thread: " + w
+    HostTruthHostUnreachable { route: r } => "the host did not answer on the route read through (" + r + "); pings-but-refuses-TCP is an ACL answer, not a network one"
+    HostTruthOutputUnparseable { raw: v } => "the read returned something this model cannot project: " + v
+  }
+}
+
+// WHAT THE MACHINE ANSWERED. Blank is its own arm for the reason gunbc.systemctl_show_read states after
+// review 67312: a blank answer and a refusal-to-reach are different facts, and merging them makes the
+// consumer re-parse a reason string. The reader is required to project a value -- including a zero -- so
+// a blank projection is the reader failing, and it refuses below rather than becoming agreement.
+type HostTruthRead
+  = HostTruthObserved { host: NonEmptyStr, axis: HostTruthAxis, observed: String, at_run: NonEmptyStr, receipt: String }
+  | HostTruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
+  | HostTruthReadRefused { host: NonEmptyStr, axis: HostTruthAxis, cause: HostTruthReadCause }
+
+// WHAT DESIRED STATE CLAIMS. The second arm is not a failure of the read; it is the model's own gap, and
+// it is reported rather than defaulted into agreement or into divergence.
+type HostTruthExpectation
+  = HostTruthDeclared { host: NonEmptyStr, axis: HostTruthAxis, expected: String, declared_by: String }
+  | HostTruthNothingDeclared { host: NonEmptyStr, axis: HostTruthAxis, because: String }
+
+type HostTruthPairing { read_axis: HostTruthAxis, expectation_axis: HostTruthAxis, read_host: NonEmptyStr, expectation_host: NonEmptyStr }
+
+// THE COMPARISON. Pairing is checked before comparing: a read of one host matched against another host's
+// declaration, or an answer to one axis matched to another axis's claim, is a bug in the reader, and
+// reading it as agreement is exactly the report's tier 4.
+type HostTruthComparison
+  = TruthAgrees { host: NonEmptyStr, axis: HostTruthAxis, at_run: NonEmptyStr, receipt: String }
+  | TruthDivergent { host: NonEmptyStr, axis: HostTruthAxis, observed: String, expected: String, declared_by: String }
+  | TruthUnread { host: NonEmptyStr, axis: HostTruthAxis, cause: HostTruthReadCause }
+  | TruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthNoReadSupplied { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthNoExpectationForRead { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthOutsideTheModel { host: NonEmptyStr, axis: HostTruthAxis, because: String }
+  | TruthPairingRefused { why: String, pairing: HostTruthPairing }
+
+fn host_of_read(read: HostTruthRead) -> NonEmptyStr {
+  match read {
+    HostTruthObserved { host: h, axis: _, observed: _, at_run: _, receipt: _ } => h
+    HostTruthReadBlank { host: h, axis: _ } => h
+    HostTruthReadRefused { host: h, axis: _, cause: _ } => h
+  }
+}
+
+fn axis_of_read(read: HostTruthRead) -> HostTruthAxis {
+  match read {
+    HostTruthObserved { host: _, axis: a, observed: _, at_run: _, receipt: _ } => a
+    HostTruthReadBlank { host: _, axis: a } => a
+    HostTruthReadRefused { host: _, axis: a, cause: _ } => a
+  }
+}
+
+fn host_of_expectation(expectation: HostTruthExpectation) -> NonEmptyStr {
+  match expectation {
+    HostTruthDeclared { host: h, axis: _, expected: _, declared_by: _ } => h
+    HostTruthNothingDeclared { host: h, axis: _, because: _ } => h
+  }
+}
+
+fn axis_of_expectation(expectation: HostTruthExpectation) -> HostTruthAxis {
+  match expectation {
+    HostTruthDeclared { host: _, axis: a, expected: _, declared_by: _ } => a
+    HostTruthNothingDeclared { host: _, axis: a, because: _ } => a
+  }
+}
+
+fn host_truth_pairing_refusal(read: HostTruthRead, expectation: HostTruthExpectation, why: String) -> HostTruthComparison {
+  TruthPairingRefused {
+    why: why,
+    pairing: HostTruthPairing {
+      read_axis: axis_of_read(read: read),
+      expectation_axis: axis_of_expectation(expectation: expectation),
+      read_host: host_of_read(read: read),
+      expectation_host: host_of_expectation(expectation: expectation),
+    },
+  }
+}
+
+// ONE PAIR, DECIDED. The comparison is over the projections the reader supplied: this module never
+// interprets a number or a device count, because the meaning of "4" belongs to whoever declared it.
+fn host_truth_compare(read: HostTruthRead, expectation: HostTruthExpectation) -> HostTruthComparison {
+  if host_truth_host_text(host: host_of_read(read: read)) != host_truth_host_text(host: host_of_expectation(expectation: expectation)) {
+    host_truth_pairing_refusal(read: read, expectation: expectation, why: "the read and the declaration compared to it name different hosts")
+  } else if host_truth_axes_match(left: axis_of_read(read: read), right: axis_of_expectation(expectation: expectation)) == false {
+    host_truth_pairing_refusal(read: read, expectation: expectation, why: "the read and the declaration compared to it answer different axes")
+  } else {
+    match expectation {
+      HostTruthNothingDeclared { host: h, axis: a, because: b } => TruthOutsideTheModel { host: h, axis: a, because: b }
+      HostTruthDeclared { host: h, axis: a, expected: e, declared_by: d } =>
+        match read {
+          HostTruthReadRefused { host: _, axis: _, cause: c } => TruthUnread { host: h, axis: a, cause: c }
+          HostTruthReadBlank { host: _, axis: _ } => TruthReadBlank { host: h, axis: a }
+          HostTruthObserved { host: _, axis: _, observed: o, at_run: r, receipt: k } =>
+            if o == e {
+              TruthAgrees { host: h, axis: a, at_run: r, receipt: k }
+            } else {
+              TruthDivergent { host: h, axis: a, observed: o, expected: e, declared_by: d }
+            }
+        }
+    }
+  }
+}
+
+// THE VERDICT OVER A HOST ROSTER. Divergence outranks refusal outranks nothing-read: a host that both
+// drifted and could not be read is reported as drifted, because the drift is what the roster has to act
+// on. Agreement requires a read for every expectation and an expectation for every read: a comparison
+// population that is empty, or one-sided, refuses.
+type HostTruthVerdict
+  = FleetTruthFollowsDesiredState { compared: Int, undeclared: Int }
+  | FleetTruthDiverges { divergences: List<HostTruthComparison> }
+  | FleetTruthRefused { refusals: List<HostTruthComparison> }
+  | FleetTruthNothingRead { why: String }
+
+fn host_truth_is_divergence(comparison: HostTruthComparison) -> Bool {
+  match comparison {
+    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => true
+    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
+    TruthUnread { host: _, axis: _, cause: _ } => false
+    TruthReadBlank { host: _, axis: _ } => false
+    TruthNoReadSupplied { host: _, axis: _ } => false
+    TruthNoExpectationForRead { host: _, axis: _ } => false
+    TruthOutsideTheModel { host: _, axis: _, because: _ } => false
+    TruthPairingRefused { why: _, pairing: _ } => false
+  }
+}
+
+// A refusal is anything that is NOT an answer: an unread, a blank, a one-sided pairing, or a read and a
+// declaration that were matched wrongly.
+fn host_truth_is_refusal(comparison: HostTruthComparison) -> Bool {
+  match comparison {
+    TruthUnread { host: _, axis: _, cause: _ } => true
+    TruthReadBlank { host: _, axis: _ } => true
+    TruthNoReadSupplied { host: _, axis: _ } => true
+    TruthNoExpectationForRead { host: _, axis: _ } => true
+    TruthPairingRefused { why: _, pairing: _ } => true
+    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
+    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
+    TruthOutsideTheModel { host: _, axis: _, because: _ } => false
+  }
+}
+
+// The model's own gap: an expectation arm that says nothing is declared. It neither blocks a host nor
+// passes it silently -- the verdict carries the count, and the refusal text lists the axes.
+fn host_truth_is_undeclared(comparison: HostTruthComparison) -> Bool {
+  match comparison {
+    TruthOutsideTheModel { host: _, axis: _, because: _ } => true
+    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
+    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
+    TruthUnread { host: _, axis: _, cause: _ } => false
+    TruthReadBlank { host: _, axis: _ } => false
+    TruthNoReadSupplied { host: _, axis: _ } => false
+    TruthNoExpectationForRead { host: _, axis: _ } => false
+    TruthPairingRefused { why: _, pairing: _ } => false
+  }
+}
+
+fn host_truth_find_expectation(expectations: List<HostTruthExpectation>, read: HostTruthRead) -> HostTruthExpectation? {
+  let axis = axis_of_read(read: read)
+  let host = host_truth_host_text(host: host_of_read(read: read))
+  first_where(
+    xs: expectations,
+    keep: fn(expectation) {
+      host_truth_axes_match(left: axis, right: axis_of_expectation(expectation: expectation))
+        && host == host_truth_host_text(host: host_of_expectation(expectation: expectation))
+    },
+  )
+}
+
+fn host_truth_find_read(reads: List<HostTruthRead>, expectation: HostTruthExpectation) -> HostTruthRead? {
+  let axis = axis_of_expectation(expectation: expectation)
+  let host = host_truth_host_text(host: host_of_expectation(expectation: expectation))
+  first_where(
+    xs: reads,
+    keep: fn(read) {
+      host_truth_axes_match(left: axis_of_read(read: read), right: axis)
+        && host_truth_host_text(host: host_of_read(read: read)) == host
+    },
+  )
+}
+
+// BOTH SIDES, COMPARED. Expectations without a read and reads without an expectation are different gaps
+// and are named differently: the first is a host the roster asked about and did not look at; the second is
+// a read nobody will consult, which is how an instrument starts failing open.
+fn host_truth_compare_roster(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthComparison> {
+  let from_expectations = expectations.map(expectation =>
+    match host_truth_find_read(reads: reads, expectation: expectation) {
+      Present { value: read } => host_truth_compare(read: read, expectation: expectation)
+      Absent => TruthNoReadSupplied { host: host_of_expectation(expectation: expectation), axis: axis_of_expectation(expectation: expectation) }
+    }
+  )
+  let orphan_reads = reads.filter(read =>
+    match host_truth_find_expectation(expectations: expectations, read: read) {
+      Absent => true
+      Present { value: _ } => false
+    }
+  ).map(read => TruthNoExpectationForRead { host: host_of_read(read: read), axis: axis_of_read(read: read) })
+  from_expectations.concat(orphan_reads)
+}
+
+fn fleet_host_truth_verdict(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> HostTruthVerdict {
+  if reads.length() == 0 || expectations.length() == 0 {
+    FleetTruthNothingRead { why: "a fleet-truth read that compares nothing reports nothing, and that is a refusal rather than a pass" }
+  } else {
+    let compared = host_truth_compare_roster(reads: reads, expectations: expectations)
+    let divergences = compared.filter(comparison => host_truth_is_divergence(comparison: comparison))
+    let refusals = compared.filter(comparison => host_truth_is_refusal(comparison: comparison))
+    if divergences.length() > 0 {
+      FleetTruthDiverges { divergences: divergences }
+    } else if refusals.length() > 0 {
+      FleetTruthRefused { refusals: refusals }
+    } else {
+      FleetTruthFollowsDesiredState {
+        compared: compared.length(),
+        undeclared: compared.filter(comparison => host_truth_is_undeclared(comparison: comparison)).length(),
+      }
+    }
+  }
+}
+
+// THE ONLY ARM THAT ADMITS A HOST. Named as a function so a roster cannot admit on
+// "not-different" -- a refusal and a divergence both fail this.
+fn fleet_truth_admits(verdict: HostTruthVerdict) -> Bool {
+  match verdict {
+    FleetTruthFollowsDesiredState { compared: _, undeclared: _ } => true
+    FleetTruthDiverges { divergences: _ } => false
+    FleetTruthRefused { refusals: _ } => false
+    FleetTruthNothingRead { why: _ } => false
+  }
+}
+
+// WHAT A REFUSAL SAYS OUT LOUD: the axis's recognition rule and the host, never a count alone.
+fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
+  match comparison {
+    TruthDivergent { host: h, axis: a, observed: o, expected: e, declared_by: d } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " answered " + o + " where " + d + " declares " + e
+    TruthAgrees { host: h, axis: a, at_run: _, receipt: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " agrees"
+    TruthUnread { host: h, axis: a, cause: c } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + host_truth_read_cause_explains(cause: c)
+    TruthReadBlank { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " answered blank, which is not a value"
+    TruthNoReadSupplied { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- no read supplied for host " + host_truth_host_text(host: h)
+    TruthNoExpectationForRead { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- a read for host " + host_truth_host_text(host: h) + " has nothing declared to compare it to"
+    TruthOutsideTheModel { host: h, axis: a, because: b } => host_truth_axis_rule(axis: a) + " -- nothing declared for host " + host_truth_host_text(host: h) + ": " + b
+    TruthPairingRefused { why: w, pairing: p } => w + " (read axis " + host_truth_axis_rule(axis: p.read_axis) + " on host " + host_truth_host_text(host: p.read_host) + ", declaration axis " + host_truth_axis_rule(axis: p.expectation_axis) + " on host " + host_truth_host_text(host: p.expectation_host) + ")"
+  }
+}
+
+// THE INSTRUMENT AS A ROW, NOT A FLAG (gunbc.design_argument::proportionate_evidence, ruling
+// gunbc.design_ruling::instrument_is_a_row_not_a_flag): a measurement that warrants an instrument names
+// its real consumer, its discriminator, and the cost it may not exceed.
+data fleet_host_truth_read_consumer: String = "admission to the build and serving rosters: every leg of the converge route that admits a host by name asks this verdict first, and a refusal there keeps the host off the roster rather than warning about it -- which is the plan's done-when: a planted divergence on any axis removes the host from admission."
+
+data fleet_host_truth_read_discriminator: String = "one comparison per host per axis, discriminated eight ways -- agrees, divergent, unread, blank, no read supplied, no expectation for a read, nothing declared, pairing refused -- so a partial read, a mispaired read, a gap in the model and a genuine drift are four different answers instead of one."
+
+data fleet_host_truth_read_cost_ceiling: Millisecond = millisecond(count: 120000)
