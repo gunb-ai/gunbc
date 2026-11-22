@@ -13,7 +13,7 @@ import gunbc.gunbc_cli_command {
 }
 import extdeps.bazel.label { LabelParse, LabelParsed, LabelRefused, parse_label, render_label, label_refusal_text }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.ci.ci_release_bins { release_bin_is_enrolled }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, release_bin_is_enrolled }
 import std.logic { Bool }
 // THE ONE AUTHORITY FOR THE HERMETIC/WET/RECORD AXIS. The route a claim batch is asked on is not a
 // boolean local to this builder: `std.execution_mode` owns that axis, and the harness's own parser
@@ -438,14 +438,32 @@ type ClaimBatchArgvAcc {
   last_entry: String
 }
 
+// THE POOLED PRELUDE CLAIM REQUEST, ON THE ONE ROUTE. One `gunbc test` process, one operand per roster
+// row, WET: the mode the pooled lane has always run (`claim_batch_claims_argv` folded `--wet` in as a
+// constant; here it is the value the call site names, so the lane's route is readable without opening the
+// builder). `claim_batch_claims_argv` stays alive below for the callers that have not been migrated yet --
+// the known-red subjects and three witnesses -- and the deletion of the legacy entrypoint is gated on
+// those, not on this line. The executable is the roster's `gunbc_release_bin_name`, not a second literal
+// for the same artifact: the pack's listing, the promotion check and this spawn must not be three
+// spellings that happen to agree (`gunbc.ci.ci_release_bins` `gunbc_release_bin_name`).
+//
+// A REFUSED ROW FAILS THE PRELUDE, IT DOES NOT SILENTLY VANISH. Before this call site could name an
+// operand, `claim_batch` took the roster's FILE and FUNCTION and ran whatever it found there; here a row
+// that is not a module of the claim universe refuses with the row and a reason, and the gate gets `false`
+// -- the same verdict a failing child gives, arriving without paying for a child that would only exit 2.
 fn run_gunbc_claims_ready(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
   let root = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: witness_bin_release_path(root: root.path, bin_name: "claim_batch"),
-    args: claim_batch_claims_argv(source_roots: source_roots, claims: claims)
-  )
-  result.success
+  match gunbc_test_claims_argv(source_roots: source_roots, claims: claims, mode: WetBatch) {
+    TestClaimsArgvRefused { entry: _, function: _, reason: _ } => false
+    TestClaimsArgvBuilt { argv: argv } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: witness_bin_release_path(root: root.path, bin_name: gunbc_release_bin_name),
+        args: argv
+      )
+      result.success
+    }
+  }
 }
 
 fn run_gunbc_claims(source_roots: List<String>, claims: List<ClaimRun>) -> Bool {
