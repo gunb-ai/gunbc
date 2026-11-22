@@ -102,7 +102,7 @@ jobs:
           args: ''
       - name: "Plumbing proof: remote_test_cli over the plumbing-proof pattern"
         id: remote-build-plumbing-proof
-        run: set -euo pipefail && echo '--- remote gate step ---' && target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key && cat /tmp/shadow-gate-receipt-plumbing-proof.json
+        run: set -euo pipefail && echo '--- remote gate step ---' && target/release/gunbc run --source-root "$GITHUB_WORKSPACE/dag" --source-root "$GITHUB_WORKSPACE/src/v2" --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern="${GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}" --arg host=srv3 --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key && cat /tmp/shadow-gate-receipt-plumbing-proof.json
         shell: bash
         env:
           GUNBC_GATE_PATTERN: ${{ inputs.pattern }}
@@ -111,7 +111,7 @@ jobs:
         run: |
           set -uo pipefail
           rc=0
-          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_self_host.json" --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key || rc=$?
+          target/release/gunbc run --source-root "$GITHUB_WORKSPACE/dag" --source-root "$GITHUB_WORKSPACE/src/v2" --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host' --arg host=srv3 --arg receipt_path="$RUNNER_TEMP/gate-emit_build_self_host.json" --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key || rc=$?
           cat "$RUNNER_TEMP/gate-emit_build_self_host.json" || true
           case "$rc" in
             0) exit 0;;
@@ -127,7 +127,7 @@ jobs:
         run: |
           set -uo pipefail
           rc=0
-          target/release/gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli' --arg receipt_path="$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key || rc=$?
+          target/release/gunbc run --source-root "$GITHUB_WORKSPACE/dag" --source-root "$GITHUB_WORKSPACE/src/v2" --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli' --arg host=srv3 --arg receipt_path="$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" --arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key || rc=$?
           cat "$RUNNER_TEMP/gate-emit_build_v2_native_cli.json" || true
           case "$rc" in
             0) exit 0;;

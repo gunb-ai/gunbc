@@ -808,6 +808,45 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
+    // ---- gunbc.plans.claim_execution_consolidation (operator, 2026-11-22,
+    // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint): two slices. The cutover depends on the
+    // result contract (edge below), and its public authority transition stays one atomic change.
+    roadmap_node(
+      identity: "rn_E730R1GNB3TG65E6TWZKBWEKAJ",
+      id: "claim-result-contract",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/claim_execution_consolidation.dag"),
+      line: ticket(t: fields(
+          headline: "gunbc test reports one located outcome per selected claim, and its seed adapter realizes the existing verdict rule",
+          boundary: "Serves gunbc.plans.claim_execution_consolidation, layer 0. Keep the verdict policy in gunbc.target_invocation and repair its seed realization: claim_route_verdict stops reading every ExitFailure as did-not-hold, so a typed ProcessExit failure with code 2 is unobserved. The claim route establishes the selected claim identities once, gives each exactly one outcome, and derives both the printed lines and the exit status from that collection; a resolve failure is located and the other claims still run.",
+          displaced_cost: "The same witness reads red, unreached or absent depending on the tool that ran it, so every caller and reviewer pays to know which reading they hold; a short report can read as held.",
+          first_slice: "Fixture claims for held, false, non-Bool, runtime error, unwind, budget interrupt and ExitFailure code 2 and code 1, each run through the real gunbc test path with its printed verdict and exit status asserted; then the identity-keyed result collection in the seed claim route.",
+          red_control: "Held, false and unobserved each map as gunbc.target_invocation says; false together with unobserved exits 1 and reports both; an empty selection exits 2; ExitFailure code 2 exits 2; A holds, B cannot resolve, C holds runs A and C, locates B and does not exit 0; a duplicated outcome for A cannot satisfy B. The checks execute the seed adapter and invocation path, not only the model's pure fold.",
+          out_of_scope: "Repeated operands, the execution-mode option, caller migration and the deletion of claim_batch and gunbc run --claim-run (claim-entrypoints-cutover). Any change to the verdict policy itself, which already exists.",
+          handback: "The repaired adapter and the identity-keyed result path, with each red control's command, revision and output; executed locally or on a fleet host and stated as such, not as required-CI enforcement."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "One meaning for a claim result, the factory's most trusted verdict channel."),
+      centering: plan(text: "Work in src/v1/stage0/src/target_invocation_host.rs and the seed claim route in cli_run.rs against dag/gunbc/target_invocation.dag; author the fixture claims under dag/test/claim; run them with gunbc test on a fleet host under the memory envelope, one claim run at a time."),
+    ),
+    roadmap_node(
+      identity: "rn_GZNX0MEATVZC3JHN1ZF1E8AG4M",
+      id: "claim-entrypoints-cutover",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/claim_execution_consolidation.dag"),
+      line: ticket(t: fields(
+          headline: "Every claim_batch and gunbc run --claim-run caller names claims through gunbc test, and both old entrypoints are deleted in one change",
+          boundary: "Serves gunbc.plans.claim_execution_consolidation, layer 1. Give every caller named in the plan's observation a disposition: migrated, retired, or blocked on native support, whose route then stays frozen. gunbc test accepts several operands and runs exactly the claims they denote in one process, with overlapping operands selected once and no widening to a subtree. Add only the execution-mode option (std.execution_mode::ExecutionMode, Hermetic by default) and fixture-store support callers need; unsupported route combinations refuse. Never send a //v2/... label to the interpreter.",
+          displaced_cost: "Three argument grammars and three outcome readings for one evaluator; every caller, instrument and release roster carries a second binary and its build.",
+          first_slice: "The disposition of each named caller, read from its source: what observation its consumer needs, which source roots it passes and whether they matter, and whether any src/v2/test/claim or out-of-universe function it evaluates needs claim evaluation or native-execution evidence.",
+          red_control: "A caller with no disposition, or one whose observation is lost, keeps the cutover open; a sparse request widened to :all or a subtree, or split into one process per claim, is refused; a mode the native or instrument route cannot honour refuses explicitly; a //v2/... label reaching the interpreter is refused. The cost comparison (one exact label against claim_batch on github_pull_request_decode_witness, and one representative pooled request) shows no repeated closure construction, unrelated discovery or material resource regression.",
+          out_of_scope: "The verdict and result-collection repair (claim-result-contract); native claim execution itself; adding any CI claim-executing step, which gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears forbids.",
+          handback: "The caller disposition table, the migrated callers, the deletion of claim_batch, gunbc run --claim-run, their build and release entries and their own witnesses, a cited grep stating what it inspected, and the two cost readings with producer and revision."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "One command for running claims, inherited unchanged by the native compiler."),
+      centering: plan(text: "Read each named caller first and write the disposition table into the pull request before any deletion; land the operand and mode support, the caller migrations and the deletions as one change; measure on a fleet host under the memory envelope."),
+    ),
     roadmap_node(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
@@ -6072,6 +6111,167 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "site-boot-and-management-edge", contribution: "The boot path stops depending on remembered addresses: the share server is resolved by the same authority that resolves every other endpoint."),
       centering: plan(text: "new_server_bringup_plan: the boot and management edge is a modeled path, and a path that pins an address in a parameter string is not modeled. Target: dag/gunbc/megarac_media_model.dag's share and the fleet endpoint authority it should read through."),
     ),
+    roadmap_node(
+      identity: "rn_G9RTSUE4V511HSQWYSZ9KLTLAE",
+      id: "fleet-truth-follows-the-machine",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/desired_state_follows_the_machine.dag"),
+      line: ticket(t: level_fields(
+        headline: "What the model says about a host is matched by a read of that host, and a divergence refuses where a roster would rely on it",
+        boundary: "The repository's claims about what a host IS -- which hardware enumerates, which units are enabled, how the host is keyed, which cap actually binds a role, what backing a presupposed limit rests on -- plus the one consumer that joins them: admission to the remote-build and serving rosters. It owns no mutation (converge applies, the operator applies), no cap value, and no scheduled job: the cadence is the operator's under gunbc.design_ruling::job_roster_closed_to_growth. It re-models nothing: hardware facts stay with gunbc.plans.fleet_hardware_fact_consumption, machine identity with gunbc.plans.fleet_machine_authority and gunbc.fleet.fleet_host_key_enrollment, the runner-slot shape with gunbc.host.memory_envelope and gunbc.recurring_failure_mode.the_live_runner_unit_memory_shape_drifts_from_the_declared_slot, tailnet membership with gunbc.tailscale_join_converge, arrival with gunbc.plans.new_server_bringup.",
+        approach: "One read with five comparisons (enumerated hardware, enabled units against that hardware, presented host key against the enrolled anchor, the leaf cgroup cap against the working set the role declares, swap backing against the declared cap) and five typed divergence arms, proposed as a mode of the existing per-host fleet-converge route rather than as a new job; then both rosters consume it; then the named divergences close through their owners, each followed by the read showing agreement. The operator's tiered breakage report of 2026-11-21 is the specimen source, and its swap item is recorded there as a mis-stated premise rather than as work.",
+        red_control: "A host admitted to either roster without a current read, or with a divergence arm that has no planted-divergence witness, keeps this open. So does any instrument in the path that reports absence where it failed instead of refusing -- the report's GPU sampler producing empty power columns is that control's RED case (gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent).",
+        displaced_cost: "Every specimen in the report was paid for by a lane that had come to do something else: 32 s of re-prefill per turn where a cache hit costs 3 s; a fivefold decode cliff, 5.1 tok/s against 24.5-29.1 tok/s, with no alarm at the cap that caused it; a host key belonging to a previous occupant, indistinguishable from an attack; units enabled at boot into hardware that has left, pinning memory no role can use. Each repair is small. The missing read is what made each one expensive.",
+        handback: "Both rosters admit only hosts whose current read agrees with the model, saying which arm diverges; each of the five arms has an owner and a witness; the enrolled-key roster is closed over every host in either roster; and drift is refused rather than discovered."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunbc-project-root", contribution: "A fleet whose repository says things about each host without ever reading that host is a fleet that finds out by collision. Joining what is claimed to what is read, and refusing where they diverge, is what makes admitting a host to the build or serving roster a claim anyone can stand behind."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: the model names what each host runs and nothing reads the machine, so desired state and the machine drift on three axes and every drift is found by collision. Target: the plan carrier, whose done-when is written as one consumer refusing rather than as four hosts repaired."),
+    ),
+    roadmap_node(
+      identity: "rn_HXBFTP014GHZMG78NT4P7U8SGH",
+      id: "fleet-truth-per-host-read",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_converge_workflow.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "One per-host read of hardware, units, key identity, binding caps and swap backing, as a mode of the existing converge route",
+        displaced_cost: "Nothing joins the halves. The hardware population, the systemd property read, the enrolled host key, the axis caps and the swap-backing fold all exist as separate authorities; no consumer compares them against the machine, so a model that is confidently wrong is indistinguishable from a model that is right until a lane collides with it.",
+        boundary: "The read and its typed divergences: enumerated hardware (a PCI class count per declared device class), the enabled state of units the model declares (gunbc.systemctl_show_read, whose three arms already refuse rather than report empty), the host key as the host presents it against the enrolled anchor, the cgroup controls at the LEAF that runs each role, and swap total against the declared cap. Fail-closed on no-observation, copying gunbc.host.host_swap_backing's fold. No mutation, no new scheduled job: it is proposed as a mode of the route gunbc.fleet.fleet_converge_plan and gunbc.fleet.fleet_converge_timer already run, and the cadence was the operator's and is decided: operator ruling 2026-11-21, verbatim 'A is fine' -- the read rides the existing per-host ctrl-fleet-converge timer as a new OBSERVE-ONLY mode, no new scheduled job, no roster growth. Its cadence ruling is registered alongside this row (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21); what is sequenced, not decided, is the merge order -- the read lands after the serving-converge increment whose witness closures contain the ruling file, so no in-flight lane is re-tallied underneath it. What riding the route costs is known and is not mine to grant: adding a mode regenerates .github/workflows/fleet-converge.yml, and two of its numbers are derived -- the converge job's timeout (the folded backstop plus three host-cap step budgets) and each cap step's RUNNER_HOST_CAP_STEP_BUDGET_SECONDS (the drain bracket) -- so the regen carries a budget raise, and gunbc.design_ruling::ci_job_budgets_closed_to_growth admits a raise only on the operator's own words with a grant row in gunbc.ci.ci_budget_raise (precedent: srv1_dashboard_deploy_step_timeout_raised, 2026-11-21). The figure-level ask goes to the operator before the PR, not inside it.",
+        first_slice: "The five comparisons as one module with the five arms (HardwareGone, UnitOrphaned, IdentityUnanchored, CapBelowResidency, BackingUnobserved), each arm distinguishable from the read not having happened, plus one planted-divergence witness per arm and one admit witness per arm.",
+        red_control: "A planted divergence that does not refuse, or an arm collapsed into another because the merged verdict was easier to carry, fails the row: the arms stay separate because their remedies are separate (remove hardware, retire a unit, re-anchor a key, refuse a placement, provision backing).",
+        out_of_scope: "Scheduling -- ruled elsewhere and not by this item (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21 puts the read on the already-scheduled per-host converge route; gunbc.design_ruling::job_roster_closed_to_growth still closes a new job to growth); any host run from this row; cap values; the retirement of any unit; the tailscale join itself, which stays with gunbc.tailscale_join_converge.",
+        handback: "A standing per-host reading with typed divergence, cheap enough to run on every host in both rosters -- one SSH hop plus reads that already exist as converge steps."
+      ), on: "2026-11-21", note: "Verified 2026-11-21 against the tree: no module compares a host's enumeration, unit enabledness, presented key, leaf caps and swap against the model's claims; gunbc.fleet.gpu_device_observation, gunbc.systemctl_show_read, gunbc.fleet.fleet_host_key_enrollment, gunbc.host.host_axis_caps and gunbc.host.host_swap_backing are each one-sided. The report's tiers 1-3 are one thing on three axes, which is why this is one row and not three. The report's swap item was checked and is a mis-stated premise: memory_envelope_verdict judges swap at the slot cgroup and host_swap_backing consults host swap only against a nonzero declared cap (the runner slot declares memory_swap_max = 0), so butch's /swap.img refuses nothing; recorded in gunbc.recurring_failure_mode.a_cap_set_here_surfaces_as_degradation_there so no row builds on it. The butch half of this read is already in flight with swift-koi-507 (its row: the host_memory_observe and identity read for butch), and this row does not duplicate it.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The read itself: without it every other row here is a hope rather than a judgment."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: the single highest-leverage piece of the report. Target: a read module wired as a mode of dag/gunbc/fleet/fleet_converge_workflow.dag, whose legs already reach each host over SSH."),
+    ),
+    roadmap_node(
+      identity: "rn_FTTHBL2H9F36L05V7532GS61R4",
+      id: "fleet-truth-rosters-consume-the-read",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/compute/remote_build_hosts.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The build and serving rosters refuse a host whose read is missing or divergent",
+        displaced_cost: "A host the model believes in and the machine contradicts still gets work: srv4 answered 429 at a concurrency nobody had declared, and butch's admission as a build host is already waiting on exactly this read (gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21 says butch enters the build roster only once a read shows the serving units gone and the envelope measured).",
+        boundary: "The consumer, not the read: admission to gunbc.compute.remote_build_hosts / gunbc.compute.remote_build's roster and to the serving roster gunbc.serving.serving_host_memory with the router's layout. A missing read is a refusal naming that nothing was read, never an admission. The boot-time consumer (a unit that would start against absent hardware) is named here and built where units are decided, not re-invented.",
+        first_slice: "The build roster's admission fold carrying the read's verdict, with a witness that admits a host whose read agrees and refuses one whose read diverges or is absent.",
+        red_control: "An admission path that treats 'no read' and 'read agrees' identically is the RED case; so is a refusal that does not say which arm diverged.",
+        out_of_scope: "The read's own module; changing any cap or cgroup; admitting any specific host -- admission is the machine's answer, not this row's.",
+        handback: "Roster membership as a judgment with a date and an arm, rather than as a remembered list."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: remote_build_hosts carries roster rows as data and the converge route settles hosts, but no admission site consults a machine read. The ruling's butch clause is the consumer stated before this row existed.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The reason the read exists: without a consumer it is a report nobody is obliged to read."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: the report's done-when is one consumer refusing. Target: the roster admission in dag/gunbc/compute/remote_build_hosts.dag and the serving roster's placement in dag/gunbc/serving/serving_host_memory.dag."),
+    ),
+    roadmap_node(
+      identity: "rn_7EK7T4B13BYZ6SYV9NC6SG0GCN",
+      id: "fleet-truth-enrolled-key-roster-closed",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_host_key_enrollment.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Every host in either roster has an enrolled host-key anchor, and the read compares what the host answers with",
+        displaced_cost: "butch's address moved twice in nine days and the address it landed on carried another machine's host key, so the connection failed exactly as an interception would and was resolved by matching an ed25519 fingerprint by hand. srv3 was unreachable at its former address. Where no anchor exists, a location is trusted on first contact -- the enrollment module's own 2026-11-10 note says the first scan of butch proved who we are to the host, not which machine was reached.",
+        boundary: "Closing the enrolled-anchor roster over every host in the build and serving rosters (it covers srv1-srv4 and ken today), and comparing the presented key against the anchor in the read. The tailnet join itself, per-host, stays with gunbc.tailscale_join_converge and the lanes handling each host; nothing here reaches a host by an address the model does not anchor.",
+        first_slice: "The anchor roster with an explicit disposition for every roster host -- enrolled, or refused-with-a-reason -- and a witness that the fold refuses a host with neither.",
+        red_control: "A roster host with no anchor row and no refusal reason keeps this open; a key mismatch resolved by hand rather than refused with both fingerprints named is the RED case (gunbc.recurring_failure_mode.a_fleet_route_keyed_by_an_unanchored_address_outlives_its_address).",
+        out_of_scope: "Joining any host to the tailnet; the tag question for butch, already with its own lane; BMC transport, which is never touched from here.",
+        handback: "A key mismatch that means what it says: enrolled anchor, presented key, both fingerprints, refusal."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: fleet_host_key_enrollment carries enrollments with explicit provenance standing and the known_hosts wire (extdeps.ssh.known_hosts, extdeps.ssh.client_options); the fleet-wide claim that hosts are reached by tailnet name is the ruling of 2026-11-17 in gunbc.plans.fleet_machine_authority. The gap is coverage and read-back, which is why this row cites rather than forks that plan.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The identity axis: without an anchor, 'the machine at that address' is the only claim the model can make, and addresses are reassigned."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: address vs identity. Target: dag/gunbc/fleet/fleet_host_key_enrollment.dag's anchor roster, read back by the per-host read."),
+    ),
+    roadmap_node(
+      identity: "rn_VBA8U9YSHCKNAQS8SMRPXUZCL8",
+      id: "fleet-truth-unit-orphans-closed",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_physical_inventory.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The enabled units naming gone hardware are closed by their owners, and the read shows the host agreeing",
+        displaced_cost: "butch (srv14) lost all four A2 boards on 2026-11-17 and its serving units stay enabled, ready to start at every boot; dan (operator_host_6ce85c, the host the report calls h11) runs strata-expert-lock.service enabled, pinning memory for A16s that left in the 2026-11-12 swap to R9700s. The stale desired state is not merely wrong -- it holds a resource no role can use, and it fails at boot where nobody is watching.",
+        boundary: "The instances, through their owners: butch's serving engines retire by the operator's own hand (gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21, operator decision 2026-11-21, explicitly outside the converge route), and dan's expert-lock retires through the unit route. Neither retirement is this row's to perform. What this row owns is the join -- unit's declared device class against the host's enumeration -- and the follow-up read that shows agreement, so the class cannot recur at the next host.",
+        first_slice: "The join expressed once: for each unit the model enables on a host, the device class it depends on and the enumeration that answers it, with the orphan as a typed arm; dan's expert-lock is the first instance closed with it.",
+        red_control: "An enabled unit whose declared device class enumerates nothing, admitted to a roster, keeps this open (gunbc.recurring_failure_mode.an_enabled_unit_names_hardware_that_no_longer_enumerates). A retirement performed by hand on the host with no read afterwards is not accepted as closure.",
+        out_of_scope: "Performing any retirement or package removal on a host; butch's untagged join, which is its own lane; anything that touches a BMC.",
+        handback: "Two hosts whose desired state matches their hardware, and a join that makes the third one impossible."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: gunbc.fleet.fleet_physical_inventory::butch_a2s_removed_pending_sale carries the four A2 boards as removed on operator report with the sale still pending; the 2026-11-12 A16-out/R9700-in swap on the h1ssl board is recorded in the same module; strata-expert-lock.service appears in gunbc.serving.serving_host_memory. The hardware-to-derivation join itself stays with gunbc.plans.fleet_hardware_fact_consumption -- this row is its run-time instance, cited not duplicated.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The units-vs-hardware axis, closed where it was actually found."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: units vs hardware. Target: the unit-to-enumeration join over dag/gunbc/fleet/fleet_physical_inventory.dag and gunbc.systemctl_show_read, with the named hosts as instances."),
+    ),
+    roadmap_node(
+      identity: "rn_NZ70R0W7CR36XFSGJNDKPS74J0",
+      id: "fleet-truth-serving-leaf-caps-joined-to-working-set",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/serving/serving_host_memory.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The cap that binds a serving role is read at the leaf and joined to the working set that role declares",
+        displaced_cost: "srv4's service-level MemoryHigh of 40 GiB put the expert set below residency: 5.1 tok/s with 41.5 GB read per request, against 24.5-29.1 tok/s once the cap was 56 GiB with MemoryCurrent at 46.5 GiB. A fivefold cliff, no alarm at the cap, and the model's own slice figure described a shape that no longer bound anything. The tree recorded the repair and not the rule, so the next editor of a drop-in can repeat it.",
+        boundary: "Reading the LEAF cap that binds each role (the service's own MemoryHigh, not the slice above it) and refusing a placement where that cap sits under the working set the role declares. Reads and refusals only: no cap value is changed here, and srv3/srv4/butch caps are explicitly fenced by the operator's priority ruling until clever-raven-401 signs off.",
+        first_slice: "Leaf-cap read plus the declared working set on the engine rows, with the mismatch as a typed arm and a witness planting a cap under a declared working set.",
+        red_control: "A role placed on a host whose binding leaf cap is under its declared working set keeps this open (gunbc.recurring_failure_mode.a_cap_set_here_surfaces_as_degradation_there). A cap read from a cgroup the role does not run in is the RED case -- that is how the 40 GiB was missed.",
+        out_of_scope: "Any change to a cap, slice or drop-in on a live host; the runner-slot envelope, which gunbc.host.memory_envelope already owns; the concurrency limit srv4 answered 429 with, which arrives as a declared figure rather than as a discovered one.",
+        handback: "Serving caps that say what they bind, joined to what the role needs, refusing instead of degrading."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: gunbc.serving.serving_layout::srv4_grant carries the 5.1 against 24.5/25.1/29.1 tok/s figures and the reads per request, and gunbc.serving.serving_host_memory::srv4_serving_engine_memory carries the 56 GiB cap with the old shape in its provenance. The slot-side shape is already enforced by gunbc.host.memory_envelope; the serving side is not, which is the whole of this row.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The caps-vs-working-set axis: the report's quietest tier, because a fivefold slowdown is a legal answer."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: caps vs working set. Target: dag/gunbc/serving/serving_host_memory.dag's engine rows and the leaf-cap read, with the mismatch refused at placement."),
+    ),
+    roadmap_node(
+      identity: "rn_DGSZ32J4QFKMKBQYC25T6WEZDG",
+      id: "fleet-truth-prefix-cache-sized-to-population",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/serving/serving_replica_configuration.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A prefix cache's capacity stated against the concurrent-agent population, with the hit ratio carried as a typed observation",
+        displaced_cost: "Strata's prefix cache defaults to six checkpoints, sized for one conversation at a time; four concurrent agents evict one another through it, the pass reports three hits against fifty misses, and every turn pays a 32 s re-prefill where a hit costs 3 s. Nothing anywhere carries a hit ratio, so the tree could not know, and the model already places by cache bytes against slots (serving_warm_sessions_within) without ever asking how many agents are inside those slots.",
+        boundary: "The capacity stated in the units the workload consumes -- prefix bytes against resident cache, against the concurrent-agent population a host actually serves -- and the hit ratio carried as a typed observation so a future tuning decision reads a measurement instead of a default. srv1's LMCache configuration stays as configured; this is about the inherited default, not about that host.",
+        first_slice: "The population joined to the cache capacity on the rows that already carry cache bytes and slot counts, plus the hit ratio as a typed observation on a serving pass.",
+        red_control: "A host serving more concurrent agents than its declared cache capacity can hold, still placed, keeps this open (gunbc.recurring_failure_mode.a_capacity_default_sized_for_one_workload_shape_inherited_by_another). Empty or absent hit-ratio output counted as fine is the RED case.",
+        out_of_scope: "Any --prompt-cache value on a live host -- no tuning from here; the ctrl harness's own cache, which is another repository and is raised as a question rather than taken as work.",
+        handback: "A cache capacity the model can be wrong about loudly, instead of a latency its readers explain away."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: gunbc.serving.serving_host_memory carries conversation_cache bytes and conversation_slots per engine row and serving_warm_sessions_within declares cache against slots; gunbc.serving.turn_admission already carries the refusal vocabulary (ResidencyUnread, GpuPrefixUnread) a miss belongs in. No row carries a checkpoint count or a hit ratio.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The silently-wrong face of the same axis: a limit whose breach never surfaces at all."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: the report's tier 0, the case with no refusal to stand on. Target: the cache and slot figures in dag/gunbc/serving/serving_host_memory.dag, joined to the population in dag/gunbc/serving/serving_replica_configuration.dag."),
+    ),
+    roadmap_node(
+      identity: "rn_E3HDLEAVCJ0KA4579BUFTRU8AR",
+      id: "fleet-truth-probes-refuse-not-absence",
+      owner: "model",
+      carriers: carrier(path: "dag/gunbc/serving/h11_r9700_strata_bench_receipt.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An instrument that cannot read reports a refusal, never an empty column -- vendor-aware probes and no pattern-kills",
+        displaced_cost: "The benchmark GPU sampler shells out to nvidia-smi; on the R9700 host it threw per sample inside a background thread and the receipt came out with empty power columns -- a completed run, a produced receipt, and a measurement that never happened. Separately, pkill -f matched the SSH command carrying it and killed the session three times.",
+        boundary: "Missing data as a typed refusal rather than as absence, and an instrument never inside the population it reads or kills: a vendor-aware accelerator probe with an explicit not-applicable-on-this-vendor arm (the fleet is NVIDIA AND AMD), per-sample failures surfacing to the caller rather than dying off-thread, and fleet operations that address a work-instance identity instead of a text pattern.",
+        first_slice: "The sampler's failure arms typed (probe absent on this vendor, probe failed, reading present) and a witness that a missing column cannot be produced silently.",
+        red_control: "A receipt with an absent measurement and no refusal naming why is the RED case, whether the probe threw, was off-thread, or was never applicable (gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent). A kill or liveness check whose pattern can match its own invocation is the second RED case (gunbc.recurring_failure_mode.observer_inside_its_own_observed_population).",
+        out_of_scope: "The truth-read's own arms, which are the read row's; benchmarking policy; any host run.",
+        handback: "Receipts where an absence always carries its cause, and pattern-kills out of fleet operation."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: the sampler's crash on the AMD host is recorded in the comment on dag/gunbc/serving/h11_r9700_strata_bench_receipt.dag; the actuating twin of the self-match is the report's pkill specimen, added to the existing row rather than filed as a new one because the ceiling -- a liveness or kill operation keyed to a work-instance identity, executable identity having been refuted in review 61176 -- is the same one the row already states.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The read is only as good as its instruments: a read that fails into absence is a lie with a timestamp."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: tier 4 of the report, the tier that would otherwise make the read itself untrustworthy. Target: the accelerator probe behind dag/gunbc/serving/h11_r9700_strata_bench_receipt.dag and the pattern-kill idiom in fleet operations."),
+    ),
+    roadmap_node(
+      identity: "rn_AYHH104UYXBSJUVP94BE4X03S2",
+      id: "fleet-truth-declared-incompleteness-refuses-use",
+      owner: "model",
+      carriers: carrier(path: "dag/extdeps/external_authority.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A row whose own standing declares it incomplete refuses entry into a comparison, an access decision, or a receipt",
+        displaced_cost: "The R9700 and Gigabyte figures are TranscribedUncited and still entered an accelerator purchase comparison; the RTX 2000 Ada catalog declares no memory_bandwidth and was still used where bandwidth decides; the h1ssl unit-1 intake receipt carries accounts_and_ssh_keys_report as NotRelayed while that host's access was gated by a key outside the fleet's authorized-keys roster. Three declarations of incompleteness, one consumer behavior: none was read before use.",
+        boundary: "Standing read as an input to the decision: TranscribedUncited, NotRelayed, or an absent field must be visible to the consumer that selects the row, and a conclusion built on such rows carries that standing in its own text. This extends the rate-table rule already in place; it does not create a second provenance model.",
+        first_slice: "The comparison and access paths that consume hardware-catalog and intake-receipt rows, refusing or downgrading with the standing named, with a witness per path.",
+        red_control: "A decision whose inputs include a row whose standing says incomplete, with that standing nowhere in the conclusion, keeps this open (gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission).",
+        out_of_scope: "Sourcing the missing citations, which is the operator's and the intake lanes' work; relaying the h1ssl accounts-and-keys report, which is its own owed receipt; the purchase decision itself.",
+        handback: "Rows that cannot be consumed as more complete than they declare themselves."
+      ), on: "2026-11-21", note: "Verified 2026-11-21: extdeps.gpu.gigabyte carries gigabyte_r9700_ai_top_figures_standing as TranscribedUncited; extdeps.gpu.nvidia's nvidia_rtx_2000_ada_catalog has no memory_bandwidth figure; gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt carries accounts_and_ssh_keys_report with a NotRelayed relay state. The rate-table refusal already exists; what is missing is the same rule at the comparison and access sites, which is why this row updates the existing one rather than filing another.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The epistemic half: a read that is trusted past its own declared gaps is the same failure wearing a lab coat."),
+      centering: plan(text: "desired_state_follows_the_machine_plan: tier 5, the model-gaps tier. Target: the standing fields in dag/extdeps/external_authority.dag and the machine-intake receipts that consume them."),
+    ),
   ], guarantee_ladder_nodes())
 }
 
@@ -6091,6 +6291,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
     // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
@@ -6314,6 +6515,9 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "mtcollins1-boot-duty-retirement", parent: "srv4-site-pxe-edge-live-source-row"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "mtcollins1-boot-later-work"),
     edge(child: "mtcollins1-boot-duty-retirement", parent: "bobo-pxe-install-dispatch"),
+    edge(child: "fleet-truth-rosters-consume-the-read", parent: "fleet-truth-per-host-read"),
+    edge(child: "fleet-truth-unit-orphans-closed", parent: "fleet-truth-per-host-read"),
+    edge(child: "fleet-truth-serving-leaf-caps-joined-to-working-set", parent: "fleet-truth-per-host-read"),
   ], guarantee_ladder_edges())
 }
 
