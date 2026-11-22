@@ -483,34 +483,23 @@ fn shadow_gate_remote_build_step() -> Step {
     timeout_minutes: none
   }
 }
-// THE PLUMBING PROOF'S COMMAND, one place: when the roster names a host, an ssh liveness probe of that
-// host and then the client invocation against it; when the roster names none, the typed refusal, which is
-// the only honest thing a job can print before it has dispatched anything at all.
+// THE PLUMBING PROOF'S COMMAND, one place: when the roster names a host, the client invocation
+// against it; when the roster names none, the typed refusal, which is the only honest thing a job
+// can print before it has dispatched anything at all. NO bare `ssh ... true` probe: the forced
+// command IS the protocol server, and a bare dial is a ONE-word request its grammar refuses
+// ('a request needs at least five words; saw 1' -- run 44960617832, where the probe killed the
+// step before the client ever ran). Reachability and admission are the protocol client's own
+// typed outcomes (exit 3 when no host is admitted; a refusal prints the server's reason).
 fn shadow_gate_plumbing_proof_run() -> String {
   match shadow_gate_first_serving_host() {
     Absent => shadow_gate_no_host_run
-    Present { value: host } =>
-      concat(
-      concat(
-        join([
-          "set -euo pipefail",
-          "echo '--- remote gate step ---'",
-          // the fetched CI key is NOT loaded into an agent -- the WIF route replaced the ssh-setup
-          // step -- so the probe names the key file explicitly (review 97131). The host comes from
-          // the Present side of the typed roster, never from a literal (PR #16801).
-          concat(concat(concat(concat("ssh -i \"", shadow_gate_ci_ssh_key_file), "\" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "), shadow_gate_remote_user), concat("@", concat(shadow_gate_host_tailnet_name(host: host), " true"))),
-        ], " && "),
-        "\n"
-      ),
-      concat(
-        join([
-          "set -euo pipefail",
-          concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
-          "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
-        ], " && "),
-        "\n"
-      )
-    )
+    Present { value: _host } =>
+      join([
+        "set -euo pipefail",
+        "echo '--- remote gate step ---'",
+        concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
+        "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
+      ], " && ")
   }
 }
 
