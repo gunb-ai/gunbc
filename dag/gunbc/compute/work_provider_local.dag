@@ -3993,12 +3993,34 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
   }
 }
 
+// THE CENSUS WORD TABLE -- the census door's whole wire vocabulary, declared once (review 97282).
+// The renderer reads its words from these fields and the parser below reads them back from the SAME
+// fields, so renaming a word is one edit that moves both directions, and an arm added to the renderer
+// without a word here is a compile error rather than a grammar the parser silently stops recognizing
+// (gunbc.design_argument::single_authority; minimize_redundancy: "a concept is modeled once and every
+// use derived from it"). The pairing of an authorization arm to its word lives in the one match that
+// renders it; what the WORDS are lives only here.
+type RecoverCatalogWords { line_prefix: String, terminate: String, settle: String, hold: String, refused: String, established_header: String }
+
+fn recover_catalog_words() -> RecoverCatalogWords {
+  let prefix = "recover-catalog"
+  RecoverCatalogWords {
+    line_prefix: prefix,
+    terminate: "terminate",
+    settle: "settle",
+    hold: "hold",
+    refused: "refused",
+    established_header: join([prefix, " established"], ""),
+  }
+}
+
 fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
+  let w = recover_catalog_words()
   let verdict = match e.authorization {
-    RecoveryWriteTerminateAndRelease { reason: _ } => "terminate"
-    RecoveryWriteReleaseSettled { state: _, reason: _ } => "settle"
-    RecoveryWriteDeclined { reason: _ } => "hold"
-    RecoveryWriteRefused { reason: _ } => "refused"
+    RecoveryWriteTerminateAndRelease { reason: _ } => w.terminate
+    RecoveryWriteReleaseSettled { state: _, reason: _ } => w.settle
+    RecoveryWriteDeclined { reason: _ } => w.hold
+    RecoveryWriteRefused { reason: _ } => w.refused
   }
   let why = match e.authorization {
     RecoveryWriteTerminateAndRelease { reason: r } => r
@@ -4006,7 +4028,7 @@ fn compute_recover_catalog_entry_line(e: RecoverCatalogEntry) -> String {
     RecoveryWriteDeclined { reason: r } => r
     RecoveryWriteRefused { reason: r } => r
   }
-  join(["recover-catalog ", verdict, " ", e.reference as String, " ", why, "\n"], "")
+  join([w.line_prefix, " ", verdict, " ", e.reference as String, " ", why, "\n"], "")
 }
 
 // THE PARSE OF THE CENSUS RENDERING, beside the renderer so the grammar has one home. This is what a
@@ -4026,13 +4048,14 @@ type RecoverCatalogLegReading
   | RecoverCatalogLegUnknown { detail: String }
 
 fn recover_catalog_leg_stale_token(token: String) -> Bool {
-  token == "terminate" || token == "settle"
+  let w = recover_catalog_words()
+  token == w.terminate || token == w.settle
 }
 
 fn recover_catalog_leg_line(words: List<String>) -> RecoverCatalogLegEntry? {
   match list_at_optional(xs: words, index: 0) {
     Present { value: head } =>
-      if head != "recover-catalog" {
+      if head != recover_catalog_words().line_prefix {
         none
       } else {
         match list_at_optional(xs: words, index: 1) {
@@ -4043,7 +4066,7 @@ fn recover_catalog_leg_line(words: List<String>) -> RecoverCatalogLegEntry? {
                   none
                 } else if recover_catalog_leg_stale_token(token: arm) {
                   Present { value: CatalogLegStale { reference: trim(s: reference) as NonEmptyStr } }
-                } else if arm == "hold" {
+                } else if arm == recover_catalog_words().hold {
                   Present { value: CatalogLegHeld { reference: trim(s: reference) as NonEmptyStr } }
                 } else {
                   none
@@ -4069,7 +4092,7 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
   match list_at_optional(xs: lines, index: 0) {
     Absent => RecoverCatalogLegUnknown { detail: "the census answered with nothing to read" }
     Present { value: header } =>
-      if trim(s: header) != "recover-catalog established" {
+      if trim(s: header) != recover_catalog_words().established_header {
         RecoverCatalogLegUnknown { detail: join(["the census answer is not one this door established (first line: ", trim(s: header), ")"], "") }
       } else {
         let body = skip(xs: lines, n: 1)
@@ -4109,14 +4132,14 @@ fn recover_catalog_leg_reading(text: String) -> RecoverCatalogLegReading {
 fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } =>
-      CliWirePrintable { bytes: join(["recover-catalog unknown: no dashboard instance is rooted at ", r, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the host's dashboard instance could not be resolved" } }
+      CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: no dashboard instance is rooted at ", r, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the host's dashboard instance could not be resolved" } }
     DashboardInstanceResolved { instance } =>
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
-          CliWirePrintable { bytes: join(["recover-catalog unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the seat census could not be established" } }
+          CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the seat census could not be established" } }
         RecoverCatalogEstablished { entries } =>
           CliWirePrintable {
-            bytes: concat("recover-catalog established\n", fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),
+            bytes: concat(join([recover_catalog_words().established_header, "\n"], ""), fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),
             exit: ExitSuccess
           }
       }
@@ -4236,36 +4259,60 @@ type RecoverReadbackReading
   = RecoverReadbackFacts { record: RecoverReadbackRecord, charge: RecoverReadbackCharge }
   | RecoverReadbackUnknown { detail: String }
 
+// THE READ-BACK WORD TABLE, same rule as the census's (review 97282): one declaration of the words the
+// read-back door speaks, which BOTH its renderer and its parser read -- the _token functions turn a
+// value into its word and the _of_token functions turn a word back into its value, over these fields.
+// A word changed here moves both directions at once; a word the parser does not know from the table is
+// the unknown arm, never a guess (gunbc.design_argument::minimize_redundancy).
+type RecoverReadbackWords { line_prefix: String, unknown: String, terminal: String, active: String, absent: String, returned: String, never: String, held: String }
+
+fn recover_readback_words_table() -> RecoverReadbackWords {
+  RecoverReadbackWords {
+    line_prefix: "recover-readback",
+    unknown: "unknown",
+    terminal: "terminal",
+    active: "active",
+    absent: "absent",
+    returned: "returned",
+    never: "never",
+    held: "held",
+  }
+}
+
 fn recover_readback_record_token(r: RecoverReadbackRecord) -> String {
+  let w = recover_readback_words_table()
   match r {
-    ReadbackRecordTerminal => "terminal"
-    ReadbackRecordActive => "active"
-    ReadbackRecordAbsent => "absent"
+    ReadbackRecordTerminal => w.terminal
+    ReadbackRecordActive => w.active
+    ReadbackRecordAbsent => w.absent
   }
 }
 
 fn recover_readback_charge_token(c: RecoverReadbackCharge) -> String {
+  let w = recover_readback_words_table()
   match c {
-    ReadbackChargeReturned => "returned"
-    ReadbackChargeNeverAcquired => "never"
-    ReadbackChargeStillHeld => "held"
+    ReadbackChargeReturned => w.returned
+    ReadbackChargeNeverAcquired => w.never
+    ReadbackChargeStillHeld => w.held
   }
 }
 
 fn recover_readback_line(record: RecoverReadbackRecord, charge: RecoverReadbackCharge) -> String {
-  join(["recover-readback ", recover_readback_record_token(r: record), " ", recover_readback_charge_token(c: charge), "\n"], "")
+  join([recover_readback_words_table().line_prefix, " ", recover_readback_record_token(r: record), " ", recover_readback_charge_token(c: charge), "\n"], "")
 }
 
 fn recover_readback_unknown_line(detail: String) -> String {
-  join(["recover-readback unknown ", detail, "\n"], "")
+  let w = recover_readback_words_table()
+  join([w.line_prefix, " ", w.unknown, " ", detail, "\n"], "")
 }
 
 fn recover_readback_record_of_token(token: String) -> RecoverReadbackRecord? {
-  if token == "terminal" {
+  let w = recover_readback_words_table()
+  if token == w.terminal {
     Present { value: ReadbackRecordTerminal }
-  } else if token == "active" {
+  } else if token == w.active {
     Present { value: ReadbackRecordActive }
-  } else if token == "absent" {
+  } else if token == w.absent {
     Present { value: ReadbackRecordAbsent }
   } else {
     none
@@ -4273,11 +4320,12 @@ fn recover_readback_record_of_token(token: String) -> RecoverReadbackRecord? {
 }
 
 fn recover_readback_charge_of_token(token: String) -> RecoverReadbackCharge? {
-  if token == "returned" {
+  let w = recover_readback_words_table()
+  if token == w.returned {
     Present { value: ReadbackChargeReturned }
-  } else if token == "never" {
+  } else if token == w.never {
     Present { value: ReadbackChargeNeverAcquired }
-  } else if token == "held" {
+  } else if token == w.held {
     Present { value: ReadbackChargeStillHeld }
   } else {
     none
@@ -4297,13 +4345,13 @@ fn recover_readback_reading(text: String) -> RecoverReadbackReading {
   match list_at_optional(xs: words, index: 0) {
     Absent => RecoverReadbackUnknown { detail: join(["there was no read-back answer to read (text: ", trim(s: text), ")"], "") }
     Present { value: head } =>
-      if head != "recover-readback" {
+      if head != recover_readback_words_table().line_prefix {
         RecoverReadbackUnknown { detail: join(["the read-back answer is not one this door rendered: ", trim(s: text)], "") }
       } else {
         match list_at_optional(xs: words, index: 1) {
           Absent => RecoverReadbackUnknown { detail: "the read-back answer carried no arms" }
           Present { value: second } =>
-            if second == "unknown" {
+            if second == recover_readback_words_table().unknown {
               if count(xs: words) < 3 {
                 RecoverReadbackUnknown { detail: "the read-back refused and named no reason" }
               } else {
