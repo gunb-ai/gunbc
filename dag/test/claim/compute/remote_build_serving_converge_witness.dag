@@ -41,7 +41,7 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, census_door_gate, CensusGateAsk, CensusGateDefer }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -2293,4 +2293,23 @@ test fn native_build_ranks_after_its_checkout_and_toolchain() -> Bool {
   let toolchain = EnsureToolchain { channel: "1.95.0", as_user: "gunbc-serve" }
   let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native", as_user: "gunbc-serve" }
   converge_kind_rank(native) > converge_kind_rank(checkout) && converge_kind_rank(native) > converge_kind_rank(toolchain)
+}
+
+// Manager red (RB-M3): an UNREAD host architecture must REFUSE, never default to the upload install.
+// The dispatch's target_arch arm refuses on ObservationRefused BEFORE consulting the host arch row, so
+// the draft gains the serve-binary refusal in `unhandled` and plans NO install/build write for the
+// serve path (length(writes)==0 proves it did not silently fall through to InstallServeBinary/upload).
+test fn unread_host_architecture_refuses_never_uploads() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let r = converge_install_binary(
+        acc: converge_draft(),
+        d: d,
+        pin: pin_ok(),
+        target_arch: ObservationRefused { cause: ServingLegFailure { item: "target_arch", cause: "uname -m unread" } }
+      )
+      any(r.unhandled, x => x == "serve_binary.sha256") && length(r.writes) == 0
+    }
+  }
 }
