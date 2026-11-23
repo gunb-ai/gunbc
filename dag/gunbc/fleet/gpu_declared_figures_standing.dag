@@ -1,4 +1,4 @@
-module extdeps.gpu.declared_figures_standing
+module gunbc.fleet.gpu_declared_figures_standing
 
 // A STANDING THE MODULE ALREADY DECLARED, BOUND TO THE ROW IT DESCRIBES.
 //
@@ -31,6 +31,16 @@ module extdeps.gpu.declared_figures_standing
 // declares, and takes the standing VALUE from that module's declaration, so the pair cannot drift from what
 // was declared -- and the fold below prefers a declared standing over the citation-derived one, because the
 // module knows something the citation shape cannot show.
+//
+// WHY THIS SITS UNDER gunbc.fleet AND NOT UNDER extdeps. The External upstreams rule
+// (gunbc.design_argument::external_upstreams) is that "a generic hub may define agnostic shapes but may not
+// enumerate concrete products, dispatch among them, carry product version rows, or store consumer coverage
+// state", and the External facts boundary puts "dispatch among upstreams and coverage state" in the consuming
+// layer, "never to extdeps". Everything below that enumerates AMD's and Gigabyte's rows, matches between them
+// by row equality, and keeps the count of which standings are bound is exactly that enumeration and dispatch,
+// so it lives here, beside the fleet inventory that consumes it; the agnostic shapes it projects onto stay
+// upstream (CitedFigureStanding in extdeps.external_authority, the catalog types in extdeps.gpu.types). A
+// third vendor's standing row is then added by whoever consumes it, not by editing a shared hub.
 //
 // WHAT THIS DOES NOT DECIDE: whether a consumer may proceed with a marked figure. It returns the standing;
 // refusing, downgrading or carrying the obligation is the consumer's, and each path that consumes these
@@ -177,13 +187,15 @@ fn gpu_catalog_memory_with_standing(row: GpuDeviceCatalogRow) -> GpuMemoryFigure
 }
 
 // WHAT A CONSUMER OWES TO ACT ON A FIGURE DECLARED INCOMPLETE, verbatim from the row that declares it, so a
-// refusal cannot paraphrase the obligation away. Absent for a figure that is cited or grounded by receipt,
-// and for one the modules say nothing about.
-fn gpu_figure_read_obligation(standing: CitedFigureStanding) -> String {
+// refusal cannot paraphrase the obligation away. ABSENCE IS TYPED, NOT AN EMPTY STRING (the Cardinality
+// conformance domain, std.optional::Optional): a caller checking whether anything is owed must not be able to
+// confuse "no obligation" with a TranscribedUncited row whose obligation text happens to be empty, which is
+// what an empty-string return would let happen. So the cited and receipt-grounded arms answer nothing.
+fn gpu_figure_read_obligation(standing: CitedFigureStanding) -> String? {
   match standing {
-    TranscribedUncited { read_obligation: o } => o
-    CitedToAuthority { authority: _ } => ""
-    ObservedByReceipt { observed: _ } => ""
+    TranscribedUncited { read_obligation: o } => { Present { value: o } }
+    CitedToAuthority { authority: _ } => none
+    ObservedByReceipt { observed: _ } => none
   }
 }
 

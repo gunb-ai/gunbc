@@ -1,4 +1,4 @@
-module test.claim.extdeps_gpu_declared_figures_standing_witness
+module test.claim.fleet.gpu_declared_figures_standing_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
@@ -22,7 +22,7 @@ import extdeps.gpu.gigabyte {
   gigabyte_r9700_ai_top_32g_board_facts, gigabyte_r9700_ai_top_figures_standing,
   gigabyte_r9700_ai_top_spec_authority, gigabyte_board_catalogs, gigabyte_r9700_ai_top_32g_board_catalog,
 }
-import extdeps.gpu.declared_figures_standing {
+import gunbc.fleet.gpu_declared_figures_standing {
   declared_board_figure_standings, declared_device_figure_standings, declared_gpu_standing_rows,
   gpu_board_power_ceiling_with_standing, gpu_catalog_memory_with_standing, gpu_figure_read_obligation,
   AdmittedBoardFigures, FiguresCarried, FiguresUnmarked, gpu_admitted_board_figures,
@@ -165,11 +165,17 @@ test fn no_binding_carries_a_standing_the_gpu_modules_do_not_declare() -> Bool {
 // THE OBLIGATION REACHES A REFUSAL UNCHANGED: a consumer turning a marked figure down can hand back what the
 // module says would ground it, and a properly cited figure owes no such refusal.
 test fn the_read_obligation_reaches_a_refusal_unchanged() -> Bool {
-  let obligation = gpu_figure_read_obligation(standing: r9700_figures_standing)
-  string_contains(s: obligation, pattern: "specification table")
-    && string_contains(s: obligation, pattern: "figure_citations")
-    && gpu_figure_read_obligation(standing: gigabyte_r9700_ai_top_figures_standing) != ""
-    && gpu_figure_read_obligation(standing: CitedToAuthority { authority: r9700_product_page_authority }) == ""
+  match gpu_figure_read_obligation(standing: r9700_figures_standing) {
+    Present { value: obligation } =>
+      string_contains(s: obligation, pattern: "specification table")
+        && string_contains(s: obligation, pattern: "figure_citations")
+        && (match gpu_figure_read_obligation(standing: gigabyte_r9700_ai_top_figures_standing) {
+              Present { value: other } => other != ""
+              Absent => false
+            })
+        && gpu_figure_read_obligation(standing: CitedToAuthority { authority: r9700_product_page_authority }) == none
+    Absent => false
+  }
 }
 
 // THE ADMISSION PATH CANNOT HAND OVER THESE FIGURES UNMARKED. This is the seam the roadmap row names -- the
@@ -181,7 +187,7 @@ test fn the_r9700_admission_cannot_be_read_without_its_standing() -> Bool {
     FiguresCarried { facts: f, standing: st, declared_by: d } =>
       f == amd_radeon_ai_pro_r9700_board_facts && is_transcribed_uncited(standing: st)
         && d == ("extdeps.gpu.amd" as NonEmptyStr)
-        && gpu_figure_read_obligation(standing: st) != ""
+        && (match gpu_figure_read_obligation(standing: st) { Present { value: o } => o != "" Absent => false })
     _ => false
   }
 }
