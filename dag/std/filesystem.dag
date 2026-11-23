@@ -99,3 +99,38 @@ fn path_parent_when_no_remaining_segments(path: String) -> String {
     }
   }
 }
+
+// THE LAST COMPONENT OF A PATH, the final non-empty segment. The dual of path_parent_directory.
+// Empty string and "/" both yield "" (POSIX basename of "/" is "/" but no caller needs that; if
+// one does it gets its own predicate). THE single spelling of this fold (root_generalization): the only
+// `fn path_basename` in the tree (`grep 'fn path_basename' dag` resolves here), and every OTHER
+// `/`-split fold is named below by name with the reason it is NOT this fold -- so the claim is "every
+// discoverable sibling is either migrated or listed here," not "no sibling exists." Consumers, each of
+// which formerly carried its own copy of the fold:
+//   extdeps.git::is_git_program (classify the program by basename, not spelling);
+//   extdeps.virtualization.firecracker (jailer exec-file basename);
+//   extdeps.docker.cgroup (cgroup last segment);
+//   gunbc.live_deploy.member_observe; gunbc.owned_directory (owned_directory_basename);
+//   gunbc.roadmap.dispatch_worker_unit_confinement (dispatch_worktree_entry_name);
+//   gunbc.gitignore_emit (its old `path_basename` copy kept a trailing-slash empty segment -- a DIFFERENT
+//   meaning under the SAME name, a meaning fork; migrated here with the explicit decision that trailing-
+//   slash now follows POSIX basename. Only witness-literal callers drive the matcher, and they pass no
+//   trailing slash, so the emitted .gitignore bytes are unchanged -- an equal blob. NOTE the matcher's
+//   OWN result does change for a trailing-slash input like "a/.DS_Store/" (now true); no current caller
+//   passes one, and those callers are witness literals, not production tracked paths);
+//   gunbc.site.gunb_ai_content (repository_slug).
+// Other `fold(split(_, "/"))` sites are NOT this fold and are not claimed: they trim each segment
+// (dispatch_credential_acquisition, runner_host_cap_bracket), build a structured accumulator
+// (runner_slot_retirement, live_deploy.emit), test all-segments-safe (verified_binary_install,
+// cursor_agent_realization), or take a raw last segment -- INCLUDING empty -- under a DISTINCT, accurate
+// name because that behavior is load-bearing and must not be merged: gunbc.url_file_acquisition::
+// url_file_final_segment (parent/leaf must agree for trailing-slash subjects), gunbc.bmc.bmc_netboot_
+// serve::bmc_staged_file_basename (`f: (acc, segment) => segment`, keeps the raw last segment INCLUDING
+// an empty one), and the witness-local worker_git_subtree_apply wet_basename. A fifth sibling, gunbc.
+// compute.work_provider_local::compute_basename, is this fold but seeded with `init: path` rather than
+// "", so an input with no non-empty segment returns ITSELF -- a different meaning, kept distinct and NOT
+// merged (migrating it would silently change that edge case). None shares this name or meaning
+// (single_authority).
+fn path_basename(path: String) -> String {
+  fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}

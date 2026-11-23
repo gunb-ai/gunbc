@@ -36,15 +36,14 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   materialize_fleet_ssh_multiplex_directory_under,
   fleet_ssh_multiplex_receipt,
   materialize_known_hosts_anchor,
-  fleet_known_hosts_rows,
   known_hosts_materialization_receipt,
-  fleet_ssh_credential_locus_label,
-}
+  fleet_ssh_credential_locus_label, known_hosts_file_rows, }
 import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
 import gunbc.fleet.fleet_ssh_credential_verify {
   FleetSshCredentialVerified,
   FleetSshCredentialIdentityMismatch,
   FleetSshCredentialDerivationRefused,
+  FleetSshCredentialAdmissionEmpty,
   AgentSelectorMaterialized,
   AgentSelectorRefused,
   materialize_agent_public_selector,
@@ -121,7 +120,7 @@ fn prepare_fleet_ssh_agent_context(attempt_raw: String) -> FleetSshContextPrepar
     attempt_raw: attempt_raw,
     key: fleet_automation_ssh_key,
     fingerprint: fleet_automation_ssh_key_fingerprint as NonEmptyStr,
-    rows: fleet_known_hosts_rows(),
+    rows: known_hosts_file_rows(),
   )
 }
 
@@ -171,6 +170,12 @@ fn prepare_ssh_agent_context(
                   FleetSshContextRefused {
                     cause: fleet_ssh_credential_verification_refusal_reason(
                       verification: FleetSshCredentialDerivationRefused { cause: cause },
+                    ),
+                  }
+                FleetSshCredentialAdmissionEmpty { observed_line: o } =>
+                  FleetSshContextRefused {
+                    cause: fleet_ssh_credential_verification_refusal_reason(
+                      verification: FleetSshCredentialAdmissionEmpty { observed_line: o },
                     ),
                   }
                 FleetSshCredentialVerified { binding: binding } =>

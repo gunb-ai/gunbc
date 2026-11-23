@@ -1,0 +1,231 @@
+module test.claim.git_bare_mutating_route_wall_witness
+
+import std.types { String, List, Bool, NonEmptyStr, FilePath }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git {
+  shape_git_checkout_orphan_args,
+  shape_git_commit_allow_empty_args,
+  shape_git_commit_message_args,
+  shape_git_add_all_args,
+  shape_git_add_path_args,
+  git_checkout_revision_args,
+  shape_git_status_porcelain_nul_args,
+  git_command_config_inert_args,
+  shape_git_init_bare_argv,
+  shape_git_init_bare_in_parent_args,
+}
+import gunbc.git_argv_route_wall {
+  GitArgvRoute,
+  GitWorkdirCarrying,
+  GitWorkdirFree,
+  GitArgvRouteAdmission,
+  GitArgvAdmitted,
+  GitArgvRefused,
+  git_argv_is_in_repo_dressed,
+  git_argv_leading_subcommand,
+  admit_git_argv_on_route,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESS EARNS. `gunbc.git_argv_route_wall` states the safe pairing for git argv: a
+// bare mutating argv is accepted ONLY by a route that carries a working directory, and the in-repo
+// `-C <repo>` dressing is the ONLY way to reach a route that carries none. A comment saying so is
+// discipline -- a caller can ignore it, which is exactly how a bare `shape_git_commit_allow_empty_args`
+// reached `shell.Exec.RunArgv` and left an empty commit on a session branch. This file is the
+// consumer that keeps the wall honest by EXECUTION: it drives `admit_git_argv_on_route` with the
+// REAL argv produced by the `extdeps/git.dag` shapes (never a hand-spelled literal) and checks each
+// side of the pairing. Flip the wall to admit a bare mutation, or to refuse the in-repo pairing, and
+// a claim here goes red.
+
+// Branch on the typed decision. A refusal is matched by its reason VARIANT, never by a string --
+// there is no admitted-by-default and no label a typo could silently change.
+
+fn admitted(route: GitArgvRoute, argv: List<String>) -> Bool {
+  match admit_git_argv_on_route(route: route, argv: argv) {
+    GitArgvAdmitted => true
+    GitArgvRefused => false
+  }
+}
+
+// Refused at a workdir-free route. There is exactly one way to be refused -- the bare-mutating
+// mis-join -- so the Refused variant IS that reason; a read-only or in-repo argv is Admitted.
+fn refused_bare_mutating_free(argv: List<String>) -> Bool {
+  match admit_git_argv_on_route(route: GitWorkdirFree, argv: argv) {
+    GitArgvRefused => true
+    GitArgvAdmitted => false
+  }
+}
+
+// (RED) Every bare MUTATING shape the census carries is REFUSED at a workdir-free route. These are
+// the argv that, mis-joined to a directory-less route, commit into whatever tree the process sits
+// in. If the wall let any through, the defect is unfixed and this claim fails.
+test fn bare_mutating_shapes_are_refused_at_workdir_free_route() -> Bool {
+     refused_bare_mutating_free(shape_git_checkout_orphan_args(branch: "orphan-root" as NonEmptyStr))
+  && refused_bare_mutating_free(shape_git_commit_allow_empty_args(message: "root commit"))
+  && refused_bare_mutating_free(shape_git_commit_message_args(message: "amend"))
+  && refused_bare_mutating_free(shape_git_add_all_args())
+  && refused_bare_mutating_free(shape_git_add_path_args(path: "roadmap.json"))
+}
+
+// (GREEN -- the five sites keep passing) The SAME bare mutating argv is ADMITTED on a route that
+// carries a working directory, which is why `carrier_exec(workdir:)` and
+// `belt_commit_git(worktree:) -> belt_exec(workdir:)` still reach every census site: git runs where
+// the route says, so a bare word-list is legitimate there.
+test fn bare_mutating_shapes_are_admitted_on_a_workdir_carrying_route() -> Bool {
+  let gate = GitWorkdirCarrying { workdir: "/worktrees/gate" as NonEmptyStr }
+  admitted(route: gate, argv: shape_git_checkout_orphan_args(branch: "orphan-root" as NonEmptyStr))
+    && admitted(route: gate, argv: shape_git_commit_allow_empty_args(message: "root commit"))
+    && admitted(route: gate, argv: shape_git_commit_message_args(message: "amend"))
+    && admitted(route: gate, argv: shape_git_add_all_args())
+    && admitted(route: gate, argv: shape_git_add_path_args(path: "roadmap.json"))
+}
+
+// (GREEN -- the only legal workdir-free pairing is NOT refused) An in-repo-dressed mutating command
+// reaches the workdir-free route: the `-C <repo>` dressing names the repository, so `git checkout`
+// here operates on the named tree, not on whatever the process sits in. This is the pairing the
+// carrier fixture runs through `shell.Exec.RunArgv`, and the wall must admit it. The contrast with
+// the same mutating subcommand bare (checkout_orphan, refused) is what makes this a real wall and
+// not a blunt ban.
+test fn in_repo_dressing_reaches_the_workdir_free_route() -> Bool {
+  let in_repo = git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main")
+  git_argv_is_in_repo_dressed(argv: in_repo)
+    && admitted(route: GitWorkdirFree, argv: in_repo)
+    && refused_bare_mutating_free(shape_git_checkout_orphan_args(branch: "orphan-root" as NonEmptyStr))
+}
+
+// (RED -- the bare-origin init, undressed) A bare `init --bare <dest>` names its destination as a POSITIONAL
+// argument with no `-C`. At a workdir-free route the wall must refuse it: classifying whether `init` named a
+// destination is argument-dependent positional analysis the wall refuses to carry, and the very same verb with no
+// path (`git init`) writes a `.git` into the ambient tree the process sits in — the exact stray-write this wall
+// exists to stop. Grounded on the REAL shape, so this is an execution fact, not a claim about a word-list.
+test fn bare_init_bare_argv_is_refused_at_workdir_free_route() -> Bool {
+  refused_bare_mutating_free(shape_git_init_bare_argv(path: "/scratch/origin.git" as FilePath))
+}
+
+// (GREEN -- the fix is to DRESS it with `-C`, not to widen the wall) The same create dressed `git -C <parent> init
+// -q --bare <absolute-dest>` is ADMITTED at the workdir-free route (leading `-C`, non-empty), for the same reason
+// every in-repo step is: it names the repository it writes. This is exactly what
+// `roadmap_event_carrier_fixture`'s `git-init-bare-origin` step emits. Note the create is dressed with `-C`, NOT
+// `--git-dir`: both pass the wall's head check, but only `-C` moves the spawned git's cwd into the caller's
+// directory, so a cwd-relative side effect (a relative `GIT_OBJECT_DIRECTORY`) stays under the scratch instead of
+// escaping into the ambient tree. The negative control (undressed, refused) is kept alongside so the contrast --
+// dressed admitted, undressed refused -- is pinned: dress the step, keep the wall's single classification intact.
+test fn c_dressed_bare_init_is_admitted_at_workdir_free_route() -> Bool {
+  let dressed = shape_git_init_bare_in_parent_args(parent: "/scratch", leaf: "/scratch/origin.git")
+  git_argv_is_in_repo_dressed(argv: dressed)
+    && admitted(route: GitWorkdirFree, argv: dressed)
+    && refused_bare_mutating_free(shape_git_init_bare_argv(path: "/scratch/origin.git" as FilePath))
+}
+
+// (GREEN -- scoped to the hazard, not a blunt ban) A bare READ-ONLY argv is admitted on the
+// workdir-free route: it inspects, it does not poison a tree, and refusing it would refuse a legal
+// pairing rather than guard the defect.
+test fn read_only_bare_argv_is_admitted_at_workdir_free_route() -> Bool {
+  admitted(route: GitWorkdirFree, argv: shape_git_status_porcelain_nul_args())
+}
+
+// The classifier reads the REAL shape argv, stepping over the in-repo dressing to the subcommand it
+// names. Grounded on shape output, so the classification is exercised, not asserted.
+test fn leading_subcommand_steps_over_the_in_repo_dressing() -> Bool {
+     git_argv_leading_subcommand(
+       argv: git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main"),
+     ) == "checkout"
+  && git_argv_leading_subcommand(argv: shape_git_commit_message_args(message: "amend")) == "commit"
+  && git_argv_leading_subcommand(argv: []) == ""
+}
+
+// (RED -- refuse a mutation hidden behind a git global option) A bare mutating argv whose verb is
+// preceded by a git global option (`-c k=v`) with no `-C` and no `--git-dir` still names no place to
+// run, so at a workdir-free route it must be refused. No `extdeps/git.dag` shape builder emits this
+// (there is no shape for `-c <k=v>`), so it is spelled as the attack input it is; the admitted-path
+// argv elsewhere in this witness stay shape-built. The classifier must find the hidden verb. RED
+// control: remove the option step-over from git_argv_leading_subcommand and the verb becomes invisible
+// -> both conjuncts go red, so the guard is load-bearing, not decorative.
+test fn mutation_behind_a_global_option_prefix_is_refused_at_workdir_free_route() -> Bool {
+  let hidden = ["-c", "user.name=x", "commit", "-q", "--allow-empty", "-m", "root commit"]
+  git_argv_leading_subcommand(argv: hidden) == "commit" && refused_bare_mutating_free(hidden)
+}
+
+// (typed decision) The admission branches both ways on the VARIANT: the mis-join is Refused with the
+// bare-mutating reason, and both admissible pairings -- a bare argv on a directory-carrying route and
+// an in-repo argv on a directory-less route -- are Admitted. The carrying route names a non-empty
+// place by construction (`workdir: NonEmptyStr`), so the mis-joined route cannot be built at all.
+test fn admission_decision_refuses_the_mis_join_and_admits_the_pairings() -> Bool {
+     refused_bare_mutating_free(shape_git_commit_allow_empty_args(message: "root commit"))
+  && admitted(route: GitWorkdirCarrying { workdir: "/worktrees/gate" as NonEmptyStr }, argv: shape_git_add_all_args())
+  && admitted(
+       route: GitWorkdirFree,
+       argv: git_checkout_revision_args(repository_dir: "/worktrees/gate", revision: "main"),
+     )
+}
+
+// (RED -- fail-closed: an allowlist, not a denylist) A bare verb that is neither a known mutating
+// verb NOR on the closed read-only allowlist -- a git subcommand the wall has not enumerated -- is
+// REFUSED at a workdir-free route. `pull` merges into the working tree, `revert` commits, `fetch`
+// writes refs, `commit-tree` writes objects: each writes the repository wherever it runs, and any
+// unclassified verb might. A denylist that admits whatever is merely ABSENT from its list would let
+// all four through -- the exact fail-OPEN hole this closes. So the workdir-free arm admits only
+// in-repo-dressed argv and allowlisted read-only verbs, and refuses the rest.
+//
+// RED control (its own): restore the workdir-free arm to "refuse only the known-mutating denylist,
+// admit everything else" and THIS claim alone goes red -- none of `pull`/`revert`/`fetch`/`commit-tree`
+// is on the mutating list, so a denylist admits them -- while claims 1-7 stay green. That isolates the
+// fail-closed default as the load-bearing part, not decoration.
+test fn unrecognised_bare_verb_is_refused_at_workdir_free_route() -> Bool {
+     refused_bare_mutating_free(["pull"])
+  && refused_bare_mutating_free(["revert", "HEAD"])
+  && refused_bare_mutating_free(["fetch", "origin"])
+  && refused_bare_mutating_free(["commit-tree", "HEAD", "-p", "HEAD"])
+}
+
+// (GREEN -- the step-over admits a legitimate read-only verb behind git global options) The same
+// classifier that finds the mutation in the RED case above must find the READ-ONLY verb when the
+// command is legitimate: a `status` inspection preceded by `-c k=v` global config options still only
+// inspects, so at a workdir-free route it is admitted. Shape-built (config-inert globals + the status
+// shape), so the admitted argv is real `extdeps/git.dag` output, not a hand spelling. RED control:
+// break the classifier's step-over of the value-taking globals (handle only `-C`) and the leading
+// token it returns is "-c", not "status" -- so `git_subcommand_is_safe_read_only` is false, the
+// command is refused, and THIS claim alone goes red while the refusal claims stay green. That is the
+// step-over being load-bearing on the allowlist head (it protects legitimate read-only commands, not
+// the refusals -- those hold whether or not the verb is extracted, because an unrecognised token is
+// refused by the closed allowlist anyway).
+test fn read_only_verb_behind_global_options_is_admitted_at_workdir_free_route() -> Bool {
+  let argv = concat(git_command_config_inert_args(), shape_git_status_porcelain_nul_args())
+  git_argv_leading_subcommand(argv: argv) == "status"
+    && admitted(route: GitWorkdirFree, argv: argv)
+}
+
+// (RED -- the dressing must NAME the repository, not just a working tree) `--work-tree` sets
+// GIT_WORK_TREE but leaves GIT_DIR to be found from the ambient directory, so a mutating argv dressed
+// ONLY in `--work-tree` still commits into whatever repository the process sits in -- the ambient-tree
+// hazard itself. Verified against git: `git --work-tree=<x> rev-parse --git-dir` prints the AMBIENT
+// .git, while `git --git-dir=<x> ...` follows <x>. So `--work-tree` (space and `=` forms) is refused at
+// a workdir-free route; only `-C` and `--git-dir`, which actually locate the repository, admit it. The
+// third conjunct guards the OTHER direction -- a genuine `--git-dir` mutating argv (the form the census
+// sandbox commits through) MUST still be admitted, so a fix that over-refuses cannot pass. Hand-spelled:
+// no `extdeps/git.dag` shape mints a `--work-tree`-only mutating argv, because such an argv is unsafe
+// by construction; these are attack/control inputs, matching the RED-claim convention.
+// RED control: re-add `--work-tree` to the repo-naming set and the first two conjuncts go Admitted,
+// reddening THIS claim alone while the others stay green.
+test fn work_tree_dressing_does_not_name_the_repo_and_is_refused() -> Bool {
+     refused_bare_mutating_free(["--work-tree", "/worktrees/other", "commit", "-q", "-m", "x"])
+  && refused_bare_mutating_free(["--work-tree=/worktrees/other", "commit", "-q", "-m", "x"])
+  && admitted(
+       route: GitWorkdirFree,
+       argv: ["--git-dir", "/worktrees/gate/.git", "--work-tree", "/worktrees/gate", "commit", "-q", "-m", "x"],
+     )
+}
+
+// `reflog` is the argument-dependent-write verb the read-only allowlist must NOT carry: bare `git
+// reflog` only reads, but `git reflog expire` prunes and `git reflog delete` removes entries, both
+// WRITING the repository (verified: `git reflog expire --expire=now --all` empties the reflog, 1->0
+// entries). A bare `reflog` argv at a workdir-free route is refused; reaching it requires the in-repo
+// dressing (`-C <repo> reflog show ...`). These are attack inputs (no extdeps shape mints them),
+// matching the RED-claim convention.
+// RED control (review 96171 finding 2): re-add `reflog` to `git_subcommand_is_safe_read_only` and both
+// conjuncts go Admitted, reddening THIS claim alone while the others stay green.
+test fn reflog_writes_are_refused_at_workdir_free_route() -> Bool {
+     refused_bare_mutating_free(["reflog"])
+  && refused_bare_mutating_free(["reflog", "expire", "--expire=now", "--all"])
+}

@@ -29,6 +29,23 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  lives in dag/test/manual, outside the gate's closure, and a witness reaching into it would be un-gated by
 //  construction. What is shared with it is the SEQUENCE, which is a fact about the route, not an interface.
 //
+//  THE SPAWN IS NOT MINE EITHER, AND NEITHER IS THE PROGRAM. The provision steps reach the shell through ONE
+//  function: `gunbc.git_workdir_free_route::run_git_argv_workdir_free`, the sanctioned workdir-free git route that
+//  puts each argv past `gunbc.git_argv_route_wall` and, when admitted, spawns it with the program the WALL owns
+//  (`git_program_name` = `git`) — so this fixture threads NO git program of its own, and the layout's `git_program`
+//  is what the carrier execs with a working directory, not what provisioning uses. The consequence is a discipline,
+//  not a convenience: every step — the in-repo steps AND the bare-origin create — is dressed with a leading
+//  `-C <dir>`, the ONE head the wall admits for a mutating verb. For the bare origin that is `-C <instance_root>`
+//  (the scratch root) with the destination given as an absolute positional (`shape_git_init_bare_in_parent_args`).
+//  `-C` does two jobs at once: it is what `admit_git_argv_on_route` accepts, AND it moves the spawned git's cwd
+//  INSIDE scratch, so a cwd-relative effect (a relative `GIT_OBJECT_DIRECTORY`, say) lands under the scratch the
+//  sweep reclaims rather than the ambient cwd it inherits. The tempting alternative — dressing the create as
+//  `--git-dir <dir> init --bare` — passes the wall's head check too, but it does NOT change the cwd: the spawned
+//  git keeps the ambient cwd, and a relative object directory then escapes scratch (it writes into the very tree
+//  the route exists to keep untouched, and the sweep, which removes only the scratch, never cleans it). So the
+//  create is dressed by place-of-execution (`-C`), not by naming a repo the verb never had; a bare
+//  `init --bare <dir>` with no `-C` is REFUSED at the route, and that refusal is the point.
+//
 //  WHERE IT LIVES, AND WHAT IT MAY NEVER DO. It lives under dag/test/claim beside the witnesses that use it,
 //  because a fixture a gated witness may not import is not a fixture. The carrier paths hang off the throwaway
 //  instance root its caller was given (a mktemp under /tmp). The two controls further down in this file additionally
@@ -59,7 +76,7 @@ module test.claim.roadmap.roadmap_event_carrier_fixture
 //  back, and returned `RoadmapEventCarrierMintRefused` without removing the directory mktemp had just created — so a
 //  caller who passed `/var/tmp/...` left a directory on disk, while the seal-planting arm did remove its own. One
 //  function, two refusal postures, opposite residue. That ordering is a tracked failure class, not a note to self:
-//  @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect)
+//  #gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect
 //  carries it, with this mint as a named specimen beside the R2 credential mint the row was filed for, and the control
 //  that pins it is `a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind` at the foot of this
 //  file. The distinction the row insists on is the reason the admission is its own earlier decision rather than a
@@ -79,7 +96,7 @@ import std.filesystem_path_grant { absolute_path_segments }
 import extdeps.git {
   shape_git_commit_allow_empty_in_repo_args,
   shape_git_config_local_in_repo_args,
-  shape_git_init_bare_argv,
+  shape_git_init_bare_in_parent_args,
   shape_git_init_in_repo_args,
   shape_git_remote_add_in_repo_args,
 }
@@ -95,6 +112,7 @@ import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_directory }
+import gunbc.git_workdir_free_route { run_git_argv_workdir_free, GitWorkdirFreeSpawned, GitWorkdirFreeRefused }
 
 // The witness voice, the same shape every claim file uses: a named row whose boolean the runner reports.
 fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
@@ -289,7 +307,7 @@ fn roadmap_event_carrier_run_scoped(template: NonEmptyStr, body: fn(RoadmapEvent
 fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarrierMint {
   //  THE ADMISSION RUNS BEFORE THE CREATE. The shape question is decidable from the template's text, so nothing has to
   //  exist to ask it, and asking it afterwards meant every refusal downstream of the create implied a tidy-up nobody
-  //  performed -- the class that records this is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect),
+  //  performed -- the class that records this is #gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect,
   //  and the
   //  control that pins it is a_template_outside_the_admitted_shape_is_refused_and_leaves_nothing_behind in this file.
   //  The gate asks the SAME predicate the post-create check asks, by calling it rather than restating it, so the answer
@@ -325,17 +343,17 @@ fn roadmap_event_carrier_mint_scratch(template: NonEmptyStr) -> RoadmapEventCarr
 }
 
 // ONE OBSERVATION OF ONE PATH, DECODED TWICE. `ls -l -n -d --` on the path itself, bound to LC_ALL=C. The
-// command words come from @ref(extdeps.tools.ls::ls_long_numeric_entries_command) — that module owns ls's own
+// command words come from #extdeps.tools.ls::ls_long_numeric_entries_command — that module owns ls's own
 // interface shape, and copying them into this file would be a second home for them
-// @ref(gunbc.design_argument::single_authority). The only words added here are the `env` wrapper and its locale
-// binding, which is this caller's share of the route: @ref(extdeps.filesystem.filesystem_io::FilesystemEntryLookup)
+// #gunbc.design_argument::single_authority. The only words added here are the `env` wrapper and its locale
+// binding, which is this caller's share of the route: #extdeps.filesystem.filesystem_io::FilesystemEntryLookup
 // assigns it there, "The caller binds LC_ALL=C so the failure text matches ls_entry_query_missing_diagnostic
 // exactly", and the wrapper idiom is already executed in
-// @ref(test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution).
+// #test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness::a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_execution.
 // Each predicate makes ONE observation of the path and reads that one value through the fold or folds it needs:
 // the absence predicate consults the lookup fold alone, the presence predicate consults the lookup fold and then the
 // entry fold over the SAME listing, which is the property
-// @ref(extdeps.filesystem.filesystem_io::FilesystemListingAbsence) states for the listing folds ("there is ONE
+// #extdeps.filesystem.filesystem_io::FilesystemListingAbsence states for the listing folds ("there is ONE
 // Filesystem.List per listing, and both folds are pure decoders over that one channel value"). What the two
 // predicates do NOT share is one sampling. Each runs its own `ls` when it is called, and they are called at
 // different moments by design — presence is asked before a delete and absence after it, so a single shared listing
@@ -350,7 +368,7 @@ fn roadmap_carrier_observe_entry(path: String) -> RoadmapCarrierEntryObservation
 }
 
 // ABSENCE IS ESTABLISHED BY TESTIMONY, NOT BY A COLLAPSED EXIT. The first version of this predicate asked
-// `test -d` and read exit 1 as absence. @ref(extdeps.filesystem.filesystem_io::FilesystemEntryLookup) rejects
+// `test -d` and read exit 1 as absence. #extdeps.filesystem.filesystem_io::FilesystemEntryLookup rejects
 // that probe in as many words: "A `test -e` /
 // `test -L` probe cannot answer it either, and the first version of this route used one. `test` collapses EVERY
 // stat and lstat failure into exit 1 — no such file, an I/O error, an ACL or LSM denial on the entry itself —
@@ -374,7 +392,7 @@ fn roadmap_carrier_path_is_absent(path: String) -> Bool {
 // still not satisfied by "listed" alone: it requires the entry to be listed AS A DIRECTORY, which is what the
 // mint actually creates (`shell.Mkdir.NewOwnerOnly`) and what the provenance door is really asking. A stray
 // regular FILE wearing the seal's name must not satisfy a door whose whole job is proving this fixture built the
-// tree. The kind comes from the same channel value, through @ref(extdeps.tools.ls::ls_entry_query_reading_of_output).
+// tree. The kind comes from the same channel value, through #extdeps.tools.ls::ls_entry_query_reading_of_output.
 fn roadmap_carrier_path_is_present(path: String) -> Bool {
   let seen = roadmap_carrier_observe_entry(path: path)
   match filesystem_entry_lookup_reading_of_exit(path: path, exit_code: seen.exit_code, stdout: seen.stdout, stderr: seen.stderr) {
@@ -512,7 +530,11 @@ fn roadmap_carrier_teardown_is_complete(scratch: RoadmapEventCarrierScratch, swe
 // the branch the carrier publishes must have somewhere to be pushed: a bare origin at the instance's own
 // `local_origin_root`, under the name the LAYOUT calls its remote (roadmap_event_carrier_layout_for_instance
 // chooses that name; for a preview instance it is a path, and a path-named remote resolves to the same URL, so
-// one rule covers both). Every argv below is extdeps.git's.
+// one rule covers both). Every argv below is extdeps.git's, and each reaches the WORKDIR-FREE route: every step —
+// the in-repo steps AND the bare origin — is dressed with a leading `-C <dir>` (the create uses `-C <instance_root>`
+// with an absolute destination), the ONE head `gunbc.git_argv_route_wall` admits for a mutating verb AND the thing
+// that pins the spawned git's cwd inside the scratch, so a cwd-relative side effect cannot escape into the ambient
+// tree. None of these is a bare mutating word-list, which that route must refuse.
 fn roadmap_event_carrier_provision_steps(
   instance: HostDashboardInstance,
   layout: RoadmapEventCarrierLayout,
@@ -522,7 +544,7 @@ fn roadmap_event_carrier_provision_steps(
     RoadmapCarrierProvisionStep { name: "git-config-author", arguments: shape_git_config_local_in_repo_args(repo: instance.repo_root, key: "user.name", value: roadmap_carrier_fixture_author_name) },
     RoadmapCarrierProvisionStep { name: "git-config-author-email", arguments: shape_git_config_local_in_repo_args(repo: instance.repo_root, key: "user.email", value: roadmap_carrier_fixture_author_email) },
     RoadmapCarrierProvisionStep { name: "git-config-no-signing", arguments: shape_git_config_local_in_repo_args(repo: instance.repo_root, key: "commit.gpgsign", value: "false") },
-    RoadmapCarrierProvisionStep { name: "git-init-bare-origin", arguments: shape_git_init_bare_argv(path: instance.local_origin_root) },
+    RoadmapCarrierProvisionStep { name: "git-init-bare-origin", arguments: shape_git_init_bare_in_parent_args(parent: instance.instance_root as String, leaf: instance.local_origin_root as String) },
     RoadmapCarrierProvisionStep { name: "git-remote-add-origin", arguments: shape_git_remote_add_in_repo_args(repo: instance.repo_root, remote: layout.remote as NonEmptyStr, url: instance.local_origin_root as String) },
     RoadmapCarrierProvisionStep { name: "git-root-commit", arguments: shape_git_commit_allow_empty_in_repo_args(repo: instance.repo_root, message: roadmap_carrier_fixture_root_commit_message) },
   ]
@@ -536,29 +558,44 @@ fn roadmap_event_carrier_make_directory(path: FilePath) -> RoadmapCarrierStep {
   }
 }
 
-// ONE git STEP, executed as declared argv. `program` is the layout's OWN git — the same realization the
-// carrier's snapshot and ensure steps will exec — because provisioning the carrier with a different tool than
-// the route will read it with is its own silent divergence. A nonzero exit is data the caller's policy reads;
-// the policy here is the fixture's own: stop, and say which step and why.
-fn roadmap_event_carrier_run_git(program: String, step: RoadmapCarrierProvisionStep) -> RoadmapCarrierStep {
-  let run = shell.Exec.RunArgv(program: program as NonEmptyStr, arguments: step.arguments)
-  if run.exit_code == 0 {
-    RoadmapCarrierStepDone
-  } else {
-    RoadmapCarrierStepRefused { step: step.name, detail: concat("git said: ", run.stderr) }
+// ONE git STEP, executed through the sanctioned WORKDIR-FREE git route (`gunbc.git_workdir_free_route`). This
+// route is the ONE place a workdir-free git spawn reaches `shell.Exec.RunArgv`; it puts the argv past the wall
+// (`gunbc.git_argv_route_wall`) and, when admitted, spawns it with the program the WALL owns (`git_program_name`),
+// not a program this fixture threads. The program is deliberately NOT a caller argument: the DESIGN makes the git
+// program the wall's authority, so the fixture may not fork it, and the wall admits only argv that names the
+// repository it acts on (a leading `-C <dir>`, or `--git-dir <dir>`) or a read-only verb — which is why the steps
+// above are dressed with `-C`. (The create is dressed `-C <dir>` and NOT `--git-dir <dir>`: only `-C` also moves
+// the spawned git's cwd into the scratch, so a cwd-relative side effect stays swept — see the module header.)
+// A refused step never reaches the seam, so it can never write into whatever tree the process happens to
+// sit in; the fixture reports that as its own named refusal rather than swallowing it. A spawned-but-nonzero exit
+// is data the caller's policy reads; the policy here is the fixture's own: stop, and say which step and why —
+// "why" is the exit code the route carries on the spawned arm (the route's result carries no stderr, so the
+// code is the honest cause available at the seam; fail_closed). The two refusals are distinguished so a wall
+// refusal (an argv that named no place — a caller bug) never reads like a git-level failure (a real nonzero): the
+// former says the wall never spawned it, the latter says git ran and failed, naming the code.
+fn roadmap_event_carrier_run_git(step: RoadmapCarrierProvisionStep) -> RoadmapCarrierStep {
+  match run_git_argv_workdir_free(argv: step.arguments) {
+    GitWorkdirFreeSpawned { exit_code: code, stdout: _ } =>
+      if code == 0 {
+        RoadmapCarrierStepDone
+      } else {
+        RoadmapCarrierStepRefused { step: step.name, detail: join(["git exited ", "\{code}", " on the sanctioned route"], "") }
+      }
+    GitWorkdirFreeRefused =>
+      RoadmapCarrierStepRefused { step: step.name, detail: "the argv named no place to run and the wall refused it before the seam" }
   }
 }
 
 // RUN THE DECLARED STEPS IN ORDER, AND STOP AT THE FIRST REFUSAL: the fold's stuck arm keeps the located cause
 // and never executes what follows, because a repository that was never created has no use for a remote, and a
 // cascade of refusals would bury the one that is true.
-fn roadmap_event_carrier_run_steps(program: String, steps: List<RoadmapCarrierProvisionStep>) -> RoadmapCarrierStep {
+fn roadmap_event_carrier_run_steps(steps: List<RoadmapCarrierProvisionStep>) -> RoadmapCarrierStep {
   fold(
     steps,
     init: RoadmapCarrierStepDone,
     f: (acc, step) => match acc {
       RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapCarrierStepRefused { step: failed, detail: cause }
-      RoadmapCarrierStepDone => roadmap_event_carrier_run_git(program: program, step: step)
+      RoadmapCarrierStepDone => roadmap_event_carrier_run_git(step: step)
     }
   )
 }
@@ -603,7 +640,7 @@ fn roadmap_event_carrier_provision(instance: HostDashboardInstance, scratch: Roa
     RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
     RoadmapCarrierStepDone => match roadmap_event_carrier_make_directories(roadmap_event_carrier_provision_directories(instance: instance)) {
       RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
-      RoadmapCarrierStepDone => match roadmap_event_carrier_run_steps(program: layout.git_program, steps: roadmap_event_carrier_provision_steps(instance: instance, layout: layout)) {
+      RoadmapCarrierStepDone => match roadmap_event_carrier_run_steps(steps: roadmap_event_carrier_provision_steps(instance: instance, layout: layout)) {
         RoadmapCarrierStepRefused { step: failed, detail: cause } => RoadmapEventCarrierRefused { step: failed, detail: cause }
         RoadmapCarrierStepDone => RoadmapEventCarrierReady { instance: instance, layout: layout, scratch: scratch }
       }
@@ -789,7 +826,7 @@ test fn the_shape_admission_refuses_a_foreign_root_a_parent_escape_the_bare_pref
 //  directory may exist under the control's own parent when the call returns. Not "refused loudly" -- the refusal arms
 //  were always loud, and loudness is what hid this defect: a reader auditing error handling sees three correct
 //  refusals and walks past the one thing wrong with them, which is that the create happened first. The row this
-//  control came from is @ref(gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect).
+//  control came from is #gunbc.recurring_failure_mode.a_precondition_check_sits_downstream_of_the_irreversible_effect::a_precondition_check_sits_downstream_of_the_irreversible_effect.
 //
 //  WHY A PRIVATE PARENT INSTEAD OF SCANNING /var/tmp. The first version of this control listed the shared /var/tmp
 //  and filtered by stem. It went red -- but for the wrong reason: an entry belonging to another session made the

@@ -78,6 +78,7 @@ pub enum EvalBuiltinArm {
     FreeCallDependencyResolutionFactsAt,
     FreeCallConceptDeclFacts,
     FreeCallDataDeclTypeFacts,
+    FreeCallExtdepsSubjectRefFacts,
     FreeCallExportSignatureFacts,
     FreeCallDeclFacts,
     FreeCallDeclFactsAt,
@@ -203,6 +204,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "dependency_resolution_facts_at" => Some(EvalBuiltinArm::FreeCallDependencyResolutionFactsAt),
         "concept_decl_facts" => Some(EvalBuiltinArm::FreeCallConceptDeclFacts),
         "data_decl_type_facts" => Some(EvalBuiltinArm::FreeCallDataDeclTypeFacts),
+        "extdeps_subject_ref_facts" => Some(EvalBuiltinArm::FreeCallExtdepsSubjectRefFacts),
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
         "decl_facts" => Some(EvalBuiltinArm::FreeCallDeclFacts),
         "decl_facts_at" => Some(EvalBuiltinArm::FreeCallDeclFactsAt),
@@ -326,6 +328,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.dependency_resolution_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDependencyResolutionFactsAt };
     ("free_call.concept_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConceptDeclFacts };
     ("free_call.data_decl_type_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDataDeclTypeFacts };
+    ("free_call.extdeps_subject_ref_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExtdepsSubjectRefFacts };
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
     ("free_call.decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFacts };
     ("free_call.decl_facts_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDeclFactsAt };
@@ -530,12 +533,16 @@ macro_rules! eval_call_bridge__v2_std_node_arm {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EvalCallBridgeStdHostTextArm {
     V4BridgeHostTextChars,
+    V4BridgeHostTextTextOfChars,
+    V4BridgeHostTextCharAt,
 }
 
 #[rustfmt::skip]
 pub fn lookup_eval_call_bridge_std_host_text(spelling: &str) -> Option<EvalCallBridgeStdHostTextArm> {
     match spelling {
         "chars" => Some(EvalCallBridgeStdHostTextArm::V4BridgeHostTextChars),
+        "text_of_chars" => Some(EvalCallBridgeStdHostTextArm::V4BridgeHostTextTextOfChars),
+        "char_at" => Some(EvalCallBridgeStdHostTextArm::V4BridgeHostTextCharAt),
         _ => None,
     }
 }
@@ -543,6 +550,8 @@ pub fn lookup_eval_call_bridge_std_host_text(spelling: &str) -> Option<EvalCallB
 #[rustfmt::skip]
 macro_rules! eval_call_bridge__std_host_text_arm {
     ("v4_bridge.host_text_chars") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdHostTextArm::V4BridgeHostTextChars };
+    ("v4_bridge.host_text_text_of_chars") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdHostTextArm::V4BridgeHostTextTextOfChars };
+    ("v4_bridge.host_text_char_at") => { $crate::v1_interpreter_dispatch_generated::EvalCallBridgeStdHostTextArm::V4BridgeHostTextCharAt };
 }
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

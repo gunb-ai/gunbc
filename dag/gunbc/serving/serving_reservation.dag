@@ -63,6 +63,7 @@ import std.measure { ByteSize, byte_size, measure_add, HardwareThreadCount, hard
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
 import gunbc.serving.serving_host_memory { ServingEngineMemory, ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, srv3_strata_engine_memory, srv4_serving_engine_memory, butch_a_strata_engine_memory, butch_b_strata_engine_memory, ken_strata_engine_memory }
+import extdeps.systemd.systemctl { UnitFileState, UnitEnabled, UnitDisabled }
 
 // ── CPU: A CPUSASET A PROCESS MAY RUN ON IS NOT A SET WITHHELD FROM EVERYONE ELSE ────────────────────
 
@@ -354,25 +355,98 @@ data srv14_serving_deferred_consumer_frontier: DissolutionCondition = unbound_di
 // the operator is put the ruling with the measured number if any CI budget is to rise. Until then these rows
 // stay, and srv14's width keeps resolving exactly as it does today.
 data srv14_serving_memory_charge_retirement_frontier: DissolutionCondition = unbound_dissolution(
-  description: "Delete when both triggers land: (1) strata-pool@a, strata-pool@b and a2-power-cap.service retired live on butch, by the converge dispatch routed through the butch CI runner lane (tidy-swift-586) after its srv14 address PR and the tailnet join; and (2) a re-measured quiescent /proc/meminfo high-water read on butch after that retirement. Only then may srv14_strata_reservation's serving memory charge (2 x 96 GiB MemoryMax from gunbc.serving.serving_host_memory butch_a/b_strata_engine_memory), the butch_a/b engine-memory rows, and the srv14_strata_engine_residency_at_read subtraction in gunbc.host.host_memory_observation be retired together -- and any CI memory budget rise they imply needs the operator's explicit sign-off with the measured number attached. Deleting the reservation row before this dissolves RAISES butch's runner memory envelope by 192 GiB and reds test.claim.runner.srv14_runner_capacity_witness. While this is unbound, srv14 is also not enrollable as a remote-build serving host: it stays out of gunbc.compute.remote_build_serving_setup remote_build_serving_candidate_hosts, and no remote-build observe or converge may be dispatched to it, because gunbc.compute.host_capacity host_capacity_build_seat prices a builder's seat against the same envelope this charge is holding back -- the converger would install a builder over bytes no quiescent read has measured." as NonEmptyStr
+  description: "Delete when both triggers land: (1) strata-pool@a.service, strata-pool@b.service and strata-expert-lock.service (the boot-enabled serving engines) plus the a2-power-cap.service cap residue switched OFF live on butch, retired by the operator's hand OUTSIDE the converge route (ruling gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21) -- NOT by a fleet-converge host_unit_retirement dispatch and NOT routed through any butch CI runner lane, because butch runs no CI runner lane to route through. This trigger's discharge is recorded in the typed rows srv14_serving_unit_boot_states below (each unit's unit_file_state and the operator's read of its prior state); those rows are its authority, not this sentence. AND (2) a re-measured quiescent /proc/meminfo MemAvailable high-water read on butch after that retirement, in the shape of srv14_memavailable_quiescent_read, produced by fleet-converge host_memory_observe host=srv14 -- this frontier stays unbound until such a receipt lands. Only then may srv14_strata_reservation's serving memory charge (2 x 96 GiB MemoryMax from gunbc.serving.serving_host_memory butch_a/b_strata_engine_memory), the butch_a/b engine-memory rows, and the srv14_strata_engine_residency_at_read subtraction in gunbc.host.host_memory_observation be retired together -- and any CI memory budget rise they imply needs the operator's explicit sign-off with the measured number attached. Deleting the reservation row before this dissolves RAISES butch's runner memory envelope by 192 GiB and reds test.claim.runner.srv14_runner_capacity_witness. While this is unbound, srv14 is also not enrollable as a remote-build serving host: it stays out of gunbc.compute.remote_build_hosts remote_build_serving_candidate_hosts, and no remote-build observe or converge may be dispatched to it, because gunbc.compute.host_capacity host_capacity_build_seat prices a builder's seat against the same envelope this charge is holding back -- the converger would install a builder over bytes no quiescent read has measured." as NonEmptyStr
 )
 
-// HOST-E2D4B7 (ken) CANNOT HOLD A REMOTE-BUILD SEAT WHILE ITS STRATA ENGINE HOLDS THE ROOM. One Strata
-// server over its three T10 cards leaves, over its measured usable RAM, less than one
-// gunbc.runner.runner_slot_desired::gunbc_runner_slot_memory_max slot for CI, so a builder seat cannot be
-// carved without taking it out of the serving charge -- which has priority (operator). The two readings are
-// derived, not restated: usable from gunbc.host.host_memory_observation (this host's MemTotal row) and the
-// charge from gunbc.serving.serving_host_memory::ken_strata_engine_memory.memory_max via
-// gunbc.serving.serving_reservation::host_memory_reserved, witnessed in
-// test.claim.fleet.ken_build_host_gate_witness. This complements, and does not replace, the two open rows that
-// already hold this unit's build seat back -- gunbc.integration_concern::h11ssl_unit3_build_pool_join_is_held_pending_its_ledger_home
-// (the ledger home the join still lacks) and
-// gunbc.integration_concern::h11ssl_unit3_empty_census_lists_still_read_as_measured_nothing (the in-band
-// census read still owed). It is a SECOND, independent reason the seat is refused today: even a fully surveyed
-// ken has no room under the serving charge.
-data h11ssl_unit3_serving_charge_blocks_build_seat_frontier: DissolutionCondition = unbound_dissolution(
-  description: "Delete when ken (gunbc.fleet.fleet_host_identity::operator_host_e2d4b7) can carve one build seat over its serving charge -- i.e. when its measured usable RAM minus the serving memory reserved by gunbc.serving.serving_reservation::host_memory_reserved (currently the single ken_strata_engine_memory MemoryMax ceiling) leaves at least gunbc.runner.runner_slot_desired::gunbc_runner_slot_memory_max. That happens only when (a) the ken-strata engine is retired live over the tailnet, (b) a fresh quiescent /proc/meminfo re-read replaces gunbc.host.host_memory_observation's ken MemTotal row, and (c) the resulting CI memory budget rise carries the operator's explicit sign-off with the measured number attached (a serving reservation is never shrunk to make room; the operator rebalances fleet-wide). Until then ken is not enrollable as a remote-build serving host: it stays out of gunbc.compute.remote_build_serving_setup remote_build_serving_candidate_hosts, and no remote-build observe or converge is dispatched to it -- host_capacity_build_seat would price a builder over bytes the serving charge owns. The tailnet SSH transport gap (this unit carries tag:serving, which the ACL gives no SSH) is a SEPARATE gate on the same enrollment, reported to the build lane, not dissolved here." as NonEmptyStr
-)
+// THE BOOT-ENABLE STATE OF BUTCH'S SERVING UNITS -- THE RECEIPT THAT DISCHARGES TRIGGER ONE OF THE FRONTIER ABOVE.
+// This is a HOST READ, not the ruling row: on 2026-11-21 the operator retired butch's serving stack BY HAND, outside
+// the converge route (ruling gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21), and gave
+// the before/after. BEFORE: strata-pool@a and strata-pool@b were ENABLED -- present under
+// /etc/systemd/system/multi-user.target.wants, so a boot would bring the serving engines back -- with
+// strata-expert-lock.service alongside (the unit description the operator quoted: 'Strata OpenAI-compatible pool
+// upstream a (IQ3_S, 2x2 layout on 4x A2 at 35 W)'). AFTER: all three read inactive and DISABLED. The ruling records
+// WHO retires, never THAT it happened; this read is the evidence that it did, and it is the model following the host.
+// Because the boot-enable symlinks are gone, no converge -- and there is no butch CI runner lane, and the
+// host_unit_retirement mode is expressly NOT the route -- recreates a serving engine on butch.
+// The consumer that makes these rows true by execution is
+// test.claim.serving.butch_serving_retirement_witness (it reds while any boot-enabled serving unit is left declared);
+// nothing else reads them (gunbc.design_argument::consumption), so this list carries ONLY the three units the
+// operator's hand retirement actually reached -- not the a2-power-cap residue (the four A2s were physically removed
+// 2026-11-17 and its cap intents are already gone from gunbc.serving.gpu_power_state_policy) and not the memory
+// charge, which the frontier above holds until the quiescent read.
+// THE VALUE DOMAIN IS extdeps.systemd.systemctl::UnitFileState, NOT a new enum: systemctl's unit-file state is
+// already modelled there (UnitEnabled | ... | UnitDisabled | ..., with parse_unit_file_state), and a second two-arm
+// enum would be a lossier fork of the same fact (gunbc.design_argument::single_authority;
+// gunbc.design_argument::external_upstreams). A unit the operator's hand retirement reached reads UnitDisabled; one
+// the model still declared at boot would read UnitEnabled and red the witness.
+//
+// WHY `unit` IS NonEmptyStr AND NOT extdeps.systemd::SystemdUnitName: that carrier's admission
+// (systemd_unit_name_char_admitted) admits only [A-Za-z0-9:_.\-\\] and REJECTS '@', so it cannot name a template
+// INSTANCE -- and strata-pool@a.service IS a template instance. The sibling engine rows in
+// gunbc.serving.serving_host_memory carry these same unit names as NonEmptyStr for the same reason. A
+// template-instance unit-name carrier would need its own admission and a named consumer; that is outside this change.
+//
+// WHY THE PROVENANCE IS A TYPED CARRIER, NOT prose: a receipt with named parts (reader, date, prior state) belongs
+// in a typed carrier (gunbc.design_argument::source_annotations); the witness reads those fields, not a substring
+// of a string.
+type ServingUnitRetirementRead {
+  reader: NonEmptyStr
+  read_on: NonEmptyStr
+  prior_unit_file_state: UnitFileState?
+}
+
+// ONE SYSTEMD UNIT OF A HOST, AS THE OPERATOR'S HAND RETIREMENT READ IT. `unit_file_state` uses the systemd carrier;
+// `read` is the typed receipt (who read it, when, what it read before the hand action) -- never a bare assertion.
+type ServingUnitBootState {
+  host: HostIdentity
+  unit: NonEmptyStr
+  unit_file_state: UnitFileState
+  read: ServingUnitRetirementRead
+}
+
+// The three butch serving units the operator's 2026-11-21 hand retirement reached, each read UnitDisabled. The two
+// pool instances read UnitEnabled before the hand action (enabled in /etc/systemd/system/multi-user.target.wants,
+// so a boot returned them); strata-expert-lock's prior file-state was not recorded, so it is Absent rather than
+// guessed. Its consumer is test.claim.serving.butch_serving_retirement_witness.
+data srv14_serving_unit_boot_states: List<ServingUnitBootState> = [
+  ServingUnitBootState {
+    host: operator_host_srv14,
+    unit: "strata-pool@a.service" as NonEmptyStr,
+    unit_file_state: UnitDisabled,
+    read: ServingUnitRetirementRead {
+      reader: "operator" as NonEmptyStr,
+      read_on: "2026-11-21" as NonEmptyStr,
+      prior_unit_file_state: Present { value: UnitEnabled },
+    },
+  },
+  ServingUnitBootState {
+    host: operator_host_srv14,
+    unit: "strata-pool@b.service" as NonEmptyStr,
+    unit_file_state: UnitDisabled,
+    read: ServingUnitRetirementRead {
+      reader: "operator" as NonEmptyStr,
+      read_on: "2026-11-21" as NonEmptyStr,
+      prior_unit_file_state: Present { value: UnitEnabled },
+    },
+  },
+  ServingUnitBootState {
+    host: operator_host_srv14,
+    unit: "strata-expert-lock.service" as NonEmptyStr,
+    unit_file_state: UnitDisabled,
+    read: ServingUnitRetirementRead {
+      reader: "operator" as NonEmptyStr,
+      read_on: "2026-11-21" as NonEmptyStr,
+      prior_unit_file_state: Absent,
+    },
+  },
+]
+
+// Every boot-enable state the model holds for a host, looked up by identity -- the authority the retirement witness
+// reads to decide whether the host still DECLARES a serving engine in its desired state. A host with no rows yields
+// the empty list (nothing declared enabled).
+fn serving_unit_boot_states_on(host: HostIdentity) -> List<ServingUnitBootState> {
+  filter(srv14_serving_unit_boot_states, u => host_identity_eq(a: u.host, b: host))
+}
 
 fn host_reservations_for(host: HostIdentity) -> Optional<ServingHostReservation> {
   match filter(serving_host_reservations, r => host_identity_eq(r.host, host)) |> first() {

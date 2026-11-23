@@ -1,0 +1,8 @@
+module test.claim.effect_summary_listed_import.listed_import_witness
+
+import test.claim.effect_summary_listed_import.listed_decl_with_effect { shared_listed_probe_fn }
+import test.claim.effect_summary_listed_import.rival_decl_same_name { rival_marker }
+
+test fn listed_import_binds_the_effectful_declaration() -> Bool {
+  rival_marker() == "rival-marker" && shared_listed_probe_fn() == "listed"
+}

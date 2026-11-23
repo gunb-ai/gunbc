@@ -1,0 +1,250 @@
+module gunbc.git_argv_route_wall
+
+import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.algebra { list_at_optional }
+import std.optional { Present, Absent }
+import extdeps.git { git_program_name }
+
+// git argv is written in two dressings (`extdeps/git.dag`):
+//
+//   * a BARE word-list whose leading token is the git subcommand --
+//     `["commit","-q","--allow-empty","-m",msg]` -- for a route that carries the working
+//     directory itself, and
+//   * an IN-REPO list that names the repository up front -- `["-C",repo,"commit","-m",msg]` --
+//     for a route that carries none.
+//
+// A bare word-list carries no place to run. Handed to a route that names no working directory,
+// git acts on whatever repository the process happens to sit in, so a bare MUTATING argv can
+// commit into a tree its caller does not own -- under whatever identity the ambient config names
+// -- and report only a boolean. Where that tree is a gate tree the damage is silent: `git checkout
+// -f` does not remove untracked files, so a stray commit or file survives into the next head's
+// gate and changes what was gated.
+//
+// This module is the consumer-side WALL over that pairing. Policy stays with the consumer and
+// `extdeps/git.dag` stays anemic: every fn here is a decidable predicate over argv WORDS -- no
+// command builder, no spawn, no grounding. It is the general form of the answer `belt_commit_git`
+// already gives: belt_commit_git refuses to spawn at all until the worktree's own gitfile is
+// verified, so no caller reaches the tool without naming where the tool runs. Here the same
+// refusal is stated for every route:
+//
+//   * a route that CARRIES a working directory may take a bare mutating argv, because git then runs
+//     exactly where the route says, and
+//   * a route that names NO working directory admits ONLY an argv that names where it acts: the
+//     in-repo dressing (`-C`/`--git-dir`), or a bare argv whose leading subcommand is on
+//     a CLOSED allowlist of read-only inspection verbs. Everything else -- a bare mutating argv, and
+//     fail-closed any verb the allowlist has not earned -- is refused. So the in-repo dressing is the
+//     only mutating way to reach such a route, and an unconsidered verb is refused rather than
+//     admitted: the failure direction is a route that fails loudly, never an ambient-tree write.
+//
+// `admit_git_argv_on_route` is the single decision a route branches on before spawning:
+// GitArgvAdmitted, or the distinct GitArgvRefused variant -- a typed,
+// located refusal, never an invisible default (fail_closed). It spawns nothing and claims no
+// authority over wetness; naming where the tool runs stays the route's own obligation. The point
+// is that a git route reaches a spawn only by branching on this decision. Its discriminating
+// witness is `test.claim.git_bare_mutating_route_wall_witness`.
+
+// The two route kinds, told apart by whether the route names where git runs. There is no third
+// kind: a route either carries a directory or it does not, and the admissible argv follows. A
+// carrying route names a NON-EMPTY place by construction -- `workdir: NonEmptyStr` makes "advertises
+// a working directory but names nowhere" an unrepresentable value, so no runtime empty-check is
+// needed and no caller can build the mis-joined route at all (fail_closed: unwritable beats caught).
+type GitArgvRoute
+  = GitWorkdirCarrying { workdir: NonEmptyStr }
+  | GitWorkdirFree
+
+// The single classification a workdir-free route needs is `git_subcommand_is_safe_read_only` below
+// plus `git_argv_is_in_repo_dressed`: an argv is admissible at a workdir-free route ONLY if it names
+// its repository or its leading verb is on the closed read-only allowlist. There is deliberately NO
+// separate "is this verb mutating" denylist beside it: the wall must carry ONE classification of
+// "may this argv run without a place?", so the two lists can never drift into disagreeing about the
+// same verb. A verb is refused because it is not proven safe, not because it is proven dangerous --
+// which is why an explicit dangerous-list would be both dead weight and a second source of truth.
+
+// A git subcommand that only ever READS -- an inspection verb that cannot write the repository or the
+// working tree, whatever its arguments. This is the CLOSED allowlist a workdir-free route admits in
+// place of the in-repo dressing: the workdir-free decision admits ONLY an argv that names its
+// repository (`-C`/`--git-dir`) or whose leading subcommand appears HERE, and refuses
+// everything else. The burden is inverted from a denylist: a verb nobody enumerated -- `pull`,
+// `revert`, `commit-tree`, `notes`, `submodule`, a future git verb -- is REFUSED, so the gap surfaces
+// as someone's route failing loudly, never as a silent write into the ambient tree (fail_closed: the
+// wrong state is unwritable, not caught).
+//
+// Only UNAMBIGUOUSLY read-only verbs belong here. A verb whose write-ness is argument-dependent is
+// NOT safe at a route that names no place to run, so it stays out and is refused: `config <k> <v>`
+// writes while `config <k>` reads; `branch`/`tag` create by default; `remote add/remove` write;
+// `stash`, `clean`, `bisect` mutate state; `reflog` is the subtle one -- bare `git reflog` only reads,
+// but `git reflog expire` prunes entries and `git reflog delete` removes one, both WRITING the
+// repository (verified: `git reflog expire --expire=now --all` empties the reflog). So `reflog` is
+// refused here too; reach it, if ever, via the in-repo dressing (`-C <repo> reflog show ...`). Reaching one of those at a workdir-free route means
+// re-dressing it (`-C <repo> ...`) or taking a directory-carrying route -- never admitting an
+// unconsidered verb by default.
+fn git_subcommand_is_safe_read_only(subcommand: String) -> Bool {
+     subcommand == "status"
+  || subcommand == "log"
+  || subcommand == "show"
+  || subcommand == "diff"
+  || subcommand == "cat-file"
+  || subcommand == "rev-parse"
+  || subcommand == "rev-list"
+  || subcommand == "ls-files"
+  || subcommand == "ls-tree"
+  || subcommand == "ls-remote"
+  || subcommand == "describe"
+  || subcommand == "name-rev"
+  || subcommand == "merge-base"
+  || subcommand == "blame"
+  || subcommand == "shortlog"
+  || subcommand == "whatchanged"
+  || subcommand == "grep"
+}
+
+// The in-repo dressing: a git global option in first position that actually LOCATES the repository --
+//   * `-C <dir>`        -- relocates the process so git resolves `.git` (repo AND work tree) there;
+//   * `--git-dir <dir>` / `--git-dir=<dir>` -- sets GIT_DIR explicitly, so git runs against the named
+//     repository rather than whatever tree the process sits in.
+// Admitted, never refused. Recognising every repo-naming global (not just `-C`) is what lets a
+// `--git-dir` commit be admitted for the RIGHT reason -- it names its target -- rather than by the
+// accident of a flag that happens to read as non-mutating.
+//
+// `--work-tree` is DELIBERATELY absent: it sets GIT_WORK_TREE but leaves GIT_DIR to be found from the
+// ambient working directory, so `["--work-tree", X, "commit", ...]` commits into whatever repository the
+// process happens to sit in -- the very ambient-tree hazard this wall exists to stop. Verified against
+// git: `git --work-tree=<x> rev-parse --git-dir` returns the AMBIENT .git, while `git --git-dir=<x> ...`
+// follows <x>. A combined `--git-dir <dir> --work-tree <wt>` argv is still admitted, but only because its
+// `--git-dir` names the repository -- never on the strength of `--work-tree` alone.
+fn git_argv_is_in_repo_dressed(argv: List<String>) -> Bool {
+  match list_at_optional(xs: argv, index: 0) {
+    Absent => false
+    Present { value: head } =>
+      if head == "-C" || head == "--git-dir" {
+        match list_at_optional(xs: argv, index: 1) {
+          Present { value: repo } => repo != ""
+          Absent => false
+        }
+      } else {
+        names_repo_with_equals(head: head)
+      }
+  }
+}
+
+// `--git-dir=<path>`: the equals form of the one space/equals repo-naming global that locates the
+// repository. `--work-tree=` is intentionally NOT here -- see `git_argv_is_in_repo_dressed` for why it
+// does not name a repository. A single option token whose right-hand side must be non-empty.
+fn names_repo_with_equals(head: String) -> Bool {
+  option_equals_nonempty(head: head, prefix: "--git-dir=")
+}
+
+// head starts with `prefix` and is strictly longer than it (a non-empty right-hand side).
+fn option_equals_nonempty(head: String, prefix: String) -> Bool {
+  starts_with(s: head, prefix: prefix) && !ends_with(s: head, suffix: prefix)
+}
+
+// The leading subcommand, stepping over a leading run of git GLOBAL options (any token beginning with
+// "-"), consuming the operand of a value-taking option given as a separate argument; the first token
+// that is not an option is the subcommand. Stepping over OPTIONS -- not just `-C` -- is what stops a
+// bare mutation hiding its verb behind `-c k=v` / `--no-pager` / `--git-dir` at a route that carries
+// no directory (fail_closed: the verb is found, not skipped past). An argv too short to carry one
+// yields "" and so classifies as neither mutating nor a command.
+fn git_argv_leading_subcommand(argv: List<String>) -> String {
+  git_argv_leading_subcommand_at(argv: argv, index: 0)
+}
+
+// Value-taking git globals supplied as `-X value` (separate operand). The `--opt=value` spelling is a
+// single token and is NOT in this set -- it is stepped over as one option token.
+fn git_option_takes_separate_operand(option: String) -> Bool {
+     option == "-c"
+  || option == "-C"
+  || option == "--git-dir"
+  || option == "--work-tree"
+  || option == "--namespace"
+  || option == "--exec-path"
+}
+
+fn git_argv_leading_subcommand_at(argv: List<String>, index: Int) -> String {
+  match list_at_optional(xs: argv, index: index) {
+    Absent => ""
+    Present { value: head } =>
+      if !starts_with(s: head, prefix: "-") {
+        head
+      } else if git_option_takes_separate_operand(option: head) {
+        git_argv_leading_subcommand_at(argv: argv, index: index + 2)
+      } else {
+        git_argv_leading_subcommand_at(argv: argv, index: index + 1)
+      }
+  }
+}
+
+// The decision a route branches on before spawning: Admitted, or a distinct Refused variant. There
+// is no admissible-but-warned state, no admitted-by-default and no string label a typo could turn
+// into "admitted" -- fail_closed, a wrong answer is a located, typed variant, not an invisible
+// default. There is exactly one Refused VARIANT, but it now covers every bare argv at a workdir-free
+// route that neither names a repository (`-C`/`--git-dir`) nor is a safe read-only verb
+// -- the bare-mutating mis-join AND any unrecognised verb the closed allowlist has not earned. So
+// `GitArgvRefused` stays a nullary variant rather than a reason sum: the refusal is located (this
+// route, this argv) and the model does not pretend to a finer reason taxonomy it has not enumerated;
+// the "carrying route names no directory" half never needs a reason because `workdir: NonEmptyStr`
+// makes that route unconstructable.
+type GitArgvRouteAdmission
+  = GitArgvAdmitted
+  | GitArgvRefused
+
+// THE WALL. The single decision a route makes before any spawn.
+fn admit_git_argv_on_route(route: GitArgvRoute, argv: List<String>) -> GitArgvRouteAdmission {
+  match route {
+    // Carries the directory: a bare argv is legitimate, because git then runs exactly where the
+    // route says. The route cannot advertise a directory and name nowhere -- `workdir: NonEmptyStr`
+    // makes that value unconstructable -- so there is nothing left to refuse on this arm.
+    GitWorkdirCarrying => GitArgvAdmitted
+    // Names no directory: admit ONLY an argv that carries its own place to act -- the in-repo
+    // dressing (`-C`/`--git-dir`, the short-circuit below) or a bare argv whose leading
+    // subcommand is a safe read-only inspection verb. Everything else is REFUSED: a bare mutating
+    // argv (it would mutate whatever tree the process sits in) and, fail-closed, any UNRECOGNISED
+    // verb -- one not on the read-only allowlist -- because a git subcommand nobody enumerated may
+    // write the ambient tree just as `commit` does. The default is refusal, so the allowlist can
+    // never be silently incomplete in the dangerous direction.
+    GitWorkdirFree =>
+      if git_argv_is_in_repo_dressed(argv) {
+        GitArgvAdmitted
+      } else if git_subcommand_is_safe_read_only(git_argv_leading_subcommand(argv)) {
+        GitArgvAdmitted
+      } else {
+        GitArgvRefused
+      }
+  }
+}
+
+// THE SANCTIONED ROUTE for the workdir-FREE channel. A route that names no working directory must
+// not reach a git spawn by classifying the argv itself and calling `shell.Exec.RunArgv`; it calls
+// THIS gate and spawns only the command the gate hands back. A bare mutating argv -- the shape that
+// would mutate whatever repository the process happens to occupy -- yields NO command and a typed
+// refusal, so it cannot be mis-joined to a directory-less route; the in-repo `-C <repo>` dressing and
+// bare read-only inspection are handed back intact to spawn.
+//
+// This is a SPAWN GATE, not a command builder: it constructs no ArgvCommand and spawns nothing, so
+// `extdeps/git.dag` stays anemic and no new row is owed to the `extdeps/exec/command.dag` spawn
+// census. It is the SAME wall (`admit_git_argv_on_route`) expressed as the decision a workdir-free
+// route branches on -- a single authority, never a second check bolted beside the route's own.
+//
+// At a workdir-FREE route `admit_git_argv_on_route` refuses BOTH the bare-mutation mis-join and any
+// verb the closed read-only allowlist has not earned (fail-closed classification). Neither is a
+// taxonomy the route could branch on -- an unconsidered verb's actionable class is "re-dress it
+// (`-C <repo> ...`) or take a directory-carrying route", the same as the bare mutation's -- so the
+// reason carries nothing and the refused arm is nullary, mirroring the wall's single-inhabitant
+// `GitArgvRefused`; a one-inhabitant reason sum would not expose its constructor in this DSL.
+type GitWorkdirFreeSpawn
+  = GitWorkdirFreeSpawnAdmitted { program: NonEmptyStr, arguments: List<String> }
+  | GitWorkdirFreeSpawnRefused
+
+// The decision a workdir-free git route makes before any spawn. Admitted carries the program and the
+// argv to run; Refused produces no command -- the bare-mutating argv is refused, never spawned.
+// The PROGRAM is NOT a caller choice: a workdir-free git route runs git and only git, so the program
+// name is part of git's interface and is fixed HERE (the single authority `extdeps.git::git_program_name`),
+// never taken from a caller. The wall judges the argv WORDS; the admitted program is always git, so no
+// caller can smuggle another program through a git-shaped argv (`interface_realization_policy`,
+// `single_authority`; a non-git program never reaches an admit -- `fail_closed`).
+fn spawn_git_argv_workdir_free(argv: List<String>) -> GitWorkdirFreeSpawn {
+  match admit_git_argv_on_route(route: GitWorkdirFree, argv: argv) {
+    GitArgvAdmitted => GitWorkdirFreeSpawnAdmitted { program: git_program_name, arguments: argv }
+    GitArgvRefused => GitWorkdirFreeSpawnRefused
+  }
+}

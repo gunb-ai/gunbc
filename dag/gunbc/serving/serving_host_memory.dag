@@ -561,18 +561,38 @@ data serving_cold_session_tier_frontier: DissolutionCondition = unbound_dissolut
 
 // THE H11SSL-i UNIT 3 STRATA ENGINE (host-e2d4b7). One engine spans all three T10 cards on :18081; its
 // resident ceiling is the figure that binds the host's CI seat, charged in
-// gunbc.serving.serving_reservation, the way butch's two replicas are. Only the cgroup ceilings this read
-// actually observed are ServingMemoryRead; every figure a cgroup cap does not give -- the soft MemoryHigh, the
-// loaded-and-idle base, the parked-session cache budget -- stays ServingMemoryUnread with the read that would
-// settle it named, so no consumer is handed a number nobody measured
-// (gunbc.design_argument::fail_closed). This mirrors srv3, srv4 and butch: a reading with a producer, not a
-// copied literal; the ssh read in the provenance is its referent.
+// gunbc.serving.serving_reservation, the way butch's two replicas are.
+//
+// THE CEILING WAS CUT IN HALF ON THE OPERATOR'S RULING, AND THIS ROW CARRIES BOTH SIDES OF THAT. The
+// 2026-11-18T21:21Z read found MemoryMax 112 GiB (120259084288 B); the 2026-11-19T22:18:37Z re-read, taken
+// after the operator trimmed the serving side and signed the number (gunbc.design_ruling
+// ::ken_strata_memory_trim_buys_two_build_seats_2026_11_19, the operator's words: yeah thats fine w/ me thanks),
+// finds 56 GiB (60129542144 B) in the unit file at ken-strata.service line 13, with the cgroup memory.max
+// agreeing and MainPID still 162073 -- so the change landed WITHOUT a restart, exactly as butch's cap did on
+// 2026-11-12. The withdrawn 112 GiB is named here rather than repainted, the way srv4's row names the figures
+// its drop-in replaced: the whole point of the trim is that a reader can see what room was given back and where
+// it went (gunbc.design_argument::replacement_migration).
+//
+// WHAT THE TRIM TOOK FROM THE SERVING SIDE IS THE OPERATOR'S REPORT, NOT A FLEET READ, and it is labelled that
+// way in the ruling row: 12 GiB of parked-session cache in 6 slots, parallel 4, about 25 GB non-reclaimable, and
+// a full-speed need around 53 GB (about 25 GB engine plus about 28 GiB of model page cache), below which prompt
+// prefill degrades on an unmeasured curve. The cache budget and the slot count in THIS row are different: those
+// two I read myself out of ~/strata-pool/cfg-ken.json at 2026-11-19T22:19:59Z, so they are ServingMemoryRead.
+// The base is still unread for the reason it was unread before -- every memory.current I have taken was under live
+// load with sessions parked -- and the soft ceiling is now READ, with the answer being that none is set.
 data ken_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "ken-strata" as NonEmptyStr,
-  memory_cap: ServingMemoryUnread { reason: "ken-strata soft ceiling (MemoryHigh): only the hard MemoryMax was read on 2026-11-18T21:21Z; the service carries no separate MemoryHigh drop-in in this read, so the soft bound is unset-or-unobserved and is not invented; read obligation: systemctl show ken-strata.service -p MemoryHigh" as NonEmptyStr },
-  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 112)), provenance: "ken-strata.service MemoryMax = 112G, read over read-only ssh (ubuntu@192.168.1.236) 2026-11-18T21:21Z systemctl show ken-strata.service -p MemoryMax=120259084288; the cgroup memory.max agrees; gunbc.serving.serving_reservation charges this ceiling against the host's CI seat" as NonEmptyStr },
-  swap_cap: ServingMemoryUnread { reason: "ken-strata MemorySwapMax not read on 2026-11-18T21:21Z; read obligation: systemctl show ken-strata.service -p MemorySwapMax (swap is an overrun guard, never a cache, so its bound is owed a read before it is relied on)" as NonEmptyStr },
-  base: ServingMemoryUnread { reason: "ken-strata base (loaded-and-idle, nothing parked): the 2026-11-18T21:21Z memory.current 115788308480 was under live load with sessions resident, so it is not base; read obligation: ken-strata.service memory.stat anon with the batch warmed and nothing retained" as NonEmptyStr },
-  conversation_cache: ServingMemoryUnread { reason: "the ken-strata unit's parked-session cache budget is unread on 2026-11-18T21:21Z; its effective value is not read from a cgroup cap" as NonEmptyStr },
-  conversation_slots: Absent,
+  // READ, AND THE READ SAYS NO SOFT CEILING EXISTS. MemoryHigh=infinity is not an unread figure: the read was
+  // taken and its answer is that nothing reclaims before the hard ceiling. The arm carries no byte count because
+  // there is no soft bound to convert, not because nobody looked (butch carries the same reading: a 2026-11-12
+  // ssh found MemoryMax=infinity on both replicas, no ceiling to charge).
+  memory_cap: ServingMemoryUnread { reason: "ken-strata soft ceiling (MemoryHigh): READ 2026-11-19T22:18:37Z over read-only ssh (ubuntu@192.168.1.236) systemctl show ken-strata.service -p MemoryHigh -> MemoryHigh=infinity, and the service cgroup reads memory.high = max. The unit sets NO soft ceiling, so the hard MemoryMax below is the only bound this engine gets and the kernel reclaims nothing before it. No byte count is reported because there is no soft bound to report; the earlier 2026-11-18T21:21Z note that the soft bound was unset-OR-UNOBSERVED is settled by this read: it is unset." as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), provenance: "ken-strata.service MemoryMax = 56G. Read by this session over read-only ssh (ubuntu@192.168.1.236) 2026-11-19T22:18:37Z: systemctl show ken-strata.service -p MemoryMax -> MemoryMax=60129542144; the service cgroup reads memory.max = 60129542144; grep of /etc/systemd/system/ken-strata.service puts MemoryMax=56G at line 13, and the operator reports the line is in the unit file so it survives a reboot. MainPID is still 162073 and MemoryCurrent 23613460480, so no restart accompanied it -- the operator applied it live, the way butch's 2026-11-12 cap was applied. The operator's backups: /etc/systemd/system/ken-strata.service.bak-before-memmax-56g-20261119T174210Z (listed on the host, 760 B) and ~/strata-pool/cfg-ken.json.bak-before-mem-trim-20261119T171122Z. WHAT THIS WITHDREW: MemoryMax 112 GiB = 120259084288 B, read at the same address 2026-11-18T21:21Z. gunbc.serving.serving_reservation::host_memory_reserved charges THIS ceiling against the host's CI seat, deriving it from this field rather than restating it (review 93375)." as NonEmptyStr },
+  swap_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 2)), provenance: "ken-strata.service MemorySwapMax = 2G. Read 2026-11-19T22:18:37Z over read-only ssh: systemctl show ken-strata.service -p MemorySwapMax -> MemorySwapMax=2147483648; the cgroup reads memory.swap.max = 2147483648; the unit file carries MemorySwapMax=2G at line 14. The host's only swap device reads 8 GiB (swapon: /swap.img 8G), so the guard fits inside it. This was Unread on 2026-11-18T21:21Z; the read obligation named there is now discharged. It stays an overrun guard and nowhere sessions park (the operator's rule, gunbc.design_argument at the head of this module)." as NonEmptyStr },
+  base: ServingMemoryUnread { reason: "ken-strata base (loaded-and-idle, nothing parked): no read taken under load gives it. The 2026-11-18T21:21Z memory.current 115788308480 was under load with sessions resident, and the 2026-11-19T22:18:37Z memory.current 23613460480 is a post-trim figure under load with 6 parked-session slots configured, so neither is base; read obligation: ken-strata.service memory.stat anon with the batch warmed and nothing retained" as NonEmptyStr },
+  conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 12288)), provenance: "ken-strata parked-session cache budget: /home/ubuntu/strata-pool/cfg-ken.json /args carries --conversation-cache-mib 12288, read 2026-11-19T22:19:59Z over read-only ssh. The operator's report of the same trim (12 GiB of parked sessions) agrees with it; the cfg read is the referent, not the report. It was Unread on 2026-11-18T21:21Z, when only the cgroup ceilings had been read. Note what the operator did NOT change: max context stays 224k." as NonEmptyStr },
+  // cfg-ken.json /args --conversation-cache-slots 6, read in the same 2026-11-19T22:19:59Z read as the cache
+  // budget above (the field has no provenance carrier of its own, so the read is here: Nat? is the carrier for
+  // the count). The operator's report of the trim says slots went 24 -> 6; the cfg is what this value rests on.
+  conversation_slots: Present { value: 6 },
 }

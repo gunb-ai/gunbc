@@ -16,7 +16,7 @@
 module test.claim.host.network_install_ci_witness
 
 import std.logic { Bool }
-import std.types { EpochMs, NonEmptyStr, String }
+import std.types { EpochMs, NonEmptyStr, PathSegment, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { length, string_contains }
 import std.decl_ref { decl_ref, declaration_ref_eq }
@@ -29,6 +29,7 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.network.mac { render_mac_address }
 import extdeps.toolchain.types { Architecture }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15, operator_host_srv4 }
+import gunbc.auth.managed_accessor_credential { with_managed_accessor_credential, managed_accessor_credential_refusal, ManagedAccessorCredentialCompleted, ManagedAccessorCredentialRefused }
 import gunbc.actions_run_binding { fleet_converge_arrival_subject_env_name }
 import gunbc.fleet.fleet_intent { srv15_baseboard }
 import gunbc.fleet.machine_target_disk_observations { target_disk_reading_for }
@@ -44,6 +45,9 @@ import gunbc.host.network_install_ci {
   network_install_ci_unit_row,
   NetworkInstallCiConflated, NetworkInstallCiRouted,
   network_install_ci_reported_serial, network_install_ci_unit_refusal, network_install_ci_conflation_refusal,
+  network_install_ci_credential_pair_refusal, network_install_ci_credential_pin_refusal,
+  network_install_ci_credential_token_refusal, network_install_ci_credential_fetch_refusal,
+  network_install_ci_credential_bracket_refusal,
 }
 import gunbc.host.network_install_host_reader { network_install_host_readings_unauthorized }
 import gunbc.machine_intake.arrival_subject { arrival_converge_population, arrival_population_row_in }
@@ -542,4 +546,99 @@ test fn w_a_conflated_dispatch_is_refused_naming_the_identity_and_both_roles() -
         variable: fleet_converge_arrival_subject_env_name as NonEmptyStr,
         detail: "x" as NonEmptyStr
       )
+}
+
+// ── BMC CREDENTIAL COMPOSITION: five typed, located, DISCRIMINATED stage refusals ──────────
+// Production reads the managed accessor credential through ONE authority -- the unit's arrival
+// federation pair row, the one pin gate, the one token-source selector, the one Secret Manager
+// read, the one 0600 bracket (the composition the arrival run performs, gunbc.machine_intake.arrival_run).
+// Each stage's refusal is minted by a pure fn so it is asserted hermetically HERE; the executed
+// fetch happens only in the wet production path. DISCRIMINATED means each refusal names its own
+// stage and not another's, so an operator reading the exit cannot confuse a missing pair row with
+// an uncited pin, an unavailable token, a refused read, or bracket residue -- and a stage that
+// could not establish its effect never answers yes.
+test fn w_the_credential_stage_refusals_are_discriminated() -> Bool {
+  let pair = network_install_ci_credential_pair_refusal(unit: ci_host)
+  let pin = network_install_ci_credential_pin_refusal(unit: ci_host)
+  let token = network_install_ci_credential_token_refusal(unit: ci_host, cause: "no workload identity token" as NonEmptyStr)
+  let fetch = network_install_ci_credential_fetch_refusal(unit: ci_host)
+  let bracket = network_install_ci_credential_bracket_refusal(unit: ci_host)
+  string_contains(s: pair, pattern: "arrival federation pair")
+    && !string_contains(s: pair, pattern: "pin")
+    && string_contains(s: pin, pattern: "pin")
+    && !string_contains(s: pin, pattern: "federation pair row")
+    && string_contains(s: token, pattern: "no workload identity token")
+    && string_contains(s: fetch, pattern: "access upsert")
+    && string_contains(s: bracket, pattern: "residue")
+}
+
+// REAL INPUT, REAL REFUSALS, NOTHING FABRICATED: every stage refusal names the committed srv15
+// identity and states that no credential is fetched, no password file is written, and no install
+// is dispatched -- the refusal is the whole answer until the stage's effect can be established.
+test fn w_every_credential_stage_refusal_names_the_unit_and_refuses_outright() -> Bool {
+  let pair = network_install_ci_credential_pair_refusal(unit: ci_host)
+  let pin = network_install_ci_credential_pin_refusal(unit: ci_host)
+  let fetch = network_install_ci_credential_fetch_refusal(unit: ci_host)
+  let bracket = network_install_ci_credential_bracket_refusal(unit: ci_host)
+  string_contains(s: pair, pattern: "srv15")
+    && string_contains(s: pin, pattern: "srv15")
+    && string_contains(s: fetch, pattern: "srv15")
+    && string_contains(s: bracket, pattern: "srv15")
+    && string_contains(s: pair, pattern: "no install is dispatched")
+    && string_contains(s: pin, pattern: "never invented")
+    && string_contains(s: fetch, pattern: "not written")
+    && string_contains(s: bracket, pattern: "did not open")
+}
+
+// THE CAPABILITY REFUSAL NAMES THE OBSERVATION THAT IS MISSING, and the one that is NOT taken.
+// srv15's firmware release capability row is absent because the committed MegaRac operation
+// evidence carries no build reading for the unit's controller; the refusal must name the read-only
+// 'hpm check' as the observation that establishes one, say plainly that the arrival run does not
+// take it, and forbid typing a release in without it. If the remedy were relaxed to let a build
+// number be entered by hand -- the fabrication this whole ledger exists to stop -- these arms go
+// red while the ordinary "row absent" arms stay green.
+test fn w_the_capability_refusal_names_the_hpm_check_and_forbids_typing_a_release() -> Bool {
+  let missing = network_install_ci_missing(
+    host: ci_host, dispatch_id: ci_dispatch_id, decided_at: ci_decided_at,
+    password_file: Present { value: ci_password_path }, edge_view: Present { value: CiEdgeReady },
+  )
+  any(
+    xs: missing,
+    where: item =>
+      string_contains(s: item.input as String, pattern: "firmware release capability row")
+        && string_contains(s: item.cause as String, pattern: "hpm check")
+        && string_contains(s: item.cause as String, pattern: "arrival run does NOT take")
+        && string_contains(s: item.cause as String, pattern: "no release may be typed in")
+  )
+}
+
+// THE REAL ROUTE, HERMETICALLY: a unit with NO arrival federation pair row must be refused by the
+// FIRST stage of the actual credential bracket -- not a hand-built stage string, the gate itself.
+// srv4 has no pair row (only mtjade1 and srv15 lanes are committed), so with_managed_accessor_credential
+// must refuse PairAbsent, the use-closure can never have been reached (the PairAbsent arm never calls
+// it), and the shared generator's text must name the unit and the missing locus. If the pair gate were
+// relaxed -- defaulted, or made to invent a lane -- srv4 would reach a later stage or complete, and the
+// Refused arm below flips to false. That is the discriminating red on the REAL path, run in the hermetic
+// claim corpus: pair rows are data, the first stage is pure lookup, and nothing past it is attempted.
+test fn w_the_real_credential_route_refuses_a_pairless_unit_at_the_pair_gate() -> Bool {
+  let outcome = with_managed_accessor_credential(
+    host: operator_host_srv4,
+    file_name: "network-install-bmc-password" as PathSegment,
+    use: fn(bundle) { "the closure ran" },
+  )
+  match outcome {
+    ManagedAccessorCredentialRefused { stage: stage } => {
+      let text = managed_accessor_credential_refusal(
+        lane: "network-install" as NonEmptyStr,
+        host: operator_host_srv4,
+        stage: stage,
+        consequence: "the credential is not written and no install is dispatched" as NonEmptyStr,
+      )
+      string_contains(s: text, pattern: "srv4")
+        && string_contains(s: text, pattern: "federation pair")
+        && string_contains(s: text, pattern: "no install is dispatched")
+        && !string_contains(s: text, pattern: "the closure ran")
+    }
+    ManagedAccessorCredentialCompleted { value: _ } => false
+  }
 }

@@ -42,17 +42,26 @@ test fn runner_slot_allocation_wall_holds() -> Bool {
   //     2026-11-12T03:29:30Z, then the operator decision msg_5b61137b installed the hand drop-in 60-memory-cap.conf
   //     (MemoryMax=96G, MemoryHigh=88G, MemorySwapMax=0 per engine) and it was re-read at 2026-11-12T03:48:46Z. So
   //     serving_host_memory.butch_a/b_strata_engine_memory.memory_max are ServingMemoryRead, host_memory_reserved
-  //     (srv14) is Present, and srv14 is ADMITTED at the derived width -- a real charge, not the fabricated zero the
-  //     width fold refuses to hand back. Its width is asserted DERIVED-and-positive, not pinned to a hand number: the
-  //     fold's answer moves with its inputs and pinning it here would be a stale alarm wearing a claim's name.
+  //     (srv14) is Present, and srv14 is ADMITTED at a derived width -- a real charge, not the fabricated zero the
+  //     width fold refuses to hand back. It is admitted at ZERO now (conjunct (c)): the distinction this claim keeps
+  //     is admitted-vs-refused, and an admitted zero is a decided width, not the absence the fold refuses to invent.
   let srv14_admitted = match gunbc_committed_host_runner_slot_allocation(host: operator_host_srv14) {
     HostSlotAllocationAdmitted { allocation: _ } => true
     HostSlotAllocationWidthUnresolved { host: _, cause: _ } => false
   }
-  // (c) srv14 is now in the admitted (given-a-width) set, and its committed width is a derived positive count.
+  // (c) srv14 is in the admitted (given-a-width) set, and its committed width is a DERIVED ZERO -- not a positive
+  //     count and not an absence. The zero is DECIDED: its stated cause is the operator ruling
+  //     gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign ("we should start
+  //     using standard 2 core github runners just as placeholder runners to shell out to remote builds"), produced by
+  //     gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths -> committed_width_with_serving. Butch keeps no CI
+  //     runner; what it keeps is its fleet-converge executor route, which is not CI capacity. The engines' READ
+  //     ceilings still charge srv14's memory until the Group B frontier dissolves (serving_reservation's
+  //     srv14_serving_memory_charge_retirement_frontier, whose trigger one the operator retired by hand on
+  //     2026-11-21 and whose trigger two -- the quiescent re-read -- is still pending), so the fold's
+  //     axes still say a positive number for srv14 -- it is the ruling, not an unread ceiling, that answers zero.
   let srv14_in_admitted = any(gunbc_admitted_runner_slot_allocations(), a => (a.host as String) == (operator_host_srv14 as String))
-  let srv14_width_positive = match gunbc_runner_committed_width(host: operator_host_srv14) {
-    RunnerWidthDerived { slots: s } => s > 0
+  let srv14_width_is_the_ruled_zero = match gunbc_runner_committed_width(host: operator_host_srv14) {
+    RunnerWidthDerived { slots: s } => s == 0
     RunnerWidthUnresolved { cause: _ } => false
   }
   // THE FAIL-CLOSED CONTROL THAT BUTCH USED TO BE DOES NOT LIVE HERE ANYMORE -- it is permanent and SYNTHETIC in
@@ -60,7 +69,7 @@ test fn runner_slot_allocation_wall_holds() -> Bool {
   // closed_not_a_fabricated_zero, which folds a synthetic ServingMemoryUnread replica set to Absent -- the exact input
   // to the WidthServingMemoryUnestablished gate at gunbc.runner.runner_slot_allocation::committed_width_of_over. An
   // unread ceiling still refuses, whether or not butch is capped: that property no longer rides on srv14's state.
-  wall && srv14_admitted && srv14_in_admitted && srv14_width_positive
+  wall && srv14_admitted && srv14_in_admitted && srv14_width_is_the_ruled_zero
 }
 
 // THE ROW'S OWN FIELDS ARE THE SUBJECT, AND RE-DERIVING THEM WAS THE DEFECT. This read the width
@@ -296,17 +305,24 @@ test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> B
     && committed_width_is(host: operator_host_srv1, expected: memory_admitted_total_width(host: operator_host_srv1))
     && committed_width_is(host: operator_host_srv3, expected: host_memory_admitted_width(host: operator_host_srv3))
     && committed_width_is(host: operator_host_srv4, expected: host_memory_admitted_width(host: operator_host_srv4))
-    // srv14/butch is admitted at the DERIVED width AND MEMORY IS ITS BINDING AXIS: the committed width equals its
-    // memory admission, the same derived form srv3/srv4 use two rows above. The EQUALITY is the claim, not a count:
-    // it fails if another axis ever binds below memory (the CPU axis is an authored 1 core/slot so 128-wide and cannot
-    // bind, disk is DiskWidthUnconstrained on every host -- the cpu_width_exceeds clause below pins the CPU axis above
-    // memory), and it fails outright if a serving replica's ceiling goes unmeasured again, because committed_width_of
-    // returns Unresolved{WidthServingMemoryUnestablished} and committed_width_is reads that as false. Its two engines
-    // each charge a READ 96 GiB cgroup ceiling (hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b,
-    // re-read 2026-11-12T03:48:46Z) against the envelope; the width is the fold's answer, derived the way every other
-    // host's is -- NOT a count copied from the tree (fail_closed: a tree-copied count is a change detector). srv14
-    // admitted at a POSITIVE derived width is asserted in runner_slot_allocation_wall_holds; this is the axis claim.
-    && committed_width_is(host: operator_host_srv14, expected: host_memory_admitted_width(host: operator_host_srv14))
+    // srv14/butch IS NOT A FOLDED HOST ANYMORE: ITS CI WIDTH IS RULED, AND THIS IS THE CLAIM THAT SAYS SO WHERE THE
+    // OTHER HOSTS' AXES ARE CLAIMED. Two conjuncts, both dynamic, together the DECOUPLING: its committed width is 0
+    // while its memory admission is still POSITIVE. Before the operator ruling of 2026-11-19 (adopted by
+    // gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign, #16748) srv14 sat in
+    // the same equality as srv3/srv4 -- committed == its memory admission, ~15 slots -- because its two engines each
+    // charged a READ 96 GiB cgroup ceiling (hand drop-in 60-memory-cap.conf, operator decision msg_5b61137b, re-read
+    // 2026-11-12T03:48:46Z) against the envelope and memory was the binding axis. Hosted CI bridges to the remote
+    // build, so butch keeps no CI runner and the fold is short-circuited at a DECIDED zero by
+    // gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths -- a width with a stated cause, which is what keeps it
+    // distinguishable from RunnerWidthUnresolved { WidthComputeOfferAbsent } (the absence that runner_host_deploy still
+    // refuses: runner_host_deploy_zero_width_is_admitted_but_an_unresolved_width_is_not, and my witness's
+    // an_unruled_host_with_no_offer_stays_an_absence / butch_with_an_unresolved_width_still_refuses_the_deploy). The
+    // zero is not a fabricated zero: the fold's memory gate and the slot-shape gate still run first, so an unread
+    // serving ceiling for srv14 still refuses rather than ruling -- srv14_width_refuses_when_the_serving_charge_is_
+    // handed_absent_roster_free below is that control, and it stays GREEN. The axes claim itself is srv3/srv4/srv1's;
+    // srv14 no longer has one until a ruling un-rules it.
+    && committed_width_is(host: operator_host_srv14, expected: 0)
+    && host_memory_admitted_width(host: operator_host_srv14) > 0
     && cpu_width_is(host: operator_host_srv1, expected: 128)
     && cpu_width_exceeds(host: operator_host_srv3, bound: host_memory_admitted_width(host: operator_host_srv3))
 }

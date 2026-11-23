@@ -1,0 +1,31 @@
+module gunbc.integration_concern.work_envelope_axes_outside_work_key
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+data work_envelope_axes_outside_work_key: IntegrationConcern = IntegrationConcern {
+  identity: "work_envelope_axes_outside_work_key",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.fabric.envelope", decl_name: "ResourceEnvelope"),
+    requirement: "ResourceEnvelope's gpu, storage and network axes are bound by the WorkKey, so a restored Work's key re-derivation detects an edit to any of them.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.work", decl_name: "work_identity_material") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.work", decl_name: "work_identity_material"), tail: [decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore")] },
+  question: "envelope_material does not put gpu, storage or network in the key, so restore cannot verify them; work_restore refuses a wire that sets one (RestoreUnsupportedAxes) and work_persist refuses to write one. No current producer sets them. Should the three axes enter the key (a PR 2 identity change) before any Work that sets them is admitted?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f9334b73e24",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore") }, tail: [] },
+      account: "Remote-build PR 2b: the restore refuses the axes as a declared boundary, so the refusal is not permanent by silence.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.work", decl_name: "work_identity_material") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore"), control: Absent, statement: "A wire that sets gpu, storage or network refuses typed naming each axis; it is never carried unchecked." }],
+    next: climbs_when(capability: "The three axes enter the WorkKey, at the latest with the remote executor (PR 7); the restore refusal and the writer refusal are then deleted."),
+  },
+}

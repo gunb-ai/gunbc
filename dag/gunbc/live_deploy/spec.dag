@@ -426,6 +426,14 @@ data roadmap_ingress_function: NonEmptyStr = "roadmap_ingress"
 
 data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_ingress.dag"
 data approval_broker_ingress_function: NonEmptyStr = "approval_broker_ingress"
+// THE FABRIC DB ENDPOINT IS SERVED THE SAME WAY (gunbc.design_ruling::
+// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21): a handler entry bound to an
+// ingress by a binding module CONSTRUCTOR, realized by `gunbc run`. The binding module is
+// gunbc.fabric.fabric_storage_ingress and its constructor fabric_storage_ingress takes the handler, the
+// ingress listener, the release revision and the two evaluation budgets.
+data fabric_storage_ingress_entry_file: NonEmptyStr = "dag/gunbc/fabric/fabric_storage_ingress.dag"
+data fabric_storage_ingress_function: NonEmptyStr = "fabric_storage_ingress"
+data fabric_storage_handler_function: NonEmptyStr = "fabric_storage_serve_handle"
 
 // ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
 // Every other unit this deployment installs is named per deployment identity, so a lab twin gets
@@ -741,17 +749,20 @@ fn deployment_belt_unit_stem(names: DeploymentNames) -> String {
   service_unit.replace(from: ".service", to: "")
 }
 
-// THE FABRIC DB ENDPOINT'S OWN UNIT IS NOT DEPLOYMENT STATE. Its name and path were derived here, its text
-// emitted by gunbc.live_deploy.emit, staged and restarted by gunbc.live_deploy.apply_legs, torn down by
-// gunbc.live_deploy.retract_legs and required as a member by gunbc.live_deploy.role_singleton_convergence,
-// until the operator ruled on 2026-11-10 (gunbc.design_ruling::
-// t6_fabric_storage_excluded_from_live_deploy_2026_11_10): `gunbc-roadmap-fabric-storage.service` keeps the
-// unit and process it already has on srv1, and no modeled deploy may repoint, restart or remove it. The model
-// and the host had been two homes deciding one fragment, which is the fork
-// gunbc.design_argument::single_authority refuses, and the ruling names the model as the home that ends. What
-// the deployment still owns is declared below, because it is NOT the unit: the tailscale route to the
-// endpoint's door socket, and, as a dependency step, the store's ownership marker. The store's files remain
-// owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement
+// THE FABRIC DB ENDPOINT'S OWN UNIT IS DEPLOYMENT STATE AGAIN. Its name and path are derived here, its text
+// is emitted by gunbc.live_deploy.emit live_deploy_fabric_storage_unit_file, staged and restarted by
+// gunbc.live_deploy.apply_legs, torn down by gunbc.live_deploy.retract_legs and required as a member by
+// gunbc.live_deploy.role_singleton_convergence. An operator ruling of 2026-11-10
+// (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) had made it operator-held:
+// `gunbc-roadmap-fabric-storage.service` kept the unit and process it already had on srv1, and no modeled
+// deploy could repoint, restart or remove it. That is the DEADLOCK this reverses
+// (gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21): an
+// operator-held unit ran `gunbc serve`; when 72808ffd2c deleted that subcommand the deploy replaced
+// /opt/gunbc/bin/gunbc and the unit crash-looped, every dashboard_deploy then refused at the tailnet-door
+// cutover gate (which reads this endpoint's journal over the door socket first, HTTP 502), and a deploy cannot
+// repair a unit outside its membership. The unit is back in the membership. The deployment also still owns the
+// tailscale route to the endpoint's door socket, and, as a dependency step, the store's ownership marker. The
+// store's files remain owned-directory demands no retract touches (gunbc.fabric.fabric_storage_placement
 // fabric_storage_directory_demands).
 
 // THE DOOR SOCKET OF THE HOLDER THIS SPEC CARRIES, built from the token's instance like every other
@@ -787,6 +798,20 @@ fn deployment_tailnet_door_unit_name(names: DeploymentNames) -> NonEmptyStr {
 
 fn deployment_tailnet_door_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join(["/etc/systemd/system/", deployment_tailnet_door_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+// THE FABRIC DB ENDPOINT'S UNIT IS DEPLOYMENT STATE, OWNED AND STAGED BY THE DEPLOYMENT (gunbc.design_ruling::
+// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, reversing
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10). It is named from the deployment's own service-unit
+// stem (the tailnet door is `gunbc-roadmap-tailnet-door.service`, this is `gunbc-roadmap-fabric-storage.service`),
+// and composed by gunbc.live_deploy.emit. It answers over the door socket; the tailscale route to it
+// (ComposeOwned FabricStorageServeMapping) is a DIFFERENT artifact.
+fn deployment_fabric_storage_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-fabric-storage.service"], "") as NonEmptyStr
+}
+
+fn deployment_fabric_storage_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_fabric_storage_unit_name(names: names) as String], "") as NonEmptyStr
 }
 
 // The door's served entry is the loopback entry's name with this suffix, so each instance's door
@@ -883,7 +908,7 @@ fn deployment_belt_credential_recovery_timer_unit_name(names: DeploymentNames) -
 }
 
 // THE PERIODIC STANDINGS REFRESH unit pair (node://adhoc-5752c35f-e54; the operator ruling
-// @ref(gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16)). Same stem discipline as the credential-recovery
+// #gunbc.design_ruling::refreshes_regularly_every_10_minutes_2026_11_16). Same stem discipline as the credential-recovery
 // backstop; the oneshot runs `belt_observe_once_cli` and the timer re-arms it every
 // belt_standings_refresh_backstop seconds.
 fn deployment_belt_standings_refresh_unit_name(names: DeploymentNames) -> NonEmptyStr {
@@ -1063,7 +1088,7 @@ fn deployment_pair_delivery_timer_unit_path(names: DeploymentNames) -> NonEmptyS
 }
 
 // WHETHER A DEPLOYMENT RUNS A RELEASE PAIR is the instance's own declaration, carried on its DesiredDeployment
-// row and realized onto the service config. @ref(gunbc.design_argument::single_authority): the per-revision
+// row and realized onto the service config. #gunbc.design_argument::single_authority: the per-revision
 // release locus root the wet CLI places into and reads the served binding from is NOT derivable from
 // instance_root, and it used to sit in a single global `data` beside these names — a fork against the
 // per-deployment fact the comment living there claimed it to be. It now lives ONLY in PairDelivered; every
@@ -1442,14 +1467,22 @@ fn deployment_declared_serve_mapping_endpoint(names: DeploymentNames, step: Depl
   }
 }
 
-// The fabric DB endpoint's one owned member, after the dashboard's own: the tailscale route to the
-// endpoint's door socket (routes to a live service, the same reason the dashboard's mapping is last). The
-// endpoint's OWN unit is not a member at all since the operator's ruling of 2026-11-10 -- see the note above
-// deployment_fabric_storage_door_socket -- so no deploy stages or restarts it and no retract can tear it down.
-// Empty on every instance that does not hold the placement.
+// The fabric DB endpoint's owned members, after the dashboard's own: the endpoint's OWN unit, then the
+// tailscale route to its door socket (the route routes to a live service, the same reason the dashboard's
+// mapping is last, and so is placed AFTER the unit that brings that service up). The endpoint's unit is
+// deployment state again -- see the note above deployment_fabric_storage_door_socket and gunbc.design_ruling::
+// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, which reverses
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10 -- so the deploy stages and restarts it and a
+// retract tears it down. Empty on every instance that does not hold the placement.
 fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: DeploymentNames) -> List<DeploymentArtifactStep> {
   match holding {
     HoldsProdRoleSingletons { holder } => [
+      // THE UNIT FIRST, THEN THE TAILSCALE ROUTE TO IT: the cutover gate reads the fabric journal over the
+      // door socket, so the unit must be staged AND (re)started before its route exists. The unit is
+      // deployment state again (gunbc.design_ruling::
+      // fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21); only the tailscale route
+      // (FabricStorageServeMapping) was kept under ownership by the 11-10 ruling.
+      DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: deployment_fabric_storage_unit_path(names: names) },
       DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeMapping }, path: tailscale_serve_route_member_path(endpoint: deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: holder.instance))) },
     ]
     HoldsNoRoleSingleton => []

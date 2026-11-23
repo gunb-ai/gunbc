@@ -20,6 +20,7 @@ import gunbc.decl_facts_authored_string_attach_seed_growth {
   with_authored_string_literals_seed_growth_justification
 }
 import gunbc.keyed_declaration_read_seed_growth { keyed_declaration_read_seed_growth_justification }
+import gunbc.extdeps_subject_ref_facts_seed_growth { extdeps_subject_ref_facts_seed_growth_justification }
 import gunbc.declared_side_refusal_cause_seed_growth { declared_side_refusal_cause_seed_growth_justification }
 import gunbc.keyed_dependency_edge_read_seed_growth { keyed_dependency_edge_read_seed_growth_justification }
 import gunbc.host_crypto_digest_seed_growth { host_crypto_digest_seed_growth_justification }
@@ -41,6 +42,7 @@ import gunbc.exit_failure_outcome_seed_growth { exit_failure_outcome_seed_growth
 import gunbc.evaluation_budget_falsifier_seed_growth { evaluation_budget_falsifier_seed_growth_justification }
 import gunbc.floor_memory_instrumentation_seed_growth { floor_memory_instrumentation_seed_growth_justification }
 import gunbc.portable_value_canonical_order_seed_growth { portable_value_canonical_order_seed_growth_justification }
+import gunbc.transport_shell_wall_deadline_field_seed_growth { transport_shell_wall_deadline_field_seed_growth_justification }
 import gunbc.namespace_cut.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.namespace_baseline_seed_growth { namespace_baseline_seed_growth_justification }
 import gunbc.namespace_cut.parsed_import_statement_bridge_seed_growth { parsed_import_statement_bridge_seed_growth_justification }
@@ -381,6 +383,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     authored_string_literal_edge_seed_growth_justification,
     with_authored_string_literals_seed_growth_justification,
     keyed_declaration_read_seed_growth_justification,
+    extdeps_subject_ref_facts_seed_growth_justification,
     keyed_dependency_edge_read_seed_growth_justification,
     host_crypto_digest_seed_growth_justification,
     cli_wire_host_seed_growth_justification,
@@ -416,7 +419,11 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     // justification is hand Rust the join cannot see, which is the whole displaced cost of this
     // node. test.claim.seed_growth_roster_hygiene_witness is what keeps them here.
     class_b_accidental_coverage_seed_growth_justification,
-    memory_cgroup_binding_seed_growth_justification
+    memory_cgroup_binding_seed_growth_justification,
+    // Enrolled at the time of authorship, not after a debt sweep: the field and its two fixture
+    // arguments are this change's own hand growth, and the ruling that admits them is quoted inside the
+    // row (2026-11-21, principal:google-oidc/accounts/116084671989231734979).
+    transport_shell_wall_deadline_field_seed_growth_justification
   ]
 }
 

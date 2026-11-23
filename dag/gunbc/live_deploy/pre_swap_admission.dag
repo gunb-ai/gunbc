@@ -89,7 +89,9 @@ import extdeps.git.inspect {
 // (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
 // checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
 // production_is_main_only_lab_admits_integration) narrows that: each DesiredDeployment row
-// carries the one NonEmptyStr branch it admits. There is no class default.
+// carries the one NonEmptyStr branch it admits. There is no class default. Since 2026-11-22 every row
+// admits main: the lab's integration branch is retired (gunbc.design_ruling
+// lab_tracks_main_lab_dev_retired_2026_11_22), and the lab's row reads main from its instance.
 // The CLI flag check remains a second, optional equality; it does not widen the row.
 
 type TargetBranchAdmission

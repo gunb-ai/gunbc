@@ -15,6 +15,7 @@ import extdeps.network.mac { Eui48Address, render_mac_address }
 import extdeps.network.ipv4 { ipv4_address, ipv4_address_eq, render_ipv4_address }
 import extdeps.external_authority { CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7 }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments, HostEnrollmentIntent, HostKeyLoginAdmitted, HostKeyLoginRefused, HostReachPolicy }
 import gunbc.runner.runner_connectivity_recovery { host_reach_admission_for_fleet_host }
@@ -23,19 +24,30 @@ import gunbc.fleet.fleet_fan_tach_expectation { fleet_fan_tach_expectations, Hos
 import gunbc.fleet.fleet_intent { fleet_intent_known_hosts, supermicro_h11ssl_unit3_host, ComputeHost }
 import gunbc.fleet.fleet_intent_network { ken_host_lan_endpoint }
 import gunbc.integration_concern {
-  ConcernDisposition, ConcernKind, ConcernSighting, Distinct, Integrated, IntegrationConcern, Open,
+  ConcernDisposition,
+  ConcernKind,
+  ConcernSighting,
+  Distinct,
+  Integrated,
+  IntegrationConcern,
+  Open,
   RequirementEstablished,
-  RequirementUnestablished, SuspectedCapabilityGap, SuspectedFork, Triaged, Withdrawn,
+  RequirementUnestablished,
+  SuspectedCapabilityGap,
+  SuspectedFork,
+  Triaged,
+  Withdrawn,
   h11ssl_unit3_edge_gate_refusal_revision,
-  h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer,
-  h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat,
-  h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
-  h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
-  h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population,
+  edge_install_residue_fold_integrated_revision,
   h11ssl_unit3_intake_sighting_revision,
-  h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
-  site_pxe_edge_pinned_chainloader_member_absent_from_srv4,
 }
+import gunbc.integration_concern.h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer { h11ssl_unit3_fan_duty_floor_has_no_home_in_the_fan_layer }
+import gunbc.integration_concern.h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster { h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster }
+import gunbc.integration_concern.h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model { h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model }
+import gunbc.integration_concern.h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat { h11ssl_unit3_host_key_login_admits_on_no_read_the_fleet_can_repeat }
+import gunbc.integration_concern.h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture { h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture }
+import gunbc.integration_concern.h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population { h11ssl_unit3_supply_row_held_out_of_the_known_hosts_population }
+import gunbc.integration_concern.site_pxe_edge_pinned_chainloader_member_absent_from_srv4 { site_pxe_edge_pinned_chainloader_member_absent_from_srv4 }
 import extdeps.bmc.ipmi_boot_selection { ipmi_boot_selectable_devices, ipmi_boot_selection_label }
 import gunbc.machine_intake.supermicro_h11ssl_unit_identity {
   supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac, supermicro_h11ssl_unit3_bmc_mac,
@@ -61,6 +73,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit3_intake_observation {
   supermicro_h11ssl_unit3_bios_version,
   supermicro_h11ssl_unit3_cmos_battery_outstanding,
   supermicro_h11ssl_unit3_baseboard_row_standing,
+  supermicro_h11ssl_unit3_edge_residue_2026_11_19,
   supermicro_h11ssl_unit3_edge_sighting,
   supermicro_h11ssl_unit3_install_nic_address_standing,
   supermicro_h11ssl_unit3_install_nic_mac,
@@ -233,7 +246,7 @@ test fn witness_bmc_credential_stands_as_factory_in_force() -> Bool {
       (text(attested_by) != "")
         && (match route {
             RotationRouteNotYetRunnable {
-              secret_name_convention: _, secret_name_blocked_on: _, route_authority: _,
+              secret_name: _, secret_name_allocated_by: _, route_blocked_on: _, route_authority: _,
               secret_ref_precedent: _, gate_precedent: _, secret_placement: _, who_owes_which_step: _,
             } => true
             RotationRouteStandingCommitted { standing: _ } => false
@@ -331,29 +344,65 @@ fn matches_open(disposition: ConcernDisposition) -> Bool {
   }
 }
 
-test fn witness_the_register_carries_the_hand_work_as_three_open_gaps() -> Bool {
+// THE HAND WORK STANDS AS TWO OPEN GAPS AND ONE CLOSED ONE. The roster half and the disk-capture half are still
+// open, and this claim refuses any shape where they are quietly written off. The edge-artifact half closed when the
+// prune fold grew to reach the staging subtree it used to miss -- and it closed ONLY by citing a revision that
+// contains that fold, which is what edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for checks.
+test fn witness_the_register_carries_the_hand_work_as_two_open_gaps_and_one_closed() -> Bool {
   all(
     [
-      h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model,
       h11ssl_unit3_hand_install_route_seeded_no_fleet_authorized_keys_roster,
       h11ssl_unit3_install_ran_without_a_pre_install_disk_contents_capture,
     ],
     gap_stands_open,
   )
+    && edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for()
+}
+
+// A CLOSED GAP NAMES THE FOLD THAT CLOSED IT, at a revision a reader can stand on. The replacement must be the
+// ownership fold -- not a receipt, not a prose note -- and integrated_at must be the landing datum, whose exact sha
+// is pinned here so that re-pointing the datum somewhere the fold does not live reddens this claim instead of
+// quietly re-anchoring the closure. The execution results are retained (three) because the closure claims an
+// executed control, and a closure no run discriminates is the failure mode gunbc.design_argument::fail_closed
+// refuses.
+fn edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for() -> Bool {
+  match h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition {
+    Integrated { evidence: evidence } =>
+      ((evidence.integrated_at as String) == (edge_install_residue_fold_integrated_revision as String))
+        && ((edge_install_residue_fold_integrated_revision as String) == "6f1e4de1eac8ee3db1a307ec616980229fc74fd4")
+        && decl_ref_names(
+             ref: evidence.replacement.head,
+             module_path: "gunbc.fleet.site_pxe_edge_converge",
+             decl_name: "site_pxe_edge_owned_install_path",
+           )
+        && any(evidence.replacement.tail, d => decl_ref_names(ref: d, module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_served_root"))
+        && any(evidence.replacement.tail, d => decl_ref_names(ref: d, module_path: "gunbc.fleet.site_pxe_edge_converge", decl_name: "site_pxe_edge_empty_owned_install_dirs"))
+        && (length(evidence.executions.tail) == 2)
+    Open => false
+    Triaged { home: _, preserve: _, next: _ } => false
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+  }
 }
 
 // THE DISK-CAPTURE GAP POINTS AT THE INSTALL SUBJECT'S OWN ADMISSION, so the gap is about the model that
 // demands the capture and not about some unrelated standing.
 // A LATER SIGHTING IS APPENDED TO ITS ROW, never minted as a second row -- the register says so at
-// ConcernSighting itself. The edge gap grew a SECOND sighting, at a different main revision, for a second
-// and worse half of the same obstacle: the first says the model cannot show a converge what to delete; the
-// second says a session branch cannot even LOOK at the edge it is proposing to clean (the read-only
-// observation mode was refused by the workflow's own workload-identity gate, run 43786925157). This claim
-// refuses the shape where that new half shows up as a fourth open row, which would double-count one
-// obstacle and hide that it is the same gap deepened.
+// ConcernSighting itself. The edge gap has grown by SIGHTINGS, never by rows: a second sighting at a
+// different main revision for a second and worse half of the same obstacle (the first says the model cannot
+// show a converge what to delete; the second says a session branch cannot even LOOK at the edge it is
+// proposing to clean -- the read-only observation mode was refused by the workflow's own workload-identity
+// gate, run 43786925157); then the self-correction of that one, then the hold, and now a fifth for what the
+// 2026-11-19 and 2026-11-20 read-only listings found -- residue the prune fold lists and then drops, because
+// the owned-path predicate never reaches the edge's staging/ subtree, and directories a completed removal left
+// empty, which a file-only listing cannot see at all. This claim refuses the shape where any of those halves
+// shows up as another open row: one obstacle, one row, deepened in place.
+// The growth is in the SIGHTINGS (four in the tail) and the row was never duplicated -- and when the gap closed, it
+// closed as Integrated on that SAME row, with the fold it asked for as the replacement. Open here would mean the
+// fold never grew; a second row anywhere would mean the register forgot this obstacle is one thing.
 test fn witness_the_edge_gap_grew_sightings_rather_than_rows() -> Bool {
-  matches_open(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.disposition)
-    && (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 3)
+  (length(h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model.sightings.tail) == 4)
+    && edge_artifacts_gap_closed_by_the_prune_fold_it_asked_for()
 }
 
 test fn witness_the_disk_capture_gap_names_the_install_admission_it_cannot_satisfy() -> Bool {
@@ -393,13 +442,17 @@ test fn witness_the_gpu_figure_reads_ids_by_sysfs_and_leaves_the_pairing_unread(
 }
 
 // THE ROTATION IS NOT RUNNABLE YET, AND WHAT IT IS WAITING ON IS CITED, NOT DESCRIBED. The standing must
-// be the variant that says no route is committed, and it must point by citation at (a) the authority that
-// owns the fleet name the credential id is keyed to, (b) the BmcSecure standing that does not exist yet,
-// (c) srv15's secret-ref row and (d) the deployment-environment gate that carries srv15's arrival. Rename
-// any of those four and this reds -- a paragraph naming them in prose would not. And the credential name
-// is carried as a FORM with the name still blank: a concrete id here before the allocation authority
-// fills the slot would be minting an identity through a side door.
-test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Bool {
+// be the variant that says no route is committed, and it must point by citation at (a) the allocation that
+// supplies the fleet name the credential id is keyed to, (b) the predicate that refuses an ungrounded route,
+// (c) the BmcRotationRouteStanding the controller does not have yet, (d) srv15's secret-ref row and (e) the
+// deployment-environment gate that carries srv15's arrival. Rename any of those and this reds -- a paragraph
+// naming them in prose would not. The credential id is no longer a blank to be filled: the allocation
+// authority drew "ken" for this slot on 2026-11-16, so the row carries bmc-ken-admin, and the claim DERIVES
+// that id from the registry row through canonical_hostname_for_fleet_slot rather than comparing it to a
+// spelled literal -- if the slot is ever renamed, the row goes red instead of keeping a stale secret name.
+// Naming the id is still not custody: the row stays RotationRouteNotYetRunnable, and no SecretRef for this
+// controller is minted in gunbc.secret_provision until the operator places the secret.
+test fn witness_bmc_rotation_is_planned_and_its_secret_id_follows_the_allocation() -> Bool {
   match supermicro_h11ssl_unit3_bmc_credential_standing {
     FactoryCredentialInForce {
       attested_by: _,
@@ -409,19 +462,25 @@ test fn witness_bmc_rotation_is_planned_but_its_secret_id_is_not_minted() -> Boo
     } =>
       match route {
         RotationRouteNotYetRunnable {
-          secret_name_convention: convention,
-          secret_name_blocked_on: name_gate,
+          secret_name: secret_name,
+          secret_name_allocated_by: name_allocation,
+          route_blocked_on: route_blocker,
           route_authority: route_authority,
           secret_ref_precedent: secret_precedent,
           gate_precedent: gate_precedent,
           secret_placement: placement,
           who_owes_which_step: _,
         } =>
-          decl_ref_names(ref: name_gate, module_path: "gunbc.hostname_allocation", decl_name: "hostname_allocation_admission")
+          decl_ref_names(ref: name_allocation, module_path: "gunbc.hostname_allocation", decl_name: "fleet_machine_registry")
+            && decl_ref_names(ref: route_blocker, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "rotation_route_is_grounded")
+            && (match canonical_hostname_for_fleet_slot(fleet_slot: operator_host_e2d4b7) {
+                Present { value: allocated } => text(secret_name) == join(["bmc-", allocated as String, "-admin"], "")
+                Absent => false
+              })
             && decl_ref_names(ref: route_authority, module_path: "gunbc.machine_intake.bmc_rotation_route", decl_name: "BmcRotationRouteStanding")
             && decl_ref_names(ref: secret_precedent, module_path: "gunbc.secret_provision", decl_name: "srv15_bmc_gunbc_secret_ref")
             && decl_ref_names(ref: gate_precedent, module_path: "gunbc.auth.srv15_arrival_federation_provision", decl_name: "srv15_arrival_environment_creation_frontier")
-            && string_contains(s: text(convention), pattern: "-admin")
+            && string_contains(s: text(secret_name), pattern: "-admin")
             && string_contains(s: text(placement), pattern: "stdin")
         RotationRouteStandingCommitted { standing: _ } => false
       }
@@ -515,15 +574,35 @@ test fn witness_the_edge_hold_is_attributed_without_ruling_authority() -> Bool {
   }
 }
 
-// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Four sightings stand on this
-// concern (the original, the branch-ref refusal, the self-correction of the second, and the hold), and at least
-// one of them states that the hold sits out of gunbc.design_ruling. That is the record's shape for an
-// instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
+// A SIGHTING CARRIES THE HOLD AS A SIGHTING, AND SAYS WHY IT IS NOT A RULING. Five sightings stand on this
+// concern (the original, the branch-ref refusal, the self-correction of the second, the hold, and the edge-
+// residue read of 2026-11-19/20, which is a SIGHTING on the same row rather than a second row about the same
+// residue), and at least one of them states that the hold sits out of gunbc.design_ruling. That is the
+// record's shape for an instruction relayed inside a lane: attributed to the lane, not promoted to a ruling.
 test fn witness_a_sighting_records_the_hold_as_a_lane_instruction() -> Bool {
   let concern = h11ssl_unit3_hand_staged_edge_artifacts_have_no_place_in_the_edge_model
-  length(concern.sightings.tail) == 3
+  length(concern.sightings.tail) == 4
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "NOT entered in gunbc.design_ruling")
     && any_sighting_account_mentions(sightings: concern.sightings, wants: "smart-crane-730")
+}
+
+// THE EDGE-RESIDUE ROW IS THE RECEIPT FOR THREE HAND-STAGED ARTIFACTS IN THREE STATES, and it is read here
+// rather than left as prose on a host. Two of the three are gone BY THE CONVERGE, and the row cites the run's own
+// wire lines for it (stale-install-files=removed over five paths, and the dnsmasq config rendered with
+// outcome=written-and-read-back); the third survived both read-only listings because the owned-path predicate
+// never reaches the edge's staging/ subtree, and the row says so without claiming who put it there. The row also
+// owes the re-read that would turn it into a closure, and names whose authorization that re-read waits on -- so it
+// cannot be read as a removal that has happened.
+test fn witness_the_edge_residue_row_splits_three_artifacts_by_state() -> Bool {
+  let row = supermicro_h11ssl_unit3_edge_residue_2026_11_19
+  any(row.paths_named, p => string_contains(s: text(p), pattern: "staging/withdrawn-h11new"))
+    && any(row.paths_named, p => string_contains(s: text(p), pattern: "http/seed/"))
+    && string_contains(s: text(row.account), pattern: "stale-install-files=removed")
+    && string_contains(s: text(row.account), pattern: "THE INSTALL ENTRY SURVIVES")
+    && string_contains(s: text(row.account), pattern: "never contains the strings h11new or withdrawn")
+    && string_contains(s: text(row.receipt_label), pattern: "fleet-converge run 44249605412")
+    && string_contains(s: text(row.read_obligation), pattern: "no file under staging/")
+    && string_contains(s: text(row.read_obligation), pattern: "the operator's to authorize")
 }
 
 // ── THE OPERATOR'S REPORT DOES NOT OPEN THE GATE ───────────────────────────────────────────────

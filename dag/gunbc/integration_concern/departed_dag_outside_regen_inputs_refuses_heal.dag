@@ -1,0 +1,36 @@
+module gunbc.integration_concern.departed_dag_outside_regen_inputs_refuses_heal
+
+// One row of the integration-concern register: a .dag file that has departed the regen inputs
+// is refused by heal instead of being healed. The roster derives it from this file (module
+// gunbc.integration_concern.roster); there is no list to append to. Ported verbatim from main's
+// block in gunbc.integration_concern at the fifteenth merge.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data departed_dag_outside_regen_inputs_refuses_heal: IntegrationConcern = IntegrationConcern {
+  identity: "departed_dag_outside_regen_inputs_refuses_heal",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set"),
+    requirement: "a change can delete a .dag file that lies outside gunbc.source_layout and outside src/v1 (a test fixture root, which no mirror reads) without heal's scoped round refusing it as EditedSetUnlocatable",
+    standing: RequirementUnestablished { decided_by: "an explicit operator ruling on whether such a departure may narrow the 2026-08-30 ruling that an unlocatable edit refuses; escalation msg_6f8e181a went unanswered and defaulted to keeping the refusal" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set"),
+    tail: [],
+  },
+  question: "May heal treat a departed .dag under no regen input root as outside its subject (still a population change, so the whole population is regenerated), or must every such deletion refuse? Until this is decided, the 24 test/fixture_roots/text_string_importer_census*.dag files stay in the tree with no consumer: their census was retired in gunbc#16280, and deleting them refuses heal.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7e57510bb5041e74052d2371e8144b1e8e3448f3",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.regen_affected_set", decl_name: "regen_affected_set") },
+        tail: [],
+      },
+      account: "Heal run 42910734092 on gunbc#16280 (head 4e78bd21) refused the scoped round as EditedSetUnlocatable on the 24 deleted test/fixture_roots/text_string_importer_census*.dag files: no module name derives from a path outside the layout. A model-owned carve-out was written and then reverted (gunbc#16280, 2181049d) because only an explicit operator ruling can narrow the refusal, and the files were restored.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

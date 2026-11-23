@@ -1,0 +1,43 @@
+module test.claim.git_command_runner_route_wall_foreign_caller
+
+// Foreign-caller NEGATIVE control for the git route-wall witness's seal discipline.
+//
+// The seal (gunbc.design_argument::fail_closed) works by admitting CALLERS BY NAME on the two
+// mints `uncataloged_program` (extdeps.exec.program) and `argv_command` (extdeps.exec.command).
+// Caller admission is checked against the ENCLOSING declaration, so an admitted but
+// PARAMETERISED helper (e.g. a `witness_git_program_at(path)` or a generic
+// `witness_git_argv(program, arguments)`) would make the mint call for ANY importer and become a
+// public way to mint an arbitrary ProgramIdentity / ArgvCommand. The route-wall witness therefore
+// exposes only NULLARY, FIXED-SPELLING fixtures, admitted individually.
+//
+// THIS MODULE IS NOT ON EITHER admit_callers LIST. It therefore cannot call the mints directly,
+// and the only git identities / commands it can obtain are the witness's fixed fixtures -- which
+// hand back exactly their one spelling and offer no parameter to redirect. These controls execute
+// that fact: an outside caller gets only the fixed fixtures, never an arbitrary product.
+import std.types { Bool }
+import test.claim.git_command_runner_route_wall_witness {
+  argv_bare_commit, argv_bare_add, argv_ls,
+  witness_git_identity_bare, witness_git_identity_absolute, witness_git_identity_deep,
+}
+
+// A foreign module cannot obtain an ARBITRARY ProgramIdentity: the only git identities it can
+// reach are the nullary fixtures, each pinned to one spelling. There is no path-taking entry
+// point to import, so there is nothing to feed an arbitrary path into.
+fn foreign_caller_gets_only_fixed_git_identities() -> Bool {
+  (witness_git_identity_bare().invocation as String) == "git"
+    && (witness_git_identity_absolute().invocation as String) == "/usr/bin/git"
+    && (witness_git_identity_deep().invocation as String) == "/opt/local/libexec/git-core/git"
+}
+
+// A foreign module cannot obtain an ARBITRARY ArgvCommand: each admitted constructor stamps a
+// fixed program AND a fixed argv, and the non-git control is the EXISTING modeled identity
+// ls_program() (which calls uncataloged_program("ls")), not a git mint -- so the witness mints
+// nothing outside git, and an importer can only ever reproduce these exact rows.
+fn foreign_caller_gets_only_fixed_commands() -> Bool {
+  (argv_bare_commit().program.invocation as String) == "git"
+    && argv_bare_commit().arguments == ["commit", "-q", "--allow-empty", "-m", "x"]
+    && (argv_bare_add().program.invocation as String) == "git"
+    && argv_bare_add().arguments == ["add", "-A"]
+    && (argv_ls().program.invocation as String) == "ls"
+    && argv_ls().arguments == ["-la"]
+}

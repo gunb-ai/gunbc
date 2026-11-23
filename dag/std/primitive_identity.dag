@@ -33,10 +33,11 @@ import std.primitive_projection {
   primitive_projection_roster, primitive_projection_row_for_declaration,
   primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_get, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
+  primitive_extdeps_subject_ref_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
-  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
-  primitive_list_push, primitive_chars, primitive_char_at, primitive_string_contains, primitive_machine_word_native_operate,
+  primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_utf8_decode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
+  primitive_list_push, primitive_chars, primitive_text_of_chars, primitive_string_length, primitive_substring, primitive_char_at, primitive_trim, primitive_string_contains, primitive_machine_word_native_operate,
   primitive_sha256_hex_of_text, primitive_compile_dag_diagnostic_census,
 }
 
@@ -1252,6 +1253,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "decl_facts_at",
   "export_signature_facts",
   "data_decl_type_facts",
+  "extdeps_subject_ref_facts",
   "concept_decl_facts",
   "concept_decl_facts_live",
   "symbol_lexeme",
@@ -1259,11 +1261,16 @@ data primitive_projection_target_canonical_names: List<String> = [
   "data_init_decl_facts_live",
   "bytes_octets",
   "utf8_encode_bytes",
+  "utf8_decode_bytes",
   "octets_bytes",
   "pure_dag_seam_unreachable",
   "to_string",
   "string_contains",
   "chars",
+  "text_of_chars",
+  "trim",
+  "string_length",
+  "substring",
   "char_at",
   "machine_word_native_operate",
   "sha256_hex_of_text",
@@ -1601,6 +1608,7 @@ data primitive_decl_facts_at_traversal: PrimitiveTraversalOrderFact = PrimitiveT
 data primitive_export_signature_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_export_signature_facts, order: CanonicalOrder }
 
 data primitive_data_decl_type_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_decl_type_facts, order: CanonicalOrder }
+data primitive_extdeps_subject_ref_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_extdeps_subject_ref_facts, order: CanonicalOrder }
 
 data primitive_concept_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_concept_decl_facts, order: CanonicalOrder }
 
@@ -1633,6 +1641,10 @@ data primitive_bytes_octets_traversal: PrimitiveTraversalOrderFact = PrimitiveTr
 
 data primitive_utf8_encode_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_utf8_encode_bytes, order: SourcePreservingOrder }
 
+// A DECODE PRESERVES THE INPUT'S ORDER: the k-th well-formed sequence of the octet list
+// becomes the k-th char, and a refusal reports the k-th bad octet. No host order is consulted.
+data primitive_utf8_decode_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_utf8_decode_bytes, order: SourcePreservingOrder }
+
 data primitive_octets_bytes_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_octets_bytes, order: SourcePreservingOrder }
 
 // pure_dag_seam_unreachable produces no value at all -- it diverges -- so no order is consulted.
@@ -1660,6 +1672,15 @@ data primitive_string_contains_traversal: PrimitiveTraversalOrderFact = Primitiv
 data primitive_machine_word_native_operate_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_machine_word_native_operate, order: OrderFreeResult }
 
 data primitive_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_chars, order: SourcePreservingOrder }
+
+// Whole-list assembly and scalar windows preserve source order; length returns a scalar count.
+data primitive_text_of_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_text_of_chars, order: SourcePreservingOrder }
+
+data primitive_trim_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_trim, order: SourcePreservingOrder }
+
+data primitive_string_length_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_string_length, order: OrderFreeResult }
+
+data primitive_substring_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_substring, order: SourcePreservingOrder }
 
 data primitive_char_at_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_char_at, order: OrderFreeResult }
 
@@ -1695,6 +1716,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_decl_facts_at_traversal,
   primitive_export_signature_facts_traversal,
   primitive_data_decl_type_facts_traversal,
+  primitive_extdeps_subject_ref_facts_traversal,
   primitive_concept_decl_facts_traversal,
   primitive_concept_decl_facts_live_traversal,
   primitive_symbol_lexeme_traversal,
@@ -1702,12 +1724,17 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_data_init_decl_facts_live_traversal,
   primitive_bytes_octets_traversal,
   primitive_utf8_encode_bytes_traversal,
+  primitive_utf8_decode_bytes_traversal,
   primitive_octets_bytes_traversal,
   primitive_pure_dag_seam_unreachable_traversal,
   primitive_to_string_traversal,
   primitive_string_contains_traversal,
   primitive_machine_word_native_operate_traversal,
   primitive_chars_traversal,
+  primitive_text_of_chars_traversal,
+  primitive_trim_traversal,
+  primitive_string_length_traversal,
+  primitive_substring_traversal,
   primitive_char_at_traversal,
   primitive_list_push_traversal,
   primitive_sha256_hex_of_text_traversal,

@@ -1,0 +1,34 @@
+module gunbc.integration_concern.jwks_cache_freshness_without_origin_evidence
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap }
+
+data jwks_cache_freshness_without_origin_evidence: IntegrationConcern = IntegrationConcern {
+  identity: "jwks_cache_freshness_without_origin_evidence",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "jwks_cache_decode"),
+    requirement: "Google directs verifiers to use the key response's Cache-Control to decide when to fetch again, and HTTP freshness is computed against the response's current age, with directives that can require validation or prohibit storage (RFC 9111). The cache marks an entry fresh by local age against a fixed 3600 s and stores only fetched_at and body, so it cannot derive freshness from the response that produced it.",
+    standing: RequirementUnestablished { decided_by: "a cited read of Google's ID-token verification guidance (refetch the keys per the response's Cache-Control) and RFC 9111 (freshness from current age; directives that require validation or forbid storage) carried into an extdeps model; the cache declarations in this row are the implementation being questioned, not the authority for the requirement" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "jwks_cache_decode"),
+    tail: [
+      decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "google_oidc_jwks_cache_ttl_seconds"),
+      decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "google_oidc_jwks_fetch_max_seconds"),
+    ],
+  },
+  question: "Where do the origin's freshness directives (an observation), the verifier's retention cap (policy) and the reuse decision (their composition) live? A local cap may shorten a permitted freshness interval and may never authorize reuse the response forbids. Separately, the fetch budget is a string handed to GetWithin's NonEmptyStr input: unit, admissible range and curl's zero-means-no-timeout sentinel are three obligations a retype alone does not discharge.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8d22701ad6ca9edf3e98ad5562efcd04031f4f36",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "jwks_cache_decode") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "google_oidc_jwks_fetch_max_seconds") }],
+      },
+      account: "Found while writing the DESIGN worked example on durations, by reading jwks_cache_decode and the JWKS fetch at this revision.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

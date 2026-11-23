@@ -2,7 +2,7 @@ module extdeps.tailscale.join
 
 // UPSTREAM FACTS AND TYPED argv FOR THE ONE THING A HOST MUST DO TO BE ON THE TAILNET AT ALL: JOIN IT.
 //
-// @ref(gunbc.tailscale_join_converge::tailscale_join_host) is the fleet-side converge that reads these
+// #gunbc.tailscale_join_converge::tailscale_join_host is the fleet-side converge that reads these
 // rows; this module is the
 // upstream surface only -- what `tailscale up` takes, what a join's success is made of, and what an auth
 // key is allowed to be. Nothing here names a host, a tag the fleet happens to use, a Secret Manager
@@ -148,7 +148,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // so product reaches a key's description through a function that can be read, cited, and witnessed.
 fn tailscale_auth_key_policy_of(
   kind: TailscaleAuthKeyKind,
-  approval: TailscaleAuthKeyApproval,
+  approval: Optional<TailscaleAuthKeyApproval>,
   key_tags: List<NonEmptyStr>,
   expires_after: Second,
 ) -> TailscaleAuthKeyPolicy {
@@ -177,6 +177,16 @@ fn tailscale_auth_key_kind_wire(kind: TailscaleAuthKeyKind) -> String {
 // classifier outside it would be a second, consumer-less answer to the same question
 // (gunbc.design_argument::minimize_redundancy).
 
+// What the key's approval attribute CAN BE, per the upstream key object: its `requires_approval` is a
+// boolean, so the upstream field has exactly two states -- the key will not be accepted until it is
+// approved, or it is already approved. Nothing wider belongs here. Device approval is a per-TAILNET switch,
+// not a key attribute: on a tailnet whose device approval is OFF a key has no approval attribute AT ALL,
+// and that is not a third value of this enum but the ABSENCE of the field -- modeled in the observing layer,
+// where gunbc.tailscale_fleet_auth_key records the tailnet's device-approval switch as its own typed receipt
+// (tailscale_fleet_device_approval_enabled) and leaves the fleet key's approval field absent. Minting a
+// "not-applicable" arm here would put an observation this repository makes inside the upstream module, which
+// gunbc.design_argument::external_upstreams forbids ("observations ... are receipts in the observing layer,
+// never facts of the upstream"; "model what the API actually returns").
 type TailscaleAuthKeyApproval = AuthKeyPreApproved | AuthKeyApprovalRequired
 
 fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> String {
@@ -201,7 +211,7 @@ fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> Strin
 // CHECKS. tailscale_auth_key_expiry_verdict range-checks every date handed to it through the calendar
 // module's OWN parts predicate (month 1..12, day 1..that month's length, leap rule included) and answers
 // AuthKeyExpiryUnverifiable -- never AuthKeyStillValid -- for a date no checked constructor would have
-// produced (@ref(gunbc.design_argument::fail_closed): the wrong date fails the join instead of ordering
+// produced (#gunbc.design_argument::fail_closed: the wrong date fails the join instead of ordering
 // forever as a plausible number).
 
 // The expiry window upstream offers: "The maximum key expiration is 90 days"; the console offers 1..90
@@ -217,10 +227,14 @@ fn tailscale_auth_key_expiry_window_is_upstream(expires_after: Second) -> Bool {
 
 // THE RECORD OF WHAT THE KEY UPSTREAM IS. Product supplies the values; the shape, the ranges, and the
 // meaning of each field are upstream's. `key_tags` is what the key itself carries ("the device assumes
-// the identity of the auth key's tags").
+// the identity of the auth key's tags"). `approval` is Optional because it is CONDITIONAL on a per-TAILNET
+// fact, not a per-key one: it is Present (one of the two upstream words) only where the tailnet runs device
+// approval, and ABSENT where it does not -- that absence is a receipt kept by the observing layer
+// (gunbc.tailscale_fleet_auth_key::tailscale_fleet_device_approval_enabled), never a value minted into
+// TailscaleAuthKeyApproval above (gunbc.design_argument::external_upstreams).
 type TailscaleAuthKeyPolicy sole_constructor {
   kind: TailscaleAuthKeyKind,
-  approval: TailscaleAuthKeyApproval,
+  approval: Optional<TailscaleAuthKeyApproval>,
   key_tags: List<NonEmptyStr>,
   expires_after: Second,
 }
@@ -430,7 +444,7 @@ fn tailscale_up_join_argv(spec: TailscaleUpJoinSpec) -> TailscaleUpJoinArgv {
 
 // THE COMMAND, OR THE CAUSE IT WAS REFUSED. NO PARTIAL COMMAND IS EMITTED: a refused spec never becomes a
 // `tailscale up` with a missing flag, which upstream would answer by joining with the DEFAULT hostname and
-// no tags -- the exact two facts the converge exists to get right (@ref(gunbc.design_argument::fail_closed)).
+// no tags -- the exact two facts the converge exists to get right (#gunbc.design_argument::fail_closed).
 type TailscaleUpJoinCommand
   = TailscaleUpJoinCommandBuilt { command: ArgvCommand }
   | TailscaleUpJoinCommandRefused { cause: String }
@@ -506,12 +520,12 @@ fn tailscale_tag_list_wire(tags: List<NonEmptyStr>) -> String {
 // SO `BackendState == "Running"` ALONE IS NOT MEMBERSHIP IN A TAG-KEYED TAILNET. A node enrolled BY HAND
 // under a person's account is Running, resolvable under the tailnet's MagicDNS suffix, and answering -- while
 // presenting NO tags, so it sits outside every grant that policy is keyed on. Reporting such a host as
-// converged is a silent success over the wrong state (@ref(gunbc.design_argument::fail_closed)); which
+// converged is a silent success over the wrong state (#gunbc.design_argument::fail_closed); which
 // machines were observed in that state is a fleet fact, recorded where the fleet's hosts are recorded, not
 // here.
 //
 // The state is THREE-VALUED HERE, at the boundary where the document is first read
-// (@ref(gunbc.design_argument::earliest_unjustified_boundary)): a reading that stopped at "Running, plus
+// (#gunbc.design_argument::earliest_unjustified_boundary): a reading that stopped at "Running, plus
 // whatever tags it happens to carry" would leave every consumer to re-derive membership on its own, and
 // the consumer that forgets is exactly the bug this block is.
 //   JoinStateJoinedWithRequiredTag     Running AND carrying the tag the caller names. THE ONLY state a

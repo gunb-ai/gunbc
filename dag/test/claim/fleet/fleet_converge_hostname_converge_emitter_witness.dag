@@ -1,12 +1,11 @@
 module test.claim.fleet.fleet_converge_hostname_converge_emitter_witness
 
-// AN INHABITANCE CONTROL OVER THE REAL EMITTER (gunbc.plans.fleet_machine_authority P8a acceptance).
-// Everything asserted here reads the workflow the emitter actually produces — `fleet_converge_jobs()`,
-// `fleet_converge_dispatch_inputs`, `fleet_converge_workflow_mode_wire()` — because the claim this
-// mode exists to earn is "the fleet-converge workflow gained a peer-run hostname converge mode". A test
-// over a hand-written Job would prove the shape of a Job, which is a tautology; the only way a mode can
-// be absent from the thing that runs is for it to be missing from the thing that emits
-// (gunbc.design_argument::witness_one_interface).
+// THE HOSTNAME CONVERGE JOB, READ AT ITS CONSTRUCTOR (gunbc.plans.fleet_machine_authority P8a acceptance).
+// Every job-level leg reads `fleet_converge_hostname_converge_job()`, the real constructor the workflow's job
+// list calls, so the value is the emitter's own and not a hand-written Job. That the workflow actually carries
+// this job, and the properties that hold over the whole file, are the inhabitance claims in
+// test.claim.fleet.fleet_converge_hostname_converge_workflow_witness; building every job here once per leg
+// re-executed production no leg was about (gunbc.design_argument::witness_one_interface).
 //
 // THE PEER RUNS-ON IS THE CLAIM WITH TEETH. Every other host-scoped job in this workflow is pinned to
 // `github.event.inputs.host` — the machine it converges. That pin is fatal for a rename: the job that
@@ -19,13 +18,12 @@ import std.algebra { string_contains }
 import std.optional { Absent, Present }
 import extdeps.languages.yaml.types { YamlString }
 import extdeps.github.actions {
-  ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput, DispatchInputType,
-  InputChoice, InputString, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
+  ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax, ConcurrencyScalar, DispatchInput,
+  InputChoice, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
   workflow_dispatch_max_inputs,
 }
+import gunbc.fleet.fleet_workflow_steps { fleet_converge_release_bins_job_id }
 import gunbc.fleet.fleet_converge_workflow {
-  FleetConvergeYamlGenerated,
-  FleetConvergeYamlGenerationRefused,
   HostnameConverge,
   TargetHostDomain,
   fleet_converge_arm_domain_clause,
@@ -34,7 +32,6 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_mode_mutation_domain,
   fleet_host_mutation_group_prefix,
   fleet_converge_dispatch_inputs,
-  fleet_converge_jobs,
   fleet_converge_hostname_converge_apply_step,
   fleet_converge_hostname_converge_job,
   fleet_converge_hostname_converge_plan_step,
@@ -42,11 +39,9 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_hostname_converge_readopt_step,
   fleet_converge_job_needs,
   fleet_converge_mode_job_id,
-  fleet_converge_release_bins_job_id,
   fleet_converge_dispatch_input_interpolation,
   fleet_converge_workflow_mode_wire,
   fleet_converge_workflow_modes,
-  fleet_converge_yml_after_dispatch_input_capacity,
 }
 import gunbc.host.host_hostname_converge {
   hostname_converge_act_adopt_value,
@@ -64,17 +59,6 @@ import gunbc.host.host_hostname_converge {
 }
 
 data hostname_converge_job_id: String = "hostname-converge"
-
-fn emitted_jobs() -> List<Job> {
-  fleet_converge_jobs()
-}
-
-fn job_with_id(id: String) -> Job? {
-  match filter(emitted_jobs(), j => j.id == id).first() {
-    Present { value: j } => Present { value: j }
-    Absent => none
-  }
-}
 
 fn step_names(job: Job) -> List<String> {
   map(job.steps, s => step_name_text(step: s))
@@ -147,23 +131,18 @@ test fn the_mode_names_a_job_of_its_own() -> Bool {
 
 // THE EMITTED WORKFLOW GAINED THE JOB, and the job is scheduled on the PEER rather than on the target.
 test fn the_emitter_produces_the_peer_run_job() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } => runs_on_text(job: job) != ""
-  }
+  let job = fleet_converge_hostname_converge_job()
+  runs_on_text(job: job) != ""
 }
 
 test fn the_job_runs_on_the_executing_peer_not_on_the_target() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      // For this mode the dispatch's `host` field IS the peer -- the machine the job runs on. So the pin must
-      // read that field and must NOT read `subject_host`, which is the machine being renamed. Swap the two and
-      // the mode renames the peer it was sent to run from, a machine nobody asked it to touch.
-      string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.host")
-        && !string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.subject_host")
-        && string_contains(s: runs_on_text(job: job), pattern: hostname_converge_peer_input_name as String)
-  }
+  let job = fleet_converge_hostname_converge_job()
+  // For this mode the dispatch's `host` field IS the peer -- the machine the job runs on. So the pin must
+  // read that field and must NOT read `subject_host`, which is the machine being renamed. Swap the two and
+  // the mode renames the peer it was sent to run from, a machine nobody asked it to touch.
+  string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.host")
+    && !string_contains(s: runs_on_text(job: job), pattern: "github.event.inputs.subject_host")
+    && string_contains(s: runs_on_text(job: job), pattern: hostname_converge_peer_input_name as String)
 }
 
 // THE PEER PIN IS THIS WORKFLOW'S STANDARD HOST PIN, not a scheduling expression of the mode's own: the peer
@@ -171,48 +150,37 @@ test fn the_job_runs_on_the_executing_peer_not_on_the_target() -> Bool {
 // expression this leg says so, and someone has to justify why the standard pin no longer describes where the
 // job runs.
 test fn the_peer_pin_is_the_standard_host_pin() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } => runs_on_text(job: job) == fleet_converge_host_runner_expression
-  }
+  let job = fleet_converge_hostname_converge_job()
+  runs_on_text(job: job) == fleet_converge_host_runner_expression
 }
 
 // THE JOB IS PINNED TO A LABEL EXPRESSION, not a static label list: a static list would name a machine in
 // the workflow, which is what this program retires.
 test fn the_peer_pin_is_an_expression_over_the_dispatch() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      match job.runner {
-        RunsOnExpression { expression: e } => string_contains(s: e, pattern: "fromJSON(format(")
-        _ => false
-      }
+  let job = fleet_converge_hostname_converge_job()
+  match job.runner {
+    RunsOnExpression { expression: e } => string_contains(s: e, pattern: "fromJSON(format(")
+    _ => false
   }
 }
 
 // THE FOUR STEPS ARE THERE, IN ORDER, AND THE WRITE IS BEHIND A CHOICE THE DISPATCH HAS TO MAKE.
 test fn the_job_carries_plan_apply_read_back_and_adopt() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      any(step_names(job: job), n => string_contains(s: n, pattern: "dry plan"))
-        && any(step_names(job: job), n => string_contains(s: n, pattern: "wet apply"))
-        && any(step_names(job: job), n => string_contains(s: n, pattern: "read the target"))
-        && any(step_names(job: job), n => string_contains(s: n, pattern: "re-adopt the committed hostname baseline"))
-  }
+  let job = fleet_converge_hostname_converge_job()
+  any(step_names(job: job), n => string_contains(s: n, pattern: "dry plan"))
+    && any(step_names(job: job), n => string_contains(s: n, pattern: "wet apply"))
+    && any(step_names(job: job), n => string_contains(s: n, pattern: "read the target"))
+    && any(step_names(job: job), n => string_contains(s: n, pattern: "re-adopt the committed hostname baseline"))
 }
 
 test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
+  let job = fleet_converge_hostname_converge_job()
+  match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
     Absent => false
-    Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
-        Absent => false
-        Present { value: plan } =>
-          step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
-            && string_contains(s: step_if_text(step: plan), pattern: hostname_converge_mode as String)
-            && !string_contains(s: step_if_text(step: plan), pattern: "converge ==")
-      }
+    Present { value: plan } =>
+      step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
+        && string_contains(s: step_if_text(step: plan), pattern: hostname_converge_mode as String)
+        && !string_contains(s: step_if_text(step: plan), pattern: "converge ==")
   }
 }
 
@@ -223,15 +191,12 @@ test fn the_plan_and_read_back_steps_run_with_the_mode_and_the_apply_does_not() 
 // one race the group exists to stop. The group must therefore carry the machine being RENAMED, under the same
 // prefix every host mutation uses so the strings actually collide.
 test fn the_job_is_grouped_against_mutations_of_the_host_it_renames() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      let group = concurrency_group_text(job: job)
-      string_contains(s: group, pattern: fleet_host_mutation_group_prefix)
-        && string_contains(s: group, pattern: "github.event.inputs.subject_host")
-        && !string_contains(s: group, pattern: "github.event.inputs.host")
-        && group == fleet_converge_host_mutation_group_for(field: hostname_converge_target_input_name)
-  }
+  let job = fleet_converge_hostname_converge_job()
+  let group = concurrency_group_text(job: job)
+  string_contains(s: group, pattern: fleet_host_mutation_group_prefix)
+    && string_contains(s: group, pattern: "github.event.inputs.subject_host")
+    && !string_contains(s: group, pattern: "github.event.inputs.host")
+    && group == fleet_converge_host_mutation_group_for(field: hostname_converge_target_input_name)
 }
 
 // A CLAUSE OF THE SHARED GROUP IS AN EXPRESSION, NEVER AN INTERPOLATION. Every mode's domain clause is spliced
@@ -263,46 +228,6 @@ test fn the_mode_declares_the_target_domain_naming_the_host_it_renames() -> Bool
       s: fleet_converge_arm_domain_clause(mode: HostnameConverge),
       pattern: "github.event.inputs.subject_host",
     )
-}
-
-// THE ACT WORD IS A SHARED FIELD, AND THIS IS THE LEG THAT MAKES THE REUSE SAFE RATHER THAN merely
-// documented. `transaction_nonce` carries three other meanings in this workflow (an RLM transaction nonce,
-// the branch-run grant's `<run id>-<run attempt>`, a boot attempt's identity), so the mode borrows a name it
-// does not own. What keeps that from being dangerous is one property, checked over the WHOLE emitted file and
-// not just this job: no step anywhere may treat one of our three words as an unlock unless the very same
-// condition also requires our mode. A stray comparison in another mode's job would let an operator's nonce of
-// `converge` open a step nobody meant to make openable by a word -- so a word of ours is inert everywhere the
-// mode is not named.
-fn act_word_comparisons() -> List<String> {
-  map(
-    [
-      hostname_converge_act_converge_value,
-      hostname_converge_act_rollback_value,
-      hostname_converge_act_adopt_value,
-    ],
-    w => join(
-      ["github.event.inputs.", hostname_converge_act_input_name as String, " == '", w as String, "'"],
-      "",
-    ),
-  )
-}
-
-// A step condition is admitted if it either does not compare one of our words, or names the mode as well.
-fn step_allows_our_word_only_under_the_mode(step: Step) -> Bool {
-  let text = step_if_text(step: step)
-  let compares_our_word = any(act_word_comparisons(), c => string_contains(s: text, pattern: c))
-  !compares_our_word || string_contains(s: text, pattern: hostname_converge_mode as String)
-}
-
-fn job_allows_our_words_only_under_the_mode(job: Job) -> Bool {
-  all(job.steps, st => step_allows_our_word_only_under_the_mode(step: st))
-}
-
-test fn no_word_of_ours_unlocks_a_step_where_the_mode_is_not_required() -> Bool {
-  all(emitted_jobs(), j => job_allows_our_words_only_under_the_mode(job: j))
-    // And exactly one job belongs to this mode, so "only under our mode" cannot be satisfied by a second job
-    // wearing the mode gate to compare our words for some other purpose.
-    && count(filter(emitted_jobs(), j => j.id == hostname_converge_job_id)) == 1
 }
 
 // THE ACT ROW IS OPT-IN: not required, and no default. A dispatch that never touches the field -- `gh workflow
@@ -424,47 +349,6 @@ test fn the_mode_adds_no_input_and_the_roster_stays_inside_the_ceiling() -> Bool
     && count(fleet_converge_dispatch_inputs) <= workflow_dispatch_max_inputs
 }
 
-// A ROSTER OVER THE CEILING IS A BUILD FAILURE, NOT A BROKEN DISPATCH (the RED control). The refusal used to
-// compare this module's own roster inline, which sits exactly on the limit -- so no input could ever reach
-// the refusing branch, and loosening the comparison could not be made red. A roster now comes in as a
-// parameter: hand it one row more than GitHub admits and the emitter must refuse, naming the rows it was
-// given and the authority that owns the number.
-test fn a_roster_of_twenty_six_makes_the_emitter_refuse_and_name_the_rows() -> Bool {
-  let over = concat(
-    fleet_converge_dispatch_inputs,
-    [
-      DispatchInput {
-        name: "the_row_that_broke_the_file" as String,
-        description: none,
-        required: false,
-        default: none,
-        type: InputString,
-      },
-    ],
-  )
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: over) {
-    FleetConvergeYamlGenerationRefused { reason: r } =>
-      string_contains(s: r, pattern: "the_row_that_broke_the_file")
-        && string_contains(s: r, pattern: "workflow_dispatch_max_inputs")
-        && string_contains(s: r, pattern: "EVERY mode")
-    FleetConvergeYamlGenerated { content: _ } => false
-  }
-}
-
-// ...and the roster the workflow actually declares is the POSITIVE CONTROL: the same call and the same
-// authority, no refusal, and the emitted file still carries this mode's job. Without it the RED leg above
-// would prove only that the function refuses everything. The boundary is taken RELATIVE to the real roster
-// (one row more than it has today, one row less than GitHub admits), so the control keeps testing the
-// boundary if the roster changes size -- and the roster sits exactly ON the cap today, which is the whole
-// reason this mode declares no input of its own.
-test fn the_declared_roster_is_admitted_and_still_emits_the_mode() -> Bool {
-  match fleet_converge_yml_after_dispatch_input_capacity(inputs: fleet_converge_dispatch_inputs) {
-      FleetConvergeYamlGenerationRefused { reason: _ } => false
-      FleetConvergeYamlGenerated { content: c } =>
-        string_contains(s: c, pattern: "hostname-converge")
-    }
-}
-
 // THE JOB WAITS ON THE RELEASE BINS, which is what lets it run on a peer that has no checkout of its own
 // to build from.
 // The job must wait for the release-pack producer before it touches a host, or its steps run a binary that
@@ -483,11 +367,8 @@ test fn the_job_needs_the_release_bins_job() -> Bool {
 // `needs` field -- or a mode job id that no longer matches its edge row, which would put the lookup's REFUSED
 // sentinel into `needs` -- is red here rather than shipping a job that downloads a release pack nobody built.
 test fn the_emitted_job_needs_the_release_pack_producer() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      any(job.needs, n => n == (fleet_converge_release_bins_job_id as String))
-  }
+  let job = fleet_converge_hostname_converge_job()
+  any(job.needs, n => n == (fleet_converge_release_bins_job_id as String))
 }
 
 
@@ -570,22 +451,19 @@ fn env_carries_all(keys: List<String>) -> Bool {
 // THE APPLY STEP AND THE READ-BACK STEP CARRY THE ACT WORD. These are the two steps whose behaviour changes
 // on it, and the two review 93449 found running without it.
 test fn the_apply_and_read_back_steps_carry_the_act_word() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      let actuating =
-        filter(
-          mode_steps(job: job),
-          s =>
-            string_contains(s: step_name_text(step: s), pattern: "wet apply")
-              || string_contains(s: step_name_text(step: s), pattern: "own name back"),
-        )
-      length(actuating) == 2
-        && all(
-          actuating,
-          s => any(step_env_keys(step: s), k => k == (hostname_converge_act_env_name as String)),
-        )
-  }
+  let job = fleet_converge_hostname_converge_job()
+  let actuating =
+    filter(
+      mode_steps(job: job),
+      s =>
+        string_contains(s: step_name_text(step: s), pattern: "wet apply")
+          || string_contains(s: step_name_text(step: s), pattern: "own name back"),
+    )
+  length(actuating) == 2
+    && all(
+      actuating,
+      s => any(step_env_keys(step: s), k => k == (hostname_converge_act_env_name as String)),
+    )
 }
 
 // WHICH FIELD EACH ROLE READS, asserted from the emitted env rather than from the emitter's own reading.
@@ -593,29 +471,26 @@ test fn the_apply_and_read_back_steps_carry_the_act_word() -> Bool {
 // mode read its TARGET out of the peer's field, which would have renamed the machine the job was dispatched
 // to run on. A mode that collapses the two fields is red here.
 test fn the_target_and_the_peer_are_read_from_different_declared_fields() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
+  let job = fleet_converge_hostname_converge_job()
+  match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
     Absent => false
-    Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
-        Absent => false
-        Present { value: plan } =>
-          let target = step_env_value(step: plan, key: hostname_converge_target_env_name as String)
-          let peer = step_env_value(step: plan, key: hostname_converge_peer_env_name as String)
-          let act = step_env_value(step: plan, key: hostname_converge_act_env_name as String)
-          // each role's value IS the interpolation of its own declared row, compared through the very helper
-          // the emitter uses -- and the three rows are pairwise distinct, which is the property this leg exists
-          // for. It previously tried to prove distinctness by substring (`!string_contains(target, "host")`),
-          // which is false because `subject_host` contains `host`: the target's row was a superstring of the
-          // peer's, so a correct mode was red. Substring reasoning cannot compare field identities.
-          target == fleet_converge_dispatch_input_interpolation(input: hostname_converge_target_input_name as String)
-            && peer == fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String)
-            && act == fleet_converge_dispatch_input_interpolation(input: hostname_converge_act_input_name as String)
-            && (hostname_converge_target_input_name as String) != (hostname_converge_peer_input_name as String)
-            && (hostname_converge_target_input_name as String) != (hostname_converge_act_input_name as String)
-            && (hostname_converge_peer_input_name as String) != (hostname_converge_act_input_name as String)
-            && target != peer
-            && peer != act
-      }
+    Present { value: plan } =>
+      let target = step_env_value(step: plan, key: hostname_converge_target_env_name as String)
+      let peer = step_env_value(step: plan, key: hostname_converge_peer_env_name as String)
+      let act = step_env_value(step: plan, key: hostname_converge_act_env_name as String)
+      // each role's value IS the interpolation of its own declared row, compared through the very helper
+      // the emitter uses -- and the three rows are pairwise distinct, which is the property this leg exists
+      // for. It previously tried to prove distinctness by substring (`!string_contains(target, "host")`),
+      // which is false because `subject_host` contains `host`: the target's row was a superstring of the
+      // peer's, so a correct mode was red. Substring reasoning cannot compare field identities.
+      target == fleet_converge_dispatch_input_interpolation(input: hostname_converge_target_input_name as String)
+        && peer == fleet_converge_dispatch_input_interpolation(input: hostname_converge_peer_input_name as String)
+        && act == fleet_converge_dispatch_input_interpolation(input: hostname_converge_act_input_name as String)
+        && (hostname_converge_target_input_name as String) != (hostname_converge_peer_input_name as String)
+        && (hostname_converge_target_input_name as String) != (hostname_converge_act_input_name as String)
+        && (hostname_converge_peer_input_name as String) != (hostname_converge_act_input_name as String)
+        && target != peer
+        && peer != act
   }
 }
 
@@ -623,12 +498,9 @@ test fn the_target_and_the_peer_are_read_from_different_declared_fields() -> Boo
 // step needs the same pair and direction to fold against, and the re-adopt step needs both to know which
 // baseline it is admitting; a step env assembled one `kv` at a time is where a name gets dropped.
 test fn every_hostname_converge_step_carries_the_full_env_contract() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
-    Absent => false
-    Present { value: job } =>
-      let steps = mode_steps(job: job)
-      length(steps) == 4 && all(steps, s => env_carries_all(keys: step_env_keys(step: s)))
-  }
+  let job = fleet_converge_hostname_converge_job()
+  let steps = mode_steps(job: job)
+  length(steps) == 4 && all(steps, s => env_carries_all(keys: step_env_keys(step: s)))
 }
 
 // THE ACT VARIABLE IS NOT A STRING THAT HAPPENS TO APPEAR: it is read by the CLI entries through the same
@@ -697,15 +569,12 @@ test fn every_lock_compares_a_declared_field_against_a_word_the_form_offers() ->
 // alone does not give them. Comparing them to the mode-only condition is what turns "someone replaced the
 // lock with the mode gate" into red instead of into a rename that happens on a dry run.
 test fn the_two_locked_steps_are_not_merely_the_mode_gate() -> Bool {
-  match job_with_id(id: hostname_converge_job_id) {
+  let job = fleet_converge_hostname_converge_job()
+  match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
     Absent => false
-    Present { value: job } =>
-      match step_named(job: job, name: step_name_text(step: fleet_converge_hostname_converge_plan_step())) {
-        Absent => false
-        Present { value: plan } =>
-          step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_apply_step())
-            && step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_readopt_step())
-            && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
-      }
+    Present { value: plan } =>
+      step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_apply_step())
+        && step_if_text(step: plan) != step_if_text(step: fleet_converge_hostname_converge_readopt_step())
+        && step_if_text(step: plan) == step_if_text(step: fleet_converge_hostname_converge_read_back_step())
   }
 }

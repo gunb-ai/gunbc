@@ -108,7 +108,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_main_head_command"),
-    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_release_bins_run_list_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_commit_ancestry_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_branch_artifact_runs_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_job_conclusion_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
@@ -221,6 +223,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
+    decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_print_architecture_command"),
+    decl_ref(module_path: "extdeps.os_release", decl_name: "lsb_release_codename_command"),
     decl_ref(module_path: "extdeps.package_managers.apt", decl_name: "apt_get_install_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_clippy_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_build_release_bin_offline_command"),
@@ -232,6 +236,15 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_root_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_preserve_if_absent_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_hash_object_command"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_bare_commit"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_bare_add"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_bare_status"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_inrepo_commit"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_absolute_commit"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_absolute_add"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_absolute_inrepo_revparse"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_deep_add"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_ls"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_run_release_manifest_offline_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_control_fields_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_version_command"),
@@ -282,10 +295,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // getent ahostsv4 <name>: the fourth database of the same read-only lookup, admitted on the same terms
     // as its siblings -- it names a database the utility resolves itself and names no path, no key file, and
     // no account, and it writes nothing. Its caller is the srv1 read-back
-// (@ref(gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution)), which
+// (#gunbc.tailscale_join_converge::tailscale_join_observe_name_resolution), which
     // must ask whether the JOINED HOST'S TAILNET NAME resolves through NSS -- the resolver path the router's
     // own upstream lookups take -- because `tailscale ping` resolves names from Tailscale's peer list instead
-    // and so cannot answer that question (@ref(extdeps.posix.getent::getent_hosts_command)).
+    // and so cannot answer that question (#extdeps.posix.getent::getent_hosts_command).
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_hosts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),

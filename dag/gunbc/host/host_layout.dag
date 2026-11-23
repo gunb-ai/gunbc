@@ -89,6 +89,22 @@ data operator_home_root: FilePath = "/home/briansrls" as FilePath
 
 data srv1_dispatch_attempt_state_root: FilePath = "/opt/gunbc/attempt-state" as FilePath
 
+// THE TRACKER-WEB OIDC SERVE CONFIG DOCUMENTS ARE PROJECTED FROM HERE, like every path the deploy
+// writes (the rule this file states above: a host path the belt writes is a deployment member,
+// projected from here -- never spelled at its point of use). The document is a composed deploy member
+// (gunbc.live_deploy ComposeOwned OidcConfigArtifact), a world-readable NON-credential: the composed
+// text names the client id, the instance's redirect URI, the admitted audience set, the expected hosted
+// domain, the lifetimes, and the PATH of its client secret -- never the secret bytes. Its client secret
+// stays custody's, in the operator-only /etc/gunbc-oidc (dir_ownership custody_operator_only, dir_mode
+// DirectoryOwnerOnly) per gunbc.fleet.host_credential_custody_roster. The document was MOVED OUT of
+// that operator-only directory because a deployment member cannot live in a directory another authority
+// owns 0700: the deploy's host-arm observation reads the member as the runner principal, so its parent
+// must be world-traversable and the file world-readable -- exactly this root's `install -d` shared /
+// `install` file shared posture, never the operator's owner-only one. Placing it inside the operator dir
+// both refused observation (ghrunner cannot enter a 0700 briansrls dir) and, via the deploy's
+// `install -d -m 0755` directory leg, would have LOOSENED that operator-only directory.
+data srv1_gunbc_oidc_config_root: FilePath = "/opt/gunbc/oidc" as FilePath
+
 // SRV1'S PLACEMENT OF THE ATTEMPT-STATE DIRECTORY ROW: what the directory requires is stated once,
 // in gunbc.managed_directory attempt_state_directory_at; only its location is srv1's, and that is
 // this module's fact.

@@ -16,19 +16,22 @@ import extdeps.bazel.target_pattern {
 }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, json_bool, serialize_json }
 import product.host_identity { HostIdentity }
+import product.fabric.work { ExecutionRequirements }
+import gunbc.fabric.fabric_executor_class { ExecutorExecutionClass, executor_execution_class_roster }
 import gunbc.repository { gunbc_repository }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
-  anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, fleet_known_hosts_rows,
+  FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+  anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, known_hosts_file_rows,
   portable_remote_words, shape_fleet_ssh_exec,
+  OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {
   FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, ssh_context_from_verified_binding_under,
 }
 import gunbc.fleet.fleet_ssh_credential_verify {
-  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused,
-  verify_fleet_ssh_credential, fleet_ssh_credential_verification_refusal_reason,
+  FleetSshCredentialVerified, FleetSshCredentialIdentityMismatch, FleetSshCredentialDerivationRefused, FleetSshCredentialAdmissionEmpty,
+  verify_fleet_ssh_credential_admitted_any, fleet_ssh_credential_verification_refusal_reason,
 }
 import gunbc.compute.work_provider_local { ComputeExec, ComputeExecOk, ComputeExecFailed }
 import gunbc.compute.test_run {
@@ -38,12 +41,17 @@ import gunbc.compute.test_selection {
   SelectedFile, select_witness_files, classify_witness_module, WitnessModuleSelected, WitnessModuleNotAWitness,
 }
 import gunbc.compute.remote_build {
-  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteBuildRequest, RemoteBuildSourceRef,
-  remote_build_source_ref, remote_build_source_ref_name, remote_build_request_words, remote_build_entry_admitted,
-  RemoteBuildCandidate, remote_build_candidates, remote_build_ssh_key,
+  RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims, RemoteGateSubject, RemoteBuildRequest, RemoteBuildWork, RemoteBuildSourceRef,
+  remote_build_source_ref, remote_build_source_ref_name, remote_build_request_work, remote_build_request_words, remote_build_entry_admitted,
+  RemoteBuildCandidate, remote_build_candidates, remote_build_admitted_public_keys,
+  RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
-  HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
+  HostUnreachable, HostRefusedRequest, HostOutcomeUnknown, HostExecutionClassRefused,
+  remote_build_host_placement, remote_build_any_host_admits, remote_build_admissible_hosts,
+  remote_build_execution_requirements,
   RemoteBuildAttempt, RemoteBuildStep, RemoteBuildTryHost, RemoteBuildAnswered, RemoteBuildNoHostAvailable, remote_build_next_step,
+  RemoteBuildOperationDecode, RemoteBuildOperationDecoded, RemoteBuildOperationRefused, remote_build_decode_gate_subject,
+  remote_build_gate_word, remote_build_request_refusal_text,
   remote_build_probe_text, remote_build_probe_from_exit, remote_build_probe_answer, remote_build_answer_from_exit,
 }
 
@@ -95,27 +103,110 @@ fn remote_build_client_git(worktree: String, args: List<String>) -> ComputeExec 
 // The fleet's one preparation (gunbc.fleet.fleet_ssh_locus), with the remote-build key in place of the
 // fleet automation key: the file's public half is derived and compared before a binding exists, so a
 // rotated or wrong key refuses here and no host is contacted.
-fn remote_build_client_context(attempt_raw: String) -> FleetSshContextPreparation {
-  match fleet_ssh_attempt_identity(raw: attempt_raw) {
-    Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
-    Present { value: attempt } =>
-      match remote_build_client_identity_file() {
-        Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
-        Present { value: identity_file } =>
-          match verify_fleet_ssh_credential(identity_file: identity_file, expected_key: remote_build_ssh_key) {
-            FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
-              FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
-            FleetSshCredentialDerivationRefused { cause } =>
-              FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
-            FleetSshCredentialVerified { binding } =>
-              ssh_context_from_verified_binding_under(
-                attempt: attempt,
-                binding: binding,
-                rows: fleet_known_hosts_rows(),
-                job_root: Present { value: remote_build_client_job_root_child },
-              )
+//
+// identity_file_override: when present, the identity file path to use instead of the default
+// ($HOME/.ssh/gunbc-remote-build). The ctrl session-image wrapper passes the provisioned session key
+// path ($HOME/.config/ctrl/remote-build/id_ed25519) so the container authenticates with the session
+// key rather than the operator's bind-mounted key.
+// THE CLIENT'S OWN JOB ROOT, ensured fail-closed on the fleet create-or-adopt core
+// (gunbc.fleet.fleet_known_hosts_anchor create_or_adopt_owner_only_directory). The job root is the
+// directory the client runs in; the known-hosts anchor and the control-socket directory live under it,
+// and the fleet layer creates only the multiplex CHILD here -- it never creates this root, so a fresh
+// worktree or a hosted runner refused the whole run at the multiplex step with a misleading "the
+// multiplex directory ... could not be created or read back". Ensuring it here, and refusing when it is
+// not a directory we own, gives that failure its own cause at the step that owns it (a wildcard that
+// discarded a failed mkdir was an uncounted degradation -- gunbc.design_argument::fail_closed). `root`
+// is a parameter so a witness can name a path that is not a directory and watch it refuse; production
+// passes remote_build_client_job_root_child.
+type RemoteBuildClientJobRoot
+  = JobRootReady { path: String }
+  | JobRootRefused { cause: String }
+
+// THE PURE ADMISSION of the client's job root, beside its effect below. A path that is not a directory --
+// a regular file sitting where the root should be -- refuses: a file is never a root. Beyond that, the job
+// root is checked by OWNERSHIP ALONE, exactly as the fleet checks the root it places a multiplex directory
+// under (materialize_fleet_ssh_multiplex_directory_under reads the runner root's OWNER, never its mode). The
+// 700 requirement belongs to the sun_path multiplex CHILD, which must not be group/world reachable as a
+// socket directory -- not to this parent, which is cargo's own target directory: cargo creates it 0755 under
+// the normal umask, and create-or-adopt leaves an existing name at its mode. Refusing a good 0755 checkout
+// root would forbid more of the world than the cited variables support
+// (gunbc.design_argument::epistemic_humility) and apply a child's contract at the parent it never needed
+// (gunbc.design_argument::earliest_unjustified_boundary). So: a directory owned by the running principal
+// proceeds; a non-directory, a foreign owner, or an unreadable principal each refuse with their own cause
+// (gunbc.design_argument::fail_closed).
+fn remote_build_client_job_root_decision(path: String, is_dir: Bool, owner: String, principal: String?) -> RemoteBuildClientJobRoot {
+  if !is_dir {
+    JobRootRefused { cause: join(["remote-build: the job root ", path, " is not a directory"], "") }
+  } else {
+    match principal {
+      Absent => JobRootRefused { cause: join(["remote-build: the job root ", path, " could not be checked against the running principal"], "") }
+      Present { value: me } =>
+        if owner != me {
+          JobRootRefused { cause: join(["remote-build: the job root ", path, " is owned by ", owner, ", not by the running principal"], "") }
+        } else {
+          JobRootReady { path: path }
+        }
+    }
+  }
+}
+
+// THE EFFECT: create-or-adopt the client's job root on the fleet core, read back whether it is a directory,
+// its owner and the running principal, then hand those to the pure decision above. Both sides of the owner
+// comparison are read in ONE representation -- a user NAME: the owner from shell.Stat.OwnerOf (`stat -c %U`)
+// and the principal from shell.Id.UserName (`id -un`). Comparing `%U` against `id -u` (a numeric uid) would
+// refuse every directory the user owns, because the two producers emit different shapes
+// (gunbc.design_argument::witness_one_interface). `root` is a parameter so a witness can name a path that is
+// not a directory and watch it refuse at this step; production passes remote_build_client_job_root_child.
+fn materialize_remote_build_client_job_root(root: String) -> RemoteBuildClientJobRoot {
+  match create_or_adopt_owner_only_directory(path: root) {
+    OwnerOnlyDirectoryUnreadable { path: p } =>
+      JobRootRefused { cause: join(["remote-build: the job root ", p, " could not be created or read back"], "") }
+    OwnerOnlyDirectoryObserved { path: p, owner: o } => {
+      let is_dir = shell.Test.IsDirectory(path: p as FilePath).is_directory
+      let me = shell.Id.UserName()
+      remote_build_client_job_root_decision(
+        path: p,
+        is_dir: is_dir,
+        owner: o,
+        principal: if me.success { Present { value: trim(s: me.stdout) } } else { Absent },
+      )
+    }
+  }
+}
+
+fn remote_build_client_context(attempt_raw: String, identity_file_override: String?) -> FleetSshContextPreparation {
+  match materialize_remote_build_client_job_root(root: remote_build_client_job_root_child) {
+    JobRootRefused { cause } => FleetSshContextRefused { cause: cause }
+    JobRootReady { path: _ } =>
+      match fleet_ssh_attempt_identity(raw: attempt_raw) {
+        Absent => FleetSshContextRefused { cause: concat("remote-build: the attempt identity is not a safe path segment: ", attempt_raw) }
+        Present { value: attempt } =>
+          match identity_file_override {
+            Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path)
+            Absent => match remote_build_client_identity_file() {
+              Absent => FleetSshContextRefused { cause: "remote-build: HOME is unset, so the session's remote-build key has no path" }
+              Present { value: path } => verify_and_prepare_context(attempt: attempt, identity_path: path as String)
+            }
           }
       }
+  }
+}
+
+fn verify_and_prepare_context(attempt: FleetSshAttemptIdentity, identity_path: String) -> FleetSshContextPreparation {
+  match verify_fleet_ssh_credential_admitted_any(identity_file: identity_path as NonEmptyStr, admitted_keys: remote_build_admitted_public_keys) {
+    FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o } =>
+      FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialIdentityMismatch { expected_line: e, observed_line: o }) }
+    FleetSshCredentialDerivationRefused { cause } =>
+      FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialDerivationRefused { cause: cause }) }
+    FleetSshCredentialAdmissionEmpty { observed_line: o } =>
+      FleetSshContextRefused { cause: fleet_ssh_credential_verification_refusal_reason(verification: FleetSshCredentialAdmissionEmpty { observed_line: o }) }
+    FleetSshCredentialVerified { binding } =>
+      ssh_context_from_verified_binding_under(
+        attempt: attempt,
+        binding: binding,
+        rows: known_hosts_file_rows(),
+        job_root: Present { value: remote_build_client_job_root_child },
+      )
   }
 }
 
@@ -149,13 +240,18 @@ type RemoteBuildLeg
 // sent leaves the host unreachable; a request that could not be sent after a ready probe is the
 // request's own fault and is final, since every host would refuse the same words.
 fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuildRequest, candidate: RemoteBuildCandidate) -> RemoteBuildHostAnswer {
+  // The words are the WORK's projection, formed here rather than inside the leg call: the leg is an
+  // effect, and an effect's summary is joined against the callee identities reachable from its arguments,
+  // so a pure projection is settled before the effect is -- not for what it does, which is nothing, but
+  // so the summary stays checkable instead of incomplete.
+  let words = remote_build_request_words(r: remote_build_request_work(r: request))
   match remote_build_client_leg(context: context, host: candidate.host, words: split(s: remote_build_probe_text as String, delimiter: " ")) {
     RemoteBuildLegNotSent { detail } => HostUnreachable { detail: detail }
     RemoteBuildLegRan { target: _, result: probe } =>
       match remote_build_probe_answer(p: remote_build_probe_from_exit(exit_code: probe.exit_code, stdout: probe.stdout, stderr: probe.stderr)) {
         Present { value: moved_on } => moved_on
         Absent =>
-          match remote_build_client_leg(context: context, host: candidate.host, words: remote_build_request_words(r: request)) {
+          match remote_build_client_leg(context: context, host: candidate.host, words: words) {
             RemoteBuildLegNotSent { detail } => HostRefusedRequest { detail: detail }
             RemoteBuildLegRan { target: _, result: sent } => remote_build_answer_from_exit(exit_code: sent.exit_code, stdout: sent.stdout, stderr: sent.stderr)
           }
@@ -166,11 +262,26 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
 // The roster is walked by remote_build_next_step and nothing else: each round asks it what to do with
 // the attempts so far, so the order and the stopping rule have one home. A round per candidate is
 // enough, since each round either tries the next candidate or finds the request settled.
-fn remote_build_drive(context: FleetSshExecutionContext, request: RemoteBuildRequest) -> RemoteBuildStep {
-  let candidates = remote_build_candidates()
+//
+// The roster walked is remote_build_pinned_candidates(pin): with no pin that is the whole roster,
+// in order (unchanged behaviour); with a rostered pin it is exactly the one named host, so a
+// pinned request is tried on that host and nowhere else. An off-roster pin never reaches here --
+// remote_build_run refuses it before any effect -- but the pinned list is empty even if one did.
+fn remote_build_drive(context: FleetSshExecutionContext, request: RemoteBuildRequest, pin: RemoteBuildHostPin?) -> RemoteBuildStep {
+  let candidates = remote_build_pinned_candidates(pin: pin)
   let attempts = fold(candidates, init: [], f: fn(acc, round) {
     match remote_build_next_step(candidates: candidates, attempts: acc) {
-      RemoteBuildTryHost { candidate } => concat(acc, [RemoteBuildAttempt { host: candidate.host, answer: remote_build_try_host(context: context, request: request, candidate: candidate) }])
+      RemoteBuildTryHost { candidate } => concat(acc, [RemoteBuildAttempt {
+        host: candidate.host,
+        // THE EXECUTOR CLASS IS ASKED BEFORE THE HOST IS. A host whose fleet execution class refuses
+        // the request's requirements is answered without a probe, a connection or a push -- there is
+        // nothing to learn from it, and asking would be the walk touching a host it has already been
+        // told cannot run the work. Every other candidate is tried exactly as it always was.
+        answer: match remote_build_host_placement(requirements: request.requirements, classes: executor_execution_class_roster, host: candidate.host) {
+          Present { value: refused } => refused
+          Absent => remote_build_try_host(context: context, request: request, candidate: candidate)
+        },
+      }])
       RemoteBuildAnswered { host: _, answer: _ } => acc
       RemoteBuildNoHostAvailable { attempts: _ } => acc
     }
@@ -230,31 +341,87 @@ type RemoteBuildRun
 
 // Every operation of one run is asked of the same snapshot through one ref, so a test pattern that
 // selects several modules publishes once and deletes once.
-fn remote_build_run(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>) -> RemoteBuildRun {
+// THE ONE RUN. A host pin is decided BEFORE any effect -- no snapshot, no push, no connection --
+// so a pin the DISPATCH roster does not admit refuses on the spot rather than contacting a host or
+// being widened to the whole roster. A rostered pin (or none) falls through to the ordinary walk
+// with that pin threaded into remote_build_drive, which then walks exactly that one host.
+// THE ONE ENTRY, GIVEN WHAT THE BUILD MUST RUN ON. The requirements are supplied by whoever asks for
+// the build, not learned from the host it lands on: gunbc.compute.remote_build
+// ::remote_build_execution_requirements is where the fleet authors them, and a caller whose artifact is
+// FOR a particular instruction set says so there. They ride on the request, and the walk enforces them
+// against gunbc.fabric.fabric_executor_class -- the pin and the roster order are untouched.
+fn remote_build_run(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>, requirements: ExecutionRequirements, identity_file: String?, host: String?) -> RemoteBuildRun {
+  match remote_build_host_pin(text: host) {
+    Absent => remote_build_run_pinned(worktree: worktree, commit_text: commit_text, operations: operations, requirements: requirements, identity_file: identity_file, pin: none)
+    Present { value: PinRostered { host: pinned } } =>
+      remote_build_run_pinned(worktree: worktree, commit_text: commit_text, operations: operations, requirements: requirements, identity_file: identity_file, pin: Present { value: PinRostered { host: pinned } })
+    Present { value: PinOffRoster { pin: refused, roster } } =>
+      RemoteBuildNotSent { step: "host-pin", detail: remote_build_pin_refusal(pin: refused, roster: roster) }
+  }
+}
+
+// CAN THIS REQUEST BE PLACED ON THE HOSTS THE WALK WOULD HAVE WALKED? Answered against
+// gunbc.fabric.fabric_executor_class before any effect: a pinned request is placed or refused on that
+// host alone, an unpinned one needs at least one admitting host on the roster. The refusal carries each
+// host's own typed reason rendered for the ledger; nothing is pushed to find it out.
+type RemoteBuildPlacement
+  = RemoteBuildPlacementOpen
+  | RemoteBuildPlacementBlocked { detail: String }
+
+fn remote_build_placement_gate(requirements: ExecutionRequirements, pin: RemoteBuildHostPin?) -> RemoteBuildPlacement {
+  let hosts = remote_build_pinned_candidates(pin: pin) |> map(c => c.host)
+  if count(hosts) == 0 {
+    RemoteBuildPlacementBlocked { detail: "there is no host on the roster to place this on" }
+  } else if remote_build_any_host_admits(requirements: requirements, classes: executor_execution_class_roster, hosts: hosts) {
+    RemoteBuildPlacementOpen
+  } else {
+    RemoteBuildPlacementBlocked {
+      detail: join(
+        hosts
+          |> flat_map(h => match remote_build_host_placement(requirements: requirements, classes: executor_execution_class_roster, host: h) {
+               Absent => []
+               Present { value: HostExecutionClassRefused { admission: _, detail: line } } => [concat(h as String, ": ", line)]
+               Present { value: _ } => []
+             }),
+        "; ",
+      )
+    }
+  }
+}
+
+fn remote_build_run_pinned(worktree: String, commit_text: String, operations: List<RemoteBuildOperation>, requirements: ExecutionRequirements, identity_file: String?, pin: RemoteBuildHostPin?) -> RemoteBuildRun {
   match git_object_id_from_untagged_hex(hex: commit_text) {
     Absent => RemoteBuildNotSent { step: "snapshot", detail: concat("the snapshot is not a commit id: ", commit_text) }
     Present { value: commit } =>
       match remote_build_client_source_ref(commit: commit, clock: clock_unix_millis_read()) {
         Absent => RemoteBuildNotSent { step: "source ref", detail: "no source ref id could be formed from the commit and the clock" }
         Present { value: source } =>
-          match remote_build_client_context(attempt_raw: concat("remote-build-", source.id as String)) {
-            FleetSshContextRefused { cause } => RemoteBuildNotSent { step: "ssh context", detail: cause }
-            FleetSshContextReady { context, receipt: _ } =>
-              match remote_build_client_git(worktree: worktree, args: remote_build_client_push_argv(commit: commit, source: source)) {
-                ComputeExecFailed { exit_code, stdout: _, stderr } =>
-                  RemoteBuildNotSent { step: "push", detail: join(["git push of ", remote_build_source_ref_name(r: source) as String, " exited ", to_string(value: exit_code), ": ", stderr], "") }
-                ComputeExecOk { stdout: _, stderr: _ } => {
-                  let results = operations |> map(op => RemoteBuildRequestResult {
-                    operation: op,
-                    step: remote_build_drive(context: context, request: RemoteBuildRequest { commit: commit, source: source, operation: op }),
-                  })
-                  RemoteBuildRan {
-                    commit: git_object_id_wire_hex(oid: commit) as String,
-                    source_ref: remote_build_source_ref_name(r: source) as String,
-                    results: results,
-                    cleanup: remote_build_client_delete_ref(worktree: worktree, source: source),
+          // BEFORE ANY EFFECT: can this request be placed on any host the walk would have walked? The
+          // check is fabric's (gunbc.fabric.fabric_executor_class), the candidate set is the walk's own,
+          // and a refusal here publishes nothing -- no ref, no push, no snapshot on any host, no
+          // connection opened to ask a host whether it is even up.
+          match remote_build_placement_gate(requirements: requirements, pin: pin) {
+            RemoteBuildPlacementBlocked { detail } => RemoteBuildNotSent { step: "placement", detail: detail }
+            RemoteBuildPlacementOpen =>
+              match remote_build_client_context(attempt_raw: concat("remote-build-", source.id as String), identity_file_override: identity_file) {
+                FleetSshContextRefused { cause } => RemoteBuildNotSent { step: "ssh context", detail: cause }
+                FleetSshContextReady { context, receipt: _ } =>
+                  match remote_build_client_git(worktree: worktree, args: remote_build_client_push_argv(commit: commit, source: source)) {
+                    ComputeExecFailed { exit_code, stdout: _, stderr } =>
+                      RemoteBuildNotSent { step: "push", detail: join(["git push of ", remote_build_source_ref_name(r: source) as String, " exited ", to_string(value: exit_code), ": ", stderr], "") }
+                    ComputeExecOk { stdout: _, stderr: _ } => {
+                      let results = operations |> map(op => RemoteBuildRequestResult {
+                        operation: op,
+                        step: remote_build_drive(context: context, request: RemoteBuildRequest { commit: commit, source: source, operation: op, requirements: requirements }, pin: pin),
+                      })
+                      RemoteBuildRan {
+                        commit: git_object_id_wire_hex(oid: commit) as String,
+                        source_ref: remote_build_source_ref_name(r: source) as String,
+                        results: results,
+                        cleanup: remote_build_client_delete_ref(worktree: worktree, source: source),
+                      }
+                    }
                   }
-                }
               }
           }
       }
@@ -293,6 +460,9 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostUnreachable { detail: _ } => "unreachable"
     HostRefusedRequest { detail: _ } => "request-refused"
     HostOutcomeUnknown { detail: _ } => "outcome-unknown"
+    // The word the ledger gives a host the fleet's own execution class refused: the request never
+    // reached it, so this is not a host that declined -- it is a host that was never asked.
+    HostExecutionClassRefused { admission: _, detail: _ } => "execution-class-refused"
   }
 }
 
@@ -303,6 +473,8 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostWorkInFlight { receipt } => receipt
     HostCapacityFull { detail } => detail
     HostCannotServe { detail } => detail
+    // The detail IS the verdict, rendered by fabric; nothing here re-describes it.
+    HostExecutionClassRefused { admission: _, detail } => detail
     HostUnreachable { detail } => detail
     HostRefusedRequest { detail } => detail
     HostOutcomeUnknown { detail } => detail
@@ -322,6 +494,8 @@ fn remote_build_operation_json(op: RemoteBuildOperation) -> JsonValue {
     RemoteCompileEntry { entry } => json_object(members: [json_kv(key: "compile", value: json_string(s: entry as String))])
     RemoteRunClaims { entry, functions } =>
       json_object(members: [json_kv(key: "claims", value: json_string(s: entry as String)), json_kv(key: "functions", value: json_array(elements: map(functions, f => json_string(s: f as String))))])
+  
+    RemoteGateSubject { label } => json_object(members: [json_kv(key: "gate", value: json_string(s: render_label(l: label)))])
   }
 }
 
@@ -380,14 +554,144 @@ fn remote_build_exit(verb: String, receipt_path: String, run: RemoteBuildRun, de
 //
 //   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_compile_cli \
 //     --arg worktree=$PWD --arg entry=<dag/...dag> --arg receipt_path=$PWD/.gunbc-compile-receipt.json
-fn remote_compile_cli(worktree: String, entry: String, receipt_path: String) -> ProcessExit {
+// Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
+// Optional --arg host=<host> PINS this request to one host: it must be a DISPATCH-roster host, or
+// the whole run refuses before any effect (never widened to the rest of the roster).
+fn remote_compile_cli(worktree: String, entry: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
   if !remote_build_entry_admitted(entry: entry) {
     ExitFailure { code: 2, reason: concat("gunbc remote compile: entry must be a .dag file under dag/, relative to the worktree: ", entry) }
   } else {
     match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
       SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote compile: snapshot refused at ", step, ": ", detail], "") }
       SnapshotResolved { commit } =>
-        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }]), declined: [], failed: [])
+        remote_build_exit(verb: "gunbc remote compile", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: [RemoteCompileEntry { entry: entry as FilePath }], requirements: remote_build_execution_requirements(architecture: none), identity_file: identity_file, host: host), declined: [], failed: [])
+    }
+  }
+}
+
+// ── THE GATE CLI ─────────────────────────────────────────────────────────────────────────────────────
+//
+// THE REQUIRED GATE'S SUBJECT STEP, RUN ON A SERVING HOST. This is the remote twin of what the
+// v2-bootstrap job does for one row of gunbc.emitted_subject_build_gate::emitted_subject_build_rows:
+// build the seed with cargo, then `gunbc test <label>` with the binary that build produced -- under a
+// reservation from that host's ledger and a cgroup bound equal to it, with the memory verdict the seed
+// itself gives (gunbc.host.memory_envelope, gunbc.host.memory_stall_refusal). Nothing here decides
+// which labels are gate rows: the label goes through remote_build_decode_gate_subject, the same decode
+// the serving side applies, so a non-row label is refused HERE, before a snapshot is taken or a host is
+// contacted, with the same typed cause.
+//
+//   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli \
+//     --arg worktree=$PWD --arg label=//gunbc/instruments:v2-native-cli \
+//     --arg receipt_path=$PWD/.gunbc-gate-receipt.json
+//
+// THE EXIT CODE SAYS WHICH KIND OF THING HAPPENED, and that distinction is the point of this CLI and
+// not a courtesy: a fleet with no free reservation must never exit like a failed test, or CI learns to
+// read a capacity shortage as a code defect.
+//   0  served, and clean
+//   1  the work RAN and its own verdict was unsuccessful -- a verdict on the code, and the only one
+//   2  the request never became a request: the label is not a gate row, the snapshot or the push was
+//      refused, or the receipt could not be written
+//   3  NO HOST ADMITTED THE WORK: every roster host answered capacity-full, cannot-serve, unreachable,
+//      work-in-flight, or the transport could not say what happened. Nothing in this run is a statement
+//      about the code, and CI must not mark the commit failed on it.
+//   4  the run was answered but the hidden ref was left on origin -- an unfinished cleanup, again not a
+//      verdict on the code
+// The typed attempts (host, answer word) are in the receipt for every one of these, and reading the
+// receipt is how a human finds out WHICH host said what; the code only says which class to route to.
+type RemoteGateOutcome
+  = GateServedClean
+  | GateVerdictOnCode
+  | GateRequestRejected
+  | GateNoHostAdmitted
+  | GateRefLeftOnOrigin
+
+// WHICH CLASS ONE SETTLED STEP BELONGS TO. A refusal the request itself caused is a request defect, not
+// a capacity fact; everything else that kept the work from running -- a full pool, a host that cannot
+// serve, an unreachable host, work already in flight elsewhere, a transport that cannot say -- is the
+// same class for CI's purposes: no host admitted it, and the code was never judged.
+fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
+  match s {
+    RemoteBuildAnswered { host: _, answer } =>
+      match answer {
+        HostServed { receipt: _ } => GateServedClean
+        HostWorkFailed { receipt: _ } => GateVerdictOnCode
+        HostRefusedRequest { detail: _ } => GateRequestRejected
+        HostWorkInFlight { receipt: _ } => GateNoHostAdmitted
+        HostCapacityFull { detail: _ } => GateNoHostAdmitted
+        HostCannotServe { detail: _ } => GateNoHostAdmitted
+        HostUnreachable { detail: _ } => GateNoHostAdmitted
+        // A host the fleet's execution class refused never judged the code either: the work was refused
+        // before it reached any host, which is the same class of non-verdict as a host that was down.
+        HostExecutionClassRefused { admission: _, detail: _ } => GateNoHostAdmitted
+        HostOutcomeUnknown { detail: _ } => GateNoHostAdmitted
+      }
+    RemoteBuildNoHostAvailable { attempts: _ } => GateNoHostAdmitted
+    RemoteBuildTryHost { candidate: _ } => GateNoHostAdmitted
+  }
+}
+
+// THE RUN'S CLASS, by what the run could have said about the code. A run in which any step ran the work
+// and failed is a code verdict first: a leftover ref or a declined host must not bury it. Only when no
+// step ran the work does the "nothing was judged" class answer, and cleanup is last.
+fn remote_gate_run_outcome(run: RemoteBuildRun) -> RemoteGateOutcome {
+  match run {
+    RemoteBuildNotSent { step: _, detail: _ } => GateRequestRejected
+    RemoteBuildRan { commit: _, source_ref: _, results, cleanup } =>
+      let outcomes = map(results, r => remote_gate_step_outcome(s: r.step))
+      if any(outcomes, o => match o { GateVerdictOnCode => true  _ => false }) {
+        GateVerdictOnCode
+      } else if any(outcomes, o => match o { GateNoHostAdmitted => true  _ => false }) {
+        GateNoHostAdmitted
+      } else if any(outcomes, o => match o { GateRequestRejected => true  _ => false }) {
+        GateRequestRejected
+      } else if any(outcomes, o => match o { GateServedClean => true  _ => false }) &&
+              match cleanup { RemoteBuildRefLeft { detail: _ } => true  RemoteBuildRefDeleted => false } {
+        GateRefLeftOnOrigin
+      } else {
+        GateServedClean
+      }
+  }
+}
+
+fn remote_gate_exit_code(o: RemoteGateOutcome) -> Int {
+  match o {
+    GateServedClean => 0
+    GateVerdictOnCode => 1
+    GateRequestRejected => 2
+    GateNoHostAdmitted => 3
+    GateRefLeftOnOrigin => 4
+  }
+}
+
+// Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
+// Optional --arg host=<host> PINS this gate to one DISPATCH-roster host; any other host refuses
+// before any effect rather than falling through to the rest of the roster.
+fn remote_gate_cli(worktree: String, label: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
+  match remote_build_decode_gate_subject(words: [remote_build_gate_word as String, label], operand: label) {
+    RemoteBuildOperationRefused { cause } =>
+      ExitFailure { code: 2, reason: join(["gunbc remote gate: ", remote_build_request_refusal_text(cause: cause)], "") }
+    RemoteBuildOperationDecoded { operation } =>
+      match snapshot_worktree(git: remote_build_client_git_program, worktree: worktree) {
+        SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc remote gate: snapshot refused at ", step, ": ", detail], "") }
+        SnapshotResolved { commit } => remote_gate_run_and_exit(worktree: worktree, commit: commit, operation: operation, receipt_path: receipt_path, identity_file: identity_file, host: host)
+      }
+  }
+}
+
+// THE RUN, THE RECEIPT, THEN THE CODE. The receipt is written whether or not anything was served --
+// the attempts and their answer words are the record a human reads when the exit says "no host admitted
+// this" -- and the exit code is the class, never a re-derivation of it.
+fn remote_gate_run_and_exit(worktree: String, commit: String, operation: RemoteBuildOperation, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
+  let run = remote_build_run(worktree: worktree, commit_text: commit, operations: [operation], requirements: remote_build_execution_requirements(architecture: none), identity_file: identity_file, host: host)
+  let document = serialize_json(v: remote_build_run_json(r: run, declined: [], failed: []))
+  let receipt = Filesystem.Write(path: receipt_path, content: document)
+  if !receipt.success {
+    ExitFailure { code: 2, reason: join(["gunbc remote gate: receipt could not be written to ", receipt_path, ": ", receipt.error, "; report was ", document], "") }
+  } else {
+    let outcome = remote_gate_run_outcome(run: run)
+    match outcome {
+      GateServedClean => ExitSuccess
+      _ => ExitFailure { code: remote_gate_exit_code(o: outcome), reason: join(["gunbc remote gate: ", document], "") }
     }
   }
 }
@@ -440,7 +744,10 @@ fn remote_not_sent_json(label: String, reason: String) -> JsonValue {
 
 //   gunbc run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli \
 //     --arg worktree=$PWD --arg pattern=//dag/test/claim/<package>/... --arg receipt_path=$PWD/.gunbc-test-receipt.json
-fn remote_test_cli(worktree: String, pattern: String, receipt_path: String) -> ProcessExit {
+// Optional --arg identity_file=<path> overrides the default key location (for ctrl session containers).
+// Optional --arg host=<host> PINS this test run to one DISPATCH-roster host; any other host refuses
+// before any effect rather than falling through to the rest of the roster.
+fn remote_test_cli(worktree: String, pattern: String, receipt_path: String, identity_file: String?, host: String?) -> ProcessExit {
   match parse_target_pattern(text: pattern) {
     TargetPatternRefused { cause } => ExitFailure { code: 2, reason: concat("gunbc remote test: ", target_pattern_refusal_text(r: cause)) }
     TargetPatternParsed { pattern: parsed } =>
@@ -457,7 +764,7 @@ fn remote_test_cli(worktree: String, pattern: String, receipt_path: String) -> P
               if count(operations) == 0 {
                 remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: RemoteBuildNotSent { step: "selection", detail: concat("the pattern selected no module with a planned claim: ", render_target_pattern(pattern: parsed)) }, declined: declined, failed: failed)
               } else {
-                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations), declined: declined, failed: failed)
+                remote_build_exit(verb: "gunbc remote test", receipt_path: receipt_path, run: remote_build_run(worktree: worktree, commit_text: commit, operations: operations, requirements: remote_build_execution_requirements(architecture: none), identity_file: identity_file, host: host), declined: declined, failed: failed)
               }
             }
           }

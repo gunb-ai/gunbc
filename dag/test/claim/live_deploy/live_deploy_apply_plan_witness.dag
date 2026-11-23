@@ -12,7 +12,8 @@ import std.algebra { Cons, Empty, fold_list, list_append, list_map }
 import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
-import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch, tracker_web_test_console_readback_valid_until_epoch, tracker_web_test_oidc_config_host_path }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch, tracker_web_test_console_readback_valid_until_epoch, tracker_web_test_oidc_config_host_path, tracker_web_test_oauth_client_secret_host_path }
+import gunbc.host.host_layout { srv1_gunbc_oidc_config_root }
 import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
 import gunbc.fleet.fleet_intent { srv1_host }
@@ -32,7 +33,7 @@ import gunbc.live_deploy.apply_legs {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, srv2_deploy_desired_deployment, selected_deployment_spec, DesiredDeployment }
 import gunbc.live_deploy.spec { NotPairDelivered }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names, deployment_tree_remote_unit_name }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentArtifactStep, ArtifactStep, ComposeOwned, FleetConvergeTimerUnit, deployment_owns_the_host_approval_broker, Dependency, UpsertOwned, GunbcSourceTree, deployment_systemd_unit_path, gunbc_user_work_slice_unit_path, gunbc_service_uid, FabricStorageServeUnit, gunbc_approval_broker_unit_name, gunbc_device_crypto_sidecar_unit_name, deployment_spec_for, deployment_srv1_target, srv1_live_deployment_names, deployment_tree_remote_unit_name, deployment_fabric_storage_unit_name }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan, uniform_release_plan, KeepMember, InstallExecutable, RestartService, Executable, ServiceProcess, converged_effect_plan, ConvergedMember, PublishTree, WriteUnit, DaemonReload, CreateRoot, WriteOidcConfig, RegroupGitWorkerSubtree, AssertRepositorySharedPosture, UnitFile, OidcConfigFile, DirectoryRoot, TreePublication, UnitManager, GitWorkerSubtree, RepositorySharedPosture }
 import gunbc.live_deploy.spec { deployment_attempt_unit_drain_path_unit_path, tailscale_default_https_port }
 import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
@@ -43,7 +44,7 @@ import gunbc.ci.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_sudo_grants }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_program, sudo_non_interactive_flag }
-import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode, approval_broker_unit_emission, BrokerUnitBound, BrokerUnitRefused }
+import gunbc.live_deploy.emit { device_crypto_sidecar_binary_path, path_parent_dir, install_file_owner_only_mode, install_file_shared_mode, approval_broker_unit_emission, BrokerUnitBound, BrokerUnitRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { macbook_local_dashboard_instance, prod_role_realization_in, ProdRoleHeldBy }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, release_locus_binary_path, approval_broker_helper_root_principal }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
@@ -1125,16 +1126,56 @@ test fn a_twin_belt_unit_carries_the_twins_spawn_root_and_not_productions() -> B
     && !string_contains(s: unit, pattern: join([env, prod_root], ""))
 }
 
-// THE LAB OIDC CONFIG IS WRITTEN OWNER-ONLY AT ITS HOST PATH (was lab_apply_identity_route_writes_oidc_config_file).
-// The file carries the client secret, so its mode is part of the claim.
-test fn the_lab_apply_writes_the_oidc_config_owner_only_at_its_host_path() -> Bool {
+// THE OIDC CONFIG DOCUMENT IS PLACED WORLD-READABLE UNDER A DEPLOY-OWNED, WORLD-TRAVERSABLE ROOT, never
+// inside the operator-only /etc/gunbc-oidc and never owner-only. THE DISCRIMINATING RED for this fix: the
+// deploy's host-arm observation reads this member as the runner principal, so the document must be a
+// world-readable file under a world-traversable parent (option C of the operator ruling). If the mode
+// flips back to install_file_owner_only_mode (0600) -- the credential mode -- or the path moves back into
+// the operator dir, the runner could not read it and observe_oidc_config_file would refuse. The document is
+// NOT a credential: it names its client secret by PATH and carries no secret bytes, so it needs none of
+// the operator's owner-only posture. Its secret stays custody's in /etc/gunbc-oidc (next claim).
+test fn the_lab_apply_writes_the_oidc_config_document_world_readable_at_its_deploy_owned_path() -> Bool {
   match deploy_apply_oidc_plan(spec: lab_spec(), plan: deploy_witness_full_install_plan(spec: lab_spec()), oidc_now: tracker_web_test_console_readback_observed_at_epoch) {
     ApplyPlanReady { legs: ls } =>
       let words = words_at(legs: ls, step: "oidc-config")
-      has_word(words: words, w: install_file_owner_only_mode as String)
-        && has_word(words: words, w: tracker_web_test_oidc_config_host_path as String)
+      let path = tracker_web_test_oidc_config_host_path as String
+      has_word(words: words, w: install_file_shared_mode as String)
+        && !has_word(words: words, w: install_file_owner_only_mode as String)
+        && has_word(words: words, w: path)
+        && string_contains(s: path, pattern: srv1_gunbc_oidc_config_root as String)
+        && !string_contains(s: path, pattern: "/etc/gunbc-oidc")
     ApplyPlanRefused { step: _, reason: _ } => false
   }
+}
+
+// NO OIDC DEPLOY LEG NAMES THE OPERATOR-ONLY DIRECTORY, while the composed document STILL references the
+// secret there. THE DISCRIMINATING RED against letting the deploy touch the custody directory again: if a
+// deploy leg's path/argv named /etc/gunbc-oidc, the deploy would be writing into a directory another
+// authority owns 0700 (and its install -d would have loosened it). The positive control -- the document
+// PAYLOAD still names the secret's operator-dir path -- proves the guard is about the leg PATHS, not a
+// blanket ban on the string: the secret legitimately lives there, placed by custody, never by the deploy.
+test fn no_oidc_apply_leg_names_the_operator_only_directory() -> Bool {
+  match deploy_apply_oidc_plan(spec: lab_spec(), plan: deploy_witness_full_install_plan(spec: lab_spec()), oidc_now: tracker_web_test_console_readback_observed_at_epoch) {
+    ApplyPlanReady { legs: ls } =>
+      let dir_words = words_at(legs: ls, step: "oidc-config-dir")
+      let file_words = words_at(legs: ls, step: "oidc-config")
+      let payload = payload_at(legs: ls, step: "oidc-config")
+      !any(xs: dir_words, predicate: fn(w) { string_contains(s: w, pattern: "/etc/gunbc-oidc") })
+        && !any(xs: file_words, predicate: fn(w) { string_contains(s: w, pattern: "/etc/gunbc-oidc") })
+        && string_contains(s: payload, pattern: "/etc/gunbc-oidc")
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
+
+// THE CLIENT SECRET STAYS CUSTODY'S, in the operator-only /etc/gunbc-oidc, and is NOT the config document's
+// location. This pins the authority split the operator chose: the operator dir holds SECRETS only, the
+// composed document lives on the deploy side, and the two never collapse into one path.
+test fn the_oidc_secret_stays_in_the_operator_only_directory_separate_from_the_document() -> Bool {
+  let secret = tracker_web_test_oauth_client_secret_host_path as String
+  let document = tracker_web_test_oidc_config_host_path as String
+  string_contains(s: secret, pattern: "/etc/gunbc-oidc")
+    && !string_contains(s: document, pattern: "/etc/gunbc-oidc")
+    && secret != document
 }
 
 // AN EXPIRED CONSOLE READBACK REFUSES THE OIDC FAMILY ITSELF (was lab_apply_oidc_config_refuses_when_console_readback_expired).
@@ -1151,33 +1192,26 @@ test fn lab_apply_oidc_config_refuses_when_console_readback_expired() -> Bool {
   }
 }
 
-// WHAT THE APPLY DOES OF THE FABRIC DB ENDPOINT, since the operator's ruling of 2026-11-10
-// (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10): it routes to the endpoint's
-// door socket and touches nothing of the endpoint's own unit. The claim here before asserted a
-// "fabric-storage-restart" leg naming that unit (successor of the_fold_restarts_the_journal_store_before_the_
-// gate_reads_the_journal). The check is over EVERY leg's argv rather than over the absence of one step name:
-// a leg that staged, enabled, reloaded or restarted the unit would name it, and no leg may name it.
-test fn no_apply_leg_touches_the_fabric_storage_unit() -> Bool {
-  let words = all_leg_words(legs: full_legs(spec: deployment_spec_srv1()))
-  !any(words, w => w.contains("gunbc-roadmap-fabric-storage.service"))
-}
-
-fn all_leg_words(legs: List<DeployApplyLeg>) -> List<String> {
-  match legs {
-    Empty => []
-    Cons { head: h, tail: rest } => concat(leg_argv_words(leg: h), all_leg_words(legs: rest))
-  }
+// THE FABRIC STORAGE UNIT IS RESTARTED BY THE APPLY (was the_fold_restarts_the_journal_store_before_the_
+// gate_reads_the_journal; re-asserted by gunbc.design_ruling::
+// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, reversing the 2026-11-10 exclusion
+// t6_fabric_storage_excluded_from_live_deploy_2026_11_10): the journal store the tailnet-door cutover gate reads
+// is the unit this leg restarts, so the apply must name it. The 11-10 ruling had replaced this with a claim
+// that NO leg may name the unit -- that claim is exactly the deadlock, and it is gone.
+test fn the_production_apply_restarts_the_fabric_storage_unit() -> Bool {
+  let spec = deployment_spec_srv1()
+  has_word(words: words_at(legs: full_legs(spec: spec), step: "fabric-storage-restart"), w: deployment_fabric_storage_unit_name(names: spec.names) as String)
 }
 
 fn fabric_storage_unit_step(spec: DeploymentSpec) -> DeploymentArtifactStep {
   DeploymentArtifactStep { kind: ComposeOwned { kind: FabricStorageServeUnit }, path: "/etc/systemd/system/gunbc-roadmap-fabric-storage.service" as NonEmptyStr }
 }
 
-// A SPEC STILL NAMING THE FABRIC DB UNIT REFUSES THE PLAN (the FleetConvergeTimerUnit precedent above). No
-// spec the model emits carries that member any more, so one that does came from an older emitter or was
-// hand-authored; running it would stage and restart a file the deployment no longer installs, and refusing
-// names the ruling that retired the member so the operator can see why the plan died.
-test fn a_fabric_storage_unit_step_refuses_the_plan() -> Bool {
+// THE FABRIC DB UNIT STEP IS ADMITTED, NOT REFUSED (the guard that refused it is gone). A spec naming the
+// endpoint's unit -- which is every srv1 spec now, since deployment_fabric_storage_steps emits it -- folds to a
+// READY plan whose legs stage and restart the unit, rather than the ApplyPlanRefused { step:
+// "fabric-storage-unit" } the 11-10 ruling made it.
+test fn a_fabric_storage_unit_step_is_admitted_by_the_plan() -> Bool {
   let spec = deployment_spec_srv1()
   match deploy_apply_step_plan(
     step: ArtifactStep { step: fabric_storage_unit_step(spec: spec) },
@@ -1187,8 +1221,8 @@ test fn a_fabric_storage_unit_step_refuses_the_plan() -> Bool {
     source_root: "/src",
     oidc_now: Absent,
   ) {
-    ApplyPlanRefused { step: s, reason: r } => s == "fabric-storage-unit" && r.contains("t6_fabric_storage_excluded_from_live_deploy_2026_11_10")
-    ApplyPlanReady { legs: _ } => false
+    ApplyPlanRefused { step: _, reason: _ } => false
+    ApplyPlanReady { legs: ls } => any(ls, l => any(leg_argv_words(leg: l), w => w == deployment_fabric_storage_unit_name(names: spec.names) as String))
   }
 }
 

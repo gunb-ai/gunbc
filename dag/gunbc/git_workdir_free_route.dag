@@ -1,0 +1,90 @@
+module gunbc.git_workdir_free_route
+
+import std.types { String, List, Bool, Int }
+import gunbc.git_argv_route_wall {
+  spawn_git_argv_workdir_free,
+  GitWorkdirFreeSpawnAdmitted, GitWorkdirFreeSpawnRefused,
+}
+import extdeps.shell
+
+// THE SANCTIONED SPAWN for the workdir-FREE git channel: the path a git step that carries NO working
+// directory must call instead of `shell.Exec.RunArgv` directly (which names no directory, so a bare
+// mutating git shape joined to it would mutate whatever tree the harness happens to sit in). It asks
+// the wall's sanctioned gate (`spawn_git_argv_workdir_free`, which alone consults
+// `admit_git_argv_on_route`) whether the argv may run without a place, spawns `RunArgv` on the admitted
+// command the gate hands back, and spawns NOTHING on the refused arm. This module re-implements no
+// classification of its own -- the wall is the single authority (consumption; fail_closed).
+//
+// PARTIAL CALLER MIGRATION, NOT AN ENFORCED BOUNDARY. `RunArgv` itself still accepts any program, so
+// this route is the sanctioned path, not yet the only one. The #16625-owned `roadmap_event_carrier_fixture`'s
+// `roadmap_event_carrier_run_git` has since adopted it (#16625 merged; the fixture now routes EVERY provision git
+// step through this function, its bare-origin init dressed `-C <instance_root>` with an absolute destination so
+// the wall admits it). The one workdir-free
+// git-to-`RunArgv` site that remains unmigrated is git dispatched through `gunbc.command_runner`'s workdir-less
+// `ArgvCommand` seam (e.g. the git-subtree witness); that seam needs the wall applied to its own command shape,
+// which is its own change. An ENFORCED boundary -- a
+// gate `RunArgv` cannot be bypassed for git, or a census witness over the git-to-`RunArgv` call sites --
+// is the named follow-up, triggered by that enforcement item; it is deliberately NOT claimed here
+// (consumption: the route is consumed by real executing callers, but is not yet the sole path).
+//
+// The argv reaches here only from an `extdeps/git.dag` shape (`gunbc.design_argument::
+// interface_realization_policy`). The program is NOT a caller argument: the wall fixes it to git
+// (`extdeps.git::git_program_name`) on the admitted arm, and this route spawns exactly that command
+// back -- so classification and the program are the wall's alone, and this route adds no policy of its own.
+
+// The result is a CLOSED COPRODUCT: a spawned step carries the observation the seam returned; a
+// refused step carries nothing and spawned nothing -- no `""`-means-ran sentinel, no fabricated
+// zero-exit that a caller could mistake for a real observation. A guard that cannot distinguish
+// "ran and succeeded" from "was refused and never ran" is not a guard (fail_closed).
+type GitWorkdirFreeRun
+  = GitWorkdirFreeSpawned { exit_code: Int, stdout: String }
+  | GitWorkdirFreeRefused
+
+// Spawn the argv iff the wall's gate admits it at a workdir-free route. The admitted arm is the one
+// place this module touches `RunArgv`, and it spawns EXACTLY the command the gate handed back -- the
+// program and arguments carried on `GitWorkdirFreeSpawnAdmitted`, not a program re-named here; the
+// refused arm never reaches the seam.
+fn run_git_argv_workdir_free(argv: List<String>) -> GitWorkdirFreeRun {
+  match spawn_git_argv_workdir_free(argv: argv) {
+    GitWorkdirFreeSpawnAdmitted { program: gate_program, arguments: arguments } =>
+      {
+        let out = shell.Exec.RunArgv(program: gate_program, arguments: arguments)
+        GitWorkdirFreeSpawned { exit_code: out.exit_code, stdout: out.stdout }
+      }
+    GitWorkdirFreeSpawnRefused => GitWorkdirFreeRefused
+  }
+}
+
+// Whether the step reached the seam AND the process exited 0. A refused step (never spawned) is
+// false -- there is no fabricated exit code to mistake for a real observation. This is the one honest
+// "spawned and succeeded" check a caller that only cares about success uses (fail_closed).
+fn git_workdir_free_succeeded(run: GitWorkdirFreeRun) -> Bool {
+  match run {
+    GitWorkdirFreeSpawned { exit_code: code, stdout: _ } => code == 0
+    GitWorkdirFreeRefused => false
+  }
+}
+
+// Whether the step actually reached the seam (spawned), refused or not-refused made explicit rather
+// than inferred from a sentinel value.
+fn git_workdir_free_spawned(run: GitWorkdirFreeRun) -> Bool {
+  match run {
+    GitWorkdirFreeSpawned { exit_code: _, stdout: _ } => true
+    GitWorkdirFreeRefused => false
+  }
+}
+
+// Whether two runs both spawned and produced equal stdout. Either side refused -> false: a
+// never-spawned step is never "equal" to a real observation (no `""`-equals-`""` collision). This lets
+// a witness compare the stdout of two admitted steps without a sentinel reader that fabricates "" for
+// a refusal (fail_closed).
+fn git_workdir_free_stdout_equal(left: GitWorkdirFreeRun, right: GitWorkdirFreeRun) -> Bool {
+  match left {
+    GitWorkdirFreeSpawned { exit_code: _, stdout: l } =>
+      match right {
+        GitWorkdirFreeSpawned { exit_code: _, stdout: r } => l == r
+        GitWorkdirFreeRefused => false
+      }
+    GitWorkdirFreeRefused => false
+  }
+}
