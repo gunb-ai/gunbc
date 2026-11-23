@@ -993,11 +993,11 @@ fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 // still admits the trailing comma (a legitimate multi-line list is written with one), while a juxtaposed
 // element -- one that follows a complete element with no comma, the only thing that can sit where the
 // caller's `]` is expected -- refuses at parse as ListElementSeparatorMissing instead of joining the
-// list. The guard is a RefuseOnMatch WRAPPED IN Optional: a RefuseOnMatch rejects (soft-fails) where its
-// element cannot match, so the optional lets a legitimate list -- where the only thing after the
-// elements is the caller's `]`, never a bare element -- pass through it untouched; and where the element
-// DOES match (the juxtaposition) it raises a REFUSAL, which the optional preserves in the parse table
-// rather than swallowing, so the refusal still stops the parse.
+// list. A RefuseOnMatch rejects (soft-fails) where its element cannot match, so a legitimate list --
+// where the only thing after the elements is the caller's `]`, never a bare element -- passes through
+// the arm untouched; where the element DOES match (the juxtaposition) it raises a REFUSAL that stops the
+// parse, which is what makes the dropped separator a located, typed error instead of a silent arity
+// change.
 // WHY THE WALL SITS ON THIS FORM AND NOT ON THE COMBINATOR (gunbc.design_argument::root_generalization
 // asks the repeated pattern be generalized, or the deferral named with a trigger and a follow-up -- this
 // is that answer, and it is recorded as a live concern, not a comment alone). ONE combinator,
@@ -1013,14 +1013,35 @@ fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 // names only the bracketed list. Trigger: the parse census naming one of those classes. Follow-up: that
 // class gets its own required-separator sequence like this one, its probe pair, and its corpus migration
 // in the same change. Recorded as gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall.
+// THE WALL ADDS AN ARM, IT DOES NOT RESHAPE THE LIST. dag_grammar_comma_list_expr's accepted tree is
+// `item (','? item)* ','?` -- a sequence of the head element and a tail of (repeat, optional comma), and
+// every consumer of a bracketed list reads THAT shape. An earlier draft of this wall replaced the
+// combinator with a comma-required sequence and bolted the refusal on as a third sibling
+// (`seq(seq(item, repeat(...)), ','?, refuse?)`), which changed the children of every list the wall
+// ACCEPTS -- the very silent-arity hazard this node exists to close, re-introduced by the wall itself.
+// This form keeps main's children exactly: the head element, then the tail of (repeat, optional comma).
+// The refusal rides INSIDE the repeat, as the second arm of a choice whose first arm is the comma-then-
+// element step: a juxtaposed element can only be reached by that arm, because the first arm needs the
+// comma. The one accepted-tree difference from main is inside the repeat's element, where the comma is
+// required (`',' item`) rather than wrapped in an optional (`','? item`); the element sequence a consumer
+// collects -- the items, in order, with the commas between them -- is unchanged. Where the wall matters,
+// the choice's second arm matches the bare element and raises the refusal; where it does not (a comma-
+// separated list, or a list followed only by the caller's `]`), the arm rejects softly exactly as the
+// optional around it used to, and nothing is captured.
 fn dag_grammar_list_literal_seq(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_required_comma_list_expr(item: item),
+    left: item,
     right: dag_grammar_sequence(
-      left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
-      right: dag_grammar_optional(
-        element: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
-      )
+      left: dag_grammar_repeat(
+        element: dag_grammar_choice(
+          left: dag_grammar_sequence(
+            left: dag_grammar_terminal(token_class: ^dag_token_comma),
+            right: item
+          ),
+          right: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
+        )
+      ),
+      right: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma))
     )
   )
 }

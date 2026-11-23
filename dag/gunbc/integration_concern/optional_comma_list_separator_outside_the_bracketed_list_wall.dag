@@ -1,12 +1,15 @@
 module gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall
 
 // ONE COMBINATOR BACKS EVERY COMMA LIST IN THE LANGUAGE, AND THE SEPARATOR WALL WAS BUILT FOR ONE FORM.
-// A bracketed list (`[1, 2, 3]`, and the subscript) now requires its separators: a dropped comma refuses
-// at parse as parse_list_element_separator_missing instead of reading the neighbours as juxtaposed
-// elements and silently changing the list's arity. Every OTHER comma list still reads through
-// dag_grammar_comma_list_expr, which makes every separator optional, so `g(1 2)` and `{ a: 1 b: 2 }` are
-// still two elements read from a form whose shape depends on which commas the author typed -- the same
-// silent-arity defect, one form to the right of the wall.
+// The bracketed LIST LITERAL (`[1, 2, 3]`) now requires its separators: a dropped comma refuses at parse
+// as parse_list_element_separator_missing instead of reading the neighbours as juxtaposed elements and
+// silently changing the list's arity. The WALL'S SCOPE IS THAT ONE FORM. The postfix subscript
+// (`xs[0]`, and the host-effect form `g(a) [when cond]`) reuses the same brackets but is not a list, so it
+// reads through its own helper dag_grammar_index_suffix_list_helper, which keeps the separator optional:
+// measured, a wall placed on the shared combinator refused that corpus syntax, which compiles on main.
+// Every OTHER comma list still reads through dag_grammar_comma_list_expr, which makes every separator
+// optional, so `g(1 2)` and `{ a: 1 b: 2 }` are still two elements read from a form whose shape depends on
+// which commas the author typed -- the same silent-arity defect, one form to the right of the wall.
 //
 // WHY IT IS NOT FIXED AT THE COMBINATOR (gunbc.design_argument::root_generalization: a repeated pattern
 // is answered by generalizing it, or by naming why not now, the trigger, and the follow-up; no answer is
