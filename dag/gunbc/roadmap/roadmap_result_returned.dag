@@ -30,6 +30,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_bound_result_append,
   roadmap_events_read_all, roadmap_events_read,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, RoadmapEventsRead, EventsRead, EventsReadRefused,
+  CarrierReadAttached,
   RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused,
   CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, carrier_report_with_snapshot_close,
 }
@@ -128,6 +129,7 @@ fn result_claim_join(node_envelopes: List<RoadmapEventEnvelope>, claim: RoadmapE
         HandedBack { reason: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         Retired { reason: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim: the node is retired"], "") }
         ReceiptReferenced { obligation: _, address: _, verdict: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
+        RedTreeRecorded { observation: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentEdited { comment: _, body: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentDeleted { comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
@@ -166,6 +168,7 @@ fn result_attempt_answer(envelopes: List<RoadmapEventEnvelope>, binding: Roadmap
       HandedBack { reason: _ } => false
       Retired { reason: _ } => false
       ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+      RedTreeRecorded { observation: _ } => false
       CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
       CommentEdited { comment: _, body: _ } => false
       CommentDeleted { comment: _ } => false
@@ -331,7 +334,7 @@ fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded
     DashboardObserveOnly =>
       ResultReturnPassRun { pass: ResultReturnPassWithheld { reason: join(["dashboard instance ", instance.instance_id as String, " is observe-only, so no result was appended"], "") }, closes: [] }
     DashboardActuating => {
-      let log = roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
+      let log = roadmap_events_read_all(read: CarrierReadAttached { attached: roadmap_event_carrier_layout_for_instance(instance: instance) })
       match log.result {
         AllEventsReadRefused { step, reason } => ResultReturnPassRun { pass: ResultReturnPassRefused { step: join(["events/", step], ""), reason: reason }, closes: [log.close] }
         AllEventsRead { envelopes } =>
@@ -432,6 +435,7 @@ fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envel
     HandedBack { reason: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     Retired { reason: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
+    RedTreeRecorded { observation: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentEdited { comment: _, body: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentDeleted { comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
