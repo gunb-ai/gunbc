@@ -3346,7 +3346,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     roadmap_node(
       identity: "rn_Y2N706Z00ETP0V247F1XECBY0B",
-      id: "acceptance-recorder-names-its-durable-destination"
+      id: "acceptance-recorder-names-its-durable-destination",
       owner: "ci-control",
       carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
       line: ticket(t: fields(
