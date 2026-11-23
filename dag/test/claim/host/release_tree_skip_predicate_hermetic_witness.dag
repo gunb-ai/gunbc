@@ -1,0 +1,215 @@
+module test.claim.host.release_tree_skip_predicate_hermetic_witness
+
+// THE WHOLE-TREE SKIP / VERBATIM READBACK DECISION, AT ITS ONE INTERFACE
+// (gunbc.design_argument::witness_one_interface, and single_authority: the skip and the readback share the
+// SOLE decision tree_locus_agreement_given in gunbc.host.host_effect_realize, so these claims certify BOTH
+// at once -- a locus they say agrees is exactly one the readback would accept and the skip may skip, and a
+// locus they say disagrees is exactly one the readback would refuse and the fold must repair). The claims
+// call THAT real decision directly over SUPPLIED observations, so the whole agree/refuse gate -- content
+// hashes, release-binary agreement, and kind/mode/owner -- is certified hermetically: no host, no elevation,
+// no fabricated effect. Each red claim is the interface for one predicate:
+//   - content: a tampered file hash, a missing hash entry, or an EXTRA entry at the locus (the behaviour
+//     stated in the PR: the per-file install never deletes extras, so the readback refuses on one) each
+//     refuse the agreement;
+//   - kind/mode/owner: a missing entry-metadata reading, a wrong owner, or a wrong mode each refuse;
+//   - executables: a release binary that does not hash equal to its source binary refuses;
+//   - the positives: an exact match AGREES in both realms (elevated compares against its declared owner;
+//     staged reads back the single owner every entry shares).
+// Because the fold's skip and its verbatim readback are literally this one function, no claim here can
+// pass while the skip and the readback disagree -- there is nothing left for them to drift on. Dropping any
+// one of the three predicates from tree_locus_agreement_given reddens its claim (shown in the PR body).
+//
+// These are HERMETIC: tree_locus_agreement_given observes nothing (no transport, no shell); the supplied
+// lists ARE the observations. The real observes and the fold's runtime are executed by the elevated
+// test.claim.runner.install_fold_depth_shape_wet_witness, this boundary's pairing claim.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.identity { PosixOwnerNames }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text }
+import gunbc.host.host_effect_realize {
+  tree_locus_agreement_given,
+  TreeLocusAgreement,
+  TreeLocusAgrees,
+  TreeLocusRefused,
+  TreeFileHash,
+  TreeMetadataEntry,
+  TreeRegular,
+  TreeInstallRealm,
+  TreeInstallElevated,
+  TreeInstallStaged,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE FILE AT THE LOCUS, THE SMALLEST TREE THAT EXERCISES ALL THREE PREDICATES.
+data file_path: String = "dag/a.dag"
+data locus_path: String = "/srv/gunbc/locus"
+data hex_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data hex_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn fm(text: String) -> FileMode {
+  match file_mode_of_octal_text(text: text) {
+    Present { value: m } => m
+    Absent => FileMode { owner: PermissionBits { read: false, write: false, execute: false }, group: PermissionBits { read: false, write: false, execute: false }, other: PermissionBits { read: false, write: false, execute: false }, setuid: false, setgid: false, sticky: false }
+  }
+}
+
+fn agrees(v: TreeLocusAgreement) -> Bool {
+  match v {
+    TreeLocusAgrees { installed: _i, certified: _c } => true
+    TreeLocusRefused { step: _s, reason: _r } => false
+  }
+}
+
+fn elevated_realm() -> TreeInstallRealm {
+  TreeInstallElevated { owner: "root" as NonEmptyStr }
+}
+
+fn staged_realm() -> TreeInstallRealm {
+  TreeInstallStaged { staging_root: "/staging" as NonEmptyStr, archive_owner: "root" as NonEmptyStr }
+}
+
+// The source's own content and metadata observations (what the fold passes in). The source's OWN mode and
+// owner are irrelevant to the decision -- tree_installed_expectation_owned normalizes both -- but its KIND
+// is, so it is TreeRegular.
+fn src_hashes() -> List<TreeFileHash> {
+  [TreeFileHash { path: file_path, hex: hex_a }]
+}
+
+fn src_metadata() -> List<TreeMetadataEntry> {
+  [TreeMetadataEntry { path: file_path, kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "operator" as NonEmptyStr, group: "operator" as NonEmptyStr } }]
+}
+
+// What a converged ELEVATED locus of that one file looks like: install mode 0644 and the realm's declared
+// owner (root) -- exactly what tree_installed_expectation_owned builds from the source entry.
+fn elevated_locus_metadata() -> List<TreeMetadataEntry> {
+  [TreeMetadataEntry { path: file_path, kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr } }]
+}
+
+// What a converged STAGED locus looks like: the readback owner is the single owner every entry carries (the
+// staging principal), and tree_installed_expectation_owned is built under exactly that owner.
+fn staged_locus_metadata() -> List<TreeMetadataEntry> {
+  [TreeMetadataEntry { path: file_path, kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "stager" as NonEmptyStr, group: "stager" as NonEmptyStr } }]
+}
+
+fn locus_hashes_with_hex(h: String) -> List<TreeFileHash> {
+  [TreeFileHash { path: file_path, hex: h }]
+}
+
+fn locus_hashes_plus_extra() -> List<TreeFileHash> {
+  [
+    TreeFileHash { path: file_path, hex: hex_a },
+    TreeFileHash { path: "dag/extra", hex: hex_a },
+  ]
+}
+
+fn locus_metadata_with_owner(user: String) -> List<TreeMetadataEntry> {
+  [TreeMetadataEntry { path: file_path, kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: user as NonEmptyStr, group: user as NonEmptyStr } }]
+}
+
+fn locus_metadata_with_mode(mode: String) -> List<TreeMetadataEntry> {
+  [TreeMetadataEntry { path: file_path, kind: TreeRegular, mode: fm(mode), owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr } }]
+}
+
+// THE POSITIVE (elevated): hashes equal, executables agree, locus metadata equals the expectation the
+// readback builds -- AGREES, so the skip is taken and the readback would certify.
+test fn exact_match_agrees_elevated() -> Bool {
+  agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: src_hashes(), installed_entries: elevated_locus_metadata(),
+    executables_disagreement: Absent,
+  ))
+}
+
+// THE POSITIVE (staged): the readback owner is the shared owner every entry carries. Agrees.
+test fn exact_match_agrees_staged() -> Bool {
+  agrees(tree_locus_agreement_given(
+    realm: staged_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: src_hashes(), installed_entries: staged_locus_metadata(),
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (content predicate): a file whose bytes hash differently, at the same path, is a locus the readback
+// refuses -- so the skip is refused. Also reddened if tree_entries_agree is dropped from the decision.
+test fn tampered_hash_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: locus_hashes_with_hex(h: hex_b), installed_entries: elevated_locus_metadata(),
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (content predicate, missing): a file the source has and the locus lacks is named missing by the
+// readback -- so the skip is refused.
+test fn missing_hash_entry_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: [], installed_entries: elevated_locus_metadata(),
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (content predicate, extra -- the behaviour stated in the PR): a file at the locus but absent from the
+// source is an EXTRA the per-file install never deletes; the readback refuses on it, so the skip is refused
+// rather than certifying a locus holding foreign bytes.
+test fn extra_locus_entry_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: locus_hashes_plus_extra(), installed_entries: elevated_locus_metadata(),
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (metadata predicate, missing): the content agrees but the entry-metadata reading is absent -- the
+// readback names a missing entry, so the agreement is refused.
+test fn missing_metadata_entry_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: src_hashes(), installed_entries: [],
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (metadata predicate, owner): a file at the locus owned by anyone but the realm's expected owner is
+// refused by the readback -- so the skip is refused. The elevated realm compares against its declared owner
+// (root), not whatever the file happens to carry.
+test fn wrong_owner_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: src_hashes(), installed_entries: locus_metadata_with_owner(user: "nobody"),
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (metadata predicate, mode): a file at the locus whose mode differs from the install's shared mode is
+// refused by the readback, so the skip is refused.
+test fn wrong_mode_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: src_hashes(), installed_entries: locus_metadata_with_mode(mode: "600"),
+    executables_disagreement: Absent,
+  ))
+}
+
+// RED (executable predicate): a release binary at the locus that does not hash equal to its source binary
+// (the observe reported a disagreement) refuses the agreement. This claim reddens if the
+// executables_disagreement branch is dropped from the decision.
+test fn executables_disagree_refuses() -> Bool {
+  !agrees(tree_locus_agreement_given(
+    realm: elevated_realm(), locus: locus_path,
+    source: src_hashes(), source_metadata: src_metadata(),
+    installed: src_hashes(), installed_entries: elevated_locus_metadata(),
+    executables_disagreement: Present { value: "gunbc does not hash equal to its source binary" },
+  ))
+}

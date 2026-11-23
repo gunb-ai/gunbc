@@ -7234,6 +7234,97 @@ fn tree_executables_disagreement(executables: List<String>, source_root: String,
 // content observe fails) or ANY disagreement returns false and the caller takes the full write path.
 // Used ONLY to decide whether the redundant per-file write folds may be skipped; it never certifies a
 // tree, because the readback below re-runs unconditionally and stays the fail-closed gate.
+// THE ONE AUTHORITY BOTH THE SKIP AND THE READBACK READ
+// (gunbc.design_argument::single_authority: "a second place that independently decides it is a fork"):
+// tree_locus_agreement_given is the SOLE decision of "does the locus, as observed, agree with the source
+// tree this install writes -- content, release binaries, and kind/mode/owner -- and if so what are the
+// certified lines the receipt is built from?". It is pure (observes nothing; the three readings are
+// SUPPLIED), so the skip and the readback below cannot drift: they both call it, the skip tests it for
+// agreement and the readback maps a disagreement to a refusal. It runs exactly the three predicates --
+// tree_executables_disagreement's verdict, tree_entries_agree over the content hashes, and the
+// kind/mode/owner chain (tree_realm_readback_owner + tree_installed_expectation_owned +
+// tree_metadata_disagreement) -- in the order the readback has always run them, and it is the one place
+// the refusal reasons for those predicates are written. The hermetic witness
+// test.claim.host.release_tree_skip_predicate_hermetic_witness calls THIS, the real decision, over
+// supplied observations; tree_locus_readback_verdict runs the real observes and feeds it. Dropping any one
+// predicate here reddens a hermetic claim (the PR body shows it), because the skip and the readback share
+// this single gate.
+type TreeLocusAgreement
+  = TreeLocusAgrees { installed: List<TreeFileHash>, certified: List<TreeMetadataEntry> }
+  | TreeLocusRefused { step: TreeStep, reason: String }
+
+fn tree_locus_agreement_given(
+  realm: TreeInstallRealm,
+  locus: String,
+  source: List<TreeFileHash>,
+  source_metadata: List<TreeMetadataEntry>,
+  installed: List<TreeFileHash>,
+  installed_entries: List<TreeMetadataEntry>,
+  executables_disagreement: Optional<String>,
+) -> TreeLocusAgreement {
+  match executables_disagreement {
+    Present { value: why } =>
+      TreeLocusRefused { step: TreeStepReadback, reason: join(["an installed binary under ", locus, " does not hash equal to its source binary (", why, "); no receipt was written"], "") }
+    Absent =>
+      if !tree_entries_agree(source: source, installed: installed) {
+        TreeLocusRefused { step: TreeStepReadback, reason: join([
+          "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
+          " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
+      } else {
+        match tree_realm_readback_owner(realm: realm, observed: installed_entries) {
+          Absent => TreeLocusRefused { step: TreeStepMetadataReadback, reason: join(["the staged tree under ", locus, " is not owned by one principal, so it is not the tree this install wrote; no receipt was written"], "") }
+          Present { value: readback_owner } => match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
+            Absent => TreeLocusRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+            Present { value: expected } => match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
+              Present { value: why } =>
+                TreeLocusRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
+              Absent =>
+                // The receipt certifies the tree under the realm's receipt owner (the deploy owner, or the
+                // owner the archive declares); the agreed lines the receipt is built from come from here, so
+                // the readback below certifies and receipts from ONE authority, not two.
+                match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
+                  Absent => TreeLocusRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                  Present { value: certified } => TreeLocusAgrees { installed: installed, certified: certified }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE THREE OBSERVES ON A LIVE HOST, fed to the one authority. Each observe is a per-subdir command (find|
+// sha256sum, find -printf), never per-file, so this is O(subdirs), not O(files). An observe that FAILS to
+// produce readings is a refusal (the locus cannot be certified) -- the skip then installs, and the readback
+// re-runs the same authority; an observe that succeeds feeds its readings to tree_locus_agreement_given,
+// which owns every agree/disagree decision and every refusal message.
+fn tree_locus_readback_verdict(
+  realm: TreeInstallRealm,
+  source_root: String,
+  locus: String,
+  source: List<TreeFileHash>,
+  source_metadata: List<TreeMetadataEntry>,
+  executables: List<String>,
+  transport: HostEffectElevationRoute,
+) -> TreeLocusAgreement {
+  match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
+    TreeObservationFailed { reason: why } => TreeLocusRefused { step: TreeStepReadback, reason: why }
+    TreeObserved { entries: installed } =>
+      match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
+        TreeMetadataObservationFailed { reason: why } => TreeLocusRefused { step: TreeStepMetadataReadback, reason: why }
+        TreeMetadataObserved { entries: installed_entries } =>
+          match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
+            Present { value: why } => tree_locus_agreement_given(realm: realm, locus: locus, source: source, source_metadata: source_metadata, installed: installed, installed_entries: installed_entries, executables_disagreement: Present { value: why })
+            Absent => tree_locus_agreement_given(realm: realm, locus: locus, source: source, source_metadata: source_metadata, installed: installed, installed_entries: installed_entries, executables_disagreement: Absent)
+          }
+      }
+  }
+}
+
+// THE SKIP: ask the one authority whether the locus already agrees; if it does, the caller skips the
+// redundant per-file write folds. A first install (no tree yet -> the content observe fails) or any
+// disagreement is a Refused, so the caller takes the full write path. This never certifies a tree -- the
+// readback below re-runs the SAME authority unconditionally and stays the fail-closed gate.
 fn tree_locus_already_converged(
   realm: TreeInstallRealm,
   source_root: String,
@@ -7243,30 +7334,9 @@ fn tree_locus_already_converged(
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> Bool {
-  match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
-    TreeObservationFailed { reason: _ } => false
-    TreeObserved { entries: already } =>
-      if !tree_entries_agree(source: source, installed: already) {
-        false
-      } else {
-        match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
-          Present { value: _ } => false
-          Absent => match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
-            TreeMetadataObservationFailed { reason: _ } => false
-            TreeMetadataObserved { entries: already_entries } =>
-              match tree_realm_readback_owner(realm: realm, observed: already_entries) {
-                Absent => false
-                Present { value: readback_owner } => match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
-                  Absent => false
-                  Present { value: expected } => match tree_metadata_disagreement(expected: expected, observed: already_entries) {
-                    Present { value: _ } => false
-                    Absent => true
-                  }
-                }
-              }
-          }
-        }
-      }
+  match tree_locus_readback_verdict(realm: realm, source_root: source_root, locus: locus, source: source, source_metadata: source_metadata, executables: executables, transport: transport) {
+    TreeLocusAgrees { installed: _i, certified: _c } => true
+    TreeLocusRefused { step: _s, reason: _r } => false
   }
 }
 
@@ -7351,53 +7421,19 @@ fn approval_broker_tree_install_observed(
   match after_links {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
-      match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
-        TreeObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepReadback, reason: why }
-        TreeObserved { entries: installed } =>
-          match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
-            Present { value: why } =>
-              TreeInstallRefused { step: TreeStepReadback, reason: join(["an installed binary under ", locus, " does not hash equal to its source binary (", why, "); no receipt was written"], "") }
-            Absent =>
-              if !tree_entries_agree(source: source, installed: installed) {
-                TreeInstallRefused { step: TreeStepReadback, reason: join([
-                  "the installed tree under ", locus, " does not match source_root: installed ", to_string(count(installed)),
-                  " files, source ", to_string(count(source)), " (a differing file refuses; no receipt was written)"], "") }
-              } else {
-                // THE KIND READBACK, after the content readback and before the receipt: the installed
-                // tree must hold one entry per source entry, same path, SAME KIND, same stored link
-                // target, under the shared modes and the deploy owner. A source symlink that landed
-                // as a regular file (a copy that followed it), a vanished link, a re-pointed target,
-                // a group-writable shared-mode file, or a root-owned link all refuse here -- kinds
-                // and ownership are receipted facts, not accidents of the copy tool.
-                match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
-                  TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
-                  TreeMetadataObserved { entries: installed_entries } =>
-                    match tree_realm_readback_owner(realm: realm, observed: installed_entries) {
-                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the staged tree under ", locus, " is not owned by one principal, so it is not the tree this install wrote; no receipt was written"], "") }
-                      Present { value: readback_owner } =>
-                        match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
-                          Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
-                          Present { value: expected } =>
-                            match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
-                              Present { value: why } =>
-                                TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
-                              Absent =>
-                                // The receipt certifies the tree where it is consumed: under the realm's
-                                // receipt owner (the deploy owner, or the owner the archive declares).
-                                match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
-                                  Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
-                                  Present { value: certified } =>
-                                    approval_broker_tree_receipt_write(
-                                      realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-                                      metadata_lines: tree_metadata_lines(entries: certified),
-                                      files: count(installed), transport: transport)
-                                }
-                            }
-                        }
-                    }
-                }
-              }
-          }
+      // THE VERBATIM READBACK, now the ONE authority: it runs unconditionally after the writes and
+      // consults the SAME tree_locus_readback_verdict the skip consulted above -- so the tree the fold
+      // certifies and the tree the skip may skip are decided by a single function, and the kind/mode/owner
+      // agreement is a certified, receipted fact (a symlink that landed as a regular file, a vanished link,
+      // a re-pointed target, a group-writable file, or a wrong owner all refuse here). Agreement yields the
+      // agreed content lines and the certified entry-metadata lines the receipt is built from.
+      match tree_locus_readback_verdict(realm: realm, source_root: source_root, locus: locus, source: source, source_metadata: source_metadata, executables: executables, transport: transport) {
+        TreeLocusRefused { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
+        TreeLocusAgrees { installed: installed, certified: certified } =>
+          approval_broker_tree_receipt_write(
+            realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+            metadata_lines: tree_metadata_lines(entries: certified),
+            files: count(installed), transport: transport)
       }
   }
 }
