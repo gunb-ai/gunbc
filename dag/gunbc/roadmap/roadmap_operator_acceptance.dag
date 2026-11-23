@@ -58,6 +58,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, roadmap_events_read,
+  CarrierReadAttached,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, EventsRead, EventsReadRefused,
   EventAppended, EventAlreadyPresent, EventAppendRefused, CarrierClosed, CarrierSnapshotClose,
   SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
@@ -169,10 +170,20 @@ fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsR
 // page use, or the located reason it cannot be had. This is the ONLY way an acceptance fact reaches a
 // reader.
 fn roadmap_operator_acceptance_history_load(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
-  // The read opens a temporary snapshot worktree; this is a read-only load whose callers are pure
-  // readers, and it is closed the way the serve display path closes the same read
-  // (roadmap_serve::serve_all_events_after_snapshot_close) — by the reader that took it.
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+  // The read opens a temporary snapshot worktree; this is a read-only load whose callers are pure readers, and
+  // it is closed the way the serve display path closes the same read (roadmap_serve::serve_all_events_after_
+  // snapshot_close) — by the reader that took it. It reaches the log through the ATTACHED arm of the single read
+  // entry point; the fold over what it read is SHARED with the launcher's scoped read (the _of_read below), so a
+  // log nobody opened refuses identically on both paths — one fold, not two (gunbc.design_argument::root_generalization).
+  roadmap_operator_acceptance_history_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })))
+}
+
+// THE SHARED ACCEPTANCE-HISTORY FOLD, over an ALREADY-READ log feed. The service record path (above) and the
+// launcher scoped path (roadmap_plan_projection_over_scoped) read through roadmap_events_read_all and hand the
+// result HERE, so the fold — and the located refusal a read-nobody-opened must produce — exists once. An empty
+// history read off a log nobody opened is the fail-open this change closes; here it is LoadRefused, never empty.
+fn roadmap_operator_acceptance_history_of_read(read: RoadmapAllEventsRead) -> RoadmapAcceptanceEventHistoryLoad {
+  match read {
     AllEventsReadRefused { step, reason } =>
       RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
     AllEventsRead { envelopes } => match roadmap_operator_acceptance_history_of(envelopes: envelopes) {
@@ -360,7 +371,7 @@ fn roadmap_operator_close(
           Present { value: refusal } => CloseRefused { reason: refusal }
           Absent => {
             let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
               AllEventsReadRefused { step, reason } => CloseRefused {
                 reason: CloseHistoryUnreadable { reason: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr } }
               AllEventsRead { envelopes } =>
@@ -789,7 +800,7 @@ fn roadmap_acceptance_migration_verify_instance(
   instance: HostDashboardInstance, expected_manifest: String, retired_roster: String
 ) -> RoadmapAcceptanceMigrationOutcome {
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
     AllEventsReadRefused { step, reason } =>
       MigrationRefused { cause: LogReadRefused { step: step, reason: reason } }
     AllEventsRead { envelopes } =>

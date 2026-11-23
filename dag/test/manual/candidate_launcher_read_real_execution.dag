@@ -1,45 +1,45 @@
 module test.manual.candidate_launcher_read_real_execution
 
-// THE LAUNCHER CARRIER READ RUN FOR REAL, on a throwaway repository only — the discriminating controls the
-// srv1 cutover-gate fix owes. These are WET controls: they execute the actual carrier read (`roadmap_events_
-// read_all` under the actual `roadmap_event_carrier_ci_layout`) against a controlled origin, so they cannot
-// run on the hermetic claim lane (they perform real git and real filesystem effects). They are NOT run by CI
-// and no claim of CI execution is made for them. Run them by hand, one process, exactly like
-// test.manual.snapshot_census_wet:
+// WET controls for the CI-side event-log read and the surface identity it renders (manual/ — these are the ONLY
+// controls that execute the real carrier read; they are run by hand, NOT by CI: the CI lane is tests/ and no
+// witness lives there, and the claim lane mocks git, so neither can prove the launcher read works).
 //
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/manual/candidate_launcher_read_real_execution.dag \
-//     --function candidate_launcher_read_real_execution
+// The hermetic witnesses in dag/test/claim/live_deploy/candidate_surface_roster_refusal_witness.dag establish the
+// LOGIC (a refused read refuses the candidate, never a fabricated surface). They cannot establish that the CI
+// launcher read OPENS at all, because the carrier read is effectful git — which the hermetic lane only offers via
+// its mock. These controls close exactly that gap. They build a real origin, real runner clones and real events,
+// then drive the launcher read through the real entry point `roadmap_events_read_all` under the REAL
+// roadmap_event_carrier_ci_layout, so they cannot stay green if that layout or its lifecycle is reverted.
 //
-// WHY THE THREE CONTROLS.
-//   1. repeats_and_cleans_up — the property the readiness gate needs and the branch-attached anchor could not
-//      give: the REAL launcher read runs TWICE against ONE checkout with origin unchanged, both times returning
-//      the intended event set; the linked worktree it registers lives under `mktemp -d` (outside the checkout),
-//      the carrier reports the snapshot CLOSED on both arms, the runner repository's worktree registry is empty
-//      again after each read, and the named branch is NEVER attached. Reverting the layout (worktree inside the
-//      checkout) or the lifecycle (branch-attached anchor) turns THIS control red.
-//   2. branch_attached_lifecycle_collides — the RED-BEFORE proof, self-contained: it drives the OLD launcher
-//      lifecycle (a branch-attached anchor in a fresh scratch per read — `git worktree add <path> <branch>` and
-//      `git fetch <remote> <branch>:<branch>`) twice against one checkout. The FIRST read succeeds; the SECOND
-//      refuses — `refusing to fetch into branch ... checked out at ...` / `already used by worktree` — exactly
-//      the failure that made the launcher's second read (the readiness gate) become ServiceSurfaceUnobserved.
-//      This control passes BY demonstrating the collision; the ScopedDetached read in control 1 removes it.
-//   3. two_readers_agree — the genuine TWO-READ positive control: two independent launcher reads over two
-//      independent runner clones of the SAME origin render the SAME roster, so the CI-side expectation equals
-//      what any reader of the same authority gets. Two real reads, not one bundle handed to a fold.
+// Discriminating controls (all must PASS):
+//   1. the real launcher read runs TWICE against one checkout with origin unchanged, renders the SAME non-empty
+//      roster each time, closes each snapshot, and leaves NO runner worktree registration behind. Reverting the
+//      layout to a persistent branch-attached anchor turns this red (a registration is left).
+//   2. the OLD branch-attached lifecycle is RED: two reads with `git fetch origin roadmap-events:roadmap-events`
+//      collide on the second read, and the corrected ref assertion (exit status, not suppressed stdout) reports
+//      the branch PRESENT where control 1 reports it ABSENT.
+//   3. two INDEPENDENT launcher reads of the same origin render the same non-empty roster — two reads, not one
+//      bundle handed to a fold.
+//   4. the corrected ref assertion DISCRIMINATES: on the real scoped read the branch ref is ABSENT, and after the
+//      prohibited `branch:branch` fetch operand the very same assertion reports it PRESENT. Absence must be
+//      established, never assumed from a suppressed `--quiet` failure.
+//   5. a worktree add that FAILS AFTER registering (a post-checkout hook exits non-zero) is CLEANED UP: the read
+//      refuses at the snapshot step, the close is a real Closed (the close verified registration and directory are
+//      gone), and the runner holds no registration. This is the leak the recursive-removal-only close used to leave.
 //
 // The event files are the committed roadmap-event/v3 shape (fixtures/roadmap_authority), so the reader decodes
 // them exactly as it decodes the service's own log.
 
 import std.types { String, Bool, Int, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_event_carrier {
-  RoadmapEventCarrierLayout, roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
+  RoadmapEventCarrierRead, CarrierReadAttached, CarrierReadScopedDetached,
+  roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
   roadmap_events_read_all, carrier_exec_program, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
-  CarrierExec, CarrierExecOk, CarrierExecFailed, SnapshotClosed,
+  CarrierExec, CarrierExecOk, CarrierExecFailed, CarrierSnapshotClose, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
 
@@ -53,195 +53,292 @@ type LauncherControlled {
 // A read that returned at least one decoded envelope (as opposed to a refusal).
 fn launcher_is_rendered(read: RoadmapAllEventsRead) -> Bool {
   match read {
-    AllEventsRead { envelopes } => count(envelopes) > 0
+    AllEventsRead { envelopes: envs } => !(length(values: envs) == 0)
     AllEventsReadRefused { step: _, reason: _ } => false
   }
 }
 
-fn launcher_git(workdir: String, args: List<String>) -> CarrierExec {
-  carrier_exec_program(program: "git", workdir: workdir, args: args)
-}
-
-fn launcher_git_ok(workdir: String, args: List<String>) -> Bool {
-  match launcher_git(workdir: workdir, args: args) {
-    CarrierExecOk { stdout: _ } => true
-    CarrierExecFailed { exit_code: _, stderr: _ } => false
+// The refusal step of a refused read, or "" when it rendered.
+fn launcher_refusal_step(read: RoadmapAllEventsRead) -> String {
+  match read {
+    AllEventsRead { envelopes: _ } => ""
+    AllEventsReadRefused { step: step, reason: _ } => step
   }
 }
 
+// Did the read's close report a fully-established Closed (registration and directory verified gone), as opposed to
+// a not-opened or a close-failure? A scoped read that created a worktree — even one whose add later failed — must
+// report Closed after cleanup, never SnapshotNotOpened for state that may exist.
+fn launcher_close_is_closed(close: CarrierSnapshotClose) -> Bool {
+  match close {
+    SnapshotClosed => true
+    SnapshotNotOpened => false
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
+  }
+}
+
+// A raw git run in a workdir, carrying the EXIT STATUS (CarrierExecFailed carries exit_code).
+fn launcher_git(workdir: String, args: List<String>) -> CarrierExec {
+  carrier_exec_program(program: "git", workdir: workdir, args: concat(["-c", "init.defaultBranch=main"], args))
+}
+
+// stdout of a successful git run, "" when it failed. Only for outputs compared for CONTENT.
 fn launcher_git_stdout(workdir: String, args: List<String>) -> String {
   match launcher_git(workdir: workdir, args: args) {
-    CarrierExecOk { stdout } => stdout
+    CarrierExecOk { stdout: out } => out
     CarrierExecFailed { exit_code: _, stderr: _ } => ""
   }
 }
-fn under(base: String, rel: String) -> String {
-  join([base, "/", rel], "")
+
+// TYPED presence of a ref, established from the git EXIT STATUS, never from a suppressed stdout. `git show-ref <ref>`
+// (WITHOUT --verify, which fatals 128 on a missing fully-qualified ref) exits 0 when the ref EXISTS, 1 when it is
+// ABSENT, and >=2 on a real failure (not-a-repo, unreadable). So absence is ESTABLISHED by exit 1, distinguished
+// from a broken repo (>=2) — the superseded `show-ref --verify --quiet … == ""` passed for both present and absent.
+type LauncherRefPresence = RefPresent | RefAbsent | RefUnknown { exit_code: Int }
+
+fn launcher_ref_presence(workdir: String, ref: String) -> LauncherRefPresence {
+  match launcher_git(workdir: workdir, args: ["show-ref", ref]) {
+    CarrierExecOk { stdout: _ } => RefPresent
+    CarrierExecFailed { exit_code, stderr: _ } => if exit_code == 1 { RefAbsent } else { RefUnknown { exit_code: exit_code } }
+  }
 }
 
-// Commit-time identity, pinned so the throwaway commits are self-contained and never depend on ambient config.
-data launcher_identity_args: List<String> = ["-c", "user.name=launcher-real-witness", "-c", "user.email=launcher@witness.invalid", "-c", "commit.gpgsign=false"]
-
-// The committed roadmap-event/v3 fixtures (fixtures/roadmap_authority/events) are copied into the seed's
-// roadmap-events branch, so the reader decodes real, content-hash-valid events — the same event set the live
-// service renders. Using the repo's own fixtures (rather than hand-written events) means the reader's id==hash
-// integrity check holds, which is exactly the check that refuses a fabricated roster.
-fn launcher_fixture_events_dir(repo: String) -> String {
-  join([repo, "/fixtures/roadmap_authority/events"], "")
+// A human tag for the presence, for the observed: lines.
+fn launcher_ref_presence_tag(presence: LauncherRefPresence) -> String {
+  match presence {
+    RefPresent => "present"
+    RefAbsent => "absent"
+    RefUnknown { exit_code: c } => join(["unknown(exit ", to_string(value: c), ")"], "")
+  }
 }
 
-fn launcher_cp_r(src: String, dst: String) -> Bool {
-  match carrier_exec_program(program: "cp", workdir: "/tmp", args: ["-r", src, dst]) {
+// THE LAUNCHER LAYOUT, built through the REAL roadmap_event_carrier_ci_layout (so reverting that layout turns the
+// control red), wrapped in the ScopedDetached arm of the read boundary it is read through.
+fn launcher_layout_for(runner: String) -> RoadmapEventCarrierRead {
+  let service_layout = roadmap_event_carrier_layout(repo_root: runner as FilePath, instance_root: runner, git_program: "git", directory_program: "install")
+  CarrierReadScopedDetached { scoped: roadmap_event_carrier_ci_layout(checkout_root: runner as FilePath, instance_layout: service_layout) }
+}
+
+// Count runner worktree registrations by parsing `git worktree list --porcelain` records, not by substring
+// counting: the header record is always present, so a substring test on "worktree " is always true. A record
+// counts only when its path is not the runner checkout itself.
+fn launcher_registry_count(runner: String) -> Int {
+  let out = launcher_git_stdout(workdir: runner, args: ["worktree", "list", "--porcelain"])
+  let paths = filter(split(s: out, delimiter: "\n"), line => string_contains(s: trim(line), pattern: "worktree "))
+  let others = filter(paths, line => trim(line) != join(["worktree ", runner], ""))
+  length(values: others)
+}
+
+// The roster tag set of a rendered read — the same fold the surface bundle uses — joined and sorted only by
+// arrival order (stable, no sort primitive needed). Built DYNAMICALLY so it is a function of the fixture, not a
+// literal a change could silently break.
+fn launcher_roster_tag(read: RoadmapAllEventsRead) -> String {
+  match read {
+    AllEventsRead { envelopes: envs } => join(map(values: envs, e => join([e.event.node as String, "@", e.id as String], "")), delimiter: ",")
+    AllEventsReadRefused { step: step, reason: _ } => join(["<refused:", step, ">"], "")
+  }
+}
+
+// Build a controlled origin + runner clone with a roadmap-events branch carrying the committed events.
+fn launcher_build_controlled(repo: String, base_name: String) -> LauncherControlled {
+  let base = shell.Mktemp.Dir()
+  if !base.success {
+    LauncherControlled { ok: false, base: base.path, runner: "", note: "mktemp base failed" }
+  } else {
+    let origin = under(base.path, "origin.git")
+    let seed = under(base.path, "seed")
+    let runner = under(base.path, "runner")
+    let create = launcher_git(workdir: base.path, args: ["init", "--bare", "-q", origin])
+    let seed_init_ok = match launcher_git(workdir: base.path, args: ["init", "-q", seed]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    let seeded = seed_init_ok
+      && Filesystem.Write(path: under(seed, "README"), content: "launcher seed\n").success
+      && match launcher_git(workdir: seed, args: ["-c", "user.name=launcher-witness", "-c", "user.email=launcher@gunbc.test", "-c", "commit.gpgsign=false", "add", "-A"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["-c", "user.name=launcher-witness", "-c", "user.email=launcher@gunbc.test", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["remote", "add", "origin", origin]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["push", "-q", "origin", "main"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["checkout", "-q", "-b", "roadmap-events"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_exec(program: "cp", workdir: seed, args: ["-r", under(repo, "fixtures/roadmap_authority/events"), under(seed, "events")]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_exec(program: "mkdir", workdir: seed, args: ["-p", under(seed, "retired")]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["-c", "user.name=launcher-witness", "-c", "user.email=launcher@gunbc.test", "-c", "commit.gpgsign=false", "add", "-A"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["-c", "user.name=launcher-witness", "-c", "user.email=launcher@gunbc.test", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "events"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      && match launcher_git(workdir: seed, args: ["push", "-q", "origin", "roadmap-events"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    if !seeded {
+      // The base was created before the failure; remove it so a setup failure cannot leak a partial tree.
+      let _ = shell.Remove.RecursiveForce(path: base.path)
+      LauncherControlled { ok: false, base: base.path, runner: "", note: "seed build failed" }
+    } else {
+      let clone_ok = match launcher_git(workdir: base.path, args: ["clone", "-q", "--branch", "main", origin, runner]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      if !clone_ok {
+        let _ = shell.Remove.RecursiveForce(path: base.path)
+        LauncherControlled { ok: false, base: base.path, runner: runner, note: "runner clone failed" }
+      } else {
+        LauncherControlled { ok: true, base: base.path, runner: runner, note: "ok" }
+      }
+    }
+  }
+}
+
+// Prune the runner's dangling worktree registrations (a registration whose directory was recursively removed is
+// "prunable"). The removals themselves are issued by each control (their dir set is statically known), so a control
+// reports whether EVERY cleanup step succeeded — a leak cannot masquerade as a green control.
+fn launcher_prune(runner: String) -> Bool {
+  match launcher_git(workdir: runner, args: ["worktree", "prune"]) {
     CarrierExecOk { stdout: _ } => true
     CarrierExecFailed { exit_code: _, stderr: _ } => false
   }
 }
 
-// Build origin.git (bare) carrying main + roadmap-events with the committed fixture events, and one runner
-// clone of it. Everything lives under one mktemp scratch, removed by the caller.
-fn launcher_build_controlled(repo: String) -> LauncherControlled {
-  let mk = shell.Mktemp.Dir()
-  if !mk.success {
-    LauncherControlled { ok: false, base: "", runner: "", note: "mktemp failed" }
-  } else {
-    let base = mk.path as String
-    let origin = under(base, "origin.git")
-    let seed = under(base, "seed")
-    let runner = under(base, "runner")
-    let seeded =
-      launcher_git_ok(workdir: base, args: ["-c", "init.defaultBranch=main", "init", "--bare", "--quiet", "origin.git"])
-      && launcher_git_ok(workdir: base, args: ["clone", "--quiet", "origin.git", "seed"])
-      && launcher_git_ok(workdir: seed, args: concat(launcher_identity_args, ["checkout", "-q", "-b", "main"]))
-      && Filesystem.Write(path: under(seed, "README"), content: "launcher seed\n").success
-      && launcher_git_ok(workdir: seed, args: ["add", "-A"])
-      && launcher_git_ok(workdir: seed, args: concat(launcher_identity_args, ["commit", "-q", "-m", "seed main"]))
-      && launcher_git_ok(workdir: seed, args: ["push", "--quiet", "-u", "origin", "main"])
-      && launcher_git_ok(workdir: origin, args: ["symbolic-ref", "HEAD", "refs/heads/main"])
-      && launcher_git_ok(workdir: seed, args: ["checkout", "-q", "-b", "roadmap-events"])
-      && launcher_cp_r(src: launcher_fixture_events_dir(repo: repo), dst: under(seed, "events"))
-      && launcher_git_ok(workdir: seed, args: ["add", "-A"])
-      && launcher_git_ok(workdir: seed, args: concat(launcher_identity_args, ["commit", "-q", "-m", "seed roadmap events"]))
-      && launcher_git_ok(workdir: seed, args: ["push", "--quiet", "origin", "roadmap-events"])
-      && launcher_git_ok(workdir: base, args: ["clone", "--quiet", "origin.git", "runner"])
-    if seeded { LauncherControlled { ok: true, base: base, runner: runner, note: "ready" } }
-    else { LauncherControlled { ok: false, base: base, runner: runner, note: "origin/seed/runner build failed" } }
-  }
-}
-
-// A launcher layout pointing the carrier at `runner` as its OWN checkout, remote "origin", git program "git".
-// Built through the REAL roadmap_event_carrier_ci_layout so reverting that layout turns the control red.
-fn launcher_layout_for(runner: String) -> RoadmapEventCarrierLayout {
-  let service_layout = roadmap_event_carrier_layout(
-    repo_root: runner as FilePath, instance_root: runner as FilePath, git_program: "git", directory_program: "install")
-  roadmap_event_carrier_ci_layout(checkout_root: runner as FilePath, instance_layout: service_layout)
-}
-
-// A canonical, order-stable tag of the roster a read returned, e.g. "launchnodeaaaa0001@launcher-real-node-a;...".
-fn launcher_roster_tag(read: RoadmapAllEventsRead) -> String {
-  match read {
-    AllEventsRead { envelopes } => join(map(envelopes, e => join([e.id as String, "@", e.event.node as String], "")), ";")
-    AllEventsReadRefused { step, reason } => join(["REFUSED:", step, ":", reason], "")
-  }
-}
-
-// How many linked-worktree registrations the runner repository still holds. A properly closed scoped snapshot
-// leaves the registry empty; a leaked branch-attached anchor leaves a registration behind.
-fn launcher_registry_count(runner: String) -> Int {
-  let listing = Filesystem.List(path: under(runner, ".git/worktrees"))
-  if !listing.success { 0 }
-  else { count(filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")) }
-}
-
-// Does the carrier's snapshot materialize INSIDE the runner checkout? It must never; the scratch is mktemp.
-fn launcher_checkout_has_worktree(runner: String) -> Bool {
-  Filesystem.List(path: under(runner, "roadmap-events")).success
-}
-
-// CONTROL 1 (green, and the repeatability/cleanup proof). Returns "PASS" or a one-line failure observation.
-// The two reads must render the SAME non-empty roster, both snapshots must CLOSE, the runner worktree registry
-// must be empty again, nothing must materialize inside the checkout, and the named branch must never be attached.
+// CONTROL 1 — the real launcher read, TWICE, one checkout, origin unchanged.
 fn launcher_control_repeats_and_cleans_up(repo: String) -> String {
-  let c = launcher_build_controlled(repo: repo)
-  if !c.ok { "build failed" }
-  else {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-repeat")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
     let layout = launcher_layout_for(runner: c.runner)
-    let first = roadmap_events_read_all(layout: layout)
-    let second = roadmap_events_read_all(layout: layout)
-    let first_closed = match first.close {
-      SnapshotClosed => true
-      _ => false
-    }
-    let second_closed = match second.close {
-      SnapshotClosed => true
-      _ => false
-    }
-    let tag_first = launcher_roster_tag(read: first.result)
-    let tag_second = launcher_roster_tag(read: second.result)
-    let registry = launcher_registry_count(runner: c.runner)
-    let in_checkout = launcher_checkout_has_worktree(runner: c.runner)
-    let branch_never_attached = launcher_git_stdout(workdir: c.runner, args: ["show-ref", "--verify", "--quiet", "refs/heads/roadmap-events"]) == ""
-    let passed = launcher_is_rendered(read: first.result) && tag_first == tag_second && first_closed && second_closed && registry == 0 && !in_checkout && branch_never_attached
-    let verdict = if passed { "PASS" } else {
-      join(["FAIL tag1=", tag_first, " tag2=", tag_second, " closed1=", if first_closed {"y"} else {"n"}, " closed2=", if second_closed {"y"} else {"n"}, " registry=", to_string(value: registry), " in_checkout=", if in_checkout {"y"} else {"n"}, " branch_attached=", if branch_never_attached {"n"} else {"y"}], "")
-    }
-    let _ = shell.Remove.RecursiveForce(path: c.base as FilePath)
-    verdict
+    let first = roadmap_events_read_all(read: layout)
+    let second = roadmap_events_read_all(read: layout)
+    let scratch = shell.Mktemp.Dir()
+    let scratch_used = scratch.success
+    let first_tag = launcher_roster_tag(read: first.result)
+    let second_tag = launcher_roster_tag(read: second.result)
+    let registry_after = launcher_registry_count(runner: c.runner)
+    let branch_state = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
+    let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success && shell.Remove.RecursiveForce(path: scratch.path).success
+    let ok = first_tag != "" && first_tag != "<refused:snapshot>" && second_tag == first_tag && registry_after == 0 && branch_state == RefAbsent && scratch_used && cleaned && launcher_close_is_closed(close: first.close) && launcher_close_is_closed(close: second.close)
+    if ok { "PASS" } else { control_result(ok: false, note: join(["first:", first_tag, " second:", second_tag, " registry:", to_string(value: registry_after), " branch:", launcher_ref_presence_tag(presence: branch_state), " close1_closed:", to_string(value: if launcher_close_is_closed(close: first.close) { 1 } else { 0 }), " close2_closed:", to_string(value: if launcher_close_is_closed(close: second.close) { 1 } else { 0 }), " scratch_ok:", to_string(value: if scratch_used { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
   }
 }
 
-// CONTROL 2 (red-before). The OLD launcher lifecycle (branch-attached anchor, fresh scratch per read): first
-// read ok, second read refused, anchor leaked. Passes by OBSERVING the collision the ScopedDetached read removes.
+// CONTROL 2 — the OLD branch-attached lifecycle is RED. The red-before case the whole change removes. Also
+// establishes the branch is genuinely ATTACHED under the old lifecycle (RefPresent) — the corrected assertion.
 fn launcher_control_branch_attached_lifecycle_collides(repo: String) -> String {
-  let c = launcher_build_controlled(repo: repo)
-  if !c.ok { "build failed" }
-  else {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-branchattach")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
     let mk1 = shell.Mktemp.Dir()
-    let attached1 = roadmap_event_carrier_layout(repo_root: c.runner as FilePath, instance_root: mk1.path, git_program: "git", directory_program: "install")
-    let first = roadmap_events_read_all(layout: attached1)
     let mk2 = shell.Mktemp.Dir()
-    let attached2 = roadmap_event_carrier_layout(repo_root: c.runner as FilePath, instance_root: mk2.path, git_program: "git", directory_program: "install")
-    let second = roadmap_events_read_all(layout: attached2)
-    let first_rendered = match first.result {
-      AllEventsRead { envelopes } => count(envelopes) > 0
-      AllEventsReadRefused { step: _, reason: _ } => false
+    if !mk1.success || !mk2.success {
+      let _ = shell.Remove.RecursiveForce(path: c.base)
+      let _ = shell.Remove.RecursiveForce(path: mk1.path)
+      let _ = shell.Remove.RecursiveForce(path: mk2.path)
+      control_result(ok: false, note: "scratch allocation failed")
+    } else {
+      let attached1 = roadmap_event_carrier_layout(repo_root: c.runner as FilePath, instance_root: mk1.path, git_program: "git", directory_program: "install")
+      let first = roadmap_events_read_all(read: CarrierReadAttached { attached: attached1 })
+      let attached2 = roadmap_event_carrier_layout(repo_root: c.runner as FilePath, instance_root: mk2.path, git_program: "git", directory_program: "install")
+      let second = roadmap_events_read_all(read: CarrierReadAttached { attached: attached2 })
+      let first_read = launcher_is_rendered(read: first.result)
+      let second_read = launcher_is_rendered(read: second.result)
+      let registry_now = launcher_registry_count(runner: c.runner)
+      // Under the branch-attached lifecycle the named branch is ATTACHED in the runner — the corrected assertion
+      // must report it PRESENT here, where control 1 reported it ABSENT.
+      let branch_state = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
+      let cleaned = shell.Remove.RecursiveForce(path: mk1.path).success && shell.Remove.RecursiveForce(path: mk2.path).success && launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+      let ok = first_read && !second_read && registry_now > 0 && branch_state == RefPresent && cleaned
+      if ok { "PASS" } else { control_result(ok: false, note: join(["first_read:", to_string(value: if first_read { 1 } else { 0 }), " second_read:", to_string(value: if second_read { 1 } else { 0 }), " registry:", to_string(value: registry_now), " branch:", launcher_ref_presence_tag(presence: branch_state), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
     }
-    let second_refused = match second.result {
-      AllEventsRead { envelopes: _ } => false
-      AllEventsReadRefused { step: _, reason: _ } => true
-    }
-    let registry = launcher_registry_count(runner: c.runner)
-    let passed = first_rendered && second_refused && registry > 0
-    let verdict = if passed { "PASS" } else { join(["FAIL first_rendered=", if first_rendered {"y"} else {"n"}, " second_refused=", if second_refused {"y"} else {"n"}, " registry=", to_string(value: registry)], "") }
-    let _ = shell.Remove.RecursiveForce(path: c.base as FilePath)
-    verdict
   }
 }
 
-// CONTROL 3 (positive, two real reads). Two independent runner clones of the SAME origin render the same roster.
+// CONTROL 3 — TWO INDEPENDENT launcher reads of one origin render the SAME non-empty roster.
 fn launcher_control_two_readers_agree(repo: String) -> String {
-  let c = launcher_build_controlled(repo: repo)
-  if !c.ok { "build failed" }
-  else {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-two")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
     let runner_b = under(c.base, "runner-b")
-    let cloned = launcher_git_ok(workdir: c.base, args: ["clone", "--quiet", "origin.git", "runner-b"])
-    if !cloned { "second clone failed" }
-    else {
-      let a = roadmap_events_read_all(layout: launcher_layout_for(runner: c.runner))
-      let b = roadmap_events_read_all(layout: launcher_layout_for(runner: runner_b))
+    let clone_ok = match launcher_git(workdir: c.base, args: ["clone", "-q", "--branch", "roadmap-events", under(c.base, "origin.git"), runner_b]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    if !clone_ok {
+      let _ = shell.Remove.RecursiveForce(path: c.base)
+      control_result(ok: false, note: "second clone failed")
+    } else {
+      let a = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
+      let b = roadmap_events_read_all(read: launcher_layout_for(runner: runner_b))
       let ta = launcher_roster_tag(read: a.result)
       let tb = launcher_roster_tag(read: b.result)
-      let passed = launcher_is_rendered(read: a.result) && ta == tb
-      let verdict = if passed { "PASS" } else { join(["FAIL a=", ta, " b=", tb], "") }
-      let _ = shell.Remove.RecursiveForce(path: c.base as FilePath)
-      verdict
+      let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+      let ok = ta != "" && launcher_is_rendered(read: a.result) && ta == tb && cleaned
+      if ok { "PASS" } else { control_result(ok: false, note: join(["readerA:", ta, " readerB:", tb, " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
     }
   }
 }
+
+// CONTROL 4 — the corrected assertion DISCRIMINATES. On the real scoped read the branch is ABSENT (the read never
+// maps branch:branch); after running the PROHIBITED fetch operand the very same assertion reports it PRESENT. So
+// control 1's ABSENT is a real judgement, not stdout being suppressed.
+fn launcher_control_ref_assertion_discriminates(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-assert")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
+    // The real scoped read leaves the named branch absent.
+    let scoped = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
+    let after_scoped = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
+    // Now the prohibited operand: fetch that DOES map the branch. Same assertion must catch it.
+    let forced = match launcher_git(workdir: c.runner, args: ["fetch", "-q", "origin", "roadmap-events:roadmap-events"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    let after_forced = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
+    let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+    let scoped_read = launcher_is_rendered(read: scoped.result)
+    let ok = scoped_read && after_scoped == RefAbsent && forced && after_forced == RefPresent && cleaned
+    if ok { "PASS" } else { control_result(ok: false, note: join(["scoped_rendered:", to_string(value: if scoped_read { 1 } else { 0 }), " after_scoped:", launcher_ref_presence_tag(presence: after_scoped), " forced_ok:", to_string(value: if forced { 1 } else { 0 }), " after_forced:", launcher_ref_presence_tag(presence: after_forced), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
+  }
+}
+
+// CONTROL 5 — a worktree add that FAILS AFTER REGISTERING (a post-checkout hook exits non-zero) is CLEANED UP.
+// Reproduces the reviewer's leak: recursive removal alone left the registration behind. The scoped read's close
+// runs `worktree remove` + `worktree prune` and VERIFIES the end state, so after this failed add the runner holds
+// no registration and the close reports a real Closed (never SnapshotNotOpened for state that may exist).
+fn launcher_control_failed_add_is_cleaned_up(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-failedadd")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
+    // Plant a post-checkout hook that always fails. git worktree add checks out HEAD, fires this hook, and
+    // returns non-zero AFTER the worktree has been created and registered.
+    let hook = under(c.runner, ".git/hooks/post-checkout")
+    let planted = Filesystem.Write(path: hook, content: "#!/bin/sh\nexit 1\n").success
+      && match carrier_exec_program(program: "chmod", workdir: c.runner, args: ["+x", hook]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    if !planted {
+      let _ = shell.Remove.RecursiveForce(path: c.base)
+      control_result(ok: false, note: "post-checkout hook not planted")
+    } else {
+      let read = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
+      let step = launcher_refusal_step(read: read.result)
+      let registry_after = launcher_registry_count(runner: c.runner)
+      let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+      // The read must REFUSE at the snapshot step (the add failed), the close must report a real Closed (it
+      // verified the registration AND the directory are gone — never SnapshotNotOpened for state that existed),
+      // and the runner must hold no registration.
+      let ok = step == "snapshot" && registry_after == 0 && cleaned && launcher_close_is_closed(close: read.close)
+      if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " registry_after:", to_string(value: registry_after), " close_closed:", to_string(value: if launcher_close_is_closed(close: read.close) { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
+    }
+  }
+}
+
+// A raw program run in a workdir (git via launcher_git; cp/mkdir here), returning the typed CarrierExec so the
+// exit status is available.
+fn launcher_exec(program: String, workdir: String, args: List<String>) -> CarrierExec {
+  carrier_exec_program(program: program, workdir: workdir, args: args)
+}
+
+fn control_result(ok: Bool, note: String) -> String {
+  if ok { "PASS" } else { join(["FAIL: ", note], "") }
+}
+
+fn under(dir: String, rel: String) -> String { join([dir, "/", rel], "") }
 
 fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
   let one = launcher_control_repeats_and_cleans_up(repo: repo)
   let two = launcher_control_branch_attached_lifecycle_collides(repo: repo)
   let three = launcher_control_two_readers_agree(repo: repo)
-  if one == "PASS" && two == "PASS" && three == "PASS" { ExitSuccess }
-  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, "\n(all three must PASS)\n"], "")) }
+  let four = launcher_control_ref_assertion_discriminates(repo: repo)
+  let five = launcher_control_failed_add_is_cleaned_up(repo: repo)
+  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" { ExitSuccess }
+  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, "\n(all five must PASS)\n"], "")) }
 }

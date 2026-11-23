@@ -180,6 +180,7 @@ import gunbc.roadmap.roadmap_served_observation {
 }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout,
+  CarrierReadAttached,
   roadmap_event_carrier_layout_for_instance,
   roadmap_events_read,
   roadmap_event_append,
@@ -908,7 +909,7 @@ fn serve_issue_detail_response_over(
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
-        let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
+        let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
         let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
         let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
         let attempts = match observed {
@@ -972,7 +973,7 @@ fn serve_issue_assignment_context_over(
           EventsReadRefused { node: _, step, reason } =>
             serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["Cannot load assignment history at ", step, ": ", reason], ""))
           EventsRead { node: _, envelopes } =>
-            let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+            let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
               AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events)
               AllEventsReadRefused { step: _, reason: _ } => []
             }

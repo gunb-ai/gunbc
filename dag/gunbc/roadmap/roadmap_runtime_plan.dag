@@ -3,8 +3,12 @@ module gunbc.roadmap.roadmap_runtime_plan
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection, roadmap_authority_projection_with, roadmap_acceptance_event_history_load,
   roadmap_acceptance_event_history_load_over, roadmap_retired_node_ids_load, roadmap_retired_node_ids_load_over,
+  roadmap_retired_node_ids_of_read,
 }
-import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_history_of_read, roadmap_all_events_after_snapshot_close }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, RoadmapEventCarrierScopedLayout, CarrierReadScopedDetached, roadmap_events_read_all,
+}
 
 // THE ONE PLAN, folded over a caller-supplied carrier layout. Same rows, same folding, same typed refusal —
 // only WHICH principal reads the log changes. This is the seam the live-deploy candidate uses: it renders the
@@ -16,6 +20,20 @@ fn roadmap_plan_projection_over_layout(layout: RoadmapEventCarrierLayout) -> Roa
     history: roadmap_acceptance_event_history_load_over(layout: layout),
     runtime: [],
     retired: roadmap_retired_node_ids_load_over(layout: layout))
+}
+
+// THE SAME PLAN, folded over the LAUNCHER's scoped layout. It reaches the log through the ScopedDetached arm of
+// the single read entry point and folds the result with the SAME _of_read folds the service record path uses — so
+// the roster the CI candidate mints its expected identity over is rendered by the same code as the service's, over
+// the same remote branch, with no worktree of its own. The read is taken ONCE and its result feeds both folds, so
+// history and retired always describe the SAME event set (candidate_identity's single-read property, held even
+// more tightly here than the two-read service path).
+fn roadmap_plan_projection_over_scoped(scoped: RoadmapEventCarrierScopedLayout) -> RoadmapAuthorityProjection {
+  let read = roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadScopedDetached { scoped: scoped }))
+  roadmap_authority_projection_with(
+    history: roadmap_operator_acceptance_history_of_read(read: read),
+    runtime: [],
+    retired: roadmap_retired_node_ids_of_read(read: read))
 }
 
 // THE ONE PLAN: the declared rows and closing-contract pairs of gunbc.roadmap.roadmap_authority, with the

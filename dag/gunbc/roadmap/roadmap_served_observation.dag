@@ -12,6 +12,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout_for_instance, roadmap_standings_read, roadmap_events_read_all,
   CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+  CarrierReadAttached,
 }
 import std.types { String, Int, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
@@ -881,7 +882,7 @@ fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>)
 }
 
 fn served_observation_events_for_instance(instance: HostDashboardInstance) -> RoadmapAllEventsRead {
-  served_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance)))
+  served_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: roadmap_event_carrier_layout_for_instance(instance: instance) }))
 }
 
 fn served_observation_freshness_for_read(read: ServedObservationRead, events: RoadmapAllEventsRead) -> ServedObservationFreshness {
