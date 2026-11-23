@@ -755,7 +755,15 @@ fn deployed_tree_local_locus_admit_in(
   allocations: List<HostnameAllocation>,
   host: HostIdentity,
   repo: NonEmptyStr,
-) -> DeployedTreeLocalAdmission {
+) -> DeployedTreeLocalAdmission admit_callers: [
+  // The production wrapper, which passes the fleet registry and nothing else.
+  decl_ref(module_path: "gunbc.live_deploy.deployed_tree_observation", decl_name: "deployed_tree_local_locus_admit"),
+  // The manual live pairing, run by hand on a host that joins NO fleet registry: it needs the
+  // real admit and observe over the shared dispatcher with a one-row fixture roster, because its
+  // own hostname cannot join srv1. It is listed exactly for that; the roster argument is otherwise
+  // not open to anyone, so no caller may map its own hostname to a host it does not own.
+  decl_ref(module_path: "test.manual.deployed_tree_local_arm_live_pairing", decl_name: "live_pairing_local_route_and_index_ownership"),
+] {
   match hostname_short_read(transport: LocalShell) {
     HostnameShortCaptureRefused { reason: why } =>
       DeployedTreeLocalAdmissionRefused {
