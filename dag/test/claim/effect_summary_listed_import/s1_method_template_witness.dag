@@ -1,0 +1,8 @@
+module test.claim.effect_summary_listed_import.s1_method_template_witness
+
+import std.algebra { skip }
+
+test fn bare_method_template_name_binds_through_the_listed_import() -> Bool {
+  let ws = ["a", "b", "c"]
+  skip(xs: ws, n: 1) == ["b", "c"]
+}
