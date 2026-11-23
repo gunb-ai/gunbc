@@ -1,6 +1,7 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement
 
 import std.types { List }
+import std.algebra { list_at_optional }
 import std.coercion { unicode_scalar_unfold }
 import std.source_annotation {
   AnnotationScope,
@@ -158,11 +159,12 @@ fn v2_scope_text(source: String, index: v2.std.provenance.SpanIndex, scope: Opti
 test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
   let v1 = v1_neighbours(source: agreement_source)
   let v2 = v2_neighbours(source: agreement_source)
-  (v1 |> count) == 5 && (v2 |> count) == 5
-    && nth(xs: v1, i: 1) == nth(xs: v2, i: 1)
-    && nth(xs: v1, i: 2) == nth(xs: v2, i: 2)
-    && nth(xs: v1, i: 3) == nth(xs: v2, i: 3)
-    && nth(xs: v1, i: 4) == nth(xs: v2, i: 4)
-    && nth(xs: v1, i: 0) == "above the data row | <none> | data zqx_d: Int = 1"
-    && nth(xs: v2, i: 0) == "above the data row | module zqx.agree | data zqx_d: Int = 1"
+  (v1 |> length) == 5
+    && (v2 |> length) == 5
+    && list_at_optional(xs: v1, index: 1) == list_at_optional(xs: v2, index: 1)
+    && list_at_optional(xs: v1, index: 2) == list_at_optional(xs: v2, index: 2)
+    && list_at_optional(xs: v1, index: 3) == list_at_optional(xs: v2, index: 3)
+    && list_at_optional(xs: v1, index: 4) == list_at_optional(xs: v2, index: 4)
+    && list_at_optional(xs: v1, index: 0) == Present { value: "above the data row | <none> | data zqx_d: Int = 1" }
+    && list_at_optional(xs: v2, index: 0) == Present { value: "above the data row | module zqx.agree | data zqx_d: Int = 1" }
 }
