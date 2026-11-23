@@ -862,7 +862,7 @@ type ConvergeAction =
   // source choice (this leg vs InstallServeBinary) is realization dispatch decided in converge_step from
   // the ONE host-architecture authority (the per-host Architecture row on gunbc.fabric.fabric_executor_class,
   // keyed on HostIdentity), never a flag on the host and never inferred from the host-read arch alone.
-  | BuildServeBinary { checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String, as_user: String }
+  | BuildServeBinary { checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String }
   // The serving converge's recovery leg: after the identity is recorded, a stale seat (one whose holder is
   // dead and whose launch deadline has passed) is recovered by running compute_recover_cli over ssh as the
   // service user. The observe classifies each seat through the recovery model: a live or too-early holder is
@@ -1076,7 +1076,7 @@ fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin
         )
         false => converge_bin_parent_dir(
           ConvergeDraft { writes: concat([
-            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: "gunbc", bin: "gunbc", target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary, as_user: d.account_name },
+            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: "gunbc", bin: "gunbc", target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary },
           ], acc.writes), unhandled: acc.unhandled },
           d,
         )
@@ -1184,7 +1184,7 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 9
     // Built on the host where it runs: needs the checkout (rank 5) and the pinned toolchain (ranks 6/7)
     // already in place, and it installs+records identity itself, so it shares the binary leg's rank.
-    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _, as_user: _ } => 9
+    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _ } => 9
     // The identity sidecar is recorded AFTER the binary install it documents (and after the slice the
     // binary depends on); the executor's stop-at-first-failure means it is written only once the
     // binary itself has landed -- never provenance for a binary that failed to install.
@@ -1211,7 +1211,7 @@ fn converge_action_key(a: ConvergeAction) -> String {
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
     // Same key as InstallServeBinary: a host settles its serve binary through exactly ONE of the two
     // (native build XOR upload), and if both were ever drafted on one path the dedup collapses them.
-    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: i, as_user: _ } => concat("binary:", i)
+    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: i } => concat("binary:", i)
     RecordServeIdentity { install_path: i, revision: _, sha256: _ } => concat("identity:", i)
     RecoverStaleSeat { reference: r } => concat("recover:", r as String)
   }
@@ -1954,12 +1954,16 @@ fn converge_resolve_serving_session(target: SshTarget, context: FleetSshExecutio
 //      the native route) and write <install_path>.identity binding {revision, that host-read sha}. The
 //      revision -- read back at by EnsureCheckout before this rank -- is what binds the binary, since
 //      unlike the upload route there is no pre-known hash to match.
-fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, owner: String, group: String, mode: FileMode, checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String, as_user: String) -> ConvergeStep {
+fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, owner: String, group: String, mode: FileMode, checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String) -> ConvergeStep {
   match converge_resolve_serving_session(target: target, context: context, d: d) {
     ServingSessionAccountUnread { cause: c } => StepFailed { cause: join(["the serving account could not be re-read, so the native build cannot be placed in its capped slice: ", c], "") }
     ServingSessionUidUnknown => StepFailed { cause: "the serving account's uid is not in the re-read passwd, so the native build cannot be placed in its user session" }
     ServingSessionEstablished { runtime_dir: runtime_dir } => {
-      let cargo_bin = concat(as_user_home_bin_prefix(d: d, as_user: as_user), "/cargo")
+      // The build runs as the serving account, so its cargo is the SAME pinned toolchain shim the toolchain
+      // leg already manages at d.account_home (EnsureToolchain runs ~/.cargo/bin/rustup). There is no other
+      // account a native build could run as: the action carries no as_user, so there is no un-modelled-home
+      // case to invent a path for (review 97472 -- a fake path is a fabricated default, not a refusal).
+      let cargo_bin = concat(d.account_home, "/.cargo/bin/cargo")
       let build_argv = [cargo_bin, "build", "--release", "-p", package, "--bin", bin, "--manifest-path", concat(checkout_dir, "/Cargo.toml"), "--target-dir", target_dir]
       match gunbc_user_work_scope_command(properties: [], command_argv: build_argv) {
         SystemdRunCommandRefused { cause: c } => StepFailed { cause: join(["the native build could not be wrapped into the capped gunbc-user-work.slice: ", systemd_run_option_words_refused_cause_detail(cause: c), "; the build was refused rather than run outside the capped slice"], "") }
@@ -1971,7 +1975,7 @@ fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionCont
           let run = converge_as_user_outcome(
             target: target,
             context: context,
-            account: as_user,
+            account: d.account_name,
             argv: argv_words(command: env_prefixed_command_in(
               directory: checkout_dir,
               bindings: concat(
@@ -2001,19 +2005,13 @@ fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionCont
   }
 }
 
-// The account's cargo/rustup bin directory, derived from the SAME account_home the toolchain leg uses
-// (EnsureToolchain runs `~account/.cargo/bin/rustup`); a native build must use that pinned shim, not a
-// PATH cargo, because sudo carries no login environment.
-fn as_user_home_bin_prefix(d: RemoteBuildServingDesired, as_user: String) -> String {
-  if as_user == d.account_name {
-    concat(d.account_home, "/.cargo/bin")
-  } else {
-    // A build for an account other than the serving account has no modelled home here: fail closed
-    // rather than guess a path. The native-build leg always passes the serving account, so this arm is
-    // a guard, not a live route.
-    join(["/__no_modelled_home_for__", as_user, "__"], "")
-  }
-}
+// The pinned toolchain shim path is derived from d.account_home at the build site (the serving account's
+// own ~/.cargo/bin), matching the toolchain leg (EnsureToolchain runs ~/.cargo/bin/rustup); sudo carries
+// no login environment, so the build names that shim explicitly rather than a PATH cargo. (The former
+// as_user_home_bin_prefix returned a fake "__no_modelled_home__" path for a non-serving account -- review
+// 97472 -- but no native build ever runs as another account, so the action no longer carries as_user and
+// the fabricated-path arm is gone rather than guarded.)
+
 
 fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: FileMode, upload_path: String, install_path: String, expected_sha256: String) -> ConvergeStep {
   match converge_private_stage_dir(target: target, context: context) {
@@ -2105,7 +2103,7 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
     // The native-build leg: build the pinned revision on the host inside the capped slice, install the
     // produced binary, and record its identity from the sha read back off the host (not the executor pin).
-    BuildServeBinary { checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip, as_user: usr } => converge_build_serve_binary(target: target, context: context, d: d, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip, as_user: usr)
+    BuildServeBinary { checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip } => converge_build_serve_binary(target: target, context: context, d: d, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
     // The recovery leg: run compute_recover_cli over ssh as the service user. Exit 0 = released/nothing
     // held → settled. Exit 1 = declined (the seat is still legitimately held; the observation was stale)

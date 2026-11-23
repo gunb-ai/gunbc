@@ -1973,7 +1973,7 @@ fn sidecar_refused() -> ObservationAttempt<SidecarRead, ServingLegFailure> { Obs
 fn count_identity(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false })) }
 fn count_binary_install(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true  _ => false })) }
 // RB-M3: the native-build action (build on the host, not upload) -- the route a native identity drift must take.
-fn count_binary_build(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _, as_user: _ } => true  _ => false })) }
+fn count_binary_build(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _ } => true  _ => false })) }
 fn planned_identity_sha(ws: List<ConvergeAction>) -> String {
   match first_where(ws, keep: a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false }) {
     Absent => ""
@@ -2312,7 +2312,7 @@ fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
     // A DISTINCT install_path here so the "every kind" ordering test keeps every action: BuildServeBinary
     // shares InstallServeBinary's "binary:"+path dedup key, so on the SAME path the two collapse (the
     // dedicated dedup witness below proves that); on a different path both survive as distinct kinds.
-    BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native", as_user: "gunbc-serve" },
+    BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native" },
     RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
   ]
 }
@@ -2366,7 +2366,7 @@ test fn converge_order_preserves_every_action_kind() -> Bool {
 // Arch-independent (pure model), so it is written before the architecture authority lands.
 test fn native_build_and_upload_collapse_on_one_path() -> Bool {
   let up = InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" }
-  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc", as_user: "gunbc-serve" }
+  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc" }
   converge_action_key(up) == converge_action_key(native) && length(converge_dedupe([up, native])) == 1
 }
 
@@ -2376,7 +2376,7 @@ test fn native_build_and_upload_collapse_on_one_path() -> Bool {
 test fn native_build_ranks_after_its_checkout_and_toolchain() -> Bool {
   let checkout = EnsureCheckout { dir: "/srv/gunbc/checkout", clone_url: "https://example.invalid/gunbc.git", revision: "deadbeef", as_user: "gunbc-serve" }
   let toolchain = EnsureToolchain { channel: "1.95.0", as_user: "gunbc-serve" }
-  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native", as_user: "gunbc-serve" }
+  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native" }
   converge_kind_rank(native) > converge_kind_rank(checkout) && converge_kind_rank(native) > converge_kind_rank(toolchain)
 }
 
