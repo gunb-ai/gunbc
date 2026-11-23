@@ -1,7 +1,7 @@
 module test.claim.long.fleet_release_bins_key_witness
 
 import std.types { String, List, Bool }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, int_add, int_sub, int_mul, int_div_result, int_eq }
 import v2.std.node { Node }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { Outcome }
@@ -10,7 +10,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.output_policy { ExpectFailure }
 import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names }
 import gunbc.fleet.fleet_release_bins_key {
-  lit, var, words, cmd, cmdl, assign_sub, test_words, seq,
+  lit, var, words, cmd, cmdl, assign_sub, test_words, seq, rooted,
   release_bins_emitted, release_bins_transport,
   release_bins_key_statements, fleet_release_bins_product, release_bins_pack_statements, release_bins_outcome_statements,
   release_bins_consumer_statements, release_bins_lab_consumer_statements, release_bins_key_kind, release_bins_download_dir, release_bins_main_lookup_ref, lookup_decode_statements,

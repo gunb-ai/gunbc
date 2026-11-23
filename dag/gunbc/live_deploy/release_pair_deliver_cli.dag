@@ -29,6 +29,7 @@ import extdeps.tools.gh {
   gh_main_head_command, gh_run_download_command,
   gh_commit_ancestry_command, gh_branch_artifact_runs_command, gh_run_job_conclusion_command,
 }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds, ProcessRan, ProcessNotSpawned, ProcessRunOutcome }
