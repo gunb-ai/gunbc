@@ -7,10 +7,13 @@ import extdeps.external_authority {
   TranscribedUncited,
 }
 import extdeps.systemd { MemoryLimitUnbounded }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv9 }
+import gunbc.host.host_memory_observation { HostMemAvailableQuiescentRead }
 import gunbc.host.host_memory_envelope_observe {
   HostMemoryEnvelopeObserved,
   HostMemoryEnvelopeRefused,
+  HostMemQuiescentReadObserved,
+  HostMemQuiescentReadRefused,
   SliceMemoryReading,
   gunbc_srv1_memory_envelope_sleek_owl_397_first,
   gunbc_srv1_memory_envelope_sleek_owl_397_first_probed_at,
@@ -18,6 +21,8 @@ import gunbc.host.host_memory_envelope_observe {
   host_mem_available_projection,
   host_memory_envelope_from_meminfo_text,
   host_memory_envelope_includes_slice,
+  host_memory_quiescent_read_for_subject,
+  host_memory_quiescent_receipt_text,
   is_top_level_slice_unit,
   runner_parent_slice_unit,
   slice_current_bytes,
@@ -43,6 +48,36 @@ fn hermetic_slice_pair() -> List<SliceMemoryReading> {
     slice_memory_reading(slice_unit: "system.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 1), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
     slice_memory_reading(slice_unit: "user.slice" as NonEmptyStr, memory_current: slice_current_bytes(n: 2), memory_high: MemoryLimitUnbounded, memory_max: MemoryLimitUnbounded, memory_swap_max: slice_limit_bytes(n: 0)),
   ]
+}
+
+// PEER-EXECUTOR MEMORY READ witnesses (option (a), 2026-11-23). The self path keeps all its claims above
+// untouched (host = subject is byte-for-byte today's behaviour); these cover the new subject branch.
+
+// FAIL-CLOSED (gunbc.design_argument::fail_closed): a subject the anchor does not name -- an unreachable
+// host -- REFUSES. It never yields a zero or an absent memory figure, because reporting the memory of a host
+// it could not connect to would be a fabricated number on the CI budget. srv9 has no known-hosts anchor row,
+// so the read refuses at the anchor gate; an anchored host would resolve and reach the ssh leg.
+test fn an_unreachable_subject_refuses_and_never_reports_memory() -> Bool {
+  match host_memory_quiescent_read_for_subject(hi: operator_host_srv9) {
+    HostMemQuiescentReadRefused { host: _, reason: _ } => true
+    HostMemQuiescentReadObserved { read: _ } => false
+  }
+}
+
+// THE SHAPE the srv14 memory-charge frontier names: the quiescent receipt carries host_total and
+// mem_available (the pair trigger (2) requires), so the row authored from the receipt is grounded in the read.
+test fn the_quiescent_receipt_carries_host_total_and_mem_available() -> Bool {
+  let read = HostMemAvailableQuiescentRead {
+    host: operator_host_srv1,
+    account: "fleet-automation-peer-executor" as NonEmptyStr,
+    read_at: "2026-11-23T00:00:00Z" as NonEmptyStr,
+    host_total: kibibyte_to_byte_size(k: kibibyte(count: 16777216)),
+    mem_available: kibibyte_to_byte_size(k: kibibyte(count: 8388608)),
+  }
+  let text = host_memory_quiescent_receipt_text(read: read)
+  string_contains(s: text, pattern: "host=srv1")
+    && string_contains(s: text, pattern: "host_total=")
+    && string_contains(s: text, pattern: "mem_available=")
 }
 
 test fn witness_envelope_from_complete_meminfo_observes() -> Bool {
