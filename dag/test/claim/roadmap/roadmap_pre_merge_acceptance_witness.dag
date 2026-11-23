@@ -25,17 +25,15 @@ module test.claim.roadmap.roadmap_pre_merge_acceptance_witness
 // and reading the event file (msg_bb6f47af).
 
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, roadmap_acceptance_line_acceptance_receipt }
 import gunbc.principal_projection { principal_ref_parse_label, PrincipalRef }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read,
   EventsRead, EventsReadRefused, carrier_snapshot_close_failures,
 }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapEventEnvelope, RoadmapNodeStanding, NodeAccepted, roadmap_node_standing,
-  roadmap_node_has_merge_event, roadmap_merged_at_stated_by,
-  roadmap_acceptance_pr_evidence_from_args, AcceptedOnPullRequestHead,
-  RoadmapAcceptanceReceipt, roadmap_acceptance_line_acceptance_receipt, roadmap_node_standing_key,
+  NodeAccepted, roadmap_node_standing, roadmap_node_has_merge_event, roadmap_merged_at_stated_by,
+  roadmap_acceptance_pr_evidence_from_args, roadmap_node_standing_key,
 }
 import gunbc.roadmap.roadmap_event_cli {
   AcceptanceCommandChoice, BuildAcceptCommand,
@@ -101,8 +99,7 @@ fn acceptance_choice() -> Optional<AcceptanceCommandChoice> {
     }
     AcceptanceLineParsed { line: l } => match roadmap_acceptance_line_acceptance_receipt(line: l) {
       Absent => none
-      Present { value: receipt } => match roadmap_acceptance_pr_evidence_from_args(
-        pr_url: pair_url(), head_sha: pair_head()) {
+      Present { value: receipt } => match roadmap_acceptance_pr_evidence_from_args(url: pair_url(), sha: pair_head()) {
         Absent => none
         Present { value: evidence } => Present { value: BuildAcceptCommand { receipt: receipt, evidence: evidence } }
       }
