@@ -349,13 +349,17 @@ test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -
 // grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
 // row without declaring it here impossible. A number in the name is maintenance with no consumer.
-fn below_floor_hole_set_holds() -> Bool {
-  let declared = [
+fn declared_below_floor_hole_ids() -> List<String> {
+  [
     floor_exhaustiveness_type_variable_hole_probe as String,
     floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
     floor_cardinality_seam_hole_probe as String,
   ]
+}
+
+fn below_floor_hole_set_holds() -> Bool {
+  let declared = declared_below_floor_hole_ids()
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1
   )
@@ -378,14 +382,8 @@ test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
 // (gunbc.design_argument::fail_closed), so the numbers reported are projections of the same folds the
 // Bool oracle consumes, not a second authority.
 test fn counted_below_floor_hole_rows_match_declared_count() -> ProcessExit {
-  let declared = [
-    floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_generic_instantiation_hole_probe as String,
-    floor_parse_list_separator_hole_probe as String,
-    floor_cardinality_seam_hole_probe as String,
-  ]
   let hole_count = count(guarantee_probe_below_floor_hole_rows())
-  let declared_count = count(declared)
+  let declared_count = count(declared_below_floor_hole_ids())
   census_verdict_all([
     census_premise(concat("counted below-floor hole rows: ", concat(census_int_text(hole_count), concat(" vs declared below-floor holes: ", census_int_text(declared_count)))), below_floor_hole_set_holds() && hole_count == declared_count)
   ])

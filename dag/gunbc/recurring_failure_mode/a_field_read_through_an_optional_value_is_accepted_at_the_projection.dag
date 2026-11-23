@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.a_field_read_through_an_optional_value_is_accepted_at_the_projection
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_field_read_through_an_optional_value_is_accepted_at_the_projection: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_field_read_through_an_optional_value_is_accepted_at_the_projection" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the cardinality-optional-declaration wall (compiler-guarantees lane, floor-wall node) landing the cardinality that refuses reading a field THROUGH an optional at the projection; on its landing the hole witness floor_cardinality_seam_field_projection_through_optional_is_still_silent is re-ranked to a regression control beside its discriminating call-argument refusal." as NonEmptyStr,
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a record declares a field with optional cardinality (parent: Level?), and a dot projection reads a field THROUGH that optional value (l.parent.id). Absent carries no fields, so the read has no meaning on that branch; v1.compiler.infer ACCEPTS the read and the whole program with zero diagnostics, producing the field type THROUGH the optional (String? here) as if the projection were total.",
+    "MEASURED, released main compiler (release-bins claim_batch sha256 632e3c6a..., provenance run 45087227390, tree 816396255c99-era), 2026-11-23: module probe_floor_cs_hole 'type Level { id: String, parent: Level? } fn probe(l: Level) -> String? { l.parent.id }' compiles with 0 diagnostics while the required-field twin (l.id) is the only one with a value on every branch. The same optional value at a direct call-argument position IS refused (DeclaredTypeNotInhabited: declared Primitive(Level), produced Optional<Primitive(Level)>), so the inhabittance check runs and this hole is position-specific to the projection.",
+    "ENROLLMENT, gunbc#16893 (ladder-probe-corpus, 2026-11-23): the hole is counted, not asserted - probe floor-cardinality-seam-field-projection-through-optional-hole (ExpectSilentAcceptanceHole) with the required-field green control (floor-cardinality-seam-required-field-read-green) and the call-argument refusal control (floor-cardinality-seam-call-argument-refusal-control), executed in dag/test/claim/guarantee_floor_class_probe_witness.dag through the row oracle (silent_hole_holds/row_holds), red-control pair banked at red_at 2116b15a on red_base e09090f2 (counted below-floor hole rows 3 vs declared 4 when the hole greens without its wall).",
+    "ADJACENT, NOT THIS CLASS: gunbc.recurring_failure_mode optional_admitted_where_a_required_value_is_declared is the CONVERSE direction (an optional standing AT a required position - the call-argument side, which refuses and is used above as this row's discriminating control, not a silent acceptance); gunbc.recurring_failure_mode nested_field_read_through_a_binder_of_an_inferred_generic_result is a deep read through an incompletely-substituted generic binder with no optional involved; gunbc.recurring_failure_mode record_value_escapes_declared_optional_return is an optional-return escape, a different position.",
+    "RUNG: found BELOW THE LADDER (a silent acceptance on the real acceptance path). CEILING: STRUCTURALLY GUARANTEED - the receiver's optionality is a modeled type state (Optional<Primitive> at the projection receiver) and the read is decidable against it, so the projection can be made to refuse at check time; not structurally impossible: the source can still write the read today. NEXT TRIGGER: the rung field.",
+  ],
+  evidence: [],
+}
