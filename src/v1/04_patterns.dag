@@ -809,8 +809,34 @@ fn check_match_exhaustiveness(
   span: SourceSpan,
   module_name: String
 ) -> List<ErrorNode> {
+  exhaustiveness_verdict_diags(
+    verdict: resolved_exhaustiveness_verdict(
+      arms: arms,
+      scrutinee_type: scrutinee_type,
+      env: env,
+      module_name: module_name
+    ),
+    span: span,
+    module_name: module_name
+  )
+}
+
+// The resolved (roster-known) exhaustiveness verdict. This reuses the existing
+// `exhaustiveness_witnesses` ALGORITHM UNCHANGED -- it only expresses that
+// algorithm's result in the shared three-way `ExhaustivenessVerdict` so a single
+// consumer (`exhaustiveness_verdict_diags`) turns every verdict into its
+// diagnostic. An open roster is not required to be exhaustive (accepted, no
+// diagnostic -- same observable behaviour as the previous `ConstructorsOpen =>
+// []`); a closed roster with witnesses is `VerdictNonExhaustive { missing }`
+// (the reachable producer of the NonExhaustive case); otherwise Exhaustive.
+fn resolved_exhaustiveness_verdict(
+  arms: List<Node>,
+  scrutinee_type: Node,
+  env: TypeEnv,
+  module_name: String
+) -> ExhaustivenessVerdict {
   match constructor_roster_for(type_node: scrutinee_type, env: env) {
-    ConstructorsOpen => []
+    ConstructorsOpen => VerdictExhaustive
     ConstructorsClosed { names: _ } =>
       let witnesses = exhaustiveness_witnesses(
         rows: arms |> map(a => [arm_pattern(n: a)]),
@@ -819,15 +845,9 @@ fn check_match_exhaustiveness(
         module_name: module_name
       )
       if (witnesses |> count) > 0 {
-        [make_error_node(
-          diagnostic: NonExhaustiveMatch {
-            missing: witnesses |> map(w => witness_row_missing_name(w: w)),
-            span: span
-          },
-          module_name: module_name
-        )]
+        VerdictNonExhaustive { missing: witnesses |> map(w => witness_row_missing_name(w: w)) }
       } else {
-        []
+        VerdictExhaustive
       }
   }
 }
@@ -877,14 +897,12 @@ fn blocked_scrutinee_exhaustiveness_verdict(
   }
 }
 
-// THE TWO CLOSED ARMS' CONSUMER. The blocked answer from
-// `lookup_variant_in_type` / `lookup_field_in_variant` used to be swallowed by
-// `constructor_fields` (`LookupFailed => []`) and by the caller's
-// `PatternLookupBlocked => []` short-circuit. This is the single place that
-// turns "blocked" into a refusal: it computes the three-way verdict and REFUSES
-// the Unknown verdict into the accepted artifact (a blocking `ExhaustivenessUnknown`
-// error node, SeverityError / GateBlocking in the 00_core disposition table) so a
-// blocked match cannot flow into an accepted executable artifact as success.
+// The blocked-lookup ENTRY (the two closed arms' consumer). The blocked answer
+// from `lookup_variant_in_type` / `lookup_field_in_variant` used to be swallowed
+// by `constructor_fields` (`LookupFailed => []`) and by the caller's
+// `PatternLookupBlocked => []` short-circuit. It now computes the three-way
+// verdict for a blocked scrutinee and hands it to `exhaustiveness_verdict_diags`,
+// the single consumer that refuses `VerdictUnknown` into the accepted artifact.
 fn blocked_scrutinee_exhaustiveness_diags(
   arms: List<Node>,
   scrutinee_node: Node,
@@ -892,9 +910,35 @@ fn blocked_scrutinee_exhaustiveness_diags(
   span: SourceSpan,
   module_name: String
 ) -> List<ErrorNode> {
-  match blocked_scrutinee_exhaustiveness_verdict(arms: arms, scrutinee_node: scrutinee_node, env: env) {
+  exhaustiveness_verdict_diags(
+    verdict: blocked_scrutinee_exhaustiveness_verdict(arms: arms, scrutinee_node: scrutinee_node, env: env),
+    span: span,
+    module_name: module_name
+  )
+}
+
+// THE single consumer that turns every `ExhaustivenessVerdict` into its
+// diagnostic -- NO verdict case is dropped (fail-closed). `VerdictExhaustive` is
+// accepted (no diagnostic); `VerdictNonExhaustive { missing }` -- produced on the
+// executing resolved-roster route by `resolved_exhaustiveness_verdict` -- refuses
+// with the existing `NonExhaustiveMatch`; `VerdictUnknown` -- produced on the
+// executing blocked-lookup route by `blocked_scrutinee_exhaustiveness_verdict` --
+// refuses into the accepted artifact with the blocking `ExhaustivenessUnknown`
+// (SeverityError / GateBlocking in the 00_core disposition table), so a blocked
+// match cannot flow into an accepted executable artifact as success. Every
+// verdict case is constructed by a named producer and consumed here over an
+// executing route -- none is dangling.
+fn exhaustiveness_verdict_diags(
+  verdict: ExhaustivenessVerdict,
+  span: SourceSpan,
+  module_name: String
+) -> List<ErrorNode> {
+  match verdict {
     VerdictExhaustive => []
-    VerdictNonExhaustive { missing: _ } => []
+    VerdictNonExhaustive { missing: missing } => [make_error_node(
+      diagnostic: NonExhaustiveMatch { missing: missing, span: span },
+      module_name: module_name
+    )]
     VerdictUnknown { scrutinee: scrutinee } => [make_error_node(
       diagnostic: ExhaustivenessUnknown { scrutinee: scrutinee, span: span },
       module_name: module_name
