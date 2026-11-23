@@ -24,7 +24,7 @@ import std.types { Int, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { FreeSemigroup, length, string_contains }
 import extdeps.network.mac { Eui48Address, mac_address }
-import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkPart }
+import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkOtherType, LsblkPart }
 import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.host.network_install_host_reader {
   InstalledHostEvidence, InstalledHostRemoteLegs, InstalledHostRootChainBroken, InstalledHostRootFound,
