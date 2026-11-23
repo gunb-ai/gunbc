@@ -122,7 +122,7 @@ import gunbc.gunbc_cli_command {
   gunbc_test_batch_hermetic_spelling,
 }
 import gunbc.cli_invoke { invocation_words_bare }
-import gunbc.instruments.host_prelude {
+import gunbc.instruments.claim_operand {
   ClaimOperand,
   ClaimOperandUnnameable,
   claim_identity_operand,

@@ -9,7 +9,7 @@ import v2.lens.module_graph {
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
-import gunbc.instruments.host_prelude {
+import gunbc.instruments.claim_operand {
   claim_identity_operand, ClaimOperandAdmission, ClaimOperand, ClaimOperandUnnameable
 }
 import extdeps.shell

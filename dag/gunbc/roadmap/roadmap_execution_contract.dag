@@ -6,7 +6,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import gunbc.ensure { EnsurePolicy }
-import gunbc.instruments.host_prelude { ClaimOperand, ClaimOperandUnnameable, claim_identity_operand }
+import gunbc.instruments.claim_operand { ClaimOperand, ClaimOperandUnnameable, claim_identity_operand }
 import extdeps.languages.json.emit {
   JsonValue,
   json_kv,

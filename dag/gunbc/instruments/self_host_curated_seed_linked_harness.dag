@@ -1,6 +1,6 @@
 module gunbc.instruments.self_host_curated_seed_linked_harness
 
-import gunbc.instruments.host_prelude {
+import gunbc.instruments.claim_operand {
   ClaimOperand,
   ClaimOperandUnnameable,
   claim_identity_operand,

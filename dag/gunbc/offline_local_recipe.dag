@@ -15,7 +15,7 @@ import gunbc.gunbc_cli_command {
   WetBatch,
   gunbc_test_batch_invocation_words,
 }
-import gunbc.instruments.host_prelude {
+import gunbc.instruments.claim_operand {
   ClaimOperand,
   ClaimOperandUnnameable,
   claim_identity_operand,

@@ -19,11 +19,12 @@ module test.claim.gunbc_test_batch_argv_witness
 // them that way is deliberate: a shape control cannot tell a running route from a printing one, and a child run
 // is too expensive to be where you look for a missing flag.
 
-import gunbc.gunbc_cli_command { TestBatchMode, HermeticBatch, WetBatch, RecordBatch }
+import gunbc.gunbc_cli_command { TestBatchMode, HermeticBatch, WetBatch, RecordBatch, gunbc_test_batch_invocation_words }
+import gunbc.cli_invoke { invocation_words_bare, gunbc_test_labels_invocation_words }
 import gunbc.instruments.host_prelude {
-  ClaimRun, TestClaimsArgvBuilt, TestClaimsArgvRefused, ClaimOperand, ClaimOperandUnnameable,
-  claim_identity_operand, gunbc_test_claims_argv
+  ClaimRun, TestClaimsArgvBuilt, TestClaimsArgvRefused, gunbc_test_claims_argv
 }
+import gunbc.instruments.claim_operand { ClaimOperand, ClaimOperandUnnameable, claim_identity_operand }
 import std.logic { Bool }
 import std.types { String }
 
@@ -147,4 +148,24 @@ test fn the_operand_is_the_route_s_own_label_rendering_holds() -> Bool {
     ClaimOperand { label: label } => label == "//test/claim/nested/beta_witness:beta_claim_holds"
     ClaimOperandUnnameable { entry: _, function: _, reason: _ } => false
   }
+}
+
+// THE TWO TEST-WORD BUILDERS SPELL ONE THING. `gunbc.gunbc_cli_command`'s `gunbc_test_batch_invocation_words`
+// (the general builder the whole tree uses) and `gunbc.cli_invoke`'s `gunbc_test_labels_invocation_words` (the
+// hermetic-only builder the onboarding recipe keeps beside it, because the onboarding model cannot import
+// `gunbc_cli_command` without closing a cycle) must spell IDENTICAL words for the same roots, labels and the
+// HermeticBatch mode. Hermetic adds no mode word, so on that mode the label builder is a genuine duplicate of
+// the general one -- which is exactly why it is allowed to exist ONLY under this pin. Without it the two-file
+// split rests on a comment and the two can drift apart into two vocabularies, the failure this whole plan is
+// dissolving. If this claim ever goes red, the fix is to move the general builder down into cli_invoke (the
+// direction the cycle permits) and delete the hermetic one -- not to loosen this equality.
+test fn the_label_builder_spells_what_the_batch_builder_spells() -> Bool {
+  let roots = ["dag", "src/v2"]
+  let labels = [
+    "//test/claim/alpha_witness:alpha_claim_holds",
+    "//test/claim/nested/beta_witness:beta_claim_holds",
+    "//test/claim/gamma_witness:gamma_claim_holds",
+  ]
+  join(invocation_words_bare(words: gunbc_test_batch_invocation_words(operands: labels, mode: HermeticBatch {}, source_roots: roots)), " ") ==
+    join(invocation_words_bare(words: gunbc_test_labels_invocation_words(source_roots: roots, labels: labels)), " ")
 }
