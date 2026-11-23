@@ -815,10 +815,22 @@ fn roadmap_node_has_merge_event(envs: List<RoadmapEventEnvelope>) -> Bool {
   }
 }
 
+// THE MERGE TIME THIS NODE'S LOG STATES, from whichever event states it — ONE reader, so no reader picks a
+// source and two readers disagree (gunbc.design_argument::single_authority). Three events can state it, in
+// the order a reader should trust them: the node's OWN merge event (the fact's home since the ruling, and
+// the only one that also names the merge sha); a live acceptance written before the ruling, which carried a
+// merge time inside its evidence; or a live acceptance the operator-close route recorded from GitHub-verified
+// pull-request facts (that route is the one other place a merge time is ever written, and it writes one only
+// where the host has verified the merge — see gunbc.roadmap.roadmap_operator_acceptance OperatorClosePrFacts).
+// An empty string is the row's own spelling of "no such fact is stated": a node accepted on a head that has
+// not merged states no merge time at all, and that is the point of the ruling.
 fn roadmap_merged_at_stated_by(envs: List<RoadmapEventEnvelope>) -> String {
   match roadmap_node_merge_event(envs: envs) {
-    Absent => ""
     Present { value } => value.merge.merged_at as String
+    Absent => match roadmap_live_acceptance_evidence(envs: envs) {
+      Absent => ""
+      Present { value: evidence } => roadmap_acceptance_pr_evidence_merged_at(evidence: evidence)
+    }
   }
 }
 
