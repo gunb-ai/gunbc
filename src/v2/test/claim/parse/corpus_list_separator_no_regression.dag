@@ -5,40 +5,118 @@ import v2.std.text { String, char_eq }
 import std.algebra { is_prefix_of, count_where, length }
 import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_walk }
 
-// CORPUS PARSE RECEIPT for the list-separator wall. The wall only ADDS a refusal -- it turns a bracketed
-// list whose elements are juxtaposed (no `,`) from silently-accepted into refused; it removes no accepted
-// parse. So a regression on the real corpus could manifest in exactly ONE way: some corpus module now
-// classifies as `refused parse_list_element_separator_missing ...`. This witness enumerates every source
-// module under the three source roots (dag, src/v1, src/v2 -- the same roots the claim runs over),
-// classifies each through the corpus's parser (v2.compiler.parse, the grammar in v2.extdeps.languages.dag),
-// and asserts the new reason fires on NONE of them, while still accepting thousands -- so the enumeration
-// is real and the classifier is live on actual files. A legitimate corpus list that the wall broke would
-// raise the new reason here and fail this witness.
+// CORPUS PARSE RECEIPT for the list-separator wall, accounted PER PATH -- not by aggregate counts.
+//
+// The wall only ADDS a refusal: a bracketed list whose elements are juxtaposed (no separator) goes from
+// silently accepted (the measured below-floor census row: a dropped comma silently changes list arity) to
+// refused with its own cause, parse_list_element_separator_missing. A regression on the real corpus can
+// therefore manifest in exactly two ways: a corpus module that now classifies as refused under ANY cause
+// (an unrelated cause would mean the wall changed a parse shape it must not touch), or a module whose text
+// cannot be read (an empty content fails the witness, so an unread module cannot hide behind a count).
+//
+// Each witness owns one DISJOINT slice of the corpus and classifies every path in it, so per-path outcomes
+// are accounted slice by slice and no slice can be empty or skipped without failing. `expected_new_refusals`
+// is the only allowance: a path may refuse only if it is listed there with its reason stated beside it.
+// The corpus was migrated to the wall in this change -- juxtaposed elements given their separator (45 sites
+// across 16 files), and one prose string whose intended quote characters were unescaped, silently splitting
+// it into three juxtaposed elements (quotes escaped in place, text unchanged) -- so the roster is EMPTY:
+// every corpus module must still parse. A legitimate corpus list that the wall broke would surface here as
+// an unaccepted verdict in its own slice.
 
 data corpus_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
-fn corpus_walk_tasks() -> List<SourceRootWalkTask> {
-  map(corpus_roots, fn(root) { SourceRootWalkTask { path: root, root: true, origin: root } })
-}
+// Paths the wall is EXPECTED to newly refuse, each with its reason in the comment beside it.
+// Empty by design: after the migration the corpus contains no juxtaposed list.
+data expected_new_refusals: List<String> = []
 
-fn all_corpus_paths() -> List<String> {
-  match source_root_walk(pending: corpus_walk_tasks(), paths: [], suffix: ".dag") {
+// Disjoint slices covering the corpus. The census claim checks the coverage, so a slice set that misses
+// part of the corpus fails instead of quietly passing.
+data corpus_slices: List<String> = [
+  "dag/examples",
+  "dag/extdeps",
+  "dag/gunbc",
+  "dag/product",
+  "dag/std",
+  "dag/test",
+  "src/v1",
+  "src/v2"
+]
+
+fn walk_root(root: String) -> List<String> {
+  match source_root_walk(
+    pending: [SourceRootWalkTask { path: root, root: true, origin: root }],
+    paths: [],
+    suffix: ".dag"
+  ) {
     SourceRootPathsRead { paths: walked } => map(walked, fn(w) { w.path })
     SourceRootPathsRefused { path: _, kind: _, cause: _ } => []
   }
 }
 
-fn classify_corpus_module(path: String) -> String {
-  let result = filesystem_read(path: path)
-  parse_acceptance_of_text(text: result.content, path: path)
+fn all_corpus_paths() -> List<String> {
+  match source_root_walk(
+    pending: map(corpus_roots, fn(root) { SourceRootWalkTask { path: root, root: true, origin: root } }),
+    paths: [],
+    suffix: ".dag"
+  ) {
+    SourceRootPathsRead { paths: walked } => map(walked, fn(w) { w.path })
+    SourceRootPathsRefused { path: _, kind: _, cause: _ } => []
+  }
 }
 
-test fn corpus_has_no_juxtaposed_list_and_still_parses_holds() -> Bool {
-  let classifications = map(all_corpus_paths(), fn(path) { classify_corpus_module(path) })
-  let separator_refusals = count_where(
-    xs: classifications,
-    predicate: fn(c) { is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: c, eq: char_eq) }
+fn module_content(path: String) -> String {
+  filesystem_read(path: path).content
+}
+
+fn verdict_of(path: String) -> String {
+  parse_acceptance_of_text(text: module_content(path), path: path)
+}
+
+// A slice holds when it is non-empty, every path reads, and the number of non-accepted verdicts equals the
+// number of paths this slice is allowed to refuse (the roster) -- with the wall's own cause counted
+// separately at zero, so a juxtaposition refusal is visible even if another counter happens to balance.
+fn slice_holds(slice: String) -> Bool {
+  let paths = walk_root(root: slice)
+  let verdicts = map(paths, fn(path) { verdict_of(path) })
+  let allowed = count_where(
+    xs: expected_new_refusals,
+    predicate: fn(p) { is_prefix_of(prefix: slice, xs: p, eq: char_eq) }
   )
-  let accepted = count_where(xs: classifications, predicate: fn(c) { c == "accepted" })
-  (length(xs: classifications) > 5000) && (separator_refusals == 0) && (accepted > 1000)
+  let unread = count_where(xs: paths, predicate: fn(path) { module_content(path) == "" })
+  let unaccepted = count_where(xs: verdicts, predicate: fn(v) { v != "accepted" })
+  let separator_refusals = count_where(
+    xs: verdicts,
+    predicate: fn(v) { is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: v, eq: char_eq) }
+  )
+  (length(xs: paths) > 0) && (unread == 0) && (unaccepted == allowed) && (separator_refusals == 0)
+}
+
+test fn dag_examples_corpus_parses_holds() -> Bool { slice_holds(slice: "dag/examples") }
+
+test fn dag_extdeps_corpus_parses_holds() -> Bool { slice_holds(slice: "dag/extdeps") }
+
+test fn dag_gunbc_corpus_parses_holds() -> Bool { slice_holds(slice: "dag/gunbc") }
+
+test fn dag_product_corpus_parses_holds() -> Bool { slice_holds(slice: "dag/product") }
+
+test fn dag_std_corpus_parses_holds() -> Bool { slice_holds(slice: "dag/std") }
+
+test fn dag_test_corpus_parses_holds() -> Bool { slice_holds(slice: "dag/test") }
+
+test fn src_v1_corpus_parses_holds() -> Bool { slice_holds(slice: "src/v1") }
+
+test fn src_v2_corpus_parses_holds() -> Bool { slice_holds(slice: "src/v2") }
+
+// The census is real and the slices cover it: thousands of modules enumerate, and every enumerated path
+// falls under one of the slices above (so no module escapes the per-path accounting).
+test fn corpus_census_is_live_and_sliced_holds() -> Bool {
+  let paths = all_corpus_paths()
+  let total = length(xs: paths)
+  let covered = count_where(
+    xs: paths,
+    predicate: fn(path) {
+      count_where(xs: corpus_slices, predicate: fn(slice) { is_prefix_of(prefix: slice, xs: path, eq: char_eq) }) > 0
+    }
+  )
+  (total > 5000) && (covered == total)
 }

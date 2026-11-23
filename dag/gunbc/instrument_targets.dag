@@ -1146,10 +1146,10 @@ type InstrumentSourceRootsRow {
 
 fn instrument_source_roots_rows() -> List<InstrumentSourceRootsRow> {
   [
-    InstrumentSourceRootsRow { name: "heads_reading_differential" roots: heads_reading_differential_source_roots() }
-    InstrumentSourceRootsRow { name: "self_host" roots: self_host_source_roots() }
-    InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() }
-    InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() }
+    InstrumentSourceRootsRow { name: "heads_reading_differential" roots: heads_reading_differential_source_roots() },
+    InstrumentSourceRootsRow { name: "self_host" roots: self_host_source_roots() },
+    InstrumentSourceRootsRow { name: "v2_native_cli" roots: v2_native_cli_source_roots() },
+    InstrumentSourceRootsRow { name: "emitted_crate_workspace" roots: emitted_crate_workspace_source_roots() },
     InstrumentSourceRootsRow { name: "bare_reference_channel" roots: bare_reference_channel_source_roots() }
   ]
 }

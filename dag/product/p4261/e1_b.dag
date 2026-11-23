@@ -3161,7 +3161,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "VE" },
       obligation: "the stored frame sd003 reads the designator only in part and the marking as VE with its orientation unclear (upside down it could be 3A), and sd114 reads the body unreadable: the frame we hold does not answer it; a close-up of the body marking, both orientations, is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "758483cf3878451968002e43d4c3f61a775d8ee41cd4ce9d5b890ba5107390a8" as Sha256DigestHex }, left: 1575, top: 2800, width: 186, height: 224) },
-  }
+  },
     UnresolvedPart {
         identity: Candidate { source: U108 { } },
         // A candidate, not a read: the receipts transcribed this label only in part, so no
@@ -3185,25 +3185,25 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "IWEJ" },
       obligation: "the designator is read clear and confirmed at sd004 and clear at sd053, which ties it to its body by the pin-1 triangle, so the designator read is admitted as a named exception on the sd004 record while the row's inventory standing stays 'uncertain'; sd053 shows a 5-lead SOT-23 body and sd004 a 6-lead one, so the frames disagree on the package; the marking is partial in both (C3WI as seen in image orientation at sd053, WE? at sd004), a coverage difference since no alignment between the two is stated: a close-up of the body marking is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "5f08a2225aa637514d8b1930b368d79669d744d8a3d13cd1af620a61c7398a50" as Sha256DigestHex }, left: 2595, top: 2140, width: 395, height: 550) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "U817" },
       marking: Absent { },
       obligation: "glare in the only frame means a light-bodied part cannot be ruled out; a low-glare frame of U817 closes it",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "44f0f91a18cf93b21c56a0aea7535eb43302dac2e1e3ecbd277b3c6032c413c6" as Sha256DigestHex }, left: 1209, top: 663, width: 657, height: 440) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "Y2" },
       marking: Absent { },
       obligation: "the label Y2 is read clearly in stored frame sd037 but no part in frame can be linked to it (it may sit under the metal object or past the frame edge): the part it labels is what remains, a photograph of that area",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3770, top: 2720, width: 155, height: 190) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "Y360" },
       marking: Present { value: "A?HYR" },
       obligation: "the designator is read clear and confirmed at sd004, sd025, sd038 and sd039 and clear at sd037, so the designator read is admitted as a named exception while the row's inventory standing stays 'uncertain'; the marking A1HY? is partial there (a black plastic 4-pad oscillator-like body): a close-up of the lid marking is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "338acf4503710927f24f347d602686ca331036250f0e82891003cb8d6a139fe8" as Sha256DigestHex }, left: 3232, top: 2081, width: 435, height: 536) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "J3" },
       marking: Absent { },
@@ -3212,7 +3212,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       designator: "J3",
       located: "the atlas pass names no frame in its photos column ('overview only') because of its own coverage gap: the pass recorded readings for 28 of the 51 top-side files in manifest_e1_all_photos.csv and never read 15 numbered close-ups among them: 05-08, 14-18, 22-23 and 26-29. The operator has since read the label in three of those stored frames -- cited in the FromStoredFrames authority that admits the position, and on the best of them by the single DesignatorReading above",
       closing: "the label is read and cited; what remains is the atlas pass over the close-ups it skipped, joined through these same receipts, and a box on any frame still cited without one") },
-  }
+  },
     UnresolvedPart {
         identity: Candidate { source: J141 { } },
         // A candidate, not a read: the receipts transcribed this label only in part, so no
@@ -3233,19 +3233,19 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "7BW?" },
       obligation: "stored frame sd014 reads 533 clearly with a round first glyph (Q or O) on a SOT-23 marked 7BW?: the first glyph is what the frame we hold does not settle",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "ddd4f9332987ca4279a195e29ca41e7765cd8f64964eb88d56f2ca0278ba395a" as Sha256DigestHex }, left: 2296, top: 1092, width: 122, height: 300) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "DS10-DS13" },
       marking: Absent { },
       obligation: "DS10-DS13 is a group label, not a footprint: one outline was read as a range. Each member owes its own silkscreen read before any of them can be a position",
       evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "DS10-DS13", located: "the atlas names no frame for this row") },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "D5_P1" },
       marking: Absent { },
       obligation: "the outline reads probably unpopulated with an uncertain link; a frame that resolves the link closes it",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f6a462a3789850cae3c2594b20d60917a540cda314a1baa781869e91a21a6407" as Sha256DigestHex }, left: 2977, top: 1219, width: 223, height: 576) },
-  }
+  },
     UnresolvedPart {
         identity: Candidate { source: Q1_P1 { } },
         // A candidate, not a read: the receipts transcribed this label only in part, so no
@@ -3260,13 +3260,13 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "?2N 18" },
       obligation: "stored frame sd081 reads the designator clear (Q, 4, P and 1 each legible), but the atlas inventory's standing for the row is still 'uncertain' and no per-photo record is 'confirmed', so the designator read has not been raised and the held standing stands; the marking '?2N 18' is partial there: a close-up of the body marking is what remains",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "a3dd155d1dff3a36a21f410e70e46be212f4d8454b0a894f647f79badae7e465" as Sha256DigestHex }, left: 330, top: 970, width: 417, height: 245) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "Q5_P1" },
       marking: Absent { },
       obligation: "the silkscreen tail could not be resolved (Q or O), so neither the designator nor the emptiness is settled; a close-up of the outline closes it",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "499eeb6274fbe6d0b6c6b59214f2c27afccab40df98853d17e17fd70803b043c" as Sha256DigestHex }, left: 1300, top: 1090, width: 520, height: 595) },
-  }
+  },
     UnresolvedPart {
         identity: Candidate { source: Q6_P1 { } },
         // A candidate, not a read: the receipts transcribed this label only in part, so no
@@ -3281,7 +3281,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Absent { },
       obligation: "the alteration ledger already records this part as removed during the rail-short repair; an observed-empty footprint would claim we found it empty, which we did not",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "f98031a7957ce0f4b9143f7ee2ecf770a1177b5432b137f2858b9262d06f15ab" as Sha256DigestHex }, left: 2190, top: 626, width: 408, height: 127) },
-  }
+  },
     UnresolvedPart {
         identity: Candidate { source: Q3_3 { } },
         // A candidate, not a read: the receipts transcribed this label only in part, so no
@@ -3296,7 +3296,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "AWR; P21; 190 (on the QFN to the upper right, printed upside down)" },
       obligation: "stored frame sd028 reads the designator clear (rotated 180 degrees), but the atlas inventory's standing for the row is still 'uncertain' and has not been raised; which IC it labels is uncertain there, and the marking AWR / P21 / 19? agrees on its first two lines with the clear AWR / P21 / 190 of U58_4 (sd130), which is consistent with the same part type but is not a reading of this body",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "1bfb5bb27ac969ed22d6de504cf20a06b87226c0a482c9956176db7da78f8a51" as Sha256DigestHex }, left: 2749, top: 1700, width: 531, height: 360) },
-  }
+  },
     UnresolvedPart {
         identity: Candidate { source: Q4_4 { } },
         // A candidate, not a read: the receipts transcribed this label only in part, so no
@@ -3311,7 +3311,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "AWR / P21 / 190" },
       obligation: "stored frame sd130 reads the designator and the three-line marking AWR / P21 / 190 clear (a small QFN, pin-1 dot), but the atlas inventory's standing for the row is still 'uncertain', so the designator read has not been raised; no published mark for it is modeled, so the part's identity is a document lookup (ours), not a photograph",
       evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "cbfc363f954402a78918854709c4b3242671563d64fdb3bd1076b7b852767cea" as Sha256DigestHex }, left: 1395, top: 1657, width: 483, height: 648) },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "U522" },
       marking: Present { value: "T275 / TI ?1" },
@@ -3326,7 +3326,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Absent { },
       obligation: "the bottom-side label reads D17 clearly at b3_09, but which part it labels is not settled: the atlas's final pass reads it as D17_5 or D17_P2 truncated, so it is not counted as a position of its own. A close-up that holds the label and the body it belongs to in one frame closes it",
       evidence: OperatorPhotograph { citation: e1_unlocated_frame_closing(designator: "D17", located: "seen at atlas row b3_09, bottom side; no registered frame holds it", closing: "a close-up that holds the label and the body it belongs to in one frame") },
-  }
+  },
   UnresolvedPart {
       identity: ReadDesignator { designator: "Q10_P2" },
       marking: Present { value: "BC4X" },
