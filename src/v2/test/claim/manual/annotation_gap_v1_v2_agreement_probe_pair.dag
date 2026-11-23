@@ -37,16 +37,39 @@ import std.types { CommitSha, String, commit_sha_text_holds }
 // moved forward one fix rather than sideways. Both earlier break commits stay reachable: the durable ref's
 // newest commit carries the previous one as a second parent, so no break is rewritten away -- read
 // `git log <probe_ref>` to see all three.
+// RE-CUT A THIRD TIME, NAMED, AND IT FAILED -- FOR A DIFFERENT REASON, RECORDED RATHER THAN RE-ROLLED. The
+// third pair (red_at fd8fc90a048581364791b970cda34b224d7089cc, green_at 7a6fd7924b0e8cec3988628eb129cad1e4a545e8,
+// round E2) executed cleanly on both sides and BOTH printed PASS with exit status 0. That is a failed pair, not a
+// passed one: a control that also passes on the tree where the roster arm was removed is INSENSITIVE to the plant,
+// and the row demands it go red. It is recorded here with both PASS lines and both rc values rather than re-rolled
+// until it cooperated. The cause was in the fixture, not the harness: the fifth row's comment sat before the WHOLE
+// expression `1 + 2 * 3`, so the neighbour it names was a region that exists with or without the arm. The carrier
+// says so at main -- src/v2/compiler/parse.dag:142-149, untouched by this PR: "Without the second, `1 + 2 * 3`
+// would have no region for `2 * 3`, and a comment before it would get `2` as its neighbour." So the arm is only
+// observable from a gap INSIDE the application. The fixture moved (08b009527e8fca04e87f819dee18708946cfcc41): the
+// comment now sits after the '+', and two after-only pipelines PIN the neighbour text each parser names for that
+// gap to the literal `2 * 3` -- an agreement conjunct alone cannot catch two parsers agreeing on the WRONG
+// neighbour, which is exactly what the third pair did. The expectation's authority is that quoted fixture text and
+// that main-line comment, NOT any parser output: a scratch candidate-set drift detector (untracked file
+// src/v2/test/manual/zqx_agreement_probe.dag, never landed, outside the pair property) was run at both trees to
+// show per side which candidate each parser takes, and its table is pasted in the log beside the pair.
+// red_at below is that break re-cut on top of the fixture commit (first parent green_at, second parent the
+// previous break so no break commit is ever deleted); green_at is the fixture commit itself, where the control was
+// executed and passed. Earlier superseded pairs: first pair red_at 1013d02dace7f8a95ac78a10fc1bcbbc46488a5c /
+// green_at 5b84464bb27acbe00542b35ef008b808a7712aa0 (the witness could not resolve at all -- bare `fold`,
+// `dag_language_model`, missing span_index_extent); second pair red_at c65a78ee18095a84215585382773205859d62a44 /
+// green_at fd8fc90a048581364791b970cda34b224d7089cc (resolved, but that tree's witness was pre-fixture-change).
+
 data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
 data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
 // red_at's FIRST PARENT is green_at: the break is one commit on top of the tree whose witness it runs
 // unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone.
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "fd8fc90a048581364791b970cda34b224d7089cc"
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "ca2a086a1e69699aa95c0103a89b370a4127c447"
 // green_at is the commit the control was EXECUTED at and PASSED, on this PR lineage. The head carrying this receipt
 // is green_at plus one commit that touches only this receipt module, so the witness bytes are the same in
 // green_at, in the head, and in red_at (proven by git hash-object in the run log).
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "7a6fd7924b0e8cec3988628eb129cad1e4a545e8"
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "08b009527e8fca04e87f819dee18708946cfcc41"
 data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
 // The witness this pair is about, named as data so a reader never has to infer it from a file path.
 data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
