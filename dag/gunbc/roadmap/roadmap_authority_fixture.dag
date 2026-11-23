@@ -393,10 +393,12 @@ fn roadmap_authority_fixture_json_is_a_written_event(content: String, node: Stri
 // checks this list against the witness's own independent copy, which catches the two copies
 // disagreeing and not a gap in both. The rung established is "the export is the fold over the samples
 // written", not "one entry per constructor"; the reader's failure mode for the residual is the bridge
-// refusing, not mis-staffing. The next rung -- the language handing a witness the constructors of a
-// closed sum, so the list is checked rather than asserted. That rung is carried as data, not only as
-// prose: `roadmap_node_standing_keys_next_rung` below, whose dissolution description names the issue.
-// A condition that lives only in a comment is a condition nobody can ask the tree about.
+// refusing, not mis-staffing. The next rung is the language handing a witness the constructors of a
+// closed sum, so the list is checked rather than asserted (gunb-ai/gunbc#16925). That rung is carried as
+// data, not only as prose: `roadmap_node_standing_keys_next_rung` below. A carrier nobody reads is a
+// comment with a type on it, so the witness asks the tree about it --
+// `roadmap_standing_key_rung_is_carried_and_unreached` in the event-log witness refuses if anyone
+// marks the rung reached.
 fn roadmap_authority_fixture_standing_samples() -> List<RoadmapNodeStanding> {
   [
     NodeOpen,

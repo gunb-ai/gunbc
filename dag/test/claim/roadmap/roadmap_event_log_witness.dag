@@ -27,7 +27,11 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
 }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
-import gunbc.roadmap.roadmap_authority_fixture { roadmap_node_standing_keys }
+import std.dissolution { dissolution_is_bound }
+import gunbc.roadmap.roadmap_authority_fixture {
+  roadmap_node_standing_keys,
+  roadmap_node_standing_keys_next_rung,
+}
 import gunbc.roadmap.roadmap_model {
   roadmap_node_ids_contain, RoadmapNode,
   RoadmapAcceptanceReceipt, RedControlExecuted, HandbackDelivered,
@@ -1043,4 +1047,14 @@ test fn roadmap_standing_key_export_matches_the_fold() -> Bool {
   let deduped = fold(roadmap_node_standing_keys, init: no_standing_keys, f: (acc, k) => if any(acc, x => x == k) { acc } else { concat(acc, [k]) })
   from_witness == roadmap_node_standing_keys
     && deduped == roadmap_node_standing_keys
+}
+
+// THE RUNG ABOVE THE EXPORT IS CARRIED, AND UNREACHED. `roadmap_node_standing_keys_next_rung` is the
+// typed carrier for what the pair above cannot enforce (a hand-written sample list can be left short;
+// #gunb-ai/gunbc#16925 is the language capability that would make it checked). A carrier nobody reads
+// is a comment with a type on it, so this asks the tree the question the comment would have asked:
+// nothing has claimed the rung. A carrier flipped to BoundDissolution -- someone declaring the
+// capability arrived when it has not -- turns this red.
+test fn roadmap_standing_key_rung_is_carried_and_unreached() -> Bool {
+  !dissolution_is_bound(condition: roadmap_node_standing_keys_next_rung)
 }
