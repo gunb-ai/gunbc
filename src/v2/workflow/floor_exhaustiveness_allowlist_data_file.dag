@@ -1,0 +1,41 @@
+module v2.workflow.floor_exhaustiveness_allowlist_data_file
+
+import v2.workflow.floor_exhaustiveness_allowlist { floor_exhaustiveness_allowlist }
+import std.types { List, String }
+
+// CALLER-SIDE PRODUCER for the A+C ExhaustivenessUnknown waiver arm (PR #16895, node
+// floor-exhaustiveness-refusal). This module is the SOLE WRITER of the data-file body that the
+// hand-written seed-Rust waiver arm reads via $GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST at the
+// self-host / compile_clean invocation
+// (src/v1/stage0/src/cli_run/compile_clean.rs :: exhaustiveness_unknown_allowlist).
+//
+// It is derived STRICTLY from the roster -- floor_exhaustiveness_allowlist() -- and hand-adds
+// NOTHING: the roster .dag stays the sole membership authority
+// (gunbc.design_ruling::floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23,
+// operator: "regarding 16895 - yeah A+C is fine as long as no more exceptions are introduced in
+// the future"; FROZEN SHRINK-ONLY). The arm
+// (gunbc.design_ruling::floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23,
+// operator: "A is fine as long as its recorded") reads only what this projection emits, so the
+// file is a DERIVED PROJECTION, never an independent authority.
+//
+// KEY FORM matches the arm's reader byte-for-byte: `module_path::declaration::scrutinee`, one key
+// per line, joined with "::" (the same structural key the roster documents -- module_path +
+// enclosing declaration + scrutinee, never a line number). The data-file==roster equality claim in
+// test.claim.floor_exhaustiveness_allowlist_equality_witness refuses in BOTH directions if this
+// projection ever diverges from the roster, so a hand-widened, hand-authored, or extra key is red.
+//
+// DISSOLUTION: when the (C) roadmap row rn_01M8591VE1TNASV6BKCZ34HXXT types the six blocked-lookup
+// scrutinees, the roster shrinks toward empty and this projection, the arm, and the data file all
+// delete together.
+
+// The single structural key line for one site, in the exact form the arm's HashSet lookup parses.
+fn floor_exhaustiveness_allowlist_site_line(module_path: String, declaration: String, scrutinee: String) -> String {
+  join([module_path, declaration, scrutinee], "::")
+}
+
+// The whole data-file body the caller writes to $GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST before the
+// corpus compile. One key per line, no trailing blank; the arm trims and skips blank/`#` lines, so
+// a trailing newline is harmless. Derived entirely from the roster -- never hand-authored.
+fn floor_exhaustiveness_allowlist_data_file_body() -> String {
+  join(map(floor_exhaustiveness_allowlist(), row => join([row.module_path, row.declaration, row.scrutinee], "::")), "\n")
+}
