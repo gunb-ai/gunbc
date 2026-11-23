@@ -170,3 +170,14 @@ test fn a_well_formed_probe_closes_and_on_main_is_the_visible_default() -> Bool 
     && (match red_observation_from_texts(red_at: red(), green_at: green(), red_base: "", probe_ref: "") { RedObservedOnMain { red_at: _, green_at: _ } => true  RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => false })
     && (match red_observation_from_texts(red_at: red(), green_at: green(), red_base: base(), probe_ref: pref()) { RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => true  RedObservedOnMain { red_at: _, green_at: _ } => false })
 }
+
+// A pair is evidence about the acceptance it was appended after. A later acceptance of the same node that is
+// itself tree-unrecorded must NOT inherit a pair recorded for an earlier acceptance (review 97504).
+test fn a_pair_recorded_for_an_earlier_acceptance_is_not_inherited_by_a_later_one() -> Bool {
+  let first = acceptance(rc: unrecorded())
+  let pair = pair_event(parent: first, r: red(), g: green())
+  let second = acceptance(rc: unrecorded())
+  let inherited = roadmap_receipt_effective_red_control(receipt: receipt_with(rc: unrecorded()), envs: [first, pair, second])
+  let own = roadmap_receipt_effective_red_control(receipt: receipt_with(rc: unrecorded()), envs: [first, pair])
+  !red_control_evidence_is_valid_red(e: inherited) && red_control_evidence_is_valid_red(e: own)
+}

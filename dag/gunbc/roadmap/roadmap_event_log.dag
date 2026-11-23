@@ -1501,9 +1501,12 @@ fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
     else if count(heads) != 1 { RoadmapStandingAcc { standing: NodeForked { heads: map(heads, h => h.id) }, assignment: roadmap_assignment_empty() } }
     else { match heads.first() {
       Absent => roadmap_standing_acc_empty()
-      Present { value: head } => roadmap_standing_acc_with_effective_red_control(
-        acc: fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs)),
-        envs: envs)
+      Present { value: head } => {
+        let chain = roadmap_event_chain(envs: envs, head: head, budget: count(envs))
+        roadmap_standing_acc_with_effective_red_control(
+          acc: fold(chain, init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs)),
+          envs: chain)
+      }
     } }
   }
 }
@@ -2109,7 +2112,8 @@ fn roadmap_node_accepted_without_red_tree(envs: List<RoadmapEventEnvelope>) -> B
   }
 }
 
-// THE EFFECTIVE RED CONTROL OF A NODE'S LIVE ACCEPTANCE: the receipt's own evidence, upgraded by the latest
+// `envs` is the node's causal chain in order (roadmap_event_chain), so only a pair appended after the live
+// acceptance counts. THE EFFECTIVE RED CONTROL OF A NODE'S LIVE ACCEPTANCE: the receipt's own evidence, upgraded by the latest
 // appended RedTreeRecorded when (and only when) the receipt is tree-unrecorded. A receipt that already carries
 // its pair is never overridden by a later event, and an appended pair that does not hold upgrades nothing.
 // Reading, not writing: the receipt and the log are untouched.
@@ -2118,22 +2122,26 @@ fn roadmap_receipt_effective_red_control(receipt: RoadmapAcceptanceReceipt, envs
     RedControlNotRun => receipt.red_control
     RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: _ } => receipt.red_control
     RedControlTreeUnrecorded { witness_module: wm, witness_fn: wf, executed_on: eo } =>
-      roadmap_red_control_upgraded(envs: envs, current: receipt.red_control, witness_module: wm, witness_fn: wf, executed_on: eo)
+      roadmap_red_control_upgraded(envs: envs, base: receipt.red_control, current: receipt.red_control, witness_module: wm, witness_fn: wf, executed_on: eo)
   }
 }
 
-fn roadmap_red_control_upgraded(envs: List<RoadmapEventEnvelope>, current: RedControlEvidence, witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr) -> RedControlEvidence {
+fn roadmap_red_control_upgraded(envs: List<RoadmapEventEnvelope>, base: RedControlEvidence, current: RedControlEvidence, witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr) -> RedControlEvidence {
   match envs.first() {
     Absent => current
     Present { value: hd } => {
       let next = match hd.event.kind {
+        // A new acceptance, or a revocation, ends whatever pair was appended before it: a pair is evidence
+        // about the acceptance it was appended after, never about a later one.
+        AcceptanceRecordedEvent { receipt: _, evidence: _ } => base
+        AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => base
         RedTreeRecorded { observation: ob } =>
           if red_observation_holds(o: ob) {
             RedControlExecuted { witness_module: witness_module, witness_fn: witness_fn, executed_on: executed_on, observation: ob }
           } else { current }
         _ => current
       }
-      roadmap_red_control_upgraded(envs: envs.skip(n: 1), current: next, witness_module: witness_module, witness_fn: witness_fn, executed_on: executed_on)
+      roadmap_red_control_upgraded(envs: envs.skip(n: 1), base: base, current: next, witness_module: witness_module, witness_fn: witness_fn, executed_on: executed_on)
     }
   }
 }
