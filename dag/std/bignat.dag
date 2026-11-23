@@ -327,7 +327,7 @@ fn montgomery_step(ctx: MontgomeryModulus, t: List<Int>, ai: Int, b: List<Int>) 
   let m = ctx.modulus.limbs
   let q = (((t0 + ai * bignat_lowest(limbs: b)) % bignat_base) * ctx.neg_inverse) % bignat_base
   let v0 = t0 + ai * bignat_lowest(limbs: b) + q * bignat_lowest(limbs: m)
-  bignat_pad(limbs: montgomery_cells(t: bignat_drop_lowest(limbs: t), b: bignat_drop_lowest(limbs: b), m: bignat_drop_lowest(limbs: m), ai: ai, q: q, carry: v0 / bignat_base, acc: []), width: ctx.width + 1)
+  montgomery_cells(t: bignat_drop_lowest(limbs: t), b: bignat_drop_lowest(limbs: b), m: bignat_drop_lowest(limbs: m), ai: ai, q: q, carry: v0 / bignat_base, acc: [])
 }
 
 type MontgomeryCellState {
