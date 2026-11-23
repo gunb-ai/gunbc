@@ -620,7 +620,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
   // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
   // census_door_gate, a pure function over the read values so a claim exercises it without a host. The
-  // recovery doors (compute_recover_catalog_cli and its two apply siblings) live in the checkout's dag;
+  // recovery doors (compute_recover_catalog_serving_cli and its two apply siblings) live in the checkout's dag;
   // a checkout not yet detached at the dispatched revision does not contain them, and asking its stale
   // tree answers "function compute_recover_catalog_cli is not in the loaded entry" — measured on srv1,
   // run 44984397614, 2026-11-22. An unknown census dominates the assessment (fail_closed), and an
@@ -836,7 +836,7 @@ type ConvergeAction =
   // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
   | RecordServeIdentity { install_path: String, revision: String, sha256: String }
   // The serving converge's recovery leg: after the identity is recorded, a stale seat (one whose holder is
-  // dead and whose launch deadline has passed) is recovered by running compute_recover_cli over ssh as the
+  // dead and whose launch deadline has passed) is recovered by running compute_recover_serving_cli over ssh as the
   // service user. The observe classifies each seat through the recovery model: a live or too-early holder is
   // legitimately held (plan nothing); an unreadable slot or one reference in two seat dirs is observation
   // unknown (the plan REFUSES). The apply runs the CLI with two read-backs: the attempt record (must be
@@ -1380,16 +1380,16 @@ fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
 // THE RECOVERY LEG (increment 2, program remote_build_ssh_dispatch_is_an_admitted_scaffold).
 //
 // Everything this leg knows about a stale seat arrived through the model: the observe read the seat
-// census through the recovery door (serving_leg_seat_census -> compute_recover_catalog_cli, whose
+// census through the recovery door (serving_leg_seat_census -> compute_recover_catalog_serving_cli, whose
 // every judgement is gunbc.compute.attempt_lifecycle::recovery_write_authorization), and the plan
 // planned RecoverStaleSeat only for an established census entry the model AUTHORIZED. The leg itself
 // decides nothing. It runs three doors over the ssh edge as the serving account — all through the
 // typed `gunbc run` shape (gunbc.cli_invoke) — and reads their answers in the doors' own declared
 // vocabulary:
-//   * the write door compute_recover_cli, whose exit maps through recover_door_verdict — the ONE
+//   * the write door compute_recover_serving_cli, whose exit maps through recover_door_verdict — the ONE
 //     declared mapping, living beside compute_recover_exit, the only producer of those numbers. No
 //     literal 0/1/2 appears anywhere at this leg.
-//   * the read-back door compute_recover_readback_cli, which answers the two questions a converge
+//   * the read-back door compute_recover_readback_serving_cli, which answers the two questions a converge
 //     must ask after applying a recovery — what the ATTEMPT RECORD says, and whether the SEAT CHARGE
 //     came back (gunbc.compute.host_capacity::compute_seat_charge_returned) — both read through the
 //     model, in one line, parsed by recover_readback_reading.
@@ -1487,8 +1487,8 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
       Absent => RecoverCatalogLegUnknown { detail: "the serving account's uid is unobserved, so the census door cannot be placed in its user session" }
       Present { value: serving_uid } => match converge_gunbc_door_argv(
         d: d,
-        function: "compute_recover_catalog_cli",
-        arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }],
+        function: "compute_recover_catalog_serving_cli",
+        arguments: [NamedArgumentRequest { name: "host", value: d.host as String }],
         runtime_dir: user_session_runtime_dir(uid: serving_uid)
       ) {
         Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
@@ -1529,8 +1529,8 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
       Absent => StepFailed { cause: join(["the serving account's uid is not in the re-read passwd, so the recovery door for ", reference as String, " cannot be placed in its user session"], "") }
       Present { value: serving_uid } => {
         let runtime_dir = user_session_runtime_dir(uid: serving_uid)
-        match converge_gunbc_door_argv(d: d, function: "compute_recover_cli", arguments: [
-          NamedArgumentRequest { name: "repo_root", value: repo },
+        match converge_gunbc_door_argv(d: d, function: "compute_recover_serving_cli", arguments: [
+          NamedArgumentRequest { name: "host", value: d.host as String },
           NamedArgumentRequest { name: "reference", value: reference as String },
           NamedArgumentRequest { name: "receipt_path", value: join([repo, "/recover-", reference as String, ".receipt.json"], "") },
         ], runtime_dir: runtime_dir) {
@@ -1560,8 +1560,8 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
 // cleaned or whose charge was never written — nothing held anywhere); an ACTIVE record or a
 // STILL-HELD charge fails the step.
 fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr, runtime_dir: FilePath) -> ConvergeStep {
-  match converge_gunbc_door_argv(d: d, function: "compute_recover_readback_cli", arguments: [
-    NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String },
+  match converge_gunbc_door_argv(d: d, function: "compute_recover_readback_serving_cli", arguments: [
+    NamedArgumentRequest { name: "host", value: d.host as String },
     NamedArgumentRequest { name: "reference", value: reference as String },
   ], runtime_dir: runtime_dir) {
     Absent => StepFailed { cause: join(["the read-back run's named arguments for ", reference as String, " could not be admitted"], "") }
@@ -1937,7 +1937,7 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
-    // The recovery leg: run compute_recover_cli over ssh as the service user. Exit 0 = released/nothing
+    // The recovery leg: run compute_recover_serving_cli over ssh as the service user. Exit 0 = released/nothing
     // held → settled. Exit 1 = declined (the seat is still legitimately held; the observation was stale)
     // → failed. Exit 2 = refused (observation unknown) → failed. The exit-code mapping is declared by
     // compute_recover_exit (work_provider_local); this leg reads that mapping, not bare literals.
