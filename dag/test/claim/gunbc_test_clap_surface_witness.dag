@@ -1,0 +1,121 @@
+module test.claim.gunbc_test_clap_surface_witness
+
+// THE SAME WORDS, CROSSED THROUGH THE SURFACE THAT ACTUALLY READS THEM.
+//
+// `gunbc.gunbc_cli_command` renders the caller contract (`gunbc_test_batch_invocation_words`),
+// and `test.claim.gunbc_test_batch_argv_witness` receives it as a shape. Neither of those can see
+// a missing option: the argv parser is a GENERATED artifact
+// (`gunbc_cli_dispatch_generated.rs`, authority `gunbc.cli_dispatch_surface`), and 58 Rust
+// controls drove the route directly, so a whole layer -- the options themselves -- went unseen
+// by every control until a rebuilt binary rejected `--source-root` at parse time. This claim is
+// the control that was missing: it takes the words from the SAME authority the callers use,
+// hands them to the built `gunbc` as a real child process, and requires the route to run with
+// the mode and the corpus those words named. Words that parse into nothing are caught here, at
+// the layer that decides.
+//
+// The red row is the refusal half of the same contract: a corpus named by --source-root does not
+// license a subject outside the claim universe. The route must refuse, not run the default
+// corpus and report the standing anyway.
+
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.rust.cargo { cargo_default_release_dir }
+import gunbc.gunbc_cli_command {
+  TestBatchMode, HermeticBatch, WetBatch, RecordBatch, gunbc_test_batch_command
+}
+import gunbc.layout_witness_join { lines_of }
+import std.algebra { string_contains }
+import std.logic { Bool }
+import std.types { String }
+
+// The specimen is the tree's own held claim, executed against the checkout the witness runs in.
+fn clap_fixture_label() -> String {
+  "//test/claim/run_verdict_exit_status_fixture:verdict_success"
+}
+
+fn clap_held_line(label: String) -> String {
+  concat(label, " HELD outcome=Pass")
+}
+
+fn clap_run(args: List<String>) -> GunbcWitnessRunResult {
+  let toplevel = git.Inspect.Toplevel()
+  gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: args
+  )
+}
+
+// THE HERMETIC WORDS, PARSED. Hermetic carries no mode flag -- so this row is also the control
+// that the ABSENCE of a flag grants the default rather than refusing: a surface that lost the
+// default would fail here, not at the caller.
+test fn the_hermetic_words_reach_the_route_held() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let result = clap_run(args: command.arguments)
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label()))
+}
+
+// THE WET WORDS, PARSED: --wet must reach the route as the wet mode, not be dropped at the
+// surface -- a dropped --wet turns a wet caller into a refused one, silently.
+test fn the_wet_words_reach_the_route_held() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: WetBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let result = clap_run(args: command.arguments)
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label()))
+}
+
+// THE RECORD WORDS, PARSED: --record and its store travel together through the surface. The
+// hermetic specimen holds under record too; the row's point is that the surface delivers both
+// words, which a surface missing --fixture-store cannot do.
+test fn the_record_words_reach_the_route_with_their_store() -> Bool {
+  let store = "target/keen-fox-230-clap-record-store"
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: RecordBatch { fixture_store: store },
+    source_roots: ["dag", "src/v2"]
+  )
+  let args = command.arguments
+  let result = clap_run(args: args)
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
+    string_contains(s: result.stdout, pattern: "//test/claim/run_verdict_exit_status_fixture:")
+}
+
+// SEVERAL OPERANDS, ONE PROCESS, EACH IDENTITY ONCE. An exact label plus the package that
+// contains it denote an overlapping claim; the surface must hand both operands to the route and
+// the route must print that claim's located line exactly once, in one child.
+test fn overlapping_operands_print_the_shared_claim_once() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: ["//test/claim/run_verdict_exit_status_fixture", clap_fixture_label()],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let result = clap_run(args: command.arguments)
+  let held_lines =
+    lines_of(text: result.stdout)
+      |> filter(l => string_contains(s: l, pattern: clap_held_line(label: clap_fixture_label())))
+  result.exit_code == 0 && count_where(xs: held_lines, predicate: l => true) == 1
+}
+
+// THE RED: a named corpus does not license a subject outside the claims. The production module
+// exists in the roots given; the route must refuse rather than evaluate it as a claim.
+test fn a_source_root_does_not_license_a_non_claim_operand() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: ["//dag/gunbc/gunbc_cli_command:gunbc_test_batch_mode_words"],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let result = clap_run(args: command.arguments)
+  result.exit_code == 2 &&
+    !string_contains(s: result.stdout, pattern: "HELD outcome=Pass")
+}
