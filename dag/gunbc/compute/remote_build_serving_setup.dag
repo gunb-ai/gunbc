@@ -435,6 +435,14 @@ fn serving_host_needs_native_build(host: HostIdentity, executor_arch: Architectu
   }
 }
 
+// The revision the native host's identity sidecar must record to stay settled: the dispatched revision for a
+// native-build host (its only binary->revision binding), and unbound (Absent) for an upload host, whose pin
+// sha already carries the binding so an identical sha at an older revision stays settled. Explicit return
+// type so both optional branches unify.
+fn serving_identity_bound_revision(host: HostIdentity, executor_arch: Architecture, dispatched_revision: String) -> String? {
+  if serving_host_needs_native_build(host: host, executor_arch: executor_arch) { Present { value: dispatched_revision } } else { Absent }
+}
+
 // The identity-sidecar compare over its reading (PR-1c, clever-raven-401). Unlike
 // serving_subject_value_deviation (which compares to a fixed PIN), the sidecar must equal the sha of the
 // binary the host ACTUALLY RUNS -- a read value, not a constant -- so it needs this one-off. The reading
@@ -1487,7 +1495,7 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       // RB-M3: on a NATIVE-build host the sidecar's recorded revision is the only thing binding the running
       // binary to a revision, so it is bound to the dispatched revision here (a stale one drifts and rebuilds).
       // On an upload host it is left unbound (Absent) -- the pin sha already carries the binding (see above).
-      let identity_bound_revision = if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) { Present { value: pin.dispatched_revision } } else { Absent }
+      let identity_bound_revision = serving_identity_bound_revision(host: d.host, executor_arch: pin.executor_arch, dispatched_revision: pin.dispatched_revision)
       let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String), bound_revision: identity_bound_revision)
       let identity_unknowns = serving_serve_identity_unknown(binary_sha: serve_identity_binary_sha, leg: o.serve_identity)
       // The seat census: a STALE seat (the recovery write authorized THROUGH THE MODEL, by
