@@ -3126,6 +3126,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "A parse-clean count names every file it did not judge."),
     ),
     roadmap_node(
+      identity: "rn_ZGWTH1RA7BXGQN9ZWZK3QZF2B0",
+      id: "acceptance-history-parser-seed-builtin-deleted",
+      owner: "self-host",
+      carriers: concat(carrier(path: "src/v1/stage0/src/cli_run/roadmap_acceptance_history_carrier.rs"), carrier(path: "dag/gunbc/roadmap/roadmap_acceptance_history_carrier.dag")),
+      line: ticket(t: fields(
+        headline: "Delete the hand-written seed builtin that parses the acceptance event history, once nothing models a call to it",
+        boundary: "The seed builtin parse_roadmap_acceptance_event_history_jsonl and its Rust body parse_roadmap_acceptance_event_history_jsonl_builtin in src/v1/stage0/src/cli_run/roadmap_acceptance_history_carrier.rs, with the sites that exist only to reach it: its registration in src/v1/stage0/src/v1_interpreter.rs (the free_call arm), its signature in src/v1/stage0/src/v1_compiler_infer_method.rs and src/v1/04_method.dag, its entry in src/v1/stage0/src/v1_interpreter_dispatch_generated.rs, and the declared scaffold roadmap_acceptance_event_history_jsonl_parser_seed_scaffold in dag/gunbc/roadmap/roadmap_acceptance_history_carrier.dag (a Disposition that dissolves to RealizationDispatch and binds the builtin). Today the one modeled caller is parse_roadmap_acceptance_event_history_carrier in that same module, which the loaders load_roadmap_acceptance_event_history_from_carrier_text and its importers reach. GATED on the receipt-line read going through the modeled member readers (sharp-bear-582's PR1, not yet merged): until it merges that wrapper still calls the builtin and the claim of zero callers is false. The first act of this row is to establish the caller set by name at the merged revision with bounded git grep over src/v1, src/v2 and dag, state what was inspected and what remains unknown, and not to infer absence from the PR title. The deletion is governed by cli_run hollowing (gunbc.plans.cli_run_hollowing_plan) and serves the v2 self-host program, which is what admits a v1 seed change (gunbc.v1.v1_maintenance_standing::v1_seed_standing); it changes no behaviour of the modeled readers.",
+        displaced_cost: "A hand-written seed parser stays a second authority for one fact, how an acceptance event line decodes, beside the modeled readers, and its Rust tests keep the seed carrying a function nothing modeled calls. Each live copy is something the next change to the event shape must update twice.",
+        first_slice: "At the revision where PR1 has merged: list the callers of parse_roadmap_acceptance_event_history_jsonl across src/v1, src/v2 and dag with the exact command and revision; if the only remaining reference is the wrapper, re-point or remove that wrapper in the same change, then delete the builtin, its three registration sites, its dispatch entry and the scaffold row together, since a scaffold binding a deleted declaration would dangle.",
+        red_control: "OPEN as a before/after pair, to be recorded as data; no red_at or green_at sha is claimed. Before: the builtin is registered and a call to it evaluates. After: the same call from a fixture source refuses as an unknown free call, the modeled readers still decode the same carrier text to the same events (the existing modeled witnesses over RoadmapAcceptanceEventHistoryLoad pass unchanged), and the bounded caller grep at the head returns no reference outside the deleted files. Run on srv1 under heavy-slot, not in a session container.",
+        out_of_scope: "Any change to how the modeled readers parse or to the event shape, the PR1 change itself, other cli_run hollowing chunks, any other seed builtin, and the handback_to_json declaration, which is a separate listed seed declaration.",
+        handback: "The caller command, revision and its output before the deletion, the files and registration sites removed, the unknown-call refusal and the unchanged modeled-reader results at the head, and the remaining shapes in the carrier module if any."
+      )),
+      parent: in_project(project: "v1-deletion-program", contribution: "A hand-written seed builtin with no modeled caller leaves the population the deletion frontier counts."),
+    ),
+    roadmap_node(
       identity: "rn_Q3X3MA0XF1FQRFQ3D17QEYDFZ7",
       id: "foreign-whole-root-primary-source-root-admitted",
       owner: "self-host",
