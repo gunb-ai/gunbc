@@ -208,6 +208,7 @@ pub enum CliOperandValue {
 #[serde(tag = "_variant")]
 pub enum CliOperandArity {
     CliExactlyOneOperand,
+    CliOneOrMoreOperands,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -863,3 +864,5 @@ pub struct CliScmReadVerbOperand;
 pub struct CliProgramOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliExactlyOneOperand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliOneOrMoreOperands;
