@@ -43,7 +43,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_authority { roadmap_acceptance_event_history_load, roadmap_retired_node_ids_load }
 import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoad }
-import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_line_of, roadmap_acceptance_record_cli, roadmap_event_record_cli }
+import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_line_of, RoadmapAcceptanceLineParsed, RoadmapAcceptanceLineRefused, roadmap_acceptance_record_cli, roadmap_event_record_cli }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // THE PRE-WRITE REFUSAL FOR THE ONE-TIME CUTOVER
@@ -433,10 +433,12 @@ fn roadmap_cutover_acceptance_record_cli(
 ) -> ProcessExit {
   let report = Filesystem.Read(path: report_path)
   match roadmap_acceptance_line_of(text: receipt_line) {
-    Absent => roadmap_acceptance_record_cli(
+    // A refused line is NOT swallowed here: it falls back to roadmap_acceptance_record_cli, which now
+    // refuses it by name (the located detail is carried up there). Nothing is flattened to none.
+    RoadmapAcceptanceLineRefused { line_index: _, detail: _ } => roadmap_acceptance_record_cli(
       repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
       merged_at: merged_at, head_sha: head_sha, author: author)
-    Present { value: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
+    RoadmapAcceptanceLineParsed { event: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
       Absent => roadmap_acceptance_record_cli(
         repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
         merged_at: merged_at, head_sha: head_sha, author: author)

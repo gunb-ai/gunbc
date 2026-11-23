@@ -1,0 +1,85 @@
+// RECEIPT-LINE WITNESS — the LIVE operator acceptance-command route must parse a well-formed receipt line
+// and REFUSE a malformed one BY NAME. This is the executing consumer the primitive census row
+// (dag/gunbc/primitive_egress/dispositions_text.dag, row parse_roadmap_acceptance_event_history_jsonl) rests
+// on: the primitive's surviving job is the operator receipt-line grammar reached through
+// gunbc.roadmap.roadmap_operator_acceptance.roadmap_operator_acceptance_parse_tail, and the entry point above
+// it, gunbc.roadmap.roadmap_event_cli.roadmap_acceptance_line_of, must carry the located refusal
+// (line_index, detail) up rather than flattening it to none (node adhoc-c445f282-1c3 will retire the whole
+// chain once a .dag-native receipt-line grammar exists).
+//
+// WHY THIS IS DISCRIMINATING, not vacuous: roadmap_acceptance_line_of used to answer `none` for BOTH a
+// malformed line and a line that simply parsed to no event, so any witness that only asked "is it none?" was
+// green while the route was blind to WHY it failed. Here a well-formed line must parse THROUGH the live route
+// to the EXACT expected event, and a malformed line must come back as the named RoadmapAcceptanceLineRefused
+// with a non-empty located detail — not the flattened none. The two together fail a route that answers
+// none-or-empty for everything. This claim needs no event log, filesystem or git carrier: the line is built
+// in memory by the operator law's own writer and parsed by the seed parser through the live route.
+module test.claim.roadmap.roadmap_acceptance_receipt_line_witness
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.content_hash { content_hash_eq_structural }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_model {
+  RoadmapAcceptanceReceipt, RoadmapNodeId, AcceptanceRecorded, roadmap_criteria_digest,
+}
+import gunbc.roadmap.roadmap_status { RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_receipt_line }
+import gunbc.roadmap.roadmap_event_cli {
+  roadmap_acceptance_line_of, RoadmapAcceptanceLineParsed, RoadmapAcceptanceLineRefused,
+}
+import test.claim.roadmap.roadmap_task_record_witness { sample_ticket }
+
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+// A well-formed acceptance receipt, spelled by the operator law's own fixtures: a real criteria digest over a
+// sample ticket, an executed red control and a delivered handback — the shape the live route is built to read.
+fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: roadmap_criteria_digest(t: sample_ticket()),
+    red_control: RedControlExecuted {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_receipt_line_witness" as NonEmptyStr,
+      witness_fn: "sample_receipt" as NonEmptyStr,
+      executed_on: "2026-11-17",
+    },
+    handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-17" as NonEmptyStr,
+  }
+}
+
+// POSITIVE, through the live route: a well-formed line, spelled by the operator law's writer, parses through
+// roadmap_acceptance_line_of to the EXPECTED event — the same node, accepted_by and accepted_on, and a
+// criteria digest that is structurally the receipt's own. A route that answered none for everything would
+// fail this arm (it is not Present-parsed), so this is not satisfied by an empty answer.
+test fn a_well_formed_operator_line_parses_through_the_live_route_to_the_expected_event() -> Bool {
+  let receipt: RoadmapAcceptanceReceipt = sample_receipt(node: "t-receipt-line-witness")
+  let line: String = roadmap_operator_acceptance_receipt_line(receipt: receipt)
+  match roadmap_acceptance_line_of(text: line) {
+    RoadmapAcceptanceLineParsed { event: event } => match event {
+      AcceptanceRecorded { receipt: parsed } =>
+        claim("well-formed line parses through roadmap_acceptance_line_of", true)
+        && ((parsed.node as String) == "t-receipt-line-witness")
+        && ((parsed.accepted_by as String) == "briansrls")
+        && ((parsed.accepted_on as String) == "2026-11-17")
+        && content_hash_eq_structural(left: parsed.criteria_digest, right: receipt.criteria_digest)
+      _ => claim("well-formed line parsed to an acceptance_recorded event", false)
+    }
+    RoadmapAcceptanceLineRefused { line_index: _, detail: _ } =>
+      claim("well-formed line must NOT be refused by the live route", false)
+  }
+}
+
+// NEGATIVE, by name: a line the grammar cannot parse is refused BY NAME — a RoadmapAcceptanceLineRefused whose
+// detail is a non-empty, located reason ("line 1: …") — NOT the flattened none the route used to answer, and
+// NOT an empty event list dressed up as a refusal. Asserting the located detail is what makes this fail on a
+// route that quietly answers none or empty.
+test fn a_malformed_line_is_refused_by_name_not_flattened_to_none() -> Bool {
+  match roadmap_acceptance_line_of(text: "this is not an acceptance receipt line") {
+    RoadmapAcceptanceLineRefused { line_index: _, detail: detail } =>
+      claim("malformed line is refused by name, not answered none", true)
+      && string_contains(s: detail as String, pattern: "line 1")
+    RoadmapAcceptanceLineParsed { event: _ } =>
+      claim("a malformed line must NOT parse through the live route", false)
+  }
+}
