@@ -89,10 +89,11 @@ type DeclaredBoardFiguresStanding {
 
 // The board rows that carry a standing their own module declares. The completeness guard is NOT a count of
 // these entries against a hand list -- a count copied from the tree is a change detector (design_argument::
-// fail_closed). The roster every standing must appear in is derived from the GPU modules' own declarations
-// (declared_gpu_standing_rows below), and the guard is the real witness claim
+// fail_closed). The roster every standing must appear in is declared_gpu_standing_rows below -- a
+// HAND-MAINTAINED roster (its own comment states the two hand-maintained levels and the trigger), not an
+// auto-derived one -- and the guard is the real witness claim
 // test.claim.fleet.gpu_declared_figures_standing_witness::RED_every_declared_gpu_standing_row_is_bound: every
-// TranscribedUncited standing in that derived roster is bound here or in the device bindings, so a standing
+// TranscribedUncited standing in that roster is bound here or in the device bindings, so a standing
 // added to a GPU module without an entry goes red by an identity join, not by anyone editing a number. The
 // standings are imported by value rather than named as refs, so a binding cannot be pointed at a row since
 // edited.

@@ -126,7 +126,9 @@ data a2_product_brief_authority: ExternalAuthority = ExternalAuthority {
 
 data a2_brief_standing: CitedFigureStanding = CitedToAuthority { authority: a2_product_brief_authority }
 
-// EVERY STANDING THIS MODULE DECLARES, for the consumer's derived roster (see extdeps.gpu.amd's export).
+// EVERY STANDING THIS MODULE DECLARES. HAND-MAINTAINED: add a standing here when you declare one, and
+// join this list into gunbc.fleet.gpu_declared_figures_standing::declared_gpu_standing_rows -- see that
+// function's comment for the two hand-maintained levels and the trigger (extdeps.gpu.amd is the worked example).
 data nvidia_a2_declared_figure_standings: List<CitedFigureStanding> = [
   a2_brief_standing,
 ]
