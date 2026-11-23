@@ -580,6 +580,17 @@ cd "$TREE" && "$BIN" run --source-root dag --source-root src/v2 \
   --arg repo_root=<the instance repo> --arg node=<node id> \
   --arg kind=pull_request_merged \
   --arg "text=<pr_url> <head_sha> <merged_at> <merge_sha>" \
+
+To check that a recording actually landed on the durable branch, run the check entry — it exits 0 when the
+event is on the branch's checkout, and refuses with the ref, the remote, the tip the REMOTE states and the
+`git fetch` / `git show` to run against it when it is not. A checkout of the branch that is behind reads
+EMPTY; the words say so rather than reporting absence as a fact:
+
+```
+gunbc run --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_event_publication_check_cli \
+  --arg repo_root=<the instance root> --arg node=<the node> --arg event_id=<the event id>
+```
   --arg author=principal:<authority>/<namespace>/<subject> --arg leaf_stage= --arg leaf_piece= --arg leaf_member=
 ```
 
