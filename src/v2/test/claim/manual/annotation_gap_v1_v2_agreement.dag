@@ -1,6 +1,6 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement
 
-import std.types { List }
+import std.types { CommitSha, List }
 import std.coercion { unicode_scalar_unfold }
 import std.source_annotation {
   AnnotationScope,
@@ -25,7 +25,11 @@ import std.host_text { chars }
 // erased scopes, v2's grammar productions -- so their structural keys are not comparable (v1 keys name
 // authored identifiers, v2 keys name productions). What both trees share is the SOURCE: where a
 // comment sits between two sibling constructs both parsers retain -- module items, statements, call
-// arguments -- the two attachments must name the same neighbour TEXT on each side. Where the trees
+// arguments, the operand of an infix application -- the two attachments must name the same neighbour
+// TEXT on each side. The infix row is not decoration: v2's region roster
+// (v2.compiler.parse parse_node_is_source_region) keeps infix applications as regions ALONGSIDE
+// production wrappers, and it is the only row here that can see that second arm -- drop the arm and the
+// comment before `2 * 3` names `2` in v2 while v1 still names `2 * 3`. Where the trees
 // legitimately differ (v2's stmt_seq has no braces, v1's block does) the scopes' extents differ, so
 // this control compares neighbours, not scopes.
 //
@@ -33,9 +37,9 @@ import std.host_text { chars }
 //   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
 //     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag
 
-data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata zqx_d: Int = 1\n\n// between the items\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = zqx_g(\n    a,\n    // between the arguments\n    b\n  )\n  // between the statements\n  x\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n"
+data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata zqx_d: Int = 1\n\n// between the items\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = zqx_g(\n    a,\n    // between the arguments\n    b,\n    // before the product\n    1 + 2 * 3\n  )\n  // between the statements\n  x\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n"
 
-data agreement_texts: List<String> = ["above the data row", "between the items", "between the arguments", "between the statements"]
+data agreement_texts: List<String> = ["above the data row", "between the items", "between the arguments", "before the product", "between the statements"]
 
 fn row_text(row: SourceAnnotationDebt) -> String {
   row.text
@@ -154,13 +158,30 @@ fn v2_scope_text(source: String, index: v2.std.provenance.SpanIndex, scope: Opti
 test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
   let v1 = v1_neighbours(source: agreement_source)
   let v2 = v2_neighbours(source: agreement_source)
-  (v1 |> count) == 4 && (v2 |> count) == 4
+  (v1 |> count) == 5 && (v2 |> count) == 5
     && nth(xs: v1, i: 1) == nth(xs: v2, i: 1)
     && nth(xs: v1, i: 2) == nth(xs: v2, i: 2)
     && nth(xs: v1, i: 3) == nth(xs: v2, i: 3)
+    && nth(xs: v1, i: 4) == nth(xs: v2, i: 4)
     && nth(xs: v1, i: 0) == "above the data row | <none> | data zqx_d: Int = 1"
     && nth(xs: v2, i: 0) == "above the data row | module zqx.agree | data zqx_d: Int = 1"
 }
+
+// THE PROBE PAIR THAT SHOWS THIS CONTROL IS NOT VACUOUS, as data rather than as prose a reader has to
+// trust. kind is "deliberate-break": the red exists only on a tree where the v2 roster was broken by
+// hand, so red_at is NOT a main commit -- it is the head of the durable probe ref below, kept so anyone
+// can fetch the very tree that turned this control red. Its roster arm is the second disjunct of
+// v2.compiler.parse parse_node_is_source_region (the infix-application projection); drop it and a
+// comment before `2 * 3` loses `2 * 3` as its neighbour in v2 while v1 still names it, so the row
+// "before the product" below -- the row this control gained for exactly that reason, since the four
+// rows before it contain no infix application and could not see the break -- disagrees and this claim
+// fails. red_base is the commit the probe ref was cut from, so `git diff red_base red_at` is the break
+// and nothing else; green_at is where this SAME claim was observed passing.
+data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
+data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
+data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "RED_AT_SHA_PLACEHOLDER"
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "GREEN_AT_SHA_PLACEHOLDER"
 
 fn nth(xs: List<String>, i: Int) -> String {
   match list_at_optional(xs: xs, index: i) {
