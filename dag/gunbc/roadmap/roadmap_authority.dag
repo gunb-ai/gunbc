@@ -6465,7 +6465,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Disabling the memo, proposing the env switch as a knob, widening any floor budget, and the step-count problem.",
         handback: "The named site, the byte bound chosen and why that size, VmHWM before and after at one sha for the P-256 entry and one corpus witness of comparable size, and the eval-step figures beside them so a reader can see the memo does not carry the step cost.",
       )),
-      dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "The interpreter's memo stops retaining memory the computation does not need."),
       centering: plan(text: "Target: eval_call_memo_put and its entry cap in src/v1/stage0/src/v1_interpreter.rs, beside the cross-claim memo's byte budget."),
     ),
