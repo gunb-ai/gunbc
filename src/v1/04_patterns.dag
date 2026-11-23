@@ -19,7 +19,7 @@ import v1.std.core { Unmarked,
   Connective, Disj, NoConnective,
   CardOptional,
   ErrorNode, make_error_node,
-  VariantNotFound, FieldNotFound, NonExhaustiveMatch,
+  VariantNotFound, FieldNotFound, NonExhaustiveMatch, ExhaustivenessUnknown,
   MatchPattern, LitPattern, arm_pattern,
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
@@ -810,24 +810,157 @@ fn check_match_exhaustiveness(
   module_name: String
 ) -> List<ErrorNode> {
   match constructor_roster_for(type_node: scrutinee_type, env: env) {
+    // UNJUDGED by this check: `ConstructorsOpen` is the ELSE branch of
+    // `constructor_roster_for` and covers open scalars, single-constructor
+    // products AND failed lookups. `exhaustiveness_witnesses` deliberately treats
+    // an open column with only specific (non-default) rows as covered, so the
+    // honest answer here is a NEUTRAL no-claim -- exactly the pre-PR
+    // `ConstructorsOpen => []`. It is kept OUTSIDE the proof-bearing
+    // `ExhaustivenessVerdict` so we never fabricate an `Exhaustive` (established
+    // coverage) for an outcome we did not judge.
     ConstructorsOpen => []
     ConstructorsClosed { names: _ } =>
-      let witnesses = exhaustiveness_witnesses(
-        rows: arms |> map(a => [arm_pattern(n: a)]),
-        columns: [scrutinee_type],
-        env: env,
+      exhaustiveness_verdict_diags(
+        verdict: closed_exhaustiveness_verdict(
+          arms: arms,
+          scrutinee_type: scrutinee_type,
+          env: env,
+          module_name: module_name
+        ),
+        span: span,
         module_name: module_name
       )
-      if (witnesses |> count) > 0 {
-        [make_error_node(
-          diagnostic: NonExhaustiveMatch {
-            missing: witnesses |> map(w => witness_row_missing_name(w: w)),
-            span: span
-          },
-          module_name: module_name
-        )]
-      } else {
-        []
-      }
   }
+}
+
+// The CLOSED-roster (fully resolved, roster-known) exhaustiveness verdict. This
+// reuses the existing `exhaustiveness_witnesses` ALGORITHM UNCHANGED -- it only
+// expresses that algorithm's result in the shared three-way
+// `ExhaustivenessVerdict` so a single consumer (`exhaustiveness_verdict_diags`)
+// turns every verdict into its diagnostic. A closed roster with witnesses is
+// `VerdictNonExhaustive { missing }` (the reachable producer of the NonExhaustive
+// case); otherwise `VerdictExhaustive` -- here `Exhaustive` is an HONEST claim
+// (the witness algorithm established no uncovered row). The `ConstructorsOpen`
+// case is handled NEUTRALLY (no verdict) by `check_match_exhaustiveness` above,
+// never mapped to `Exhaustive`.
+fn closed_exhaustiveness_verdict(
+  arms: List<Node>,
+  scrutinee_type: Node,
+  env: TypeEnv,
+  module_name: String
+) -> ExhaustivenessVerdict {
+  let witnesses = exhaustiveness_witnesses(
+    rows: arms |> map(a => [arm_pattern(n: a)]),
+    columns: [scrutinee_type],
+    env: env,
+    module_name: module_name
+  )
+  if (witnesses |> count) > 0 {
+    VerdictNonExhaustive { missing: witnesses |> map(w => witness_row_missing_name(w: w)) }
+  } else {
+    VerdictExhaustive
+  }
+}
+
+// ============================================================================
+// floor-exhaustiveness-refusal: the three-way exhaustiveness verdict.
+// A blocked coproduct/field lookup (`PatternLookupBlocked`, answered by
+// `lookup_variant_in_type` / `lookup_field_in_variant` with `diagnostics: []`)
+// leaves exhaustiveness NOT ESTABLISHED. That used to pass as success-adjacent
+// (`[]` diagnostics). It now splits into an explicit third verdict and REFUSES
+// into the accepted artifact (the emitted error nodes a compiled module may
+// carry) so a blocked match is never mistaken for an exhaustive one. Out of
+// scope (per the ticket): the resolved-type exhaustiveness algorithm and
+// `PatternDynamic` (already diagnoses) are untouched -- only blocked lookups
+// that previously answered `[]` gain the Unknown verdict + refusal.
+// ============================================================================
+
+// THE THREE-WAY EXHAUSTIVENESS VERDICT. Case names are prefixed `Verdict` so they
+// do not collide (variant names are globally unique in the v1 universe) with the
+// `ExhaustivenessUnknown` / `NonExhaustiveMatch` DIAGNOSTIC variants in 00_core.
+// Conceptually: Exhaustive | NonExhaustive {missing} | ExhaustivenessUnknown.
+type ExhaustivenessVerdict
+  = VerdictExhaustive
+  | VerdictNonExhaustive { missing: List<String> }
+  | VerdictUnknown { scrutinee: String }
+
+// A match arm is irrefutable when its pattern is a wildcard or a binding -- it
+// covers the whole domain regardless of the coproduct roster, so a blocked
+// lookup under such an arm does NOT leave coverage unestablished.
+fn match_arm_is_irrefutable(arm: Node) -> Bool {
+  match_pattern_is_irrefutable(pattern: arm_pattern(n: arm))
+}
+
+// The verdict for a match whose scrutinee's coproduct/field lookup is BLOCKED
+// (the scrutinee is a compiler-error node). Coverage cannot be enumerated, so
+// the verdict is Unknown UNLESS an irrefutable arm already covers the whole
+// domain, in which case the match is genuinely Exhaustive.
+fn blocked_scrutinee_exhaustiveness_verdict(
+  arms: List<Node>,
+  scrutinee_node: Node,
+  env: TypeEnv
+) -> ExhaustivenessVerdict {
+  if any(arms, a => match_arm_is_irrefutable(arm: a)) {
+    VerdictExhaustive
+  } else {
+    VerdictUnknown { scrutinee: scrutinee_verdict_name(scrutinee_node: scrutinee_node, env: env) }
+  }
+}
+
+// The blocked-lookup ENTRY (the two closed arms' consumer). The blocked answer
+// from `lookup_variant_in_type` / `lookup_field_in_variant` used to be swallowed
+// by `constructor_fields` (`LookupFailed => []`) and by the caller's
+// `PatternLookupBlocked => []` short-circuit. It now computes the three-way
+// verdict for a blocked scrutinee and hands it to `exhaustiveness_verdict_diags`,
+// the single consumer that refuses `VerdictUnknown` into the accepted artifact.
+fn blocked_scrutinee_exhaustiveness_diags(
+  arms: List<Node>,
+  scrutinee_node: Node,
+  env: TypeEnv,
+  span: SourceSpan,
+  module_name: String
+) -> List<ErrorNode> {
+  exhaustiveness_verdict_diags(
+    verdict: blocked_scrutinee_exhaustiveness_verdict(arms: arms, scrutinee_node: scrutinee_node, env: env),
+    span: span,
+    module_name: module_name
+  )
+}
+
+// THE single consumer that turns every `ExhaustivenessVerdict` into its
+// diagnostic -- NO verdict case is dropped (fail-closed). `VerdictExhaustive` is
+// accepted (no diagnostic); `VerdictNonExhaustive { missing }` -- produced on the
+// executing closed-roster route by `closed_exhaustiveness_verdict` -- refuses
+// with the existing `NonExhaustiveMatch`; `VerdictUnknown` -- produced on the
+// executing blocked-lookup route by `blocked_scrutinee_exhaustiveness_verdict` --
+// refuses into the accepted artifact with the blocking `ExhaustivenessUnknown`
+// (SeverityError / GateBlocking in the 00_core disposition table), so a blocked
+// match cannot flow into an accepted executable artifact as success. Every
+// verdict case is constructed by a named producer and consumed here over an
+// executing route -- none is dangling.
+fn exhaustiveness_verdict_diags(
+  verdict: ExhaustivenessVerdict,
+  span: SourceSpan,
+  module_name: String
+) -> List<ErrorNode> {
+  match verdict {
+    VerdictExhaustive => []
+    VerdictNonExhaustive { missing: missing } => [make_error_node(
+      diagnostic: NonExhaustiveMatch { missing: missing, span: span },
+      module_name: module_name
+    )]
+    VerdictUnknown { scrutinee: scrutinee } => [make_error_node(
+      diagnostic: ExhaustivenessUnknown { scrutinee: scrutinee, span: span },
+      module_name: module_name
+    )]
+  }
+}
+
+// The diagnostic must NAME what is unestablished and how to make it
+// establishable. Prefer the scrutinee's authored name; when the subject is a
+// compiler-error node with no authored slice, fall back to a fixed, actionable
+// phrase (never a fabricated plausible type name).
+fn scrutinee_verdict_name(scrutinee_node: Node, env: TypeEnv) -> String {
+  let name = authored_name_at(source_indices: env.source_indices, node: scrutinee_node)
+  if name == "" { "<scrutinee: declare its concrete coproduct type>" } else { name }
 }

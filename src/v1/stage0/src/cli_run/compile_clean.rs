@@ -358,6 +358,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::MissingField { .. } => "MissingField",
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
+        CompilerDiagnostic::ExhaustivenessUnknown { .. } => "ExhaustivenessUnknown",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
         CompilerDiagnostic::TypeAliasCycle { .. } => "TypeAliasCycle",
@@ -614,6 +615,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         // The subject is the arm's pattern name; the span locates the match.
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { pattern, .. } => pattern.clone(),
+        CompilerDiagnostic::ExhaustivenessUnknown { scrutinee, .. } => scrutinee.clone(),
         // THE SUBJECT IS THE TYPE NAME WRITTEN AT THE LITERAL, not a field: the repair is one
         // edit at one name (repoint it at a variant of that union), and keying on a field would
         // scatter one authoring mistake across a row per field written under it.
@@ -703,6 +705,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
         CompilerDiagnostic::ParseError { .. } => None,
         CompilerDiagnostic::PresentArmScrutineeTypeUnresolved { .. } => None,
+        CompilerDiagnostic::ExhaustivenessUnknown { .. } => None,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => None,
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => None,
         CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => None,
