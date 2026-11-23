@@ -37,6 +37,27 @@ import gunbc.persistent_instance_roots { RemoteBuildServing, persistent_instance
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_remote_build_user, fleet_posix_remote_build_home }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import product.fabric.work {
+  ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
+  RevocationStanding, RevocationAccepted,
+}
+import product.fabric.envelope { ResourceEnvelope, CpuRequirement }
+import product.fabric.isolation { IsolationProfile, FreshWritableRoot }
+import std.measure { HardwareThreadCount, hardware_thread_count }
+import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+// The fleet's own trust domain and toolchain capability are READ from their authorities, not re-spelled
+// here. gunbc.floor.floor_demand::gunbc_internal_fleet_trust_domain is the row
+// #gunbc.runner.runner_attempt_launch::plan_attempt_launch_cell_granted admits a Work against, so a
+// second spelling here would be a second place deciding the same meaning -- and because that admission
+// compares against the row, the two could drift apart and the admitted arm would silently widen or
+// narrow (gunbc.design_argument::single_authority). The capability is read the same way for the same
+// reason; see its row for what is and is not claimed about it.
+import gunbc.floor.floor_demand { gunbc_internal_fleet_trust_domain, linux_rust_toolchain_capability }
+import gunbc.fabric.fabric_executor_class {
+  ExecutorExecutionClass, ExecutionClassAdmission, ExecutionClassAdmitted,
+  ExecutionClassArchitectureRefused, ExecutionClassUnclassified,
+  admit_execution_class, execution_class_admission_wire, executor_execution_class_roster,
+}
 
 // ── REMOTE BUILD: RUN THE EXISTING LOCAL PROVIDER ON ANOTHER HOST ────────────────────────────────────
 //
@@ -116,10 +137,90 @@ fn remote_build_source_ref_name(r: RemoteBuildSourceRef) -> NonEmptyStr {
   concat(remote_build_source_ref_namespace as String, r.id as String) as NonEmptyStr
 }
 
+// WHAT THE WORDS CARRY: the identity of the work to serve -- which commit, which source, which
+// operation. It names no machine and asks no question about one, and it is what the serving host
+// fetches and runs. This is the type the forced command's string decodes INTO, because a decode can
+// only produce what the words carry.
+type RemoteBuildWork {
+  commit: GitObjectId
+  source: RemoteBuildSourceRef
+  operation: RemoteBuildOperation
+}
+
+// THE REQUEST, WHICH IS THE WORK PLUS WHAT RUNNING IT REQUIRES.
+//
+// A work's requirements are product.fabric.work's own record, not a remote-build re-spelling of it:
+// the axes are already named there (product.fabric.work::ExecutionRequirements, whose envelope carries
+// the instruction set as an extdeps.toolchain.types::Architecture), and a second carrier here would be
+// a second place to be wrong about the same fact.
+//
+// THE REQUIREMENTS ARE NOT ON THE WIRE, AND THAT IS DELIBERATE. The serving side runs the account's
+// installed bin/gunbc (gunbc.compute.remote_build_serve::remote_build_serve_request), NOT a binary
+// built from the commit being fetched, so the words both sides speak are versioned by the account
+// install and not by the request. Adding a word would make every host whose install predates the
+// change refuse every request, which is a deployment skew dressed up as a protocol. The requirements
+// are read where they are decided -- the client, before it places the request -- by
+// gunbc.fabric.fabric_executor_class::admit_execution_class; what the serving host owes is its own
+// admission, which its install already carries.
 type RemoteBuildRequest {
   commit: GitObjectId
   source: RemoteBuildSourceRef
   operation: RemoteBuildOperation
+  requirements: ExecutionRequirements
+}
+
+// THE WORDS' PROJECTION OF A REQUEST. The requirements are dropped exactly because the protocol does
+// not carry them; nothing here may read the projection as the whole request.
+fn remote_build_request_work(r: RemoteBuildRequest) -> RemoteBuildWork {
+  RemoteBuildWork { commit: r.commit, source: r.source, operation: r.operation }
+}
+
+// WHAT A REMOTE BUILD REQUIRES, AUTHORED WHERE THE BUILD IS ASKED FOR.
+//
+// THE FLEET WRITES THIS, NOT THE HOST. It is our own claim about our own work -- a build of the corpus,
+// under the control-plane account, in its own fresh worktree -- and it is the input
+// gunbc.fabric.fabric_executor_class::admit_execution_class joins against the host's execution class.
+// A host is never asked what it can do in order to be told what to require of it.
+//
+// THE ARCHITECTURE IS THE CALLER'S TO STATE, AND THE ONLY AXES HERE ARE THE ONES WITH A DECISION BEHIND
+// THEM:
+//
+// - ControlPlaneCapacity, because a remote build compiles the corpus under the control-plane account
+//   (remote_build_account) and runs no tenant's code: it is the fleet working on itself, which is what
+//   gunbc.fabric.fabric_capacity_class_gap says belongs to control-plane and not to a marketplace class.
+// - One thread, which is a FLOOR and not the build's width. What a build actually gets is its host's
+//   build-pool reservation (remote_build_serving_instance's compute_build_memory_ceiling,
+//   belt_max_concurrent), a fact of the instance row; stating a core count here would be a second,
+//   contradicting reservation authored in the wrong place.
+// - FreshWritableRoot, the one isolation guarantee the path actually gives: every attempt gets its own
+//   worktree under the account's own home, so no build shares a working tree with another. No namespace
+//   and no dedicated kernel is claimed, because nothing on the shared-OS serving path enforces one, and
+//   a requirement written to look stronger than the mechanism is how a work item starts passing checks
+//   nobody is performing.
+// - RevocationAccepted: a build that never landed is disposable, and saying so keeps it out of the way
+//   of work that cannot be interrupted.
+//
+// A caller that needs the artifact to be FOR a particular instruction set -- building a serve binary on
+// one host to run on another is exactly that -- passes the architecture; a caller whose artifact runs
+// where it was built passes Absent and any classified host may carry it.
+fn remote_build_execution_requirements(architecture: Architecture?) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 1) },
+      envelope: ResourceEnvelope {
+        cpu: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: 1), architecture: architecture } },
+        gpu: none,
+        memory: none,
+        storage: none,
+        network: none,
+      },
+    },
+    capabilities: linux_rust_toolchain_capability,
+    trust_domain: gunbc_internal_fleet_trust_domain,
+    isolation: IsolationProfile { guarantees: [FreshWritableRoot] },
+    revocation: RevocationAccepted,
+  }
 }
 
 // ── THE WIRE: WORDS, BECAUSE A FORCED COMMAND RECEIVES ONE STRING ────────────────────────────────────
@@ -152,14 +253,14 @@ fn remote_build_operation_words(op: RemoteBuildOperation) -> List<String> {
   }
 }
 
-fn remote_build_request_words(r: RemoteBuildRequest) -> List<String> {
+fn remote_build_request_words(r: RemoteBuildWork) -> List<String> {
   concat(
     [remote_build_protocol_word as String, git_object_id_wire_hex(oid: r.commit) as String, r.source.id as String],
     remote_build_operation_words(op: r.operation),
   )
 }
 
-fn remote_build_request_text(r: RemoteBuildRequest) -> String {
+fn remote_build_request_text(r: RemoteBuildWork) -> String {
   join(remote_build_request_words(r: r), " ")
 }
 
@@ -183,7 +284,7 @@ type RemoteBuildRequestRefusal
   | RequestGateLabelAmbiguousRows { text: String, count: Int }
 
 type RemoteBuildRequestDecode
-  = RemoteBuildRequestDecoded { request: RemoteBuildRequest }
+  = RemoteBuildWorkDecoded { work: RemoteBuildWork }
   | RemoteBuildRequestRefused { cause: RemoteBuildRequestRefusal }
 
 fn remote_build_word_at(words: List<String>, i: Int) -> String {
@@ -235,7 +336,7 @@ fn remote_build_decode_words(words: List<String>) -> RemoteBuildRequestDecode {
             match remote_build_decode_operation(words: words |> skip(n: 3)) {
               RemoteBuildOperationRefused { cause } => RemoteBuildRequestRefused { cause: cause }
               RemoteBuildOperationDecoded { operation } =>
-                RemoteBuildRequestDecoded { request: RemoteBuildRequest { commit: commit, source: source, operation: operation } }
+                RemoteBuildWorkDecoded { work: RemoteBuildWork { commit: commit, source: source, operation: operation } }
             }
         }
     }
@@ -337,11 +438,14 @@ type RemoteBuildSourceAdmission
   = RemoteBuildSourceMatches
   | RemoteBuildSourceMoved { requested: NonEmptyStr, fetched: NonEmptyStr }
 
-fn remote_build_admit_fetched_source(request: RemoteBuildRequest, fetched: GitObjectId) -> RemoteBuildSourceAdmission {
-  if git_object_id_eq(left: request.commit, right: fetched) {
+// WHAT THE SERVING HOST MAY TRUST IT FETCHED. The work's identity is what the words named and what the
+// fetch produced; the requirements are not here, because the serving host does not place work and has no
+// use for them (see RemoteBuildRequest for why they are not on the wire).
+fn remote_build_admit_fetched_source(work: RemoteBuildWork, fetched: GitObjectId) -> RemoteBuildSourceAdmission {
+  if git_object_id_eq(left: work.commit, right: fetched) {
     RemoteBuildSourceMatches
   } else {
-    RemoteBuildSourceMoved { requested: git_object_id_wire_hex(oid: request.commit), fetched: git_object_id_wire_hex(oid: fetched) }
+    RemoteBuildSourceMoved { requested: git_object_id_wire_hex(oid: work.commit), fetched: git_object_id_wire_hex(oid: fetched) }
   }
 }
 
@@ -538,6 +642,13 @@ type RemoteBuildHostAnswer
   | HostUnreachable { detail: String }
   | HostRefusedRequest { detail: String }
   | HostOutcomeUnknown { detail: String }
+  // THE EXECUTOR CLASS REFUSED THE REQUEST BEFORE IT WAS TOUCHED. This is the only answer here that
+  // is concluded from the request's REQUIREMENTS rather than from anything the host said: nothing was
+  // probed, nothing was connected to, nothing was pushed. It carries fabric's own verdict, not a
+  // string the walk invented, so a reader can see which architecture the work asked for and which the
+  // host runs; the detail is that verdict rendered for the ledger, produced by
+  // gunbc.fabric.fabric_executor_class::execution_class_admission_wire and never re-spelled here.
+  | HostExecutionClassRefused { admission: ExecutionClassAdmission, detail: String }
 
 type RemoteBuildAttempt {
   host: HostIdentity
@@ -559,6 +670,10 @@ fn remote_build_answer_moves_on(a: RemoteBuildHostAnswer) -> Bool {
     HostUnreachable { detail: _ } => true
     HostRefusedRequest { detail: _ } => false
     HostOutcomeUnknown { detail: _ } => false
+    // A host that cannot execute the work says nothing about the NEXT host, which is exactly why the
+    // roster exists. The wrong-architecture refusal moves on; it is not the request's fault and the
+    // work has not started anywhere.
+    HostExecutionClassRefused { admission: _, detail: _ } => true
   }
 }
 
@@ -573,6 +688,64 @@ fn remote_build_next_step(candidates: List<RemoteBuildCandidate>, attempts: List
         Absent => RemoteBuildNoHostAvailable { attempts: attempts }
       }
   }
+}
+
+// ── WHERE A REQUEST MAY BE PLACED ────────────────────────────────────────────────────────────────────
+//
+// THE FABRIC CHECK, APPLIED TO ONE CANDIDATE BEFORE ANYTHING IS ASKED OF IT. A host whose
+// gunbc.fabric.fabric_executor_class execution row refuses the request's requirements is answered
+// without a probe, a connection or a push; every other candidate is left alone for the walk to try as
+// it always has.
+//
+// This is the whole of the placement policy this lane adds, and it is a REFUSAL and not a choice: it
+// removes hosts the fleet's own authority says cannot run the work, and never ranks, prefers, or
+// reorders what remains. Which of the admitted hosts goes first stays the roster order under
+// gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold, until work-exec-2's
+// select_supply replaces both.
+fn remote_build_host_placement(
+  requirements: ExecutionRequirements,
+  classes: List<ExecutorExecutionClass>,
+  host: HostIdentity,
+) -> Optional<RemoteBuildHostAnswer> {
+  let admission = admit_execution_class(requirements: requirements, roster: classes, host: host)
+  match admission {
+    // The host executes what the work needs; nothing to say about it, and the walk proceeds as it
+    // always has -- this function adds a refusal, never a permission the roster did not already give.
+    ExecutionClassAdmitted { host: _, host_arch: _ } => Absent
+    // The verdict is carried, not paraphrased: the answer holds fabric's own admission and the ledger
+    // line rendered FROM it, so the walk cannot restate the reason into something softer.
+    _ =>
+      Present {
+        value: HostExecutionClassRefused {
+          admission: admission,
+          detail: execution_class_admission_wire(admission: admission),
+        },
+      }
+  }
+}
+
+// THE HOSTS THE WALK MAY TOUCH, in roster order. The refused ones are not hidden: the walk records a
+// typed refusal for each, and this function only answers the question the run asks before it pushes.
+fn remote_build_admissible_hosts(
+  requirements: ExecutionRequirements,
+  classes: List<ExecutorExecutionClass>,
+  hosts: List<HostIdentity>,
+) -> List<HostIdentity> {
+  hosts |> filter(h => match remote_build_host_placement(requirements: requirements, classes: classes, host: h) {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
+
+// IS THERE ANYWHERE TO PLACE THIS AT ALL? Answered before the snapshot is pushed, because a run that
+// can only end in a refusal by every host on the roster should not have published a commit to get
+// there: no ref, no push, no connection, no snapshot on any host.
+fn remote_build_any_host_admits(
+  requirements: ExecutionRequirements,
+  classes: List<ExecutorExecutionClass>,
+  hosts: List<HostIdentity>,
+) -> Bool {
+  count(remote_build_admissible_hosts(requirements: requirements, classes: classes, hosts: hosts)) > 0
 }
 
 // ── THE KEY ──────────────────────────────────────────────────────────────────────────────────────────
