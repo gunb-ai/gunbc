@@ -250,12 +250,12 @@ fn observe_candidate_release() -> CandidateObservation {
   }
 }
 
-// THE CANDIDATE-SIDE FOLD, PURE. Given the typed surface observation, decide the candidate: a refused roster read
-// refuses the candidate BEFORE any expectation is minted and before any host mutation; a rendered bundle mints the
-// expected identity. This is where the fail-closed lives, kept free of host effects so both arms are reachable by
-// a witness (the production fold below threads it the single observation it reads). Refusing here means the
-// candidate never carries an expected_surface_identity the live service — which renders the real roster — can
-// never meet; that mismatch was the deterministic cutover-gate failure this row retires.
+// THE CANDIDATE-SIDE FOLD, PURE. Given the typed surface observation, decide the candidate: an unobservable
+// candidate never enters the mutation path and a refused roster never supplies an expected identity; a rendered
+// bundle mints the expected identity. This is where the fail-closed lives, kept free of host effects so both arms
+// are reachable by a witness (the production fold below threads it the single observation it reads). Refusing here
+// means the candidate never carries an expected_surface_identity the live service — which renders the real roster —
+// can never meet; that mismatch was the deterministic cutover-gate failure this row retires.
 fn candidate_observation_from_bundle_observation(
   revision: CommitSha,
   observation: RoadmapSiteSurfaceBundleObservation,

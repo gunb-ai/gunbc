@@ -1,0 +1,247 @@
+module test.manual.candidate_launcher_read_real_execution
+
+// THE LAUNCHER CARRIER READ RUN FOR REAL, on a throwaway repository only — the discriminating controls the
+// srv1 cutover-gate fix owes. These are WET controls: they execute the actual carrier read (`roadmap_events_
+// read_all` under the actual `roadmap_event_carrier_ci_layout`) against a controlled origin, so they cannot
+// run on the hermetic claim lane (they perform real git and real filesystem effects). They are NOT run by CI
+// and no claim of CI execution is made for them. Run them by hand, one process, exactly like
+// test.manual.snapshot_census_wet:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/manual/candidate_launcher_read_real_execution.dag \
+//     --function candidate_launcher_read_real_execution
+//
+// WHY THE THREE CONTROLS.
+//   1. repeats_and_cleans_up — the property the readiness gate needs and the branch-attached anchor could not
+//      give: the REAL launcher read runs TWICE against ONE checkout with origin unchanged, both times returning
+//      the intended event set; the linked worktree it registers lives under `mktemp -d` (outside the checkout),
+//      the carrier reports the snapshot CLOSED on both arms, the runner repository's worktree registry is empty
+//      again after each read, and the named branch is NEVER attached. Reverting the layout (worktree inside the
+//      checkout) or the lifecycle (branch-attached anchor) turns THIS control red.
+//   2. branch_attached_lifecycle_collides — the RED-BEFORE proof, self-contained: it drives the OLD launcher
+//      lifecycle (a branch-attached anchor in a fresh scratch per read — `git worktree add <path> <branch>` and
+//      `git fetch <remote> <branch>:<branch>`) twice against one checkout. The FIRST read succeeds; the SECOND
+//      refuses — `refusing to fetch into branch ... checked out at ...` / `already used by worktree` — exactly
+//      the failure that made the launcher's second read (the readiness gate) become ServiceSurfaceUnobserved.
+//      This control passes BY demonstrating the collision; the ScopedDetached read in control 1 removes it.
+//   3. two_readers_agree — the genuine TWO-READ positive control: two independent launcher reads over two
+//      independent runner clones of the SAME origin render the SAME roster, so the CI-side expectation equals
+//      what any reader of the same authority gets. Two real reads, not one bundle handed to a fold.
+//
+// The event files are the committed roadmap-event/v3 shape (fixtures/roadmap_authority), so the reader decodes
+// them exactly as it decodes the service's own log.
+
+import std.types { String, Bool, Int, List, FilePath }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
+  roadmap_events_read_all, carrier_exec_program, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+  CarrierExec, CarrierExecOk, CarrierExecFailed, SnapshotClosed,
+}
+import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
+
+type LauncherControlled {
+  ok: Bool
+  base: String
+  runner: String
+  note: String
+}
+
+// A read that returned at least one decoded envelope (as opposed to a refusal).
+fn launcher_is_rendered(read: RoadmapAllEventsRead) -> Bool {
+  match read {
+    AllEventsRead { envelopes } => count(envelopes) > 0
+    AllEventsReadRefused { step: _, reason: _ } => false
+  }
+}
+
+fn launcher_git(workdir: String, args: List<String>) -> CarrierExec {
+  carrier_exec_program(program: "git", workdir: workdir, args: args)
+}
+
+fn launcher_git_ok(workdir: String, args: List<String>) -> Bool {
+  match launcher_git(workdir: workdir, args: args) {
+    CarrierExecOk { stdout: _ } => true
+    CarrierExecFailed { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn launcher_git_stdout(workdir: String, args: List<String>) -> String {
+  match launcher_git(workdir: workdir, args: args) {
+    CarrierExecOk { stdout } => stdout
+    CarrierExecFailed { exit_code: _, stderr: _ } => ""
+  }
+}
+fn under(base: String, rel: String) -> String {
+  join([base, "/", rel], "")
+}
+
+// Commit-time identity, pinned so the throwaway commits are self-contained and never depend on ambient config.
+data launcher_identity_args: List<String> = ["-c", "user.name=launcher-real-witness", "-c", "user.email=launcher@witness.invalid", "-c", "commit.gpgsign=false"]
+
+// The committed roadmap-event/v3 fixtures (fixtures/roadmap_authority/events) are copied into the seed's
+// roadmap-events branch, so the reader decodes real, content-hash-valid events — the same event set the live
+// service renders. Using the repo's own fixtures (rather than hand-written events) means the reader's id==hash
+// integrity check holds, which is exactly the check that refuses a fabricated roster.
+fn launcher_fixture_events_dir(repo: String) -> String {
+  join([repo, "/fixtures/roadmap_authority/events"], "")
+}
+
+fn launcher_cp_r(src: String, dst: String) -> Bool {
+  match carrier_exec_program(program: "cp", workdir: "/tmp", args: ["-r", src, dst]) {
+    CarrierExecOk { stdout: _ } => true
+    CarrierExecFailed { exit_code: _, stderr: _ } => false
+  }
+}
+
+// Build origin.git (bare) carrying main + roadmap-events with the committed fixture events, and one runner
+// clone of it. Everything lives under one mktemp scratch, removed by the caller.
+fn launcher_build_controlled(repo: String) -> LauncherControlled {
+  let mk = shell.Mktemp.Dir()
+  if !mk.success {
+    LauncherControlled { ok: false, base: "", runner: "", note: "mktemp failed" }
+  } else {
+    let base = mk.path as String
+    let origin = under(base, "origin.git")
+    let seed = under(base, "seed")
+    let runner = under(base, "runner")
+    let seeded =
+      launcher_git_ok(workdir: base, args: ["-c", "init.defaultBranch=main", "init", "--bare", "--quiet", "origin.git"])
+      && launcher_git_ok(workdir: base, args: ["clone", "--quiet", "origin.git", "seed"])
+      && launcher_git_ok(workdir: seed, args: concat(launcher_identity_args, ["checkout", "-q", "-b", "main"]))
+      && Filesystem.Write(path: under(seed, "README"), content: "launcher seed\n").success
+      && launcher_git_ok(workdir: seed, args: ["add", "-A"])
+      && launcher_git_ok(workdir: seed, args: concat(launcher_identity_args, ["commit", "-q", "-m", "seed main"]))
+      && launcher_git_ok(workdir: seed, args: ["push", "--quiet", "-u", "origin", "main"])
+      && launcher_git_ok(workdir: origin, args: ["symbolic-ref", "HEAD", "refs/heads/main"])
+      && launcher_git_ok(workdir: seed, args: ["checkout", "-q", "-b", "roadmap-events"])
+      && launcher_cp_r(src: launcher_fixture_events_dir(repo: repo), dst: under(seed, "events"))
+      && launcher_git_ok(workdir: seed, args: ["add", "-A"])
+      && launcher_git_ok(workdir: seed, args: concat(launcher_identity_args, ["commit", "-q", "-m", "seed roadmap events"]))
+      && launcher_git_ok(workdir: seed, args: ["push", "--quiet", "origin", "roadmap-events"])
+      && launcher_git_ok(workdir: base, args: ["clone", "--quiet", "origin.git", "runner"])
+    if seeded { LauncherControlled { ok: true, base: base, runner: runner, note: "ready" } }
+    else { LauncherControlled { ok: false, base: base, runner: runner, note: "origin/seed/runner build failed" } }
+  }
+}
+
+// A launcher layout pointing the carrier at `runner` as its OWN checkout, remote "origin", git program "git".
+// Built through the REAL roadmap_event_carrier_ci_layout so reverting that layout turns the control red.
+fn launcher_layout_for(runner: String) -> RoadmapEventCarrierLayout {
+  let service_layout = roadmap_event_carrier_layout(
+    repo_root: runner as FilePath, instance_root: runner as FilePath, git_program: "git", directory_program: "install")
+  roadmap_event_carrier_ci_layout(checkout_root: runner as FilePath, instance_layout: service_layout)
+}
+
+// A canonical, order-stable tag of the roster a read returned, e.g. "launchnodeaaaa0001@launcher-real-node-a;...".
+fn launcher_roster_tag(read: RoadmapAllEventsRead) -> String {
+  match read {
+    AllEventsRead { envelopes } => join(map(envelopes, e => join([e.id as String, "@", e.event.node as String], "")), ";")
+    AllEventsReadRefused { step, reason } => join(["REFUSED:", step, ":", reason], "")
+  }
+}
+
+// How many linked-worktree registrations the runner repository still holds. A properly closed scoped snapshot
+// leaves the registry empty; a leaked branch-attached anchor leaves a registration behind.
+fn launcher_registry_count(runner: String) -> Int {
+  let listing = Filesystem.List(path: under(runner, ".git/worktrees"))
+  if !listing.success { 0 }
+  else { count(filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")) }
+}
+
+// Does the carrier's snapshot materialize INSIDE the runner checkout? It must never; the scratch is mktemp.
+fn launcher_checkout_has_worktree(runner: String) -> Bool {
+  Filesystem.List(path: under(runner, "roadmap-events")).success
+}
+
+// CONTROL 1 (green, and the repeatability/cleanup proof). Returns "PASS" or a one-line failure observation.
+// The two reads must render the SAME non-empty roster, both snapshots must CLOSE, the runner worktree registry
+// must be empty again, nothing must materialize inside the checkout, and the named branch must never be attached.
+fn launcher_control_repeats_and_cleans_up(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo)
+  if !c.ok { "build failed" }
+  else {
+    let layout = launcher_layout_for(runner: c.runner)
+    let first = roadmap_events_read_all(layout: layout)
+    let second = roadmap_events_read_all(layout: layout)
+    let first_closed = match first.close {
+      SnapshotClosed => true
+      _ => false
+    }
+    let second_closed = match second.close {
+      SnapshotClosed => true
+      _ => false
+    }
+    let tag_first = launcher_roster_tag(read: first.result)
+    let tag_second = launcher_roster_tag(read: second.result)
+    let registry = launcher_registry_count(runner: c.runner)
+    let in_checkout = launcher_checkout_has_worktree(runner: c.runner)
+    let branch_never_attached = launcher_git_stdout(workdir: c.runner, args: ["show-ref", "--verify", "--quiet", "refs/heads/roadmap-events"]) == ""
+    let passed = launcher_is_rendered(read: first.result) && tag_first == tag_second && first_closed && second_closed && registry == 0 && !in_checkout && branch_never_attached
+    let verdict = if passed { "PASS" } else {
+      join(["FAIL tag1=", tag_first, " tag2=", tag_second, " closed1=", if first_closed {"y"} else {"n"}, " closed2=", if second_closed {"y"} else {"n"}, " registry=", to_string(value: registry), " in_checkout=", if in_checkout {"y"} else {"n"}, " branch_attached=", if branch_never_attached {"n"} else {"y"}], "")
+    }
+    let _ = shell.Remove.RecursiveForce(path: c.base as FilePath)
+    verdict
+  }
+}
+
+// CONTROL 2 (red-before). The OLD launcher lifecycle (branch-attached anchor, fresh scratch per read): first
+// read ok, second read refused, anchor leaked. Passes by OBSERVING the collision the ScopedDetached read removes.
+fn launcher_control_branch_attached_lifecycle_collides(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo)
+  if !c.ok { "build failed" }
+  else {
+    let mk1 = shell.Mktemp.Dir()
+    let attached1 = roadmap_event_carrier_layout(repo_root: c.runner as FilePath, instance_root: mk1.path, git_program: "git", directory_program: "install")
+    let first = roadmap_events_read_all(layout: attached1)
+    let mk2 = shell.Mktemp.Dir()
+    let attached2 = roadmap_event_carrier_layout(repo_root: c.runner as FilePath, instance_root: mk2.path, git_program: "git", directory_program: "install")
+    let second = roadmap_events_read_all(layout: attached2)
+    let first_rendered = match first.result {
+      AllEventsRead { envelopes } => count(envelopes) > 0
+      AllEventsReadRefused { step: _, reason: _ } => false
+    }
+    let second_refused = match second.result {
+      AllEventsRead { envelopes: _ } => false
+      AllEventsReadRefused { step: _, reason: _ } => true
+    }
+    let registry = launcher_registry_count(runner: c.runner)
+    let passed = first_rendered && second_refused && registry > 0
+    let verdict = if passed { "PASS" } else { join(["FAIL first_rendered=", if first_rendered {"y"} else {"n"}, " second_refused=", if second_refused {"y"} else {"n"}, " registry=", to_string(value: registry)], "") }
+    let _ = shell.Remove.RecursiveForce(path: c.base as FilePath)
+    verdict
+  }
+}
+
+// CONTROL 3 (positive, two real reads). Two independent runner clones of the SAME origin render the same roster.
+fn launcher_control_two_readers_agree(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo)
+  if !c.ok { "build failed" }
+  else {
+    let runner_b = under(c.base, "runner-b")
+    let cloned = launcher_git_ok(workdir: c.base, args: ["clone", "--quiet", "origin.git", "runner-b"])
+    if !cloned { "second clone failed" }
+    else {
+      let a = roadmap_events_read_all(layout: launcher_layout_for(runner: c.runner))
+      let b = roadmap_events_read_all(layout: launcher_layout_for(runner: runner_b))
+      let ta = launcher_roster_tag(read: a.result)
+      let tb = launcher_roster_tag(read: b.result)
+      let passed = launcher_is_rendered(read: a.result) && ta == tb
+      let verdict = if passed { "PASS" } else { join(["FAIL a=", ta, " b=", tb], "") }
+      let _ = shell.Remove.RecursiveForce(path: c.base as FilePath)
+      verdict
+    }
+  }
+}
+
+fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
+  let one = launcher_control_repeats_and_cleans_up(repo: repo)
+  let two = launcher_control_branch_attached_lifecycle_collides(repo: repo)
+  let three = launcher_control_two_readers_agree(repo: repo)
+  if one == "PASS" && two == "PASS" && three == "PASS" { ExitSuccess }
+  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, "\n(all three must PASS)\n"], "")) }
+}

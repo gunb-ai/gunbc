@@ -62,6 +62,22 @@ data roadmap_events_branch: NonEmptyStr = "roadmap-events" as NonEmptyStr
 data roadmap_events_remote: String = "origin"
 data roadmap_events_dir_segment: String = "events"
 
+// HOW A LAYOUT IS OPENED FOR A READ. The two modes differ in who owns the carrier worktree and whether the
+// named branch is ever ATTACHED — the exact axis on which the srv1 cutover gate failed deterministically.
+// Attached (the instance/service, the original behaviour): the carrier keeps a persistent worktree at
+// layout.worktree, created by roadmap_event_carrier_ensure, which attaches the shared branch
+// (`git worktree add <worktree> <branch>`) and REUSES it across reads — that persistence is the service's
+// point, so its repeated reads stay cheap, and the anchor is intentional and is never closed.
+// ScopedDetached (the CI launcher only): each read owns a scoped DETACHED snapshot rooted directly in
+// repo_root, the named branch is NEVER attached, and the snapshot is closed on both success and refusal.
+// The distinction is not cosmetic: a branch-attached anchor that outlives its read makes the NEXT read refuse
+// deterministically — `git fetch <remote> <branch>:<branch>` then answers "refusing to fetch into branch
+// ... checked out at ..." and `git worktree add` answers "already used by worktree" — which is precisely what
+// turned the launcher's SECOND read (the readiness gate, running after the candidate in the same CI job) into
+// a ServiceSurfaceUnobserved. This mode exists so a launcher that reads twice can never leak that anchor. The
+// service path is byte-for-byte the Attached path; nothing about the running service changed.
+type RoadmapCarrierReadMode = CarrierReadAttached | CarrierReadScopedDetached
+
 // The carrier's host layout: a worktree of the instance repository, beside the instance's other roots.
 type RoadmapEventCarrierLayout {
   repo_root: FilePath
@@ -69,6 +85,7 @@ type RoadmapEventCarrierLayout {
   git_program: String
   directory_program: String
   remote: String
+  read_mode: RoadmapCarrierReadMode
 }
 
 // Built from the instance the way the dispatch actuator builds attempt roots: the repository, the
@@ -80,6 +97,7 @@ fn roadmap_event_carrier_layout_for_instance(instance: HostDashboardInstance) ->
     worktree: owned_directory_path(t: roadmap_event_carrier_directory(instance: instance)),
     git_program: dispatch_capability_program(environment: instance.execution_environment, cap: GitWorkspaceCapability),
     directory_program: dispatch_capability_program(environment: instance.execution_environment, cap: AttemptStateDirectoryCapability),
+    read_mode: CarrierReadAttached,
   }
 }
 
@@ -90,6 +108,7 @@ fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, gi
     worktree: dashboard_instance_child(root: instance_root, child: roadmap_events_worktree_child),
     git_program: git_program,
     directory_program: directory_program,
+    read_mode: CarrierReadAttached,
   }
 }
 
@@ -98,37 +117,40 @@ fn roadmap_event_carrier_layout(repo_root: FilePath, instance_root: FilePath, gi
 // layout the live surface renders through (roadmap_event_carrier_layout_for_instance) names /opt/gunbc, owned by
 // the service principal; the carrier read is NOT read-only (worktree add in repo_root, fetch, reset --hard), so
 // under a foreign principal EVERY git call refuses with "detected dubious ownership" and ghrunner cannot write
-// briansrls's .git. Rendering the expectation over that refused roster mints an identity the service can never
+// briansrls's .git. Rendering the expectation over that refused roster minted an identity the service could never
 // meet — the fail-open, now refused by gunbc.live_deploy.candidate. The repair reads the SAME authority the
 // service renders from, under a principal that owns it: the service SYNCs its worktree to the remote on every
 // read (roadmap_event_carrier_sync: fetch <remote> <branch>; reset --hard FETCH_HEAD), so the remote's tip of the
 // roadmap-events branch IS the shared authority — a divergent local head on either host is discarded, never
-// rendered. This layout points the carrier at the runner's OWN checkout so the git it runs writes only the
-// runner's repository: repo_root is the CI checkout (where ls-remote and fetch run — both touch only REFS,
-// never the working tree, so `git status` and the deploy cleanliness check, which read tracked content, stay
-// clean, and no tracked path changes), and the carrier WORKTREE is created in a fresh runner-owned `mktemp -d`
-// scratch OUTSIDE the deploy checkout, so `git worktree add` / the branch snapshot never materialize inside the
-// deploying tree. The event content the read renders from is a further private snapshot (roadmap_event_private_
-// snapshot) under its own mktemp dir. A unique scratch per read — NOT a fixed shared /tmp path — because
-// extdeps.git.inspect::Toplevel records a review that found a fixed per-revision /tmp path reused across runs;
-// concurrent reads must not collide. If mktemp itself fails the scratch path is empty and roadmap_event_carrier_
-// _ensure refuses downstream, so a failed scratch is a refusal, never a read against the deploy checkout. remote
-// is "origin" and branch is "roadmap-events" — identical to the instance layout, which reads the same remote
-// branch. The capability programs are taken from the instance layout, because those executables are realized by
-// the runtime image and are not the briansrls-owned paths the dubious-ownership refusal was about. No host edit:
-// the runner is the principal here. gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_
-// binding is the sibling family (principal axis rather than binding axis).
+// rendered. This layout points the carrier at the runner's OWN checkout (repo_root = the CI checkout) so the git
+// it runs writes only the runner's repository. Note the read is NOT a read-only ref peek: it fetches objects,
+// registers a linked worktree and materializes a temporary tree — it writes objects, worktree registrations and
+// temporary trees into the runner's .git — but never a tracked path, so `git status` and the deploy cleanliness
+// check (which read tracked content) stay clean. It is marked read_mode: CarrierReadScopedDetached so its read
+// (roadmap_events_read_all → roadmap_events_read_all_scoped_detached) owns a scoped DETACHED snapshot: the branch
+// is NEVER attached, so the anchor that made the SECOND launcher read refuse (`git fetch ... branch:branch` /
+// `git worktree add` after an unclosed branch-attached anchor) cannot exist. The snapshot's scratch is created at
+// READ time by the read itself — with an explicit shell.Mktemp.Dir().success check — NOT here, so a failed
+// scratch is a typed refusal and never an empty path that would resolve to a stray "/roadmap-events". The
+// worktree field is unused under ScopedDetached (the read owns its own scratch); it is a checkout-derived
+// sentinel so it can never point inside the deploying tree even if misread. remote and branch match the instance
+// layout exactly — the same remote branch the service syncs from. Capability programs are taken from the instance
+// layout because those executables are realized by the runtime image, not the briansrls-owned paths the
+// dubious-ownership refusal was about. No host edit: the runner is the principal here. This function is PURE —
+// it opens no scratch, so building the layout has no effect and a layout built outside a read cannot leak.
+// gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_binding is the sibling family.
 fn roadmap_event_carrier_ci_layout(
   checkout_root: FilePath,
   instance_layout: RoadmapEventCarrierLayout,
 ) -> RoadmapEventCarrierLayout {
-  let scratch = shell.Mktemp.Dir()
-  roadmap_event_carrier_layout(
+  RoadmapEventCarrierLayout {
+    remote: instance_layout.remote,
     repo_root: checkout_root,
-    instance_root: scratch.path,
+    worktree: dashboard_instance_child(root: checkout_root, child: roadmap_events_worktree_child),
     git_program: instance_layout.git_program,
     directory_program: instance_layout.directory_program,
-  )
+    read_mode: CarrierReadScopedDetached,
+  }
 }
 
 fn roadmap_event_node_dir(layout: RoadmapEventCarrierLayout, node: RoadmapNodeId) -> String {
@@ -345,7 +367,7 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
         args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"]) {
         CarrierExecFailed { exit_code: _, stderr } => CarrierSnapshotRefused { reason: stderr }
         CarrierExecOk { stdout: _ } => CarrierSnapshotReady { layout: RoadmapEventCarrierLayout {
-          remote: layout.remote, repo_root: layout.repo_root, worktree: temporary.path as FilePath, git_program: layout.git_program, directory_program: layout.directory_program } }
+          remote: layout.remote, repo_root: layout.repo_root, worktree: temporary.path as FilePath, git_program: layout.git_program, directory_program: layout.directory_program, read_mode: layout.read_mode } }
       } }
     }
   }
@@ -824,7 +846,22 @@ fn roadmap_standings_read(layout: RoadmapEventCarrierLayout) -> CarrierClosed<Ro
   }
 }
 
+// The single carrier read entry point. HOW the log is opened is decided by the layout's declared read_mode —
+// one read path, one declared variation, not two forks. The service layout (CarrierReadAttached) and the CI
+// launcher layout (CarrierReadScopedDetached) share the projection, the history/retired loads and every pure
+// fold; only the way the worktree is opened and released differs here.
 fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
+  match layout.read_mode {
+    CarrierReadAttached => roadmap_events_read_all_attached(layout: layout)
+    CarrierReadScopedDetached => roadmap_events_read_all_scoped_detached(layout: layout)
+  }
+}
+
+// The Attached read: the original behaviour, byte-for-byte. Open a persistent branch-attached anchor worktree
+// at layout.worktree via ensure, take a private detached snapshot, read it, close the snapshot. The anchor is
+// intentionally left open so the service reuses it across reads cheaply — sound for a stable service worktree,
+// fatal when the worktree path changes per read (the launcher), which is why the launcher never enters here.
+fn roadmap_events_read_all_attached(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
   match roadmap_event_private_snapshot(layout: layout) {
     CarrierSnapshotRefused { reason } => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: reason }, close: SnapshotNotOpened }
     CarrierSnapshotReady { layout: private } =>
@@ -832,6 +869,51 @@ fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> CarrierClosed<R
         AllEventsRead { envelopes } => CarrierClosed { result: AllEventsRead { envelopes: envelopes }, close: roadmap_event_snapshot_close(layout: private) }
         AllEventsReadRefused { step, reason } => CarrierClosed { result: AllEventsReadRefused { step: step, reason: reason }, close: roadmap_event_snapshot_close(layout: private) }
       }
+  }
+}
+
+// The ScopedDetached read (CI launcher only). It owns NOTHING that outlives the call: a fresh `mktemp -d`
+// scratch whose success is checked explicitly, one FETCH of the remote branch tip into the runner repository
+// (no branch mapping, so refs/heads/<branch> is never written), a DETACHED linked worktree at that scratch
+// (the named branch is never attached, so no other read can collide with a checked-out branch), and a close
+// on EVERY arm. Because nothing named is left attached, the read is repeatable against the same checkout with
+// origin unchanged — the property the second launcher read (the readiness gate) needs and the branch-attached
+// anchor could not provide. A failed scratch is a typed refusal (never an empty path resolving to "/roadmap-
+// events"); a failed fetch or worktree-add removes the scratch and refuses with the snapshot never opened.
+fn roadmap_events_read_all_scoped_detached(layout: RoadmapEventCarrierLayout) -> CarrierClosed<RoadmapAllEventsRead> {
+  let scratch = shell.Mktemp.Dir()
+  if !scratch.success {
+    CarrierClosed { result: AllEventsReadRefused { step: "scratch", reason: "cannot create launcher event snapshot scratch" }, close: SnapshotNotOpened }
+  } else {
+    match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["fetch", "-q", layout.remote, roadmap_events_branch as String]) {
+      CarrierExecFailed { exit_code, stderr } => {
+        let _ = shell.Remove.RecursiveForce(path: scratch.path)
+        CarrierClosed { result: AllEventsReadRefused { step: "fetch", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: SnapshotNotOpened }
+      }
+      CarrierExecOk { stdout: _ } => match carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "add", "--detach", scratch.path as String, "FETCH_HEAD"]) {
+        CarrierExecFailed { exit_code, stderr } => {
+          let _ = shell.Remove.RecursiveForce(path: scratch.path)
+          CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: SnapshotNotOpened }
+        }
+        CarrierExecOk { stdout: _ } => match roadmap_events_read_dir(dir: join([scratch.path as String, "/", roadmap_events_dir_segment], "")) {
+          r => CarrierClosed { result: r, close: roadmap_event_scratch_close(layout: layout, path: scratch.path) }
+        }
+      }
+    }
+  }
+}
+
+// Close the launcher's scoped snapshot on EVERY arm — success or read-refusal — never leaving it behind the way
+// the Attached anchor does. `worktree remove --force` drops the checkout and its registration; `worktree prune`
+// clears any registration a failed removal could leave in the runner repository; the recursive removal takes the
+// scratch directory itself. Nothing accumulates in the runner's .git or temp between repeated reads.
+fn roadmap_event_scratch_close(layout: RoadmapEventCarrierLayout, path: FilePath) -> CarrierSnapshotClose {
+  let removal = carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "remove", "--force", path as String])
+  let _ = carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "prune"])
+  let _ = shell.Remove.RecursiveForce(path: path)
+  match removal {
+    CarrierExecOk { stdout: _ } => SnapshotClosed
+    CarrierExecFailed { exit_code, stderr } => SnapshotCloseFailed { worktree: path, exit_code: exit_code, stderr: stderr }
   }
 }
 

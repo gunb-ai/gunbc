@@ -965,6 +965,7 @@ fn roadmap_authority_fixture_live_route_envelopes() -> List<RoadmapEventEnvelope
     git_program: "git",
     directory_program: "install",
     remote: "origin",
+    read_mode: CarrierReadAttached,
   }) {
     AllEventsRead { envelopes: envs } => Present { value: envs }
     AllEventsReadRefused { step: _, reason: _ } => Absent
