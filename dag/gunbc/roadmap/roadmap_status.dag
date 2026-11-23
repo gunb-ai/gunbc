@@ -3,6 +3,7 @@ module gunbc.roadmap.roadmap_status
 import extdeps.github.pulls { PullRequest }
 
 import std.types { NonEmptyStr, CommitSha, commit_sha_text_holds }
+import std.algebra { string_contains }
 
 // The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of
 // ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow
@@ -60,7 +61,7 @@ type RoadmapItem
 
 // RED_AT / GREEN_AT (operator ruling 2026-11-23, gunbc.design_ruling::executed_red_control_names_its_failing_commit):
 // an executed red control is evidence only if the witness was OBSERVED FAILING on some tree and that tree is
-// recorded as data. RedControlExecuted therefore carries red_at (the commit where the witness failed) and
+// recorded as data. RedControlExecuted therefore carries an `observation` (RedObservation, below) holding red_at (the commit where the witness failed) and
 // green_at (the commit where the same witness passed), both the existing std.types CommitSha. A receipt with
 // no red_at has no RedControlExecuted to write: the field is required, so the omission is unwritable rather
 // than a validation branch. TWO RESIDUES, counted not implied: CommitSha is still an unvalidated String alias
@@ -76,7 +77,7 @@ type RoadmapItem
 // byte, so a stored event's id still verifies against its own bytes.
 type RedControlEvidence
   = RedControlNotRun
-  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr, red_at: CommitSha, green_at: CommitSha }
+  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr, observation: RedObservation }
   | RedControlTreeUnrecorded { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
 
 type HandbackEvidence
@@ -86,7 +87,7 @@ type HandbackEvidence
 fn red_control_evidence_satisfied(e: RedControlEvidence) -> Bool {
   match e {
     RedControlNotRun => false
-    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, red_at: r, green_at: g } => red_control_pair_holds(red_at: r, green_at: g)
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: o } => red_observation_holds(o: o)
     // NOT false: an accepted receipt recorded before the ruling stays accepted ("never revoke"); reading it
     // as unsatisfied would silently return its node to the active set, which is a revocation by another
     // name. What it is NOT is valid red evidence: red_control_evidence_is_valid_red says so.
@@ -99,7 +100,7 @@ fn red_control_evidence_satisfied(e: RedControlEvidence) -> Bool {
 fn red_control_evidence_is_valid_red(e: RedControlEvidence) -> Bool {
   match e {
     RedControlNotRun => false
-    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, red_at: r, green_at: g } => red_control_pair_holds(red_at: r, green_at: g)
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: o } => red_observation_holds(o: o)
     RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => false
   }
 }
@@ -108,6 +109,45 @@ fn red_control_evidence_is_valid_red(e: RedControlEvidence) -> Bool {
 // not seen to change. Judged here because CommitSha is an alias, not a constructor.
 fn red_control_pair_holds(red_at: CommitSha, green_at: CommitSha) -> Bool {
   commit_sha_text_holds(head: red_at) && commit_sha_text_holds(head: green_at) && red_at != green_at
+}
+
+// WHICH KIND OF RED CONTROL, AS DATA (neat-badger-614's ruling on commits that are not on main): a
+// historical pair has red_at ON MAIN; a PROBE (a deletion probe or a deliberate break) has red_at OFF main and
+// names red_base, the main sha it breaks, and probe_ref, the durable branch red-control/<row-id> that makes
+// red_at fetchable. A probe without red_base or probe_ref is not constructible: both are required fields of the
+// arm, and the kind is the arm, never an optional field beside the pair.
+type RedObservation
+  = RedObservedOnMain { red_at: CommitSha, green_at: CommitSha }
+  | RedProbe { red_at: CommitSha, red_base: CommitSha, green_at: CommitSha, probe_ref: NonEmptyStr }
+
+// THE ANCESTRY OBLIGATIONS, STATED ONCE AS DATA, and NOT JUDGED OFFLINE: judging them needs the Git graph.
+// Offline judgment (red_observation_holds) covers only shape: well-formed shas, the distinctness named below,
+// and the probe ref's spelling.
+data red_observation_ancestry_obligations_not_judged_offline: List<String> = [
+  "RedObservedOnMain: red_at is an ancestor of green_at on main",
+  "RedProbe: red_base is red_at's first parent, red_at's diff from red_base is the named break and nothing else, probe_ref is pushed to gunb-ai/gunbc and never deleted, and green_at is red_base itself or a later main sha",
+]
+
+fn red_observation_holds(o: RedObservation) -> Bool {
+  match o {
+    RedObservedOnMain { red_at, green_at } => red_control_pair_holds(red_at: red_at, green_at: green_at)
+    RedProbe { red_at, red_base, green_at, probe_ref } =>
+      commit_sha_text_holds(head: red_at) && commit_sha_text_holds(head: red_base) && commit_sha_text_holds(head: green_at)
+        && red_base != red_at && green_at != red_at && red_probe_ref_holds(ref: probe_ref as String)
+  }
+}
+
+// red-control/<row-id>: exactly one slash, the fixed prefix, a nonempty row id with no space.
+fn red_probe_ref_holds(ref: String) -> Bool {
+  let parts = split(s: ref, delimiter: "/")
+  count(parts) == 2 && parts[0] == "red-control" && parts[1] != "" && !string_contains(s: parts[1], pattern: " ")
+}
+
+// ONE CONSTRUCTOR FROM THE UNTYPED EDGE (CLI, form): both red_base and probe_ref absent is the on-main kind,
+// chosen visibly; any other combination is a probe, and red_observation_holds refuses a half-spelled one.
+fn red_observation_from_texts(red_at: String, green_at: String, red_base: String, probe_ref: String) -> RedObservation {
+  if red_base == "" && probe_ref == "" { RedObservedOnMain { red_at: red_at, green_at: green_at } }
+  else { RedProbe { red_at: red_at, red_base: red_base, green_at: green_at, probe_ref: probe_ref as NonEmptyStr } }
 }
 
 fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {

@@ -128,7 +128,7 @@ fn result_claim_join(node_envelopes: List<RoadmapEventEnvelope>, claim: RoadmapE
         HandedBack { reason: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         Retired { reason: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim: the node is retired"], "") }
         ReceiptReferenced { obligation: _, address: _, verdict: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
-        RedTreeRecorded { red_at: _, green_at: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
+        RedTreeRecorded { observation: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentEdited { comment: _, body: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
         CommentDeleted { comment: _ } => ResultRequestUnjoinable { reason: join(["the attempt is bound to event ", claim as String, ", which is not a claim"], "") }
@@ -167,7 +167,7 @@ fn result_attempt_answer(envelopes: List<RoadmapEventEnvelope>, binding: Roadmap
       HandedBack { reason: _ } => false
       Retired { reason: _ } => false
       ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
-      RedTreeRecorded { red_at: _, green_at: _ } => false
+      RedTreeRecorded { observation: _ } => false
       CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
       CommentEdited { comment: _, body: _ } => false
       CommentDeleted { comment: _ } => false
@@ -434,7 +434,7 @@ fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envel
     HandedBack { reason: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     Retired { reason: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
-    RedTreeRecorded { red_at: _, green_at: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
+    RedTreeRecorded { observation: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentEdited { comment: _, body: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     CommentDeleted { comment: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }

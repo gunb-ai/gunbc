@@ -177,7 +177,7 @@ import gunbc.roadmap.roadmap_status {
   AuthoredLine,
   PlainLine,
   DerivableLine,
-  RedControlExecuted,
+  RedObservedOnMain, RedControlExecuted,
   RedControlNotRun,
   HandbackDelivered,
   HandbackNotDelivered,
@@ -262,7 +262,7 @@ fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptance
     red_control: RedControlExecuted {
       witness_module: "test.fixture",
       witness_fn: "fixture_red_control",
-      executed_on: "2026-07-28", red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
+      executed_on: "2026-07-28", observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
     accepted_by: "operator",
@@ -288,7 +288,7 @@ fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.fixture",
       witness_fn: "fixture_red_control",
-      executed_on: "2026-07-28", red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
+      executed_on: "2026-07-28", observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackNotDelivered,
     accepted_by: "operator",

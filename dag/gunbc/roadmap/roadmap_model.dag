@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_status {
   TicketFields, line_ticket,
   DerivableLine, AuthoredLine, PlainLine, TicketLine,
   RedControlEvidence, HandbackEvidence,
-  RedControlNotRun, RedControlExecuted, RedControlTreeUnrecorded,
+  RedControlNotRun, RedControlExecuted, RedControlTreeUnrecorded, RedObservation, RedObservedOnMain, RedProbe,
   HandbackNotDelivered, HandbackDelivered,
   red_control_evidence_satisfied, handback_evidence_satisfied,
 }
@@ -472,25 +472,66 @@ type AcceptanceHistoryIntegrityVerdict
   | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
   | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
 
+fn red_observation_eq(a: RedObservation, b: RedObservation) -> Bool {
+  match a {
+    RedObservedOnMain { red_at: ar, green_at: ag } =>
+      match b {
+        RedObservedOnMain { red_at: br, green_at: bg } => ar == br && ag == bg
+        RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => false
+      }
+    RedProbe { red_at: ar, red_base: ab, green_at: ag, probe_ref: ap } =>
+      match b {
+        RedObservedOnMain { red_at: _, green_at: _ } => false
+        RedProbe { red_at: br, red_base: bb, green_at: bg, probe_ref: bp } => ar == br && ab == bb && ag == bg && (ap as String) == (bp as String)
+      }
+  }
+}
+
+// The on-main digest is the pair's, unchanged from the flat form (an on-main receipt hashes as it would have);
+// a probe's digest is distinct by tag and carries red_base and probe_ref.
+fn red_observation_digest(o: RedObservation) -> Fnv1a64Structural {
+  match o {
+    RedObservedOnMain { red_at, green_at } =>
+      content_hash_combine_structural(
+        left: content_hash_atom(value: red_at as NonEmptyStr),
+        right: content_hash_atom(value: green_at as NonEmptyStr),
+      )
+    RedProbe { red_at, red_base, green_at, probe_ref } =>
+      content_hash_tagged_structural(
+        tag: "roadmap-red-probe-v1",
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(
+            left: content_hash_atom(value: red_at as NonEmptyStr),
+            right: content_hash_atom(value: red_base as NonEmptyStr),
+          ),
+          right: content_hash_combine_structural(
+            left: content_hash_atom(value: green_at as NonEmptyStr),
+            right: content_hash_atom(value: probe_ref),
+          ),
+        ),
+      )
+  }
+}
+
 fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
   match a {
     RedControlNotRun =>
       match b {
         RedControlNotRun => true
-        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, red_at: _, green_at: _ } => false
+        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: _ } => false
         RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => false
       }
-    RedControlExecuted { witness_module: am, witness_fn: af, executed_on: ao, red_at: ar, green_at: ag } =>
+    RedControlExecuted { witness_module: am, witness_fn: af, executed_on: ao, observation: aobs } =>
       match b {
         RedControlNotRun => false
-        RedControlExecuted { witness_module: bm, witness_fn: bf, executed_on: bo, red_at: br, green_at: bg } =>
-          am == bm && af == bf && ao == bo && ar == br && ag == bg
+        RedControlExecuted { witness_module: bm, witness_fn: bf, executed_on: bo, observation: bobs } =>
+          am == bm && af == bf && ao == bo && red_observation_eq(a: aobs, b: bobs)
         RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => false
       }
     RedControlTreeUnrecorded { witness_module: am, witness_fn: af, executed_on: ao } =>
       match b {
         RedControlNotRun => false
-        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, red_at: _, green_at: _ } => false
+        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: _ } => false
         RedControlTreeUnrecorded { witness_module: bm, witness_fn: bf, executed_on: bo } =>
           am == bm && af == bf && ao == bo
       }
@@ -621,7 +662,7 @@ fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
         tag: "roadmap-red-control-not-run-v1",
         payload: content_hash_atom(value: "RedControlNotRun" as NonEmptyStr),
       )
-    RedControlExecuted { witness_module, witness_fn, executed_on, red_at, green_at } =>
+    RedControlExecuted { witness_module, witness_fn, executed_on, observation } =>
       content_hash_tagged_structural(
         tag: "roadmap-red-control-executed-v2",
         payload: content_hash_combine_structural(
@@ -632,10 +673,7 @@ fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
             ),
             right: content_hash_atom(value: executed_on),
           ),
-          right: content_hash_combine_structural(
-            left: content_hash_atom(value: red_at as NonEmptyStr),
-            right: content_hash_atom(value: green_at as NonEmptyStr),
-          ),
+          right: red_observation_digest(o: observation),
         ),
       )
     RedControlTreeUnrecorded { witness_module, witness_fn, executed_on } =>

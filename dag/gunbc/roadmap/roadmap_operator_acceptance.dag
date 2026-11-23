@@ -50,7 +50,7 @@ import gunbc.roadmap.roadmap_model {
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_acceptance_receipt,
   roadmap_acceptance_line_revocation_facts,
 }
-import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, RedControlNotRun, HandbackDelivered, HandbackNotDelivered, red_control_evidence_is_valid_red, red_control_pair_holds }
+import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, RedControlNotRun, HandbackDelivered, HandbackNotDelivered, red_control_evidence_is_valid_red, red_observation_holds, RedObservation }
 import std.types { CommitSha }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, NodeReadyForReview, RoadmapEventId, RoadmapEventEnvelope, RoadmapAcceptanceEventRow,
@@ -302,8 +302,7 @@ type OperatorCloseInputs {
   accepted_on: Iso8601CivilDate
   witness_module: NonEmptyStr
   witness_fn: NonEmptyStr
-  red_at: CommitSha
-  green_at: CommitSha
+  observation: RedObservation
   first_artifact: NonEmptyStr
   further_artifacts: List<NonEmptyStr>
   at: EpochSecs
@@ -520,7 +519,7 @@ fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAccepta
   RoadmapAcceptanceReceipt {
     node: inputs.node,
     criteria_digest: roadmap_criteria_digest(t: inputs.ticket),
-    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: roadmap_operator_render_civil_date(date: inputs.accepted_on), red_at: inputs.red_at, green_at: inputs.green_at },
+    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: roadmap_operator_render_civil_date(date: inputs.accepted_on), observation: inputs.observation },
     handback: HandbackDelivered { first_artifact: inputs.first_artifact, further_artifacts: inputs.further_artifacts },
     accepted_by: inputs.accepted_by,
     accepted_on: roadmap_operator_render_civil_date(date: inputs.accepted_on),
@@ -540,7 +539,7 @@ fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRe
   // THE FAILING COMMIT IS NAMED OR THE CLOSE IS REFUSED, with the fields called out (ruling
   // gunbc.design_ruling::executed_red_control_names_its_failing_commit): red_at and green_at are two
   // well-formed Git heads and they differ.
-  if !red_control_pair_holds(red_at: inputs.red_at, green_at: inputs.green_at) { Present { value: CloseEvidenceMissing { field: "red_at/green_at (two distinct lowercase 40-hex commits: where the witness failed, where it passed)" as NonEmptyStr } } }
+  if !red_observation_holds(o: inputs.observation) { Present { value: CloseEvidenceMissing { field: "red observation (well-formed commits: where the witness failed, where it passed, and for a probe its red_base and red-control/<row-id> ref)" as NonEmptyStr } } }
   else if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
 }
 

@@ -8,7 +8,7 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_status {
   TicketLine, DerivableLine, TicketFields,
-  RedControlExecuted, HandbackDelivered,
+  RedObservedOnMain, RedControlExecuted, HandbackDelivered,
 }
 import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContractUnspecified, ExecutionContract,
@@ -169,7 +169,7 @@ fn fx_receipt_for(n: RoadmapNode) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_program_view_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-08-02" as NonEmptyStr, red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
+      executed_on: "2026-08-02" as NonEmptyStr, observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
@@ -372,7 +372,7 @@ test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_program_view_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-08-02" as NonEmptyStr, red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
+      executed_on: "2026-08-02" as NonEmptyStr, observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
