@@ -1,0 +1,182 @@
+module gunbc.fleet.fleet_host_truth_sources
+
+// THE READ HAS SOURCES. gunbc.fleet.fleet_host_truth_read judges a read against a declaration and never goes
+// to the machine itself, on purpose: a comparison that also owned the route to the host could not be checked
+// without the host, which is how the report's tiers got found by collision instead of by a schedule. The
+// reads still have to come from somewhere, and that somewhere already exists in this repository. The
+// memory-envelope read-back prints a host's cgroup leaf caps and its swap backing
+// (gunbc.host.host_memory_envelope_observe). The fleet host-key enrollment is the authority on which
+// fingerprint each host is supposed to present (gunbc.fleet.fleet_host_key_enrollment). This module turns
+// what those carriers captured into the read sum that module judges. It reads no host of its own: each of
+// those modules owns its route, and re-deriving what they read would set up a second authority over a fact
+// that already has one (gunbc.design_argument::single_authority).
+//
+// WHAT IT DOES WHEN A SOURCE HAS NO ANSWER is the report's tier 4 applied to this module: a source that came
+// back empty is a typed refusal, never a zero, never an empty column, never agreement. So a cgroup property
+// unset at the leaf refuses (an inherited limit is neither zero nor infinity), a slice the envelope did not
+// report refuses, and a host that presented nothing is the blank arm rather than a fingerprint of the empty
+// string.
+//
+// THREE OF THE FIVE AXES are inhabited here, the three the report's own specimens named: the cap that
+// surfaced as 5.1 tok/s with 41.5 GB read per request instead of refusing (3.2, srv4's leaf), the swap
+// backing the envelope refuses on (3.3, butch's 8 GiB /swap.img at priority -2), and the identity pinned to
+// an address (2.1, butch at .238 holding another machine's host key).
+//
+// THE TWO AXES NOT INHABITED HERE -- the PCI class count and the enabled-unit list -- are a DECLARED
+// FRONTIER, not a dangling declaration (gunbc.design_argument::consumption): the observe-only converge mode
+// authorized by gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21 reads both at the
+// same firing it takes the three here, and the inhabitance claims for them fall due with that mode, together
+// with the roster admission that consumes the verdict (the -rosters-consume-the-read item in
+// gunbc.roadmap.roadmap_authority). A per-axis producer that is not written yet is absent from this module;
+// nothing here answers for it.
+
+import std.types { NonEmptyStr, String }
+import std.measure { ByteSize }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import extdeps.systemd {
+  SystemdCgroupMemoryLimit,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  MemoryLimitAbsent,
+}
+import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for }
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthAxis,
+  HostTruthExpectation,
+  HostTruthRead,
+  HostTruthValue,
+  TruthSize,
+  TruthUnbounded,
+  TruthMarking,
+  HostTruthObserved,
+  HostTruthReadBlank,
+  HostTruthReadRefused,
+  HostTruthDeclared,
+  HostTruthNothingDeclared,
+  HostTruthReadCause,
+  HostTruthNoValueAtThatPath,
+  TruthCapBindsDeclaredWorkingSet,
+  TruthSlotSwapBackingDeclared,
+  TruthIdentityAnchoredNotAddressed,
+  host_truth_host_text,
+}
+
+// THE SOURCE, SAID OUT LOUD IN EVERY RECEIPT. A read that cannot say which carrier produced it is the empty
+// power column again: the number arrives, and nobody can tell a zero the machine answered from a probe that
+// never ran. Each function below stamps the carrier module and the receipt path it read from.
+fn host_truth_source_receipt(carrier: String) -> String {
+  "gunbc.fleet.fleet_host_truth_sources <- " + carrier
+}
+
+// A CGROUP LIMIT, AS THE VALUE ITS AXIS RELATES. systemd answers three different questions and all three
+// stay three here: a number, "infinity", and the property not being set at this leaf. Collapsing the third
+// into either of the first two is the fail-open move the report's tier 4 names, in the opposite direction:
+// srv4's leaf would have been "unbounded" (so the 5x cliff passes) or "zero" (so a healthy host is refused),
+// and neither is what the machine said.
+fn host_truth_cap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgroupMemoryLimit) -> HostTruthRead {
+  match limit {
+    MemoryLimitBytes { bytes: b } => HostTruthObserved {
+      host: host,
+      axis: TruthCapBindsDeclaredWorkingSet,
+      observed: TruthSize { size: b },
+      at_run: at_run,
+      receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.high")
+    }
+    MemoryLimitUnbounded => HostTruthObserved {
+      host: host,
+      axis: TruthCapBindsDeclaredWorkingSet,
+      observed: TruthUnbounded,
+      at_run: at_run,
+      receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.high=infinity")
+    }
+    MemoryLimitAbsent => HostTruthReadRefused {
+      host: host,
+      axis: TruthCapBindsDeclaredWorkingSet,
+      cause: HostTruthNoValueAtThatPath { path: "memory.high at " + host_truth_host_text(host: host) + "'s leaf: systemctl show printed no value, so the limit is inherited from a parent slice" }
+    }
+  }
+}
+
+// THE SWAP CEILING A LEAF CARRIES, from the same reading. This is the cgroup's side of the swap question;
+// the host's own backing is below, and the two are different facts about different places.
+fn host_truth_leaf_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgroupMemoryLimit) -> HostTruthRead {
+  match limit {
+    MemoryLimitBytes { bytes: b } => HostTruthObserved {
+      host: host,
+      axis: TruthSlotSwapBackingDeclared,
+      observed: TruthSize { size: b },
+      at_run: at_run,
+      receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.swap.max")
+    }
+    MemoryLimitUnbounded => HostTruthObserved {
+      host: host,
+      axis: TruthSlotSwapBackingDeclared,
+      observed: TruthUnbounded,
+      at_run: at_run,
+      receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.swap.max=infinity")
+    }
+    MemoryLimitAbsent => HostTruthReadRefused {
+      host: host,
+      axis: TruthSlotSwapBackingDeclared,
+      cause: HostTruthNoValueAtThatPath { path: "memory.swap.max at " + host_truth_host_text(host: host) + "'s leaf: systemctl show printed no value" }
+    }
+  }
+}
+
+// THE SWAP THE HOST ACTUALLY CARRIES. The report's 3.3 is about a backing that exists where the model says
+// none does: butch came up with an 8 GiB /swap.img at priority -2 while its slot declared no swap at all. A
+// zero here is a real answer rather than an absence, which is why it is a value and not a refusal -- the
+// envelope reads /proc/meminfo, so "0" means the machine said 0.
+fn host_truth_host_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, swap_total: ByteSize) -> HostTruthRead {
+  HostTruthObserved {
+    host: host,
+    axis: TruthSlotSwapBackingDeclared,
+    observed: TruthSize { size: swap_total },
+    at_run: at_run,
+    receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe SwapTotal from /proc/meminfo")
+  }
+}
+
+// THE ANCHOR, TAKEN FROM THE AUTHORITY THAT OWNS IT. The enrolled fingerprint is desired state and the
+// fingerprint a host presents is the machine's answer; keeping them apart is the whole of the report's 2.1,
+// where butch's new address held another machine's key and the failure was indistinguishable from a man in
+// the middle until the two were put side by side. A host with no enrolled row is not compared against
+// nothing: the expectation comes back as the model's own gap, so the host lands in the undeclared class and
+// is not admitted. That is report 5.3's shape -- a key outside the enrolled roster -- answered by a refusal
+// to conclude rather than by a pass, and it is what the -enrolled-key-roster-closed item closes.
+fn host_truth_identity_expectation(host: NonEmptyStr, declared_by: String) -> HostTruthExpectation {
+  match enrolled_fingerprint_for(host: host_truth_host_text(host: host)) {
+    Present { value: fingerprint } => HostTruthDeclared {
+      host: host,
+      axis: TruthIdentityAnchoredNotAddressed,
+      expected: TruthMarking { text: fingerprint },
+      declared_by: declared_by
+    }
+    Absent => HostTruthNothingDeclared {
+      host: host,
+      axis: TruthIdentityAnchoredNotAddressed,
+      because: "no enrolled host-key row for " + host_truth_host_text(host: host) + " in gunbc.fleet.fleet_host_key_enrollment -- an unenrolled key is the model's gap to name, not the host's to fail"
+    }
+  }
+}
+
+// THE FINGERPRINT THE HOST PRESENTED, PROJECTED. The scan step (gunbc.fleet.fleet_host_key_step, whose
+// receipt is fleet_host_key_scan_receipt_path) already reads the third field of the known_hosts line through
+// extdeps.ssh.known_hosts, so this module takes the projected fingerprint rather than parsing the line a
+// second time -- a second parser would be a second authority over which field is the key. An empty
+// fingerprint is the blank arm: the read happened and answered nothing, which is a different fact from a
+// refusal and both are different from a fingerprint of the empty string.
+fn host_truth_identity_read(host: NonEmptyStr, at_run: NonEmptyStr, presented: String) -> HostTruthRead {
+  if presented == "" {
+    HostTruthReadBlank { host: host, axis: TruthIdentityAnchoredNotAddressed }
+  } else {
+    HostTruthObserved {
+      host: host,
+      axis: TruthIdentityAnchoredNotAddressed,
+      observed: TruthMarking { text: presented },
+      at_run: at_run,
+      receipt: host_truth_source_receipt(carrier: "gunbc.fleet.fleet_host_key_step scan receipt, third field of the known_hosts line")
+    }
+  }
+}

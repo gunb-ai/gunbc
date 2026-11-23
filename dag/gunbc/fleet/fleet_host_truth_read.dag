@@ -111,6 +111,10 @@ type HostTruthReadCause
   | HostTruthProbeThrew { where: String }
   | HostTruthHostUnreachable { route: String }
   | HostTruthOutputUnparseable { raw: String }
+  // The read ran and the machine gave nothing at that path. systemd's three answers -- a number, "infinity",
+  // and the property unset at this leaf -- are three facts, and the third is neither of the first two: a
+  // limit inherited from a parent slice is a question this leaf did not answer.
+  | HostTruthNoValueAtThatPath { path: String }
 
 fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
   match cause {
@@ -118,6 +122,7 @@ fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
     HostTruthProbeThrew { where: w } => "the probe threw away from the sampling thread: " + w
     HostTruthHostUnreachable { route: r } => "the host did not answer on the route read through (" + r + "); pings-but-refuses-TCP is an ACL answer, not a network one"
     HostTruthOutputUnparseable { raw: v } => "the read returned something this model cannot project: " + v
+    HostTruthNoValueAtThatPath { path: pa } => "the read ran and the machine gave no value at that path (" + pa + "); an inherited limit is neither zero nor unbounded"
   }
 }
 

@@ -1,0 +1,187 @@
+module gunbc.test.claim.fleet.fleet_host_truth_sources_witness
+
+// CLAIMS ON THE SOURCES (gunbc.fleet.fleet_host_truth_sources). The comparison module is witnessed by
+// dag/test/claim/fleet/fleet_host_truth_read_witness.dag; these claims are the OTHER half of the frontier
+// that module declares -- that a read has a producer. Each one starts from what a carrier actually answers
+// (a systemd cgroup property, /proc/meminfo's swap total, the enrolled host-key roster) and follows it into
+// the verdict the rosters would act on, so a source that cannot answer cannot produce an agreement.
+//
+// TWO OF THESE ARE RED BY CONSTRUCTION against anything that reads an unanswered question as an answer: the
+// leaf whose cap is unset, and the host whose key was never enrolled. The third is the report's 3.2 at its
+// real numbers, and the fourth is 3.3: butch's 8 GiB /swap.img against a slot that declared none.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import std.measure { ByteSize, byte_size, gibibyte, gibibyte_to_byte_size }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import extdeps.systemd {
+  SystemdCgroupMemoryLimit,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  MemoryLimitAbsent,
+}
+import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for }
+import gunbc.fleet.fleet_host_truth_sources {
+  host_truth_cap_read,
+  host_truth_leaf_swap_read,
+  host_truth_host_swap_read,
+  host_truth_identity_expectation,
+  host_truth_identity_read,
+}
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthExpectation,
+  HostTruthRead,
+  HostTruthValue,
+  TruthSize,
+  TruthUnbounded,
+  TruthMarking,
+  HostTruthObserved,
+  HostTruthReadBlank,
+  HostTruthReadRefused,
+  HostTruthDeclared,
+  HostTruthNothingDeclared,
+  HostTruthVerdict,
+  HostTruthNothingRead,
+  HostTruthComparison,
+  HostTruthClass,
+  TruthClassAgreement,
+  TruthClassDivergence,
+  host_truth_class,
+  host_truth_compare,
+  TruthCapBindsDeclaredWorkingSet,
+  TruthSlotSwapBackingDeclared,
+  TruthIdentityAnchoredNotAddressed,
+  fleet_host_truth_verdict_for_host,
+  fleet_truth_admits_host,
+}
+
+// The fixtures spell sizes in GiB because the report did; the axis relates ByteSize.
+fn truth_size(gib: Nat) -> HostTruthValue { TruthSize { size: gibibyte_to_byte_size(g: gibibyte(count: gib)) } }
+fn declared_cap(host: NonEmptyStr, gib: Nat) -> HostTruthExpectation {
+  HostTruthDeclared {
+    host: host,
+    axis: TruthCapBindsDeclaredWorkingSet,
+    expected: truth_size(gib),
+    declared_by: "the serving grant's slot"
+  }
+}
+fn declared_swap(host: NonEmptyStr, gib: Nat) -> HostTruthExpectation {
+  HostTruthDeclared {
+    host: host,
+    axis: TruthSlotSwapBackingDeclared,
+    expected: truth_size(gib),
+    declared_by: "gunbc.host.memory_envelope for that slot"
+  }
+}
+
+// RED -- THE THREE ANSWERS systemd GIVES ARE THREE FACTS. A leaf whose memory.high is unset inherits from a
+// parent slice: that is neither a cap of zero (which would refuse a healthy host) nor a cap of infinity
+// (which would pass the very leaf the report found thrashing at 5.1 tok/s). The source refuses and says
+// which path went unanswered, and the refusal cannot be mistaken for agreement by the module downstream.
+test fn RED_a_cgroup_limit_unset_at_the_leaf_refuses_rather_than_answering_zero_or_infinity() -> Bool {
+  let read = host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent)
+  match read {
+    HostTruthReadRefused { host: _, axis: _, cause: _ } =>
+      !(host_truth_class(comparison: host_truth_compare(read: read, expectation: declared_cap("srv4" as NonEmptyStr, 40))) == TruthClassAgreement)
+    _ => false
+  }
+}
+
+// "infinity" is the machine saying it set no ceiling, which is its own answer and not the absence of one.
+test fn a_cgroup_limit_of_infinity_is_a_cap_the_machine_does_not_set() -> Bool {
+  match host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitUnbounded) {
+    HostTruthObserved { host: _, axis: _, observed: TruthUnbounded, at_run: _, receipt: _ } => true
+    _ => false
+  }
+}
+
+// RED -- THE REPORT'S 3.2, AT ITS REAL NUMBERS. srv4's leaf carried 40 GiB under an expert set that needs
+// 56: the read is the size the cgroup file said, and against the declared working set it diverges. This is
+// the pair the platform ran at 5.1 tok/s with 41.5 GB read per request while nothing refused.
+test fn RED_the_leaf_cap_the_machine_reports_diverges_from_the_working_set_the_role_needs() -> Bool {
+  let low = host_truth_cap_read(
+    host: "srv4" as NonEmptyStr,
+    at_run: "converge-2026-11-21",
+    limit: MemoryLimitBytes { bytes: gibibyte_to_byte_size(g: gibibyte(count: 40)) },
+  )
+  let roomy = host_truth_cap_read(
+    host: "srv4" as NonEmptyStr,
+    at_run: "converge-2026-11-21",
+    limit: MemoryLimitBytes { bytes: byte_size(count: 68719476736) },
+  )
+  host_truth_class(comparison: host_truth_compare(read: low, expectation: declared_cap("srv4" as NonEmptyStr, 56))) == TruthClassDivergence
+    && host_truth_class(comparison: host_truth_compare(read: roomy, expectation: declared_cap("srv4" as NonEmptyStr, 56))) == TruthClassAgreement
+}
+
+// RED -- THE REPORT'S 3.3: butch came up with an 8 GiB swapfile while its slot declared none. A host-level
+// swap total of zero is the machine answering "none", so the same pair at zero agrees -- the axis is not a
+// standing refusal of swap, it is a comparison against what the model declared.
+test fn RED_a_host_carrying_swap_where_the_envelope_declares_none_diverges() -> Bool {
+  let with_swap = host_truth_host_swap_read(
+    host: "butch" as NonEmptyStr,
+    at_run: "converge-2026-11-21",
+    swap_total: gibibyte_to_byte_size(g: gibibyte(count: 8)),
+  )
+  let without = host_truth_host_swap_read(
+    host: "butch" as NonEmptyStr,
+    at_run: "converge-2026-11-21",
+    swap_total: byte_size(count: 0),
+  )
+  host_truth_class(comparison: host_truth_compare(read: with_swap, expectation: declared_swap("butch" as NonEmptyStr, 0))) == TruthClassDivergence
+    && host_truth_class(comparison: host_truth_compare(read: without, expectation: declared_swap("butch" as NonEmptyStr, 0))) == TruthClassAgreement
+}
+
+// THE LEAF'S OWN SWAP CEILING is a separate fact from the host's backing, taken from the same reading.
+test fn the_leaf_swap_ceiling_is_read_from_the_same_observation_as_the_cap() -> Bool {
+  match host_truth_leaf_swap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitBytes { bytes: byte_size(count: 0) }) {
+    HostTruthObserved { host: _, axis: TruthSlotSwapBackingDeclared, observed: _, at_run: _, receipt: r } => string_contains(s: r, pattern: "gunbc.host.host_memory_envelope_observe")
+    _ => false
+  }
+}
+
+// THE ANCHOR IS THE ROSTER'S OWN VALUE, not one the read invented: the identity expectation for an enrolled
+// host is exactly what gunbc.fleet.fleet_host_key_enrollment holds, and the axis is the comparison the
+// report's 2.1 needed -- butch at .238 holding a previous occupant's key looked exactly like a man in the
+// middle until the presented fingerprint was set next to the enrolled one.
+test fn an_enrolled_hosts_identity_expectation_is_the_anchors_own_fingerprint() -> Bool {
+  let anchor = enrolled_fingerprint_for(host: "srv1")
+  match host_truth_identity_expectation(host: "srv1" as NonEmptyStr, declared_by: "gunbc.fleet.fleet_host_key_enrollment") {
+    HostTruthDeclared { host: _, axis: _, expected: TruthMarking { text: wants }, declared_by: _ } => match anchor {
+      Present { value: got } => wants == got && string_contains(s: got, pattern: "SHA256:")
+      Absent => false
+    }
+    _ => false
+  }
+}
+
+// RED -- A KEY OUTSIDE THE ENROLLED ROSTER IS THE MODELS GAP, NOT THE HOSTS FAULT. butch presents a key and
+// has no enrolled row, so the expectation comes back as the model's own undeclared gap: the host is not
+// admitted and the reason names the missing row. That is report 5.3's shape answered by a refusal to
+// conclude; the -enrolled-key-roster-closed item is what closes it.
+test fn RED_a_host_with_no_enrolled_row_is_undeclared_and_not_admitted() -> Bool {
+  let presented = host_truth_identity_read(
+    host: "butch" as NonEmptyStr,
+    at_run: "converge-2026-11-21",
+    presented: "SHA256:9kQ2previous-occupant",
+  )
+  let expectation = host_truth_identity_expectation(host: "butch" as NonEmptyStr, declared_by: "gunbc.fleet.fleet_host_key_enrollment")
+  let verdict = fleet_host_truth_verdict_for_host(
+    host: "butch" as NonEmptyStr,
+    reads: [ presented ],
+    expectations: [ expectation ],
+  )
+  match verdict {
+    HostTruthNothingRead { host: _ } => !fleet_truth_admits_host(verdict: verdict)
+    _ => false
+  }
+}
+
+// THE SCAN ANSWERED NOTHING. A known_hosts line whose key field is empty is a blank read, not a fingerprint
+// of the empty string: the two differ in whether the machine answered, and only one of them can be compared.
+test fn RED_a_presented_fingerprint_of_nothing_is_a_blank_read_not_an_empty_key() -> Bool {
+  match host_truth_identity_read(host: "butch" as NonEmptyStr, at_run: "converge-2026-11-21", presented: "") {
+    HostTruthReadBlank { host: _, axis: _ } => true
+    _ => false
+  }
+}
