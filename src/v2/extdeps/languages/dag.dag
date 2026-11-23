@@ -1959,6 +1959,25 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
   )
 }
 
+// THE INDEX SUFFIX AND THE ADMITTED-CONDITION BRACKET ARE NOT LIST LITERALS. They share the bracket,
+// but what sits inside is one expression, not a list the author separated: `xs[0]` and the host-effect
+// admission `g(a) [when cond]` are corpus syntax that compiles on main. Putting the separator wall here
+// was tried and MEASURED: it refuses them (the_admitted_condition_form_still_parses_holds,
+// the_index_suffix_still_parses_holds, the_admitted_condition_in_a_pattern_body_parses_holds and
+// the_corpus_admitted_condition_module_parses_holds of
+// v2.test.claim.parse.when_guard_probe all FAIL with the wall on this site), which drops the modules
+// that use them out of the resolution load -- a false refusal of legitimate source, the defect this lane
+// exists to close. The census names the bracketed LIST as the dropped-separator class; the index suffix
+// is not in it, so it keeps the optional-separator combinator and stays visible on the concern row
+// gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall.
+fn dag_grammar_index_suffix_list_helper() -> GrammarExpr {
+  dag_grammar_optional(
+    element: dag_grammar_comma_list_expr(
+      item: dag_grammar_nonterminal(production: ^dag_production_expr)
+    )
+  )
+}
+
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(
     item: dag_grammar_sequence(
@@ -2046,7 +2065,7 @@ fn dag_grammar_postfix_index_suffix_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_index_lbracket_head_expr(),
     right: dag_grammar_sequence(
-      left: dag_grammar_expr_list_helper(),
+      left: dag_grammar_index_suffix_list_helper(),
       right: dag_grammar_terminal(token_class: ^dag_token_rbracket)
     )
   )
