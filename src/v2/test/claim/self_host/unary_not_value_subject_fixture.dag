@@ -1,0 +1,24 @@
+module v2.test.claim.self_host.unary_not_value_subject_fixture
+
+// Dedicated SUBJECT for the one-operand PREFIX (boolean not) operator, recorded BEFORE any
+// lowering claims it. The measured corpus subject (gunbc.rust_decl_type_overlay) has an outer
+// Conj in value position whose operand `!closed_alias` is a prefix not. Lowering the outer Conj
+// must not be able to claim that subject emits while the prefix operator is still unexercised on
+// the Rust target. This fixture isolates that wall: `fn not_subject(x: Bool) -> Bool { !x }`.
+//
+// The boolean-not canonical operation exists (canonical_operation_op_not =
+// boolean_algebra_field_complement) and `!` canonicalizes to it
+// (src/v2/extdeps/languages/dag.dag:459), but the Rust operator-realization catalog
+// (src/v2/extdeps/languages/rust.dag rust_operator_realizations_catalog_node) carries only
+// InfixToken rows (and/or/eq/ne/lt/le/gt/ge/add/sub/mul/div/coerce) -- there is no `not` row and
+// no prefix row. So `!x` is NOT realized on the Rust target today; the companion probe
+// v2.test.claim.self_host.stage0_unary_not_probe observes the real production door refuse it at
+// emission under the generic target_value_expr_reason_transform_shape_invalid.
+//
+// This file deliberately lives under the self-host claim tree, NOT under the production dag
+// corpus: the stage0 corpus walk does not treat src/v2/test/claim/self_host as corpus, so this
+// emission-refusal subject is not counted by the recurring-failure-mode population row
+// a_possibly_empty_producer_enters_a_nonempty_consumer (which would otherwise go 10 -> 11).
+fn not_subject(x: Bool) -> Bool {
+  !x
+}
