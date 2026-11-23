@@ -17,16 +17,16 @@ import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_pin_gate, PinsAdmitted, PinsRefused, CensusPinGate, CensusMemberReadings,
   census_member_attempt_of, census_member_workspace_prefix_of, census_member_readback_attempt_raw,
   CensusMemberReadbackAttempt, census_member_attempt_holds, render_census_member_attempt,
-  member_reading_after_extract, member_reading_of_measure, BootChainWorkspaceUnavailable,
+  member_reading_after_extract, member_reading_of_measure, iso_reading_of, digest_of_sha256sum, BootChainWorkspaceUnavailable,
 }
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host_command_binding {
   HostLeg, host_leg_of_typed_argv, FleetSshTransport,
+  LegAnswered, LegNotDispatched,
   CreationNotRequested, CreationNotDispatched, CreationFailed, CreationUnconfirmed,
   Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -146,7 +146,7 @@ test fn the_stock_medium_row_has_no_census_boot_chain_to_read() -> Bool {
   }
 }
 
-fn answer(code: Int, stdout: String, stderr: String) -> RemoteAnswer { RemoteAnswer { exit_code: code, stdout: stdout, stderr: stderr } }
+fn answer(code: Int, stdout: String, stderr: String) -> HostLeg { LegAnswered { exit_code: code, stdout: stdout, stderr: stderr } }
 
 data stock_member_digest: NonEmptyStr = "deb2c288c12e6f35c2b9242134116ea03f7d4eb91f0c354ecd993680ffabbbf7"
 
@@ -172,6 +172,43 @@ test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
     && match member_reading_after_extract(extract: answer(code: 0, stdout: "", stderr: "")) { Absent => true _ => false }
     && match member_reading_of_measure(measure: answer(code: 0, stdout: concat(stock_member_digest as String, "  /tmp/x/stock-initrd\n"), stderr: "")) {
       MemberRead { digest: d } => (d as String) == (stock_member_digest as String)
+      _ => false
+    }
+}
+
+// fail-closed control, RED on the fabricated value. A leg that was NEVER DISPATCHED carries no exit
+// status; it reaches the readings as `LegNotDispatched { reason }` (exactly what `host_run`/`answer_on`
+// now return for that leg) and must read as unread by its CAUSE, never as an exit code. Had the leg
+// collapsed to an answer with a fabricated `-1`, the reading reasons would contain it, so the two
+// negative assertions here go red on the fabrication. These drive the real reading functions, not a
+// reconstruction.
+test fn a_never_dispatched_leg_is_unread_by_its_cause_never_a_fabricated_exit() -> Bool {
+  let cause = "fleet ssh transport died"
+  match member_reading_of_measure(measure: LegNotDispatched { reason: cause }) {
+    MemberUnread { reason: r } =>
+      string_contains(s: r, pattern: cause)
+        && string_contains(s: r, pattern: "never dispatched")
+        && !string_contains(s: r, pattern: "-1")
+        && !string_contains(s: r, pattern: "exit=")
+    _ => false
+  }
+    && match iso_reading_of(measure: LegNotDispatched { reason: cause }) {
+      IsoUnmeasured { reason: r } =>
+        string_contains(s: r, pattern: cause)
+          && string_contains(s: r, pattern: "never dispatched")
+          && !string_contains(s: r, pattern: "-1")
+          && !string_contains(s: r, pattern: "exit=")
+      _ => false
+    }
+    && match member_reading_after_extract(extract: LegNotDispatched { reason: cause }) {
+      Present { value: MemberUnread { reason: r } } =>
+        string_contains(s: r, pattern: cause)
+          && !string_contains(s: r, pattern: "-1")
+          && !string_contains(s: r, pattern: "exit=")
+      _ => false
+    }
+    && match digest_of_sha256sum(measure: LegNotDispatched { reason: cause }) {
+      Absent => true
       _ => false
     }
 }
