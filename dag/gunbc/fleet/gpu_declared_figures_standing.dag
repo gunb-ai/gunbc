@@ -38,7 +38,9 @@ module gunbc.fleet.gpu_declared_figures_standing
 // state", and the External facts boundary puts "dispatch among upstreams and coverage state" in the consuming
 // layer, "never to extdeps". Everything below that enumerates AMD's and Gigabyte's rows, matches between them
 // by row equality, and keeps the count of which standings are bound is exactly that enumeration and dispatch,
-// so it lives here, beside the fleet inventory that consumes it; the agnostic shapes it projects onto stay
+// so it lives here, in the fleet layer, beside the inventory that is the consumer named for it -- a frontier today, since
+// until that item lands the only caller of these gates is their own witness (git grep finds no production import of this
+// module); the agnostic shapes it projects onto stay
 // upstream (CitedFigureStanding in extdeps.external_authority, the catalog types in extdeps.gpu.types). A
 // third vendor's standing row is then added by whoever consumes it, not by editing a shared hub.
 //
@@ -244,7 +246,7 @@ fn declared_gpu_standing_rows() -> List<CitedFigureStanding> {
 // the basis, that the figures are transcribed from the vendor's page and no standing was declared.
 //
 // WHO CONSUMES IT, said plainly: the item on this same plan that admits hosts to the build and serving
-// rosters -- `fleet-truth-follows-the-machine/-rosters-consume-the-read`. Until that lands nothing in
+// rosters -- node 'fleet-truth-rosters-consume-the-read' of program 'fleet-truth-follows-the-machine'. Until that lands nothing in
 // production calls this, and this module says so rather than claiming the gap is closed
 // (gunbc.design_argument::consumption, "consumed by a named later change (a declared frontier, with its
 // trigger)"). It is here, and bound, because the roster item should not have to invent the standing lookup
