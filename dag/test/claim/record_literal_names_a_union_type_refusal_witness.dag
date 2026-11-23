@@ -1,4 +1,4 @@
-module test.claim.record_literal_names_a_union_type_refusal
+module test.claim.record_literal_names_a_union_type_refusal_witness
 
 import std.types { String, Bool, Int, List }
 import gunbc.compile_diagnostic_census {

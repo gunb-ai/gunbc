@@ -1,4 +1,4 @@
-module test.claim.item_kind_dispatch_totality
+module test.claim.item_kind_dispatch_totality_witness
 
 import std.types { String, Bool, Int, List }
 import gunbc.compile_diagnostic_census {

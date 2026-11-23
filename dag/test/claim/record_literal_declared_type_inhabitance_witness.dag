@@ -1,4 +1,4 @@
-module test.claim.record_literal_declared_type_inhabitance
+module test.claim.record_literal_declared_type_inhabitance_witness
 
 import std.types { String, Bool, Int, List }
 import gunbc.compile_diagnostic_census {
