@@ -1,12 +1,17 @@
 module gunbc.fabric.fabric_executor_class
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Optional, Present, Absent }
 import product.fabric.work {
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
   ExecutionRequirements, capacity_class_eq, capacity_class_wire,
 }
 import gunbc.runner.runner_slot_allocation { identity_is_workspace_execution_member }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import product.host_identity { HostIdentity, host_identity_eq }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 
 // WHAT AN EXECUTOR IS SANCTIONED FOR IS OUR FACT, NOT THE SUPPLIER'S.
 //
@@ -123,5 +128,273 @@ fn capacity_admission_wire(admission: CapacityClassAdmission) -> NonEmptyStr {
       ) as NonEmptyStr
     ExecutorNotClassified { executor: e } =>
       concat(concat("refused ", e as String), ": no fleet classification for this executor") as NonEmptyStr
+  }
+}
+
+// ── THE OTHER HALF OF THE ROW: WHAT THE EXECUTOR IS ABLE TO RUN ──────────────────────────────────────
+//
+// The capacity class above answers WHAT AN EXECUTOR MAY SERVE: a safety disposition, admitted by
+// every path that gates customer code, evidenced by what we bought or own. This answers a different
+// question -- WHAT AN EXECUTOR CAN EXECUTE -- evidenced differently (the silicon, cited per row
+// below) and consumed by a different decision: a scheduler asking where a piece of work may run.
+// They are two rows and not one because the questions are independent: a host may be sanctioned for
+// control-plane work and still be the wrong instruction set for it, and a host may be the right
+// instruction set and be refused by the class above. Joining them into one record would make a
+// re-sanctioning edit able to change what the silicon executes, which it cannot.
+//
+// THIS IS THE ONE AUTHORITY FOR A HOST'S ARCHITECTURE. The kernel's own `uname -m` on the host is a
+// CHECK on this row, never a second source: where the two disagree the honest reading is that the
+// host is not the host we classified, and the answer is a refusal that names both. A host with no
+// row here is unclassified and is REFUSED, for the same reason
+// gunbc.fabric.fabric_executor_class::ExecutorSanction refuses an unclassified executor --
+// "we have not classified this" and "this host runs X" are different states with different remedies,
+// and defaulting either way lets the roster silently grow an architecture nobody authored.
+//
+// KEYED ON THE HOST IDENTITY, not on a rendered name: the consumer holds a
+// product.host_identity.HostIdentity, and a lookup that took a String would make a typo in a machine
+// name an unclassified host rather than a compile error.
+type ExecutorExecutionClass {
+  host: HostIdentity
+  architecture: Architecture
+  standing: ExecutionClassStanding
+}
+
+// THE FLEET'S EXECUTION CLASSES FOR THE HOSTS THE FLEET RUNS SHARED-OS. Each row cites its own
+// evidence, and says whether that evidence is a reading of the silicon or a fleet action that could only
+// have succeeded on this instruction set -- the distinction matters because a per-host processor receipt
+// does NOT exist for these machines (gunbc.fleet.fleet_physical_inventory::fleet_processor_observations
+// records ProcessorObservationAbsent for all four: "no dmidecode -t processor receipt has been supplied").
+//
+// - srv1: OBSERVED. gunbc.fleet.gpu_interconnect_observation records the instrument that was run on this
+//   host -- "nvidia-smi topo -m on srv1 (Ampere Altra Q80-30, kernel 7.0.0-42-generic, driver
+//   580.178.04)" -- and an Altra is arm64; the in-band SMBIOS read under artifacts/host-observations/
+//   srv1-inband-smbios-2026-11-11/ is the corroborating second read of the same machine. Its row is
+//   authored now rather than when it rejoins: srv1 left the dispatch roster (remote_build_serving_hosts)
+//   and is returning as soon as its stale-seat proof reads back, and a host with no row here is refused
+//   as unclassified the moment it is placed on.
+// - srv3, srv4: OBSERVED BY THE SERVING ROUTE ITSELF. Each host settled the executor's uploaded serve
+//   binary, and gunbc.compute.remote_build_serving_converge::converge_install_binary installs an uploaded
+//   binary ONLY when the arch read on the host equals the executor's -- on disagreement it leaves the
+//   write unhandled rather than installing. An installed, serving arm64 binary is therefore a reading of
+//   what the host executes, not an assumption: srv1, srv3 and srv4 were each converged from their own
+//   executor lane with host = the machine served (runs 44656574939, 44660458690, 44658646391, recorded at
+//   gunbc.compute.remote_build_serving_converge::remote_build_serving_converge_ci_wet), and srv4 served a
+//   compile on 2026-11-21. Corroborating, and no longer load-bearing: the
+//   gunbc.fleet.fleet_physical_inventory::fleet_processor_expectations rows naming
+//   extdeps.cpu.ampere::altra_max_m12830_catalog, and for srv3 the
+//   gunbc.runner.runner_host_deploy::runner_host_gpu_container_toolchain_rows row putting it on
+//   extdeps.container.docker_ce::docker_ce_apt_repo_noble_arm64 -- the arm64 pocket of a repository with
+//   no x86 packages, measured on the host 2026-10-25.
+// - host-e2d4b7 (ken): gunbc.machine_intake::h11ssl_x86_bringup_frontier -- the fleet's one Supermicro
+//   H11SSL unit, admitted through the x86_64 UEFI spellings of extdeps.toolchain.types::Architecture;
+//   the same fact gunbc.integration_concern.fleet_converge_arm64_label_blocks_x86_executor_host and
+//   gunbc.compute.remote_build_hosts both speak of ("ken is x86 and has no converge path").
+//
+// - srv2: EXPECTED, CORROBORATED BY THE WIDTH THE FLEET ALREADY ASSUMES OF IT. The same
+//   gunbc.fleet.fleet_physical_inventory::fleet_processor_expectations row names the same
+//   extdeps.cpu.ampere::altra_max_m12830_catalog for srv2, and the fleet's runner-slot width check for
+//   srv2 is stated against that catalog's own core count
+//   (test.claim.runner.runner_slot_allocation_witness::cpu_width_is(host: srv2, expected:
+//   altra_max_m12830_catalog.cores)) -- a check that could only ever hold on an Altra Max. srv2 is here
+//   although it has never been on the DISPATCH roster because it is on the CANDIDATE roster
+//   (gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), and the next PR in this
+//   lane -- ken's native serve build, sequenced directly behind this one -- reads THIS row to choose
+//   between uploading a serve binary and building one on the host. It does not do so yet: today's
+//   converge decides from the host's own uname read against the pinned executor arch
+//   (#gunbc.compute.remote_build_serving_converge::converge_install_binary), so nothing here changes
+//   serving behaviour at this head.
+//   The row is authored now, with the standing its evidence actually has, because when that PR lands an
+//   unclassified srv2 would turn today's upload into a refusal -- a regression dressed as safety.
+//
+// No host is added without a citation, and no citation is dressed above what it is.
+data executor_execution_class_roster: List<ExecutorExecutionClass> = [
+  ExecutorExecutionClass {
+    host: operator_host_srv1,
+    architecture: Aarch64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.fleet.gpu_interconnect_observation", decl_name: "gpu_interconnect_observation"),
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_srv2,
+    architecture: Aarch64,
+    standing: ExecutionClassExpected {
+      catalog: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_max_m12830_catalog"),
+      what_would_ground_it: "a dmidecode -t processor receipt on srv2 naming the Altra Max, or the arm64-only docker-ce pocket route srv3 already has",
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_srv3,
+    architecture: Aarch64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"),
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_srv4,
+    architecture: Aarch64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"),
+    },
+  },
+  ExecutorExecutionClass {
+    host: operator_host_e2d4b7,
+    architecture: X86_64,
+    standing: ExecutionClassObserved {
+      evidence: decl_ref(module_path: "gunbc.machine_intake.h11ssl_x86_bringup_frontier", decl_name: "h11ssl_x86_bringup_frontier"),
+    },
+  },
+]
+
+// HOW THE ROW KNOWS WHAT IT SAYS. Placement consumes these rows as a hard fact, so the standing of the
+// evidence belongs IN THE ROW and not only in its comment: a comment cannot be checked, and a row that
+// reads the same whether it rests on a reading of the silicon or on a modeled intent is a row that can be
+// weakened in review without anything changing under it. The shape follows
+// extdeps.external_authority::CitedFigureStanding -- cited, or observed by a receipt, or transcribed with
+// the obligation to ground it spelled out.
+//
+// STANDING IS HONESTY, NOT POLICY: admit_execution_class does NOT read it, and no row is refused for
+// being Expected. Refusing on standing would turn "we have not read this host's processor" into an outage
+// on hosts that are demonstrably running the work, which is the wrong direction for an epistemic field.
+// What it is for is the reader, and the claim that the fleet's placed-upon hosts are all Observed.
+type ExecutionClassStanding
+  = ExecutionClassObserved { evidence: DeclarationRef }
+  | ExecutionClassExpected { catalog: DeclarationRef, what_would_ground_it: NonEmptyStr }
+
+// WHAT A HOST EXECUTES, AS A TYPE THAT CANNOT SAY "UNKNOWN" BY ACCIDENT.
+type HostArchitecture
+  = HostArchitectureKnown { host: HostIdentity, arch: Architecture }
+  | HostArchitectureUnclassified { host: HostIdentity }
+
+fn host_execution_architecture(
+  roster: List<ExecutorExecutionClass>,
+  host: HostIdentity,
+) -> HostArchitecture {
+  fold(
+    roster,
+    init: HostArchitectureUnclassified { host: host },
+    f: (acc, row) =>
+      if host_identity_eq(a: row.host, b: host) {
+        HostArchitectureKnown { host: host, arch: row.architecture }
+      } else {
+        acc
+      },
+  )
+}
+
+// THE PUBLIC LOOKUP THE FLEET READS: a host's architecture, or the typed fact that this module has
+// not classified it. Anything that needs to know which instruction set a host runs -- the serving
+// converge deciding between uploading a binary and building one there, a placement check, a label
+// repair -- calls THIS and nothing else, so there is one answer to give.
+//
+// WHO ACTUALLY CALLS IT, AT THIS HEAD, WITHOUT DRESSING IT UP: the production placement route reaches
+// the roster through admit_execution_class, which walks it with host_execution_architecture above; the
+// only call site of THIS entry point is the witness. THE FRONTIER, NAMED AS A ROW AND NOT A BRANCH:
+// roadmap row `remote-build-ken-native-serve-admission` (milestone RB-M3, dag/gunbc/roadmap/
+// roadmap_authority.dag -- both that row and the plan below land with PR #16859), whose plan is
+// gunbc.plans.remote_build_bandwidth section 2; its trigger is that
+// row's implementation landing, which will call this lookup from
+// #gunbc.compute.remote_build_serving_converge::converge_install_binary (choosing the upload arm against
+// a native-build arm) and from #gunbc.compute.remote_build_serving_setup::serving_assess (comparing the
+// host's own uname read against the row, as a check that refuses when they disagree and never as a second
+// source). The implementation is in flight on session/lively-owl-722 and is sequenced directly behind this
+// PR; it is cited as the proof the frontier is real, not as the frontier itself. Until it lands, the
+// converge on main still decides from the uname read alone, which is why nothing here changes serving
+// behaviour at this head. It is published rather than left private because
+// the alternative is the fork this module exists to prevent: a second module walking
+// executor_execution_class_roster by hand, giving a second answer to one question.
+fn executor_host_architecture(host: HostIdentity) -> HostArchitecture {
+  host_execution_architecture(roster: executor_execution_class_roster, host: host)
+}
+
+// THE JOIN. A request's requirements against one host's execution class. This is the check fabric
+// owes whoever places work on a shared-OS host, and it is deliberately NOT selection: it never
+// ranks, never prefers, never picks among the hosts that pass. Host choice stays
+// gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold until work-exec-2's
+// select_supply replaces it; what survives into that row is this function, because "the class says
+// this host cannot run that" is not a policy preference.
+//
+// ONLY THE AXES THIS MODULE CAN ANSWER FOR A HOST ARE CHECKED. The capacity axis is
+// admit_executor_capacity above, keyed on the executor's instance name; cores, memory and the rest
+// of the envelope are supply facts this module does not carry, and inventing them here would be the
+// same fabrication gunbc.fabric.fabric_capacity_class_gap refused. An axis with no requirement on it
+// is unstated, not unconstrained-by-luck: it is simply nothing to check here.
+type ExecutionClassAdmission
+  = ExecutionClassAdmitted { host: HostIdentity, host_arch: Architecture }
+  | ExecutionClassArchitectureRefused {
+      host: HostIdentity,
+      required: Architecture,
+      host_arch: Architecture,
+    }
+  | ExecutionClassUnclassified { host: HostIdentity, required: Architecture? }
+
+fn execution_class_required_architecture(requirements: ExecutionRequirements) -> Optional<Architecture> {
+  match requirements.shape.envelope.cpu {
+    Present { value: cpu } => cpu.architecture
+    Absent => Absent
+  }
+}
+
+fn admit_execution_class(
+  requirements: ExecutionRequirements,
+  roster: List<ExecutorExecutionClass>,
+  host: HostIdentity,
+) -> ExecutionClassAdmission {
+  match execution_class_required_architecture(requirements: requirements) {
+    // Nothing is required of the instruction set, so the only thing left to say is whether this
+    // module knows the host at all -- a host nobody classified is still not a host to place on.
+    Absent =>
+      match host_execution_architecture(roster: roster, host: host) {
+        HostArchitectureKnown { host: h, arch: a } => ExecutionClassAdmitted { host: h, host_arch: a }
+        HostArchitectureUnclassified { host: h } => ExecutionClassUnclassified { host: h, required: Absent }
+      }
+    Present { value: required } =>
+      match host_execution_architecture(roster: roster, host: host) {
+        HostArchitectureKnown { host: h, arch: a } =>
+          // THE COMPARISON IS ON THE ENUM, NEVER ON A RENDERED LABEL. A check written against
+          // architecture_diagnostic_name strings would accept any spelling two renderers happened to
+          // agree on, and the renderers exist for ledgers, not for decisions.
+          if required == a {
+            ExecutionClassAdmitted { host: h, host_arch: a }
+          } else {
+            ExecutionClassArchitectureRefused { host: h, required: required, host_arch: a }
+          }
+        HostArchitectureUnclassified { host: h } =>
+          ExecutionClassUnclassified { host: h, required: Present { value: required } }
+      }
+  }
+}
+
+// THE LEDGER LINE. Rendered, never compared: the diagnostics name is what
+// extdeps.toolchain.types::architecture_diagnostic_name is for, and this is the only place it is
+// reached from this module's decision path.
+fn execution_class_admission_wire(admission: ExecutionClassAdmission) -> String {
+  match admission {
+    ExecutionClassAdmitted { host: h, host_arch: a } =>
+      concat(
+        concat(concat("admitted ", h as String), " executes "),
+        architecture_diagnostic_name(arch: a) as String,
+      )
+    ExecutionClassArchitectureRefused { host: h, required: r, host_arch: a } =>
+      concat(
+        concat(
+          concat(concat("refused ", h as String), ": work requires "),
+          architecture_diagnostic_name(arch: r) as String,
+        ),
+        concat(", host executes ", architecture_diagnostic_name(arch: a) as String),
+      )
+    ExecutionClassUnclassified { host: h, required: r } =>
+      match r {
+        Present { value: required } =>
+          concat(
+            concat(
+              concat(concat("refused ", h as String), ": no fleet execution class for this host; work requires "),
+              architecture_diagnostic_name(arch: required) as String,
+            ),
+            " and the host is unclassified",
+          )
+        Absent =>
+          concat(concat("refused ", h as String), ": no fleet execution class for this host")
+      }
   }
 }
