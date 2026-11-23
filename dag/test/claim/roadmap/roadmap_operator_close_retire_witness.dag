@@ -149,7 +149,7 @@ import gunbc.roadmap.roadmap_document {
   RoadmapSection
 }
 import gunbc.roadmap.roadmap_status {
-  RedControlExecuted,
+  RedObservedOnMain, RedControlExecuted,
   HandbackDelivered
 }
 
@@ -386,6 +386,7 @@ fn close_inputs(node: String) -> OperatorCloseInputs {
     accepted_on: Iso8601CivilDate { year: 2026, month: 11, day: 3 },
     witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
     witness_fn: "witness_executes" as NonEmptyStr,
+    observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     first_artifact: "commit 01234567" as NonEmptyStr,
     further_artifacts: ["pr 14189" as NonEmptyStr],
     at: 1793692800,
@@ -571,7 +572,7 @@ fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test/claim/roadmap/roadmap_operator_close_retire_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-03",
+      executed_on: "2026-11-03", observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
     accepted_by: "briansrls" as NonEmptyStr,
@@ -719,6 +720,7 @@ test fn the_same_close_replays_the_first_recording_and_other_content_refuses() -
         node: base.node, ticket: base.ticket, repo: base.repo, pr_number: base.pr_number,
         accepted_by: base.accepted_by, accepted_on: base.accepted_on,
         witness_module: base.witness_module, witness_fn: base.witness_fn,
+        observation: base.observation,
         first_artifact: "a DIFFERENT artifact" as NonEmptyStr,
         further_artifacts: base.further_artifacts, at: base.at,
       }, readback: merged_readback(14189), standing: ready_standing())
