@@ -26,8 +26,14 @@ fn unrostered(declared: List<String>, rostered: List<String>) -> List<String> {
   filter(xs: declared, predicate: fn(n) { !any(rostered, m => m == n) })
 }
 
+// The names the roster dropped, for a reader: run this function (gunbc run --function
+// unrostered_ruling_names) to see WHICH ruling is missing; the claim below only answers whether any is.
+fn unrostered_ruling_names() -> List<String> {
+  unrostered(declared: declared_ruling_names(), rostered: rostered_ruling_names(rulings: design_rulings()))
+}
+
 test fn design_ruling_every_declared_ruling_is_rostered() -> Bool {
-  length(xs: unrostered(declared: declared_ruling_names(), rostered: rostered_ruling_names(rulings: design_rulings()))) == 0
+  length(xs: unrostered_ruling_names()) == 0
 }
 
 // Control: the census is non-empty and sees the real rows, and a roster missing one name is caught.
