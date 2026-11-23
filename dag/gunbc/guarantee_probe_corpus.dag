@@ -184,6 +184,7 @@ data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through
 data floor_generic_instantiation_class: GuaranteeClassId = "floor-generic-instantiation-inhabitance" as GuaranteeClassId
 data floor_parse_list_separator_class: GuaranteeClassId = "floor-parse-list-separator" as GuaranteeClassId
 data floor_record_field_completeness_class: GuaranteeClassId = "floor-record-field-completeness" as GuaranteeClassId
+data floor_cardinality_seam_class: GuaranteeClassId = "floor-cardinality-seam" as GuaranteeClassId
 
 fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
   [
@@ -196,6 +197,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     floor_generic_instantiation_class,
     floor_parse_list_separator_class,
     floor_record_field_completeness_class,
+    floor_cardinality_seam_class,
     method_established_surface_class,
     sole_constructor_cross_module_class,
     v2_self_grounding_frontier_class,
@@ -271,6 +273,13 @@ data floor_record_completeness_red_probe: GuaranteeProbeId = "floor-record-field
 data floor_record_completeness_zero_field_product_control_probe: GuaranteeProbeId = "floor-record-field-completeness-zero-field-product-empty-braces-control" as GuaranteeProbeId
 data floor_record_completeness_zero_field_variant_control_probe: GuaranteeProbeId = "floor-record-field-completeness-zero-field-variant-empty-braces-hole" as GuaranteeProbeId
 data floor_record_completeness_bare_name_control_probe: GuaranteeProbeId = "floor-record-field-completeness-bare-name-no-literal-hole" as GuaranteeProbeId
+
+// Cardinality seam: field projection through an optional.
+// The hole: `xs.first().id` reads a field through a T? producing T? at the projection;
+// the field-read position admits it silently (zero blocking rows) where it should refuse.
+// The green: the same T? at a call-argument position IS refused, proving the harness is not vacuous.
+data floor_cardinality_seam_hole_probe: GuaranteeProbeId = "floor-cardinality-seam-field-projection-through-optional-hole" as GuaranteeProbeId
+data floor_cardinality_seam_green_probe: GuaranteeProbeId = "floor-cardinality-seam-field-access-after-match-green" as GuaranteeProbeId
 
 data sole_ctor_forged_red_probe: GuaranteeProbeId = "sole-constructor-cross-module-forged-red" as GuaranteeProbeId
 data sole_ctor_green_probe: GuaranteeProbeId = "sole-constructor-cross-module-green-control" as GuaranteeProbeId
@@ -717,6 +726,20 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       class: floor_record_field_completeness_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_cardinality_seam_hole_probe,
+      class: floor_cardinality_seam_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectSilentAcceptanceHole {
+        invalid_state: "a field read through an optional (xs.first().field) is admitted at the projection with zero blocking diagnostics; the same optional at a call-argument position IS refused" as NonEmptyStr,
+      },
+    },
+    GuaranteeProbeRow {
+      probe: floor_cardinality_seam_green_probe,
+      class: floor_cardinality_seam_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
       probe: method_green_probe,
