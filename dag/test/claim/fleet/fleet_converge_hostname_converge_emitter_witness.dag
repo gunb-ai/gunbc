@@ -22,6 +22,7 @@ import extdeps.github.actions {
   InputChoice, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
   workflow_dispatch_max_inputs,
 }
+import gunbc.fleet.fleet_workflow_steps { fleet_converge_release_bins_job_id }
 import gunbc.fleet.fleet_converge_workflow {
   HostnameConverge,
   TargetHostDomain,
@@ -38,7 +39,6 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_hostname_converge_readopt_step,
   fleet_converge_job_needs,
   fleet_converge_mode_job_id,
-  fleet_converge_release_bins_job_id,
   fleet_converge_dispatch_input_interpolation,
   fleet_converge_workflow_mode_wire,
   fleet_converge_workflow_modes,
