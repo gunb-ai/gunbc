@@ -21,9 +21,6 @@ import gunbc.live_deploy.deployed_tree_observation {
   TreeLegNotAttempted,
 }
 import gunbc.live_deploy.deployed_tree_report {
-import extdeps.exec.command { argv_words, ArgvCommand }
-import extdeps.git { git_in_trusted_repository_head_revision_command }
-import v2.std.text { string_eq }
   deployed_tree_standing_line,
   deployed_tree_standing_is_publication_converged,
   DeployedTreeStandingUnobserved,
@@ -49,6 +46,10 @@ import v2.std.text { string_eq }
 // THE CEILINGS, at the one authority, as VALUES. A ProbeLeg -- the kind the incident leg is -- gets
 // 15s. The four ceilings are distinct and none is zero: a zero would be the "0 means no deadline"
 // sentinel this design refuses.
+
+import extdeps.exec.command { argv_words, ArgvCommand }
+import extdeps.git { git_in_trusted_repository_head_revision_command }
+import v2.std.text { string_eq }
 test fn the_four_ceiling_are_distinct_and_none_is_zero() -> Bool {
   let probe = second_count(s: fleet_leg_wall_deadline(kind: ProbeLeg))
   let actuation = second_count(s: fleet_leg_wall_deadline(kind: ActuationLeg))
