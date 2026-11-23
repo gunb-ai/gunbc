@@ -105,7 +105,7 @@ fn accepted_standing(envs: List<RoadmapEventEnvelope>) -> Bool {
 // halves: the standing is the accepted one, and the recorded event carries no merged_at member.
 test fn an_acceptance_recorded_on_a_head_is_accepted_with_no_merge_at_all() -> Bool {
   let acc = acceptance_env(evidence: live_head(), at: "t1")
-  let text = roadmap_event_wire_text(e: acc)
+  let text = roadmap_event_wire_text(env: acc)
   accepted_standing(envs: [acc])
     && !string_contains(s: text, substring: "merged_at")
     && string_contains(s: text, substring: "head_sha")
@@ -232,9 +232,9 @@ test fn a_pre_ruling_row_still_reads_and_states_its_merge_time() -> Bool {
 test fn the_merge_event_round_trips_through_its_own_bytes() -> Bool {
   let merged = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
     parent: none, at_time: "t2")
-  let text = roadmap_event_wire_text(e: merged)
+  let text = roadmap_event_wire_text(env: merged)
   match roadmap_event_decode(text: text) {
-    RoadmapEventDecoded { envelope: e } => match e.kind {
+    RoadmapEventDecoded { envelope: e } => match e.event.kind {
       PullRequestMergedEvent { merge } =>
         (merge.pr_url as String) == thread() && (merge.head_sha as String) == head()
           && (merge.merged_at as String) == merged_at() && (merge.merge_sha as String) == merge_sha()

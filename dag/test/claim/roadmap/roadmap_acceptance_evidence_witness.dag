@@ -294,10 +294,10 @@ test fn a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_cal
 // names by its bytes, and the refusal says where that set lives.
 test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
   let facts = fact_set()
-  let half = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "")
-  let shape = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", at: " ", sha: "abc123def456")
-  let none_conv = roadmap_acceptance_pr_evidence_from_args(url: "", at: "", sha: "")
-  let all_conv = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String)
+  let half = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, sha: "")
+  let shape = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", sha: "abc123def456")
+  let none_conv = roadmap_acceptance_pr_evidence_from_args(url: "", sha: "")
+  let all_conv = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, sha: facts.head as String)
   claim("half a pull request is refused where the three arguments are read",
     match half { Absent => true, Present { value: _ } => false })
   && claim("a pull request that never merged is refused where they are read",
