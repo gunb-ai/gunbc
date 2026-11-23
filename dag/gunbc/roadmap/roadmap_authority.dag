@@ -1232,7 +1232,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "parse-node-source-extent",
       owner: "parse",
       carriers: carrier(path: "src/v2/compiler/parse.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Both parsers record every node's full source extent when they build it",
         boundary: "PRODUCER CONTRACT: every successfully published source occurrence has its complete source interval retained from the parse that establishes it -- including suffixes consumed after its identity was minted (v1 maybe_optional reuses a type's identity after consuming `?`) and excluding separators outside it (parse_import consumes trailing newlines its extent must not cover) -- and the parser publishes those intervals in its final source artifact, following the accepted branch through speculative parsing. The interval is recorded at SYNTAX COMPLETION, not at identity minting: minting and completion diverge (optional-type suffix, interpolation fragments minted together after the string ends, a property and its value minted together over different regions, binary expressions whose diagnostic span is the operator). The population is every source occurrence: terminals, production wrappers, infix applications, sequence/repeat composites that are not synthetic, nested productions and the root; an empty match records no interval and synthetic scaffolding records none. SOURCE SCOPES THAT SEMANTIC SIMPLIFICATION ERASES ARE RETAINED with their ordered containment (v1 parse_paren_expr returns the inner expression; parse_block returns a sole statement), in the parser's source side table, without adding semantic nodes. v2: SpanIndex extents beside DerivedBy lineage. v1: the same side-table shape published with the parse result, not a Node field. Diagnostic focus, source extent and causal lineage stay three facts (gunbc.design_argument::interface_realization_policy). The existing v1 import-extent reader (the consumed-window rescan) reads the recorded interval instead.",
         displaced_cost: "Consumers that need containment (annotation attachment, import editing) cannot tell whether a position is inside a node or after its closing delimiter, so each reconstructs a range from descendants or tokens -- an approximate second answer to a fact the parser had and discarded (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::earliest_unjustified_boundary).",
@@ -5528,7 +5528,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "runner-throughput-witness-imports-absent-members",
       owner: "language-integrity",
       carriers: carrier(path: "dag/test/claim/runner/runner_throughput_qualification_witness.dag"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Repair a witness that imports two names its source does not declare",
         boundary: "One witness imports two members from a module that declares neither of them. The declarations phase reports both as absent.",
         displaced_cost: "The module declares a differently-named member whose spelling contains one of the requested names as a substring, so a casual search appears to confirm the import and does not. The finding is real and sits on the main line, where it was only visible because another change happened to surface the phase's output.",
