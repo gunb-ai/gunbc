@@ -1349,6 +1349,13 @@ data floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23: DesignR
   provenance: "Operator, relayed verbatim by lane manager bold-pike-529 (neat-badger-614 passed it at 2026-11-23T22:12Z), on gunb-ai/gunbc#16895, verbatim: \"regarding 16895 - yeah A+C is fine as long as no more exceptions are introduced in the future\". The ruling admits, for the floor-exhaustiveness-refusal node, the two-part disposition (A)+(C) for the SIX frozen src/v2 match sites whose scrutinee type cannot be named at the constructor-roster lookup -- the five TypeVariable sites (src/v2/compiler/fold_lowering.dag:574 scrutinee 'form'; src/v2/compiler/type_declaration_use_census.dag:260 and :466 scrutinee 'label'; src/v2/std/compilers/target_model.dag:9131 and :9161 scrutinee 'pending_arguments') plus src/v2/compiler/source_root_eval.dag:5118 scrutinee 'p' -- as a bounded allow-list, and (C) a roadmap row funding RESOLVING those six sites' types, which RETIRES the allow-list once landed. BINDING CONDITION, not a promise: the operator's 'no more exceptions are introduced in the future' makes the A+C roster FROZEN SHRINK-ONLY. No new exception may EVER be introduced. The roster is enforced by an equality-budget claim that refuses in BOTH directions: (1) adding a seventh site makes the claim FAIL, and (2) a roster row whose site no longer actually blocks (stale) also makes the claim FAIL, so the list cannot silently rot either. Both directions are witnessed by their own red control. The allow-list is traceable to this ruling; the roster and its witness cite gunbc.design_ruling::floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23."
 }
 
+data floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23"),
+  decided: "2026-11-23",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, relayed verbatim by lane manager bold-pike-529 (neat-badger-614), on gunb-ai/gunbc#16895, verbatim: \"A is fine as long as its recorded\". This row records, SPECIFICALLY and separately from the A+C allow-list ruling above, the operator's authorization of the hand-written v1-stage0 SEED RUST waiver arm this node adds to compile_clean_diagnostic_is_hard (src/v1/stage0/src/cli_run/compile_clean.rs) -- the sibling arm alongside UnlistedImportUse that downgrades an ExhaustivenessUnknown to advisory for the compile-clean decision when its STRUCTURAL key (HOME module_path + enclosing declaration + scrutinee) is on the floor allow-list. The arm reads the roster as plain INPUT DATA materialized from src/v2/workflow/floor_exhaustiveness_allowlist.dag (NO v2 module import, NO interpreter run), is FAIL-CLOSED (a missing or garbage data file admits nothing, so every ExhaustivenessUnknown still blocks), keeps the diagnostic PRINTING (observable-not-silent, labelled with its roster entry), and carries a DISSOLUTION TRIGGER: when the (C) roadmap row rn_01M8591VE1TNASV6BKCZ34HXXT types the six sites, this arm and its data file delete. This ruling is cited from the arm's own source comment and from the PR body. Roster membership stays the sole authority, enforced shrink-only by the equality-budget claim per gunbc.design_ruling::floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23."
+}
+
 
 fn design_rulings() -> List<DesignRuling> {
   [
@@ -1535,6 +1542,7 @@ fn design_rulings() -> List<DesignRuling> {
     market_vocabulary_is_fix_and_matching_is_std_decision,
     live_router_changes_of_2026_11_23_are_requirements_evidence,
     floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23,
+    floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23,
   ]
 }
 
