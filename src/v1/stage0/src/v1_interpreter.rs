@@ -76,10 +76,9 @@ use crate::v1_std_core::{
     match_scrutinee, method_arg_nodes, method_receiver, param_node_default_value,
     param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_stdin, transport_wall_deadline,
-    type_name_compatible,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -18391,10 +18390,18 @@ fn declared_shell_leg_ceiling(
         Value::Variant { variant_name, .. } if ctx.resolve(*variant_name) == "Absent" => {
             Ok((None, None))
         }
-        Value::Variant { variant_name, fields, .. } if ctx.resolve(*variant_name) == "Present" => {
-            let second = ctx.field(fields, "value").ok_or_else(|| InterpError::TypeError {
-                msg: format!("{intent}: shell transport wall_deadline Present carries no value"),
-            })?;
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.resolve(*variant_name) == "Present" => {
+            let second = ctx
+                .field(fields, "value")
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "{intent}: shell transport wall_deadline Present carries no value"
+                    ),
+                })?;
             let secs = record_field(ctx, second, "count")
                 .and_then(|v| match v { Value::Int(n) => Some(n), _ => None })
                 .ok_or_else(|| InterpError::TypeError {
@@ -18405,10 +18412,15 @@ fn declared_shell_leg_ceiling(
                     msg: format!("{intent}: shell transport wall_deadline must be a positive number of seconds (a per-leg deadline is never 0-means-none)"),
                 });
             }
-            Ok((Some(std::time::Duration::from_secs(secs as u64)), Some(second.clone())))
+            Ok((
+                Some(std::time::Duration::from_secs(secs as u64)),
+                Some(second.clone()),
+            ))
         }
         other => Err(InterpError::TypeError {
-            msg: format!("{intent}: shell transport wall_deadline must be Optional<Second>, found `{other}`"),
+            msg: format!(
+                "{intent}: shell transport wall_deadline must be Optional<Second>, found `{other}`"
+            ),
         }),
     }
 }
@@ -18773,78 +18785,92 @@ fn dispatch_shell(
     // THE CEILING IS DECLARED BY THE TRANSPORT -- see `declared_shell_leg_ceiling`, whose comment
     // carries the authority story (review 96999). A transport without the declared field keeps
     // main's behaviour byte for byte.
-    let (leg_deadline, leg_deadline_value) = declared_shell_leg_ceiling(ctx, &intent, &transport, param_env)?;
+    let (leg_deadline, leg_deadline_value) =
+        declared_shell_leg_ceiling(ctx, &intent, &transport, param_env)?;
 
-    let (capture_opt, overran) = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
-        use std::io::Write;
-        use std::process::Stdio;
+    let (capture_opt, overran) =
+        if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+            use std::io::Write;
+            use std::process::Stdio;
 
-        let stdin_val = eval_expr(&stdin_node, param_env, ctx)?;
-        let stdin_bytes = shell_stdin_payload(&stdin_val)?;
+            let stdin_val = eval_expr(&stdin_node, param_env, ctx)?;
+            let stdin_bytes = shell_stdin_payload(&stdin_val)?;
 
-        let wall_start = std::time::Instant::now();
-        let mut cmd = std::process::Command::new(&argv[0]);
-        cmd.args(&argv[1..])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
-        let mut child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
+            let wall_start = std::time::Instant::now();
+            let mut cmd = std::process::Command::new(&argv[0]);
+            cmd.args(&argv[1..])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
+            let mut child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
 
-        let stdin_writer = child
-            .stdin
-            .take()
-            .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
+            let stdin_writer = child
+                .stdin
+                .take()
+                .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
-        let (capture_opt, overran) =
-            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
+            let (capture_opt, overran) = wait_child_honoring_wall_deadline(
+                child,
+                ctx,
+                &argv[0],
+                stdout_policy,
+                stderr_policy,
+                leg_deadline,
+            )?;
 
-        if let Some(writer) = stdin_writer {
-            // A stdin-write error (e.g. broken pipe) is not the failure to report: the child
-            // may have exited before consuming all of stdin, ordinary POSIX pipe behavior. The
-            // child's exit_code/stdout/stderr in `output` is authoritative and already flows
-            // to the `exit { .. }` clause of the .dag transport declaration.
-            let _ = writer.join().map_err(|_| InterpError::TypeError {
-                msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
-            })?;
-        }
-        if let Some(ref capture) = capture_opt {
-            render_shell_completion_trace(
-                expected,
-                capture.exit_status.code().unwrap_or(-1),
-                capture.stdout.retained_bytes(),
-                &capture.stderr.retained,
-                wall_start.elapsed(),
-                &argv,
-                intent,
-            );
-        }
-        (capture_opt, overran)
-    } else {
-        use std::process::Stdio;
-        let wall_start = std::time::Instant::now();
-        let mut cmd = std::process::Command::new(&argv[0]);
-        cmd.args(&argv[1..])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
-        let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
-        let (capture_opt, overran) =
-            wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy, leg_deadline)?;
-        if let Some(ref capture) = capture_opt {
-            render_shell_completion_trace(
-                expected,
-                capture.exit_status.code().unwrap_or(-1),
-                capture.stdout.retained_bytes(),
-                &capture.stderr.retained,
-                wall_start.elapsed(),
-                &argv,
-                intent,
-            );
-        }
-        (capture_opt, overran)
-    };
+            if let Some(writer) = stdin_writer {
+                // A stdin-write error (e.g. broken pipe) is not the failure to report: the child
+                // may have exited before consuming all of stdin, ordinary POSIX pipe behavior. The
+                // child's exit_code/stdout/stderr in `output` is authoritative and already flows
+                // to the `exit { .. }` clause of the .dag transport declaration.
+                let _ = writer.join().map_err(|_| InterpError::TypeError {
+                    msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
+                })?;
+            }
+            if let Some(ref capture) = capture_opt {
+                render_shell_completion_trace(
+                    expected,
+                    capture.exit_status.code().unwrap_or(-1),
+                    capture.stdout.retained_bytes(),
+                    &capture.stderr.retained,
+                    wall_start.elapsed(),
+                    &argv,
+                    intent,
+                );
+            }
+            (capture_opt, overran)
+        } else {
+            use std::process::Stdio;
+            let wall_start = std::time::Instant::now();
+            let mut cmd = std::process::Command::new(&argv[0]);
+            cmd.args(&argv[1..])
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
+            let child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
+            let (capture_opt, overran) = wait_child_honoring_wall_deadline(
+                child,
+                ctx,
+                &argv[0],
+                stdout_policy,
+                stderr_policy,
+                leg_deadline,
+            )?;
+            if let Some(ref capture) = capture_opt {
+                render_shell_completion_trace(
+                    expected,
+                    capture.exit_status.code().unwrap_or(-1),
+                    capture.stdout.retained_bytes(),
+                    &capture.stderr.retained,
+                    wall_start.elapsed(),
+                    &argv,
+                    intent,
+                );
+            }
+            (capture_opt, overran)
+        };
 
     let mut result = match capture_opt {
         Some(capture) => {
@@ -19311,9 +19337,14 @@ fn shell_evidence_value(result: &ShellResult, from_key: &str) -> Option<Value> {
         // typed refusal (FleetPrincipalLegOverran / TreeLegDeadlineExceeded); `wall_deadline_seconds`
         // is the caller's own Second echoed back so the receipt names the ceiling. Both are the
         // absence (false / Absent) unless the sink itself killed the leg.
-        "overran" => Some(Value::Bool(matches!(result.leg_exec, ShellLegExec::Overran { .. }))),
+        "overran" => Some(Value::Bool(matches!(
+            result.leg_exec,
+            ShellLegExec::Overran { .. }
+        ))),
         "wall_deadline_seconds" => match &result.leg_exec {
-            ShellLegExec::Overran { wall_deadline_seconds } => Some(wall_deadline_seconds.clone()),
+            ShellLegExec::Overran {
+                wall_deadline_seconds,
+            } => Some(wall_deadline_seconds.clone()),
             ShellLegExec::Completed => None,
         },
         _ => None,
@@ -28897,7 +28928,10 @@ mod map_shell_outputs_optional_stream_tests {
     };
 
     use super::bounded_shell_host_drain::CapturedStreamEvidence;
-    use super::{map_shell_outputs, str_value, ExecutionMode, InterpContext, ShellLegExec, ShellResult, Value};
+    use super::{
+        map_shell_outputs, str_value, ExecutionMode, InterpContext, ShellLegExec, ShellResult,
+        Value,
+    };
 
     fn map_shell_outputs_test_context() -> InterpContext {
         let graph = ResolvedGraph {
@@ -29395,7 +29429,11 @@ mod wall_deadline_kill_tests {
         );
         let mut cmd = Command::new("sleep");
         cmd.arg("5");
-        configure_shell_process_group_for_wall_kill(&mut cmd, &leg_only, Some(std::time::Duration::from_secs(2)));
+        configure_shell_process_group_for_wall_kill(
+            &mut cmd,
+            &leg_only,
+            Some(std::time::Duration::from_secs(2)),
+        );
         let mut child = cmd.spawn().expect("spawn sleep");
         let pid = child.id();
         assert_eq!(
@@ -29443,7 +29481,11 @@ mod wall_deadline_kill_tests {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx, Some(std::time::Duration::from_secs(2)));
+        configure_shell_process_group_for_wall_kill(
+            &mut cmd,
+            &ctx,
+            Some(std::time::Duration::from_secs(2)),
+        );
         let child = cmd.spawn().expect("spawn sleep 30");
         let started = Instant::now();
         let (output_opt, overran) = wait_child_honoring_wall_deadline(
@@ -29485,7 +29527,11 @@ mod wall_deadline_kill_tests {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx, Some(std::time::Duration::from_secs(2)));
+        configure_shell_process_group_for_wall_kill(
+            &mut cmd,
+            &ctx,
+            Some(std::time::Duration::from_secs(2)),
+        );
         let child = cmd.spawn().expect("spawn echo");
         let (output_opt, overran) = wait_child_honoring_wall_deadline(
             child,
@@ -29498,10 +29544,7 @@ mod wall_deadline_kill_tests {
         .expect("a green leg under a generous deadline must succeed");
         assert!(!overran, "a fast green leg must not report overran");
         let output = output_opt.expect("non-overrun wait always captures");
-        assert!(
-            output.exit_status.success(),
-            "the green leg must exit 0"
-        );
+        assert!(output.exit_status.success(), "the green leg must exit 0");
     }
 
     /// Review 96717: when the drain worker does not return within 5s after the group kill,
@@ -29523,7 +29566,11 @@ mod wall_deadline_kill_tests {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        configure_shell_process_group_for_wall_kill(&mut cmd, &ctx, Some(std::time::Duration::from_secs(2)));
+        configure_shell_process_group_for_wall_kill(
+            &mut cmd,
+            &ctx,
+            Some(std::time::Duration::from_secs(2)),
+        );
         let child = cmd.spawn().expect("spawn sh");
         let started = Instant::now();
         let result = wait_child_honoring_wall_deadline(
@@ -29637,12 +29684,21 @@ mod wall_deadline_kill_tests {
                 &ctx,
                 "Optional",
                 "Present",
-                vec![("value", variant_value(&ctx, "Second", "MeasureSecond", vec![("count", Value::Int(2))]))],
+                vec![(
+                    "value",
+                    variant_value(
+                        &ctx,
+                        "Second",
+                        "MeasureSecond",
+                        vec![("count", Value::Int(2))],
+                    ),
+                )],
             ),
         );
 
         let (bare_deadline, bare_echo) =
-            declared_shell_leg_ceiling(&ctx, "probe", &bare_transport, &env).expect("bare transport");
+            declared_shell_leg_ceiling(&ctx, "probe", &bare_transport, &env)
+                .expect("bare transport");
         assert!(
             bare_deadline.is_none() && bare_echo.is_none(),
             "an input spelled `wall_deadline` must not arm a ceiling on a transport that does not declare the field"
@@ -29656,7 +29712,10 @@ mod wall_deadline_kill_tests {
             Some(std::time::Duration::from_secs(2)),
             "the declared transport field is the ceiling"
         );
-        assert!(declared_echo.is_some(), "the ceiling's Second is echoed with it");
+        assert!(
+            declared_echo.is_some(),
+            "the ceiling's Second is echoed with it"
+        );
 
         // A declared field may SAY unbounded; that is a decision on the transport.
         let absent_env = Env::with_binding(
@@ -29667,7 +29726,10 @@ mod wall_deadline_kill_tests {
         let (absent_deadline, _) =
             declared_shell_leg_ceiling(&ctx, "probe", &declared_transport, &absent_env)
                 .expect("Absent on a declared field is legal");
-        assert!(absent_deadline.is_none(), "Absent is unbounded under the outer budget");
+        assert!(
+            absent_deadline.is_none(),
+            "Absent is unbounded under the outer budget"
+        );
 
         // A declared non-positive ceiling is refused, never folded to "none".
         let zero_env = Env::with_binding(
@@ -29677,7 +29739,15 @@ mod wall_deadline_kill_tests {
                 &ctx,
                 "Optional",
                 "Present",
-                vec![("value", variant_value(&ctx, "Second", "MeasureSecond", vec![("count", Value::Int(0))]))],
+                vec![(
+                    "value",
+                    variant_value(
+                        &ctx,
+                        "Second",
+                        "MeasureSecond",
+                        vec![("count", Value::Int(0))],
+                    ),
+                )],
             ),
         );
         assert!(
@@ -29688,7 +29758,11 @@ mod wall_deadline_kill_tests {
         // The observable consequence: the spelling alone leaves the child in OUR group (so Ctrl-C
         // kills it); the declared field puts it in its own group (so the per-leg kill can reach it).
         let mut bare_cmd = Command::new("sleep");
-        bare_cmd.arg("5").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        bare_cmd
+            .arg("5")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         configure_shell_process_group_for_wall_kill(&mut bare_cmd, &ctx, bare_deadline);
         let mut bare_child = bare_cmd.spawn().expect("spawn bare");
         let bare_pid = bare_child.id();
