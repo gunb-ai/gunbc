@@ -26,11 +26,11 @@ data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
 // red_at's FIRST PARENT is green_at: the break is one commit on top of the tree whose witness it runs
 // unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone.
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "1013d02dace7f8a95ac78a10fc1bcbbc46488a5c"
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "c65a78eec60b9b8c9a458b59c0230a96278b327b"
 // green_at is the commit the control was EXECUTED at, on this PR lineage. The head carrying this receipt
 // is green_at plus one commit that touches only this receipt module, so the witness bytes are the same in
 // green_at, in the head, and in red_at (proven by git hash-object in the run log).
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "5b84464bb27acbe00542b35ef008b808a7712aa0"
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "74e3818cadf75413242bbff9bd138a0851f4b504"
 data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
 // The witness this pair is about, named as data so a reader never has to infer it from a file path.
 data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
