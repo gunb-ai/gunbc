@@ -36,6 +36,22 @@ data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
 data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
 data annotation_gap_v1_v2_agreement_probe_witness_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
 data annotation_gap_v1_v2_agreement_probe_roster_arm: String = "v2.compiler.parse parse_node_is_source_region || parse_node_has_authored_edge(name: ^grammar_infix_left_node_projection)"
+// HOW THIS CONTROL IS EXECUTED, recorded because the instrument is not the obvious one, and a reader who
+// reaches for the floor's own two-root command will otherwise find the control unrunnable and conclude the
+// wrong thing. claim_batch with the floor's CLI roots (--source-root dag --source-root src/v2) cannot
+// resolve this control's imports: it refuses at the checker with "unresolved import: module
+// 'v1.compiler.tokenize' not found" (and likewise v1.compiler.parse, v1.compiler.annotation_bind,
+// v1.std.core) -- observed at tree d7de0f06938f5f072bc3a3b5c8c9ea0fffa343fd with a claim_batch built from
+// main 8c86ee47f68ec1f451e25a8cb8f594a868e5c384, exit status 1. src/v1 is not a root the floor can carry
+// (src/v1/stage0/src/cli_run.rs records widening the roots as ruled out: src/v1 and src/v2 collide on
+// twelve last segments, so a shared pool re-binds bare cross-module references), and the same refusal
+// falls on the gated precedent v2.test.claim.parse.data_initializer_layout_parse, which imports three of
+// those v1 modules and is green in the floor -- so the floor's green comes from claim_executor's prepared
+// subject, a different resolution path from claim_batch's CLI roots. The pair was therefore executed with
+// three named roots under claim_batch, one argv on both trees; "runs under the required gate" is evidenced
+// by the floor-shaped claim_executor run, not by this file.
+data annotation_gap_v1_v2_agreement_probe_claim_batch_two_roots_resolve_v1_imports: Bool = false
+data annotation_gap_v1_v2_agreement_probe_pair_argv_roots: String = "dag,src/v1,src/v2"
 
 // WHY A CLAIM AND NOT A REVIEWER. CommitSha is an unvalidated String alias (dag/std/types.dag:201), and
 // its comment says so: the predicate beside it is a validating CHECK a caller must remember to run, not a
