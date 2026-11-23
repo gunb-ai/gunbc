@@ -5822,17 +5822,17 @@ mod test_batch_admission_controls {
     /// says why. A bare package and a subtree (`/...`) remain admissible; only `:all`/`:*` refuses.
     #[test]
     fn a_package_wide_all_refuses_on_the_claim_route() {
-        let refused = refused(&["//test/claim/x:all"]);
-        assert_eq!(refused.termination, Termination::Refused);
+        let all = refused(&["//test/claim/x:all"]);
+        assert_eq!(all.termination, Termination::Refused);
         assert!(
-            refused.message.contains("ClaimRouteAllNotAClaimSelection"),
+            all.message.contains("ClaimRouteAllNotAClaimSelection"),
             "{}",
-            refused.message
+            all.message
         );
         assert!(
-            refused.message.contains("not a claim selection"),
+            all.message.contains("not a claim selection"),
             "{}",
-            refused.message
+            all.message
         );
         let colon_star = refused(&["//test/claim/x:*"]);
         assert_eq!(colon_star.termination, Termination::Refused);

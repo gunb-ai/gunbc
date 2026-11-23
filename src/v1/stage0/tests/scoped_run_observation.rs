@@ -73,21 +73,20 @@ fn run_pipe_with_diagnostics(function: &str) -> Output {
     output
 }
 
-fn run_unscoped(function: &str, claim_run: bool) -> Output {
+fn run_unscoped(function: &str) -> Output {
     let (root, _) = primary_fixture();
     let relative_root = root
         .strip_prefix(repo_root())
         .expect("fixture is under repo root")
         .to_string_lossy()
         .into_owned();
-    let mut args = vec![
+    let args = vec![
         "run".to_string(),
         "--source-root".to_string(),
         relative_root,
         "--function".to_string(),
         function.to_string(),
     ];
-
     let output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
         .args(args)
@@ -255,14 +254,14 @@ fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
 
 #[test]
 fn unscoped_diagnostics_remain_byte_stable() {
-    let exit_failure = run_unscoped("exit_failure", false);
+    let exit_failure = run_unscoped("exit_failure");
     assert!(!exit_failure.status.success(), "{exit_failure:?}");
     assert!(
         String::from_utf8_lossy(&exit_failure.stderr).contains("legacy failure reason\n"),
         "{exit_failure:?}"
     );
 
-    let wrong_return = run_unscoped("claim_true", false);
+    let wrong_return = run_unscoped("claim_true");
     assert_eq!(wrong_return.status.code(), Some(2));
     assert!(
         String::from_utf8_lossy(&wrong_return.stderr)
@@ -270,7 +269,7 @@ fn unscoped_diagnostics_remain_byte_stable() {
         "{wrong_return:?}"
     );
 
-    let runtime_error = run_unscoped("missing_function", false);
+    let runtime_error = run_unscoped("missing_function");
     assert_eq!(runtime_error.status.code(), Some(1));
     assert!(
         String::from_utf8_lossy(&runtime_error.stderr).contains("runtime error:"),
