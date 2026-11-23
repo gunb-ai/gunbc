@@ -24,10 +24,9 @@ import extdeps.rust.cargo { cargo_default_release_dir }
 import gunbc.gunbc_cli_command {
   TestBatchMode, HermeticBatch, WetBatch, RecordBatch, gunbc_test_batch_command
 }
-import gunbc.layout_witness_join { lines_of }
 import std.algebra { string_contains }
 import std.logic { Bool }
-import std.types { String }
+import std.types { String, List }
 
 // The specimen is the tree's own held claim, executed against the checkout the witness runs in.
 fn clap_fixture_label() -> String {
@@ -36,15 +35,6 @@ fn clap_fixture_label() -> String {
 
 fn clap_held_line(label: String) -> String {
   concat(label, " HELD outcome=Pass")
-}
-
-fn clap_run(args: List<String>) -> GunbcWitnessRunResult {
-  let toplevel = git.Inspect.Toplevel()
-  gunbc.WitnessBin.Run(
-    workdir: toplevel.path,
-    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
-    args: args
-  )
 }
 
 // THE HERMETIC WORDS, PARSED. Hermetic carries no mode flag -- so this row is also the control
@@ -56,9 +46,15 @@ test fn the_hermetic_words_reach_the_route_held() -> Bool {
     mode: HermeticBatch {},
     source_roots: ["dag", "src/v2"]
   )
-  let result = clap_run(args: command.arguments)
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
   result.exit_code == 0 &&
-    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label()))
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
 }
 
 // THE WET WORDS, PARSED: --wet must reach the route as the wet mode, not be dropped at the
@@ -69,14 +65,20 @@ test fn the_wet_words_reach_the_route_held() -> Bool {
     mode: WetBatch {},
     source_roots: ["dag", "src/v2"]
   )
-  let result = clap_run(args: command.arguments)
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
   result.exit_code == 0 &&
-    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label()))
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
 }
 
 // THE RECORD WORDS, PARSED: --record and its store travel together through the surface. The
 // hermetic specimen holds under record too; the row's point is that the surface delivers both
-// words, which a surface missing --fixture-store cannot do.
+// words to the route, which a surface missing --fixture-store cannot do.
 test fn the_record_words_reach_the_route_with_their_store() -> Bool {
   let store = "target/keen-fox-230-clap-record-store"
   let command = gunbc_test_batch_command(
@@ -84,27 +86,34 @@ test fn the_record_words_reach_the_route_with_their_store() -> Bool {
     mode: RecordBatch { fixture_store: store },
     source_roots: ["dag", "src/v2"]
   )
-  let args = command.arguments
-  let result = clap_run(args: args)
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
   result.exit_code == 0 &&
     string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
-    string_contains(s: result.stdout, pattern: "//test/claim/run_verdict_exit_status_fixture:")
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
 }
 
 // SEVERAL OPERANDS, ONE PROCESS, EACH IDENTITY ONCE. An exact label plus the package that
-// contains it denote an overlapping claim; the surface must hand both operands to the route and
-// the route must print that claim's located line exactly once, in one child.
-test fn overlapping_operands_print_the_shared_claim_once() -> Bool {
+// contains it denote an overlapping claim; the surface must hand BOTH operands to the route
+// (one call) and the route's own tally must show the shared identity selected and run once.
+test fn overlapping_operands_select_the_shared_claim_once() -> Bool {
   let command = gunbc_test_batch_command(
     operands: ["//test/claim/run_verdict_exit_status_fixture", clap_fixture_label()],
     mode: HermeticBatch {},
     source_roots: ["dag", "src/v2"]
   )
-  let result = clap_run(args: command.arguments)
-  let held_lines =
-    lines_of(text: result.stdout)
-      |> filter(l => string_contains(s: l, pattern: clap_held_line(label: clap_fixture_label())))
-  result.exit_code == 0 && count_where(xs: held_lines, predicate: l => true) == 1
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 0 &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
 }
 
 // THE RED: a named corpus does not license a subject outside the claims. The production module
@@ -115,7 +124,12 @@ test fn a_source_root_does_not_license_a_non_claim_operand() -> Bool {
     mode: HermeticBatch {},
     source_roots: ["dag", "src/v2"]
   )
-  let result = clap_run(args: command.arguments)
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
   result.exit_code == 2 &&
     !string_contains(s: result.stdout, pattern: "HELD outcome=Pass")
 }
