@@ -493,3 +493,24 @@ test fn a_literal_terminal_identity_does_not_move_when_its_caret_literal_varies(
   let by_lexeme_beta = pcp_observe_root(root: pcp_root(), expr: term_stamp(token_class: ^pcp_word, stamp: StampLexeme), tokens: [pcp_word_token(word: "beta")])
   alpha == beta && beta == by_class && beta != by_lexeme_beta && alpha != ObservedRejected
 }
+
+// The identity clause's SECOND parameter. A literal terminal takes two parameters, the token class and
+// the caret literal; the test above varies the literal. This one varies the CLASS: over a second class
+// (pcp_a) the same literal still publishes exactly what a StampClass terminal of THAT class publishes,
+// and it is not the capture of the first class. So neither parameter makes the node carry its word:
+// the literal varies nothing, and the class varies only the class identity the matched token already
+// has.
+test fn a_literal_terminal_identity_does_not_move_when_its_token_class_varies() -> Bool {
+  let word_class = pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^alpha), tokens: [pcp_word_token(word: "alpha")])
+  let a_literal = pcp_observe_root(
+    root: pcp_root(),
+    expr: grammar_expr_literal_terminal(token_class: ^pcp_a, lexeme: ^alpha),
+    tokens: [Token { class: ^pcp_a, lexeme: "alpha", file: ^pcp_file, start: 0, end: 1 }]
+  )
+  let a_by_class = pcp_observe_root(
+    root: pcp_root(),
+    expr: term(token_class: ^pcp_a),
+    tokens: [Token { class: ^pcp_a, lexeme: "alpha", file: ^pcp_file, start: 0, end: 1 }]
+  )
+  a_literal == a_by_class && a_literal != word_class && a_literal != ObservedRejected
+}

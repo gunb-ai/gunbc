@@ -178,6 +178,30 @@ test fn service_keywords_remain_usable_as_names_holds() -> Bool {
   parses(src: keyword_as_name_source)
 }
 
+// THE RETAINED NAME-USABILITY CONTROL, ALL SEVEN SERVICE-FAMILY WORDS. The fixture above spells three
+// (from, input, transport); the row names seven: service, operation, requires, transport, exit,
+// response and mock_response. Each is used here as an ordinary name -- a parameter, a let binding --
+// in one module handed to G0's own lexer and grammar. It reds if any later change keywords a spelling
+// again. Two claims, one per boundary: tokenize ACCEPTS it (the lexical boundary, no keyword class
+// intercepts a word), and parse ACCEPTS it (the grammar boundary, a plain-name slot is not a choice
+// among marker words).
+data service_family_words_as_names_source: String = "module m\nfn f(service: Int, operation: Int, requires: Int, response: Int) -> Int { let transport = service\n let exit = operation\n let mock_response = requires\n transport + exit + mock_response + response }\n"
+
+fn tokenizes(src: String) -> Bool {
+  match tokenize_prepared(text: src, file: ^probe, prepared: dag_prepared_lex()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn all_seven_service_family_words_tokenize_as_names_holds() -> Bool {
+  tokenizes(src: service_family_words_as_names_source)
+}
+
+test fn all_seven_service_family_words_parse_as_names_holds() -> Bool {
+  parses(src: service_family_words_as_names_source)
+}
+
 test fn field_default_parses_holds() -> Bool {
   parses(src: field_default_source)
 }
