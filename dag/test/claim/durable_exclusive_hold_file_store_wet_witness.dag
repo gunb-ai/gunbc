@@ -447,9 +447,9 @@ test fn w_refused_acquire_body_writes_a_marker_when_called_directly() -> Bool {
 
 // A SELF-HOLDER is REFUSED, not recovered. The slot is held by a run id that IS this run's own id; GitHub
 // keeps a run id across re-run attempts, so a re-run of a run that died holding the slot must be told "that
-// is you -- finish or cancel run <id> first", never treated as another arrival, and never recovered by its
-// own re-run. Decided before any read, so it runs with no network. Discriminating: if the self-holder were
-// dropped into the generic occupied path it would try to recover (and read) instead of naming the run.
+// is you -- dispatch a fresh run to take the slot", never treated as another arrival, and never recovered by
+// its own re-run. Decided before any read, so it runs with no network. Discriminating: if the self-holder
+// were dropped into the generic occupied path it would try to recover (and read) instead of naming the run.
 test fn w_self_holder_is_refused_not_recovered() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr

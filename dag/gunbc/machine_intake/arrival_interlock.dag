@@ -121,9 +121,8 @@ type ArrivalArchiveSlotRelease
 // A run that dies between the acquire and the release strands its slot: the normal release
 // (arrival_combine_prefix_and_release) runs only when the body returned a ProcessExit, so an
 // interpreter refusal, a cancelled job, or a lost runner leaves the slot held by a holder that no
-// longer exists, and the next arrival refuses at FileHoldOccupied forever. That is where srv15 stands
-// now: arrival:srv15.3 is held|arrival/srv15/45059586538, whose job concluded on 2026-11-22 without
-// ever contacting the BMC. Nobody writes a free generation by hand; the store owns that write, and this
+// longer exists, and the next arrival refuses at FileHoldOccupied forever. Nobody writes a free
+// generation by hand; the store owns that write, and this
 // root reaches it the way gunbc.host.managed_host_unit_hold does -- observe, prove dead, take the slot
 // with a release naming who did the proving, so the recovery sits on the durable ledger.
 //
@@ -327,8 +326,8 @@ fn arrival_archive_slot_acquire(
           ArrivalArchiveSlotAcquireRefused {
             cause: join([
               "ARRIVAL ARCHIVE SLOT ACQUIRE REFUSED: this very run (", run_id,
-              ") already holds the slot, and a re-run keeps its run id -- finish or cancel run ", run_id,
-              " first; it is not another arrival in progress, and controller untouched",
+              ") already holds the slot, and a re-run keeps its run id -- dispatch a fresh run to take it; ",
+              "this run cannot release and reacquire its own live hold, and controller untouched",
             ], "") as NonEmptyStr
           }
         ArrivalArchiveSlotRecoveryRefused { cause: c } =>
