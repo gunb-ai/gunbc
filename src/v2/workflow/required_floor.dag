@@ -773,6 +773,7 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.coercion.identity_cast_emission_route",
     "v2.test.claim.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.claim.manual.cross_language_add_python_to_typescript",
+    "v2.test.claim.manual.annotation_gap_v1_v2_agreement",
     "test.claim.deleted_lanes_countable_witness",
     "test.claim.discovery_census_witness",
     "v2.test.claim.effect_demand.effect_demand_floor_join",
