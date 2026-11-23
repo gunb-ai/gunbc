@@ -1617,7 +1617,6 @@ fn codex_runtime_materialize_step(
         source_roots: codex_runtime_materialize_source_roots,
         entry: codex_runtime_materialize_entry,
         function: codex_runtime_materialize_function,
-        claim_run: false,
       )
       CodexRuntimeStepRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
@@ -1631,7 +1630,6 @@ fn codex_runtime_materialize_step(
             source_roots: codex_runtime_materialize_source_roots,
             entry: codex_runtime_materialize_entry,
             function: codex_runtime_materialize_function,
-            claim_run: false,
           ),
         ),
         transport: transport,
@@ -1644,7 +1642,6 @@ fn codex_runtime_materialize_step(
             source_roots: codex_runtime_materialize_source_roots,
             entry: codex_runtime_materialize_entry,
             function: codex_runtime_materialize_function,
-            claim_run: false,
           ),
         ),
         transport: transport,

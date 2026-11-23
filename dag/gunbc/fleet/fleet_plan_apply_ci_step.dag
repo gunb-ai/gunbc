@@ -97,7 +97,6 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_plan_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -106,7 +105,6 @@ fn gunbc_ci_fleet_converge_launch_environment_plan_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_launch_environment_plan_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -115,7 +113,6 @@ fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_allocation_store_plan_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -124,7 +121,6 @@ fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -147,7 +143,6 @@ fn gunbc_ci_fleet_converge_plan_revision_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_plan_revision_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -156,7 +151,6 @@ fn gunbc_ci_fleet_converge_checkout_verify_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_checkout_verify_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -165,7 +159,6 @@ fn gunbc_ci_admit_plan_run_pointer_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_admit_plan_run_pointer_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -174,7 +167,6 @@ fn gunbc_ci_admit_apply_run_pointer_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_admit_apply_run_pointer_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -183,7 +175,6 @@ fn gunbc_ci_admit_dashboard_deploy_inputs_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_admit_dashboard_deploy_inputs_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -193,7 +184,6 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
     prelude: gunbc_ci_fleet_converge_apply_plan_hash_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_converge_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

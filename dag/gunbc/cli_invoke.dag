@@ -164,35 +164,27 @@ fn gunbc_run_invocation_words_with_functions(
   source_roots: List<String>,
   entry: String,
   functions: List<String>,
-  claim_run: Bool,
   arguments: List<NamedArgument>
 ) -> List<InvocationWord> {
-  let base = concat(
+  concat(
     concat(
       concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
       concat([LiteralWord { spelling: "--entry" }, LiteralWord { spelling: entry }], function_invocation_words(functions: functions))
     ),
     named_argument_invocation_words(arguments: arguments)
   )
-  if claim_run {
-    concat(base, [LiteralWord { spelling: "--claim-run" }])
-  } else {
-    base
-  }
 }
 
 fn gunbc_run_invocation_words_with_arguments(
   source_roots: List<String>,
   entry: String,
   function: String,
-  claim_run: Bool,
   arguments: List<NamedArgument>
 ) -> List<InvocationWord> {
   gunbc_run_invocation_words_with_functions(
     source_roots: source_roots,
     entry: entry,
     functions: [function],
-    claim_run: claim_run,
     arguments: arguments
   )
 }
@@ -200,45 +192,43 @@ fn gunbc_run_invocation_words_with_arguments(
 fn gunbc_run_invocation_words(
   source_roots: List<String>,
   entry: String,
-  function: String,
-  claim_run: Bool
+  function: String
 ) -> List<InvocationWord> {
   gunbc_run_invocation_words_with_arguments(
     source_roots: source_roots,
     entry: entry,
     function: function,
-    claim_run: claim_run,
     arguments: []
   )
 }
 
-// EVERY CLAIM OF ONE WITNESS IN ONE PROCESS: the one builder above with an empty function
-// population under `--claim-run`.
-fn gunbc_run_all_claims_invocation_words(
+// EVERY CLAIM OF ONE WITNESS IN ONE PROCESS: gunbc test <package_pattern>, where the
+// pattern names every test fn the file declares. The entry must be a .dag path under
+// dag/test/claim/; the package is derived by stripping the root and suffix.
+fn gunbc_test_all_claims_invocation_words(
   source_roots: List<String>,
   entry: String
 ) -> List<InvocationWord> {
-  gunbc_run_invocation_words_with_functions(
-    source_roots: source_roots,
-    entry: entry,
-    functions: [],
-    claim_run: true,
-    arguments: []
+  let root = "dag/"
+  let after_root = if entry.starts_with(root) { entry.replace(from: root, to: "") } else { entry }
+  let package_path = after_root.replace(from: ".dag", to: "")
+  let pattern = concat(concat(concat("//", package_path), ":"), "all")
+  concat(
+    concat([LiteralWord { spelling: "test" }], source_root_invocation_words(roots: source_roots)),
+    [LiteralWord { spelling: pattern }]
   )
 }
 
 fn gunbc_run_transport_argv(
   source_roots: List<String>,
   entry: String,
-  function: String,
-  claim_run: Bool
+  function: String
 ) -> List<String> {
   invocation_words_bare(
     words: gunbc_run_invocation_words(
       source_roots: source_roots,
       entry: entry,
-      function: function,
-      claim_run: claim_run
+      function: function
     )
   )
 }
@@ -247,7 +237,6 @@ fn gunbc_run_transport_argv_with_arguments(
   source_roots: List<String>,
   entry: String,
   function: String,
-  claim_run: Bool,
   arguments: List<NamedArgument>
 ) -> List<String> {
   invocation_words_bare(
@@ -255,7 +244,6 @@ fn gunbc_run_transport_argv_with_arguments(
       source_roots: source_roots,
       entry: entry,
       function: function,
-      claim_run: claim_run,
       arguments: arguments
     )
   )

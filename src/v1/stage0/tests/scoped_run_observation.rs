@@ -87,9 +87,7 @@ fn run_unscoped(function: &str, claim_run: bool) -> Output {
         "--function".to_string(),
         function.to_string(),
     ];
-    if claim_run {
-        args.push("--claim-run".to_string());
-    }
+
     let output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
         .args(args)
@@ -257,13 +255,6 @@ fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
 
 #[test]
 fn unscoped_diagnostics_remain_byte_stable() {
-    let claim_without_entry = run_unscoped("claim_true", true);
-    assert_eq!(claim_without_entry.status.code(), Some(1));
-    assert_eq!(
-        claim_without_entry.stderr,
-        b"error: --claim-run requires --entry <file.dag> (scoped import closure; loading the whole --source-root tree is too large for witness runs)\n"
-    );
-
     let exit_failure = run_unscoped("exit_failure", false);
     assert!(!exit_failure.status.success(), "{exit_failure:?}");
     assert!(

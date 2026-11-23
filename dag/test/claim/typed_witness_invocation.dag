@@ -85,8 +85,7 @@ test fn typed_gunbc_cli_run_claim_holds() -> Bool {
     bin_path: "/bin/true",
     source_roots: ["dag"],
     entry: "noop.dag",
-    function: "noop",
-    claim_run: false
+    function: "noop"
   )
   result.success
 }

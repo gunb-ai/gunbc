@@ -88,7 +88,6 @@ fn gunbc_run_command(entry: String, functions: List<String>) -> ArgvCommand {
       source_roots: ["dag", "src/v2"],
       entry: entry,
       functions: functions,
-      claim_run: false,
       arguments: [],
     )),
   )
@@ -134,7 +133,6 @@ fn gunbc_installed_run_with_named_arguments_command(
           source_roots: source_roots,
           entry: entry,
           functions: [function],
-          claim_run: false,
           arguments: admitted,
         )),
       ) }

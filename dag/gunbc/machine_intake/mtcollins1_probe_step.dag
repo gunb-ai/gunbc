@@ -162,7 +162,6 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
       prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
       source_roots: witness_layer_roots,
       target: gunbc_ci_mtcollins1_fan_observe_target,
-      claim_run: false,
       receipt_rel: mtcollins1_fan_observation_receipt_path
     )
   )
