@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_event_log
 
-import std.types { String, Int, Bool, List, NonEmptyStr, brand }
+import std.types { String, Int, Bool, List, NonEmptyStr, brand, CommitSha }
 import std.nat { Nat }
 import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -16,10 +16,11 @@ import extdeps.languages.json.parse {
 // one every other date in the tree reads. The day-count comparator the deleted dated rule used is NOT imported:
 // acceptances are no longer ordered against a date, they are admitted by the closed set below.
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
+import gunbc.roadmap.roadmap_status { red_observation_holds, RedObservation, RedObservedOnMain, RedProbe }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
-  RedControlEvidence, RedControlNotRun, RedControlExecuted,
+  RedControlEvidence, RedControlNotRun, RedControlExecuted, RedControlTreeUnrecorded,
   HandbackEvidence, HandbackNotDelivered, HandbackDelivered,
   AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
   revocation_reopens_active_frontier, replay_acceptance_history, LeafPath,
@@ -181,6 +182,15 @@ type RoadmapEventKind
   // roadmap_event_admitted_after: a revocation that names no live acceptance REFUSES.
   | AcceptanceRevokedEvent { receipt: RoadmapAcceptanceReceipt, disposition: AcceptanceRevocationDisposition, revoked_by: NonEmptyStr, revoked_on: NonEmptyStr, reason: NonEmptyStr }
   | ReceiptReferenced { obligation: NonEmptyStr, address: NonEmptyStr, verdict: NonEmptyStr }
+  // THE RED CONTROL'S TREE, APPENDED. An acceptance recorded before the 2026-11-23 ruling
+  // (gunbc.design_ruling::executed_red_control_names_its_failing_commit) carries a red control with no tree:
+  // RedControlTreeUnrecorded. This event states the pair afterwards, as DATA — red_at where the witness was
+  // observed failing, green_at where it passed — so the old receipt's standing upgrades
+  // (roadmap_receipt_effective_red_control) without being revoked, rewritten or re-accepted. It changes no
+  // node standing: "done" stays the receipt alone, and this event is evidence about that receipt, never a
+  // second acceptance. It is admitted only on a node whose live acceptance is tree-unrecorded and only with a
+  // pair that holds (roadmap_event_admitted_after).
+  | RedTreeRecorded { observation: RedObservation }
   | CommentCreated { comment: NonEmptyStr, body: NonEmptyStr, visibility: NonEmptyStr, parent_comment: NonEmptyStr? }
   | CommentEdited { comment: NonEmptyStr, body: NonEmptyStr }
   | CommentDeleted { comment: NonEmptyStr }
@@ -265,6 +275,7 @@ fn roadmap_event_kind_word(k: RoadmapEventKind) -> String {
     HandedBack { reason: _ } => "handed_back"
     Retired { reason: _ } => "retired"
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => "receipt"
+    RedTreeRecorded { observation: _ } => "red_tree_recorded"
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment_created"
     CommentEdited { comment: _, body: _ } => "comment_edited"
     CommentDeleted { comment: _ } => "comment_deleted"
@@ -293,6 +304,7 @@ fn roadmap_event_kind_members_for(k: RoadmapEventKind, schema: String) -> List<J
     Blocked { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
     HandedBack { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
     Retired { reason } => [json_kv(key: "reason", value: json_string(s: reason as String))]
+    RedTreeRecorded { observation } => red_observation_members(o: observation)
     ReceiptReferenced { obligation, address, verdict } => [
       json_kv(key: "obligation", value: json_string(s: obligation as String)),
       json_kv(key: "address", value: json_string(s: address as String)),
@@ -535,7 +547,13 @@ fn roadmap_acceptance_pr_evidence_head_sha(evidence: AcceptancePrEvidence) -> St
 fn roadmap_acceptance_receipt_members(r: RoadmapAcceptanceReceipt) -> List<JsonKeyValue> {
   let red_members = match r.red_control {
     RedControlNotRun {} => [json_kv(key: "variant", value: json_string(s: "red_control_not_run"))]
-    RedControlExecuted { witness_module: wm, witness_fn: wf, executed_on: eo } => [
+    RedControlExecuted { witness_module: wm, witness_fn: wf, executed_on: eo, observation: ob } => concat([
+      json_kv(key: "variant", value: json_string(s: "red_control_executed")),
+      json_kv(key: "witness_module", value: json_string(s: wm)),
+      json_kv(key: "witness_fn", value: json_string(s: wf)),
+      json_kv(key: "executed_on", value: json_string(s: eo)),
+    ], red_observation_members(o: ob))
+    RedControlTreeUnrecorded { witness_module: wm, witness_fn: wf, executed_on: eo } => [
       json_kv(key: "variant", value: json_string(s: "red_control_executed")),
       json_kv(key: "witness_module", value: json_string(s: wm)),
       json_kv(key: "witness_fn", value: json_string(s: wf)),
@@ -828,6 +846,11 @@ fn roadmap_event_kind_decode(doc: JsonValue, word: String, schema: String, autho
     match event_member_nonempty(doc: doc, key: "reason") { Present { value: r } => Present { value: HandedBack { reason: r } }  Absent => none }
   } else if word == "retired" {
     match event_member_nonempty(doc: doc, key: "reason") { Present { value: r } => Present { value: Retired { reason: r } }  Absent => none }
+  } else if word == "red_tree_recorded" {
+    match red_observation_decode(doc: doc) {
+      Absent => none
+      Present { value: ob } => Present { value: RedTreeRecorded { observation: ob } }
+    }
   } else if word == "receipt" {
     match event_member_nonempty(doc: doc, key: "obligation") {
       Absent => none
@@ -1085,6 +1108,59 @@ fn roadmap_acceptance_revocation_disposition_decode(word: String) -> AcceptanceR
   else { none }
 }
 
+// THE KIND IS DATA ON THE WIRE: "red_kind" is "probe" or absent/"on_main"; a probe also carries red_base and
+// probe_ref, and a probe missing either is no observation at all.
+fn red_observation_members(o: RedObservation) -> List<JsonKeyValue> {
+  match o {
+    RedObservedOnMain { red_at, green_at } => [
+      json_kv(key: "red_at", value: json_string(s: red_at)),
+      json_kv(key: "green_at", value: json_string(s: green_at)),
+    ]
+    RedProbe { red_at, red_base, green_at, probe_ref } => [
+      json_kv(key: "red_kind", value: json_string(s: "probe")),
+      json_kv(key: "red_at", value: json_string(s: red_at)),
+      json_kv(key: "red_base", value: json_string(s: red_base)),
+      json_kv(key: "green_at", value: json_string(s: green_at)),
+      json_kv(key: "probe_ref", value: json_string(s: probe_ref as String)),
+    ]
+  }
+}
+
+// A decoded observation must HOLD (well-formed shas, distinctness, probe ref spelling): a malformed or equal
+// pair is no observation, so the line is undecodable instead of reading as evidence.
+fn red_observation_decode(doc: JsonValue) -> RedObservation? {
+  match red_observation_decode_shape(doc: doc) {
+    Absent => none
+    Present { value: ob } => if red_observation_holds(o: ob) { Present { value: ob } } else { none }
+  }
+}
+
+fn red_observation_decode_shape(doc: JsonValue) -> RedObservation? {
+  match event_member_nonempty(doc: doc, key: "red_at") {
+    Absent => none
+    Present { value: r } =>
+      match event_member_nonempty(doc: doc, key: "green_at") {
+        Absent => none
+        Present { value: g } =>
+          match event_member_nonempty(doc: doc, key: "red_kind") {
+            Absent => Present { value: RedObservedOnMain { red_at: r as String, green_at: g as String } }
+            Present { value: kind } =>
+              if (kind as String) == "on_main" { Present { value: RedObservedOnMain { red_at: r as String, green_at: g as String } } }
+              else if (kind as String) == "probe" {
+                match event_member_nonempty(doc: doc, key: "red_base") {
+                  Absent => none
+                  Present { value: base } =>
+                    match event_member_nonempty(doc: doc, key: "probe_ref") {
+                      Absent => none
+                      Present { value: pref } => Present { value: RedProbe { red_at: r as String, red_base: base as String, green_at: g as String, probe_ref: pref } }
+                    }
+                }
+              } else { none }
+          }
+      }
+  }
+}
+
 fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvidence? {
   if variant == "red_control_not_run" { Present { value: RedControlNotRun {} } }
   else if variant == "red_control_executed" {
@@ -1096,11 +1172,31 @@ fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvid
           Present { value: witness_fn } =>
             match event_member_nonempty(doc: red, key: "executed_on") {
               Absent => none
-              Present { value: executed_on } => Present { value: RedControlExecuted {
-                witness_module: witness_module as String,
-                witness_fn: witness_fn as String,
-                executed_on: executed_on as String,
-              } }
+              // THE TREE IS ONE FACT OR NONE. Both members present is the recorded pair; both absent is the
+              // pre-ruling wire form, read as its own standing (RedControlTreeUnrecorded), never as valid red
+              // evidence; one without the other is not a receipt at all.
+              Present { value: executed_on } =>
+                match event_member_nonempty(doc: red, key: "red_at") {
+                  Absent =>
+                    match event_member_nonempty(doc: red, key: "green_at") {
+                      Absent => Present { value: RedControlTreeUnrecorded {
+                        witness_module: witness_module as String,
+                        witness_fn: witness_fn as String,
+                        executed_on: executed_on as String,
+                      } }
+                      Present { value: _ } => none
+                    }
+                  Present { value: _ } =>
+                    match red_observation_decode(doc: red) {
+                      Absent => none
+                      Present { value: ob } => Present { value: RedControlExecuted {
+                        witness_module: witness_module as String,
+                        witness_fn: witness_fn as String,
+                        executed_on: executed_on as String,
+                        observation: ob,
+                      } }
+                    }
+                }
             }
         }
     }
@@ -1344,6 +1440,7 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
     AcceptanceRevokedEvent { receipt: _, disposition, revoked_by: _, revoked_on: _, reason: _ } =>
       if revocation_reopens_active_frontier(disposition: disposition) { roadmap_standing_acc_empty() } else { acc }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+    RedTreeRecorded { observation: _ } => acc
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
     CommentEdited { comment: _, body: _ } => acc
     CommentDeleted { comment: _ } => acc
@@ -1404,8 +1501,26 @@ fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
     else if count(heads) != 1 { RoadmapStandingAcc { standing: NodeForked { heads: map(heads, h => h.id) }, assignment: roadmap_assignment_empty() } }
     else { match heads.first() {
       Absent => roadmap_standing_acc_empty()
-      Present { value: head } => fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs))
+      Present { value: head } => {
+        let chain = roadmap_event_chain(envs: envs, head: head, budget: count(envs))
+        roadmap_standing_acc_with_effective_red_control(
+          acc: fold(chain, init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs)),
+          envs: chain)
+      }
     } }
+  }
+}
+
+// THE PRODUCTION READER OF AN APPENDED RED OBSERVATION: every consumer of a node's standing (the page, the
+// status, the closable and admission reads) sees the live receipt with its EFFECTIVE red control, so a
+// RedTreeRecorded appended on a tree-unrecorded receipt upgrades what they read. Done is unchanged: the
+// standing is NodeAccepted before and after.
+fn roadmap_standing_acc_with_effective_red_control(acc: RoadmapStandingAcc, envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
+  match acc.standing {
+    NodeAccepted { by: by, receipt: r } => RoadmapStandingAcc {
+      standing: NodeAccepted { by: by, receipt: RoadmapAcceptanceReceipt { node: r.node, criteria_digest: r.criteria_digest, red_control: roadmap_receipt_effective_red_control(receipt: r, envs: envs), handback: r.handback, accepted_by: r.accepted_by, accepted_on: r.accepted_on } },
+      assignment: acc.assignment }
+    _ => acc
   }
 }
 
@@ -1492,6 +1607,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+    RedTreeRecorded { observation: _ } => false
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
@@ -1507,6 +1623,7 @@ fn roadmap_recent_claimed_assignees(envs: List<RoadmapEventEnvelope>) -> List<Ev
     AcceptanceRecordedEvent { receipt: _, evidence: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
+    RedTreeRecorded { observation: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentEdited { comment: _, body: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
     CommentDeleted { comment: _ } => LegacyEmailPrincipal { email: "unused" as NonEmptyStr, authentication_unestablished: true }
@@ -1625,6 +1742,7 @@ fn roadmap_issue_comments_of_chain(chain: List<RoadmapEventEnvelope>) -> List<Is
     HandedBack { reason: _ } => acc
     Retired { reason: _ } => acc
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+    RedTreeRecorded { observation: _ } => acc
     ResultReturned { attempt: _, claim: _, outcome: _ } => acc
     // An acceptance is not a comment: it belongs to the standing and the closed set, never to the
     // comment stream. It is absorbed here so the fold stays exhaustive on purpose.
@@ -1673,6 +1791,7 @@ fn roadmap_comment_created_key_present(envs: List<RoadmapEventEnvelope>, comment
     AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+    RedTreeRecorded { observation: _ } => false
   })
 }
 
@@ -1700,6 +1819,7 @@ fn roadmap_comment_retry_present(envs: List<RoadmapEventEnvelope>, author: Event
     AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+    RedTreeRecorded { observation: _ } => false
   })
 }
 
@@ -1730,6 +1850,7 @@ fn roadmap_results_for_attempt(envs: List<RoadmapEventEnvelope>, attempt: String
     AcceptanceRecordedEvent { receipt: _, evidence: _ } => false
     AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+    RedTreeRecorded { observation: _ } => false
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
     CommentEdited { comment: _, body: _ } => false
     CommentDeleted { comment: _ } => false
@@ -1753,6 +1874,7 @@ fn roadmap_claim_return_to(envs: List<RoadmapEventEnvelope>, claim: RoadmapEvent
         AcceptanceRecordedEvent { receipt: _, evidence: _ } => none
         AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => none
         ReceiptReferenced { obligation: _, address: _, verdict: _ } => none
+        RedTreeRecorded { observation: _ } => none
         CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => none
         CommentEdited { comment: _, body: _ } => none
         CommentDeleted { comment: _ } => none
@@ -1882,6 +2004,7 @@ fn roadmap_acceptance_row_of_events(events: List<RoadmapEventEnvelope>, acc: Lis
       HandedBack { reason: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       Retired { reason: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       ReceiptReferenced { obligation: _, address: _, verdict: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
+      RedTreeRecorded { observation: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       CommentEdited { comment: _, body: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
       CommentDeleted { comment: _ } => roadmap_acceptance_row_of_events(events: events.skip(n: 1), acc: acc)
@@ -1968,6 +2091,61 @@ fn roadmap_revocation_names_live_acceptance(envs: List<RoadmapEventEnvelope>, re
   }
 }
 
+// The standing the appended pair may upgrade: a live acceptance whose red control names no tree.
+fn roadmap_node_accepted_without_red_tree(envs: List<RoadmapEventEnvelope>) -> Bool {
+  match roadmap_node_standing(envs: envs) {
+    NodeAccepted { by: _, receipt: live } =>
+      match live.red_control {
+        RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => true
+        RedControlNotRun => false
+        RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: _ } => false
+      }
+    NodeRetired { by: _, reason: _ } => false
+    NodeOpen => false
+    NodeClaimed { by: _, since: _ } => false
+    NodeInProgress { by: _, last_note: _ } => false
+    NodeBlocked { by: _, reason: _ } => false
+    NodeHandedBack { by: _, reason: _ } => false
+    NodeReadyForReview { by: _, pr: _, head: _ } => false
+    NodeForked { heads: _ } => false
+    NodeHistoryIncomplete { missing_parents: _ } => false
+  }
+}
+
+// `envs` is the node's causal chain in order (roadmap_event_chain), so only a pair appended after the live
+// acceptance counts. THE EFFECTIVE RED CONTROL OF A NODE'S LIVE ACCEPTANCE: the receipt's own evidence, upgraded by the latest
+// appended RedTreeRecorded when (and only when) the receipt is tree-unrecorded. A receipt that already carries
+// its pair is never overridden by a later event, and an appended pair that does not hold upgrades nothing.
+// Reading, not writing: the receipt and the log are untouched.
+fn roadmap_receipt_effective_red_control(receipt: RoadmapAcceptanceReceipt, envs: List<RoadmapEventEnvelope>) -> RedControlEvidence {
+  match receipt.red_control {
+    RedControlNotRun => receipt.red_control
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: _ } => receipt.red_control
+    RedControlTreeUnrecorded { witness_module: wm, witness_fn: wf, executed_on: eo } =>
+      roadmap_red_control_upgraded(envs: envs, base: receipt.red_control, current: receipt.red_control, witness_module: wm, witness_fn: wf, executed_on: eo)
+  }
+}
+
+fn roadmap_red_control_upgraded(envs: List<RoadmapEventEnvelope>, base: RedControlEvidence, current: RedControlEvidence, witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr) -> RedControlEvidence {
+  match envs.first() {
+    Absent => current
+    Present { value: hd } => {
+      let next = match hd.event.kind {
+        // A new acceptance, or a revocation, ends whatever pair was appended before it: a pair is evidence
+        // about the acceptance it was appended after, never about a later one.
+        AcceptanceRecordedEvent { receipt: _, evidence: _ } => base
+        AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => base
+        RedTreeRecorded { observation: ob } =>
+          if red_observation_holds(o: ob) {
+            RedControlExecuted { witness_module: witness_module, witness_fn: witness_fn, executed_on: executed_on, observation: ob }
+          } else { current }
+        _ => current
+      }
+      roadmap_red_control_upgraded(envs: envs.skip(n: 1), base: base, current: next, witness_module: witness_module, witness_fn: witness_fn, executed_on: executed_on)
+    }
+  }
+}
+
 fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: RoadmapEvent) -> Bool {
   match event.kind {
     ResultReturned { attempt: _, claim: _, outcome: _ } => false
@@ -1992,6 +2170,7 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
     AcceptanceRevokedEvent { receipt, disposition: _, revoked_by: _, revoked_on: _, reason: _ } =>
       roadmap_revocation_names_live_acceptance(envs: envs, receipt: receipt)
     ReceiptReferenced { obligation: _, address: _, verdict: _ } => true
+    RedTreeRecorded { observation: ob } => red_observation_holds(o: ob) && roadmap_node_accepted_without_red_tree(envs: envs)
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => true
     CommentEdited { comment: _, body: _ } => true
     CommentDeleted { comment: _ } => true

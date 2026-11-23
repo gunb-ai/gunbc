@@ -244,5 +244,9 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
     decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
+    // The census member readback fail-closed producer control builds a guaranteed-nonexistent executable
+    // so answer_on/LocalCommandHost genuinely cannot spawn it and the leg comes back as the typed
+    // LegNotDispatched, never a fabricated exit code (gunbc.design_argument::fail_closed).
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins_member_leg_producer_local_wet", decl_name: "never_spawned_readback_executable"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }

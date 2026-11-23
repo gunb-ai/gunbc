@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.fold_over_a_record_field_list_leaves_the_element_inferred_as_unit
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+// Filed because gunbc.fleet.fleet_known_hosts_anchor::as_lan_endpoint_host_key IS this shim: its comment
+// names the gap, the shim routes around it, and DESIGN.md gunbc.design_argument::fail_closed ("noticing you
+// are implementing a workaround IS the line-stop signal") requires the concealed language-layer deficit to be
+// recorded here rather than left in a prose comment for the next consumer to copy.
+data fold_over_a_record_field_list_leaves_the_element_inferred_as_unit: RecurringFailureMode = RecurringFailureMode {
+  identity: "fold_over_a_record_field_list_leaves_the_element_inferred_as_unit" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "OBSERVED: `fold(xs, init:, f: fn(acc, o) { ... o.<field> ... })` where the source `xs` is a RECORD-FIELD access (a projection off a bound record, e.g. `ctx.hop_rows` of type List<LanEndpointHostKey>) leaves the fold element `o` inferred as `Unit`, so `o.host` / `o.public_key_base64` etc. refuse to typecheck; the byte-identical fold over a GLOBAL list of the same element type -- or over a `let`-bound local -- resolves `o` to `LanEndpointHostKey` and the field access typechecks. Measured on head 7732e2b2e7dc through claim_batch module typecheck of test.claim.fleet.fleet_known_hosts_anchor_witness: the fold inside first_contact_ssh_target_in over `ctx.hop_rows` failed on the matched value's field accesses until the value was routed through the identity fn as_lan_endpoint_host_key (fn(row: LanEndpointHostKey) -> LanEndpointHostKey), which is the same pin hop_lease_row_for relies on by folding over the GLOBAL first_contact_lan_keys and calling lan_endpoint_host_key_row(observation: o) on the match.",
+
+    "INVALID STATE: the element type is FULLY determined by the source list's declared type -- List<LanEndpointHostKey> names its element -- so a field-access source and a global of that same type must infer the element identically; they do not. HARM: any consumer that folds over a record-field list hits a spurious type error on the matched value and must either copy a type-pinning identity fn or annotate away the fold. The shim is a value-preserving identity, so NOTHING IS SILENTLY WRONG and the fold still runs -- this is an UNDER-inference (the over-permissive-inference mirror), an authoring obstacle, not a fail-open. The deficit is in the language layer (the fold element unification), so per DESIGN.md gunbc.design_argument::how_to_work it must be rooted to that layer, not left to spread by copy.",
+
+    "JUDGEMENT: a DEFECT, not a legitimate refusal. The element type is a pure function of the source list's element type; whether the source spells a global, a binding, or a record-field projection must not change it. ROOT CAUSE UNMEASURED: the fold's element unification evidently reads the source's type when the source resolves through a global/inferable binding but not when it is a record-field projection; locating that unification site (and why the field path loses the element) is the next rung. A bisection that folds over `(let rows = ctx.hop_rows in rows)` versus `ctx.hop_rows` directly isolates whether it is the projection syntactically or the lack of a named binding.",
+
+    "RUNG FOUND AT: 1, mitigated caller-side by the value-preserving identity pin (as_lan_endpoint_host_key) -- the fold executes, the matched value is typed, no value is fabricated. CEILING: the fold infers its element type from the source list's declared element type regardless of whether the source is a global, a binding, or a record-field projection, so no consumer needs a pin. NEXT-RUNG TRIGGER: the located unification site, then a control pair -- a fold over a record-field list whose element is inferred and whose fields are read directly ACCEPTS, and a fold over a same-typed global infers identically -- with the shim deleted from as_lan_endpoint_host_key.",
+
+    "RECOGNITION RULE: a fold whose source expression is a record-field access and whose body reads a field off the matched element fails with the element inferred Unit, while the identical fold over a same-typed global or let-binding accepts. The cheap probe before writing a pin is to bind the field to a local and fold over the local.",
+  ],
+
+  evidence: [],
+}
