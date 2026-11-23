@@ -30,10 +30,11 @@ module gunbc.fleet.fleet_host_truth_sources
 // gunbc.fleet.fleet_host_truth_read frontier above keeps host swap out of the axis list until a reader names
 // the judgment that consults it, and the swapfile itself is swift-koi-507's item, not this lane's.
 //
-// THREE OF THE FIVE AXES are inhabited here, the three the report's own specimens named: the cap that
-// surfaced as 5.1 tok/s with 41.5 GB read per request instead of refusing (3.2, srv4's leaf), the swap
-// backing the envelope refuses on (3.3, butch's 8 GiB /swap.img at priority -2), and the identity pinned to
-// an address (2.1, butch at .238 holding another machine's host key).
+// THREE AXES ARE INHABITED here, each by the specimen that found it: the leaf cap that surfaced as 5.1 tok/s
+// with 41.5 GB read per request instead of refusing (3.2, srv4's leaf), the swap ceiling that SAME leaf cgroup
+// carries, which the envelope refuses on when the slot declared none, and the identity pinned to an address
+// (2.1, butch at .238 holding another machine's host key). The hardware and enabled-unit axes have no producer
+// here, and neither does a host-level swap reading -- see the paragraph above.
 //
 // THE TWO AXES NOT INHABITED HERE -- the PCI class count and the enabled-unit list -- are a DECLARED
 // FRONTIER, not a dangling declaration (gunbc.design_argument::consumption): the observe-only converge mode
@@ -110,16 +111,18 @@ fn host_truth_source_receipt(carrier: String) -> String {
 // right that a second decoder beside the modelled one is parallel authority (gunbc.design_argument::
 // single_authority) -- a scaffold annotated "until the arm lands" is the shape how_to_work tells you to stop.
 // The distinction is not worked around here; it is owed, and tracked by
-// gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent, whose receipt names the arm
+// #gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent::failed_value_read_scored_as_value_absent,
+// whose receipt names the arm
 // SystemdCgroupMemoryLimit still needs and the consumers that must each decide what unreadable output means for
 // their own refusal. Until it lands, the weaker true statement is the honest one
 // (gunbc.design_argument::epistemic_humility: "Do not assert as deduced what is only inferred").
 
-// A CGROUP LIMIT, AS THE VALUE ITS AXIS RELATES. systemd's four answers stay four here: a number,
-// "infinity", printed nothing, and unreadable output. Collapsing the third or fourth into the first two is
-// the fail-open move the report's tier 4 names, in the opposite direction: srv4's leaf would have been
-// "unbounded" (so the 5x cliff passes) or "zero" (so a healthy host is refused), and neither is what the
-// machine said. The caller hands over what the parser answered, whole.
+// A CGROUP LIMIT, AS THE VALUE ITS AXIS RELATES. The parsed sum reaches this module with three arms: a number,
+// "infinity", and one arm covering every way the property fails to give a limit. Collapsing that third arm into
+// either of the first two is the fail-open move the report's tier 4 names, in the opposite direction: srv4's
+// leaf would have been "unbounded" (so the 5x cliff passes) or "zero" (so a healthy host is refused), and
+// neither is what the machine said. The caller hands over what the parser answered, whole, and the arm is not
+// sorted into "printed nothing" and "printed something unreadable" here -- see what the refusal may not say.
 fn host_truth_cap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgroupMemoryLimit) -> HostTruthRead {
   match limit {
     MemoryLimitBytes { bytes: b } => HostTruthObserved {
@@ -144,8 +147,9 @@ fn host_truth_cap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgr
   }
 }
 
-// THE SWAP CEILING A LEAF CARRIES, from the same reading. This is the cgroup's side of the swap question;
-// the host's own backing is below, and the two are different facts about different places.
+// THE SWAP CEILING A LEAF CARRIES, from the same reading. This is the cgroup's side of the swap question and
+// the only side read here: a host's own backing is a different fact about a different place, it is not an axis
+// this module reads, and nothing below answers it -- see the frontier paragraph above.
 fn host_truth_leaf_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgroupMemoryLimit) -> HostTruthRead {
   match limit {
     MemoryLimitBytes { bytes: b } => HostTruthObserved {

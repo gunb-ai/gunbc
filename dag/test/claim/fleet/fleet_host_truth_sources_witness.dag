@@ -3,12 +3,13 @@ module test.claim.fleet.fleet_host_truth_sources_witness
 // CLAIMS ON THE SOURCES (gunbc.fleet.fleet_host_truth_sources). The comparison module is witnessed by
 // dag/test/claim/fleet/fleet_host_truth_read_witness.dag; these claims are the OTHER half of the frontier
 // that module declares -- that a read has a producer. Each one starts from what a carrier actually answers
-// (a systemd cgroup property, /proc/meminfo's swap total, the enrolled host-key roster) and follows it into
+// (a systemd cgroup property answered for a leaf, and the enrolled host-key roster) and follows it into
 // the verdict the rosters would act on, so a source that cannot answer cannot produce an agreement.
 //
 // TWO OF THESE ARE RED BY CONSTRUCTION against anything that reads an unanswered question as an answer: the
 // leaf whose cap is unset, and the host whose key was never enrolled. The third is the report's 3.2 at its
-// real numbers, and the fourth is 3.3: butch's 8 GiB /swap.img against a slot that declared none.
+// real numbers. The report's 3.3 is not claimed here at all: a host's /swap.img is not a divergence on the slot
+// cgroup's axis, and where that claim stood the file now says why (see gunbc.fleet.fleet_host_truth_sources).
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.algebra { string_contains }
