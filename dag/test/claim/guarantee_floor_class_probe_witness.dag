@@ -194,11 +194,21 @@ data parse_list_separator_hole_source: String = "module probe_floor_list_sep\nty
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
-data cardinality_seam_hole_source: String = "module probe_floor_cardinality_seam\ntype Level { id: String }\nfn find_first(xs: List<Level>) -> Level? {\n  if true { Present { value: Level { id: \"x\" } } } else { Absent }\n}\nfn probe(xs: List<Level>) -> String {\n  find_first(xs).id\n}\n"
+// THE OPTIONAL IS A DECLARED FIELD (parent: Level?), not an import: the T? sugar is builtin, so all
+// three fixtures stay std-free and their censuses carry ONLY their own rows - the whole-closure row
+// set that gunbc.compile_diagnostic_census warns about (importing fixtures never reach a zero total)
+// cannot appear. Measured at the released main compiler (release-bins provenance 816396255c99):
+// - the hole: reading a field THROUGH an optional-typed field (l.parent.id) is admitted with zero
+//   diagnostics, although parent can be absent and absent has no id field;
+// - the green: reading the required field (l.id) is accepted - the pair differs on ONE axis (the
+//   dot-after-optional projection), so the hole is the projection position, not optionals generally;
+// - the call-argument control: the SAME optional value at a direct call argument IS refused with
+//   DeclaredTypeNotInhabited, proving the inhabittance check runs and the hole is position-specific.
+data cardinality_seam_hole_source: String = "module probe_floor_cs_hole\ntype Level { id: String, parent: Level? }\nfn probe(l: Level) -> String? { l.parent.id }\n"
 
-data cardinality_seam_green_source: String = "module probe_floor_card_seam_green\ntype Level { id: String }\nfn find_first(xs: List<Level>) -> Level? {\n  if true { Present { value: Level { id: \"x\" } } } else { Absent }\n}\nfn probe(xs: List<Level>) -> String {\n  match find_first(xs) {\n    Present { value: lv } => lv.id\n    Absent => \"\"\n  }\n}\n"
+data cardinality_seam_green_source: String = "module probe_floor_cs_green\ntype Level { id: String, parent: Level? }\nfn probe(l: Level) -> String { l.id }\n"
 
-data cardinality_seam_call_arg_control_source: String = "module probe_floor_card_seam_call_arg\ntype Level { id: String }\nfn find_first(xs: List<Level>) -> Level? {\n  if true { Present { value: Level { id: \"x\" } } } else { Absent }\n}\nfn level_name(l: Level) -> String { l.id }\nfn probe(xs: List<Level>) -> String {\n  level_name(l: find_first(xs))\n}\n"
+data cardinality_seam_call_arg_control_source: String = "module probe_floor_cs_callarg\ntype Level { id: String, parent: Level? }\nfn use_level(l: Level) -> String { l.id }\nfn probe(l: Level) -> String { use_level(l: l.parent) }\n"
 
 test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
   silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
@@ -316,19 +326,22 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 
 test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent() -> ProcessExit {
   census_verdict_all([
-    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_cardinality_seam_hole_probe, source: cardinality_seam_hole_source))
+    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_cardinality_seam_hole_probe, source: cardinality_seam_hole_source)),
+    blocking_verdict(source: cardinality_seam_hole_source, wanted: "DeclaredTypeNotInhabited", holds: fn(n) { n == 0 })
   ])
 }
 
 test fn floor_cardinality_seam_green_control_is_clean() -> ProcessExit {
   census_verdict_all([
-    census_premise("the green row's expectation (ExpectZeroDiagnostics) holds", row_holds(probe: floor_cardinality_seam_green_probe, source: cardinality_seam_green_source))
+    census_premise("the green row's expectation (ExpectZeroDiagnostics) holds", row_holds(probe: floor_cardinality_seam_green_probe, source: cardinality_seam_green_source)),
+    census_premise("the green fixture's census has zero rows total", total_row_count_is_zero(census: census_of(source: cardinality_seam_green_source)))
   ])
 }
 
 test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -> ProcessExit {
   census_verdict_all([
-    census_premise("the call-argument control row's expectation (ExpectBlockingRefusal DeclaredTypeNotInhabited) holds", row_holds(probe: floor_cardinality_seam_call_arg_control_probe, source: cardinality_seam_call_arg_control_source))
+    census_premise("the call-argument control row's expectation (ExpectBlockingRefusal DeclaredTypeNotInhabited) holds", row_holds(probe: floor_cardinality_seam_call_arg_control_probe, source: cardinality_seam_call_arg_control_source)),
+    blocking_verdict(source: cardinality_seam_call_arg_control_source, wanted: "DeclaredTypeNotInhabited", holds: fn(n) { n >= 1 })
   ])
 }
 
