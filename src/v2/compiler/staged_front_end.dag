@@ -230,10 +230,11 @@ fn front_end_parse_step(
 // FEWER captures than the lex made means the attachment itself lost one -- the fold, not the source,
 // is wrong, and a compiler that silently drops authored prose at the parse stage is exactly what
 // gunbc.design_argument::fail_closed refuses to let happen quietly. The check is language-neutral: it
-// counts, it does not interpret. Adjacent captures share one row whose text joins them with the one
-// separator std.source_annotation merge_adjacent_annotations uses, so a row accounts for as many
-// captures as its text has separators plus one; a total over rows equals the capture count exactly when
-// none was lost or duplicated.
+// counts, it does not interpret. Adjacent captures share one row: std.source_annotation
+// annotation_attach_step joins an extending capture with the one separator "\n", so a row accounts for
+// as many captures as its text has line feeds plus one; a total over rows equals the capture count
+// exactly when none was lost or duplicated. The model is pinned claim-side, not assumed:
+// v2.test.claim.staged_front_end front_end_landed_capture_count_models_a_block_as_its_line_count.
 // WHAT IT DOES NOT SEE: WHICH gap a capture landed in. Placement is the job of the gated v1/v2
 // agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which puts one source text
 // through both parsers and refuses when a row's neighbours disagree -- a roster or gap-rule divergence

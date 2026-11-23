@@ -1,16 +1,30 @@
 module v2.test.claim.staged_front_end
 
-import std.types { List }
+import std.types { List, SourceSpan }
+import std.source_annotation {
+  AnnotationGap,
+  AnnotationScope,
+  FileScope,
+  LeadingAfterLineIndent,
+  SourceAnnotationDebt,
+  SourceAnnotationGraph
+}
+import v2.std.compilers.lexing { UnboundSourceAnnotation }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
+  FrontEndParse,
   FrontEndRefused,
   FrontEndResolvedModule,
   FrontEndRun,
   FrontEndStage,
   FrontEndStagePassed,
   FrontEndStageRejected,
+  FrontEndStageReceipt,
+  ParsedModule,
+  front_end_landed_capture_count,
   front_end_stage_index,
   front_end_run_outcome,
+  front_end_unlanded_annotation_diagnostic,
   run_front_end,
   run_front_end_to
 }
@@ -122,4 +136,98 @@ fn first_refusal_reason(source: String) -> Symbol {
 
 test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Bool {
   first_refusal_reason(source: candidate_dies_at_resolve_source) == ^resolve_reason_unbound_symbol
+}
+
+// ──────────────────────────────────────────────────────────────────────────────────────────────
+// THE PARSE STAGE IS A PRODUCTION CONSUMER OF THE AUTHORED PARSE, AND THESE PIN IT.
+// Roadmap node parse-comment-gap-attachment-v2-consumed put parse_module_authored on the production
+// front end (v2.compiler.staged_front_end front_end_parse_step), which is the route every .dag
+// candidate the acceptance harness runs walks. The four tests above pin the ladder's SHAPE -- which
+// stage a candidate dies at -- and every one of them would still pass if the parse stage dropped the
+// authored artifact's annotations, because none of them reads the attachment. These three read it:
+// the positive control that a comment-bearing module walks all four stages through the authored parse
+// (a lost capture refuses there, so its passing is the guard being silent on real input), the row/line
+// model the comparison counts by, and the guard's NON-VACUITY: it fires when the graph accounts for
+// fewer captures than the lex made. The v1/v2 agreement half -- WHICH gap a capture landed in -- is
+// the gated control v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe-pair receipt is
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair.
+
+data annotated_candidate_source: String = "module m\n\n// why the reader needs this\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn parse_stage_passed_with_nodes(run: FrontEndRun) -> Bool {
+  fold(run.steps, init: false, f: fn(acc, step) {
+    match step {
+      FrontEndStagePassed { stage: FrontEndParse, receipt: ParsedModule { node_count: n }, diagnostics: _ } =>
+        acc || n > 0
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+    }
+  })
+}
+
+// POSITIVE CONTROL ON THE PRODUCTION ROUTE: a comment above a declaration is not merely tolerated by
+// the authored parse -- the module reaches resolve, which it could not do if the capture the lexer
+// made failed to land, because front_end_parse_step refuses on exactly that mismatch.
+test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -> Bool {
+  let run = run_front_end(source: annotated_candidate_source, file: ^candidate_module)
+  match run.completion {
+    FrontEndResolvedModule { resolved: _ } =>
+      passed_stage_count(run: run) == 4 && parse_stage_passed_with_nodes(run: run)
+    FrontEndBoundReached { last: _ } => false
+    FrontEndRefused => false
+  }
+}
+
+// THE MODEL THE COMPARISON COUNTS BY, PINNED. attach_annotations groups consecutive captures into one
+// block whose text carries its own line breaks (std.source_annotation annotation_attach_step joins an
+// extending capture with "\n"), so the number of captures a graph accounts for is the rows plus the
+// line feeds each row's text carries -- NOT the row count. A guard written against rows would refuse
+// every multi-line comment block in the corpus; a guard written here against a wrong model goes red
+// before that ever ships.
+fn annotation_row(text: String) -> SourceAnnotationDebt {
+  SourceAnnotationDebt {
+    gap: AnnotationGap { scope: FileScope, before: Absent, after: Absent },
+    text: text,
+    origin: SourceSpan { file: "candidate.dag", start: 0, end: 12 },
+    placement: LeadingAfterLineIndent
+  }
+}
+
+test fn front_end_landed_capture_count_models_a_block_as_its_line_count() -> Bool {
+  front_end_landed_capture_count(rows: []) == 0
+    && front_end_landed_capture_count(rows: [annotation_row(text: "// one")]) == 1
+    && front_end_landed_capture_count(
+      rows: [annotation_row(text: "// one\n// two"), annotation_row(text: "// three")]
+    ) == 3
+}
+
+// NON-VACUITY: the guard is a comparison, and a comparison that can never fire is decoration. One
+// capture against an empty graph must refuse; no capture against an empty graph must not.
+fn one_capture() -> List<UnboundSourceAnnotation> {
+  [
+    UnboundSourceAnnotation {
+      annotation_class: ^line_comment,
+      lexeme: "// why the reader needs this",
+      placement: LeadingAfterLineIndent,
+      preceded_by_blank_line: false,
+      preceded_by_annotation_line: false,
+      file: ^candidate_module,
+      start: 0,
+      end: 12
+    }
+  ]
+}
+
+test fn front_end_annotation_guard_refuses_a_capture_the_graph_lost() -> Bool {
+  match front_end_unlanded_annotation_diagnostic(captures: one_capture(), graph: SourceAnnotationGraph { rows: [] }) {
+    Present { value: refusal } => refusal.reason == ^staged_front_end_annotation_capture_unlanded
+    Absent => false
+  }
+}
+
+test fn front_end_annotation_guard_stays_silent_when_nothing_is_lost() -> Bool {
+  match front_end_unlanded_annotation_diagnostic(captures: [], graph: SourceAnnotationGraph { rows: [] }) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
