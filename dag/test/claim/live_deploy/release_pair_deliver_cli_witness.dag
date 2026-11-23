@@ -196,8 +196,8 @@ test fn witness_serving_mixed_is_poison() -> Bool {
 // release_pair_converged_noop route. The old string classifier this witness exercised is gone (review 96225).
 
 // The built-run decode reads BOTH sides off each line: the run id (download target) and the run's head_sha (the
-// binary-side observation). One line without the tab separator refuses the WHOLE observation (fail-closed), never
-// drops it and selects among the rest.
+// binary-side observation). One line without the tab separator, or with a third field, refuses the WHOLE observation
+// (fail-closed), never drops it and selects among the rest.
 test fn witness_built_runs_split_run_id_and_head_sha() -> Bool {
   let ok = match release_pair_decode_built_runs(outcome: ProcessOutputPresent { text: "44015305678\t1234567890abcdef1234567890abcdef12345678" }) {
     BuiltRunsObserved { runs } => match first(l: runs) {
@@ -210,7 +210,11 @@ test fn witness_built_runs_split_run_id_and_head_sha() -> Bool {
     BuiltRunsRefused { reason } => (reason as String) == (release_pair_run_list_malformed_reason as String)
     BuiltRunsObserved { runs: _ } => false
   }
-  if ok { no_tab } else { false }
+  let three_fields = match release_pair_decode_built_runs(outcome: ProcessOutputPresent { text: "44015305678\t1234567890abcdef1234567890abcdef12345678\textra" }) {
+    BuiltRunsRefused { reason } => (reason as String) == (release_pair_run_list_malformed_reason as String)
+    BuiltRunsObserved { runs: _ } => false
+  }
+  if ok { if no_tab { three_fields } else { false } } else { false }
 }
 
 // THE NEWEST BUILT ANCESTOR (gunbc.design_ruling::lab_tracks_main_lab_dev_retired_2026_11_22). Supplied values: a

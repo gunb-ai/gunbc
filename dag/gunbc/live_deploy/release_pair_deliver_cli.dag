@@ -15,7 +15,7 @@ module gunbc.live_deploy.release_pair_deliver_cli
 
 import std.types { String, NonEmptyStr, List, Bool, Int, CommitSha }
 import std.optional { Optional, Present, Absent }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -219,23 +219,26 @@ type ReleasePairRunLookup
   | RunLookupNoBuiltAncestor
   | RunLookupDiscoveryRefused { reason: NonEmptyStr }
 
-// One "<run-id>TAB<head-sha>" line. Fail-closed (gunbc.design_argument::fail_closed): an absent end, an empty run or
-// head field, or a single-field line (no tab) is none — never a guessed run.
+// One "<run-id>TAB<head-sha>" line. Fail-closed (gunbc.design_argument::fail_closed): any line that is not exactly
+// two fields (no tab, or a third field from a changed gh/jq output shape), or an empty run or head field, is none —
+// never a guessed run.
 fn release_pair_parse_run_line(line: String) -> ReleasePairRunObservation? {
   let parts = split(s: trim(s: line), delimiter: "\t")
-  // first/last return String? — match Present/Absent first, then compare and cast the UNWRAPPED Strings.
-  match first(l: parts) {
-    Absent => none
-    Present { value: run_field } =>
-      match last(l: parts) {
-        Absent => none
-        Present { value: head_field } =>
-          if (run_field as String) == "" || (head_field as String) == "" || (head_field as String) == (run_field as String) {
-            none
-          } else {
-            Present { value: ReleasePairRunObservation { run_id: run_field as NonEmptyStr, head_sha: head_field as NonEmptyStr } }
-          }
-      }
+  if length(xs: parts) != 2 { none } else {
+    // first/last return String? — match Present/Absent first, then compare and cast the UNWRAPPED Strings.
+    match first(l: parts) {
+      Absent => none
+      Present { value: run_field } =>
+        match last(l: parts) {
+          Absent => none
+          Present { value: head_field } =>
+            if (run_field as String) == "" || (head_field as String) == "" || (head_field as String) == (run_field as String) {
+              none
+            } else {
+              Present { value: ReleasePairRunObservation { run_id: run_field as NonEmptyStr, head_sha: head_field as NonEmptyStr } }
+            }
+        }
+    }
   }
 }
 
