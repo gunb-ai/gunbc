@@ -181,6 +181,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
   belt_publish_attempt_receipt,
+  belt_publish_worktree_listing_refusal,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
   PublishWriteFailed, PublishDeferred,
@@ -423,6 +424,31 @@ test fn witness_exec_refuses_missing_program() -> Bool {
 test fn witness_exec_fails_on_nonzero_exit() -> Bool {
   let o = belt_exec(cmd: host_exec_argv(program: "false", args: []), workdir: "/")
   is_exec_failed(o: o)
+}
+
+fn exec_refused_reason(o: BeltExecOutcome) -> String {
+  match o {
+    ExecRefused { program: _, reason: r } => r
+    ExecOk { stdout: _ } => ""
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+  }
+}
+
+// fail-closed control: a dispatch worktree root that cannot be listed is a NEVER-SPAWNED refusal
+// carrying its cause, never a fabricated git exit status. This is red on the fabricated `-1`: had
+// the listing-failure branch returned `ExecFailed { program: "git", exit_code: -1, stderr: ... }`
+// -- a plausible git status for a git process that never ran -- `is_exec_refused` would be false and
+// this claim would fail. It also asserts the route: the refusal names that no process was spawned
+// and carries the underlying listing cause.
+test fn a_worktree_listing_failure_refuses_never_spawning_rather_than_inventing_a_git_exit() -> Bool {
+  let o = belt_publish_worktree_listing_refusal(
+    root: "/srv/gunbc/belt/dispatch/worktrees/inst-9",
+    error: "No such file or directory",
+  )
+  is_exec_refused(o: o)
+    && !is_exec_failed(o: o)
+    && string_contains(s: exec_refused_reason(o: o), pattern: "no git worktree process was spawned")
+    && string_contains(s: exec_refused_reason(o: o), pattern: "No such file or directory")
 }
 
 test fn witness_exec_all_runs_every_step_when_ok() -> Bool {
