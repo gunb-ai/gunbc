@@ -7248,21 +7248,23 @@ fn tree_locus_already_converged(
     TreeObserved { entries: already } =>
       if !tree_entries_agree(source: source, installed: already) {
         false
-      } else match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
-        Present { value: _ } => false
-        Absent => match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
-          TreeMetadataObservationFailed { reason: _ } => false
-          TreeMetadataObserved { entries: already_entries } =>
-            match tree_realm_readback_owner(realm: realm, observed: already_entries) {
-              Absent => false
-              Present { value: readback_owner } => match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
+      } else {
+        match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
+          Present { value: _ } => false
+          Absent => match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
+            TreeMetadataObservationFailed { reason: _ } => false
+            TreeMetadataObserved { entries: already_entries } =>
+              match tree_realm_readback_owner(realm: realm, observed: already_entries) {
                 Absent => false
-                Present { value: expected } => match tree_metadata_disagreement(expected: expected, observed: already_entries) {
-                  Present { value: _ } => false
-                  Absent => true
+                Present { value: readback_owner } => match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
+                  Absent => false
+                  Present { value: expected } => match tree_metadata_disagreement(expected: expected, observed: already_entries) {
+                    Present { value: _ } => false
+                    Absent => true
+                  }
                 }
               }
-            }
+          }
         }
       }
   }
