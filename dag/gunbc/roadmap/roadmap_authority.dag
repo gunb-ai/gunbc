@@ -3770,17 +3770,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     roadmap_node(
       identity: "rn_YCJZ8HFPSSXRQEZAJ0NACMY1HE",
-      id: "acceptance-recorder-entry-resolves-on-main",
+      id: "acceptance-recorder-four-positional-call-is-accepted",
       owner: "ci-control",
       carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
       line: ticket(t: fields(
-        headline: "The acceptance recorder entry resolves on main",
-        boundary: "Measured by royal-newt-240 on srv1 at main 5ed201b4a5267dc841eda350af91a199f7959954, one tree, identical message under the built and the released binary: `--entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_acceptance_record_cli --dry-run` with all ten arguments exits RC=1 with cause dag/gunbc/roadmap/roadmap_model.dag:726:98, this value call takes at most 1 positional argument, not 4. repo_root pointed at a scratch tree and the failure is a pre-entry resolve failure, so no carrier was touched. Recording worked on 2026-11-23 only because it resolved against the old lab tree (c48e06d826, 2026-11-16), so advancing the lab past the commit that introduced roadmap_model.dag:726 silently makes acceptance recording impossible for everyone. The introducing commit is not yet named; royal-newt-240 offered to bisect. Distinct from required-check-named-witnesses-runs-no-claim-module, which owns running claim modules in the required check.",
-        displaced_cost: "Acceptance cannot be recorded once the lab advances, and the failure shows only as a resolve error at record time.",
-        first_slice: "Name the commit that introduced the call at roadmap_model.dag:726:98, correct the call, and re-run the dry-run entry.",
-        red_control: "OPEN: red_at is 5ed201b4a5267dc841eda350af91a199f7959954 (RC=1 with the cause above under both binaries, built sha256 a2f5732a816830ba5d62e0431c593aed0a560c49a5c565ff484f122ccce00721, released sha256 d5a807756bb1379767c64d37a12be63e424144866e3bcf192588ddeb4caa40d0); green_at is not yet named. Green is the same dry-run command exiting 0 at one sha.",
+        headline: "The call at roadmap_model.dag:726:98 takes the positional arguments it is given",
+        boundary: "Measured by royal-newt-240 at main 5ed201b4a5267dc841eda350af91a199f7959954: reaching past the receipt grammar, `--entry dag/gunbc/roadmap/roadmap_event_cli.dag --function roadmap_acceptance_record_cli --dry-run` fails at dag/gunbc/roadmap/roadmap_model.dag:726:98, this value call takes at most 1 positional argument, not 4, a post-expansion span. SOFTENED after royal-newt-240's correction: the entry itself resolves at af4a6e54 and 5ed201b4 (resolve_failed=NO, 491 closure files, resolve_entry_graph_inclusive 88810 ms), and rc=1 on a placeholder receipt is a legitimate refusal, so this is a pre-existing error reachable only past the receipt grammar, not a regression and not a claim that recording is broken. Whether the lab advance changes recording is not established. The recorder keeps recording on the durable branch refs/heads/roadmap-events. Distinct from required-check-named-witnesses-runs-no-claim-module, which owns running claim modules in the required check.",
+        displaced_cost: "A real receipt that clears the grammar reaches a four-positional call that the typechecker refuses, so the failure appears only at the last stage of recording.",
+        first_slice: "Find the call at roadmap_model.dag:726:98, correct its arguments, and run the entry past the receipt grammar with a grammar-valid receipt in dry-run.",
+        red_control: "OPEN: red_at and green_at are not named as commits. Observed at 5ed201b4a5267dc841eda350af91a199f7959954 (royal-newt-240, built sha256 a2f5732a816830ba5d62e0431c593aed0a560c49a5c565ff484f122ccce00721, released sha256 d5a807756bb1379767c64d37a12be63e424144866e3bcf192588ddeb4caa40d0): a dry-run past the receipt grammar refuses with the four-positional cause above. Green is the same dry-run with a grammar-valid receipt exiting 0 at one sha.",
         out_of_scope: "Any change to what an acceptance records, and the lab advance itself.",
-        handback: "The introducing commit, the corrected call, and the dry-run exiting 0 with its raw lines and the binary it ran under."
+        handback: "The call corrected, and the dry-run past the receipt grammar exiting 0 with its raw lines and the binary it ran under."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "A claim in the required population passes or is named as failing."),
