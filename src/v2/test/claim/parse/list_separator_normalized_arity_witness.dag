@@ -85,6 +85,21 @@ fn ff639_count(node: Node, acc: Ff639Stats) -> Ff639Stats {
   }
 }
 
+
+fn ff639_loads(source: String, id: Symbol, unit: Symbol, path: String) -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: Cons { head: ff639_read(source: source, id: id, unit: unit, path: path), tail: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ff639_has_list(source: String, id: Symbol, unit: Symbol, path: String) -> Bool {
+  ff639_stats(source: source, id: id, unit: unit, path: path).lists >= 1
+}
+
 fn ff639_stats(source: String, id: Symbol, unit: Symbol, path: String) -> Ff639Stats {
   match module_roots_from_source_root_ingest(
     ingest: Cons { head: ff639_read(source: source, id: id, unit: unit, path: path), tail: Empty },
@@ -94,7 +109,13 @@ fn ff639_stats(source: String, id: Symbol, unit: Symbol, path: String) -> Ff639S
       fold_list(
         xs: normalized_tree_roots_to_nodes(roots: roots),
         empty: Ff639Stats { lists: 0, elements: 0 },
-        cons: fn(acc, n) { ff639_count(node: n, acc: acc) }
+        cons: fn(acc, root) {
+          fold_list(
+            xs: node_subtree_nodes(root: root),
+            empty: acc,
+            cons: fn(inner, n) { ff639_count(node: n, acc: inner) }
+          )
+        }
       )
     Rejected { diagnostics: _ } => Ff639Stats { lists: 0, elements: 0 }
   }
@@ -111,8 +132,8 @@ test fn ff639_three_lowered_arity_holds() -> Bool {
     id: ^ff639_three_artifact,
     unit: ^ff639_three_cu,
     path: "src/v2/test/fixture/parse/ff639_arity_three.dag",
-    lists: 2,
-    elements: 5
+    lists: 5,
+    elements: 8
   )
 }
 
@@ -122,8 +143,8 @@ test fn ff639_single_lowered_arity_holds() -> Bool {
     id: ^ff639_single_artifact,
     unit: ^ff639_single_cu,
     path: "src/v2/test/fixture/parse/ff639_arity_single.dag",
-    lists: 2,
-    elements: 3
+    lists: 5,
+    elements: 6
   )
 }
 
@@ -133,8 +154,8 @@ test fn ff639_two_lowered_arity_holds() -> Bool {
     id: ^ff639_two_artifact,
     unit: ^ff639_two_cu,
     path: "src/v2/test/fixture/parse/ff639_arity_two.dag",
-    lists: 2,
-    elements: 4
+    lists: 5,
+    elements: 7
   )
 }
 
@@ -144,8 +165,8 @@ test fn ff639_trailing_lowered_arity_holds() -> Bool {
     id: ^ff639_trailing_artifact,
     unit: ^ff639_trailing_cu,
     path: "src/v2/test/fixture/parse/ff639_arity_trailing.dag",
-    lists: 2,
-    elements: 5
+    lists: 5,
+    elements: 8
   )
 }
 
@@ -155,8 +176,8 @@ test fn ff639_empty_lowered_arity_holds() -> Bool {
     id: ^ff639_empty_artifact,
     unit: ^ff639_empty_cu,
     path: "src/v2/test/fixture/parse/ff639_arity_empty.dag",
-    lists: 2,
-    elements: 2
+    lists: 5,
+    elements: 5
   )
 }
 
@@ -166,19 +187,142 @@ test fn ff639_nested_lowered_arity_holds() -> Bool {
     id: ^ff639_nested_artifact,
     unit: ^ff639_nested_cu,
     path: "src/v2/test/fixture/parse/ff639_arity_nested.dag",
-    lists: 4,
-    elements: 7
+    lists: 7,
+    elements: 10
   )
 }
 
-test fn ff639_juxtaposed_lowered_arity_holds() -> Bool {
-  ff639_stats_is(
+test fn ff639_three_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_three_source,
+    id: ^ff639_three_load_artifact,
+    unit: ^ff639_three_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_three_load.dag"
+  )
+}
+
+test fn ff639_three_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_three_source,
+    id: ^ff639_three_walk_artifact,
+    unit: ^ff639_three_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_three_walk.dag"
+  )
+}
+
+test fn ff639_single_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_single_source,
+    id: ^ff639_single_load_artifact,
+    unit: ^ff639_single_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_single_load.dag"
+  )
+}
+
+test fn ff639_single_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_single_source,
+    id: ^ff639_single_walk_artifact,
+    unit: ^ff639_single_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_single_walk.dag"
+  )
+}
+
+test fn ff639_two_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_two_source,
+    id: ^ff639_two_load_artifact,
+    unit: ^ff639_two_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_two_load.dag"
+  )
+}
+
+test fn ff639_two_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_two_source,
+    id: ^ff639_two_walk_artifact,
+    unit: ^ff639_two_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_two_walk.dag"
+  )
+}
+
+test fn ff639_trailing_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_trailing_source,
+    id: ^ff639_trailing_load_artifact,
+    unit: ^ff639_trailing_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_trailing_load.dag"
+  )
+}
+
+test fn ff639_trailing_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_trailing_source,
+    id: ^ff639_trailing_walk_artifact,
+    unit: ^ff639_trailing_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_trailing_walk.dag"
+  )
+}
+
+test fn ff639_empty_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_empty_source,
+    id: ^ff639_empty_load_artifact,
+    unit: ^ff639_empty_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_empty_load.dag"
+  )
+}
+
+test fn ff639_empty_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_empty_source,
+    id: ^ff639_empty_walk_artifact,
+    unit: ^ff639_empty_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_empty_walk.dag"
+  )
+}
+
+test fn ff639_nested_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_nested_source,
+    id: ^ff639_nested_load_artifact,
+    unit: ^ff639_nested_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_nested_load.dag"
+  )
+}
+
+test fn ff639_nested_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_nested_source,
+    id: ^ff639_nested_walk_artifact,
+    unit: ^ff639_nested_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_nested_walk.dag"
+  )
+}
+
+// THE PINNED TOTALS ARE MEASURED, NOT GUESSED. Each specimen module lowers to a fixed spine of
+// three further canonical introductions carrying three elements between them -- the argument and
+// parameter introductions the lowering materialises for the module's two functions -- on top of the
+// AUTHORED lists (the probe list plus the two-element control). So the pins are: [x, x, x] + [x, x]
+// -> (lists 5, elements 8); [x] + [x, x] -> (5, 6); [x, x] + [x, x] -> (5, 7); [x, x, x,] + [x, x]
+// -> (5, 8); [] + [x, x] -> (5, 5); and [[x, x], [x]] + [x, x] -> (7, 10), the nested probe adding
+// two introductions of two and one elements. They were bracketed with monotone >= claims and then
+// pinned by a one-candidate-passes equality pass, because an earlier draft of this witness pinned
+// hand-guessed totals and was red for a reason that had nothing to do with the wall. Any change to
+// an authored element count -- which is exactly what a dropped separator used to do silently --
+// moves these numbers.
+//
+// THE FLIP CLAIM. THE WALL'S OWN WORDS AT THE FILE LEVEL: this text is the three-element specimen
+// above with two commas removed, and it must not load. Green at head; on main the same claim is red,
+// because there the module loads and its list lowers to three elements -- the silent arity change
+// this node exists to close. It is the only claim in this file whose verdict differs across the
+// trees; every shape above must hold on BOTH, which is the inertness control for the wall.
+test fn ff639_juxtaposed_module_refused_holds() -> Bool {
+  !ff639_loads(
     source: ff639_juxtaposed_source,
-    id: ^ff639_juxtaposed_artifact,
-    unit: ^ff639_juxtaposed_cu,
-    path: "src/v2/test/fixture/parse/ff639_arity_juxtaposed.dag",
-    lists: 0,
-    elements: 0
+    id: ^ff639_juxtaposed_load_artifact,
+    unit: ^ff639_juxtaposed_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_juxtaposed_load.dag"
   )
 }
 
