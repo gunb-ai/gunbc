@@ -202,20 +202,25 @@ fn gunbc_run_invocation_words(
   )
 }
 
-// EVERY CLAIM OF ONE WITNESS IN ONE PROCESS: gunbc test <package_pattern>, where the
-// pattern names every test fn the file declares. The entry must be a .dag path under
-// dag/test/claim/; the package is derived by stripping the root and suffix.
-fn gunbc_test_all_claims_invocation_words(
+// THE ALL-CLAIMS-WITNESS COMMAND: `gunbc test` over a caller-supplied list of EXACT claim labels.
+// Every label must already be a claim identity -- a `//<package>:<function>` the caller admits through
+// the label rule (extdeps.bazel.label parse_label/render_label) BEFORE calling this; this builder
+// never widens a witness to a package/`:all` set form (claim_execution_consolidation plan section 2)
+// and does no path surgery. It spells the same word order as gunbc.gunbc_cli_command
+// gunbc_test_batch_invocation_words in its HermeticBatch shape (hermetic is the route default, so it
+// adds no mode word): the verb `test`, then the corpus roots, then the positional claim operands. It
+// lives HERE, in the command-words module, and not as a call into gunbc_cli_command, because that
+// module sits in the same materialization SCC as the contributor-onboarding model; importing it into
+// that model closes the SCC into a cycle and every onboarding claim then reports as unobserved. The
+// pooled Hermetic/Wet/Record builder stays the authority in gunbc_cli_command, pinned by
+// dag/test/claim/gunbc_test_batch_argv_witness.dag; this builder only ever spells that Hermetic shape.
+fn gunbc_test_labels_invocation_words(
   source_roots: List<String>,
-  entry: String
+  labels: List<String>
 ) -> List<InvocationWord> {
-  let root = "dag/"
-  let after_root = if entry.starts_with(root) { entry.replace(from: root, to: "") } else { entry }
-  let package_path = after_root.replace(from: ".dag", to: "")
-  let pattern = concat(concat(concat("//", package_path), ":"), "all")
   concat(
     concat([LiteralWord { spelling: "test" }], source_root_invocation_words(roots: source_roots)),
-    [LiteralWord { spelling: pattern }]
+    fold(labels, init: [], f: (acc, l) => concat(acc, [LiteralWord { spelling: l }]))
   )
 }
 

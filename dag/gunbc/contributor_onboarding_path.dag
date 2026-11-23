@@ -20,10 +20,11 @@ import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_clippy_co
 import gunbc.fabric.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import gunbc.cli_invoke {
   gunbc_bin_name,
-  gunbc_run_all_claims_invocation_words,
+  gunbc_test_labels_invocation_words,
   invocation_words_bare,
   release_bin_rel_path,
 }
+import extdeps.bazel.label { LabelParsed, LabelRefused, parse_label, render_label }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.witness.witness_floor_workflow { witness_floor_required_bins }
 import gunbc.instruments.docs_projection_agreement { docs_projection_regen_command }
@@ -278,23 +279,47 @@ fn onboarding_witness_command() -> String {
 }
 
 // The one-witness recipe, path-addressed: the built binary, the witness roots, the entry, and
-// `--claim-run` with no `--function`, which runs every `test fn` the file declares in one process.
-fn onboarding_one_witness_command() -> String {
-  // The program word is cargo's default release layout (extdeps.rust.cargo, via gunbc.cli_invoke),
-  // not a re-spelled "target/release": the recipe a reader copies has to point where the build
-  // actually puts the binary.
-  join(
-    concat(
-      [concat("./", release_bin_rel_path(bin_name: gunbc_bin_name))],
-      invocation_words_bare(
-        words: gunbc_run_all_claims_invocation_words(
-          source_roots: witness_layer_roots,
-          entry: "dag/test/claim/spark/pair_serving_authority_witness.dag"
-        )
-      )
-    ),
-    " "
-  )
+// THE ONE-WITNESS RECIPE: `gunbc test` over every claim a single witness module declares, each
+// named by one exact label -- never a package/`:all` word. A caller must not widen a witness to a
+// set form (claim_execution_consolidation plan section 2), and the label rule (extdeps.bazel.label,
+// the single home for what a label is) refuses a set form outright via parse_target_name's
+// TargetPattern guard, so the only honest spelling names the module's own `test fn`s. The names
+// below are the real test fns of the example module; THE ENTRY IS AN EXAMPLE -- substitute the
+// witness you are working on, one label per claim you declare. Each operand text is run through
+// extdeps.bazel.label parse_label and re-rendered by render_label, so the recipe spells exactly what
+// the label authority -- not a string guess -- says the claim is; a name the authority refuses takes
+// the whole recipe absent rather than silently dropping one claim (a command that runs fewer claims
+// than it names would lie). The word order is gunbc.cli_invoke gunbc_test_labels_invocation_words' --
+// test, then the corpus roots, then the positional claim operands (Hermetic is the route default, so
+// no mode word) -- never re-spelled here.
+fn onboarding_one_witness_command() -> Optional<NonEmptyStr> {
+  match parse_label(text: "//test/claim/list_last_optional_witness:empty_list_last_is_absent") {
+    LabelParsed { label: head_label } =>
+      match parse_label(text: "//test/claim/list_last_optional_witness:nonempty_list_last_is_present_last_element") {
+        LabelParsed { label: tail_label } => Present {
+          // The program word is cargo's default release layout (extdeps.rust.cargo, via gunbc.cli_invoke),
+          // not a re-spelled "target/release": the recipe a reader copies has to point where the build
+          // actually puts the binary.
+          value: join(
+            concat(
+              [concat("./", release_bin_rel_path(bin_name: gunbc_bin_name))],
+              invocation_words_bare(
+                words: gunbc_test_labels_invocation_words(
+                  source_roots: witness_layer_roots,
+                  labels: [render_label(l: head_label), render_label(l: tail_label)]
+                )
+              )
+            ),
+            " "
+          ) as NonEmptyStr
+        }
+        // An operand the label authority refuses is a defect in THIS recipe's literal names, not a
+        // fact a reader can act on; a command missing a claim it meant to name would lie about what it
+        // runs, so the command is absent and the step's verification text is what the reader sees.
+        LabelRefused { cause: _ } => Absent
+      }
+    LabelRefused { cause: _ } => Absent
+  }
 }
 
 fn onboarding_build_lane_command() -> String {
@@ -347,9 +372,9 @@ data onboarding_steps: List<OnboardingStep> = [
   },
   OnboardingStep {
     id: "run-one-witness" as NonEmptyStr,
-    goal: "Run ONE witness file's claims in ONE process. The floor above runs everything; while you are changing one module you want its witness, and the cost of a run is dominated by loading and typechecking the entry's closure -- minutes -- not by the claims. `gunbc test //test/claim/<path>:all` executes every `test fn` the file declares over one load, prints one PASS or FAIL line per claim, runs every claim even after a red so the file reports all of its reds, and exits nonzero if any failed. A specific label (`//test/claim/<path>:<fn>`) runs one claim; repeat the operand for a subset in the order given." as NonEmptyStr,
-    command: Present { value: onboarding_one_witness_command() as NonEmptyStr },
-    verification: "One PASS line per test fn the file declares, and exit 0. Name a function that does not exist beside real ones and the run reports its refusal after the passes and exits 1 -- that is the control that the loop reports every function rather than the first. THE ENTRY IN THE RECIPE IS AN EXAMPLE: substitute the witness you are working on. The argv comes from gunbc.cli_invoke gunbc_run_all_claims_invocation_words, which is the one `gunbc run` builder (gunbc_run_invocation_words_with_functions) with an empty function population -- the same builder every per-claim invocation goes through -- so a flag renamed on the modeled surface is renamed here." as NonEmptyStr,
+    goal: "Run ONE witness file's claims in ONE process. The floor above runs everything; while you are changing one module you want its witness, and the cost of a run is dominated by loading and typechecking the entry's closure -- minutes -- not by the claims. Name the file's claims by EXACT LABEL (`gunbc test //test/claim/<path>:<fn> ...`, one operand per claim) and they run together over one load: the route prints one PASS or FAIL line per operand, runs every operand even after a red so the file reports all of its reds, and exits nonzero if any failed. Repeat the operand to select a subset, in the order given. A SET FORM -- `:all`, `*`, `/...` -- IS NOT HOW YOU RUN A MODULE HERE: the claim route's label rule refuses a set form outright and the consolidation plan forbids a caller widening to one, so name the claims you mean. List the `test fn`s the file declares to run all of them." as NonEmptyStr,
+    command: onboarding_one_witness_command(),
+    verification: "One PASS line per named claim, and exit 0. Add a name that the file does not declare and the run reports its refusal at that position, after the passes, and exits 1 -- that is the control that the loop reports every name rather than stopping at the first. THE ENTRY IN THE RECIPE IS AN EXAMPLE: substitute the witness you are working on, one exact label per claim you declare. The argv comes from gunbc.instruments.host_prelude gunbc_test_claims_argv, the one builder that admits every claim through the label rule's single home (extdeps.bazel.label, reached through claim_identity_operand) -- so a claim it cannot name makes the recipe refuse rather than silently drop that claim, and a flag renamed on the modeled surface is renamed here." as NonEmptyStr,
     blocker: SelfServe,
   },
   OnboardingStep {
