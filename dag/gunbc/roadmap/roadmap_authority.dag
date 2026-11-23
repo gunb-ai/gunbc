@@ -3752,6 +3752,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "demand-engine", contribution: "A heal or regen round covers the whole emitted population, so a seed-input edit reaches its read set instead of a refusal."),
     ),
     roadmap_node(
+      identity: "rn_996VCB1C1184A2HK3XJV2T0CXT",
+      id: "commit-sha-has-one-validating-constructor",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "dag/std/types.dag"),
+      line: ticket(t: fields(
+        headline: "CommitSha has one validating constructor, so a placeholder sha cannot be written",
+        boundary: "Reported by vivid-swift-693, approved by neat-badger-614. std.types declares CommitSha = String, and its own comment says commit_sha_text_holds is a check a caller must remember to run, not a construction wall, dissolving when CommitSha gains one validating constructor (the predicate then deletes). Effect: claim-side receipt data can carry a placeholder sha that parses, typechecks and passes CI, and nothing refuses it; the red_at and green_at fields of gunbc#16914 and its probe-pair data files are live instances. Scope: claim-side receipt data and the roadmap red-observation fields.",
+        displaced_cost: "Every reviewer and lane manager re-checks by eye that a recorded sha is 40 lowercase hex, and a wrong one is found only by whoever reads it (a 64-hex binary hash was mistaken for a commit in this very planning work).",
+        first_slice: "The constructor itself: one validating constructor for CommitSha, with the receipt data fields reaching it.",
+        red_control: "NONE OBSERVED YET as a recorded pair: no sha is claimed. The control is a claim whose sha field holds a non-40-hex placeholder, executed to pass today at a named revision, and refused at construction after; red_at and green_at are OPEN.",
+        out_of_scope: "Validating shas outside claim-side receipt data and the roadmap red-observation fields. Any change to what a sha means.",
+        handback: "The constructor, the call sites now reaching it, the placeholder claim executed and pasted before and after with their commits, and the deletion of commit_sha_text_holds."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "A recorded commit identity is constructed valid, so a claim's evidence cannot carry a placeholder."),
+    ),
+    roadmap_node(
       identity: "rn_BPQ3Q3CTSK0TP02ECZC74B8ZDP",
       id: "heal-noop-before-regenerator-build",
       owner: "ci-control",
