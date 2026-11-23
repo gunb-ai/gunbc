@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_patterns
 
 use self::ConstructorRoster::*;
+use self::ExhaustivenessVerdict::*;
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
 pub use crate::std_decl_ref::declaration_ref_eq;
@@ -22,7 +23,9 @@ pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
+use crate::v1_std_core::CompilerDiagnostic::{
+    ExhaustivenessUnknown, FieldNotFound, NonExhaustiveMatch, VariantNotFound,
+};
 use crate::v1_std_core::Connective::{Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::NoExprData;
@@ -1538,8 +1541,21 @@ pub fn check_match_exhaustiveness(
     span: Rc<SourceSpan>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
+    exhaustiveness_verdict_diags(
+        resolved_exhaustiveness_verdict(arms, scrutinee_type, env, module_name.clone()),
+        span,
+        module_name.clone(),
+    )
+}
+
+pub fn resolved_exhaustiveness_verdict(
+    arms: Rc<Vec<Rc<Node>>>,
+    scrutinee_type: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<ExhaustivenessVerdict> {
     match (*constructor_roster_for(scrutinee_type.clone(), env.clone())).clone() {
-        ConstructorRoster::ConstructorsOpen => Rc::new(vec![]),
+        ConstructorRoster::ConstructorsOpen => Rc::new(ExhaustivenessVerdict::VerdictExhaustive),
         ConstructorRoster::ConstructorsClosed { names: _, .. } => {
             let witnesses = exhaustiveness_witnesses(
                 Rc::new({
@@ -1551,25 +1567,110 @@ pub fn check_match_exhaustiveness(
                 }),
                 Rc::new(vec![scrutinee_type.clone()]),
                 env.clone(),
-                module_name.clone(),
+                module_name,
             );
             if ((witnesses.clone().len() as i64) > 0) {
-                Rc::new(vec![crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
-                        missing: Rc::new({
-                            let mut __result = Vec::new();
-                            for w in witnesses.iter().cloned() {
-                                __result.push(witness_row_missing_name(w.clone()));
-                            }
-                            __result
-                        }),
-                        span: span.clone(),
+                Rc::new(ExhaustivenessVerdict::VerdictNonExhaustive {
+                    missing: Rc::new({
+                        let mut __result = Vec::new();
+                        for w in witnesses.iter().cloned() {
+                            __result.push(witness_row_missing_name(w.clone()));
+                        }
+                        __result
                     }),
-                    module_name.clone(),
-                )])
+                })
             } else {
-                Rc::new(vec![])
+                Rc::new(ExhaustivenessVerdict::VerdictExhaustive)
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ExhaustivenessVerdict {
+    VerdictExhaustive,
+    VerdictNonExhaustive { missing: Rc<Vec<String>> },
+    VerdictUnknown { scrutinee: String },
+}
+
+pub fn match_arm_is_irrefutable(arm: Rc<Node>) -> bool {
+    crate::v1_std_core::match_pattern_is_irrefutable(crate::v1_std_core::arm_pattern(arm))
+}
+
+pub fn blocked_scrutinee_exhaustiveness_verdict(
+    arms: Rc<Vec<Rc<Node>>>,
+    scrutinee_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<ExhaustivenessVerdict> {
+    if {
+        let mut __found = false;
+        for a in arms.iter().cloned() {
+            if match_arm_is_irrefutable(a.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        Rc::new(ExhaustivenessVerdict::VerdictExhaustive)
+    } else {
+        Rc::new(ExhaustivenessVerdict::VerdictUnknown {
+            scrutinee: scrutinee_verdict_name(scrutinee_node, env),
+        })
+    }
+}
+
+pub fn blocked_scrutinee_exhaustiveness_diags(
+    arms: Rc<Vec<Rc<Node>>>,
+    scrutinee_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    exhaustiveness_verdict_diags(
+        blocked_scrutinee_exhaustiveness_verdict(arms, scrutinee_node, env),
+        span,
+        module_name,
+    )
+}
+
+pub fn exhaustiveness_verdict_diags(
+    verdict: Rc<ExhaustivenessVerdict>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match (*verdict.clone()).clone() {
+        ExhaustivenessVerdict::VerdictExhaustive => Rc::new(vec![]),
+        ExhaustivenessVerdict::VerdictNonExhaustive {
+            missing: missing, ..
+        } => Rc::new(vec![crate::v1_std_core::make_error_node(
+            Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
+                missing: missing.clone(),
+                span: span.clone(),
+            }),
+            module_name.clone(),
+        )]),
+        ExhaustivenessVerdict::VerdictUnknown {
+            scrutinee: scrutinee,
+            ..
+        } => Rc::new(vec![crate::v1_std_core::make_error_node(
+            Rc::new(CompilerDiagnostic::ExhaustivenessUnknown {
+                scrutinee: scrutinee.clone(),
+                span: span.clone(),
+            }),
+            module_name.clone(),
+        )]),
+    }
+}
+
+pub fn scrutinee_verdict_name(scrutinee_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
+    {
+        let name = crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrutinee_node);
+        if (name.clone() == "".to_string()) {
+            "<scrutinee: declare its concrete coproduct type>".to_string()
+        } else {
+            name.clone()
         }
     }
 }
