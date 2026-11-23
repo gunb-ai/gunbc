@@ -2358,6 +2358,102 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Makes capped draw a fact the circuits can be sized on."),
     ),
     roadmap_node(
+      identity: "rn_36K5STB3N22N3K61M5AY62JXNZ",
+      id: "compiler-identity-from-sources",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The compiler's identity is derived from the sources that cause it, so two builds of the same causes share one identity",
+        boundary: "The remainder of the old demand-m1b: the keying cut landed (#13756), but no producer derives a compiler identity from its causal sources, so reuse keyed on the compiler cannot be trusted across runs.",
+        displaced_cost: "Without a causal identity, reuse either misses on an unchanged compiler or serves a result from a different one.",
+        first_slice: "Derive the native compiler's identity from its read set and toolchain inputs and use it as the key of one existing consumer.",
+        red_control: "(1) Two builds from identical causal sources produce the same identity. (2) Changing one causal source changes it. (3) Changing a file outside the read set does not.",
+        out_of_scope: "Cross-run serving (native-artifact-reuse-through-request-key).",
+        handback: "The identity producer, its consumer and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Reuse needs a key that means the same compiler."),
+    ),
+    roadmap_node(
+      identity: "rn_E1TAEA7FQEZPYG1XWFM9H9Z6YK",
+      id: "native-artifact-reuse-through-request-key",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A native compiler artifact is reused across runs through its request key and the provider, and the seed-side cache path is retired",
+        boundary: "The remainder of the old demand-m1c: cross-run reuse exists today only as the seed's native product cache (six SHA-256 axes, a shared store). This moves it onto the request key and provider_serve, with the absent, stale and corrupt cases each taking its own typed arm (section 2.8).",
+        displaced_cost: "Reuse lives in a frozen seed-side path that v2 cannot see or extend.",
+        first_slice: "Serve one NativeCompilerArtifactRequest through the request key from the shared store with a verified read.",
+        red_control: "(1) An unchanged request is served, not rebuilt. (2) A stale read set recomputes. (3) A corrupt stored result refuses and recomputes, never serves.",
+        out_of_scope: "Deleting the seed cache before provider_serve is the only producer.",
+        handback: "The served-hit receipt, the three controls and the retired seed path."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "The first cross-run reuse the engine owns."),
+    ),
+    roadmap_node(
+      identity: "rn_PCDF3HEATT84831KGDB0HV21B6",
+      id: "authored-dependency-sidecars-deleted",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The remaining hand-written dependency sidecars are deleted and their consumers read derived dependencies",
+        boundary: "The remainder of the old M2 and M2V: program_run_dependencies is gone; activation_dependency (still imported by the workflow runtime), the fold_lowering sidecar and the parallelism classifier's structural reading remain. Each consumer moves to the derived dependency (section 2.4, D13) and the sidecar is deleted in the same change.",
+        displaced_cost: "Every sidecar is a second statement of dependencies that can disagree with the derived one.",
+        first_slice: "Move the workflow runtime off activation_dependency onto derived dependencies and delete it.",
+        red_control: "(1) The moved consumer's results are unchanged on its population. (2) Re-adding the sidecar import refuses. (3) A dependency the sidecar declared but the program does not have is no longer ordered.",
+        out_of_scope: "The schedulers themselves (schedulers-on-the-engine).",
+        handback: "Each deleted sidecar with its moved consumer and controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Dependencies have one authority before scheduling moves onto it."),
+    ),
+    roadmap_node(
+      identity: "rn_DYVC7JX3N33F67QGW8JVNA3EFC",
+      id: "schedulers-on-the-engine",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The remaining schedulers run on the engine and topological_layers, the workflow scheduler and executor and the realization_runner surfaces are deleted",
+        boundary: "The old M3b. Overlaps the work-execution-redesign members, which also replace scheduling; one owner must be named before this is centered.",
+        displaced_cost: "Several schedulers order the same work by different rules.",
+        first_slice: "Name the owner against work-execution-redesign, then move v2.program onto the engine.",
+        red_control: "Each deleted scheduler's former population runs on the engine with identical results.",
+        out_of_scope: "Remote execution.",
+        handback: "The moved programs and the deletions."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "One scheduler."),
+    ),
+    roadmap_node(
+      identity: "rn_PHMYNF27MV9FJX537KKVX53BCF",
+      id: "reuse-decided-by-measurement",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Whether a result is served or recomputed is decided from measured cost, and the cost_floor_exempt roster is deleted",
+        boundary: "The old M4. The materialization ladder (std.materialization_ladder) still reads a roster for its cost floor.",
+        displaced_cost: "An authored roster decides what is cached, so it drifts from what is actually expensive.",
+        first_slice: "Record serve and recompute cost for one provider and decide its floor from the record.",
+        red_control: "(1) A result cheaper to recompute is recomputed. (2) A result dearer to recompute is served. (3) Removing the measurement refuses rather than defaulting.",
+        out_of_scope: "Remote stores.",
+        handback: "The measured floor and the deleted roster."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Caching decided by evidence."),
+    ),
+    roadmap_node(
+      identity: "rn_4BKMJHFC6Y5SGZ7JQDXF8Y743G",
+      id: "one-file-change-recomputes-only-dependents",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A one-file change recomputes only its dependents on the native compiler route",
+        boundary: "The old M6 and the intention's first done-when: each compiler stage is keyed and stored per judgment, so an edit invalidates only what depends on it.",
+        displaced_cost: "Every edit pays for work its change cannot affect.",
+        first_slice: "Decompose when its prerequisites are accepted.",
+        red_control: "Editing one leaf module recomputes exactly its recorded dependents; editing an unrelated module recomputes none of them.",
+        out_of_scope: "Lawful algebraic decomposition (the old M7), until a consumer needs it.",
+        handback: "The recompute population read from the engine's records for a planted one-file change."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "The intention's terminal."),
+    ),
+    roadmap_node(
       identity: "rn_P8TZEXXCDR0NBS11CFB3TA0BVV",
       id: "work-exec-0-identity-estimate-split",
       owner: "fleet",
@@ -3747,10 +3843,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Run programs through one demand engine, paying only for what changed",
           boundary: "gunbc.plans.demand_engine_program milestones M1.b to M7 plus D13 (derived dependency demand and composition-root binding). Already landed: M0 (#11428), M1.a (#11447), D9 partition (Pkg7), M3a (#12401, inferred), D11/E2 (#12391), D12 (#11528). The plan is the design authority. These rows are its milestones as work.",
-          approach: "Serial replacement migrations in the plan's order. Each milestone lands with one production consumer switched and its displaced route deleted in the same change.",
+          approach: "Replanned 2026-11-23 as an intention (gunbc.plans.demand_engine_program section 5). Work items are selected against the tree and name that intention; the milestone rows demand-m1b to demand-m7 are superseded and await the operator's retirement.",
           red_control: "A milestone that lands without deleting the route it replaces refuses in review, per the plan's own replacement-migration law. A cache without a derived identity is refused (gunbc.design_argument::demand_before_materialization, gunbc.design_argument::earliest_unjustified_boundary).",
           displaced_cost: "Stage-wide folds recompute unchanged facts on every run, and hand-authored widths and schedulers sit where derived demand belongs.",
-          handback: "The plan's own deletion condition: M7 exit holds and every milestone's deletions are census-verified."
+          handback: "The plan's section 5 done-when, each condition read on the tree."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's driver is a demand over its universe, so a run pays only for what changed. The engine is how v2 stays affordable as the required route."),
     ),
@@ -6671,6 +6767,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    // demand_engine_program replanned as an intention (2026-11-23): identity before reuse; sidecars before
+    // schedulers; the terminal waits on schedulers, measured reuse and heal's planning-only bar.
+    edge(child: "native-artifact-reuse-through-request-key", parent: "compiler-identity-from-sources"),
+    edge(child: "schedulers-on-the-engine", parent: "authored-dependency-sidecars-deleted"),
+    edge(child: "reuse-decided-by-measurement", parent: "native-artifact-reuse-through-request-key"),
+    edge(child: "one-file-change-recomputes-only-dependents", parent: "schedulers-on-the-engine"),
+    edge(child: "one-file-change-recomputes-only-dependents", parent: "reuse-decided-by-measurement"),
+    edge(child: "one-file-change-recomputes-only-dependents", parent: "heal-planning-only-in-a-minute"),
     // machine-shapes-join-the-cluster (2026-11-23): the cluster waits on the backend choice; each shape joins the
     // cluster; the cassette shape also waits on its printed tray.
     edge(child: "cluster-bringup-on-the-selected-backend", parent: "work-exec-1-placement-backend-selection"),

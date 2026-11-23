@@ -1476,6 +1476,27 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     value: days_estimate(working_days: 8),
     basis: "The cap writer and read-back exist; folding them into install and proving them across an unattended cold boot for three families is the work.",
   )),
+  // compiler-identity-from-sources
+  estimate_recorded(row: estimate_row(
+    subject: "rn_36K5STB3N22N3K61M5AY62JXNZ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "The keying cut exists; deriving one identity from the read set and toolchain inputs and switching one consumer, with three controls.",
+  )),
+  // native-artifact-reuse-through-request-key
+  estimate_recorded(row: estimate_row(
+    subject: "rn_E1TAEA7FQEZPYG1XWFM9H9Z6YK" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 15),
+    basis: "The seed cache already proves the six-axis key and shared store; the work is serving through the request key and provider with typed stale and corrupt arms.",
+  )),
+  // authored-dependency-sidecars-deleted
+  estimate_recorded(row: estimate_row(
+    subject: "rn_PCDF3HEATT84831KGDB0HV21B6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 15),
+    basis: "Three named sidecars, each one consumer move and deletion against the derived dependency D13 already produces.",
+  )),
 ]
 
 // STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
