@@ -2373,13 +2373,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "builtin_function_registry",
         "",
     ),
-    (
-        "v2.test.lens_disposition_redundancy.disposition_redundancy",
-        "redundancy_region_rust_gates_synthetic_present",
-        "gunbc.instruments.rust_stage0_gates",
-        "per_unit_test_selector",
-        "",
-    ),
 ];
 
 // FROZEN: no new rows. The native decl-ref resolution judges these
