@@ -272,6 +272,32 @@ test fn a_parse_refusal_under_another_reason_is_not_accepted_holds() -> Bool {
   !refuses_at_parse_as(src: missing_name_red_source, reason: ^parse_g0_tokens_remain)
 }
 
+data wrong_marker_word_source: String = "module m\nservicee S {\n}\n"
+
+data wrong_marker_case_source: String = "module m\nService S {\n}\n"
+
+data wrong_operation_entry_word_source: String = "module m\nservice S {\n  operation Op {\n    reqires Network\n  }\n}\n"
+
+// LIMB 3, A MEASURED LIMITATION -- NOT per-marker typed coverage. A wrong word in the service MARKER
+// position is refused at the parse door (tokenize accepts, parse rejects) but with the GENERIC
+// ^parse_g0_tokens_remain: the marker is a declaration-start alternative, so `servicee` is not
+// distinguishable from "not a service declaration at all" and the parse stage has nothing more
+// specific to say. These two claims pin the observed refusal, raising stage and reason; they are
+// green only because the reason is generic, and assert no typed marker reason.
+test fn a_wrong_marker_word_is_refused_at_parse_with_the_generic_reason_holds() -> Bool {
+  refuses_at_parse_as(src: wrong_marker_word_source, reason: ^parse_g0_tokens_remain)
+}
+
+test fn a_wrong_marker_case_is_refused_at_parse_with_the_generic_reason_holds() -> Bool {
+  refuses_at_parse_as(src: wrong_marker_case_source, reason: ^parse_g0_tokens_remain)
+}
+
+// Discriminator: the genericity above is a property of POSITION, not of weak refusal machinery. A
+// wrong word inside an operation body has its own typed reason.
+test fn a_wrong_word_in_an_operation_body_has_its_own_typed_reason_holds() -> Bool {
+  refuses_at_parse_as(src: wrong_operation_entry_word_source, reason: ^parse_operation_body_entry_unknown)
+}
+
 test fn plain_type_still_parses_holds() -> Bool {
   parses(src: plain_type_source)
 }

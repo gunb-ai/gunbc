@@ -482,3 +482,14 @@ test fn a_literal_terminal_publishes_the_class_identity_not_its_word() -> Bool {
   let by_lexeme = pcp_observe_root(root: pcp_root(), expr: term_stamp(token_class: ^pcp_word, stamp: StampLexeme), tokens: tokens)
   literal == by_class && literal != by_lexeme && literal != ObservedRejected
 }
+
+// The identity is CLASS-BOUND: varying the caret literal (and the word the token carries) leaves what
+// the matched terminal publishes unmoved -- two different marker words publish the same identity as
+// each other and as a StampClass terminal of the class, and neither equals the StampLexeme capture.
+test fn a_literal_terminal_identity_does_not_move_when_its_caret_literal_varies() -> Bool {
+  let alpha = pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^alpha), tokens: [pcp_word_token(word: "alpha")])
+  let beta = pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^beta), tokens: [pcp_word_token(word: "beta")])
+  let by_class = pcp_observe_root(root: pcp_root(), expr: term(token_class: ^pcp_word), tokens: [pcp_word_token(word: "beta")])
+  let by_lexeme_beta = pcp_observe_root(root: pcp_root(), expr: term_stamp(token_class: ^pcp_word, stamp: StampLexeme), tokens: [pcp_word_token(word: "beta")])
+  alpha == beta && beta == by_class && beta != by_lexeme_beta && alpha != ObservedRejected
+}
