@@ -385,7 +385,9 @@ test fn a_service_with_a_transport_is_refused_at_the_normalized_tree_door_holds(
 // admits on both normalize grades" is vacuously true for zero members, so it does not decide it); this
 // module's earlier comment claiming an empty service admits (a comment, not an authority); and the design
 // rulings searched. This claim records only the measured refusal and its reason so the divergence is
-// explicit and countable; it does not assert that refusal is right, and it changes no admission.
+// explicit and countable; it does not assert that refusal is right, and it changes no admission. The open
+// question is recorded at #gunbc.integration_concern.empty_service_parses_but_normalize_refuses_it::empty_service_parses_but_normalize_refuses_it
+// and this claim is re-pinned by whatever ruling settles it.
 test fn an_empty_service_parses_and_is_refused_at_normalize_by_the_namespace_graft_holds() -> Bool {
   parses(src: empty_service_source) && normalize_refuses_as(src: empty_service_source, reason: ^namespace_graft_body_dissolved_refused)
 }
@@ -396,4 +398,15 @@ test fn type_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
 
 test fn config_only_service_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
   normalize_admits(src: config_only_service_source)
+}
+
+data service_generic_param_source: String = "module m\nservice S<T> {\n}\n"
+data service_generic_param_name_source: String = "module m\nfn f<T>(service: T) -> T { service }\n"
+
+test fn a_service_declaration_admits_no_generic_parameter_holds() -> Bool {
+  tokenizes(src: service_generic_param_source) && refuses_at_parse_as(src: service_generic_param_source, reason: ^parse_service_body_open_brace_missing)
+}
+
+test fn the_word_service_still_parses_beside_a_generic_parameter_holds() -> Bool {
+  parses(src: service_generic_param_name_source)
 }
