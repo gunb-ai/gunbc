@@ -3,6 +3,13 @@ module v2.test.claim.parse.prepared_grammar_two_modules
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.parse { grammar_validate_and_analyze, parse_production, PreparedModeledGrammar }
 import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, invariant_port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
