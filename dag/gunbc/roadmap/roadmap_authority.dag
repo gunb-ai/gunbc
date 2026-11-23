@@ -3147,15 +3147,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-emit-match-binding-keeps-its-type",
       owner: "self-host",
       carriers: carrier(path: "src/v1/04_infer.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "A value bound by a match arm on a generic enum keeps its concrete type through native emission",
         boundary: "Found on 2026-11-15 by the demand-serve-program-image work, emitting the roadmap serve entry natively. A match arm that binds a field of a GENERIC enum variant (Optional<NonEmptyStr> matched as Present { value: v }, then v as String) leaves the bound variable typed by the enum's type parameter rather than the concrete argument, so at emit it renders erased and the as crossing lowers to compile_error!(UNRESOLVED_CompilerError). Typecheck and interpretation accept the same program, so the defect appears only at native emission and is below the floor (gunbc.design_argument::guarantee_ladder). The cause, measured in PR #16534 against a pattern-side substitution pass: the seed's kernel Optional mint (v1.compiler.infer kernel_optional_type_node) declared no type parameter and typed Present.value unbound, so the existing generic substitution received an empty slot map. Scrutinee expansion in src/v1/04_patterns.dag is not at fault and needs no second substitution pass. The first production site is gunbc.runner.runner_slot_retirement host_interruption_reason, which blocks emitting the roadmap serve entry.",
         displaced_cost: "Every program that matches on a variant and converts the bound value cannot be emitted natively, so native serving and any other native target is blocked by an ordinary pattern the rest of the compiler accepts.",
         first_slice: "The mint carries its parameter: kernel_optional_type_node declares params [t_param] and types Present.value as that parameter, so the existing substitution binds it, and kernel_mint_shape_diagnostics judges the mint by the same facts as the declaration. No change to src/v1/04_patterns.dag. The stage0 mirrors come from heal.",
-        red_control: "test.claim.emitter_generic_match_field_binding_witness is the discriminating control: at the pre-fix tree 4e270740af59 three of its four claims (the generic ones) FAIL and one PASSes, EXIT=1; at main 4a63370f4a67 all four PASS, EXIT=0 (measured by calm-swift-579 on srv1; the fix is #16535 b650f52c, preceded by #16534 319886d9). kernel_optional_mint_shape_witness (7 claims) and generic_result_match_binding_witness (11 claims) PASS at both trees, so neither discriminates and neither is a red control here; The row claims the generic case only: a match arm binder of a generic enum variant keeps the scrutinee's concrete type. The diagnostic half (a compile_error! naming the inferred type) is withdrawn: the arm that would emit it is unreachable because func_env_declared_func_sig and func_sig_from_direct_call in src/v1/04_infer.dag answer before the census arms, and no claim takes that text as subject. Second pair, as data: witness native_emit_match_arms_default_arm_all_bind_binder claim arm_binding_keeps_the_scrutinee_type, red_at 4e270740af598a12b97351f87b86f72b7fcab343 (claim_batch built at that tree, sha256 f05bbc4edefa8aca0ac4d59a6244b19ebb149392e9d33a86bd3e4e42f99dcf60; raw line: FAIL native_emit_match_arms_default_arm_all_bind_binder.arm_binding_keeps_the_scrutinee_type: match arm binder 'v' is bound as Shared(String(\"dyn::core::unknown_type\"))), green_at 4a63370f4a67 (claim_batch built at that tree, sha256 3dfe06f25c9f7b2409fa6f4dce8cbc0c43c25d5463b2ac4771d59d90cea89385); measured by warm-fox-517. generic_let_binder_stays_unbound in the same module PASSes at both trees and is not a control. No mint-shape mutation is claimed as a red control. A recurring_failure_mode row records the class with its rung and receipts (generic_match_field_binding_keeps_its_type_parameter).",
+        red_control: "Executed pair, RedObservedOnMain: red_at 4e270740af598a12b97351f87b86f72b7fcab343, green_at 4a63370f4a677ae8541cdbf2655e0f4ba131226b. The four fixtures of test.claim.emitter_generic_match_field_binding_witness, run with the released claim_batch 9cb21df4: three FAIL (rc 1) at red_at and all four PASS (rc 0) at green_at (measured by calm-swift-579 and warm-fox-517 on srv1; the fix is #16535 b650f52c, preceded by #16534 319886d9, so the outcome landed). The row claims the generic case only: a match arm binder of a generic enum variant keeps the scrutinee's concrete type. The kernel_optional_mint_shape_witness KernelMintShapeMismatch control is struck: kernel_optional_mint_shape_witness (7 claims) and generic_result_match_binding_witness (11 claims) PASS at both trees, so they cannot flip and are preservation evidence only. The diagnostic half is withdrawn: the arm that would emit it is unreachable because func_env_declared_func_sig and func_sig_from_direct_call in src/v1/04_infer.dag answer before the census arms, and no claim takes that text as subject. Second pair, as data (warm-fox-517): witness native_emit_match_arms_default_arm_all_bind_binder claim arm_binding_keeps_the_scrutinee_type, red_at 4e270740af598a12b97351f87b86f72b7fcab343 (claim_batch built at that tree, sha256 f05bbc4edefa8aca0ac4d59a6244b19ebb149392e9d33a86bd3e4e42f99dcf60; raw line: FAIL native_emit_match_arms_default_arm_all_bind_binder.arm_binding_keeps_the_scrutinee_type: match arm binder 'v' is bound as Shared(String(\"dyn::core::unknown_type\"))), green_at 4a63370f4a677ae8541cdbf2655e0f4ba131226b (claim_batch built at that tree, sha256 3dfe06f25c9f7b2409fa6f4dce8cbc0c43c25d5463b2ac4771d59d90cea89385). generic_let_binder_stays_unbound in the same module PASSes at both trees and is not a control.",
         out_of_scope: "Other native-emission refusals in the roadmap serve entry's closure; each is found and fixed under demand-serve-program-image.",
         handback: "The fix site and reason; the historical before/after pair for test.claim.emitter_generic_match_field_binding_witness (pre-fix tree 4e270740af59 FAIL x3 PASS x1 EXIT=1; main 4a63370f4a67 PASS x4 EXIT=0; fix #16535 b650f52c after #16534 319886d9); the mint-shape and generic-result witnesses kept as preservation evidence (PASS at both trees, not red controls); the red_at/green_at pairs above with their EXIT statuses; the failure-mode row; and the roadmap serve entry's next refusal, if any."
-      ), on: "2026-11-15", note: "PR #16534 carries this slice."), on: "2026-11-23", note: "Red control narrowed to the generic case evidenced by the pairs; diagnostic half and mint-shape mutation withdrawn (warm-fox-517).")),
+      ), on: "2026-11-15", note: "PR #16534 carries this slice."), on: "2026-11-23", note: "Red control narrowed to the generic case evidenced by the pairs; diagnostic half and mint-shape mutation withdrawn (warm-fox-517)."), on: "2026-11-23", note: "Outcome landed via #16534 (disposition accept-as-landed, to be recorded in the roadmap event log after the lab advance); red_control replaced with the executed pair at 4e270740af59 and 4a63370f4a67, mint-shape control struck (neat-badger-614).")),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Native emission accepts what typecheck accepts for variant bindings."),
     ),
@@ -3276,6 +3276,90 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
+    ),
+    roadmap_node(
+      identity: "rn_RS81HSP5Y9RCE4TE935FXJE1PM",
+      id: "seed-claim-loader-loads-modeled-realization-callees",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+        headline: "The seed's per-function claim loader puts the modeled-realization dispatcher's callees in the run's index",
+        boundary: "GATED on the operator's pending ruling on seed growth; not staffed and not dispatchable until that ruling is recorded by the operator. Measured by warm-fox-517 on srv1 under heavy-slot (PR 16912 head e11f468a merged with main 6d2115d1, gunbc 145e3307, claim_batch 3dd86534): the per-function run of two_contenders_for_one_unit_get_one_hold FAILs with REAL_EXIT=1 on main and on the branch, while the whole-tree claim_batch PASSes on both. The branch-side change does not close it, so the repair is on the seed side: the loader that builds a per-function run's index. This row owns that seed-side loader; per-function-claim-run-loads-string-dispatched-names keeps the verdict (the per-function run agrees with the whole-tree one) and depends on this row. v1 is semantics-frozen (gunbc.v1.v1_maintenance_standing::v1_seed_standing): a seed change is admitted only when it serves the v2 self-host program, and a SeedGrowthJustification (gunbc.seed_growth::SeedGrowthJustification) is owed with the change. The carrier is the seed interpreter named in the sibling row; the exact loader function is to be verified by the worker.",
+        displaced_cost: "Every affected control runs only as a whole-tree claim_batch (about 15 GiB and 30 minutes on #16519), and a per-function false failure reads as a real one.",
+        first_slice: "Verify the loader entry point on the sibling row's carrier, then make the run's loaded index contain the functions the dispatcher looks up by name, with a SeedGrowthJustification naming the dissolution trigger.",
+        red_control: "OPEN: red_at and green_at are not yet measured. The measured disagreement to turn green is two_contenders_for_one_unit_get_one_hold: per-function REAL_EXIT=1 and whole-tree claim_batch PASS, at the same sha, on main (gunbc 145e3307, claim_batch 3dd86534). Green is the per-function run passing and agreeing with the whole-tree verdict.",
+        out_of_scope: "Any change to the dispatcher's semantics, the whole-tree claim_batch memory cost, and the branch-side change of PR 16912.",
+        handback: "The loader change with its SeedGrowthJustification, the per-function run and the whole-tree run agreeing at one sha, and the v1 standing classification."
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
+    ),
+    roadmap_node(
+      identity: "rn_JN1Q7V9M3F0T7M0S358FWJQJSM",
+      id: "release-bins-retention-witness-18-failures",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/test/claim/long/fleet_release_bins_key_witness.dag"),
+      line: ticket(t: fields(
+        headline: "The release-bins retention witness passes: its fake curl stub is well formed and its emission is accepted",
+        boundary: "Observed by stern-wren-746 on srv1 with the released claim_batch b691 (main b6915594), --wet, at gunbc#16908 head 498089a4 (that PR only fixes the file's imports and the fixture's emitted-bin members): 18 FAIL and 44 of 62 PASS in dag/test/claim/long/fleet_release_bins_key_witness.dag, the #16596 retention family. Before #16908 main could not resolve the file (missing int_*/rooted imports), so these claims were unrun, not green. FAIL names (prefixed release_bins_): retention_over_cap_deletes_only_the_oldest_family_member, retention_delete_failure_is_typed_not_silent, retention_at_cap_has_nothing_due, retention_full_chore_deletes_from_its_own_answer, retention_parses_fractional_seconds, retention_orders_mixed_timestamp_shapes, retention_orders_within_a_second_by_fraction, retention_over_bound_types_total_and_deletes_nothing, retention_paged_delete_reaches_past_one_page, retention_window_spares_pr_ref_entries, retention_duplicate_ids_refuse_all_deletions, retention_stale_scratch_cannot_delete_on_failed_get, retention_page2_failure_refuses_to_delete, full_step_hit_reports_restore_and_nothing_due, full_step_zero_due_keeps_the_keep_window, full_step_get_fail_types_and_ignores_the_stale_answer, full_step_miss_builds_then_runs_the_chore, full_step_over_page_types_over_cap_and_promotes_anyway. Observed causes: (1) the fake curl stub (fake_curl_answering via fake_tool, #!/bin/sh) emits a broken loop, 'Syntax error: \"then\" unexpected (expecting \"do\")', so its answer file is never written (jq: Could not open file .../ws/release-bins-retention-answer.json); the suspect is the quoted-argument escaping in the for-loop line. (2) retention_stale_scratch_cannot_delete_on_failed_get: 'runtime error [type-error]: symbol_lexeme requires a Symbol argument', reached through v2.std.diagnostic diagnostics_reason_lexemes from a Rejected emission, so some retention part's bash emission is also refused. The raw log is srv1:~/scratch/stern-wren-746/out8/release_bins_key.log.",
+        displaced_cost: "The retention chore's behaviour is covered by claims that cannot pass, so a regression in it is invisible and a reader cannot tell a broken stub from a broken chore.",
+        first_slice: "Fix the fake curl stub's emitted loop so it writes its answer file, find which retention part's bash emission is Rejected and why, and re-run the file.",
+        red_control: "OPEN: red_at and green_at are not measured on main. The measured failure is the 18 FAILs above at #16908 head 498089a4 with released claim_batch b691; green is all 62 claims PASS at one sha with the same binary.",
+        out_of_scope: "The #16908 import and fixture fixes, the retention policy itself, and weakening any claim to make it pass.",
+        handback: "The two causes repaired, the file's 62 claims passing with the raw PASS/FAIL lines and exit status, and the binary and sha they ran at."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "A claim in the required population passes or is named as failing."),
+    ),
+    roadmap_node(
+      identity: "rn_8C203SGK4BRDSWTPEM7J0BPQD4",
+      id: "serve-entry-verdict-path-is-per-run",
+      owner: "demand-engine",
+      carriers: carrier(path: "dag/gunbc/live_deploy/pre_swap_admission.dag"),
+      line: ticket(t: fields(
+        headline: "The fleet-converge plan's artifact location is a per-run input carried through the plan, the swap and the workflow, not a constant under /tmp",
+        boundary: "Ruled by neat-badger-614 to be a plan-to-swap contract change, not a step-local fix; requested by warm-fox-517 from gentle-tern-663's measurement. gunbc.live_deploy.pre_swap_admission serve_entry_verdict_path joins gunbc.fleet.fleet_plan_artifact_location fleet_converge_plan_artifact_dir, the constant /tmp/fleet-converge-plan, with serve_entry_verdict.json: no argument, spec field or environment override. The same row is consumed by the fleet_converge_workflow artifact upload and download, the fleet_converge_plan_cli directory creation, and observe_plan_serve_entry_verdict, where the swap job reads the verdict back from another job, plus the generated fleet-converge.yml. So a per-run path must be carried through the plan into the swap and the workflow, not changed at one step. Measured on srv1 (raw lines at https://github.com/gunb-ai/gunbc/pull/16891#issuecomment-7103879443): the demand-serve step command ran 943.26 s (15:43) at 8,639,588 kB and exited 1 with Permission denied writing that shared fixed path, after a 12-minute witness had completed. Consequences: any two runs on the machine collide on one filename, a person-owned run cannot complete at all, and demand-serve-entry-compile-time is blocked on it because its restated red_control requires that program to complete on srv1 with its receipt. Measuring around it (mount namespaces, a CI substitution) is refused. gentle-tern-663 lands the fail-closed writability preflight separately; this row is the unblocking half. The generated fleet-converge.yml changes only through its authority and regeneration, never by hand",
+        displaced_cost: "A run that did all its work fails at the last write because another session owns the fixed path, and two concurrent runs overwrite each other's verdict.",
+        first_slice: "Make the artifact location a field of the plan (or run input the plan names), consume it at the verdict writer, at the swap job's read-back, in the artifact upload and download and in the plan CLI directory creation, and regenerate the workflow through its authority; no constant /tmp default remains a shared fixed path",
+        red_control: "OPEN: red_at and green_at are not measured on main. The measured failure is the Permission denied exit 1 from gentle-tern-663's run on srv1 (cited above). Green is a witness in which two concurrent runs with distinct run inputs each write and read back their own verdict without clobbering the other; RED is the same witness with the fixed path.",
+        out_of_scope: "The 15:43 and 8.6 GB cost of the step, the verdict's content, and any change to what pre-swap admission decides.",
+        handback: "The run-input route chosen, the two-concurrent-runs witness with its raw PASS/FAIL lines and exit status, and the old constant's consumers named."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The served program is materialized once per key and reused across restarts."),
+    ),
+    roadmap_node(
+      identity: "rn_KS6BDNA0MQ3EYSS115JRW3GRPG",
+      id: "standing-names-the-revision-it-evaluated",
+      owner: "factory",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_serve.dag"),
+      line: ticket(t: fields(
+        headline: "A standing names the plan revision and carrier sha it was computed from, and a stale one refuses instead of rendering as accepted",
+        boundary: "Requested by vivid-swift-693 and endorsed by neat-badger-614. The /standings.json response (StandingsJsonHandler in gunbc.roadmap.roadmap_serve) carries no statement of the plan revision or carrier sha its standings were computed from. A standing whose row criteria_digest differs from the row at the revision a consumer reads must not render as accepted: it refuses as stale, naming both digests. Evidence: the lab runs c48e06d826 (2026-11-16) whose roadmap_authority.dag is 776,180 bytes against main's 1,160,496, and the srv1 carrier is 02c95a06 (2026-10-03), so an acceptance recorded against an old row can read as current against a new one. Single authority for the digest: gunbc.roadmap.roadmap_model node_criteria_digest; no second digest path is invented. srv1 ~/shared/node-digest already holds a digest probe that uses it (exit 2 when its controls fail, exit 3 on a lab move or a missing node, an empty value counted as failure) and a block gate (row block at two revisions, VERDICT=IDENTICAL or DIFFERS, self-test against planted mutations); those are existing evidence, not a second authority. A refusal is by exit or typed refusal, never by empty output, and the control outcome is carried next to the digest in the standing. Distinct from the carrier sync and lab advance themselves, which this row does not perform.",
+        displaced_cost: "A consumer cannot tell an acceptance of the current criteria from one of criteria since edited, so a stale accepted reads as done.",
+        first_slice: "Add the plan revision and carrier sha to the standings response, compute each digest with node_criteria_digest, carry the control outcome beside it, compare each accepted standing's recorded criteria_digest with the row's digest at that revision, and render a mismatch as a stale refusal naming both digests.",
+        red_control: "OPEN: red_at and green_at are not measured. The control is a standings read where a row's recorded criteria_digest differs from its digest at the read revision: RED renders accepted, green refuses as stale naming both digests; and a matching digest still renders accepted.",
+        out_of_scope: "Advancing the lab, syncing the srv1 carrier, and re-recording acceptances against edited rows.",
+        handback: "The response fields, the stale refusal with both digests named, and the mismatch and match controls with their raw PASS/FAIL lines and exit status."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The daily workspace shows only what the tree at its revision supports."),
+    ),
+    roadmap_node(
+      identity: "rn_Y2N706Z00ETP0V247F1XECBY0B",
+      id: "acceptance-recorder-names-its-durable-destination",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
+      line: ticket(t: fields(
+        headline: "The acceptance recorder prints the commit sha and ref it pushed, so its output alone verifies the effect",
+        boundary: "Found by royal-newt-240 (run 02:17:11Z, GUNBC_EXIT=0): roadmap_acceptance_record_cli prints `started Filesystem.Write /tmp/gunbc-roadmap-event-snapshot.<id>/events/<node>/<hex>.json` and exits 0, and never prints the commit sha it pushed or the ref it pushed to. The durable store is the gunbc GitHub branch refs/heads/roadmap-events (the event 64bd9f29 is commit 10723280198ff955289ddd45240ff8e1cbf055e5 on it); the /tmp snapshot is the staging tree for that commit, so the run was NOT defective. But a reader of the output alone cannot verify the effect, which is how a false non-durability claim was published against the srv1 checkout at 02c95a06 (2026-10-03), 85 commits behind the branch. The earlier reading that acceptances were not durable is retracted and not cited. Boundary: what the recorder's success output names. Not the receipt grammar, not the digest computation, not the carrier sync policy, which is the operator's carrier item.",
+        displaced_cost: "A reader cannot tell from the recorder's output where the event went, so a stale checkout is mistaken for a lost acceptance.",
+        first_slice: "On success print the pushed commit sha and the ref, and on a push that did not complete exit non-zero naming the snapshot; carry it with the existing recorder work rather than as a separate surface.",
+        red_control: "OPEN: red_at and green_at are not named as commits. The control is that the success output names a commit sha that is an ancestor of refs/heads/roadmap-events and contains the event file; the output today names neither (royal-newt-240, run 02:17:11Z).",
+        out_of_scope: "The receipt grammar, the digest computation, the carrier sync, and the unresolvable witness module of #16914.",
+        handback: "The recorder output naming sha and ref, and the control with its raw lines and the ancestor check against refs/heads/roadmap-events."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "A claim in the required population passes or is named as failing."),
     ),
     roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
@@ -8809,6 +8893,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
     edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
+    edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "seed-claim-loader-loads-modeled-realization-callees"),
   ]
 }
 
