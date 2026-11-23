@@ -587,7 +587,7 @@ fn observe_deployed_tree_owned(
                   cause: deployed_tree_leg_overran_cause(
                       leg: "root tree",
                       host: deployed_tree_locus_host_text(locus: locus),
-                      command: git_in_trusted_repository_head_root_tree_command(repo: deployed_tree_locus_repo(locus: locus)),
+                      argv: argv_words(command: git_in_trusted_repository_head_root_tree_command(repo: deployed_tree_locus_repo(locus: locus))),
                       deadline: d,
                     ),
                 }
@@ -643,7 +643,7 @@ fn observe_deployed_tree_against_revision(
         cause: deployed_tree_leg_overran_cause(
             leg: "index materialization",
             host: deployed_tree_locus_host_text(locus: locus),
-            command: git_in_trusted_repository_read_tree_command(repo: deployed_tree_locus_repo(locus: locus), revision_hex: revision_hex, index_path: index_path),
+            argv: argv_words(command: git_in_trusted_repository_read_tree_command(repo: deployed_tree_locus_repo(locus: locus), revision_hex: revision_hex, index_path: index_path)),
             deadline: d,
           ),
       }
@@ -669,7 +669,7 @@ fn observe_deployed_tree_against_revision(
               cause: deployed_tree_leg_overran_cause(
                   leg: "worktree comparison",
                   host: deployed_tree_locus_host_text(locus: locus),
-                  command: git_in_trusted_repository_status_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path),
+                  argv: argv_words(command: git_in_trusted_repository_status_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path)),
                   deadline: d,
                 ),
             }
@@ -695,7 +695,7 @@ fn observe_deployed_tree_against_revision(
                     cause: deployed_tree_leg_overran_cause(
                         leg: "ignored deployed paths",
                         host: deployed_tree_locus_host_text(locus: locus),
-                        command: git_in_trusted_repository_ls_files_ignored_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path),
+                        argv: argv_words(command: git_in_trusted_repository_ls_files_ignored_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path)),
                         deadline: d,
                       ),
                   }
