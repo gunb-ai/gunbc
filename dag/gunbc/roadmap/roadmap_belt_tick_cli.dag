@@ -85,7 +85,15 @@ import gunbc.live_deploy.release_binding {
   ReleaseBindingUnobserved, ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed,
   release_binding_line,
 }
-import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_at, DeployedTreeObservation }
+import gunbc.live_deploy.deployed_tree_observation {
+  observe_deployed_tree_at,
+  observe_deployed_tree,
+  deployed_tree_local_locus_admit,
+  DeployedTreeLocalAdmission,
+  DeployedTreeLocalAdmitted,
+  DeployedTreeLocalAdmissionRefused,
+  DeployedTreeObservation,
+}
 import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
   FleetSshContextReady,
@@ -235,11 +243,42 @@ data belt_pair_serve_gate_attempt_raw: String = "belt-standings-pair-serve"
 // consumer uses, never a re-derivation. The release identity is read at that same
 // instance's own serve port. Both readings therefore key off one `instance`, the single
 // admitted host record, so the tree and the running release cannot be joined across hosts.
+// THE ARM IS CHOSEN BY THE MACHINE, NOT BY THE CALLER. The tree leg is about the instance's own host,
+// and this process runs ON that host (the unit's WorkingDirectory is the instance's repo root, resolved
+// from the local spawn workdir). So the local arm is tried FIRST: it is admitted only when the kernel's
+// own hostname joins with the host the instance record names, and it reads the same four git legs over
+// the same builders through the local delivery. Only when that join refuses -- this is not that machine,
+// or its identity cannot be observed -- does the leg go over FleetSsh, where the credential and trust
+// policy mean something. The fallback keeps the refusal text of BOTH arms, because the journal is the
+// only witness of a fold that never wrote: an operator reading "pair unbound" must be able to tell
+// whether the local join refused and the ssh leg then refused for its own reason.
 fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
+  match deployed_tree_local_locus_admit(
+    host: instance.host_identity as HostIdentity,
+    repo: instance.repo_root as NonEmptyStr,
+  ) {
+    DeployedTreeLocalAdmitted { locus } =>
+      belt_pair_serve_gate_at(instance: instance, observation: observe_deployed_tree(locus: locus))
+    DeployedTreeLocalAdmissionRefused { cause: local_cause } => belt_pair_serve_gate_over_fleet_ssh(
+      instance: instance,
+      local_cause: local_cause,
+    )
+  }
+}
+
+fn belt_pair_serve_gate_over_fleet_ssh(instance: HostDashboardInstance, local_cause: String) -> LabServePairVerdict {
   match prepare_fleet_ssh_agent_context(attempt_raw: belt_pair_serve_gate_attempt_raw) {
     FleetSshContextRefused { cause: c } => {
       let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
-        cause: join(["fleet ssh context refused, deployed tree undecidable: ", c], ""),
+        cause: join(
+          [
+            "local read refused (",
+            local_cause,
+            "); fleet ssh context refused, deployed tree undecidable: ",
+            c,
+          ],
+          "",
+        ),
       }
       PairServeRefused { binding: binding, reason: release_binding_line(binding: binding) }
     }

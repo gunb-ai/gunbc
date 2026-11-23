@@ -18,6 +18,23 @@ import gunbc.host.host_effect_realize {
   HostEffectTransport,
   FleetSsh,
 }
+import gunbc.host.host_effect { LocalShell }
+import extdeps.shell.exec
+import v2.std.compilers.cli_surface { process_argv_expansion, cli_surface_of_literal_words }
+import product.host_identity { HostIdentity }
+import gunbc.hostname_read {
+  hostname_short_read,
+  HostnameShortCapture,
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+}
+import gunbc.hostname_allocation {
+  observed_host_selector_join,
+  ObservedHostSelectorJoin,
+  ObservedHostSelectorAgreed,
+  ObservedHostSelectorJoinRefused,
+  observed_host_join_refusal_text,
+}
 
 // ONE HOST, SEALED WITH ITS CREDENTIAL AND ITS REPO PATH, SO A CROSS-HOST JOIN HAS NO CONSTRUCTOR.
 //
@@ -38,10 +55,26 @@ import gunbc.host.host_effect_realize {
 // the trust policy and the credential, all of which are per-ATTEMPT and shared across the hosts an
 // attempt touches. Binding the host here rather than widening that context keeps one attempt able to
 // observe many hosts while keeping any single observation about exactly one.
-type DeployedTreeLocus sole_constructor {
-  context: FleetSshExecutionContext
-  target: SshTarget
-  repo: NonEmptyStr
+type DeployedTreeLocus sole_constructor =
+    FleetSshTreeLocus { context: FleetSshExecutionContext, target: SshTarget, repo: NonEmptyStr }
+  | LocalTreeLocus { host: HostIdentity, repo: NonEmptyStr, attempt: NonEmptyStr }
+
+// THE REPO IS READ THROUGH AN ACCESSOR, NOT A FIELD, because the two arms carry it in different
+// records and a caller must not be able to name an arm it did not mint.
+fn deployed_tree_locus_repo(locus: DeployedTreeLocus) -> NonEmptyStr {
+  match locus {
+    FleetSshTreeLocus { repo: r } => r
+    LocalTreeLocus { repo: r } => r
+  }
+}
+
+// THE HOST THE LEG WAS TAKEN AT, as the locus seals it. The ssh arm's host is the resolved target's;
+// the local arm's is the identity the join admitted against the kernel's own answer.
+fn deployed_tree_locus_host(locus: DeployedTreeLocus) -> String {
+  match locus {
+    FleetSshTreeLocus { target: t } => t.host as String
+    LocalTreeLocus { host: h } => h as String
+  }
 }
 
 fn deployed_tree_locus(
@@ -49,11 +82,14 @@ fn deployed_tree_locus(
   target: SshTarget,
   repo: NonEmptyStr,
 ) -> DeployedTreeLocus {
-  DeployedTreeLocus { context: context, target: target, repo: repo }
+  FleetSshTreeLocus { context: context, target: target, repo: repo }
 }
 
 fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTransport {
-  FleetSsh { target: locus.target, context: locus.context }
+  match locus {
+    FleetSshTreeLocus { target: t, context: c } => FleetSsh { target: t, context: c }
+    LocalTreeLocus { host: _ } => LocalShell
+  }
 }
 
 // THE INSTRUMENT IS GIT, AND IT IS FOUR SINGLE COMMANDS BECAUSE IT HAS TO BE.
@@ -172,7 +208,12 @@ fn deployed_tree_root_tree_argv(repo: NonEmptyStr) -> List<String> {
 // the path is safe by construction rather than by escaping -- there is no spelling of an attempt that
 // makes this argv unportable.
 fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
-  join(["/tmp/gunbc-deployed-tree-index-", locus.context.attempt as String], "")
+  match locus {
+    FleetSshTreeLocus { context: c } =>
+      join(["/tmp/gunbc-deployed-tree-index-", c.attempt as String], "")
+    LocalTreeLocus { attempt: a } =>
+      join(["/tmp/gunbc-deployed-tree-index-", a as String], "")
+  }
 }
 
 // BOTH LEGS BIND THE TEMP INDEX THROUGH GIT_INDEX_FILE, and `--index-output` is NOT a substitute --
@@ -235,9 +276,42 @@ type DeployedTreeLegOutcome
   | DeployedTreeLegNotAttempted { reason: String }
 
 fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
-  match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
-    TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
-    TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+  match deployed_tree_locus_transport(locus: locus) {
+    LocalShell => deployed_tree_local_leg(argv: argv)
+    _ =>
+      match run_typed_argv_transport(argv: argv, transport: deployed_tree_locus_transport(locus: locus)) {
+        TypedArgvExecConverged { result: r } => DeployedTreeLegRan { result: r }
+        TypedArgvExecRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+      }
+  }
+}
+
+// THE LOCAL DELIVERY OF THE SAME FOUR LEGS, for the case the remote transport's own refusal names:
+// "use SshShell or FleetSsh when executor and subject host differ" (gunbc.typed_argv_exec
+// run_typed_argv_transport). When the executor IS the subject, the ssh leg proves only that the
+// executor holds the fleet credential -- a proof about a machine that is already standing here -- and
+// it fails CLOSED on any host with no credential agent, which is every systemd unit this repo emits
+// (live_deploy emits no SSH_AUTH_SOCK and no agent unit; gunbc.fleet.fleet_key_agent is CI-runner-only).
+// The words are THE SAME BUILT BY THE SAME BUILDERS as the remote arm; only the delivery differs, so
+// the two arms cannot disagree about what they asked git. The program word is the argv's own head and
+// the rest is carried as one CliSurface, so no shell re-parses an argument boundary.
+fn deployed_tree_local_leg(argv: List<String>) -> DeployedTreeLegOutcome {
+  match argv {
+    Empty => DeployedTreeLegNotAttempted { reason: "a local deployed-tree leg names no program" }
+    Cons { head: program, tail: rest } => {
+      let ran = shell.Exec.RunArgv(
+        program: program as NonEmptyStr,
+        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: rest)),
+      )
+      DeployedTreeLegRan {
+        result: SshSessionExecResult {
+          exit_code: ran.exit_code,
+          success: ran.exit_code == 0,
+          stdout: ran.stdout,
+          stderr: ran.stderr,
+        },
+      }
+    }
   }
 }
 
@@ -359,7 +433,7 @@ fn observe_deployed_tree_at(context: FleetSshExecutionContext, target: SshTarget
 }
 
 fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
-  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: locus.repo)) {
+  match deployed_tree_leg(locus: locus, argv: deployed_tree_revision_argv(repo: deployed_tree_locus_repo(locus: locus))) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
     DeployedTreeLegRan { result: rev } =>
@@ -372,7 +446,7 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
           Absent =>
             DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
           Present { value: oid } =>
-            match deployed_tree_leg(locus: locus, argv: deployed_tree_root_tree_argv(repo: locus.repo)) {
+            match deployed_tree_leg(locus: locus, argv: deployed_tree_root_tree_argv(repo: deployed_tree_locus_repo(locus: locus))) {
               DeployedTreeLegNotAttempted { reason: why } =>
                 DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "root tree", reason: why } }
               DeployedTreeLegRan { result: tr } =>
@@ -413,7 +487,7 @@ fn observe_deployed_tree_against_revision(
   let index_path = deployed_tree_temp_index_path(locus: locus)
   match deployed_tree_leg(
     locus: locus,
-    argv: deployed_tree_read_tree_argv(repo: locus.repo, revision_hex: revision_hex, index_path: index_path),
+    argv: deployed_tree_read_tree_argv(repo: deployed_tree_locus_repo(locus: locus), revision_hex: revision_hex, index_path: index_path),
   ) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
@@ -425,7 +499,7 @@ fn observe_deployed_tree_against_revision(
       } else {
         match deployed_tree_leg(
           locus: locus,
-          argv: deployed_tree_status_argv(repo: locus.repo, index_path: index_path),
+          argv: deployed_tree_status_argv(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path),
         ) {
           DeployedTreeLegNotAttempted { reason: why2 } =>
             DeployedTreeUnobservable {
@@ -439,7 +513,7 @@ fn observe_deployed_tree_against_revision(
             } else {
               match deployed_tree_leg(
                 locus: locus,
-                argv: deployed_tree_ignored_argv(repo: locus.repo, index_path: index_path),
+                argv: deployed_tree_ignored_argv(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path),
               ) {
                 DeployedTreeLegNotAttempted { reason: why3 } =>
                   DeployedTreeUnobservable {
@@ -557,5 +631,69 @@ fn deployed_root_tree_standing_text(s: DeployedRootTreeStanding) -> String {
     DeployedRootTreeMismatch { candidate_hex: c, deployed_hex: d } => join(["deployed root tree ", d, " is not the candidate tree ", c], "")
     DeployedRootTreeScopeDiverged { tree_hex: h, changed_paths: p } => join(["deployed root tree ", h, " matches but the deployed scope diverged: ", p as String], "")
     DeployedRootTreeUnobserved { cause: c } => join(["deployed root tree unobserved: ", deployed_tree_unobservable_text(cause: c)], "")
+  }
+}
+
+// THE SAME INSTRUMENT, READ ON THE MACHINE THAT RUNS THE CALLER.
+//
+// The remote arm exists to observe a tree that is NOT on this machine: it carries a credential and a
+// trust policy because a cross-host reading is a claim about a host the caller cannot see. When the
+// executor IS the subject host, that ceremony proves only that the executor holds the fleet key --
+// about a machine already standing here -- and it fails CLOSED wherever no credential agent exists,
+// which is every systemd unit live_deploy emits (none carries SSH_AUTH_SOCK, and
+// gunbc.fleet.fleet_key_agent is CI-runner-only). srv1's standings refresh died exactly there: the
+// fold's pair gate took its own host's tree over FleetSsh, every run since 2026-11-22T02:12Z refused
+// with "SSH_AUTH_SOCK is unset or empty", and '/' has served the frozen 2026-10-10 body at 409 since.
+//
+// So the local arm is admitted by the ONE fact that makes a local reading honest: the kernel's own
+// answer for this machine's hostname, joined through the fleet registry's one join authority with the
+// host the caller CLAIMS to be reading (gunbc.hostname_allocation::observed_host_selector_join). A
+// caller cannot choose this arm; it can only ask whether the machine it is standing on is the host it
+// named, and the join answers. No join, no locus -- and the ssh arm stays the only way to observe any
+// other machine, so the cross-host conflation this module exists to prevent keeps its single mint.
+data deployed_tree_local_attempt_raw: String = "deployed-tree-local-read"
+
+type DeployedTreeLocalAdmission
+  = DeployedTreeLocalAdmitted { locus: DeployedTreeLocus }
+  | DeployedTreeLocalAdmissionRefused { cause: String }
+
+// THE JOIN, PURE, so the arm selection has a witness that does not have to spawn a hostname binary:
+// expected is the host the caller names, observed is what the kernel said. Both sides go through the
+// registry; neither spelling is trusted as a host on its own.
+fn deployed_tree_local_admission_verdict(
+  host: HostIdentity,
+  observed_hostname: String,
+) -> ObservedHostSelectorJoin {
+  observed_host_selector_join(expected: host as String, observed: observed_hostname)
+}
+
+// THE ONLY MINT FOR THE LOCAL ARM. It reads this machine's hostname over LocalShell (a typed host
+// operation, not a caller-supplied command line) and admits only when the registry join agrees; the
+// admitted locus then seals the JOINED identity with the repo path, exactly as the ssh arm seals the
+// resolved target with its repo path.
+fn deployed_tree_local_locus_admit(
+  host: HostIdentity,
+  repo: NonEmptyStr,
+) -> DeployedTreeLocalAdmission {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptureRefused { reason: why } =>
+      DeployedTreeLocalAdmissionRefused {
+        cause: join(["the local host identity is unobservable, so the deployed tree is undecidable locally: ", why], ""),
+      }
+    HostnameShortCaptured { value: observed } =>
+      match deployed_tree_local_admission_verdict(host: host, observed_hostname: observed) {
+        ObservedHostSelectorAgreed { host: agreed } =>
+          DeployedTreeLocalAdmitted {
+            locus: LocalTreeLocus {
+              host: agreed,
+              repo: repo,
+              attempt: deployed_tree_local_attempt_raw,
+            },
+          }
+        ObservedHostSelectorJoinRefused { cause: c } =>
+          DeployedTreeLocalAdmissionRefused {
+            cause: join(["this machine is not the host the deployed tree is claimed to sit on: ", observed_host_join_refusal_text(cause: c)], ""),
+          }
+      }
   }
 }
