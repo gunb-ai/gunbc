@@ -39,9 +39,21 @@ data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 data desired_state_follows_the_machine_intention: String = "gunbc.plans.desired_state_follows_the_machine"
+data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
+data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
+  // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
+  // 5 the renames and the extdeps reconciliation, 6 the terminal). one-standard-library is a prerequisite of the
+  // terminal but stays bound to gunbc.plans.v2_self_host, which already owns it.
+  serves(node: "source-workspace-manifest", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 1),
+  serves(node: "harness-runs-in-the-workspace", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 2),
+  serves(node: "workspace-derived-source-roots", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 3),
+  serves(node: "one-source-tree-cut", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 4),
+  serves(node: "v2-uncontested-families-renamed", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
+  serves(node: "v2-extdeps-reconciled", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
+  serves(node: "v2-namespace-dissolved", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 6),
   // gunbc.plans.claim_execution_consolidation: layer is the edge depth.
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
   serves(node: "claim-entrypoints-cutover", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 1),
@@ -161,6 +173,15 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "fleet-truth-enrolled-key-roster-closed", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
   serves(node: "fleet-truth-prefix-cache-sized-to-population", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
   serves(node: "fleet-truth-declared-incompleteness-refuses-use", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
+  // gunbc.plans.read_set_convergence: heal's regeneration round (2026-11-22). Layer is edge depth.
+  serves(node: "heal-scope-relation-without-typecheck", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-scope-population-evidence", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-seed-build-artifacts-scoped", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-noop-before-regenerator-build", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 1),
+  serves(node: "heal-planning-only-in-a-minute", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 2),
+  serves(node: "heal-observation-reuse-by-subject", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-bootstrap-seed-reuse", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  serves(node: "heal-terminal-emission-elision", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -178,6 +199,7 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff"), nid(s: "v1-zero-hand-maintained-rust")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"), terminals: [nid(s: "v2-namespace-dissolved")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"), terminals: [nid(s: "service-evidence-capture")] },
   // planning_consolidation's terminals are the sinks of the dispatch-from-the-simulated-execution
   // units: the page that renders the projection, and the three units whose acceptance is itself the
@@ -191,6 +213,9 @@ data intention_terminals: List<IntentionTerminals> = [
   // that hang below it, and each remaining item is its own line's end. The plan's done-when is the whole
   // set -- one consumer refusing on a planted divergence, not four hosts repaired.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan"), terminals: [nid(s: "fleet-truth-rosters-consume-the-read"), nid(s: "fleet-truth-unit-orphans-closed"), nid(s: "fleet-truth-serving-leaf-caps-joined-to-working-set"), nid(s: "fleet-truth-enrolled-key-roster-closed"), nid(s: "fleet-truth-prefix-cache-sized-to-population"), nid(s: "fleet-truth-probes-refuse-not-absence"), nid(s: "fleet-truth-declared-incompleteness-refuses-use")] },
+  // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
+  // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {

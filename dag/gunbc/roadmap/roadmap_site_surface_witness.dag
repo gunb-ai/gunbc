@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_site_surface_witness
 
-import gunbc.roadmap.roadmap_site_surface_observe { live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe { live_roadmap_site_surface_bundle, RoadmapSiteSurfaceBundleRendered }
 import gunbc.roadmap.roadmap_site_surface_expect {
   healthz_round_trip_receipt_holds,
   fresh_surface_read_grounds,
@@ -103,7 +103,7 @@ fn reconcile_grounds_healthy_fixture_read_for_bundle(
     ReadObserved { value: read } =>
       match observe_service_readiness_from_healthz(
         read: read,
-        bundle: bundle,
+        observation: RoadmapSiteSurfaceBundleRendered { bundle: bundle },
         expected_revision: release_revision,
         expected_surface_identity: bundle.bundle_identity,
       ) {

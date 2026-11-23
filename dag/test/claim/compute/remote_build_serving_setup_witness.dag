@@ -19,6 +19,12 @@ import std.goal_assessment {
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7 }
+// RB-M3: ServingPlanInput.executor_arch is an Architecture (projected from uname -m by the converge producer).
+// All assess fixtures here use operator_host_srv1, whose authored row is Aarch64, so executor_arch is Aarch64
+// (row == executor => the upload path and the serve-binary pin compare stay active) and the default target_arch
+// uname spelling must read "aarch64" to agree with the row (else serving_assess's host.arch read-vs-row check
+// fires a spurious drift). Variants are constructed directly from the upstream enum module.
+import extdeps.toolchain.types { Aarch64 }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegEstablished,
 }
@@ -218,13 +224,13 @@ fn pin_sha() -> String { "000000000000000000000000000000000000000000000000000000
 
 fn pin_rev() -> String { "000000000000000000000000000000000000abcd" }
 
-fn pin_arch() -> String { "x86_64" }
+fn pin_arch() -> String { "aarch64" }
 
 fn pin_ok() -> ServingPlanInput {
   ServingPlanInput {
     local_binary_sha256: pin_sha(),
     dispatched_revision: pin_rev(),
-    executor_arch: pin_arch(),
+    executor_arch: Aarch64,
     toolchain_channel: "1.92.0",
   }
 }
@@ -764,11 +770,15 @@ test fn wrong_checkout_revision_is_a_drift() -> Bool {
 }
 
 // host.arch mismatch stays a GoalDiverged DEVIATION (converge_plan has no arm -> 5(b) refuses).
+// RB-M3: host.arch is now a read-vs-authored-row check. operator_host_srv1's authored row is Aarch64, so the
+// drift is a uname read that DISAGREES with the row: feed "x86_64" (the default consistent read is now
+// "aarch64" via pin_arch()). The executor_arch side is irrelevant to host.arch (it is the row that is the
+// single authority), so this stays a genuine drift.
 test fn wrong_target_arch_is_a_drift() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-  let a = serving_assess(d: d, o: reads_over(d, pin_sha_leg(), pin_rev_leg(), est_s("aarch64"), converged_ledger(d: d)), pin: pin_ok())
+  let a = serving_assess(d: d, o: reads_over(d, pin_sha_leg(), pin_rev_leg(), est_s("x86_64"), converged_ledger(d: d)), pin: pin_ok())
   is_diverged(a) && has_deviation(a: a, item: "host.arch")
     }
   }

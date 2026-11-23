@@ -21,7 +21,12 @@ import std.algebra { string_contains, non_empty_to_list }
 import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.list { first_duplicate_by_key, first_where, list_member }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_e2d4b7 }
+// RB-M3: ServingPlanInput.executor_arch is now an Architecture (projected from uname -m by the producer).
+// Witnesses construct the variant directly from the upstream enum module; target_arch stays a String
+// spelling (it models the raw `uname -m` read), and its value must agree with the host's authored row or
+// serving_assess's host.arch consistency check fires.
+import extdeps.toolchain.types { Aarch64, Riscv64 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
@@ -34,9 +39,9 @@ import gunbc.compute.remote_build_serving_setup {
 import extdeps.access.posix { file_mode_octal }
 import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld,
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -74,7 +79,7 @@ fn pin_sha() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 fn pin_rev() -> String { "0123456789abcdef0123456789abcdef01234567" }
 fn pin_arch() -> String { "aarch64" }
 fn pin_ok() -> ServingPlanInput {
-  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: pin_arch(), local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+  ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: Aarch64, local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
 }
 fn matched_ledger(d: RemoteBuildServingDesired) -> List<ServingLedgerRowObserved> {
   map(d.ledger_dirs, t => ServingLedgerRowObserved {
@@ -471,7 +476,7 @@ test fn fresh_host_on_an_unpublished_machine_is_unhandled() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-      let pin = ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: "riscv64", local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
+      let pin = ServingPlanInput { dispatched_revision: pin_rev(), executor_arch: Riscv64, local_binary_sha256: pin_sha(), toolchain_channel: "1.90.0" }
       let o = serving_observed_from_reads(
         elevation: est_elevation(), account_name: d.account_name, passwd: est_s(""), group: est_s("root:x:0:\n"), authorized_keys: est_s(""),
         store_root: est_absent(), store_staging: est_absent(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(), serve_binary: est_absent(),
@@ -1959,11 +1964,16 @@ fn fully_matched_identity(d: RemoteBuildServingDesired, line: String, sidecar: O
 
 fn sidecar_absent() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarAbsent } }
 fn sidecar_malformed() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarMalformed } }
-fn sidecar_recorded(sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { sha256: sha } } }
+// Upload-host fixture: the revision is irrelevant there (the pin sha carries the binding), so this records
+// the sha with a placeholder revision. Native-host fixtures use sidecar_recorded_at, where revision matters.
+fn sidecar_recorded(sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { revision: "irrelevant-for-upload", sha256: sha } } }
+fn sidecar_recorded_at(revision: String, sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { revision: revision, sha256: sha } } }
 fn sidecar_refused() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationRefused { cause: ServingLegFailure { item: "serve.binary.identity", cause: "ssh read refused" } } }
 
 fn count_identity(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false })) }
 fn count_binary_install(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true  _ => false })) }
+// RB-M3: the native-build action (build on the host, not upload) -- the route a native identity drift must take.
+fn count_binary_build(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _ } => true  _ => false })) }
 fn planned_identity_sha(ws: List<ConvergeAction>) -> String {
   match first_where(ws, keep: a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false }) {
     Absent => ""
@@ -2051,15 +2061,19 @@ test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
   }
 }
 
-// ---- THE SEAT RECOVERY LEG (increment 2) ----
-// The census arrives ALREADY JUDGED: its entries come from
-// gunbc.compute.attempt_lifecycle::recovery_write_authorization through the recovery door
-// (gunbc.compute.work_provider_local::compute_recover_catalog_cli), rendered and parsed back through
-// the door's own grammar. The plan only RENDERS them, and only when the identity leg is Met. These
-// cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
-// an unmet identity refuses the recovery alongside it.
+// ---- NATIVE-BUILD IDENTITY BINDING (review 97463 finding 1) ----
+// ken (operator_host_e2d4b7, an X86_64 row) against an Aarch64 executor (pin_ok) is a NATIVE-build host: it
+// builds its own serve binary, so there is no pinned pool sha to bind the binary to a revision -- the
+// sidecar's recorded REVISION is that binding. A native host must therefore drift (and rebuild) when the
+// recorded revision is not the dispatched one, and must NEVER be "fixed" by re-recording a sidecar over a
+// stale binary (that would fabricate a revision binding: silent wrongness below the guarantee ladder).
+// Upload hosts keep the opposite behaviour (an identical sha at an older revision is settled; a missing
+// sidecar is re-recorded alone) -- proved by the witnesses above on operator_host_srv1.
+// The on-host uname is the host's OWN arch ("x86_64") so the host.arch consistency check PASSES (it agrees
+// with the X86_64 row); only the identity revision leg varies across these fixtures.
+fn native_arch() -> String { "x86_64" }
 
-fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading) -> ServingObserved {
+fn fully_matched_native_identity(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ServingObserved {
   serving_observed_from_reads(
     elevation: est_elevation(), account_name: d.account_name,
     passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
@@ -2075,13 +2089,89 @@ fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: Obs
     user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
     user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
     user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(native_arch()), ledger_rows: matched_ledger(d: d),
+  
+  seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+fn plan_native_identity(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_native_identity(d: d, line: line, sidecar: sidecar), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(native_arch()), rustup: est_ok())
+}
+
+// THE BLOCKING BUG, NOW RED-CAUGHT: a native host whose sidecar sha matches the running binary but whose
+// recorded revision is OLDER than the dispatched one reads settled under the old code. It must instead plan
+// a REBUILD (BuildServeBinary), and must NOT re-record the sidecar (count_identity==0) nor upload (install==0).
+test fn a_stale_native_revision_rebuilds_rather_than_rerecords() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded_at("ffffffffffffffffffffffffffffffffffffffff", pin_sha()) })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && count_binary_build(ws) == 1 && count_binary_install(ws) == 0 && count_identity(ws) == 0
+    }
+  }
+}
+
+// POSITIVE CONTROL: the same native host, sidecar recorded AT the dispatched revision and matching the
+// binary sha -> fully settled, nothing written.
+test fn a_native_revision_matching_the_pin_settles() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded_at(pin_rev(), pin_sha()) })
+      let ws = plan_writes(plan)
+      plan_is_settled(plan) && count_binary_build(ws) == 0 && count_binary_install(ws) == 0 && count_identity(ws) == 0
+    }
+  }
+}
+
+// RED: a native host with a CONFIRMED-ABSENT sidecar must rebuild (its binary is unbound to any revision),
+// NOT take the upload-host route of re-recording the identity alone. Contrast a_missing_sidecar_records_the_
+// identity_alone (srv1, upload) which asserts count_identity==1.
+test fn a_missing_native_sidecar_rebuilds_not_rerecords() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && count_binary_build(ws) == 1 && count_identity(ws) == 0 && count_binary_install(ws) == 0
+    }
+  }
+}
+
+// ---- THE SEAT RECOVERY LEG (increment 2) ----
+// The census arrives ALREADY JUDGED: its entries come from
+// gunbc.compute.attempt_lifecycle::recovery_write_authorization through the recovery door
+// (gunbc.compute.work_provider_local::compute_recover_catalog_cli), rendered and parsed back through
+// the door's own grammar. The plan only RENDERS them, and only when the identity leg is Met. These
+// cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
+// an unmet identity refuses the recovery alongside it.
+
+fn fully_matched_census(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?, census: RecoverCatalogLegReading, checkout_rev: String) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(), account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(checkout_rev) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    serve_identity: sidecar,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
     target_arch: est_s(pin_arch()), ledger_rows: matched_ledger(d: d),
     seat_census: census,
   )
 }
 
 fn plan_census(d: RemoteBuildServingDesired, census: RecoverCatalogLegReading, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
-  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_census(d: d, line: forced_line(d), sidecar: sidecar, census: census, checkout_rev: pin_rev()), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
 }
 
 fn count_recover(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecoverStaleSeat { reference: _ } => true  _ => false })) }
@@ -2104,6 +2194,52 @@ test fn a_stale_seat_plans_the_recovery_when_identity_is_met() -> Bool {
       plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 1 && count_identity(ws) == 0 && planned_recover_reference(ws) == "gunbc-build.job#1"
     }
   }
+}
+
+// GREEN (measured stall, srv1 run 44984397614): a checkout NOT at the dispatched revision DEFERS the
+// census — the recovery door is carried by that checkout, so it does not exist to ask. The plan carries
+// NO recovery write, is neither refused nor unhandled (the assessment stays reportable, not
+// indeterminate), and the checkout detach that CARRIES the door is written this run; the next assessment
+// asks the door. The census is never fabricated as empty, and the deferral is never dressed as an
+// unknown — an unknown would dominate the assessment, plan nothing, and strand the door forever.
+test fn a_checkout_not_at_the_pin_defers_the_census_and_plans_no_recovery() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let observed = fully_matched_census(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded(pin_sha()) }, census: RecoverCatalogLegDeferred { reason: "the checkout is not at the pin" }, checkout_rev: "0000000000000000000000000000000000000000")
+      let plan = converge_plan(d: d, a: serving_assess(d: d, o: observed, pin: pin_ok()), pin: pin_ok(), target_arch: est_s(pin_arch()), rustup: est_ok())
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false && count_recover(ws) == 0
+        && length(filter(ws, w => string_contains(s: converge_action_key(w), pattern: "checkout:"))) == 1
+    }
+  }
+}
+
+// THE GATE ITSELF, over supplied reads: ASK only when the checkout is established AT the dispatched
+// revision; DEFER otherwise, naming what made it unaskable — the stale revision it stands at, the
+// refusal of the revision read, or the revision never being established. The door the checkout does not
+// yet carry is never asked, and its absence is never dressed as an unknown (an unknown would dominate
+// the assessment and strand the checkout write that carries the door).
+test fn the_census_gate_asks_only_at_the_dispatched_revision() -> Bool {
+  let pin_sha = "0000000000000000000000000000000000000000"
+  let stale = "1111111111111111111111111111111111111111"
+  let asked = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: pin_sha } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => true
+    CensusGateDefer { reason: _ } => false
+  }
+  let deferred_stale = match census_door_gate(checkout_revision: Present { value: ObservationEstablished { observed: stale } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: stale) && string_contains(s: r, pattern: pin_sha)
+  }
+  let deferred_refused = match census_door_gate(checkout_revision: Present { value: ObservationRefused { cause: ServingLegFailure { item: "checkout.revision", cause: "the revision read was refused" } } }, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "refused")
+  }
+  let deferred_unrun = match census_door_gate(checkout_revision: Absent, dispatched_revision: pin_sha) {
+    CensusGateAsk => false
+    CensusGateDefer { reason: r } => string_contains(s: r, pattern: "not established")
+  }
+  asked && deferred_stale && deferred_refused && deferred_unrun
 }
 
 // RED CONTROL (live holder): an established 'hold' entry — a live or too-early holder, which the model
@@ -2173,6 +2309,10 @@ fn every_converge_action(d: RemoteBuildServingDesired) -> List<ConvergeAction> {
     InstallUserWorkSlice { unit_name: user_work_slice_unit_name, unit_path: "/run/systemd/user/gunbc-user-work.slice", memory_max: byte_size(1), memory_high: byte_size(1), memory_swap_max: byte_size(1), expected_content: "[Unit]" },
     InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" },
     RecordServeIdentity { install_path: "/opt/gunbc/bin/gunbc", revision: "deadbeef", sha256: "aaa" },
+    // A DISTINCT install_path here so the "every kind" ordering test keeps every action: BuildServeBinary
+    // shares InstallServeBinary's "binary:"+path dedup key, so on the SAME path the two collapse (the
+    // dedicated dedup witness below proves that); on a different path both survive as distinct kinds.
+    BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native" },
     RecoverStaleSeat { reference: "gunbc-build.identity#1" as NonEmptyStr },
   ]
 }
@@ -2215,6 +2355,46 @@ test fn converge_order_preserves_every_action_kind() -> Bool {
       let all = every_converge_action(d)
       let ordered = converge_order(all)
       length(ordered) == length(all) && length(filter(all, e => list_member(xs: ordered, x: e, eq: (a, b) => converge_action_key(a) == converge_action_key(b)))) == length(all)
+    }
+  }
+}
+
+// RB-M3 native-build arm: the native build and the pool upload are the SAME binary leg of a path -- they
+// share the "binary:"+install_path dedup key, so a host settles its serve binary through exactly ONE of
+// them. If both were ever drafted for one path (a plan bug, or a flip-flopping host), converge_order
+// collapses them to a single write rather than letting the host receive a pool binary AND build its own.
+// Arch-independent (pure model), so it is written before the architecture authority lands.
+test fn native_build_and_upload_collapse_on_one_path() -> Bool {
+  let up = InstallServeBinary { upload_path: "/tmp/up", install_path: "/opt/gunbc/bin/gunbc", expected_sha256: "aaa" }
+  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc" }
+  converge_action_key(up) == converge_action_key(native) && length(converge_dedupe([up, native])) == 1
+}
+
+// The native build must still be ORDERED as a binary-leg write: after the checkout (rank 5) and the
+// pinned toolchain (ranks 6/7) it builds from, so a build can never be dispatched ahead of the source it
+// compiles. This pins the rank arm I added for BuildServeBinary (rank 9, the binary leg).
+test fn native_build_ranks_after_its_checkout_and_toolchain() -> Bool {
+  let checkout = EnsureCheckout { dir: "/srv/gunbc/checkout", clone_url: "https://example.invalid/gunbc.git", revision: "deadbeef", as_user: "gunbc-serve" }
+  let toolchain = EnsureToolchain { channel: "1.95.0", as_user: "gunbc-serve" }
+  let native = BuildServeBinary { checkout_dir: "/srv/gunbc/checkout", revision: "deadbeef", package: "gunbc", bin: "gunbc", target_dir: "/home/gunbc-serve/.cache/gunbc-build-target", install_path: "/opt/gunbc/bin/gunbc-native" }
+  converge_kind_rank(native) > converge_kind_rank(checkout) && converge_kind_rank(native) > converge_kind_rank(toolchain)
+}
+
+// Manager red (RB-M3): an UNREAD host architecture must REFUSE, never default to the upload install.
+// The dispatch's target_arch arm refuses on ObservationRefused BEFORE consulting the host arch row, so
+// the draft gains the serve-binary refusal in `unhandled` and plans NO install/build write for the
+// serve path (length(writes)==0 proves it did not silently fall through to InstallServeBinary/upload).
+test fn unread_host_architecture_refuses_never_uploads() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let r = converge_install_binary(
+        acc: converge_draft(),
+        d: d,
+        pin: pin_ok(),
+        target_arch: ObservationRefused { cause: ServingLegFailure { item: "target_arch", cause: "uname -m unread" } }
+      )
+      any(r.unhandled, x => x == "serve_binary.sha256") && length(r.writes) == 0
     }
   }
 }

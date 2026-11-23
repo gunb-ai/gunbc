@@ -1701,20 +1701,18 @@ data srv2_deploy_serve_binary: FilePath = join([cargo_default_release_dir(build_
 // instance (publication_base_branch) rather than derived. Reading the repository's default_branch
 // offered a srv2 attempt (dispatched from origin/srv2-deploy) against main with sixty unrelated commits
 // (2026-09-05); deriving it by stripping "origin/" from dispatch_base_ref then broke the same way for
-// the srv1 lab, whose "origin/main" is rewritten to its admitted lab-dev revision
-// (srv1_lab_publication_base_branch). The branch is a fact about where the base revision lives on the
+// the srv1 lab while it admitted an integration branch (srv1_lab_publication_base_branch, now main).
+// The branch is a fact about where the base revision lives on the
 // publication remote, so each instance states it.
 fn dispatch_base_branch(instance: HostDashboardInstance) -> NonEmptyStr {
   instance.publication_base_branch
 }
 
-// THE SRV1 LAB PUBLISHES INTO ITS INTEGRATION BRANCH (operator, 2026-10-13). Its attempts fork from the
-// lab's admitted revision: the lab deploy rewrites the source repository's refs/remotes/origin/main to
-// that revision (reflog, 2026-10-12: 5935eae at 03:04, cf420d9 at 17:08), so the row's "origin/main"
-// names the admitted lab-dev commit, not GitHub main. Deriving the publication base from that name
-// offered lab attempts against GitHub main, with every lab-only commit in the diff. The admitted
-// revision is a commit of this branch, so a pull request against it carries only the worker's change.
-data srv1_lab_publication_base_branch: NonEmptyStr = "bright-moth-475/lab-dev" as NonEmptyStr
+// THE SRV1 LAB TRACKS MAIN (operator, 2026-11-22; gunbc.design_ruling::lab_tracks_main_lab_dev_retired_2026_11_22).
+// The 2026-10-13 integration branch, bright-moth-475/lab-dev, is retired: it had no commit after 2026-10-31
+// and its session no longer exists. The lab's pair delivery keeps the served pair at main, so the branch
+// its base revision belongs to, and the branch its attempts are published against, is main.
+data srv1_lab_publication_base_branch: NonEmptyStr = "main" as NonEmptyStr
 
 data srv2_deploy_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: ".",

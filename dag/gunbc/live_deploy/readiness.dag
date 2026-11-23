@@ -28,7 +28,11 @@ import gunbc.live_deploy.intent {
 }
 import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import extdeps.tailscale.serve { ServeRootMount, ServeSetPath }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  RoadmapSiteSurfaceBundleObservation,
+  RoadmapSiteSurfaceBundleRendered,
+  roadmap_site_surface_bundle_observation_for_launcher,
+}
 import gunbc.roadmap.roadmap_site_surface_expect {
   roadmap_site_healthz_json_string_parses,
   roadmap_site_healthz_surface_is_current,
@@ -114,6 +118,7 @@ type ServiceReadinessPending
 
 type ServiceReadinessRefusal
   = ServiceReadinessAccessDenied { reason: String }
+  | ServiceSurfaceUnobserved { detail: String }
   | ServiceReadinessPollBound { refusal: ServiceNotReady }
 
 type ServiceReadiness
@@ -130,32 +135,44 @@ fn service_readiness_reason(r: ServiceReadiness) -> String {
     Pending { cause: ServiceTailnetDoorPending { socket, detail } } =>
       join(["the tailnet door at ", socket as String, " is not serving this release: ", detail], "")
     Refused { cause: ServiceReadinessAccessDenied { reason } } => reason
+    Refused { cause: ServiceSurfaceUnobserved { detail } } =>
+      join(["the roadmap roster read refused; the expected surface is unobservable and no verdict is rendered: ", detail], "")
     Refused { cause: ServiceReadinessPollBound { refusal } } =>
       service_not_ready_reason(refusal: refusal)
   }
 }
 
+// THE SHARED READINESS COMPARISON GATE. It now takes the site surface as a TYPED OBSERVATION rather than a
+// bundle, so a refused roster read refuses the verdict (Refused { ServiceSurfaceUnobserved }) instead of
+// comparing a served body against a bundle minted over a refused roster. Repairing it here, at the shared
+// gate every readiness site flows through, is what keeps the fail-closed from being re-implemented at each
+// caller (gunbc.design_argument::root_generalization, earliest_unjustified_boundary).
 fn observe_service_readiness_from_healthz(
   read: HealthzEffectiveRead,
-  bundle: RoadmapSiteSurfaceBundle,
+  observation: RoadmapSiteSurfaceBundleObservation,
   expected_revision: CommitSha,
   expected_surface_identity: Fnv1a64Structural,
 ) -> ServiceReadiness {
-  match read {
-    HealthzProbeRefused { probe_error: detail } =>
-      Pending { cause: ServiceProbeUnanswered { detail: detail } }
-    HealthzAnsweredUnhealthy { status, detail } =>
-      Pending { cause: ServiceObservedUnhealthy { status: status, detail: detail } }
-    HealthzBodyRead { body: observed_body } =>
-      match healthz_body_verdict(
-        body: observed_body,
-        bundle: bundle,
-        expected_revision: expected_revision,
-        expected_surface_identity: expected_surface_identity,
-      ) {
-        HealthzBodyGrounds { evidence: e } => Ready { evidence: e }
-        HealthzBodyDoesNotGround { cause } =>
-          Pending { cause: ServiceReadinessIdentityPending { cause: cause } }
+  match observation {
+    RoadmapSiteSurfaceBundleReadRefused { detail } =>
+      Refused { cause: ServiceSurfaceUnobserved { detail: detail } }
+    RoadmapSiteSurfaceBundleRendered { bundle: bundle } =>
+      match read {
+        HealthzProbeRefused { probe_error: detail } =>
+          Pending { cause: ServiceProbeUnanswered { detail: detail } }
+        HealthzAnsweredUnhealthy { status, detail } =>
+          Pending { cause: ServiceObservedUnhealthy { status: status, detail: detail } }
+        HealthzBodyRead { body: observed_body } =>
+          match healthz_body_verdict(
+            body: observed_body,
+            bundle: bundle,
+            expected_revision: expected_revision,
+            expected_surface_identity: expected_surface_identity,
+          ) {
+            HealthzBodyGrounds { evidence: e } => Ready { evidence: e }
+            HealthzBodyDoesNotGround { cause } =>
+              Pending { cause: ServiceReadinessIdentityPending { cause: cause } }
+          }
       }
   }
 }
@@ -448,7 +465,7 @@ fn live_deploy_proxied_readiness(spec: DeploymentSpec, candidate: CandidateRelea
     Present { value: url } =>
       observe_service_readiness_from_healthz(
         read: live_deploy_healthz_get_for_url(url: url, spec: spec, transport: transport),
-        bundle: materialize_live_roadmap_site_surface_bundle(),
+        observation: roadmap_site_surface_bundle_observation_for_launcher(),
         expected_revision: candidate.revision,
         expected_surface_identity: candidate.expected_surface_identity,
       )
@@ -764,7 +781,7 @@ fn live_deploy_service_ready_once_for_deploy(
             spec: spec,
             transport: transport,
           ),
-          bundle: materialize_live_roadmap_site_surface_bundle(),
+          observation: roadmap_site_surface_bundle_observation_for_launcher(),
           expected_revision: candidate.revision,
           expected_surface_identity: candidate.expected_surface_identity,
         ),
@@ -775,7 +792,7 @@ fn live_deploy_service_ready_once_for_deploy(
             Present { value: socket } =>
               observe_service_readiness_from_healthz(
                 read: live_deploy_healthz_get_for_socket(socket: socket, spec: spec, transport: transport),
-                bundle: materialize_live_roadmap_site_surface_bundle(),
+                observation: roadmap_site_surface_bundle_observation_for_launcher(),
                 expected_revision: candidate.revision,
                 expected_surface_identity: candidate.expected_surface_identity,
               )
@@ -795,7 +812,7 @@ fn live_deploy_service_ready_once_for_bundle(
     ReadObserved { value: observed } =>
       observe_service_readiness_from_healthz(
         read: observed,
-        bundle: bundle,
+        observation: RoadmapSiteSurfaceBundleRendered { bundle: bundle },
         expected_revision: release_revision,
         expected_surface_identity: bundle.bundle_identity,
       )
