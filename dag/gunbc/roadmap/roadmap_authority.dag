@@ -3735,6 +3735,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "demand-engine", contribution: "The seed-build artifacts are file-grain products validated by the same read-set rule as the mirrors."),
     ),
     roadmap_node(
+      identity: "rn_EVMFH44TKERABG6DZCB7RHWYX7",
+      id: "stage0-crate-partition-covers-every-emitted-module",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v2/workflow/rust_crate_partition.dag"),
+      line: ticket(t: fields(
+        headline: "The stage0 crate partition covers every module the emitter writes, so a seed-input edit is not refused",
+        boundary: "Reported by vivid-swift-693 from a measured trace and approved by neat-badger-614; re-measure before closing. Every regen round checks whole-population coverage (required_regen_host.rs, the Stage0EmittedEdgesNotCovered check). At main, 13 emitted modules are in no GeneratedPartitionCrateRow (gunbc_stage0_stage0_crate_partition_generated.rs) and not in the host shell: extdeps_exec_command, extdeps_tools_ls, extdeps_posix_shell_command_language, extdeps_filesystem_filesystem_io, extdeps_tools_env, extdeps_exec_program, extdeps_posix_process, gunbc_remote_shell_command, extdeps_access_posix, std_operation_argv, std_template, std_env_binding, dry_run. So any change that edits seed-input src/v1 sources is refused with 235 endpoints uncovered; gunbc#16910 is the first casualty and depends on this row. The owner decides package-row versus host-shell placement per module and regenerates through the named authority (v2.workflow.rust_crate_partition via generated_artifact_gate main_wet, informed by the stage0_partition_rebuild_* claims of regen_convergence_transaction); the generated file is never hand-edited. Owner is ci-control because it owns the heal rows that read this check; if the heal and seed lane is another owner, the manager should redispatch.",
+        displaced_cost: "Every pull request that edits seed-input sources is refused until someone hand-routes around the refusal; the refused one waits on a partition nobody owns.",
+        first_slice: "Decide, per each of the 13 modules, package row or host shell, and regenerate the partition through its authority.",
+        red_control: "NONE OBSERVED YET as a recorded pair: no sha is claimed. The reported control is claim_executor --regen-round-cost --base-mirror --regen-affected-scope over --source-root dag --source-root src/v2 at main, which refuses naming those 13 modules; green is an admitted-edges line at the fixed revision. red_at and green_at are OPEN.",
+        out_of_scope: "Hand-editing the generated partition file. Changing the coverage check itself. Any module the emitter does not write.",
+        handback: "The placement of each of the 13 modules with its reason, the regenerated partition, the red and green outputs executed and pasted with their commits, and the unblocked state of gunbc#16910."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "A heal or regen round covers the whole emitted population, so a seed-input edit reaches its read set instead of a refusal."),
+    ),
+    roadmap_node(
       identity: "rn_BPQ3Q3CTSK0TP02ECZC74B8ZDP",
       id: "heal-noop-before-regenerator-build",
       owner: "ci-control",
