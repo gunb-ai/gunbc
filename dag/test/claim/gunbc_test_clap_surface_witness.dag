@@ -133,3 +133,26 @@ test fn a_source_root_does_not_license_a_non_claim_operand() -> Bool {
   result.exit_code == 2 &&
     !string_contains(s: result.stdout, pattern: "HELD outcome=Pass")
 }
+
+// THE RED, OTHER HALF: a corpus root OUTSIDE the checkout. --source-root is this change's option,
+// so its admission is this change's to own. An absolute path outside the checkout must be refused
+// TYPED AND LOCATED at the option's admission -- exit 2, no located line, the cause named -- and
+// must never unwind inside path normalization: the state this row retires printed
+// `repo_relative_path_normalized: ... is not under ...` and exited 101.
+test fn an_absolute_root_outside_the_checkout_refuses_without_unwinding() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: HermeticBatch {},
+    source_roots: ["/tmp"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 2 &&
+    !string_contains(s: result.stdout, pattern: "HELD outcome=Pass") &&
+    !string_contains(s: result.stderr, pattern: "panicked at") &&
+    string_contains(s: result.stderr, pattern: "ClaimRouteSourceRootOutsideWorkspace")
+}

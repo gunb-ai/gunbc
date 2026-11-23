@@ -20688,6 +20688,43 @@ pub fn run_claim_route(
     // The ONE module-index walk, taken fallibly: an unreadable source is no observation, not a
     // wrong label and not a failed claim. The walk fills the shared path-index cache on success,
     // so the resolves below read it instead of walking again.
+    // THE OPTION'S OWN ADMISSION, TAKEN BEFORE ANY WORK. `--source-root` is an option this change
+    // adds, so its admission is this change's to own: a corpus root the route cannot read -- an
+    // absolute path outside the checkout, a traversal out of it, or a path that is not a directory
+    // there -- is refused HERE, typed and located, at the layer that received the word. It is
+    // never an unwind inside path normalization (the state that printed
+    // `repo_relative_path_normalized: ... is not under ...` with rc=101), and never a quiet
+    // fallback to the default corpus: a route that cannot honour the corpus it was asked to read
+    // refuses rather than reading another one and reporting the standing anyway.
+    {
+        let workspace = std::env::current_dir()
+            .map_err(|e| format!("cause=ClaimRouteWorkspaceUnresolved detail=\"{e}\""))?;
+        let base = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.clone());
+        for root in source_roots {
+            let spelled = std::path::Path::new(root.as_str());
+            let candidate = if spelled.is_absolute() {
+                spelled.to_path_buf()
+            } else {
+                base.join(spelled)
+            };
+            let under = match candidate.canonicalize() {
+                Ok(real) => real.is_dir() && real.starts_with(&base),
+                Err(_) => false,
+            };
+            if !under {
+                return Err(format!(
+                    "cause=ClaimRouteSourceRootOutsideWorkspace root={root} \
+                     workspace={} — --source-root names the claim corpus relative to the \
+                     checkout; a root that is not a directory under it (absolute outside, \
+                     escaping, or absent) is a refusal at the option's admission, not a \
+                     fallback to the default corpus and not a panic.",
+                    base.display()
+                ));
+            }
+        }
+    }
     if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
         return Err(format!(
             "{} unreadable claim source(s) — no observation:\n  {}",
