@@ -38,8 +38,10 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_event_cli {
   AcceptanceCommandChoice, BuildAcceptCommand,
   AcceptanceAppended, AcceptanceAlreadyPresent, AcceptanceCommandRefused,
-  roadmap_acceptance_command_over, roadmap_acceptance_line_of,
-  AcceptanceLineParsed, AcceptanceLineRefused, roadmap_event_publication_report_over,
+  roadmap_acceptance_command_over, roadmap_acceptance_line_of, roadmap_event_publication_report_over,
+}
+import gunbc.roadmap.roadmap_operator_acceptance {
+  AcceptanceLineParsed, AcceptanceLineRefused,
 }
 import test.claim.roadmap.roadmap_event_carrier_fixture {
   RoadmapEventCarrierReady, RoadmapEventCarrierRefused, RoadmapEventCarrierScratch,
