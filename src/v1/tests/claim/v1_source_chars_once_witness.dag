@@ -1,6 +1,7 @@
 module v1.tests.claim.v1_source_chars_once_witness
 
-// ROADMAP NODE v1-source-chars-converted-once, v1 realization witness -- STRUCTURAL pivot.
+// ROADMAP NODE v1-source-chars-converted-once, v1 realization witness -- STATIC structural
+// regression guard for the "converted once" pivot.
 //
 // The v1 ingest path converted each source file to character codes TWICE: once inside
 // `tokenize_artifact` (let c = chars(source)) and once inside `build_newline_index`
@@ -10,12 +11,33 @@ module v1.tests.claim.v1_source_chars_once_witness
 // both ingest sites in src/v1/compile.dag (front_end_sources and
 // parse_revision_declarations_with_environment), so each ingested file pays ONE conversion.
 //
-// This module references ONLY filesystem_read + string_contains (no new API), so claim_batch
-// resolves it against BOTH a pre-change tree (where the two ingest sites still convert the
-// raw source: this claim is RED) and the post-change tree (GREEN). It is a structural claim
-// over the source, executed by claim_batch -- NOT a shell grep. The behavioural identity
-// guard (tokens and newline indices identical before/after on the corpus) lives in the
-// sibling module v1.tests.claim.v1_source_chars_once_identity.
+// WHERE THE GUARANTEE ACTUALLY LIVES (read this before crediting a test):
+// The "one conversion per file" property is established by the TYPE CHANGE plus the reviewed
+// call sites, NOT by an executed conversion count. `newline_index_from_char_codes` takes
+// `char_codes: List<Int>` -- already-converted codes -- so the only value a correct ingest site
+// can supply is the tokenizer's single conversion, artifact.source_chars (src/v1/compile.dag:1325
+// and :1490, both `char_codes: artifact.source_chars`). No witness here counts chars() calls at
+// run time; the runtime exposes no such counter.
+//
+// WHY A RUNTIME OUTPUT PROPERTY CANNOT PROVE "ONCE": build_newline_index(file, source) and
+// newline_index_from_char_codes(file, chars(source)) are INTENTIONALLY output-identical (that is
+// the semantics-preservation requirement). No property of FrontendPrepared / NewlineIndex can
+// therefore distinguish "which path ran" -- the distinction is data-flow (where the codes came
+// from), not output. So the only executed behavioural evidence in this PR is the identity guard
+// in the sibling module v1.tests.claim.v1_source_chars_once_identity (real functions, compared
+// outputs = semantic equivalence). This module is a coarse STATIC guard on the call sites, in the
+// same idiom as dag/test/claim/v1_source_audit_witness.dag (src_has/src_lacks): it catches the
+// concrete regressions below, it is not a proof of the precise per-site argument (that is carried
+// by the type change and the diff).
+//
+// It references ONLY filesystem_read + string_contains (no new API), so claim_batch resolves it
+// against BOTH a pre-change tree (RED: two build_newline_index calls present, the
+// newline_index_from_char_codes constructor absent) and the post-change tree (GREEN).
+//
+// Checks are matched at CALL-NAME level (callee name + open paren), never on arguments, so they
+// are robust to renaming the local binding (s -> src) and to reformatting a call across lines --
+// it does not go red on a cosmetic change -- and so a NEW double-converting site under any
+// argument names is caught.
 
 import extdeps.filesystem.filesystem_io
 import std.types { String, Bool }
@@ -26,15 +48,20 @@ fn read_source(path: String) -> String {
   (filesystem_read(path: path)).content
 }
 
-// Over the source of the ingest file, both ingest sites must build the newline index from
-// the tokenizer's converted characters, and the ingest path must NOT convert the raw source
-// for the index. RED on main (from-chars call absent, raw-source conversion present); GREEN
-// after the change.
+// Both directions of the pivot, executed by claim_batch as a single PASS/FAIL:
+//   (1) the ingest file builds its newline index through the pre-converted-characters
+//       constructor `newline_index_from_char_codes(` -- matched on callee + paren so a local
+//       rename or a two-line reformat of the call does NOT turn this red; and
+//   (2) the ingest file makes NO call to the raw-source constructor `build_newline_index(`
+//       anywhere. Matched on the call form (name + paren) so the bare name in the import list
+//       (which has no paren) does not trip it, and so adding a THIRD site such as
+//       `build_newline_index(file: f.path, source: f.content)` -- any argument names or
+//       formatting -- turns this red. RED on main (two such calls); GREEN after the change.
 test fn ingest_newline_index_consumes_tokenizer_chars_once() -> Bool {
   let text = read_source(compile_path)
-  let ingests_from_tokenizer_chars =
-    string_contains(s: text, pattern: "newline_index_from_char_codes(file: s.path, char_codes: artifact.source_chars)")
-  let ingests_never_convert_raw_source =
-    !string_contains(s: text, pattern: "build_newline_index(file: s.path, source: s.content)")
-  ingests_from_tokenizer_chars && ingests_never_convert_raw_source
+  let ingests_use_preconverted_constructor =
+    string_contains(s: text, pattern: "newline_index_from_char_codes(")
+  let no_raw_source_index_construction =
+    !string_contains(s: text, pattern: "build_newline_index(")
+  ingests_use_preconverted_constructor && no_raw_source_index_construction
 }
