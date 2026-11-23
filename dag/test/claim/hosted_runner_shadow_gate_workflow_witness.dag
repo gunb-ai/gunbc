@@ -209,6 +209,7 @@ test fn the_plumbing_pattern_selects_the_witness_it_names() -> Bool {
 // step (which would reproduce run 45013976820's 'could not read Username' push failure) and a count
 // here goes red.
 test fn the_push_credential_reaches_only_the_client_steps() -> Bool {
+  let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "contents: write")
   && contains(haystack: rendered, needle: "persist-credentials: false")
   && occurrences(s: rendered, pattern: "password=$GITHUB_TOKEN; };f") == 3
