@@ -147,7 +147,7 @@ fn launcher_layout_for(runner: String) -> RoadmapEventCarrierRead {
 }
 
 // Same scoped layout but with an INJECTED realpath program, so a control can reach the pre-add
-// identity-unestablishable arm (which is otherwise unreachable because shell.Mktemp.Dir runs the host `mktemp -d`,
+// identity-unestablishable arm (which is not reached by this normal fixture because shell.Mktemp.Dir runs the host `mktemp -d`,
 // honoring $TMPDIR, and a normal scratch always resolves under realpath). Everything else is identical to the real launcher layout, so the
 // real scoped reader and close still run. remote/git/directory match ci_layout.
 fn launcher_layout_for_realpath(runner: String, rp: String) -> RoadmapEventCarrierRead {
@@ -539,7 +539,7 @@ fn launcher_control_real_reader_locked_moved_add_is_caught(repo: String) -> Stri
 
 // CONTROL 8 — the PRE-ADD identity-failure route with a scratch that SURVIVES. shell.Mktemp.Dir runs the host
 // `mktemp -d` (which honors $TMPDIR), and a normal scratch resolves under realpath, so the identity-unestablishable
-// arm is otherwise unreachable; we inject a realpath program (like git_program) that records the scratch path, plants an UNDELETABLE
+// arm is not reached by this normal fixture; we inject a realpath program (like git_program) that records the scratch path, plants an UNDELETABLE
 // subtree (a 0500 subdir holding a file), then exits 1. The scoped reader therefore: mktemps, fails to establish
 // the canonical identity, and enters the pre-add arm — which removes the scratch (rm FAILS on the undeletable
 // child), then OBSERVES presence. The scratch survives, so a correct close reports a directory leak, never a silent
@@ -579,7 +579,10 @@ fn launcher_control_pre_add_identity_failure_reports_surviving_scratch(repo: Str
       // rather than pass over (the scratch is OURS to recover after chmod).
       let restore_ok = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: "/", args: ["-R", "u+rwX", "--", sp]))
       let rm_ok = shell.Remove.RecursiveForce(path: sp as FilePath).success
-      let cleaned = restore_ok && rm_ok && launcher_cleanup_all(runner: c.runner, base: c.base)
+      // bind the base cleanup FIRST (a bare `restore_ok && launcher_cleanup_all(...)` would short-circuit and LEAK the
+      // base when restore fails); the cleanup always runs, and cleaned requires every step.
+      let base_cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
+      let cleaned = restore_ok && rm_ok && base_cleaned
       let ok = step == "identity" && reported && survived && cleaned
       if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " reported:", to_string(value: if reported { 1 } else { 0 }), " survived:", to_string(value: if survived { 1 } else { 0 }), " restore_ok:", to_string(value: if restore_ok { 1 } else { 0 }), " rm_ok:", to_string(value: if rm_ok { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
     }
@@ -627,9 +630,69 @@ fn launcher_control_unreadable_worktrees_is_not_falsely_closed(repo: String) -> 
       // Cleanup must survive the sabotage: restore .git/worktrees readability (bind the result), then the shared
       // cleanup unlocks the locked registration (only possible once the parent is enumerable) and prunes it away.
       let restore_ok = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: "/", args: ["755", "--", git_worktrees]))
-      let cleaned = restore_ok && launcher_cleanup_all(runner: c.runner, base: c.base)
+      // bind the base cleanup FIRST so it always runs (a bare `restore_ok && launcher_cleanup_all(...)` would
+      // short-circuit and leak the base when the restore chmod fails); cleaned requires both.
+      let base_cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
+      let cleaned = restore_ok && base_cleaned
       let ok = step == "snapshot" && not_closed && unobservable && sabotaged && cleaned
       if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " not_closed:", to_string(value: if not_closed { 1 } else { 0 }), " unobservable:", to_string(value: if unobservable { 1 } else { 0 }), " sabotaged(lock+chmod):", to_string(value: if sabotaged { 1 } else { 0 }), " restore_ok:", to_string(value: if restore_ok { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
+    }
+  }
+}
+
+// CONTROL 10 — the relative-gitdir fail-open. `roadmap_event_worktree_admin_dir` must reject a RELATIVE `gitdir:`
+// target, not carry it unresolved: git (>= 2.48) writes `gitdir: ../../.../worktrees/<id>` under
+// worktree.useRelativePaths=true, and if the close carried that relative path it would resolve against the READER's
+// cwd and establish absence at the WRONG path -- minting a false SnapshotClosed while the real registration lives.
+// This container's git is 2.47.3 (predates the setting), so the manager's "older git" branch applies: the hook FORCES
+// the relative form with `realpath --relative-to` (not the flag). The hook runs during `git worktree add`, after
+// registration: it computes the admin dir's path RELATIVE to the worktree, LOCKS the worktree and chmods the main
+// .git/worktrees to 0300 (so the real registration survives but is unlistable), then rewrites <wt>/.git to the
+// relative `gitdir:` and RE-READS it to confirm it does NOT start with `gitdir: /`. It writes the marker only on that
+// full success path (relativity proven by the hook's own re-read), so the control cannot pass on an absolute gitfile.
+// Red on 01499bc4: the old parser accepted the relative target, the presence check folded its parent against the
+// reader cwd, found nothing, and -- with the tree already rm -rf'd and the real admin hidden by 0300 -- minted Closed.
+fn launcher_control_relative_gitdir_is_not_falsely_closed(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-relative")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
+    let marker = under(c.base, "relative-marker")
+    let git_worktrees = under(under(c.runner, ".git"), "worktrees")
+    let hook = under(c.runner, ".git/hooks/post-checkout")
+    let body = join([
+      "#!/bin/sh\n",
+      "wt=\"$(pwd)\"\n",
+      "ad=\"$(git -C \"$wt\" rev-parse --absolute-git-dir 2>/dev/null)\"\n",
+      "[ -n \"$ad\" ] && [ -d \"$ad\" ] || exit 1\n",
+      "rel=\"$(realpath --relative-to=\"$wt\" \"$ad\" 2>/dev/null)\"\n",
+      "case \"$rel\" in \"\"|/*) exit 1 ;; esac\n",
+      "git -C \"$wt\" worktree lock . >/dev/null 2>&1 || exit 1\n",
+      "chmod 300 \"", git_worktrees, "\" 2>/dev/null || exit 1\n",
+      "printf 'gitdir: %s\\n' \"$rel\" > \"$wt/.git\" 2>/dev/null || exit 1\n",
+      "r=\"$(cat \"$wt/.git\" 2>/dev/null)\"\n",
+      "case \"$r\" in \"gitdir: /*\") exit 1 ;; \"gitdir: \"*) printf ok > \"", marker, "\" ;; *) exit 1 ;; esac\n",
+      "exit 1\n"
+    ], "")
+    let planted = Filesystem.Write(path: hook, content: body).success
+      && match carrier_exec_program(program: "chmod", workdir: c.runner, args: ["+x", hook]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    if !planted {
+      let _ = shell.Remove.RecursiveForce(path: c.base)
+      control_result(ok: false, note: "post-checkout hook not planted")
+    } else {
+      let read = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
+      let step = launcher_refusal_step(read: read.result)
+      let not_closed = !launcher_close_is_closed(close: read.close)
+      let unobservable = launcher_close_is_registration_presence_unobservable(close: read.close)
+      // the hook only marks on the full success path, proving the gitfile really was rewritten to a RELATIVE target.
+      let sabotaged = launcher_exec_ok(e: launcher_exec(program: "test", workdir: c.base, args: ["-e", "relative-marker"]))
+      let restore_ok = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: "/", args: ["755", "--", git_worktrees]))
+      // bind the base cleanup FIRST so it always runs; cleaned requires both.
+      let base_cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
+      let cleaned = restore_ok && base_cleaned
+      let ok = step == "snapshot" && not_closed && unobservable && sabotaged && cleaned
+      if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " not_closed:", to_string(value: if not_closed { 1 } else { 0 }), " unobservable:", to_string(value: if unobservable { 1 } else { 0 }), " sabotaged(relative+lock+chmod):", to_string(value: if sabotaged { 1 } else { 0 }), " restore_ok:", to_string(value: if restore_ok { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
     }
   }
 }
@@ -683,6 +746,7 @@ fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
   let seven = launcher_control_real_reader_locked_moved_add_is_caught(repo: repo)
   let eight = launcher_control_pre_add_identity_failure_reports_surviving_scratch(repo: repo)
   let nine = launcher_control_unreadable_worktrees_is_not_falsely_closed(repo: repo)
-  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" && seven == "PASS" && eight == "PASS" && nine == "PASS" { ExitSuccess }
-  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, " 7:", seven, " 8:", eight, " 9:", nine, "\n(all nine must PASS)\n"], "")) }
+  let ten = launcher_control_relative_gitdir_is_not_falsely_closed(repo: repo)
+  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" && seven == "PASS" && eight == "PASS" && nine == "PASS" && ten == "PASS" { ExitSuccess }
+  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, " 7:", seven, " 8:", eight, " 9:", nine, " 10:", ten, "\n(all ten must PASS)\n"], "")) }
 }

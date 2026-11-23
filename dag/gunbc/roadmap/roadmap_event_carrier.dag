@@ -428,13 +428,15 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
 // collapses into closed. (Whether a given consumer then stops is its own decision: the read-after-close
 // folds return the read regardless of the close, exactly as they already do for a command-failed close;
 // this variant changes what the standing SAYS, not whether those folds gate on it.)
-// THE REGISTRATION SIDE HAS THE SAME THREE OUTCOMES AS THE DIRECTORY SIDE. A surviving registration
-// (`CloseVerifyRegistrationPersists`) is git ANSWERING that the worktree is still listed; but if `git
-// worktree list` itself did not answer (nonzero exit -- a `.git` lock, or the very ownership refusal this
-// family is about), that is NOT a surviving registration and must not be reported as one. The listing
-// failure is `CloseVerifyRegistrationPresenceUnobservable`, carrying the listing's exit and stderr, so a
-// consumer never confuses "git said it could not remove it" with "git never told us." The Bool-merging of
-// these two was the earlier defect.
+// THE REGISTRATION SIDE HAS THE SAME THREE OUTCOMES AS THE DIRECTORY SIDE. Absence is ESTABLISHED from the worktree's
+// ADMIN DIRECTORY -- bound to the add from its `gitdir:` gitfile, a concrete path -- NOT from `worktree list`, which
+// can exit 0 with an INCOMPLETE listing (omitting a registration under an unreadable .git/worktrees). A surviving
+// registration (`CloseVerifyRegistrationPersists`) means the admin directory is still present OR the listing still
+// names it; both are the host ANSWERING that the worktree lives. But if the listing itself did not answer (nonzero
+// exit -- a `.git` lock, or the very ownership refusal this family is about), that is NOT a surviving registration and
+// must not be reported as one: it is `CloseVerifyRegistrationPresenceUnobservable`, carrying the listing's exit and
+// stderr, so a consumer never confuses "git said it could not remove it" with "git never told us." The Bool-merging of
+// these two was the earlier defect; trusting the listing ALONE to establish absence was the second.
 type CarrierCloseVerification
   = CloseVerifyRegistrationPersists
   | CloseVerifyRegistrationPresenceUnobservable { reason: String }
@@ -476,7 +478,7 @@ fn carrier_snapshot_close_failure(close: CarrierSnapshotClose) -> String? {
 
 fn carrier_close_verification_reason(verification: CarrierCloseVerification) -> String {
   match verification {
-    CloseVerifyRegistrationPersists => "the worktree registration is still listed by `worktree list --porcelain -z` after the removals"
+    CloseVerifyRegistrationPersists => "the worktree registration is still present after the removals (the admin directory remains, or the worktree list still names it)"
     CloseVerifyRegistrationPresenceUnobservable { reason } => join(["the worktree registration's absence is not established: ", reason], "")
     CloseVerifyDirectoryPersists => "the scratch directory is still present after the removals"
     CloseVerifyDirectoryPresenceUnobservable { reason } => join(["the scratch directory's absence is not established: ", reason], "")
@@ -1212,12 +1214,18 @@ fn roadmap_event_scratch_dirs_close(canonical_path: FilePath, original: FilePath
 }
 
 // The per-worktree ADMIN directory, the handle the close verifies registration absence against. Read at the ADD from
-// the worktree's `.git` gitfile, whose content git writes as `gitdir: <repo>/.git/worktrees/<id>\n`. This is a
-// concrete path BOUND TO THIS ADD, so unlike `worktree list` (which can exit 0 with an INCOMPLETE listing when
-// .git/worktrees is unreadable and silently omit a live registration) its absence can be ESTABLISHED. A missing or
-// unreadable gitfile, or one whose content is not a `gitdir: .../.git/worktrees/<id>` line, is UNESTABLISHABLE -- the
-// close then cannot establish registration absence and must report unobservable, never Closed. The pathname bytes are
-// kept: strip only the framing newline, never trim.
+// the worktree's `.git` gitfile, whose content git writes as `gitdir: <repo>/.git/worktrees/<id>\n` (an ABSOLUTE path).
+// This is a concrete path BOUND TO THIS ADD, so unlike `worktree list` (which can exit 0 with an INCOMPLETE listing
+// when .git/worktrees is unreadable and silently omit a live registration) its absence can be ESTABLISHED. A missing
+// or unreadable gitfile, or one whose content is not a `gitdir: .../.git/worktrees/<id>` line, is UNESTABLISHABLE --
+// the close then cannot establish registration absence and must report unobservable, never Closed. The pathname bytes
+// are kept: strip only the framing newline, never trim.
+// A RELATIVE gitdir target is REJECTED as unestablishable, NOT resolved. git writes a relative `gitdir:` line ONLY
+// when `worktree.useRelativePaths=true` (introduced in git 2.48). srv1 runs git 2.43.0, which predates that setting,
+// and ghrunner sets it at no level (global/system/repo), so no supported srv1 path emits a relative target. Resolving
+// one would add a path-joining authority we do not want, and resolving it against the reader's cwd would establish
+// absence at the WRONG path and mint a false Closed while the real registration lives. Rejecting is fail-closed: it
+// yields registration unobservability, never Closed.
 fn roadmap_event_worktree_admin_dir(scoped: RoadmapEventCarrierScopedLayout, canonical: String) -> CarrierAdminDir {
   let gitfile = join([canonical, "/.git"], "") as FilePath
   let raw = Filesystem.Read(path: gitfile as String)
@@ -1230,7 +1238,11 @@ fn roadmap_event_worktree_admin_dir(scoped: RoadmapEventCarrierScopedLayout, can
         AdminDirUnestablishable { reason: join(["the worktree gitfile ", gitfile as String, " is not a `gitdir: <admin>` gitfile"], "") }
       } else {
         let admin = substring(s: line, start: 8, end: string_length(s: line))
-        if admin == "" || !string_contains(s: admin, pattern: "/.git/worktrees/") {
+        if admin == "" {
+          AdminDirUnestablishable { reason: join(["the gitdir path in ", gitfile as String, " is empty"], "") }
+        } else if !starts_with(s: admin, prefix: "/") {
+          AdminDirUnestablishable { reason: join(["the gitdir path ", admin, " is relative (git writes this form only under worktree.useRelativePaths=true, git >= 2.48; srv1 git is 2.43.0 and ghrunner sets it nowhere). Rejecting rather than resolving it against the reader cwd, which would establish absence at the wrong path and mint a false Closed."], "") }
+        } else if !string_contains(s: admin, pattern: "/.git/worktrees/") {
           AdminDirUnestablishable { reason: join(["the gitdir path ", admin, " is not a worktree admin directory under .git/worktrees/"], "") }
         } else {
           AdminDirEstablished { dir: admin as FilePath }
