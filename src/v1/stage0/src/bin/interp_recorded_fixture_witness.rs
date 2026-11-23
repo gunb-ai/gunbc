@@ -230,20 +230,22 @@ fn run_gunbc_claim(
             s.to_string()
         }
     };
+    // Emit the caller's roots in the caller's order, translated only absolute -> repo-relative,
+    // with no additions. This reproduces main's claim_batch set exactly: the workspace (`.`), then
+    // `dag`, then the scratch store LAST on the copy checks. Root[0] is primary-precedence, so `.`
+    // owns the live tree's module paths and their frontier/capability rows; forcing the store to
+    // root[0] (or dropping `.`) makes a copy's Filesystem.Write/Read resolve against a root that
+    // declares no method surface. `.` is the workspace, so it already covers `src/v2`.
     let mut all: Vec<String> = vec!["test".to_string()];
     let mut seen: Vec<String> = Vec::new();
     for r in source_roots {
         let rr = rel(r);
-        if rr != "." && rr != "dag" && rr != "src/v2" && !seen.contains(&rr) {
+        if !seen.contains(&rr) {
             all.push("--source-root".to_string());
             all.push(rr.clone());
             seen.push(rr);
         }
     }
-    all.push("--source-root".to_string());
-    all.push("dag".to_string());
-    all.push("--source-root".to_string());
-    all.push("src/v2".to_string());
     all.push(claim_label(&rel(entry), function)?);
     match mode {
         TestMode::Hermetic { store: Some(s) } => {
