@@ -78,6 +78,9 @@ import gunbc.compute.attempt_lifecycle {
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
   compute_pre_launch_ceiling_seconds,
 }
+import gunbc.compute.remote_build { remote_build_serving_instance }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
 }
@@ -4143,6 +4146,13 @@ fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
     DashboardInstanceRootUnknown { repo_root: r } =>
       CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: no dashboard instance is rooted at ", r, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the host's dashboard instance could not be resolved" } }
     DashboardInstanceResolved { instance } =>
+recover_catalog_response(instance: instance)
+  }
+}
+
+// THE INSTANCE-SCOPED BODY OF THE CENSUS DOOR. The roster door above and the serving door below differ
+// ONLY in which instance the model is asked about; the answer is computed here, once.
+fn recover_catalog_response(instance: HostDashboardInstance) -> CliWireResponse {
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
           CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the seat census could not be established" } }
@@ -4152,7 +4162,6 @@ fn compute_recover_catalog_cli(repo_root: String) -> CliWireResponse {
             exit: ExitSuccess
           }
       }
-  }
 }
 
 // THE DOOR A WORKER OR AN OPERATOR ACTUALLY OPENS. Three exits and they are the three the rest of
@@ -4162,6 +4171,12 @@ fn compute_recover_cli(repo_root: String, reference: String, receipt_path: Strin
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["compute-recover: no dashboard instance is rooted at ", r], "") }
     DashboardInstanceResolved { instance } =>
+recover_attempt_response(instance: instance, reference: reference, receipt_path: receipt_path)
+  }
+}
+
+// THE INSTANCE-SCOPED BODY OF THE WRITE DOOR, shared by the roster door and the serving door.
+fn recover_attempt_response(instance: HostDashboardInstance, reference: String, receipt_path: String) -> ProcessExit {
       if trim(s: reference) == "" {
         ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "compute-recover: a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)" }
       } else {
@@ -4169,7 +4184,6 @@ fn compute_recover_cli(repo_root: String, reference: String, receipt_path: Strin
           outcome: compute_recover_attempt(instance: instance, reference: trim(s: reference) as NonEmptyStr),
           receipt_path: receipt_path)
       }
-  }
 }
 
 // THE RECOVERED CASE WRITES ITS RECEIPT TOO, and that is not symmetry for its own sake: exit 0
@@ -4190,6 +4204,55 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
       RecoveryRefused { detail: _ } => ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: wire }
     }
   }
+}
+
+// THE SERVING DOORS. THE SAME THREE ANSWERS, ASKED OF THE ONE SERVING INSTANCE OF A NAMED HOST.
+// The remote-build serving instance is NOT a roster row and cannot be one: srv1 and build01 share the
+// same account-home path strings, so registering both would break
+// dashboard_declared_repo_roots_are_unique, and registering only srv1 would make the census answer
+// depend on which hosts happen to be registered. The instance is the PARAMETRIC model object
+// gunbc.compute.remote_build remote_build_serving_instance(host) — the same object the serving setup
+// and the seat charge already use, which is what puts the seat census in the very compute root the
+// serve route charged (/home/<account>/.local/share/... under the serving account). These entries are
+// THIN and decide NOTHING: the host must be one remote_build_serving_hosts() admits, the instance is
+// minted by the model, and every verdict comes from the shared bodies the roster doors use. Proven
+// necessary by the srv1 apply run 45102946243, which refused with 'the host's dashboard instance could
+// not be resolved' because the roster door had no row to find.
+fn compute_recover_catalog_serving_cli(host: String) -> CliWireResponse {
+  if !remote_build_serving_host_admitted(host: host) {
+    CliWirePrintable {
+      bytes: join([recover_catalog_words().line_prefix, " unknown: ", host, " is not a remote-build serving host\n"], ""),
+      exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the host is not one the remote-build program serves" }
+    }
+  } else {
+    recover_catalog_response(instance: remote_build_serving_instance(host: host as HostIdentity))
+  }
+}
+
+fn compute_recover_serving_cli(host: String, reference: String, receipt_path: String) -> ProcessExit {
+  if !remote_build_serving_host_admitted(host: host) {
+    ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["compute-recover: ", host, " is not a remote-build serving host"], "") }
+  } else {
+    recover_attempt_response(instance: remote_build_serving_instance(host: host as HostIdentity), reference: reference, receipt_path: receipt_path)
+  }
+}
+
+fn compute_recover_readback_serving_cli(host: String, reference: String) -> CliWireResponse {
+  if !remote_build_serving_host_admitted(host: host) {
+    CliWirePrintable {
+      bytes: recover_readback_unknown_line(detail: join([host, " is not a remote-build serving host"], "")),
+      exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the host is not one the remote-build program serves" }
+    }
+  } else {
+    recover_readback_response(instance: remote_build_serving_instance(host: host as HostIdentity), reference: reference)
+  }
+}
+
+// WHICH HOSTS THE REMOTE-BUILD PROGRAM SERVES, asked once. The three serving doors share this one
+// admission; the roster itself (gunbc.compute.remote_build_hosts remote_build_serving_hosts) stays
+// the only decider of the answer.
+fn remote_build_serving_host_admitted(host: String) -> Bool {
+  any(remote_build_serving_hosts(), h => h as String == host)
 }
 
 // THE ONE DECLARED TABLE OF THE RECOVERY DOORS' EXIT CODES. The recovery doors — the recovery door
@@ -4475,6 +4538,12 @@ fn compute_recover_readback_cli(repo_root: String, reference: String) -> CliWire
     DashboardInstanceRootUnknown { repo_root: r } =>
       CliWirePrintable { bytes: recover_readback_unknown_line(detail: join(["no dashboard instance is rooted at ", r], "")), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the host's dashboard instance could not be resolved" } }
     DashboardInstanceResolved { instance } =>
+recover_readback_response(instance: instance, reference: reference)
+  }
+}
+
+// THE INSTANCE-SCOPED BODY OF THE READ-BACK DOOR, shared by the roster door and the serving door.
+fn recover_readback_response(instance: HostDashboardInstance, reference: String) -> CliWireResponse {
       if trim(s: reference) == "" {
         CliWirePrintable { bytes: recover_readback_unknown_line(detail: "a reservation reference is required (it is the attempt slot's key: <identity>#<ordinal>)"), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the reference is required" } }
       } else {
@@ -4490,7 +4559,6 @@ fn compute_recover_readback_cli(repo_root: String, reference: String) -> CliWire
             }
         }
       }
-  }
 }
 
 // THE RECEIPT STAYS THE DOCUMENT, AND THE HOST-RECORD FACT GETS ITS OWN FILE BESIDE IT.
