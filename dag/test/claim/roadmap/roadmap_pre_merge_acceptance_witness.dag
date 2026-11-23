@@ -25,6 +25,7 @@ module test.claim.roadmap.roadmap_pre_merge_acceptance_witness
 // and reading the event file (msg_bb6f47af).
 
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, roadmap_acceptance_line_acceptance_receipt }
 import gunbc.principal_projection { principal_ref_parse_label, PrincipalRef }
 import gunbc.roadmap.roadmap_event_carrier {
@@ -121,9 +122,18 @@ fn acceptance_choice() -> Optional<AcceptanceCommandChoice> {
 // AN ACCEPTANCE, RECORDED BEFORE THE MERGE, ON A LEDGER THAT CAN SEE NO MERGE. The whole of the operator's
 // ruling, run: append an acceptance that names a pull request and a head, and read the standing back off
 // the bytes the push carried.
-test fn an_acceptance_recorded_on_a_head_is_accepted_before_any_merge() -> Bool {
+// WET ENTRY: this witness performs its assertions through the host, so the host must be the wet
+// one. `--claim-run` executes hermetically and the hermetic transport has no arm for the scratch
+// directory the ledger needs, so these rows are run the way every wet witness is run — as a
+// ProcessExit entry, `gunbc run --entry <this module> --function pre_merge_acceptance_wet`, with
+// no --dry-run and no --claim-run. rc 0 is the execution; rc 1 refuses in a sentence.
+fn pre_merge_acceptance_wet() -> ProcessExit {
   let run = ledger_owned(fn_with: fn(layout, scratch) { pre_merge_witness(layout: layout) })
-  run.result && run.swept
+  if run.result && run.swept {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the acceptance earned on a pull-request head did not reach the scratch ledger as the law requires")
+  }
 }
 
 fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
@@ -201,9 +211,14 @@ fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
 // APPEND-ONLY, NO REVOCATION: the same acceptance offered twice answers the FIRST recording and writes
 // nothing second. This is what makes "record before the merge" safe — the lane can retry as often as it
 // likes and the ledger still holds one acceptance for that head.
-test fn the_same_acceptance_offered_twice_answers_the_first_recording() -> Bool {
+// WET ENTRY, same rule as above: the append-only replay is proven by running it.
+fn pre_merge_replay_wet() -> ProcessExit {
   let run = ledger_owned(fn_with: fn(layout, scratch) { replay_witness(layout: layout) })
-  run.result && run.swept
+  if run.result && run.swept {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "the same acceptance offered twice did not answer the first recording, or wrote a second event")
+  }
 }
 
 fn replay_witness(layout: RoadmapEventCarrierLayout) -> Bool {
