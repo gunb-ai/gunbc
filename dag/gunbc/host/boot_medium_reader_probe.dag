@@ -257,11 +257,13 @@ fn reader_probe_forced_answer(a: HostLeg, link: NonEmptyStr) -> ReaderProbeForce
 // forced command is not holding, and a comparison that looked only at stdout would pass it.
 fn reader_probe_forced_command_masks(forced: HostLeg, other: HostLeg) -> Bool {
   match forced {
-    LegNotDispatched { reason: rf } =>
-      match other {
-        LegNotDispatched { reason: ro } => ro == rf
-        LegAnswered { exit_code: _, stdout: _, stderr: _ } => false
-      }
+    LegNotDispatched { reason: _ } =>
+      // TWO COMMANDS THAT NEVER RAN ARE NEVER MASKING, whatever their reasons. A never-dispatched forced leg
+      // has no answer for anything to mask; two never-dispatched legs would only report the equality of two
+      // absences -- masking evidence manufactured from runs that never happened. The reasons are deliberately
+      // NOT compared here: two commands that both failed to dispatch for the SAME reason must still not be
+      // read as the second masking the first.
+      false
     LegAnswered { exit_code: fc, stdout: fo, stderr: fe } =>
       match other {
         LegNotDispatched { reason: _ } => false
@@ -524,26 +526,52 @@ fn reader_probe_after_masking(
   login: NonEmptyStr,
   accessor: ReaderProbeAccessorReport,
 ) -> ReaderProbeReceipt {
-  if reader_probe_forced_command_masks(forced: forced, other: second) == false {
-    ReaderProbeRefused { stage: StageRed, cause: reader_probe_red_cause(forced: forced, other: second) as NonEmptyStr }
-  } else {
-    // The login is admitted on the evidence that a command RAN under this key: an authentication refusal was
-    // already classified out of the forced leg, so reaching here means the server accepted the key and ran
-    // the forced command. It is deliberately not inferred from a zero exit code, which is also what a forced
-    // command that failed to read its file returns -- that would report a fact 1 of NO as a fact 1 of YES.
-    let fact = reader_probe_locked_account_fact(shadow: shadow, use_pam: use_pam, login_admitted: true, login: login)
-    match fact {
-      LockedAccountUnreadable { cause: c } => ReaderProbeRefused { stage: StageFacts, cause: c }
-      LockedAccountRead { shadow_locked: _, use_pam: _, login_admitted: _ } =>
-        ReaderProbeObserved {
-          fingerprint: fingerprint,
-          forced: forced_record,
-          second_command_masked: true,
-          locked_account: fact,
-          export: reader_probe_export_reading(admin: admin_readable, forced: reader_probe_forced_answer(a: forced, link: boot_medium_served_link_path())),
-          accessor: accessor,
-        }
+  // THE SECOND LEG IS COMPARABLE ONLY IF IT RAN. The two-command masking test is equality on an ANSWER; a
+  // second command the host never handed back has no answer to compare, so its absence is not a disagreement.
+  // Detect the non-dispatch BEFORE comparing and refuse at StageNotDispatched with the second leg's own cause
+  // -- never as StageRed "answered differently", which would report a finding about a run that never happened.
+  // exit/stdout/stderr are compared (below) only once BOTH legs have answered.
+  match second {
+    LegNotDispatched { reason: rs } => ReaderProbeRefused {
+      stage: StageNotDispatched,
+      cause: join(["the second command was never dispatched, so the two-command masking test cannot compare it against the forced answer: ", rs], "") as NonEmptyStr,
     }
+    LegAnswered { exit_code: _, stdout: _, stderr: _ } =>
+      if reader_probe_forced_command_masks(forced: forced, other: second) == false {
+        ReaderProbeRefused { stage: StageRed, cause: reader_probe_red_cause(forced: forced, other: second) as NonEmptyStr }
+      } else {
+        // THE ADMINISTRATOR-READABILITY LEG MUST HAVE BEEN DISPATCHED BEFORE THE OBSERVATION IS CLAIMED. The
+        // holds claim rests on the two-command masking test, but the administrator's reading of the served image
+        // is open fact 2; a never-dispatched admin leg is not a reading of "not-readable", it is the absence of a
+        // reading. Folding it into export.readable=false and still returning Observed would let the probe EXIT
+        // SUCCESS (holds=true on the masking test) with the readability command never having run. Refuse at
+        // StageNotDispatched with its cause -- the same rule as the second leg, applied to the open fact.
+        match admin_readable {
+          LegNotDispatched { reason: ra } => ReaderProbeRefused {
+            stage: StageNotDispatched,
+            cause: join(["the administrator-readability command was never dispatched, so the reader's view of the served image was never observed: ", ra], "") as NonEmptyStr,
+          }
+          LegAnswered { exit_code: _, stdout: _, stderr: _ } => {
+            // The login is admitted on the evidence that a command RAN under this key: an authentication refusal was
+            // already classified out of the forced leg, so reaching here means the server accepted the key and ran
+            // the forced command. It is deliberately not inferred from a zero exit code, which is also what a forced
+            // command that failed to read its file returns -- that would report a fact 1 of NO as a fact 1 of YES.
+            let fact = reader_probe_locked_account_fact(shadow: shadow, use_pam: use_pam, login_admitted: true, login: login)
+            match fact {
+              LockedAccountUnreadable { cause: c } => ReaderProbeRefused { stage: StageFacts, cause: c }
+              LockedAccountRead { shadow_locked: _, use_pam: _, login_admitted: _ } =>
+                ReaderProbeObserved {
+                  fingerprint: fingerprint,
+                  forced: forced_record,
+                  second_command_masked: true,
+                  locked_account: fact,
+                  export: reader_probe_export_reading(admin: admin_readable, forced: reader_probe_forced_answer(a: forced, link: boot_medium_served_link_path())),
+                  accessor: accessor,
+                }
+            }
+          }
+        }
+      }
   }
 }
 
