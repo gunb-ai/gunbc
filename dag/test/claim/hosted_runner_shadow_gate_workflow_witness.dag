@@ -200,7 +200,7 @@ test fn the_plumbing_pattern_selects_the_witness_it_names() -> Bool {
   }
 }
 
-#gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
+// #gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
 // THE PUSH CREDENTIAL IS SCOPED AS THAT RULING HOLDS: the job grants
 // contents: write for the protocol's ONE push (refs/remote-build/<commit>.<millis>, bounded by
 // gunbc.compute.remote_build_client), but the token rides ONLY the three remote-build client steps
