@@ -185,11 +185,11 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "heal-terminal-emission-elision", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   // gunbc.plans.demand_engine_program, replanned as an intention 2026-11-23. Layer is edge depth.
   serves(node: "compiler-identity-from-sources", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 0),
-  serves(node: "authored-dependency-sidecars-deleted", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 0),
+  serves(node: "consumers-on-canonical-dependencies", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 0),
   serves(node: "native-artifact-reuse-through-request-key", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 1),
   serves(node: "schedulers-on-the-engine", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 1),
   serves(node: "reuse-decided-by-measurement", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 2),
-  serves(node: "one-file-change-recomputes-only-dependents", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 3),
+  serves(node: "a-change-pays-only-for-what-it-invalidates", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 3),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -224,7 +224,7 @@ data intention_terminals: List<IntentionTerminals> = [
   // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
   // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
   // demand_engine_program: the one-file bar is the intention's first done-when and the sink of its work items.
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"), terminals: [nid(s: "one-file-change-recomputes-only-dependents")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"), terminals: [nid(s: "a-change-pays-only-for-what-it-invalidates")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },
 ]
 

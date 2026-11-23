@@ -2391,17 +2391,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     roadmap_node(
       identity: "rn_PCDF3HEATT84831KGDB0HV21B6",
-      id: "authored-dependency-sidecars-deleted",
+      id: "consumers-on-canonical-dependencies",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
-        headline: "The remaining hand-written dependency sidecars are deleted and their consumers read derived dependencies",
-        boundary: "The remainder of the old M2 and M2V: program_run_dependencies is gone; activation_dependency (still imported by the workflow runtime), the fold_lowering sidecar and the parallelism classifier's structural reading remain. Each consumer moves to the derived dependency (section 2.4, D13) and the sidecar is deleted in the same change.",
-        displaced_cost: "Every sidecar is a second statement of dependencies that can disagree with the derived one.",
-        first_slice: "Move the workflow runtime off activation_dependency onto derived dependencies and delete it.",
-        red_control: "(1) The moved consumer's results are unchanged on its population. (2) Re-adding the sidecar import refuses. (3) A dependency the sidecar declared but the program does not have is no longer ordered.",
+        headline: "The remaining consumers read the canonical derived dependencies and activation rules, keep their effect and refusal behaviour, and the authority that transition supersedes is removed",
+        boundary: "The remainder of the old M2 and M2V, restated 2026-11-23 after review. program_run_dependencies is gone. activation_dependency is NOT a sidecar: it already derives activation from branch and match structure, keeps activation distinct from prerequisite edges so an untaken arm runs no effects, and requires consumers to respect incomplete derivation; it is a canonical authority to consume, not a target to delete. fold_lowering is semantic lowering of a fold into its loop, domain, accumulator and bound; it is absorbed only by a semantic replacement, never deleted by name. The parallelism classifier already maps containment and binding to StructuralNotACoupling. The work is to find the consumers that still decide dependencies or activation on their own, move each onto the canonical derivation with its effect ordering (D16) and incomplete-derivation refusal preserved, and remove only what that move supersedes, named in the handback.",
+        displaced_cost: "A consumer that decides dependencies or activation on its own can disagree with the derivation, run an untaken arm's effects, or read an incomplete derivation as independence.",
+        first_slice: "List the consumers that decide dependencies or activation outside the canonical derivation, with the rule each applies, and move the first one.",
+        red_control: "(1) The moved consumer's results are unchanged on its population. (2) An untaken arm's effect does not run. (3) An incomplete derivation refuses rather than being read as independence.",
         out_of_scope: "The schedulers themselves (schedulers-on-the-engine).",
-        handback: "Each deleted sidecar with its moved consumer and controls."
+        handback: "Each moved consumer with its controls, and each superseded authority removed or named with the consumer that still holds it."
       ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
       parent: in_project(project: "demand-engine", contribution: "Dependencies have one authority before scheduling moves onto it."),
     ),
@@ -2439,17 +2439,17 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     roadmap_node(
       identity: "rn_4BKMJHFC6Y5SGZ7JQDXF8Y743G",
-      id: "one-file-change-recomputes-only-dependents",
+      id: "a-change-pays-only-for-what-it-invalidates",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
-        headline: "A one-file change recomputes only its dependents on the native compiler route",
-        boundary: "The old M6 and the intention's first done-when: each compiler stage is keyed and stored per judgment, so an edit invalidates only what depends on it.",
+        headline: "A change pays only for what it invalidates: results stay correct, invalidation is sound, and a result is reused wherever its validity is established",
+        boundary: "The old M6 and the intention's first done-when, restated 2026-11-23 after review: not recompute every dependent, which is too strong in the wrong direction, since a dependent whose inputs recompute to the same result need not run again (early cutoff, as the rustc incremental-compilation design describes). Each compiler stage is keyed and stored per judgment.",
         displaced_cost: "Every edit pays for work its change cannot affect.",
         first_slice: "Decompose when its prerequisites are accepted.",
-        red_control: "Editing one leaf module recomputes exactly its recorded dependents; editing an unrelated module recomputes none of them.",
+        red_control: "On a named one-file change: (1) the results equal a cold build's; (2) a stale stored result is never served; (3) a dependent whose recomputed input is unchanged is reused rather than re-run, read from the engine's own records.",
         out_of_scope: "Lawful algebraic decomposition (the old M7), until a consumer needs it.",
-        handback: "The recompute population read from the engine's records for a planted one-file change."
+        handback: "The recompute and reuse populations for a named change, read from the engine's records, beside a cold build's results."
       ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
       parent: in_project(project: "demand-engine", contribution: "The intention's terminal."),
     ),
@@ -6770,11 +6770,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // demand_engine_program replanned as an intention (2026-11-23): identity before reuse; sidecars before
     // schedulers; the terminal waits on schedulers, measured reuse and heal's planning-only bar.
     edge(child: "native-artifact-reuse-through-request-key", parent: "compiler-identity-from-sources"),
-    edge(child: "schedulers-on-the-engine", parent: "authored-dependency-sidecars-deleted"),
+    edge(child: "schedulers-on-the-engine", parent: "consumers-on-canonical-dependencies"),
     edge(child: "reuse-decided-by-measurement", parent: "native-artifact-reuse-through-request-key"),
-    edge(child: "one-file-change-recomputes-only-dependents", parent: "schedulers-on-the-engine"),
-    edge(child: "one-file-change-recomputes-only-dependents", parent: "reuse-decided-by-measurement"),
-    edge(child: "one-file-change-recomputes-only-dependents", parent: "heal-planning-only-in-a-minute"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "schedulers-on-the-engine"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "reuse-decided-by-measurement"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "heal-planning-only-in-a-minute"),
     // machine-shapes-join-the-cluster (2026-11-23): the cluster waits on the backend choice; each shape joins the
     // cluster; the cassette shape also waits on its printed tray.
     edge(child: "cluster-bringup-on-the-selected-backend", parent: "work-exec-1-placement-backend-selection"),
