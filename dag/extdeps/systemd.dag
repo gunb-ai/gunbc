@@ -530,6 +530,44 @@ fn parse_systemd_memory_limit_show(raw: String) -> SystemdCgroupMemoryLimit {
   } } }
 }
 
+// THE TWO KINDS OF "NO", TOLD APART WHERE THE TEXT IS. `SystemdCgroupMemoryLimit` answers both "the property
+// printed nothing" and "it printed something parse_int cannot read" with `MemoryLimitAbsent`, so a caller
+// holding only that value cannot say which the machine gave -- and its cpu-quota sibling in this very file
+// does keep them apart (`SystemdCgroupCpuQuotaPerSec` has `CpuQuotaAbsent` AND `CpuQuotaUndecodable { raw }`).
+// That asymmetry is the defect; the answer is `CpuQuotaUndecodable`-shaped on the memory sum too.
+//
+// This function is NOT the fix and does not pretend to be: it is the one place that reads the text, next to
+// the parser that owns what the text means, so no consumer has to re-read it. `gunbc.design_argument::
+// single_authority` -- "a second place that independently decides it is a fork" -- is why the split lives here
+// rather than in whichever module is holding the value, and why this one derives its answer from
+// `parse_systemd_memory_limit_show` instead of re-implementing the decode.
+//
+// STILL OWED, AND TRACKED: an undecodable arm on `SystemdCgroupMemoryLimit` itself, which would make the two
+// facts distinguishable to the ten modules that match on the sum (`compile_pool_observe`, `runner_unit_live_read`,
+// `fleet_show_effective_read`, `remote_build_serving_converge`, `host_memory_envelope_observe`,
+// `roadmap_belt_actuate` and their witnesses), each of which must decide for itself what unreadable output means
+// for ITS refusal. It is owed because that ripple reaches files with other lanes' PRs in flight and each
+// consumer's decision is not this lane's to make for it; it is tracked, not vibes, by
+// `gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent`, whose receipt names the arm, the
+// ten matchers, and this function as the standing workaround until the arm lands.
+type SystemdCgroupPropertyAnswer
+  = PropertyLimit { bytes: ByteSize }
+  | PropertyUnbounded
+  | PropertyPrintedNothing
+  | PropertyUndecodable { raw: String }
+
+fn parse_systemd_cgroup_property_shown(raw: String) -> SystemdCgroupPropertyAnswer {
+  if raw == "" {
+    PropertyPrintedNothing
+  } else {
+    match parse_systemd_memory_limit_show(raw: raw) {
+      MemoryLimitBytes { bytes: b } => PropertyLimit { bytes: b }
+      MemoryLimitUnbounded => PropertyUnbounded
+      MemoryLimitAbsent => PropertyUndecodable { raw: raw }
+    }
+  }
+}
+
 fn systemd_memory_limit_wire_label(lim: SystemdCgroupMemoryLimit) -> String {
   match lim {
     MemoryLimitUnbounded => "infinity"

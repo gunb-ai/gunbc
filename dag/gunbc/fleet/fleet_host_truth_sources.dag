@@ -37,10 +37,11 @@ import std.measure { ByteSize }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import extdeps.systemd {
-  SystemdCgroupMemoryLimit,
-  MemoryLimitBytes,
-  MemoryLimitUnbounded,
-  MemoryLimitAbsent,
+  SystemdCgroupPropertyAnswer,
+  PropertyLimit,
+  PropertyUnbounded,
+  PropertyPrintedNothing,
+  PropertyUndecodable,
 }
 import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for }
 import gunbc.fleet.fleet_host_truth_read {
@@ -72,84 +73,99 @@ fn host_truth_source_receipt(carrier: String) -> String {
   "gunbc.fleet.fleet_host_truth_sources <- " + carrier
 }
 
-// ONE PROPERTY, THREE ANSWERS, TWO OF THEM "NO" -- AND THE CALLER CANNOT TELL THEM APART ALONE.
-// parse_systemd_memory_limit_show (extdeps/systemd.dag, where the boundary sits) answers both "the property
-// printed nothing" and "the property printed something parse_int cannot read" with the SAME arm,
-// MemoryLimitAbsent -- which is why dag/gunbc/compile_pool_observe.dag:83 labels that arm "empty or
-// unparseable". A caller holding only the parsed value therefore cannot say WHICH of the two the machine
-// gave, and a refusal that claimed "printed no value" over output like "8G" would be a fabricated located
-// cause (gunbc.design_argument::epistemic_humility: "Do not assert as deduced what is only inferred";
+// ONE PROPERTY, FOUR ANSWERS, AND NOT ONE OF THEM DECIDED HERE. systemd's cgroup property can print a
+// number, print "infinity", print nothing, or print something nobody can read. The first two are values; the
+// last two are both "no" and they are not the same fact -- a leaf that set nothing inherits its limit from
+// the parent slice, while unreadable output says nothing at all about what the limit is. Saying "printed no
+// value" about a machine that printed "8G" would be a fabricated located cause even inside a refusal
+// (gunbc.design_argument::epistemic_humility: "Do not assert as deduced what is only inferred";
 // gunbc.design_argument::fail_closed: "a wrong answer is a loud, typed, located error, never a plausible
-// fabrication"). So these reads take the shown text ALONGSIDE the parsed limit and split the two causes
-// themselves, into the arm that already fits: HostTruthOutputUnparseable { raw } for output that could not
-// be read, HostTruthNoValueAtThatPath for output that was genuinely absent.
+// fabrication").
 //
-// THE BOUNDARY IS THE PARSER, NOT THIS MODULE, and this module does not move it. The honest change there is
-// an undecodable arm on SystemdCgroupMemoryLimit carrying the raw text; that is a cross-carrier edit across
-// the ten modules that match on the sum (compile_pool_observe, runner_unit_live_read, fleet_show_effective_read,
-// remote_build_serving_converge, host_memory_envelope_observe, roadmap_belt_actuate, and the witnesses), so it
-// is a declared frontier with its own trigger -- whoever needs the distinction for a decision, not for a
-// message -- rather than a change made quietly from the serving lane.
-fn host_truth_cgroup_absent_cause(axis_path: String, shown: String) -> HostTruthReadCause {
-  if shown == "" {
-    HostTruthNoValueAtThatPath { path: axis_path + ": systemctl show printed no value, so the limit is inherited from a parent slice" }
-  } else {
-    HostTruthOutputUnparseable { raw: shown }
-  }
+// WHICH OF THE FOUR IT WAS is decided exactly once, in the module that owns systemd's output:
+// extdeps.systemd::parse_systemd_cgroup_property_shown, beside the parser whose answer it reads, and next to
+// the cpu-quota sum in that file that already keeps absent and undecodable apart. What follows is an adapter
+// from that typed answer to this read's own cause sum -- a translation of names, not a second reading of the
+// text. That is deliberate: gunbc.design_argument::single_authority refuses "a second place that
+// independently decides" the meaning, so these reads take ONE input the parser produced rather than a parsed
+// value plus the raw text a caller could pair wrongly.
+//
+// THE ARM THAT IS OWED, and not taken here: an undecodable arm on SystemdCgroupMemoryLimit itself, which
+// would put the distinction in the sum every one of the ten modules matching on it sees. That ripple reaches
+// files with other lanes' PRs in flight, and each of those consumers has to decide what unreadable output
+// means for its own refusal, so the arm is owed and tracked -- by
+// gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent, whose receipt names it, the matchers
+// involved and this function as the standing workaround -- rather than landed quietly from the serving lane.
+
+// WHAT THE PATH-NAMING CAUSE SAYS, once the parser has already said which "no" it was: the property, whose
+// leaf, and what the machine actually did -- print nothing -- and therefore what follows (the unit sets none,
+// so the limit comes from its parent slice). A unit that does not exist at all is refused upstream, by
+// systemd_unit_status_exists_show, before either read is reached.
+fn host_truth_cgroup_no_value_path(property: String, host: NonEmptyStr) -> String {
+  property + " at " + host_truth_host_text(host: host) + "'s leaf: systemctl show printed no value, so the unit sets none and the limit is inherited from its parent slice"
 }
 
-// A CGROUP LIMIT, AS THE VALUE ITS AXIS RELATES. systemd answers three different questions and all three
-// stay three here: a number, "infinity", and the property not being set at this leaf. Collapsing the third
-// into either of the first two is the fail-open move the report's tier 4 names, in the opposite direction:
-// srv4's leaf would have been "unbounded" (so the 5x cliff passes) or "zero" (so a healthy host is refused),
-// and neither is what the machine said. `shown` is the text systemctl show printed for that property, which
-// is what separates the two kinds of "no" -- see host_truth_cgroup_absent_cause.
-fn host_truth_cap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgroupMemoryLimit, shown: String) -> HostTruthRead {
-  match limit {
-    MemoryLimitBytes { bytes: b } => HostTruthObserved {
+// A CGROUP LIMIT, AS THE VALUE ITS AXIS RELATES. systemd's four answers stay four here: a number,
+// "infinity", printed nothing, and unreadable output. Collapsing the third or fourth into the first two is
+// the fail-open move the report's tier 4 names, in the opposite direction: srv4's leaf would have been
+// "unbounded" (so the 5x cliff passes) or "zero" (so a healthy host is refused), and neither is what the
+// machine said. The caller hands over what the parser answered, whole.
+fn host_truth_cap_read(host: NonEmptyStr, at_run: NonEmptyStr, answer: SystemdCgroupPropertyAnswer) -> HostTruthRead {
+  match answer {
+    PropertyLimit { bytes: b } => HostTruthObserved {
       host: host,
       axis: TruthCapBindsDeclaredWorkingSet,
       observed: TruthSize { size: b },
       at_run: at_run,
       receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.high")
     }
-    MemoryLimitUnbounded => HostTruthObserved {
+    PropertyUnbounded => HostTruthObserved {
       host: host,
       axis: TruthCapBindsDeclaredWorkingSet,
       observed: TruthUnbounded,
       at_run: at_run,
       receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.high=infinity")
     }
-    MemoryLimitAbsent => HostTruthReadRefused {
+    PropertyPrintedNothing => HostTruthReadRefused {
       host: host,
       axis: TruthCapBindsDeclaredWorkingSet,
-      cause: host_truth_cgroup_absent_cause(axis_path: "memory.high at " + host_truth_host_text(host: host) + "'s leaf", shown: shown)
+      cause: HostTruthNoValueAtThatPath { path: host_truth_cgroup_no_value_path(property: "memory.high", host: host) }
+    }
+    PropertyUndecodable { raw: r } => HostTruthReadRefused {
+      host: host,
+      axis: TruthCapBindsDeclaredWorkingSet,
+      cause: HostTruthOutputUnparseable { raw: r }
     }
   }
 }
 
 // THE SWAP CEILING A LEAF CARRIES, from the same reading. This is the cgroup's side of the swap question;
 // the host's own backing is below, and the two are different facts about different places.
-fn host_truth_leaf_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: SystemdCgroupMemoryLimit, shown: String) -> HostTruthRead {
-  match limit {
-    MemoryLimitBytes { bytes: b } => HostTruthObserved {
+fn host_truth_leaf_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, answer: SystemdCgroupPropertyAnswer) -> HostTruthRead {
+  match answer {
+    PropertyLimit { bytes: b } => HostTruthObserved {
       host: host,
       axis: TruthSlotSwapBackingDeclared,
       observed: TruthSize { size: b },
       at_run: at_run,
       receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.swap.max")
     }
-    MemoryLimitUnbounded => HostTruthObserved {
+    PropertyUnbounded => HostTruthObserved {
       host: host,
       axis: TruthSlotSwapBackingDeclared,
       observed: TruthUnbounded,
       at_run: at_run,
       receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe memory.swap.max=infinity")
     }
-    MemoryLimitAbsent => HostTruthReadRefused {
+    PropertyPrintedNothing => HostTruthReadRefused {
       host: host,
       axis: TruthSlotSwapBackingDeclared,
-      cause: host_truth_cgroup_absent_cause(axis_path: "memory.swap.max at " + host_truth_host_text(host: host) + "'s leaf", shown: shown)
+      cause: HostTruthNoValueAtThatPath { path: host_truth_cgroup_no_value_path(property: "memory.swap.max", host: host) }
+    }
+    PropertyUndecodable { raw: r } => HostTruthReadRefused {
+      host: host,
+      axis: TruthSlotSwapBackingDeclared,
+      cause: HostTruthOutputUnparseable { raw: r }
     }
   }
 }
