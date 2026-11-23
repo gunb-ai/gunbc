@@ -92,6 +92,7 @@ fn v1_finish_lines_accepted_count(accepted: List<RoadmapNodeId>) -> Int {
 // that none was identified; it never reads "replaced" for a weaker control without saying so.
 type V1TestMigrationDisposition
   = ReplacedByWitness { coverage_gap: V1CoverageGap }
+  | RetainedRustTest
 
 // What a replacement does not cover, as a status and not as prose. PortedByReadingEmittedTextOnly: the
 // witness's needles were ported by reading the Rust assertions, not proved equivalent by a mutation
@@ -145,6 +146,24 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
       disposition: ReplacedByWitness {
         coverage_gap: PortedByReadingEmittedTextOnly,
       },
+    },
+    // #test.retirement.model::retained_ambiguous_prefix_infix_newline
+    // Retained: the exact parse message and span text are not census fields (a wet-lane claim reading the binary's stderr could express it).
+    V1MigratedTestModule {
+      rust_module: "ambiguous_prefix_infix_newline_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_declaration_named_in_module_reexport
+    // Retained: a claim cannot import v1.compiler.* (src/v1 is not a discovery root), so no claim can call the seed fn.
+    V1MigratedTestModule {
+      rust_module: "declaration_named_in_module_reexport_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_anonymous_record_struct_resolution
+    // Retained: it calls seed emitter fns over synthetic TypeSummary tables; the existing claim covers only the four end-to-end source cases.
+    V1MigratedTestModule {
+      rust_module: "anonymous_record_struct_resolution_test",
+      disposition: RetainedRustTest,
     },
   ]
 }

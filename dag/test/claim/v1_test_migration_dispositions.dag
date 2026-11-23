@@ -1,7 +1,7 @@
 module test.claim.v1_test_migration_dispositions
 
 import std.types { List }
-import gunbc.v1.v1_deletion_plan { v1_migrated_test_modules }
+import gunbc.v1.v1_deletion_plan { v1_migrated_test_modules, V1TestMigrationDisposition, ReplacedByWitness, RetainedRustTest }
 import v2.lens.test_migration_debt { discovered_rust_test_modules, list_contains_name, names_are_duplicate_free }
 
 // The mapping-completeness control for the v1 test migration. The retention wall
@@ -15,6 +15,17 @@ fn migrated_rust_files() -> List<String> {
   v1_migrated_test_modules() |> map(m => concat(m.rust_module, ".rs"))
 }
 
+fn is_replaced(d: V1TestMigrationDisposition) -> Bool {
+  match d {
+    ReplacedByWitness { coverage_gap: _ } => true
+    RetainedRustTest => false
+  }
+}
+
+fn replaced_rust_files() -> List<String> {
+  v1_migrated_test_modules() |> filter(m => is_replaced(d: m.disposition)) |> map(m => concat(m.rust_module, ".rs"))
+}
+
 // Each module is dispositioned exactly once.
 test fn every_migrated_module_appears_exactly_once() -> Bool {
   names_are_duplicate_free(xs: migrated_rust_files()) && !is_empty(migrated_rust_files())
@@ -22,7 +33,7 @@ test fn every_migrated_module_appears_exactly_once() -> Bool {
 
 // A replaced module no longer appears in the discovered debt: its exact-stem floor witness exists.
 test fn every_replaced_module_is_discharged_by_an_exact_stem_witness() -> Bool {
-  migrated_rust_files() |> all(f => !list_contains_name(xs: discovered_rust_test_modules(), needle: f))
+  replaced_rust_files() |> all(f => !list_contains_name(xs: discovered_rust_test_modules(), needle: f))
 }
 
 // RED control: a planted duplicate must be refused by the exactly-once judgment.

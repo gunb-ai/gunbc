@@ -47,6 +47,9 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
     retained_field_of_fractions_construction,
     retained_whole_tree_wiring_enum,
     retained_helpers,
+    retained_ambiguous_prefix_infix_newline,
+    retained_declaration_named_in_module_reexport,
+    retained_anonymous_record_struct_resolution,
   ]
 }
 
@@ -148,4 +151,24 @@ data retained_helpers: RetainedLegacyRustTestModule = RetainedLegacyRustTestModu
   source_file: "helpers.rs",
   purpose: "Shared fixture/harness surface for the retained kernel (workspace root, module-index construction, ephemeral generated source roots), carrying three self-tests: co-root last-wins on duplicate module names, ephemeral generated source-root resolution, and duplicate-name scanning without panic. Every retained module assembles its fixtures through it." as NonEmptyStr,
   dissolution: UnboundDissolution { description: "The retained kernel empties as its modules migrate, at which point the harness has no consumer and is deleted with the last row." as NonEmptyStr },
+}
+
+// THE v1 TEST MIGRATION'S RETENTIONS (node v1-test-migration). Each row says the check the Rust test asserts and
+// why a .dag witness cannot express it today; the reader-facing account is gunbc.v1.v1_deletion_plan::v1_migrated_test_modules.
+data retained_ambiguous_prefix_infix_newline: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "ambiguous_prefix_infix_newline_test.rs",
+  purpose: "Asserts the v1 PARSE diagnostic for `10\\n  - 1` carries the exact message \"ambiguous newline before prefix/infix operator '-'...\" and the exact span text \"10\\n  -\", and that the explicit forms evaluate to Int(9) and Int(10). The compile diagnostic census carries class, subject, count and rendered_pair only, and the message and span come from v1 parse, not the census-armed typecheck. A wet-lane claim that runs the binary and reads its stderr could express it, as dag/test/claim/live_deploy/pre_swap_admission_serve_compile_inhabitance_witness.dag runs a real gunbc: a cost decision, not an impossibility." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A wet-lane claim that runs the released gunbc on the two fixtures and reads the diagnostic text and evaluated values replaces it, and this row is deleted." as NonEmptyStr },
+}
+
+data retained_declaration_named_in_module_reexport: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "declaration_named_in_module_reexport_test.rs",
+  purpose: "Hands a hand-built SymbolIndex straight to the seed fn declaration_named_in_module and asserts the declaring module of a re-exported spelling. Its own header: \"A `dag/test/claim` module cannot import `v1.compiler.*` (src/v1 is not a discovery root; measured: every claim of such a witness failed `module 'v1.std.core' not found`)\"; no claim can call the seed fn." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The required-path discriminator is Charter 1's refusal of a name-only product-head agreement; when the native route judges re-export identity from corpus compiles, this unit test is deleted." as NonEmptyStr },
+}
+
+data retained_anonymous_record_struct_resolution: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "anonymous_record_struct_resolution_test.rs",
+  purpose: "Calls the seed emitter fns find_struct_name_by_fields and anonymous_record_struct_candidates directly over synthetic TypeSummary tables: hint-narrowing to one, to zero and to many, the alphabetical-pick mutation control, and absence versus ambiguity. dag/test/claim/record_emission_candidate_set_witness.dag covers the four end-to-end source cases (single-field none and ambiguous, multi-field nominal and ambiguous) but not the hint cases or the mutation control; no claim harness constructs a TypeSummary table (see gunbc.anonymous_record_resolution_seed_growth)." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim harness that supplies synthetic type-summary tables to the emitter boundary, or the emitter's native replacement, lets these cases migrate and this row be deleted." as NonEmptyStr },
 }
