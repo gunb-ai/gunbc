@@ -135,16 +135,16 @@ type ArrivalArchiveSlotRelease
 // which is the forged-release path this whole design exists to close. That proof is owed elsewhere
 // before /proc is admitted here.
 //
-// HOW IT IS OBSERVED. The fold cannot fetch: in this model a declared op is executed OUTSIDE the fold
-// and the fold decodes the bytes it was handed (the same split as
-// gunbc.fleet.organization_runner_roster_read's *_from_included decoders). So the arrival-converge job
-// runs ONE emitted step before the arrival step: it lists this root's held arrival slots, takes the run
-// ids from the holders the MODEL itself wrote -- never hand-typed -- fetches each through the declared
-// GET /repos/{owner}/{repo}/actions/runs/{run_id}, and writes <root>/arrival-liveness/<run_id> holding
-// the status the API returned. This fold reads that file through the same exact-read seam
-// gunbc.process_hold_identity uses for /proc, and decides what the status MEANS. A caller cannot hand
-// this model a HolderObservedDead: it hands over a file's bytes at most, and the vocabulary that reads
-// them is extdeps.github.workflow_runs, not the caller's opinion.
+// HOW IT IS OBSERVED. The fold issues the read ITSELF, mid-fold, before the acquire and so before any BMC
+// leg: it calls the declared read-only GET /repos/{owner}/{repo}/actions/runs/{run_id} through
+// extdeps.github.auth::github_rest -- the same declared REST route every other GitHub read in this repo uses
+// -- and decodes the status from the operation's declared response type (WorkflowRun.status). This is the
+// same execute-the-op / decode-in-the-model split as gunbc.fleet.organization_runner_roster_read's
+// *_from_included decoders. The token is read in-process as a Secret from the declared auth source, never
+// interpolated into argv; an absent token is a typed refusal that this turns into Unobservable. A holder's
+// liveness is therefore whatever the declared GET answered for the run id THIS MODEL read out of the holder
+// the store wrote -- a caller cannot hand this model a HolderObservedDead: the status is read from the
+// declared response type by extdeps.github.workflow_runs, not from any caller's opinion.
 
 // THE HOLDER IS arrival/<host>/<run_id>, and nothing else. A holder that does not decode to that exact
 // shape has no observable meaning, so it is never treated as dead: absence of evidence is not evidence

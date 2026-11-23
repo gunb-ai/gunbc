@@ -3,6 +3,7 @@ module test.claim.durable_exclusive_hold_file_store_wet_witness
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { string_contains, string_concat_join }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasSlotObservation, cas_generation_count }
 import std.durable_exclusive_hold {
@@ -37,6 +38,11 @@ import gunbc.durable_exclusive_hold_file_store {
 
 fn wh_owner(text: String) -> DurableHoldOwnerRef {
   text as DurableHoldOwnerRef
+}
+
+// A holder the arrival shape-gate WILL decode: arrival/<host>/<run>, the exact form arrival_run mints.
+fn wh_arrival_owner(host: String, run: String) -> DurableHoldOwnerRef {
+  string_concat_join(fields: ["arrival/", host, "/", run], separator: "") as DurableHoldOwnerRef
 }
 
 fn wh_release(text: String) -> DurableHoldReleaseRef {
@@ -426,5 +432,63 @@ test fn w_refused_acquire_body_writes_a_marker_when_called_directly() -> Bool {
       shell.Remove.RecursiveForce(path: root_path).success && false
     ExitSuccess =>
       Filesystem.Read(path: marker).success && shell.Remove.RecursiveForce(path: root_path).success
+  }
+}
+
+// A SELF-HOLDER is REFUSED, not recovered. The slot is held by a run id that IS this run's own id; GitHub
+// keeps a run id across re-run attempts, so a re-run of a run that died holding the slot must be told "that
+// is you -- finish or cancel run <id> first", never treated as another arrival, and never recovered by its
+// own re-run. Decided before any read, so it runs with no network. Discriminating: if the self-holder were
+// dropped into the generic occupied path it would try to recover (and read) instead of naming the run.
+test fn w_self_holder_is_refused_not_recovered() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_arrival_owner(s.host as String, "self-holder-run"), self_run_id: "self-holder-run",
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "retry-owner"), self_run_id: "self-holder-run",
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "this very run")
+                && string_contains(s: c as String, pattern: "controller untouched")
+                && shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquired { held: _ } =>
+              shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
+  }
+}
+
+// A HOLDER THAT IS NOT THE arrival/<host>/<run_id> SHAPE REFUSES BEFORE THE STORE IS TOUCHED AND BEFORE ANY
+// READ: absence of evidence is not evidence of death. Discriminating: if the shape-gate were removed, the
+// unshaped holder would fall through to the recovery (and its declared read) instead of this refusal.
+test fn w_unshaped_holder_refuses_before_the_read() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_owner("not-an-arrival-holder"), self_run_id: "some-run",
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "another-run"), self_run_id: "some-run",
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "is not arrival/")
+                && string_contains(s: c as String, pattern: "controller untouched")
+                && shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquired { held: _ } =>
+              shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
   }
 }

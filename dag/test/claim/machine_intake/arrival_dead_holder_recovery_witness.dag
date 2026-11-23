@@ -1,10 +1,17 @@
 module test.claim.machine_intake.arrival_dead_holder_recovery_witness
 
 // CLAIMS FOR THE ARRIVAL'S DEAD-HOLDER RECOVERY: what the arrival root decides for itself, before it
-// refuses and before any controller contact. The recovery itself is not reachable from here -- the store's
-// admit_callers names arrival_archive_slot_acquire as its sole permitted caller, and the resolver refused a
-// first draft that imported it -- so these answer the decision the recovery stands on: what a reported
-// status means. The three arms are exercised through the acquire in the wet claim.
+// refuses and before any controller contact. The recovery orchestration is NOT reachable from here: the
+// store's file_hold_recover_dead_holder admits exactly two callers --
+// gunbc.host.managed_host_unit_hold::unit_hold_recover_dead_holder and
+// gunbc.machine_intake.arrival_interlock::arrival_archive_slot_recover_dead_holder -- and that arrival
+// recovery fn admits only gunbc.machine_intake.arrival_interlock::arrival_archive_slot_acquire
+// (admit_callers), so the resolver refuses a test that imports it directly. These three claims answer the
+// DECISION the recovery stands on -- what a reported status means -- by feeding arrival_liveness_from_status_text
+// typed inputs (completed / live / unreadable), the same separate-decision-from-reading pattern as
+// test.claim.durable_exclusive_hold_witness. The acquire's occupied arms (the shape-gate refuse and the
+// self-holder refuse, both decided before any read) are exercised in the wet claims of
+// test.claim.durable_exclusive_hold_file_store_wet_witness.
 import std.types { Bool, String }
 import std.optional { Present, Absent }
 import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
