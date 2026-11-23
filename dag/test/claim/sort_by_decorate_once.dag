@@ -1,0 +1,28 @@
+module test.claim.sort_by_decorate_once
+
+// Replaces src/v1/tests/src/sort_by_decorate_once_test.rs. Observable: the emitted Rust text of
+// the `sort_by` lowering, which compile_dag_rust_emit_check compiles through the real v1 pipeline
+// and exposes to includes/excludes. The retired Rust test asserted the same needles over
+// fixtures/sort_by_decorate_once/probe.dag; this inlines that probe's three sort_by shapes.
+
+data sort_by_probe_source: String = "module sort_by_probe\n\nimport std.types \{ List \}\n\ntype Row = \{ label: String, rank: Int \}\n\nfn ranked(rows: List<Row>) -> List<Row> \{\n  rows |> sort_by(r => r.rank)\n\}\n\nfn labelled(rows: List<Row>) -> List<Row> \{\n  rows |> sort_by(r => r.label)\n\}\n\nfn generic_sorted<T>(items: List<T>) -> List<T> \{\n  items |> sort_by(i => i)\n\}\n"
+
+// The lowering decorates each element with its key once, stable-sorts on the stored key and undecorates.
+test fn w_sort_by_decorates_once_sorts_stored_key_and_undecorates_test() -> Bool {
+  compile_dag_rust_emit_check(
+    sort_by_probe_source,
+    "src/sort_by_probe.rs",
+    ["let mut __keyed: Vec<_> =", "(__k, __e)", "__keyed.sort_by(|__x, __y| v1_rt::canonical_key_cmp(&__x.0, &__y.0))", "__keyed.into_iter().map(|(_, __e)| __e).collect::<Vec<_>>()"],
+    []
+  )
+}
+
+// RED CONTROL: the pre-change shape ran the selector inside the comparator, twice per comparison.
+test fn w_sort_by_does_not_apply_the_selector_inside_the_comparator_test() -> Bool {
+  compile_dag_rust_emit_check(
+    sort_by_probe_source,
+    "src/sort_by_probe.rs",
+    [],
+    ["let __ka =", "let __kb =", "canonical_key_cmp(&__ka, &__kb)"]
+  )
+}
