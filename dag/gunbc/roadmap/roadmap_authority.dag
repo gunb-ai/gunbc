@@ -6420,7 +6420,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5ERZMZ9M7AMFBRAMW98VFMWEYW",
       id: "claim-three-source-roots-shared-index",
       owner: "self-host",
-      carriers: carrier(path: "src/v1/04_infer.dag"),
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
       line: ticket(t: fields(
         headline: "A claim run over three source roots does not refuse the shared index",
         boundary: "A claim run whose outer source roots differ from the roots its fixture's own emit check demands refuses fixture-render-refused SharedIndexSecondResidentPool: the outer run holds the pool for roots dag, src/v1 and src/v2 on a thread, and compile_dag_rust_emit_check then demands the two-root pool dag and src/v2, which src/v1/stage0/src/cli_run.rs refuses as a second resident pool on that thread. Measured at main 4a63370f4a67 by calm-swift-579 on srv1 under heavy-slot with the released claim_batch sha256 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 over dag/test/claim/emitter_generic_match_field_binding_witness.dag: over dag plus src/v2 its four witnesses PASS and the run exits EXIT=0; adding src/v1 makes all four FAIL with the same refusal and EXIT=1. The defect is the class, not one command. The emitter row's own red_control states no three-root command, so no edge is added to it; rows whose text cites src/v1 alongside src/v2 at that sha are names-bind-to-the-unique-declaration, emission-ownership-facts-survive-lowering, extdeps-subject-ref-facts-host-census, debt-grandfathered-fold-enrolled, dp-m4-discovery-floor-semantic and heal-observation-reuse-by-subject; none states it in its red_control, so no dependency edge is declared, and an owner whose red_control comes to run three roots adds one.",
