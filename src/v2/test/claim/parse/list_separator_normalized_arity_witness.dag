@@ -1,0 +1,307 @@
+module v2.test.claim.parse.list_separator_normalized_arity_witness
+
+// THE OTHER HALF OF THE RED CONTROL, WHICH CI CANNOT GIVE. Every other claim in this wall family asserts
+// parse ACCEPTANCE, and the reference floor asks only whether a module normalizes and its references
+// resolve. Neither question is "is the normalized form the same one main builds" -- so a wall that quietly
+// changed a list's ARITY, or leaked the comma's own node into the lowered form, would stay green through
+// regen, whole-corpus compile, fixed-point verify and a 15-case matrix alike. This node's own history
+// records exactly that miss (review 45347: only a human diff read caught it), so the wall is not done until
+// the lowered form is read, not just accepted.
+//
+// HOW THE ARITY IS READ. Each specimen goes through the corpus's own parser pair on a token stream the claim
+// supplies as literals (no filesystem_read, no source_root_walk, nothing mocked): tokenize-free parse via
+// v2.test.claim.parse.supplied_token_stream_support.supplied_stream_parse, then v2.compiler.normalize.normalize.
+// The element count comes ONLY from the canonical reader of the lowered form,
+// v2.std.list_introduction.list_introduction_elements_optional -- which succeeds only on a Transform whose
+// head is the marked reference to std.algebra.FreeMonoid and whose remaining edges are ALL POSITIONAL. That is
+// the point: a comma node or an optional-comma wrapper left inside the lowered list would make that reader
+// answer Absent, and the claim would go red rather than count something plausible. So a PASSING count is
+// evidence the accepted form is main's canonical form, not merely a list that parsed.
+//
+// PAIRING OBLIGATION. Every specimen's normalize claim is paired with a tokenizer-fidelity claim over the
+// SAME source and the SAME supplied stream (supplied_stream_matches_tokenize), so no verdict here can rest on
+// a token stream the real tokenizer would not produce.
+//
+// WHAT RUNS WHERE. The identical module is executed with the identical runner at head and at the pinned main
+// tree. At head every count above holds and the juxtaposed specimen has NO lowered form; at main the six
+// separated counts hold unchanged (that is the byte-level "every legitimate list still means the same thing")
+// and the juxtaposed claim is the one that flips -- the wall's refusal, witnessed at the normalized form.
+
+import std.algebra { fold_list, length }
+import std.optional { Absent, Optional, Present, optional_absent }
+import v2.compiler.normalize { normalize }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.text { String }
+import v2.test.claim.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_parse }
+import v2.std.compilers.lexing { Token, TokenStream, token_stream_new }
+
+// The specimen source: one module, one data declaration whose value is the list under test. The type
+// annotation is a plain name because normalize does not resolve -- the question here is the SHAPE the list
+// lowers to, not whether its type checks.
+fn specimen_source(inner: String) -> String {
+  concat(left: "module m\ndata v: Int = ", right: inner)
+}
+
+// The element count of the ONE lowered list in a normalized specimen, read through the canonical reader and
+// nothing else. Absent means: the specimen did not parse, did not normalize, or normalized without a
+// canonical lowered list anywhere in the tree.
+fn lowered_list_arity(tokens: TokenStream) -> Optional<Int> {
+  match supplied_stream_parse(tokens: tokens) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: tree, diagnostics: _ } =>
+      match normalize(parse_tree: tree) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: normalized, diagnostics: _ } =>
+          fold_list(
+            xs: node_subtree_nodes(root: normalized.root),
+            empty: optional_absent(),
+            cons: fn(acc, n) {
+              match acc {
+                Present { value: count } => Present { value: count }
+                Absent =>
+                  match list_introduction_elements_optional(node: n) {
+                    Present { value: elements } => Present { value: length(xs: elements) }
+                    Absent => optional_absent()
+                  }
+              }
+            }
+          )
+      }
+  }
+}
+
+fn arity_is(tokens: TokenStream, expected: Int) -> Bool {
+  match lowered_list_arity(tokens: tokens) {
+    Present { value: count } => count == expected
+    Absent => false
+  }
+}
+
+fn no_lowered_list(tokens: TokenStream) -> Bool {
+  match lowered_list_arity(tokens: tokens) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// separated3: three comma-separated elements lower to exactly three elements
+data separated3_inner: String = "[1, 2, 3]"
+fn separated3_source() -> String {
+  "module m\ndata v: Int = [1, 2, 3]"
+}
+
+fn separated3_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^arity_witness, start: 24, end: 25 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 25, end: 26 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^arity_witness, start: 27, end: 28 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 28, end: 29 },
+    Token { class: ^dag_token_int_literal, lexeme: "3", file: ^arity_witness, start: 30, end: 31 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 31, end: 32 }
+  ])
+}
+
+test fn separated3_lowers_to_3_elements_holds() -> Bool {
+  arity_is(tokens: separated3_stream(), expected: 3)
+}
+test fn separated3_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: separated3_source(), file: ^arity_witness, supplied: separated3_stream())
+}
+
+// trailing_comma3: a trailing comma adds no element
+data trailing_comma3_inner: String = "[1, 2, 3,]"
+fn trailing_comma3_source() -> String {
+  "module m\ndata v: Int = [1, 2, 3,]"
+}
+
+fn trailing_comma3_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^arity_witness, start: 24, end: 25 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 25, end: 26 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^arity_witness, start: 27, end: 28 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 28, end: 29 },
+    Token { class: ^dag_token_int_literal, lexeme: "3", file: ^arity_witness, start: 30, end: 31 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 31, end: 32 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 32, end: 33 }
+  ])
+}
+
+test fn trailing_comma3_lowers_to_3_elements_holds() -> Bool {
+  arity_is(tokens: trailing_comma3_stream(), expected: 3)
+}
+test fn trailing_comma3_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: trailing_comma3_source(), file: ^arity_witness, supplied: trailing_comma3_stream())
+}
+
+// single1: one element lowers to one element
+data single1_inner: String = "[1]"
+fn single1_source() -> String {
+  "module m\ndata v: Int = [1]"
+}
+
+fn single1_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^arity_witness, start: 24, end: 25 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 25, end: 26 }
+  ])
+}
+
+test fn single1_lowers_to_1_elements_holds() -> Bool {
+  arity_is(tokens: single1_stream(), expected: 1)
+}
+test fn single1_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: single1_source(), file: ^arity_witness, supplied: single1_stream())
+}
+
+// empty0: an empty list lowers to no elements
+data empty0_inner: String = "[]"
+fn empty0_source() -> String {
+  "module m\ndata v: Int = []"
+}
+
+fn empty0_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 24, end: 25 }
+  ])
+}
+
+test fn empty0_lowers_to_0_elements_holds() -> Bool {
+  arity_is(tokens: empty0_stream(), expected: 0)
+}
+test fn empty0_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: empty0_source(), file: ^arity_witness, supplied: empty0_stream())
+}
+
+// two2: a shorter list lowers to fewer elements -- the counts are arity-sensitive, not constant
+data two2_inner: String = "[1, 2]"
+fn two2_source() -> String {
+  "module m\ndata v: Int = [1, 2]"
+}
+
+fn two2_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^arity_witness, start: 24, end: 25 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 25, end: 26 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^arity_witness, start: 27, end: 28 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 28, end: 29 }
+  ])
+}
+
+test fn two2_lowers_to_2_elements_holds() -> Bool {
+  arity_is(tokens: two2_stream(), expected: 2)
+}
+test fn two2_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: two2_source(), file: ^arity_witness, supplied: two2_stream())
+}
+
+// juxtaposed3: the dropped separator: refused at parse, so NO lowered list exists (at main this same specimen normalizes with three elements -- the flip)
+data juxtaposed3_inner: String = "[1 2 3]"
+fn juxtaposed3_source() -> String {
+  "module m\ndata v: Int = [1 2 3]"
+}
+
+fn juxtaposed3_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_int_literal, lexeme: "1", file: ^arity_witness, start: 24, end: 25 },
+    Token { class: ^dag_token_int_literal, lexeme: "2", file: ^arity_witness, start: 26, end: 27 },
+    Token { class: ^dag_token_int_literal, lexeme: "3", file: ^arity_witness, start: 28, end: 29 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 29, end: 30 }
+  ])
+}
+
+test fn juxtaposed3_refuses_before_any_lowered_list_holds() -> Bool {
+  no_lowered_list(tokens: juxtaposed3_stream())
+}
+test fn juxtaposed3_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: juxtaposed3_source(), file: ^arity_witness, supplied: juxtaposed3_stream())
+}
+
+// records2: the corpus shape: separated record elements keep both elements
+data records2_inner: String = "[Row { name: \"a\" }, Row { name: \"b\" }]"
+fn records2_source() -> String {
+  "module m\ndata v: Int = [Row { name: \"a\" }, Row { name: \"b\" }]"
+}
+
+fn records2_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^arity_witness, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^arity_witness, start: 7, end: 8 },
+    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^arity_witness, start: 9, end: 13 },
+    Token { class: ^dag_token_ident, lexeme: "v", file: ^arity_witness, start: 14, end: 15 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 15, end: 16 },
+    Token { class: ^dag_token_ident, lexeme: "Int", file: ^arity_witness, start: 17, end: 20 },
+    Token { class: ^dag_token_eq, lexeme: "=", file: ^arity_witness, start: 21, end: 22 },
+    Token { class: ^dag_token_lbracket, lexeme: "[", file: ^arity_witness, start: 23, end: 24 },
+    Token { class: ^dag_token_ident, lexeme: "Row", file: ^arity_witness, start: 24, end: 27 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^arity_witness, start: 28, end: 29 },
+    Token { class: ^dag_token_ident, lexeme: "name", file: ^arity_witness, start: 30, end: 34 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 34, end: 35 },
+    Token { class: ^dag_token_string_literal, lexeme: "\"a\"", file: ^arity_witness, start: 36, end: 39 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^arity_witness, start: 40, end: 41 },
+    Token { class: ^dag_token_comma, lexeme: ",", file: ^arity_witness, start: 41, end: 42 },
+    Token { class: ^dag_token_ident, lexeme: "Row", file: ^arity_witness, start: 43, end: 46 },
+    Token { class: ^dag_token_lbrace, lexeme: "{", file: ^arity_witness, start: 47, end: 48 },
+    Token { class: ^dag_token_ident, lexeme: "name", file: ^arity_witness, start: 49, end: 53 },
+    Token { class: ^dag_token_colon, lexeme: ":", file: ^arity_witness, start: 53, end: 54 },
+    Token { class: ^dag_token_string_literal, lexeme: "\"b\"", file: ^arity_witness, start: 55, end: 58 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^arity_witness, start: 59, end: 60 },
+    Token { class: ^dag_token_rbracket, lexeme: "]", file: ^arity_witness, start: 60, end: 61 }
+  ])
+}
+
+test fn records2_lowers_to_2_elements_holds() -> Bool {
+  arity_is(tokens: records2_stream(), expected: 2)
+}
+test fn records2_stream_matches_the_tokenizer_holds() -> Bool {
+  supplied_stream_matches_tokenize(text: records2_source(), file: ^arity_witness, supplied: records2_stream())
+}
