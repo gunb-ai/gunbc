@@ -1551,6 +1551,22 @@ fn standing_for_node(standings: RoadmapStandings, node_id: String) -> RoadmapNod
   }
 }
 
+// THE ONE SPELLING OF WHAT A STANDING IS CALLED. A match with no wildcard: adding a variant to
+// `RoadmapNodeStanding` makes this non-exhaustive and the compiler refuses until the word is
+// written, which is the rule #extdeps.ssh.client_options::serialize_ssh_config_file_flag states for
+// the same reason -- a wildcard would let a new variant answer as nothing.
+//
+// A consumer that needs the CLOSED LIST of words, not the word for one standing, does not write them
+// out again: `gunbc.roadmap.roadmap_authority_fixture::roadmap_node_standing_keys` is this fold
+// mapped over one sample per standing. It lives there because a sample of `NodeAccepted` needs an
+// acceptance receipt, and this module must not mint one: the fixture module imports this one, so the
+// samples cannot be built here without a cycle, and an inline one would be fabricated acceptance
+// evidence in a production module (#gunbc.design_argument::fail_closed: "no plausible output is
+// fabricated"). The consumer, named per #gunbc.design_argument::consumption, is the ctrl roadmap
+// bridge `scripts/session-dashboard/dag/roadmap_spawner_bridge.dag` in gunb-ai/ctrl#2495, which
+// refuses an unknown key rather than reading the node as absent; that bridge's own text names the
+// condition that deletes it. A consumer needing the SENTENCE a standing deserves uses
+// `roadmap_node_standing_text`, never the list: the list names the leaf, the sentence says which one.
 fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
   match s {
     NodeOpen => "open"
