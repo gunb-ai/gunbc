@@ -3317,7 +3317,7 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
       marking: Present { value: "T275 / TI ?1" },
       obligation: "the designator read stands as 'uncertain', not confirmed; the frame that would settle it is not in the atlas; a re-shoot of cell A4 settles it -- the position stands on the bench read of the T275 marking, which this pass could not confirm",
       evidence: OperatorPhotograph { citation: e1_unlocated_frame(designator: "U522", located: "the atlas names no frame for this row") },
-  }
+  },
   // Two bottom-side reads the final pass refused to count as positions of their own. They are kept
   // because the reads happened and the receipts hold them; dropping them would make the model claim a
   // clean bottom side that the atlas never reported.

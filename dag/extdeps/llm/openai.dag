@@ -656,7 +656,7 @@ data structural_coverage_gap_openai_chat_chunk_tool_call_deltas: List<CoverageCl
       Missing { item: "refusal_delta_annotation" }
     ],
     trigger: "a named home for a partial tool call held across events, with its accumulation rule"
-  }
+  },
   {
     facts: [
       Subject { path: "OpenAiChatCompletionChunkBody" },
