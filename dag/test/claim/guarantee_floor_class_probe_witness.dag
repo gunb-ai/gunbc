@@ -190,6 +190,10 @@ data parse_list_separator_hole_source: String = "module probe_floor_list_sep\nty
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
+data cardinality_seam_hole_source: String = "module probe_floor_cardinality_seam\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn probe() -> Bool {\n  levels().first().id == \"l1\"\n}\n"
+
+data cardinality_seam_green_source: String = "module probe_floor_card_seam_green\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn probe() -> Bool {\n  match levels().first() {\n    Present { value: lv } => lv.id == \"l1\"\n    Absent => false\n  }\n}\n"
+
 // CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
 // `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
 // climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
@@ -302,6 +306,18 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
   }
 }
 
+test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_cardinality_seam_hole_probe, source: cardinality_seam_hole_source)),
+    blocking_verdict(source: cardinality_seam_hole_source, wanted: "TypeMismatch", holds: fn(n) { n == 0 })
+  ])
+}
+
+test fn floor_cardinality_seam_green_control_is_clean() -> Bool {
+  row_holds(probe: floor_cardinality_seam_green_probe, source: cardinality_seam_green_source)
+    && total_row_count_is_zero(census: census_of(source: cardinality_seam_green_source))
+}
+
 // THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has since
 // grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
@@ -310,6 +326,7 @@ test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
+    floor_cardinality_seam_hole_probe as String,
   ]
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
   let every_hole_declared = fold(hole_ids, init: true, f: (acc, id) => acc && (declared |> filter(d => d == id) |> count) == 1
@@ -326,6 +343,7 @@ test fn every_declared_floor_class_has_registry_rows() -> Bool {
     floor_generic_instantiation_class as String,
     floor_parse_list_separator_class as String,
     floor_record_field_completeness_class as String,
+    floor_cardinality_seam_class as String,
   ]
   let rows = guarantee_probe_rows()
   fold(classes, init: true, f: (acc, cls) => acc && count(rows |> filter(row => (row.class as String) == cls)) >= 1)
