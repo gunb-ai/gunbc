@@ -369,7 +369,11 @@ fn first_contact_hop_context(host: HostIdentity) -> FirstContactHopContext {
 // a global list, but not from a record-field list (`ctx.hop_rows`), which leaves the matched value
 // inferred as Unit. Passing the matched value through this identity -- exactly how hop_lease_row_for
 // pins its fold value through lan_endpoint_host_key_row(observation: _) -- is what ties the fold's
-// element to LanEndpointHostKey so the field accesses below typecheck.
+// element to LanEndpointHostKey so the field accesses below typecheck. This is a WORKAROUND for a
+// language-layer under-inference, filed at
+// gunbc.recurring_failure_mode.fold_over_a_record_field_list_leaves_the_element_inferred_as_unit
+// (gunbc.design_argument::fail_closed: a noticed workaround is recorded at the language layer, not
+// left in a comment for the next consumer to copy); see that row for the next-rung trigger.
 fn as_lan_endpoint_host_key(row: LanEndpointHostKey) -> LanEndpointHostKey {
   row
 }
