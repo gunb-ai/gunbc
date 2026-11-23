@@ -3294,6 +3294,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
     ),
     roadmap_node(
+      identity: "rn_JN1Q7V9M3F0T7M0S358FWJQJSM",
+      id: "release-bins-retention-witness-18-failures",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/test/claim/long/fleet_release_bins_key_witness.dag"),
+      line: ticket(t: fields(
+        headline: "The release-bins retention witness passes: its fake curl stub is well formed and its emission is accepted",
+        boundary: "Observed by stern-wren-746 on srv1 with the released claim_batch b691 (main b6915594), --wet, at gunbc#16908 head 498089a4 (that PR only fixes the file's imports and the fixture's emitted-bin members): 18 FAIL and 44 of 62 PASS in dag/test/claim/long/fleet_release_bins_key_witness.dag, the #16596 retention family. Before #16908 main could not resolve the file (missing int_*/rooted imports), so these claims were unrun, not green. FAIL names (prefixed release_bins_): retention_over_cap_deletes_only_the_oldest_family_member, retention_delete_failure_is_typed_not_silent, retention_at_cap_has_nothing_due, retention_full_chore_deletes_from_its_own_answer, retention_parses_fractional_seconds, retention_orders_mixed_timestamp_shapes, retention_orders_within_a_second_by_fraction, retention_over_bound_types_total_and_deletes_nothing, retention_paged_delete_reaches_past_one_page, retention_window_spares_pr_ref_entries, retention_duplicate_ids_refuse_all_deletions, retention_stale_scratch_cannot_delete_on_failed_get, retention_page2_failure_refuses_to_delete, full_step_hit_reports_restore_and_nothing_due, full_step_zero_due_keeps_the_keep_window, full_step_get_fail_types_and_ignores_the_stale_answer, full_step_miss_builds_then_runs_the_chore, full_step_over_page_types_over_cap_and_promotes_anyway. Observed causes: (1) the fake curl stub (fake_curl_answering via fake_tool, #!/bin/sh) emits a broken loop, 'Syntax error: \"then\" unexpected (expecting \"do\")', so its answer file is never written (jq: Could not open file .../ws/release-bins-retention-answer.json); the suspect is the quoted-argument escaping in the for-loop line. (2) retention_stale_scratch_cannot_delete_on_failed_get: 'runtime error [type-error]: symbol_lexeme requires a Symbol argument', reached through v2.std.diagnostic diagnostics_reason_lexemes from a Rejected emission, so some retention part's bash emission is also refused. The raw log is srv1:~/scratch/stern-wren-746/out8/release_bins_key.log.",
+        displaced_cost: "The retention chore's behaviour is covered by claims that cannot pass, so a regression in it is invisible and a reader cannot tell a broken stub from a broken chore.",
+        first_slice: "Fix the fake curl stub's emitted loop so it writes its answer file, find which retention part's bash emission is Rejected and why, and re-run the file.",
+        red_control: "OPEN: red_at and green_at are not measured on main. The measured failure is the 18 FAILs above at #16908 head 498089a4 with released claim_batch b691; green is all 62 claims PASS at one sha with the same binary.",
+        out_of_scope: "The #16908 import and fixture fixes, the retention policy itself, and weakening any claim to make it pass.",
+        handback: "The two causes repaired, the file's 62 claims passing with the raw PASS/FAIL lines and exit status, and the binary and sha they ran at."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "A claim in the required population passes or is named as failing."),
+    ),
+    roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
       id: "list-append-refuses-an-element-argument",
       owner: "compiler-guarantee",
