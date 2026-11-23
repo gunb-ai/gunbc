@@ -2242,15 +2242,53 @@ enum ClaimRouteVerdict {
     ClaimUnobserved,
 }
 
-/// One claim's outcome as the route's verdict. `Fail`, `NotBool` and `ExitFailure` are
-/// observations that did not hold; every other arm is the absence of an observation -- an error,
-/// a refusal, an unwind, a budget interrupt -- and is never reported as a failing claim.
-/// Wildcard-free so a new outcome arm must be classified here.
-fn claim_route_verdict(outcome: &cli_run::ClaimOutcome) -> ClaimRouteVerdict {
+/// The claim-runner protocol's own "the subject was not reached" exit code. A claim that returns a
+/// typed `ProcessExit::ExitFailure` carries a protocol verdict, not an OS status: code 1 (and any
+/// other code) is the runner's definite refusal -- an observation that did not hold -- while code 2
+/// is the runner saying it never reached the subject. That is the same 2 the invocation reserves for
+/// `SubjectUnreached` (`invocation_exit_status`), and it is read HERE, at the typed claim-result
+/// boundary, because a host command's exit code is not a claim-runner protocol result: a
+/// `NotProcessExit` value, whatever integer it holds, is a non-Bool observation (`NotBool`), never a
+/// protocol exit, and it stays did-not-hold above.
+const CLAIM_RUNNER_UNREACHED_EXIT_CODE: i32 = 2;
+
+/// One member's outcome as the route's verdict. An evaluated claim is read by the claim-arm rule
+/// below. A known selected claim that cannot execute is ALWAYS the absence of an observation -- an
+/// unobserved outcome carrying its cause (plan `claim_execution_consolidation` section 2: "A known
+/// selected claim that cannot execute gets an unobserved outcome with its cause") -- a resolve
+/// finding is not evidence that the claim evaluated and did not hold. Wildcard-free on both layers
+/// so a new arm must be classified here.
+fn claim_route_verdict(outcome: &cli_run::ClaimMemberOutcome) -> ClaimRouteVerdict {
+    use cli_run::{ClaimMemberOutcome as M, EntryResolveRefusal as R};
+    match outcome {
+        M::Evaluated(o) => evaluated_claim_verdict(o),
+        // Every resolve refusal is the absence of an observation, not a failing claim. The refusal's
+        // kind (ClosureDiagnostics / EntryMissing / ResolveInfrastructure) stays on the line as the
+        // typed `outcome=` and its text as `detail`; only the VERDICT is uniformly unobserved.
+        M::Unresolved(R::ClosureDiagnostics { .. })
+        | M::Unresolved(R::EntryMissing { .. })
+        | M::Unresolved(R::ResolveInfrastructure { .. }) => ClaimRouteVerdict::ClaimUnobserved,
+    }
+}
+
+/// The claim-arm reading: `Fail`, `NotBool` and a definite `ExitFailure` are observations that did
+/// not hold; every other arm -- an error, a refusal, an unwind, a budget interrupt, and an
+/// `ExitFailure` the runner raised as "subject unreached" (code 2) -- is the absence of an
+/// observation and is never reported as a failing claim.
+fn evaluated_claim_verdict(outcome: &cli_run::ClaimOutcome) -> ClaimRouteVerdict {
     use cli_run::ClaimOutcome as O;
     match outcome {
         O::Pass => ClaimRouteVerdict::ClaimHeld,
-        O::Fail | O::NotBool { .. } | O::ExitFailure { .. } => ClaimRouteVerdict::ClaimDidNotHold,
+        // A typed ProcessExit refusal: code 2 is the claim-runner's own "unreached" protocol
+        // result and belongs to the unobserved family; any other code is a definite refusal.
+        O::ExitFailure { code, .. } => {
+            if *code == CLAIM_RUNNER_UNREACHED_EXIT_CODE {
+                ClaimRouteVerdict::ClaimUnobserved
+            } else {
+                ClaimRouteVerdict::ClaimDidNotHold
+            }
+        }
+        O::Fail | O::NotBool { .. } => ClaimRouteVerdict::ClaimDidNotHold,
         O::RuntimeError { .. }
         | O::BudgetInterrupted { .. }
         | O::CompletedOverBudget { .. }
@@ -2271,6 +2309,152 @@ fn claim_route_termination(verdicts: &[ClaimRouteVerdict]) -> Termination {
     } else {
         Termination::ObservationHeld
     }
+}
+
+/// The ONE FOLD: printed lines and the exit status are BOTH derived here, from the single
+/// collection of per-claim outcomes the route established once. Nothing else computes the route's
+/// verdict.
+///
+/// The fold keys on the claim IDENTITY (module path and function), so the contract "exactly one
+/// outcome per identity" is enforced at the only place that turns outcomes into a result: a second
+/// outcome for identity A is dropped and the run cannot certify SUCCESS -- though a definite failure
+/// still keeps precedence over the duplicate in the exit status -- so a duplicated outcome for A can
+/// never stand in for a missing B. Every kept identity's verdict is folded by the EXISTING rule
+/// `claim_route_termination` -- the policy is not redesigned here.
+struct ClaimRouteFold {
+    lines: Vec<String>,
+    verdicts: Vec<ClaimRouteVerdict>,
+    duplicate: Option<String>,
+}
+
+impl ClaimRouteFold {
+    fn count(&self, verdict: ClaimRouteVerdict) -> usize {
+        self.verdicts.iter().filter(|x| **x == verdict).count()
+    }
+
+    /// THE ONE EXIT STATUS. The existing `claim_route_termination` rule decides: a definite failure
+    /// dominates (exit 1), otherwise an unobserved member or an empty selection is the subject
+    /// unreached (exit 2), otherwise success (exit 0). A duplicated identity is a broken
+    /// one-outcome-per-claim contract, so it blocks SUCCESS only: it upgrades a would-be success to
+    /// the subject unreached, but it never overrides a definite failure (which still exits 1) and
+    /// never softens an unobserved/empty result (which already exits 2).
+    fn termination(&self) -> Termination {
+        let base = claim_route_termination(&self.verdicts);
+        if self.duplicate.is_some() && base == Termination::ObservationHeld {
+            Termination::SubjectUnreached
+        } else {
+            base
+        }
+    }
+}
+
+fn claim_route_fold(members: &[cli_run::ClaimRouteMember]) -> ClaimRouteFold {
+    let mut lines = Vec::with_capacity(members.len());
+    let mut verdicts = Vec::with_capacity(members.len());
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+    let mut duplicate = None;
+    for m in members {
+        let label = render_label(&Label {
+            package_segments: m.module_path.split('.').map(str::to_string).collect(),
+            target: m.function.clone(),
+        });
+        if !seen.insert((m.module_path.clone(), m.function.clone())) {
+            // This identity already carries an outcome. Keep the first printed line; refuse to
+            // let the duplicate fold, so it cannot satisfy the contract in another claim's place.
+            if duplicate.is_none() {
+                duplicate = Some(label);
+            }
+            continue;
+        }
+        let verdict = claim_route_verdict(&m.outcome);
+        let word = match verdict {
+            ClaimRouteVerdict::ClaimHeld => "HELD",
+            ClaimRouteVerdict::ClaimDidNotHold => "DID-NOT-HOLD",
+            ClaimRouteVerdict::ClaimUnobserved => "UNOBSERVED",
+        };
+        // THE ONE LINE, per the ruled schema:
+        //   <label> <VERDICT> outcome=<kind> [cause=<token>] [code=<n>] [at=<file:line:col>] [detail="<quoted>"] eval_steps=<n> cpu_ms=<n>
+        // `outcome` is the CLOSED kind name (never Rust Debug, which is not a schema); `cause` and
+        // `code` are the only machine keys beyond the verdict; every free-text fact goes to `detail`,
+        // the LAST field, double-quoted and single-line, and parsers never key on it. `at=` is emitted
+        // only where a file:line:col is known -- on this revision no claim outcome carries one (the
+        // raise path records a byte offset, not a line/col; a panic carries no location), so it stays
+        // absent rather than fabricated. Populating it once a source location is carried on the
+        // outcome is the deferred trigger, not this item.
+        use cli_run::{ClaimMemberOutcome as M, ClaimOutcome as O, EntryResolveRefusal as R};
+        let (kind, cause, code, detail): (&str, Option<String>, Option<i32>, Option<String>) =
+            match &m.outcome {
+                M::Evaluated(o) => {
+                    let cause = match o {
+                        O::RuntimeError { cause, .. } => Some(cause.token().to_string()),
+                        // The cause token is the TYPED payload kind decided at the catch site, so a
+                        // non-string panic renders `non_string_payload`, never `string_payload`.
+                        O::Panicked { payload_kind, .. } => Some(payload_kind.token().to_string()),
+                        _ => None,
+                    };
+                    let code = match o {
+                        O::ExitFailure { code, .. } => Some(*code),
+                        _ => None,
+                    };
+                    let detail = match o {
+                        O::RuntimeError { message, .. } => Some(message.clone()),
+                        O::Panicked { payload, .. } => Some(payload.clone()),
+                        O::ExitFailure { reason, .. } => reason.clone(),
+                        O::NotBool { got } => Some(got.clone()),
+                        O::NotAttempted { halted_by } => Some(halted_by.clone()),
+                        O::HostToolUnresolved { name, .. } => Some(name.clone()),
+                        O::HostEffectRefused { operation, .. } => Some(operation.clone()),
+                        _ => None,
+                    };
+                    (cli_run::claim_outcome_kind(o), cause, code, detail)
+                }
+                M::Unresolved(r) => {
+                    let kind = match r {
+                        R::EntryMissing { .. } => "EntryMissing",
+                        R::ClosureDiagnostics { .. } => "ClosureDiagnostics",
+                        R::ResolveInfrastructure { .. } => "ResolveInfrastructure",
+                    };
+                    (kind, None, None, Some(r.message().to_string()))
+                }
+            };
+        let mut line = format!("{label} {word} outcome={kind}");
+        if let Some(cause) = &cause {
+            line.push_str(&format!(" cause={cause}"));
+        }
+        if let Some(code) = code {
+            line.push_str(&format!(" code={code}"));
+        }
+        if let Some(detail) = &detail {
+            line.push_str(&format!(" detail={}", quote_detail(detail)));
+        }
+        line.push_str(&format!(" eval_steps={} cpu_ms={}", m.eval_steps, m.cpu_ms));
+        lines.push(line);
+        verdicts.push(verdict);
+    }
+    ClaimRouteFold {
+        lines,
+        verdicts,
+        duplicate,
+    }
+}
+
+/// The `detail` field: one double-quoted, escaped, single-line string, so the human text (panic
+/// payload verbatim, error message, exit reason, refusal message) is on the line for a reader but is
+/// always the LAST free-text field a parser ignores. Backslashes and quotes are escaped and any line
+/// break is folded to a space so the record stays one line.
+fn quote_detail(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for ch in text.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' | '\r' | '\t' => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// THE CLAIM ROUTE: select the discovered claims the operand's pattern contains, evaluate each,
@@ -2308,44 +2492,35 @@ fn run_claim_route(pattern: &TargetPattern) -> InvocationOutcome {
             }
         }
     };
-    let mut verdicts = Vec::with_capacity(members.len());
-    for m in &members {
-        let verdict = claim_route_verdict(&m.outcome);
-        let word = match verdict {
-            ClaimRouteVerdict::ClaimHeld => "HELD",
-            ClaimRouteVerdict::ClaimDidNotHold => "DID-NOT-HOLD",
-            ClaimRouteVerdict::ClaimUnobserved => "UNOBSERVED",
-        };
-        let label = render_label(&Label {
-            package_segments: m.module_path.split('.').map(str::to_string).collect(),
-            target: m.function.clone(),
-        });
-        let detail = match verdict {
-            ClaimRouteVerdict::ClaimHeld => String::new(),
-            _ => format!(" outcome={:?}", m.outcome),
-        };
-        println!(
-            "{label} {word} eval_steps={} cpu_ms={}{detail}",
-            m.eval_steps, m.cpu_ms
-        );
-        verdicts.push(verdict);
+    // Both the printed lines and the exit status come from the ONE fold over this collection.
+    let fold = claim_route_fold(&members);
+    for line in &fold.lines {
+        println!("{line}");
     }
-    let count = |v: ClaimRouteVerdict| verdicts.iter().filter(|x| **x == v).count();
-    let held = count(ClaimRouteVerdict::ClaimHeld);
-    let did_not_hold = count(ClaimRouteVerdict::ClaimDidNotHold);
-    let unobserved = count(ClaimRouteVerdict::ClaimUnobserved);
-    let termination = claim_route_termination(&verdicts);
-    let note = if verdicts.is_empty() {
+    let held = fold.count(ClaimRouteVerdict::ClaimHeld);
+    let did_not_hold = fold.count(ClaimRouteVerdict::ClaimDidNotHold);
+    let unobserved = fold.count(ClaimRouteVerdict::ClaimUnobserved);
+    let selected = fold.verdicts.len();
+    if let Some(label) = fold.duplicate.as_deref() {
+        return InvocationOutcome {
+            termination: fold.termination(),
+            message: format!(
+                "claim route: {rendered} — {label} carries more than one outcome; the route owes \
+                 exactly one outcome per claim identity ({selected} claim(s): {held} held, \
+                 {did_not_hold} did not hold, {unobserved} unobserved)",
+            ),
+        };
+    }
+    let note = if fold.verdicts.is_empty() {
         " — the pattern selected no discovered claim"
     } else {
         ""
     };
     InvocationOutcome {
-        termination,
+        termination: fold.termination(),
         message: format!(
-            "claim route: {rendered} — {} claim(s): {held} held, {did_not_hold} did not hold, \
-             {unobserved} unobserved{note}",
-            verdicts.len()
+            "claim route: {rendered} — {selected} claim(s): {held} held, {did_not_hold} did not \
+             hold, {unobserved} unobserved{note}",
         ),
     }
 }
@@ -3531,6 +3706,655 @@ fn typed_graph_exclusive_bytes_over(
     InvocationOutcome {
         termination: Termination::ObservationHeld,
         message: lines.join("\n"),
+    }
+}
+
+#[cfg(test)]
+mod claim_route_result_contract_tests {
+    // THE CONTRACT: one located outcome per selected claim, with printed lines AND the exit status
+    // both derived from that single collection -- and the seed adapter `claim_route_verdict` reading
+    // the typed ProcessExit code 2 as the subject unreached. These run the REAL seed path: the real
+    // `claim_route_verdict` adapter and the real `claim_route_fold` (not the `.dag` model's pure
+    // fold), and, for the outcomes a `.dag` claim can actually return, the real `cli_run::run_claim_route`
+    // selection-and-execution. Executed locally / on a fleet host, never by required CI
+    // (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears).
+
+    use super::*;
+    use crate::v1_interpreter::RaisePath;
+    use cli_run::{
+        ClaimMemberOutcome as M, ClaimOutcome as O, ClaimRouteMember, EntryResolveRefusal as R,
+        PanicPayloadKind as K, WitnessRuntimeCause,
+    };
+
+    /// An EVALUATED member as the route would hand it to the fold. The receipts are irrelevant to
+    /// the verdict (only the outcome is read) and so are pinned to zero here.
+    fn member(module_path: &str, function: &str, outcome: O) -> ClaimRouteMember {
+        ClaimRouteMember {
+            module_path: module_path.to_string(),
+            function: function.to_string(),
+            outcome: M::Evaluated(outcome),
+            eval_steps: 0,
+            cpu_ms: 0,
+        }
+    }
+
+    /// An UNRESOLVED member: the entry carried this identity but its refusal says what kind of
+    /// failure it is. The fold reads it by the resolve authority's rule, not as a claim outcome.
+    fn unresolved_member(module_path: &str, function: &str, refusal: R) -> ClaimRouteMember {
+        ClaimRouteMember {
+            module_path: module_path.to_string(),
+            function: function.to_string(),
+            outcome: M::Unresolved(refusal),
+            eval_steps: 0,
+            cpu_ms: 0,
+        }
+    }
+
+    fn runtime_error() -> O {
+        O::RuntimeError {
+            cause: WitnessRuntimeCause::DivisionByZero,
+            message: "division by zero".into(),
+            raised_in: RaisePath {
+                frames: Vec::new(),
+                elided: 0,
+            },
+        }
+    }
+
+    fn budget_interrupt() -> O {
+        O::BudgetInterrupted {
+            elapsed_at_least_ms: 1000,
+            budget_ms: 1000,
+            kind: cli_run::BudgetKind::Cpu,
+        }
+    }
+
+    /// (printed lines, exit status, fold) for one collection -- the only place the route turns
+    /// outcomes into a result.
+    fn route_fold(members: &[ClaimRouteMember]) -> (Vec<String>, i32, ClaimRouteFold) {
+        let fold = claim_route_fold(members);
+        let status = invocation_exit_status(fold.termination());
+        (fold.lines.clone(), status, fold)
+    }
+
+    // ---- the line schema (gunbc ruling, manager msg_1c4665df) -----------------------------
+    // <label> <VERDICT> outcome=<kind> [cause=<token>] [code=<n>] [at=<file:line:col>] [detail="<quoted>"] eval_steps=<n> cpu_ms=<n>
+    // Parsers key ONLY on label, verdict, outcome, cause, code, at -- never on detail.
+
+    /// A runtime-error line carries the CLOSED kind and the typed cause token, NOT Rust `Debug`
+    /// output (Debug is not a schema -- it re-renders whenever a field is added). The frozen policy
+    /// reads a runtime error as NO OBSERVATION (exit 2), never as a definite failure: a raise is the
+    /// subject not producing an answer, not the subject answering false.
+    #[test]
+    fn a_runtime_error_line_carries_the_closed_kind_and_cause_not_debug() {
+        let (lines, status, _) = route_fold(&[member("test/claim/x", "boom", runtime_error())]);
+        assert_eq!(
+            status, 2,
+            "a runtime error is no observation, not a failure"
+        );
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with("//test/claim/x:boom"))
+            .expect("one located line for the identity");
+        // Fields parsers key on, verbatim.
+        assert!(line.contains("UNOBSERVED"), "the verdict word: {line}");
+        assert!(line.contains("outcome=RuntimeError"), "closed kind: {line}");
+        assert!(
+            line.contains("cause=division-by-zero"),
+            "the closed cause token: {line}"
+        );
+        // The human text is in detail, and it is the last free-text field before the counters.
+        assert!(
+            line.contains("detail=\"division by zero\""),
+            "quoted detail: {line}"
+        );
+        assert!(
+            line.trim_end().ends_with("eval_steps=0 cpu_ms=0"),
+            "counters last: {line}"
+        );
+        // Debug output would open the arm with a brace -- the kind name must not.
+        assert!(
+            !line.contains("outcome=RuntimeError {"),
+            "no Debug rendering: {line}"
+        );
+    }
+
+    /// The `detail` field is one double-quoted, escaped, SINGLE-LINE string and always the last
+    /// free-text field: a panic payload carrying a quote, a backslash and a newline stays on one
+    /// line and never leaks a raw newline that would break a parser's per-line read.
+    #[test]
+    fn a_detail_is_one_escaped_single_line_field_last() {
+        let payload = "boom\nsay \"hi\" \\ done";
+        let panicked = O::Panicked {
+            payload: payload.to_string(),
+            payload_kind: K::StringPayload,
+        };
+        let (lines, status, _) = route_fold(&[member("test/claim/x", "pan", panicked)]);
+        assert_eq!(status, 2, "a panic is no observation");
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with("//test/claim/x:pan"))
+            .expect("one located line for the identity");
+        assert!(line.contains("UNOBSERVED"), "a panic is unobserved: {line}");
+        assert!(line.contains("outcome=Panicked"), "closed kind: {line}");
+        // The payload kind is StringPayload here, so the typed cause is the string arm.
+        assert!(
+            line.contains("cause=string_payload"),
+            "closed cause: {line}"
+        );
+        // The whole record is ONE physical line even though the payload carried a newline.
+        assert!(!line.contains('\n'), "single line: {line:?}");
+        let after_detail = line.split("detail=").nth(1).expect("a detail field");
+        assert!(after_detail.starts_with('"'), "detail opens quoted");
+        assert!(
+            after_detail.ends_with(" eval_steps=0 cpu_ms=0"),
+            "detail precedes the trailing counters: {after_detail}"
+        );
+        // The payload's inner quote is escaped, so the quoted field does not terminate early.
+        assert!(
+            after_detail.contains("\\\"hi\\\""),
+            "the inner quote is escaped: {after_detail}"
+        );
+        assert!(
+            !after_detail.contains("boom\n"),
+            "no raw newline from the payload survives"
+        );
+        // The words survived the escaping round trip.
+        assert!(after_detail.contains("boom") && after_detail.contains("done"));
+    }
+
+    /// A NON-string panic payload (the kind a `panic_any(42u32)` produces -- two real floor claims do
+    /// this) must carry `cause=non_string_payload`, never the fabricated `string_payload`. The kind is
+    /// decided at the catch site (`panic_payload_text`), and the fold renders the typed kind.
+    #[test]
+    fn a_non_string_panic_line_carries_non_string_payload_cause() {
+        // `panic_payload_text` substitutes the placeholder text for a non-string payload; the kind is
+        // what distinguishes it, so a wrong kind is a wrong machine key on a real crash.
+        let placeholder =
+            "panic payload is not a string; see the panic hook's stderr line for the \
+                           message and location";
+        let (lines, status, _) = route_fold(&[member(
+            "test/claim/x",
+            "nonstring",
+            O::Panicked {
+                payload: placeholder.to_string(),
+                payload_kind: K::NonStringPayload,
+            },
+        )]);
+        assert_eq!(status, 2, "a panic is no observation");
+        let line = lines
+            .iter()
+            .find(|l| l.starts_with("//test/claim/x:nonstring"))
+            .expect("one located line for the identity");
+        assert!(line.contains("outcome=Panicked"), "closed kind: {line}");
+        assert!(
+            line.contains("cause=non_string_payload"),
+            "the non-string kind, never string_payload: {line}"
+        );
+        assert!(
+            !line.contains("cause=string_payload"),
+            "must not mislabel a non-string payload: {line}"
+        );
+    }
+
+    // ---- held ---------------------------------------------------------------------------
+    #[test]
+    fn a_held_claim_is_held_and_the_route_exits_zero() {
+        let (lines, status, fold) = route_fold(&[member("test.claim.zz", "a_holds", O::Pass)]);
+        assert_eq!(status, 0);
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].contains("a_holds") && lines[0].contains("HELD"),
+            "{lines:?}"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimHeld), 1);
+    }
+
+    // ---- false --------------------------------------------------------------------------
+    #[test]
+    fn a_false_claim_did_not_hold_and_the_route_exits_one() {
+        let (lines, status, _) = route_fold(&[member("test.claim.zz", "b_fails", O::Fail)]);
+        assert_eq!(status, 1);
+        assert!(lines[0].contains("b_fails") && lines[0].contains("DID-NOT-HOLD"));
+    }
+
+    // ---- non-Bool -----------------------------------------------------------------------
+    #[test]
+    fn a_non_bool_claim_is_an_observation_that_did_not_hold() {
+        let (_lines, status, fold) = route_fold(&[member(
+            "test.claim.zz",
+            "c_nonbool",
+            O::NotBool { got: "5".into() },
+        )]);
+        assert_eq!(
+            status, 1,
+            "a non-Bool observation is did-not-hold, never unobserved"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
+    }
+
+    // ---- runtime error ------------------------------------------------------------------
+    #[test]
+    fn a_runtime_error_is_unobserved_and_the_route_exits_two() {
+        let (_lines, status, fold) =
+            route_fold(&[member("test.claim.zz", "d_error", runtime_error())]);
+        assert_eq!(status, 2);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+    }
+
+    // ---- unwind -------------------------------------------------------------------------
+    #[test]
+    fn an_unwind_is_unobserved_not_a_failing_claim() {
+        let (_lines, status, fold) = route_fold(&[member(
+            "test.claim.zz",
+            "e_unwind",
+            O::Panicked {
+                payload: "boom".into(),
+                payload_kind: K::StringPayload,
+            },
+        )]);
+        assert_eq!(status, 2);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+    }
+
+    // ---- budget interrupt ---------------------------------------------------------------
+    #[test]
+    fn a_budget_interrupt_is_unobserved_not_a_failing_claim() {
+        let (_lines, status, fold) =
+            route_fold(&[member("test.claim.zz", "f_budget", budget_interrupt())]);
+        assert_eq!(status, 2);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+    }
+
+    // ---- ExitFailure code 1 (the definite refusal) --------------------------------------
+    #[test]
+    fn a_definite_process_exit_refusal_is_did_not_hold() {
+        let (_lines, status, fold) = route_fold(&[member(
+            "test.claim.zz",
+            "g_exit1",
+            O::ExitFailure {
+                code: 1,
+                reason: Some("refused".into()),
+            },
+        )]);
+        assert_eq!(
+            status, 1,
+            "a code-1 protocol refusal is an observation that did not hold"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
+    }
+
+    // ---- ExitFailure code 2 (THE REPAIR) ------------------------------------------------
+    #[test]
+    fn a_process_exit_code_two_is_unobserved_not_a_failing_claim() {
+        let (lines, status, fold) = route_fold(&[member(
+            "test.claim.zz",
+            "h_exit2",
+            O::ExitFailure {
+                code: 2,
+                reason: Some("unreached".into()),
+            },
+        )]);
+        assert_eq!(
+            status, 2,
+            "code 2 is the claim-runner's own 'subject unreached' protocol result"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+        assert!(
+            lines[0].contains("UNOBSERVED"),
+            "must not be reported as a failing claim: {lines:?}"
+        );
+    }
+
+    // ---- false together with unobserved: exits 1 and reports both -----------------------
+    #[test]
+    fn a_false_claim_beside_an_unobserved_exit_reports_both_and_exits_one() {
+        let (lines, status, fold) = route_fold(&[
+            member("test.claim.zz", "i_fails", O::Fail),
+            member(
+                "test.claim.zz",
+                "j_unreached",
+                O::ExitFailure {
+                    code: 2,
+                    reason: None,
+                },
+            ),
+        ]);
+        assert_eq!(status, 1, "a definite failure dominates");
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+        // BOTH are reported, on their own located lines.
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("i_fails") && l.contains("DID-NOT-HOLD")));
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("j_unreached") && l.contains("UNOBSERVED")));
+    }
+
+    // ---- empty selection exits 2 --------------------------------------------------------
+    #[test]
+    fn an_empty_selection_is_the_subject_unreached() {
+        let (lines, status, fold) = route_fold(&[]);
+        assert_eq!(status, 2);
+        assert!(lines.is_empty());
+        assert!(fold.verdicts.is_empty());
+    }
+
+    // ---- a resolve failure is NOT a finding: it is the absence of an observation -------------
+    //
+    // The route calls the TYPED resolve, so each refusal carries its own kind, and the fold maps
+    // EVERY unresolved entry to UNOBSERVED (plan section 2: a known selected claim that cannot
+    // execute gets an unobserved outcome with its cause). A resolve finding is not evidence the claim
+    // evaluated and did not hold. `NotAttempted` is NOT reused here -- it means "a sibling's unwind
+    // stopped the line."
+    #[test]
+    fn a_closure_diagnostic_is_unobserved_and_held_siblings_still_run() {
+        // The brief's A/B/C case: A holds, B cannot resolve, C holds. A and C run; B is located as
+        // an unobserved outcome carrying its cause; the aggregate is subject unreached (exit 2), not
+        // success and not a finding.
+        let (lines, status, fold) = route_fold(&[
+            member("test.claim.zz", "a_holds", O::Pass),
+            unresolved_member(
+                "test.claim.zz",
+                "b_broken",
+                R::ClosureDiagnostics {
+                    message: "name 'phantom_fn' not found in test.claim.zz_broken".into(),
+                },
+            ),
+            member("test.claim.zz", "c_holds", O::Pass),
+        ]);
+        assert_eq!(
+            status, 2,
+            "one unobserved among held siblings, no definite failure -> subject unreached (exit 2)"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimHeld), 2, "A and C still run");
+        assert_eq!(
+            fold.count(ClaimRouteVerdict::ClaimUnobserved),
+            1,
+            "B is an absence of an observation, not a finding"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 0);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("b_broken")
+                    && l.contains("UNOBSERVED")
+                    && l.contains("outcome=ClosureDiagnostics")
+                    && l.contains("phantom_fn")),
+            "B is located as unobserved with its typed arm keyed and text in detail: {lines:?}"
+        );
+        // A and C report their own held lines -- one resolve failure does not abort the others.
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("a_holds") && l.contains("HELD")));
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("c_holds") && l.contains("HELD")));
+    }
+
+    #[test]
+    fn a_missing_entry_is_no_observation() {
+        let (lines, status, fold) = route_fold(&[unresolved_member(
+            "test.claim.zz",
+            "b_missing",
+            R::EntryMissing {
+                message: "entry test/claim/zz_missing.dag is absent".into(),
+            },
+        )]);
+        assert_eq!(status, 2);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+        assert!(
+            lines[0].contains("UNOBSERVED")
+                && lines[0].contains("outcome=EntryMissing")
+                && lines[0].contains("detail=\"entry "),
+            "the located arm is keyed and the refusal text is in detail: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_resolve_infrastructure_refusal_is_no_observation() {
+        let (_lines, status, fold) = route_fold(&[unresolved_member(
+            "test.claim.zz",
+            "b_infra",
+            R::ResolveInfrastructure {
+                message: "HostBudgetUnreadable: no modeled host memory source".into(),
+            },
+        )]);
+        assert_eq!(
+            status, 2,
+            "an unresolved infrastructure refusal is no observation, never a finding"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimUnobserved), 1);
+    }
+
+    // ---- a duplicated outcome for A cannot satisfy B ------------------------------------
+    #[test]
+    fn a_duplicated_outcome_for_one_identity_cannot_satisfy_a_missing_one() {
+        // Two outcomes for A, none for B: the contract is one outcome per identity, so the route
+        // fails closed rather than reporting success on a doubled A.
+        let (lines, status, fold) = route_fold(&[
+            member("test.claim.zz", "a", O::Pass),
+            member("test.claim.zz", "a", O::Pass),
+        ]);
+        assert_ne!(status, 0, "a doubled A must not certify success");
+        assert_eq!(status, 2);
+        assert!(fold.duplicate.as_deref().is_some());
+        assert_eq!(
+            fold.verdicts.len(),
+            1,
+            "the duplicate is dropped, not counted"
+        );
+        assert_eq!(lines.len(), 1, "only the first line for A survives");
+
+        // The discriminating control: the SAME two held outcomes across two DISTINCT identities DO
+        // satisfy the contract -- so the failure above is about the identity join, not the count.
+        let (_l2, status2, fold2) = route_fold(&[
+            member("test.claim.zz", "a", O::Pass),
+            member("test.claim.zz", "b", O::Pass),
+        ]);
+        assert_eq!(status2, 0);
+        assert!(fold2.duplicate.is_none());
+    }
+
+    // ---- a duplicate blocks success but NEVER overrides a definite failure -----------------
+    #[test]
+    fn a_duplicate_does_not_override_a_definite_failure() {
+        // A Pass, A Pass (the second dropped as a duplicate), B Fail. The rule gives exit 1 (a
+        // definite failure dominates), NOT the subject unreached a lone duplicate would give.
+        let (lines, status, fold) = route_fold(&[
+            member("test.claim.zz", "a", O::Pass),
+            member("test.claim.zz", "a", O::Pass),
+            member("test.claim.zz", "b", O::Fail),
+        ]);
+        assert_eq!(status, 1, "a definite failure still gives 1 despite the duplicate");
+        assert!(
+            fold.duplicate.as_deref().is_some(),
+            "the duplicate is still recorded (it blocks success)"
+        );
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
+        assert!(
+            lines.iter().any(|l| l.contains("b") && l.contains("DID-NOT-HOLD")),
+            "B's definite failure is reported on its own line: {lines:?}"
+        );
+    }
+
+    // ---- the real selection-and-execution path, end to end ------------------------------
+    //
+    // These drive the WHOLE seed claim route on scratch sources -- the floor's discovery authority,
+    // the real per-claim evaluation, then the one fold -- which is "the real gunbc test path" as
+    // opposed to the pure adapter/fold controls above. Discovery resolves the floor's own authority
+    // module from the real witness roots and the scratch claims from the scratch root; entry
+    // resolution reads workspace-relative paths against the process cwd (the `gunbc` binary stands
+    // at the workspace root, a cargo test at the crate), so each run pins it to the workspace root
+    // -- the value the seed's own `run_claim_route` sets it to anyway.
+    //
+    // They are `#[ignore]`d because they index the whole `.dag` corpus. Run them with `--release`
+    // (a debug interpreter is far too slow to finish the corpus index walk; the release walk is on
+    // the order of minutes), one at a time, so each command and its output stand alone as evidence.
+    // Never by required CI (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears):
+    //     cargo test -p v1-compiler --release --lib claim_route_result_contract_tests::<name> -- --ignored --test-threads=1
+    //
+    // ONE scratch corpus carries every scenario; a single route run selects them all and returns the
+    // ONE collection every assertion below is drawn from -- so the contract is checked over the very
+    // collection the route produced, not a hand-assembled one.
+    #[test]
+    #[ignore = "indexes the whole .dag corpus; run with --release (see the module comment)"]
+    fn the_real_route_gives_each_selected_identity_one_located_outcome() {
+        let members = real_route(&[
+            // A and C: resolvable entries, both hold.
+            ("zz_ac.dag", "module test.claim.zz_ac\n\ntest fn zz_a() -> Bool {\n  true\n}\n\ntest fn zz_c() -> Bool {\n  true\n}\n"),
+            // B: its entry imports a module the subject does not hold, so the entry cannot resolve.
+            ("zz_broken.dag", "module test.claim.zz_broken\nimport test.claim.zz_nonexistent_module_xyz { phantom_fn }\n\ntest fn zz_b() -> Bool {\n  phantom_fn()\n}\n"),
+            // The code-2 repair, end to end: a held claim and an unobserved ProcessExit code 2.
+            ("zz_exits.dag", "module test.claim.zz_exits\nimport std.process { ProcessExit, ExitSuccess, ExitFailure }\n\ntest fn held() -> Bool {\n  true\n}\n\ntest fn unreached() -> ProcessExit {\n  ExitFailure { code: 2, reason: \"the subject was not reached\" }\n}\n"),
+            // The value-returning outcomes the real runner produces.
+            ("zz_truths.dag", "module test.claim.zz_truths\nimport std.process { ProcessExit, ExitSuccess, ExitFailure }\n\ntest fn passes() -> Bool {\n  true\n}\n\ntest fn fails() -> Bool {\n  false\n}\n\ntest fn nonbool() -> Int {\n  5\n}\n\ntest fn refused() -> ProcessExit {\n  ExitFailure { code: 1, reason: \"a definite refusal\" }\n}\n"),
+        ]);
+
+        let outcome_of = |name: &str| -> M {
+            members
+                .iter()
+                .find(|m| m.function == name)
+                .unwrap_or_else(|| panic!("the selected identity {name} must appear once"))
+                .outcome
+                .clone()
+        };
+
+        // Each selected identity is present EXACTLY once and carries the outcome its runner observed.
+        for name in ["zz_a", "zz_c", "held", "passes"] {
+            assert!(
+                matches!(outcome_of(name), M::Evaluated(O::Pass)),
+                "{name} must hold"
+            );
+            assert_eq!(
+                members.iter().filter(|m| m.function == name).count(),
+                1,
+                "{name} appears exactly once"
+            );
+        }
+        assert!(matches!(outcome_of("fails"), M::Evaluated(O::Fail)));
+        assert!(matches!(
+            outcome_of("nonbool"),
+            M::Evaluated(O::NotBool { .. })
+        ));
+        assert!(matches!(
+            outcome_of("refused"),
+            M::Evaluated(O::ExitFailure { code: 1, .. })
+        ));
+        // THE REPAIR, end to end: the runner hands back the typed ProcessExit; the fold reads code 2.
+        assert!(
+            matches!(
+                outcome_of("unreached"),
+                M::Evaluated(O::ExitFailure { code: 2, .. })
+            ),
+            "the code-2 claim must arrive as a typed ProcessExit, not a Bool"
+        );
+        // B's entry cannot resolve: a phantom import is a CLOSURE DIAGNOSTIC carried as the typed
+        // refusal -- an ABSENCE of an observation (unobserved) with its cause, NOT a finding that the
+        // claim evaluated and did not hold (plan section 2) -- on exactly one located line.
+        assert!(
+            matches!(
+                outcome_of("zz_b"),
+                M::Unresolved(R::ClosureDiagnostics { .. })
+            ),
+            "B's phantom import must be a located closure refusal: {:?}",
+            outcome_of("zz_b")
+        );
+
+        // Both the printed lines and the exit status come from THIS one collection.
+        let (lines, status, fold) = route_fold(&members);
+        assert_eq!(members.len(), 9, "one outcome per selected identity");
+        assert_eq!(fold.verdicts.len(), 9);
+        assert_eq!(fold.count(ClaimRouteVerdict::ClaimHeld), 4); // zz_a, zz_c, held, passes
+        assert_eq!(
+            fold.count(ClaimRouteVerdict::ClaimDidNotHold),
+            3,
+            "the definite observations: fails, nonbool, refused(1)"
+        );
+        assert_eq!(
+            fold.count(ClaimRouteVerdict::ClaimUnobserved),
+            2,
+            "the code-2 exit AND B's unresolved closure -- both absences of an observation"
+        );
+        // A definite failure is present, so the route exits 1 -- and A and C still ran, B is located.
+        assert_eq!(status, 1);
+        assert_eq!(lines.len(), 9);
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("unreached") && l.contains("UNOBSERVED")),
+            "code 2 must be reported unobserved, never as a failing claim: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("zz_b")
+                && l.contains("UNOBSERVED")
+                && l.contains("outcome=ClosureDiagnostics")),
+            "B is located on its own unobserved line with its typed cause: {lines:?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("zz_a") && l.contains("HELD")));
+    }
+
+    // ---- an empty selection through the real route is the subject unreached ---------------
+    #[test]
+    #[ignore = "indexes the whole .dag corpus; run with --release (see the module comment)"]
+    fn an_empty_selection_through_the_real_route_is_the_subject_unreached() {
+        let members = real_route_named(
+            "zz_ac.dag",
+            "module test.claim.zz_ac\n\ntest fn zz_a() -> Bool {\n  true\n}\n",
+            "test.claim.zz_matches_nothing",
+        );
+        assert!(members.is_empty(), "selecting nothing yields no outcome");
+        let (lines, status, fold) = route_fold(&members);
+        assert_eq!(status, 2);
+        assert!(lines.is_empty());
+        assert!(fold.verdicts.is_empty());
+    }
+
+    // ---- scratch claim root + the real route --------------------------------------------
+    fn scratch_root(name: &str, files: &[(&str, &str)]) -> String {
+        let dir = cli_run::workspace_root()
+            .join("target")
+            .join(format!("gunbc_claim_route_contract_{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let claim_dir = dir.join("test").join("claim");
+        std::fs::create_dir_all(&claim_dir).expect("scratch claim dir");
+        for (file, body) in files {
+            std::fs::write(claim_dir.join(file), body).expect("scratch claim source");
+        }
+        dir.to_string_lossy().into_owned()
+    }
+
+    /// Run the REAL claim route over one scratch corpus, selecting ONLY the scratch modules (the
+    /// `zz_` prefix is unique to these fixtures -- no real `test.claim.zz_*` module exists), so the
+    /// route evaluates the scratch claims and not the floor. This is the host route's own discipline
+    /// (the operand narrows the module before evaluation); a `_|_ true` selector would select every
+    /// corpus claim and run the floor, which is out of scope here.
+    fn real_route(files: &[(&str, &str)]) -> Vec<ClaimRouteMember> {
+        real_route_run(files, &|module| module.starts_with("test.claim.zz_"))
+    }
+
+    /// As `real_route`, but selecting only `selected_module` (so a corpus can drive an empty
+    /// selection by naming a module it does not contain).
+    fn real_route_named(file: &str, body: &str, selected_module: &str) -> Vec<ClaimRouteMember> {
+        real_route_run(&[(file, body)], &|module| module == selected_module)
+    }
+
+    fn real_route_run(
+        files: &[(&str, &str)],
+        module_selected: &dyn Fn(&str) -> bool,
+    ) -> Vec<ClaimRouteMember> {
+        std::env::set_current_dir(cli_run::workspace_root()).expect("enter workspace");
+        let scratch = scratch_root("shared", files);
+        // The floor discovery authority and every real import a scratch fixture's closure can reach
+        // are under the floor's own witness roots, so the index walk uses them; the scratch dir is
+        // prepended so the scratch modules themselves are in the index.
+        let mut roots = vec![scratch];
+        roots.extend(cli_run::witness_layer_roots());
+        cli_run::run_claim_route(&roots, module_selected, &|_, _| true)
+            .expect("the scratch corpus must resolve to a collection, not a route refusal")
     }
 }
 

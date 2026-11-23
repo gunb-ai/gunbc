@@ -416,9 +416,17 @@ fn shadow_gate_ci_credentials_fetch_step() -> Step {
 // emitted_subject_build_rows replaces this step, and each step will then be named after the row it
 // actually runs.
 
-// THE PLUMBING-PROOF PATTERN: one small witness package that exercises the remote-build path
+// THE PLUMBING-PROOF PATTERN: one small witness target that exercises the remote-build path
 // without needing a full witness roster. This is the remote_test_cli pattern argument.
-data shadow_gate_plumbing_proof_pattern: String = "//dag/test/claim/compute/host_capacity_seal_witness.dag"
+//
+// The pattern is a Bazel TARGET LABEL, not a filesystem path: run 45008834135 was refused at
+// 'selection' with 'the pattern selected no module with a planned claim:
+// //dag/test/claim/compute/host_capacity_seal_witness.dag:host_capacity_seal_witness.dag', because
+// extdeps/bazel/target_pattern parses the trailing component as a TARGET NAME and
+// compute/test_selection::witness_label_of_path derives the target name from a source file by
+// DROPPING the .dag suffix. Written with the suffix, the target never matches any module, so the
+// selection is empty and the run is refused before a single request leaves the runner.
+data shadow_gate_plumbing_proof_pattern: String = "//dag/test/claim/compute:host_capacity_seal_witness"
 
 // The remote-build account to SSH into. This is the forced-command account, not root, not operator.
 data shadow_gate_remote_user: String = "gunbc-build"
