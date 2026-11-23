@@ -21,6 +21,12 @@ import std.types { CommitSha, String, commit_sha_text_holds }
 // `git diff <red_at>^ <red_at>` is the break and nothing else. green_at is a real commit on the PR
 // lineage, and the witness file is BYTE-IDENTICAL between red_at and green_at -- only the roster differs
 // -- which is what makes the pair a mutation control rather than two different tests.
+// RE-CUT, NAMED. The first pair (red_at 1013d02dace7f8a95ac78a10fc1bcbbc46488a5c, green_at
+// 5b84464bb27acbe00542b35ef008b808a7712aa0) WAS executed, and the control refused to resolve there:
+// closure-strict-resolve reported "function 'nth' not found in scope" at the fifth row's assertion, exit
+// 1 -- a defect in this branch's own fixture edit, invisible until something ran the file, which nothing
+// had, because it lives under manual/. The pair was re-cut at the head carrying the fixed accessor; the
+// old break commit is not lost, because the durable ref's history keeps it as an ancestor of the new one.
 data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
 data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
