@@ -39,15 +39,15 @@ test fn a_never_spawned_readback_leg_is_unread_by_its_cause_never_a_fabricated_e
         && !string_contains(s: cause, pattern: "exit=")
         && !string_contains(s: cause, pattern: "-1")
         && match member_reading_of_measure(measure: leg) {
-          MemberUnread { reason: r } => !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
+          MemberUnread { reason: r } => string_contains(s: r, pattern: cause) && !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
           _ => false
         }
         && match iso_reading_of(measure: leg) {
-          IsoUnmeasured { reason: r } => !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
+          IsoUnmeasured { reason: r } => string_contains(s: r, pattern: cause) && !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
           _ => false
         }
         && match member_reading_after_extract(extract: leg) {
-          Present { value: MemberUnread { reason: r } } => !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
+          Present { value: MemberUnread { reason: r } } => string_contains(s: r, pattern: cause) && !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
           _ => false
         }
         && match digest_of_sha256sum(measure: leg) { Absent => true  _ => false }
