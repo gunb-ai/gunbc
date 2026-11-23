@@ -1,8 +1,10 @@
 module gunbc.fleet.fleet_host_truth_read
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
 import std.list { first_where, distinct_by_key }
 import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size_count }
 
 // ONE READ OF A MACHINE, FIVE COMPARES, AND A REFUSAL THAT CANNOT BE MISTAKEN FOR QUIET.
 //
@@ -119,19 +121,49 @@ fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
   }
 }
 
+// WHAT A READ OR A DECLARATION ANSWERS WITH, as a quantity rather than as text. Each axis states a
+// relation over its value, and a relation cannot be computed over how the reader happened to write it: a
+// srv4 leaf capped at 64 GiB against a declared 40 GiB working set satisfies the cap rule, and a string
+// comparison would have dropped that host from admission for being roomy; "40G" and "42949672960" are one
+// size and must not read as a drift. A String leaf here would hide exactly the parts the rule needs
+// (gunbc.design_argument::minimize_redundancy: "a String leaf hiding named parts is anemic modeling"). A
+// value that does not fit its axis is refused below rather than compared -- the read is malformed, not the
+// machine out of compliance.
+type HostTruthValue
+  = TruthSize { size: ByteSize }
+  // A ceiling the machine does not set. srv4's leaf had no memory.high at all in one reading of it, and a
+  // slot can run with swap unbounded; the absence of a limit is an observation, not a number, and reading it
+  // as one would invent a size the machine never declared.
+  | TruthUnbounded
+  | TruthCount { count: Nat }
+  | TruthMarking { text: String }
+
+// THE RELATION ONE AXIS STATES, said out loud next to the values it relates. The values themselves ride on
+// the comparison arm as ByteSize, Nat or String, which is where a consumer acts on them; the line below is
+// the loud half, not a rendering of the quiet half.
+fn host_truth_relation_says(axis: HostTruthAxis, declared_by: String) -> String {
+  match axis {
+    TruthDeclaredHardwareEnumerates => "enumerates a different count of hardware than " + declared_by + " declares"
+    TruthEnabledUnitHasItsHardware => "presents a unit-and-hardware marking different from the one " + declared_by + " declares"
+    TruthIdentityAnchoredNotAddressed => "presents an identity marking different from the anchor " + declared_by + " declares"
+    TruthCapBindsDeclaredWorkingSet => "carries a cap below the working set " + declared_by + " declares for the role it runs"
+    TruthSlotSwapBackingDeclared => "carries a swap backing different from the one " + declared_by + " declares for that slot"
+  }
+}
+
 // WHAT THE MACHINE ANSWERED. Blank is its own arm for the reason gunbc.systemctl_show_read states after
 // review 67312: a blank answer and a refusal-to-reach are different facts, and merging them makes the
 // consumer re-parse a reason string. The reader is required to project a value -- including a zero -- so
 // a blank projection is the reader failing, and it refuses below rather than becoming agreement.
 type HostTruthRead
-  = HostTruthObserved { host: NonEmptyStr, axis: HostTruthAxis, observed: String, at_run: NonEmptyStr, receipt: String }
+  = HostTruthObserved { host: NonEmptyStr, axis: HostTruthAxis, observed: HostTruthValue, at_run: NonEmptyStr, receipt: String }
   | HostTruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
   | HostTruthReadRefused { host: NonEmptyStr, axis: HostTruthAxis, cause: HostTruthReadCause }
 
 // WHAT DESIRED STATE CLAIMS. The second arm is not a failure of the read; it is the model's own gap, and
 // it is reported rather than defaulted into agreement or into divergence.
 type HostTruthExpectation
-  = HostTruthDeclared { host: NonEmptyStr, axis: HostTruthAxis, expected: String, declared_by: String }
+  = HostTruthDeclared { host: NonEmptyStr, axis: HostTruthAxis, expected: HostTruthValue, declared_by: String }
   | HostTruthNothingDeclared { host: NonEmptyStr, axis: HostTruthAxis, because: String }
 
 type HostTruthPairing { read_axis: HostTruthAxis, expectation_axis: HostTruthAxis, read_host: NonEmptyStr, expectation_host: NonEmptyStr }
@@ -141,7 +173,7 @@ type HostTruthPairing { read_axis: HostTruthAxis, expectation_axis: HostTruthAxi
 // reading it as agreement is exactly the report's tier 4.
 type HostTruthComparison
   = TruthAgrees { host: NonEmptyStr, axis: HostTruthAxis, at_run: NonEmptyStr, receipt: String }
-  | TruthDivergent { host: NonEmptyStr, axis: HostTruthAxis, observed: String, expected: String, declared_by: String }
+  | TruthDivergent { host: NonEmptyStr, axis: HostTruthAxis, observed: HostTruthValue, expected: HostTruthValue, declared_by: String }
   | TruthUnread { host: NonEmptyStr, axis: HostTruthAxis, cause: HostTruthReadCause }
   | TruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
   | TruthNoReadSupplied { host: NonEmptyStr, axis: HostTruthAxis }
@@ -149,6 +181,7 @@ type HostTruthComparison
   | TruthDuplicateRead { host: NonEmptyStr, axis: HostTruthAxis, read_count: Int }
   | TruthDuplicateExpectation { host: NonEmptyStr, axis: HostTruthAxis, declaration_count: Int }
   | TruthOutsideTheModel { host: NonEmptyStr, axis: HostTruthAxis, because: String }
+  | TruthValueShapeRefused { host: NonEmptyStr, axis: HostTruthAxis, why: String }
   | TruthPairingRefused { why: String, pairing: HostTruthPairing }
 
 fn host_of_read(read: HostTruthRead) -> NonEmptyStr {
@@ -193,8 +226,99 @@ fn host_truth_pairing_refusal(read: HostTruthRead, expectation: HostTruthExpecta
   }
 }
 
-// ONE PAIR, DECIDED. The comparison is over the projections the reader supplied: this module never
-// interprets a number or a device count, because the meaning of "4" belongs to whoever declared it.
+// THE RELATION, PER AXIS. A cap must sit AT OR ABOVE the working set its role declares -- srv4 at 64 GiB
+// against a declared 40 GiB is in agreement, and srv4 at 40 GiB against the 56 GiB its expert set needs is
+// the drift the report found as 5.1 tok/s. Hardware counts and swap backing are equality, because both
+// directions are drift: more hardware than declared is unmodeled hardware, and a swap backing where the
+// envelope declares none is butch's 8 GiB swapfile. Identity and unit markings are equality over the
+// marking itself, which is not a quantity. A value whose shape is not the one its axis relates refuses:
+// the reader projected the wrong thing, and comparing it anyway would guess at a relation.
+fn host_truth_answer_against_declaration(host: NonEmptyStr, axis: HostTruthAxis, observed: HostTruthValue, expected: HostTruthValue, at_run: NonEmptyStr, receipt: String, declared_by: String) -> HostTruthComparison {
+  match axis {
+    TruthCapBindsDeclaredWorkingSet =>
+      match observed {
+        TruthSize { size: got } => match expected {
+          TruthSize { size: wants } =>
+            if byte_size_count(b: got) >= byte_size_count(b: wants) {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          // A declared demand with no ceiling: no finite cap sits at or above it.
+          TruthUnbounded => TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the cap axis relates sizes, and the declaration did not supply one" }
+        }
+      // No ceiling set on the host is "at or above" any working set the role declares, so this axis passes.
+      // Whether a ceiling must be SET at all is the envelope's question (gunbc.host.memory_envelope), not
+      // this axis's rule, and this module does not answer a question the axis does not ask.
+      TruthUnbounded => TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+      _ => TruthValueShapeRefused { host: host, axis: axis, why: "the cap axis relates sizes, and the read did not supply one" }
+    }
+    TruthSlotSwapBackingDeclared =>
+      match observed {
+        TruthSize { size: got } => match expected {
+          TruthSize { size: wants } =>
+            if byte_size_count(b: got) == byte_size_count(b: wants) {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          TruthUnbounded => TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the swap axis relates sizes, and the declaration did not supply one" }
+        }
+      // butch's 8 GiB swapfile against an envelope that declares none is the same drift in either direction,
+      // and an unbounded backing against a bounded declaration is drift too.
+      TruthUnbounded => match expected {
+        TruthUnbounded => TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+        _ => TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+      }
+      _ => TruthValueShapeRefused { host: host, axis: axis, why: "the swap axis relates sizes, and the read did not supply one" }
+    }
+    TruthDeclaredHardwareEnumerates =>
+      match observed {
+        TruthCount { count: got } => match expected {
+          TruthCount { count: wants } =>
+            if got == wants {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the hardware axis relates counts, and the declaration did not supply one" }
+        }
+        _ => TruthValueShapeRefused { host: host, axis: axis, why: "the hardware axis relates counts, and the read did not supply one" }
+      }
+    TruthEnabledUnitHasItsHardware =>
+      match observed {
+        TruthMarking { text: got } => match expected {
+          TruthMarking { text: wants } =>
+            if got == wants {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the enabled-unit axis relates markings, and the declaration did not supply one" }
+        }
+        _ => TruthValueShapeRefused { host: host, axis: axis, why: "the enabled-unit axis relates markings, and the read did not supply one" }
+      }
+    TruthIdentityAnchoredNotAddressed =>
+      match observed {
+        TruthMarking { text: got } => match expected {
+          TruthMarking { text: wants } =>
+            if got == wants {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the identity axis relates markings, and the declaration did not supply one" }
+        }
+        _ => TruthValueShapeRefused { host: host, axis: axis, why: "the identity axis relates markings, and the read did not supply one" }
+      }
+  }
+}
+
+// ONE PAIR, DECIDED. Pairing first, then the relation the axis states. This module does not invent the
+// relation: each axis's rule says which one it is, and the value arrives typed so the relation is
+// computable at all -- an at-or-above check over a cap, an equality over a count or a marking.
 fn host_truth_compare(read: HostTruthRead, expectation: HostTruthExpectation) -> HostTruthComparison {
   if host_truth_host_text(host: host_of_read(read: read)) != host_truth_host_text(host: host_of_expectation(expectation: expectation)) {
     host_truth_pairing_refusal(read: read, expectation: expectation, why: "the read and the declaration compared to it name different hosts")
@@ -207,12 +331,7 @@ fn host_truth_compare(read: HostTruthRead, expectation: HostTruthExpectation) ->
         match read {
           HostTruthReadRefused { host: _, axis: _, cause: c } => TruthUnread { host: h, axis: a, cause: c }
           HostTruthReadBlank { host: _, axis: _ } => TruthReadBlank { host: h, axis: a }
-          HostTruthObserved { host: _, axis: _, observed: o, at_run: r, receipt: k } =>
-            if o == e {
-              TruthAgrees { host: h, axis: a, at_run: r, receipt: k }
-            } else {
-              TruthDivergent { host: h, axis: a, observed: o, expected: e, declared_by: d }
-            }
+          HostTruthObserved { host: _, axis: _, observed: o, at_run: r, receipt: k } => host_truth_answer_against_declaration(host: h, axis: a, observed: o, expected: e, at_run: r, receipt: k, declared_by: d)
         }
     }
   }
@@ -254,40 +373,55 @@ fn host_truth_class(comparison: HostTruthComparison) -> HostTruthClass {
     TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => TruthClassRefusal
     // The model's own gap. It neither blocks a host nor passes it silently: the verdict carries the count.
     TruthOutsideTheModel { host: _, axis: _, because: _ } => TruthClassUndeclared
+    TruthValueShapeRefused { host: _, axis: _, why: _ } => TruthClassRefusal
     TruthPairingRefused { why: _, pairing: _ } => TruthClassRefusal
   }
 }
 
-fn host_truth_is_divergence(comparison: HostTruthComparison) -> Bool {
-  match host_truth_class(comparison: comparison) {
-    TruthClassDivergence => true
-    TruthClassAgreement => false
-    TruthClassRefusal => false
-    TruthClassUndeclared => false
-  }
+// THE COMPARISONS OF ONE HOST, PARTITIONED BY CLASS IN ONE PASS. The verdict below reads these four
+// lists and nothing else, so a new comparison arm lands in exactly one of them by way of the classification
+// above -- there is no second place that has to be told about it. Three hand-matched yes/no predicates
+// sitting next to the classification that replaced them is the same failure wearing a different coat: a new
+// arm silently means "none of the above" to each of them.
+type HostTruthPartition {
+  agreements: List<HostTruthComparison>,
+  divergences: List<HostTruthComparison>,
+  refusals: List<HostTruthComparison>,
+  undeclared: List<HostTruthComparison>
 }
-// A refusal is anything that is NOT an answer: an unread, a blank, a one-sided pairing, or a read and a
-// declaration that were matched wrongly.
-// A refusal is anything that is NOT an answer: an unread, a blank, a one-sided pairing, a duplicated read or
-// declaration, or a read and a declaration that were matched wrongly.
-fn host_truth_is_refusal(comparison: HostTruthComparison) -> Bool {
-  match host_truth_class(comparison: comparison) {
-    TruthClassRefusal => true
-    TruthClassDivergence => false
-    TruthClassAgreement => false
-    TruthClassUndeclared => false
-  }
+
+fn host_truth_partition_by_class(comparisons: List<HostTruthComparison>) -> HostTruthPartition {
+  comparisons |> fold(
+    init: HostTruthPartition { agreements: [], divergences: [], refusals: [], undeclared: [] },
+    f: (acc, comparison) => match host_truth_class(comparison: comparison) {
+      TruthClassAgreement => HostTruthPartition {
+        agreements: acc.agreements.concat([comparison]),
+        divergences: acc.divergences,
+        refusals: acc.refusals,
+        undeclared: acc.undeclared
+      }
+      TruthClassDivergence => HostTruthPartition {
+        agreements: acc.agreements,
+        divergences: acc.divergences.concat([comparison]),
+        refusals: acc.refusals,
+        undeclared: acc.undeclared
+      }
+      TruthClassRefusal => HostTruthPartition {
+        agreements: acc.agreements,
+        divergences: acc.divergences,
+        refusals: acc.refusals.concat([comparison]),
+        undeclared: acc.undeclared
+      }
+      TruthClassUndeclared => HostTruthPartition {
+        agreements: acc.agreements,
+        divergences: acc.divergences,
+        refusals: acc.refusals,
+        undeclared: acc.undeclared.concat([comparison])
+      }
+    }
+  )
 }
-// The model's own gap: an expectation arm that says nothing is declared. It neither blocks a host nor
-// passes it silently -- the verdict carries the count, and the refusal text lists the axes.
-fn host_truth_is_undeclared(comparison: HostTruthComparison) -> Bool {
-  match host_truth_class(comparison: comparison) {
-    TruthClassUndeclared => true
-    TruthClassDivergence => false
-    TruthClassAgreement => false
-    TruthClassRefusal => false
-  }
-}
+
 fn host_truth_find_expectation(expectations: List<HostTruthExpectation>, read: HostTruthRead) -> HostTruthExpectation? {
   let axis = axis_of_read(read: read)
   let host = host_truth_host_text(host: host_of_read(read: read))
@@ -385,20 +519,18 @@ fn fleet_host_truth_verdict_for_host(host: NonEmptyStr, reads: List<HostTruthRea
     HostTruthNothingRead { host: host, why: "neither a read nor a declaration was supplied for this host, so nothing about it is known" }
   } else {
     let compared = host_truth_compare_roster(reads: host_reads, expectations: host_expectations)
-    let divergences = compared.filter(comparison => host_truth_is_divergence(comparison: comparison))
-    let refusals = compared.filter(comparison => host_truth_is_refusal(comparison: comparison))
-    let undeclared = compared.filter(comparison => host_truth_is_undeclared(comparison: comparison))
-    if divergences.length() > 0 {
-      HostTruthDiverges { host: host, divergences: divergences }
-    } else if refusals.length() > 0 {
-      HostTruthRefused { host: host, refusals: refusals }
-    } else if undeclared.length() == compared.length() {
+    let by_class = host_truth_partition_by_class(comparisons: compared)
+    if by_class.divergences.length() > 0 {
+      HostTruthDiverges { host: host, divergences: by_class.divergences }
+    } else if by_class.refusals.length() > 0 {
+      HostTruthRefused { host: host, refusals: by_class.refusals }
+    } else if by_class.undeclared.length() == compared.length() {
       // Every axis asked about this host answered "nothing declared". Nothing was compared, and a pass
       // made out of an empty comparison set is what fail-closed refuses: this host is not in agreement, it
       // is unknown, and unknown does not admit.
       HostTruthNothingRead { host: host, why: "every axis asked about this host is undeclared in the model, so there is no comparison to pass" }
     } else {
-      HostTruthFollowsDesiredState { host: host, compared: compared.length(), undeclared: undeclared.length() }
+      HostTruthFollowsDesiredState { host: host, compared: compared.length(), undeclared: by_class.undeclared.length() }
     }
   }
 }
@@ -437,7 +569,8 @@ fn fleet_truth_roster_refusals(reads: List<HostTruthRead>, expectations: List<Ho
 // WHAT A REFUSAL SAYS OUT LOUD: the axis's recognition rule and the host, never a count alone.
 fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
   match comparison {
-    TruthDivergent { host: h, axis: a, observed: o, expected: e, declared_by: d } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " answered " + o + " where " + d + " declares " + e
+    TruthDivergent { host: h, axis: a, observed: _, expected: _, declared_by: d } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " " + host_truth_relation_says(axis: a, declared_by: d)
+    TruthValueShapeRefused { host: h, axis: a, why: w } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + w
     TruthAgrees { host: h, axis: a, at_run: _, receipt: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " agrees"
     TruthUnread { host: h, axis: a, cause: c } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + host_truth_read_cause_explains(cause: c)
     TruthReadBlank { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " answered blank, which is not a value"
@@ -464,10 +597,12 @@ fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
 // any axis removes the host from admission. The roster helpers above exist so a batch of hosts is admitted
 // one at a time, never on an average.
 //
-// DISCRIMINATOR: one comparison per host per axis, discriminated ten ways -- agrees, divergent, unread,
+// DISCRIMINATOR: one comparison per host per axis, discriminated eleven ways -- agrees, divergent, unread,
 // blank, no read supplied, no expectation for a read, duplicated read, duplicated declaration, nothing
-// declared, pairing refused -- so a partial read, a mispaired read, a doubled reader, a gap in the model and
-// a genuine drift are five different answers, not one.
+// declared, a value that is not the shape the axis relates, pairing refused -- so a partial read, a mispaired
+// read, a doubled reader, a malformed projection, a gap in the model and a genuine drift are six different
+// answers, not one. The relation each axis states is applied to typed values (HostTruthValue), because a
+// cap's rule is at-or-above and a size written in bytes is the same size written in gibibytes.
 //
 // COST: the mode reads each host once per axis over a single ssh round trip, so a host's five compares are
 // bounded by that round trip's own converge step budget rather than by a number invented here; the step
