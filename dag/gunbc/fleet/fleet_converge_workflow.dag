@@ -8751,7 +8751,7 @@ fn fleet_converge_arrival_converge_job() -> Job {
           // cannot bind a variable the fold never reads. The job's permissions are contents: read,
           // actions: read, id-token: write -- actions: read is already granted, is what this read needs, and
           // no permission is added; the token is the job's own, scoped to this run, and the read is read-only.
-          kv(key: github_token_env_name() as String, value: "${{ github.token }}"),
+          kv(key: github_token_env_name() as String, value: yaml_string(s: "${{ github.token }}")),
           kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
           kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
           kv(key: fleet_converge_arrival_subject_env_name, value: yaml_string(s: "${{ github.event.inputs.arrival_subject }}")),
