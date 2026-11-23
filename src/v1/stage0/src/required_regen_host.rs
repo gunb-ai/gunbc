@@ -5968,15 +5968,17 @@ fn fork_point_of_base(workspace: &Path, base_commit: &str) -> Result<String, Str
     let shown = scoped_round_git(workspace, &["merge-base", "--all", base_commit, "HEAD"]);
     let stdout = match shown {
         Ok(stdout) => stdout,
-        // Unrelated histories (or a ref that is not a commit) make git exit non-zero with no
-        // ancestor. That IS "named no single commit", so it carries the located diagnostic rather
-        // than the bare git status: the doc above promises a well-formed id whose merge-base is not
-        // a single commit refuses HERE, not with a generic `git merge-base ... failed` one frame up.
-        Err(_) => {
+        // `git merge-base --all` can fail for more than one reason — genuinely unrelated histories,
+        // a ref that is not a commit, or git erroring for some other cause — and the exit status does
+        // not tell them apart from here. So the message does NOT name a specific cause: it keeps the
+        // git cause verbatim under the SAME located diagnostic and says the merge base "could not be
+        // established", rather than asserting "unrelated histories" for every failure. The located
+        // refusal still replaces the bare `git merge-base ... failed` one frame up.
+        Err(cause) => {
             return Err(format!(
-                "BootstrapBaseMirrorForkPointUnresolved: git merge-base --all {base_commit} HEAD \
-                 named no common ancestor with HEAD (unrelated histories); the round cannot seed \
-                 the forced recheck from a fork point it cannot name"
+                "BootstrapBaseMirrorForkPointUnresolved: the merge-base of {base_commit} and HEAD \
+                 could not be established ({cause}); the round cannot seed the forced recheck from \
+                 a fork point it cannot name"
             ));
         }
     };
@@ -14376,6 +14378,69 @@ mod regen_affected_set_tests {
             err.contains("BootstrapBaseMirrorForkPointUnresolved")
                 && err.contains("not exactly one"),
             "the refusal names the unresolved fork point and the multiplicity: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE MERGE-BASE REFUSAL KEEPS THE GIT CAUSE AND DOES NOT BLAME "UNRELATED HISTORIES" FOR EVERY
+    /// FAILURE. `git merge-base --all` exits non-zero for several reasons — genuinely unrelated
+    /// histories, a ref that is not a commit, or git itself erroring — and the status cannot tell them
+    /// apart here, so the located refusal carries the git cause verbatim and says the merge base
+    /// "could not be established", asserting no single cause. w_RED: hard-coding the cause as
+    /// "(unrelated histories)" and dropping the git cause makes the cause-neutral assertions below
+    /// fail.
+    #[test]
+    fn the_merge_base_refusal_is_cause_neutral_and_keeps_the_git_cause() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-fork-unrelated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "main root"]);
+        let first = git(&["rev-parse", "HEAD"]);
+        // An ORPHAN root commit: no shared history with `first`, so no merge base exists.
+        git(&["checkout", "-q", "--orphan", "orphan"]);
+        git(&["rm", "-r", "-q", "--cached", "."]);
+        std::fs::write(dir.join("src/v1/stage0/src/orphan.rs"), "// orphan root\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "orphan root with no parent"]);
+        let _ = git(&["rev-parse", "HEAD"]);
+        // base = `first` (the other, disconnected history); HEAD = the orphan root.
+        let refused = fork_point_of_base(&dir, &first);
+        assert!(
+            refused.is_err(),
+            "disconnected histories have no merge base, so it must refuse; got {refused:?}"
+        );
+        let err = refused.unwrap_err();
+        assert!(
+            err.contains("BootstrapBaseMirrorForkPointUnresolved")
+                && err.contains("could not be established"),
+            "the refusal is located and cause-neutral: {err}"
+        );
+        assert!(
+            !err.contains("unrelated histories"),
+            "the label must not assert one specific cause for every merge-base failure: {err}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
