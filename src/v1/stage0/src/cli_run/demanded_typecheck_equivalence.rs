@@ -484,6 +484,166 @@ fn a_read_outside_the_realized_set_refuses_typed() {
     );
 }
 
+/// THE PRODUCER CONTROL. The hand-built-edge witnesses above only prove the AUDIT discriminates on
+/// realization: they hand `realization_audit` an `edges` vector they typed by hand, so they would still
+/// pass if `realization_edges` returned `[]` -- they never touch the code the read-inventory hoist
+/// touched. This test closes that gap. It drives `v1.compiler.infer.realization_edges` (the real
+/// PRODUCER) on a controlled declaration and feeds ITS output to an ACTIVE `realization_audit`
+/// (`inactive_realization` would make the audit read nothing, which is exactly the hole a default
+/// `compile_dag_diagnostic_census` witness falls into).
+///
+/// The declaration's field extent reaches a name only by the deep walk (`GhostDeepName`, no alias row,
+/// so the seven-family block is the sole producer of its edges) and a row that is realized by another
+/// path (`RealizedRow`, realized through `producer_entry`). The audit, active, must keep the realized
+/// read silent and refuse the declared-but-unrealized one -- same seven-family reads, opposite verdicts.
+///
+/// The last two blocks are the load-bearing proof. Drop the produced edges and the refusal vanishes
+/// (so the refusal is genuinely the producer's work, not a fixture artifact); drop one reader family
+/// and the seven-family coverage collapses (so a producer that lost a family trips the coverage
+/// assert above). Both go RED by construction on any producer regression.
+#[test]
+fn realization_edges_producer_drives_active_audit_for_a_deep_only_read() {
+    // Same 256 MB stack the sibling tests run on: the resolver and the deep extent walk recurse deeply,
+    // and on the default test stack they would not be able to finish.
+    std::thread::Builder::new()
+        .stack_size(256 << 20)
+        .spawn(realization_edges_producer_body)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn realization_edges_producer_body() {
+    let (_sources, _intern, si, modules, _graph) =
+        graph_from("dag/test/fixture/demanded_scope/realization_edges_producer.dag");
+    // The controlled declaration, located by last segment. Its OWN read inventory is what we ask the
+    // producer about; it is read by nobody, so neither it nor the deep-only name is realized.
+    let items: Vec<_> = modules
+        .iter()
+        .flat_map(|m| {
+            module_items(m.module.clone())
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let named = |seg: &str| {
+        items
+            .iter()
+            .find(|it| qualified_last_segment(authored_name_at(si.clone(), (*it).clone())) == seg)
+            .cloned()
+            .unwrap_or_else(|| panic!("the fixture must declare {seg}"))
+    };
+    let carrier = named("GhostCarrier");
+
+    let seeds: Rc<im::Vector<String>> = Rc::new(im::vector!["producer_entry".to_string()]);
+    // THE PRODUCER, exercised FIRST and asserted on its own output -- before realization_of -- so a
+    // regression in the deep-walk producer goes RED here, at the producer-output boundary, rather
+    // than incidentally downstream. No hand-built edge vector anywhere.
+    let edges = infer::realization_edges(carrier.clone(), si.clone());
+
+    // (1) The deep-only name is reached by the seven-family block: read by exactly the seven reader
+    // families, compared as a SET (never list order), and by NO row-edge reader -- that is what
+    // "reached only by the deep walk" means: alias_rhs_expansion / where_refinement_chain are absent.
+    let families: [&str; 7] = [
+        "spelled",
+        "inhabitance_row",
+        "algebra_row",
+        "dispatch",
+        "provider_demand",
+        "effect_analysis",
+        "global_bare_lookup",
+    ];
+    let expected: HashSet<String> = families.iter().map(|s| s.to_string()).collect();
+    let ghost_readers: HashSet<String> = edges
+        .iter()
+        .filter(|e| qualified_last_segment(e.name.clone()) == "GhostDeepName")
+        .map(|e| e.reader.clone())
+        .collect();
+    assert_eq!(
+        ghost_readers, expected,
+        "the deep-only name must be read by exactly the seven families and by no row-edge reader"
+    );
+
+    let census = infer::build_symbol_index_census(modules.clone(), si.clone());
+    let realization = infer::realization_of(modules.clone(), seeds, census, si.clone());
+
+    // The audit must be ACTIVE: this is the whole reason the default census witness was not enough.
+    assert!(
+        infer::realization_enforcing(realization.clone()),
+        "the control needs an active audit, not inactive_realization()"
+    );
+    // Pre-conditions on the realization the audit will be graded against.
+    assert!(
+        realization.realized.contains_key("RealizedRow"),
+        "the seed realizes the row GhostCarrier also reads: {:?}",
+        realization.realized.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        realization.declared.contains_key("GhostDeepName")
+            && !realization.realized.contains_key("GhostDeepName"),
+        "GhostDeepName must be declared but unrealized for it to be the refusal"
+    );
+
+    // (2) Feed the PRODUCED edges to an ACTIVE audit: the realized read stays silent, the
+    // declared-but-unrealized deep-only name refuses and names the reading check (spelled is first
+    // in the fold, so it is the edge the dedup-by-name audit records).
+    let module_name = "test.fixture.demanded_scope.realization_edges_producer".to_string();
+    let messages: Vec<String> = infer::realization_audit(realization.clone(), edges.clone(), module_name.clone())
+        .iter()
+        .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("GhostDeepName") && m.contains("spelled")),
+        "the declared-but-unrealized deep read must refuse, naming a reader family: {messages:?}"
+    );
+    assert!(
+        !messages.iter().any(|m| m.contains("RealizedRow")),
+        "a read that IS realized must stay silent (the positive case): {messages:?}"
+    );
+
+    // (3) LOAD-BEARING: drop the produced edges entirely -> the audit is silent. A refusal here would
+    // mean the refusal is not driven by realization_edges output at all.
+    let empty_edges: Rc<im::Vector<Rc<infer::RealizationEdge>>> = Rc::new(im::vector![]);
+    let empty_messages: Vec<String> =
+        infer::realization_audit(realization.clone(), empty_edges, module_name.clone())
+            .iter()
+            .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect();
+    assert!(
+        empty_messages.is_empty(),
+        "with the produced edges dropped the audit must be silent; a refusal means it is not the \
+         producer's edges doing the work: {empty_messages:?}"
+    );
+
+    // (4) LOAD-BEARING: drop one reader family (dispatch) -> the seven-family coverage collapses to
+    // six. This is the guard a family-dropping producer trips (the refusal itself survives on the
+    // other six because the audit dedups by name, so coverage (1), not the refusal, is the guard).
+    let without_dispatch: Rc<im::Vector<Rc<infer::RealizationEdge>>> = Rc::new(
+        edges
+            .iter()
+            .filter(|e| {
+                !(qualified_last_segment(e.name.clone()) == "GhostDeepName"
+                    && e.reader == "dispatch")
+            })
+            .cloned()
+            .collect::<im::Vector<_>>(),
+    );
+    let readers_wo_dispatch: HashSet<String> = without_dispatch
+        .iter()
+        .filter(|e| qualified_last_segment(e.name.clone()) == "GhostDeepName")
+        .map(|e| e.reader.clone())
+        .collect();
+    let mut expected_wo = expected.clone();
+    expected_wo.remove("dispatch");
+    assert_eq!(
+        readers_wo_dispatch, expected_wo,
+        "dropping one family must leave six -- a producer that emits fewer trips assert (1): {readers_wo_dispatch:?}"
+    );
+}
+
 /// The row a READ reaches, not a name spells. `grain_alias_entry` names only the alias; the record it is
 /// declared to be lives in the item's `inferred` node, outside the extent `spelled_names_into` walks. The
 /// type reader reads that right-hand side anyway, so `realization_row_edges` declares the edge and the

@@ -17494,12 +17494,17 @@ fn realization_enforcing(realization: Realization) -> Bool { realization.active 
 
 
 fn realization_edges(n: Node, source_indices: Map<String, NewlineIndex>) -> List<RealizationEdge> {
-  // The seven reader families are seven EDGES over the SAME read inventory, so the inventory is
-  // derived ONCE. Inlining `realization_read_names` in the reader body re-ran the whole deep extent
-  // walk (`spelled_names_into` deep) once per reader -- seven identical walks per declaration, and
-  // this function is the checker's read for every realized declaration (closure growth and the
-  // boundary audit both come through it). The readers differ only in the label they put on the edge,
-  // never in the names they read, so the names are the loop-invariant value the fold must share.
+  // Within the SEVEN-FAMILY BLOCK the seven reader families are seven EDGES over the SAME read
+  // inventory, so that inventory is derived ONCE -- for these seven folds only. Inlining
+  // `realization_read_names` in the reader body re-ran the whole deep extent walk
+  // (`spelled_names_into` deep) once per reader: seven identical walks per declaration for one
+  // byte-identical value. The readers differ only in the label they put on the edge, never in the
+  // names they read, so the names are the loop-invariant value the seven folds share. This hoist is
+  // scoped to the block: `realization_row_edges` and `realization_provider_row_edges` below derive
+  // their OWN reads from the item's declared-type right-hand side (separate readers, separate walks),
+  // and closure growth (`demand_wave_add`) walks the item separately -- none of those share this one
+  // inventory. DESIGN demand_before_materialization step 1: share the first value at the least common
+  // ancestor; caching a later request only makes redundant work cheap and hides the signal to delete.
   let read_names = realization_read_names(n: n, source_indices: source_indices)
   concat(
     fold([ "spelled", "inhabitance_row", "algebra_row", "dispatch", "provider_demand", "effect_analysis", "global_bare_lookup" ], init: [], f: (acc, reader) =>
