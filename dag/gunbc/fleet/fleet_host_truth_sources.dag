@@ -33,6 +33,17 @@ module gunbc.fleet.fleet_host_truth_sources
 // with the roster admission that consumes the verdict (the -rosters-consume-the-read item in
 // gunbc.roadmap.roadmap_authority). A per-axis producer that is not written yet is absent from this module;
 // nothing here answers for it.
+// CONSUMPTION, CLASSIFIED (gunbc.design_argument::consumption). The producers here --
+// host_truth_cap_read, host_truth_leaf_swap_read, host_truth_identity_expectation,
+// host_truth_identity_read and host_truth_verdict_for_host -- have exactly one consumer named: the
+// observe-only converge mode authorized by
+// gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21, on the row
+// gunbc.roadmap.roadmap_authority::fleet-truth-follows-the-machine-per-host-read, whose verdict
+// gunbc.roadmap.roadmap_authority::fleet-truth-follows-the-machine-rosters-consume-the-read admits on.
+// They are NOT consumed in this change: no production caller lands here, because the mode is the next
+// increment and this PR does not stack on it, and the only callers in the tree today are this module's
+// witness. Saying so is the classification the argument asks for; the frontier paragraph above is what
+// makes it checkable rather than prose.
 
 import std.types { NonEmptyStr, String }
 import std.measure { ByteSize }
@@ -190,17 +201,20 @@ fn host_truth_identity_expectation(host: NonEmptyStr, declared_by: String) -> Ho
 // extdeps.ssh.known_hosts, so this module takes the projected fingerprint rather than parsing the line a
 // second time -- a second parser would be a second authority over which field is the key. An empty
 // fingerprint is the blank arm: the read happened and answered nothing, which is a different fact from a
-// refusal and both are different from a fingerprint of the empty string.
-fn host_truth_identity_read(host: NonEmptyStr, at_run: NonEmptyStr, presented: String) -> HostTruthRead {
-  if presented == "" {
-    HostTruthReadBlank { host: host, axis: TruthIdentityAnchoredNotAddressed }
-  } else {
-    HostTruthObserved {
+// refusal and both are different from a fingerprint of the empty string -- so absence arrives as Absent on
+// an optional, exactly as it does on the enrolled side above, and a caller that never ran the scan cannot
+// pass a string that means nothing and be scored as blank. The Cardinality / absence domain names
+// std.optional::Optional as the presence carrier (ruling dag_absence_is_one_meaning); a bare empty String
+// would put absence back in-band, which is fail_closed's "making it unwritable" rather than catching it.
+fn host_truth_identity_read(host: NonEmptyStr, at_run: NonEmptyStr, presented: NonEmptyStr?) -> HostTruthRead {
+  match presented {
+    Present { value: fingerprint } => HostTruthObserved {
       host: host,
       axis: TruthIdentityAnchoredNotAddressed,
-      observed: TruthMarking { text: presented },
+      observed: TruthMarking { text: fingerprint },
       at_run: at_run,
       receipt: host_truth_source_receipt(carrier: "gunbc.fleet.fleet_host_key_step scan receipt, third field of the known_hosts line")
     }
+    Absent => HostTruthReadBlank { host: host, axis: TruthIdentityAnchoredNotAddressed }
   }
 }

@@ -197,7 +197,7 @@ test fn RED_a_host_with_no_enrolled_row_is_undeclared_and_not_admitted() -> Bool
   let presented = host_truth_identity_read(
     host: "butch" as NonEmptyStr,
     at_run: "converge-2026-11-21",
-    presented: "SHA256:9kQ2previous-occupant",
+    presented: Present { value: "SHA256:9kQ2previous-occupant" },
   )
   let expectation = host_truth_identity_expectation(host: "butch" as NonEmptyStr, declared_by: "gunbc.fleet.fleet_host_key_enrollment")
   let verdict = fleet_host_truth_verdict_for_host(
@@ -214,7 +214,7 @@ test fn RED_a_host_with_no_enrolled_row_is_undeclared_and_not_admitted() -> Bool
 // THE SCAN ANSWERED NOTHING. A known_hosts line whose key field is empty is a blank read, not a fingerprint
 // of the empty string: the two differ in whether the machine answered, and only one of them can be compared.
 test fn RED_a_presented_fingerprint_of_nothing_is_a_blank_read_not_an_empty_key() -> Bool {
-  match host_truth_identity_read(host: "butch" as NonEmptyStr, at_run: "converge-2026-11-21", presented: "") {
+  match host_truth_identity_read(host: "butch" as NonEmptyStr, at_run: "converge-2026-11-21", presented: none) {
     HostTruthReadBlank { host: _, axis: _ } => true
     _ => false
   }
