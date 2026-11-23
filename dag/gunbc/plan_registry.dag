@@ -25,6 +25,9 @@ import gunbc.plans.first_customer_service { first_customer_service_plan }
 import gunbc.plans.desired_state_follows_the_machine { desired_state_follows_the_machine_plan }
 import gunbc.plans.one_source_tree { one_source_tree_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
+import gunbc.plans.boot_gh200 { boot_gh200_plan }
+import gunbc.plans.p4261_board_mapping { p4261_board_mapping_plan }
+import gunbc.plans.p4261_repair_pool { p4261_repair_pool_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -61,4 +64,7 @@ data all_plans: List<Plan> = [
   factory_dogfood_plan, debt_payoff_plan, names_without_imports_plan, first_customer_service_plan,
   new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
   desired_state_follows_the_machine_plan,
+  boot_gh200_plan,
+  p4261_board_mapping_plan,
+  p4261_repair_pool_plan,
 ]

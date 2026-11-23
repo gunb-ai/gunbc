@@ -1,0 +1,120 @@
+module test.claim.roadmap.gh200_boot_roadmap_witness
+
+import std.types { Bool, String, List }
+import std.decl_ref { decl_ref }
+import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes, nid }
+import gunbc.roadmap.roadmap_intention_binding {
+  IntentionBinding, nodes_serving, terminals_of, binding_on_a_path, reaches_from,
+}
+import gunbc.roadmap.roadmap_execution_contract {
+  NonAgentWorkMode, NotAgentWork, OperatorExclusiveMode, ExternalLeadMode,
+}
+
+// These claims constrain the live planning graph. They do not establish a connector pinout,
+// an electrically safe fixture, firmware progress, CUDA execution or a successful request.
+// Those require the physical, assembly-scoped evidence named by the work items themselves.
+fn boot_items() -> List<IntentionBinding> {
+  nodes_serving(intention: decl_ref(module_path: "gunbc.plans.boot_gh200", decl_name: "boot_gh200_plan"))
+}
+
+fn mapping_items() -> List<IntentionBinding> {
+  nodes_serving(intention: decl_ref(module_path: "gunbc.plans.p4261_board_mapping", decl_name: "p4261_board_mapping_plan"))
+}
+
+fn repair_items() -> List<IntentionBinding> {
+  nodes_serving(intention: decl_ref(module_path: "gunbc.plans.p4261_repair_pool", decl_name: "p4261_repair_pool_plan"))
+}
+
+fn has_prerequisite(child: String, parent: String) -> Bool {
+  reaches_from(start: nid(s: child), target: nid(s: parent), budget: count(declared_roadmap_nodes()))
+}
+
+test fn each_boot_work_item_reaches_reproducible_request_service() -> Bool {
+  let intention = decl_ref(module_path: "gunbc.plans.boot_gh200", decl_name: "boot_gh200_plan")
+  count(boot_items()) > 0
+    && all(boot_items(), b => binding_on_a_path(b: b))
+    && terminals_of(intention: intention) == [nid(s: "gh200-repeatable-service")]
+    && has_prerequisite(child: "gh200-repeatable-service", parent: "gh200-first-request")
+}
+
+// Full mapping and all three specimen repairs keep their own complete paths. Making either
+// supporting program a prerequisite of first request or repeatable service must turn this red.
+test fn mapping_and_repairs_have_own_terminals_and_do_not_hold_boot() -> Bool {
+  let supporting = concat(mapping_items(), repair_items())
+  let supporting_ids = concat(map(supporting, b => b.node as String), ["p4261-board-mapping", "p4261-repair-pool"])
+  count(mapping_items()) > 0 && count(repair_items()) > 0
+    && all(supporting, b => binding_on_a_path(b: b))
+    && all(supporting_ids, id =>
+      !has_prerequisite(child: "gh200-first-request", parent: id)
+        && !has_prerequisite(child: "gh200-repeatable-service", parent: id))
+}
+
+// Alternatives may discharge a requirement, but unresolved electrical and sequence contracts
+// cannot be bypassed simply by taking the shortest path through the graph.
+test fn each_power_phase_retains_its_required_contracts() -> Bool {
+  has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-early-standby-interface")
+    && has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-early-standby-sequence")
+    && has_prerequisite(child: "gh200-bmc-ready-observed", parent: "gh200-early-standby-observed")
+    && has_prerequisite(child: "gh200-bmc-ready-observed", parent: "gh200-bmc-ready-contract")
+    && has_prerequisite(child: "gh200-bmc-ready-observed", parent: "gh200-bmc-ready-interface")
+    && has_prerequisite(child: "gh200-run-observed", parent: "gh200-bmc-ready-observed")
+    && has_prerequisite(child: "gh200-run-observed", parent: "gh200-run-interface")
+    && has_prerequisite(child: "gh200-run-observed", parent: "gh200-console-route")
+    && has_prerequisite(child: "gh200-run-observed", parent: "gh200-power-cooling")
+}
+
+// The four threshold-write pairs are unresolved preparation for BMC_READY, not a reason to
+// freeze an otherwise admitted earlier FPGA_READY phase or all desk work on boot preparation.
+test fn the_early_phase_is_not_held_by_later_bus_work_or_workload_selection() -> Bool {
+  !has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-bmc-ready-contract")
+    && !has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-bmc-ready-interface")
+    && !has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-run-interface")
+    && !has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-power-cooling")
+    && !has_prerequisite(child: "gh200-early-standby-observed", parent: "gh200-request-contract")
+    && !has_prerequisite(child: "gh200-arm64-boot-media", parent: "gh200-run-observed")
+}
+
+test fn a_real_request_requires_the_physical_stack_and_selected_consumer_contract() -> Bool {
+  has_prerequisite(child: "gh200-first-request", parent: "gh200-request-contract")
+    && has_prerequisite(child: "gh200-first-request", parent: "gh200-linux-remote")
+    && has_prerequisite(child: "gh200-linux-remote", parent: "gh200-host-io-path")
+    && has_prerequisite(child: "gh200-first-request", parent: "gh200-cuda-observed")
+    && has_prerequisite(child: "gh200-first-request", parent: "gh200-runtime-admission")
+    && has_prerequisite(child: "gh200-first-request", parent: "gh200-runtime-launch")
+}
+
+fn has_non_agent_mode(id: String, expected: NonAgentWorkMode) -> Bool {
+  let rows = filter(declared_roadmap_nodes(), n => (n.node as String) == id)
+  count(rows) == 1 && all(rows, n => match n.execution {
+    NotAgentWork { mode } => mode == expected
+    _ => false
+  })
+}
+
+test fn physical_bench_and_repair_work_is_operator_exclusive() -> Bool {
+  all([
+    "gh200-early-standby-interface", "gh200-bmc-ready-interface", "gh200-run-interface",
+    "gh200-early-standby-observed", "gh200-bmc-ready-observed", "gh200-run-observed",
+    "gh200-firmware-boot", "gh200-linux-remote", "gh200-repeatable-service",
+    "p4261-repair-148", "p4261-repair-k1", "p4261-repair-e1b",
+  ], id => has_non_agent_mode(id: id, expected: OperatorExclusiveMode))
+}
+
+// Once Linux is remotely reachable, routine software qualification and request work belongs
+// to the session. The operator is not made a mandatory terminal-command courier.
+fn permits_agent_work(id: String) -> Bool {
+  let rows = filter(declared_roadmap_nodes(), n => (n.node as String) == id)
+  count(rows) == 1 && all(rows, n => match n.execution {
+    NotAgentWork { mode: _ } => false
+    _ => true
+  })
+}
+
+test fn remote_software_work_is_not_classified_as_operator_only() -> Bool {
+  all(["gh200-cuda-observed", "gh200-runtime-launch", "gh200-first-request"], id => permits_agent_work(id: id))
+}
+
+test fn external_mapping_deliveries_are_not_agent_dispatches() -> Bool {
+  has_non_agent_mode(id: "p4261-map-pilot", expected: ExternalLeadMode)
+    && has_non_agent_mode(id: "p4261-map-delivered", expected: ExternalLeadMode)
+}
