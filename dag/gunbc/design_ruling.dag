@@ -1310,6 +1310,13 @@ data v1_seed_growth_for_declared_transport_ceiling_admitted: DesignRuling = Desi
   provenance: "Answers the PURPOSE objection raised by review 97148 (REQUEST_CHANGES) on gunb-ai/gunbc#16737, which asked whether a seed change passes the v1 semantics freeze. The operator's words, verbatim, given directly to the lane manager neat-badger-614 in chat on 2026-11-21: \"ah sorry - yes you can admit the seed change.\" principal:google-oidc/accounts/116084671989231734979. It covers both halves of that lane's seed growth: the transport-shell grammar field `wall_deadline:` on gunb-ai/gunbc#16842 (row gunbc.transport_shell_wall_deadline_field_seed_growth) and the interpreter's per-leg kill plus overrun decode on gunb-ai/gunbc#16737 (row carried there). The purposive case, in the lane's words: before the field, the seed armed a per-leg wall-clock kill by looking up a PARAMETER NAME at dispatch time, so the bound existed only where a caller happened to use one spelling and no bound at all otherwise; declaring the field on the transport retires that spelling as an authority. A transport that does not declare the field keeps main's behaviour byte for byte."
 }
 
+data v1_seed_growth_for_adjudicate_measurement_receipt_cli_modes_admitted: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_growth_for_adjudicate_measurement_receipt_cli_modes_admitted"),
+  decided: "2026-11-22",
+  governs: decl_ref(module_path: "gunbc.v1.v1_maintenance_standing", decl_name: "v1_seed_standing"),
+  provenance: "Answers whether wiring three CLI modes to claim_executor (adjudicate-measurement-receipt, measurement-receipt, measurement-unreached-receipt) passes the v1 seed freeze. The operator's words, verbatim, given to lane manager royal-newt-240 on 2026-11-22: \"A is fine\" -- admitting the seed growth on the same terms as #16842. principal:google-oidc/accounts/116084671989231734979. The purposive case: the adjudication logic already exists in v1_compiler::cli_run::required_ci_measurement with eleven unit tests proving its correctness; the binary simply had no mode to invoke it, so the D0 adjudicate step called a non-existent flag (exit 2, unknown argument) rather than mapping the receipt verdict to the exit code. The three modes are thin CLI adapters -- they parse a flag, call the existing library function, and exit 0 or 1 by its return. No new semantic decision is added to v1; the modes are the missing wire between an existing tested verdict and the process exit status the CI step requires. Row gunbc.adjudicate_measurement_receipt_cli_modes_seed_growth enumerates the declarations."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     one_source_tree_and_the_v2_namespace_dissolves,
@@ -1372,6 +1379,7 @@ fn design_rulings() -> List<DesignRuling> {
     flex_first_recipe_is_flash_next,
     infrastructure_refusal_is_retried_to_a_bound,
     v1_seed_growth_for_declared_transport_ceiling_admitted,
+    v1_seed_growth_for_adjudicate_measurement_receipt_cli_modes_admitted,
     conformance_needs_attention,
     consumption_interrogated_separately,
     dependencies_are_admitted_by_their_consumer,
