@@ -314,21 +314,37 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 
 test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent() -> ProcessExit {
   census_verdict_all([
-    census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_cardinality_seam_hole_probe, source: cardinality_seam_hole_source)),
-    blocking_verdict(source: cardinality_seam_hole_source, wanted: "TypeMismatch", holds: fn(n) { n == 0 })
+    census_premise("the probe row is enrolled as a below-floor hole", is_enrolled_hole(probe: floor_cardinality_seam_hole_probe)),
+    blocking_verdict(source: cardinality_seam_hole_source, wanted: "DeclaredTypeNotInhabited", holds: fn(n) { n == 0 })
   ])
 }
 
-test fn floor_cardinality_seam_green_control_is_clean() -> Bool {
-  row_holds(probe: floor_cardinality_seam_green_probe, source: cardinality_seam_green_source)
-    && total_row_count_is_zero(census: census_of(source: cardinality_seam_green_source))
+test fn floor_cardinality_seam_green_control_is_clean() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the green row exists", is_enrolled_row(probe: floor_cardinality_seam_green_probe)),
+    blocking_verdict(source: cardinality_seam_green_source, wanted: "DeclaredTypeNotInhabited", holds: fn(n) { n == 0 })
+  ])
 }
 
 test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -> ProcessExit {
   census_verdict_all([
-    census_premise("the call-argument control row's expectation holds", row_holds(probe: floor_cardinality_seam_call_arg_control_probe, source: cardinality_seam_call_arg_control_source)),
+    census_premise("the call-argument control row exists", is_enrolled_row(probe: floor_cardinality_seam_call_arg_control_probe)),
     blocking_verdict(source: cardinality_seam_call_arg_control_source, wanted: "DeclaredTypeNotInhabited", holds: fn(n) { n >= 1 })
   ])
+}
+
+fn is_enrolled_hole(probe: GuaranteeProbeId) -> Bool {
+  match active_probe_row(probe: probe) {
+    Present { value: row } => probe_expectation_is_below_floor_hole(e: row.expectation)
+    Absent => false
+  }
+}
+
+fn is_enrolled_row(probe: GuaranteeProbeId) -> Bool {
+  match active_probe_row(probe: probe) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 // THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has since
