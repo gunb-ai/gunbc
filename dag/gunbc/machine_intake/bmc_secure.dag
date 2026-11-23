@@ -69,7 +69,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetch,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
@@ -2319,6 +2319,7 @@ fn admit_fetched_generation(
         }
       SecretCredentialAccessUpsertRequired { plan: _ } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "secret access needs an access upsert first" as NonEmptyStr } }
       SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "secret access response did not decode" as NonEmptyStr } }
+      SecretCredentialPayloadNotText => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "the stored secret is not UTF-8 text" as NonEmptyStr } }
       SecretCredentialFetchRefused { reason: why } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: why } }
       SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => GenerationFetchRefused { cause: GenerationFetchNotReady { detail: "secret access resolved another version than requested" as NonEmptyStr } }
     }
@@ -3602,6 +3603,7 @@ fn dry_fetch_resolves(fetch: SecretCredentialFetch, write: PlannedAccountWrite) 
       if (r as String) == (write.generation.stored.stored_version as String) { Present { value: c as String } } else { none }
     SecretCredentialAccessUpsertRequired { plan: _ } => none
     SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
+    SecretCredentialPayloadNotText => none
     SecretCredentialFetchRefused { reason: _ } => none
     SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
   }

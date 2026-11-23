@@ -13,7 +13,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.secret_provision { secret_ref_pin_version }
 import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
 }
 import gunbc.fleet.fleet_asset_identity { PhysicalAssetIdentity }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
@@ -169,6 +169,7 @@ fn resolve_secret_manager_credential_version(printer: PhysicalAssetIdentity, tok
         }
         SecretCredentialAccessUpsertRequired { plan: _ } => none
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => none
+        SecretCredentialPayloadNotText => none
         SecretCredentialFetchRefused { reason: _ } => none
         SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => none
       }

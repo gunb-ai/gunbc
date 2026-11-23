@@ -27,7 +27,7 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
@@ -88,6 +88,8 @@ fn observe_account_permission_groups_standing() -> PermissionGroupListing {
                   PermissionGroupListingRefused { cause: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
                 SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
                   PermissionGroupListingRefused { cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+                SecretCredentialPayloadNotText =>
+                  PermissionGroupListingRefused { cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the stored secret is not UTF-8 text" as NonEmptyStr }
                 SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
                   PermissionGroupListingRefused { cause: concat(concat("THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested),
                     concat(", answered about ", resolved)) as NonEmptyStr }

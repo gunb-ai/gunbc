@@ -103,7 +103,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialAccessUpsertRequired,
   SecretCredentialFetchRefused,
   SecretCredentialReady,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   fetch_secret_ref_credential,
 }
 import gunbc.bmc.bmc_fan_alignment_standing { fleet_bmc_fan_alignment_standings }
@@ -1807,6 +1807,8 @@ fn bmc_fan_run(
       exit_failure(reason: access_token_upsert_required_reason(plan: plan))
     SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
       exit_failure(reason: "secret manager access version wire decode refused")
+    SecretCredentialPayloadNotText =>
+      exit_failure(reason: "secret manager stored secret is not UTF-8 text")
     SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
       exit_failure(reason: concat(concat(
         "secret manager answered about a different version than requested: asked ", requested),

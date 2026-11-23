@@ -18,7 +18,7 @@ import gunbc.clock_read { observer_clock_read, ObserverClockObserved, ObserverCl
 import gunbc.auth.access_token_source { resolve_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, access_token_upsert_required_reason }
 import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
 }
 import gunbc.flex_vast_credential { flex_vast_api_key_secret_ref }
 import product.fabric.flex_vast_shadow {
@@ -70,6 +70,8 @@ fn flex_vast_key() -> FlexVastKey uses net: Network {
           FlexVastKeyRefused { cause: concat("THE VAST KEY COULD NOT BE READ: ", reason as String) as NonEmptyStr }
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
           FlexVastKeyRefused { cause: "THE VAST KEY COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+        SecretCredentialPayloadNotText =>
+          FlexVastKeyRefused { cause: "THE VAST KEY COULD NOT BE READ: the stored secret is not UTF-8 text" as NonEmptyStr }
         SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
           FlexVastKeyRefused { cause: join(["THE VAST KEY READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr }
         SecretCredentialReady { credential: k, resolved_version: v } => FlexVastKeyReady { key: k, resolved_version: v }

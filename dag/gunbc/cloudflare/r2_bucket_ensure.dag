@@ -54,7 +54,7 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
@@ -230,6 +230,8 @@ fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
                   R2EnsureCredentialsRefused { cause: concat("THE BUCKET-ADMIN TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
                 SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
                   R2EnsureCredentialsRefused { cause: "THE BUCKET-ADMIN TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+                SecretCredentialPayloadNotText =>
+                  R2EnsureCredentialsRefused { cause: "THE BUCKET-ADMIN TOKEN COULD NOT BE READ: the stored secret is not UTF-8 text" as NonEmptyStr }
                 SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
                   R2EnsureCredentialsRefused {
                     cause: join(["THE BUCKET-ADMIN READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr

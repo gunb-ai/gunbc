@@ -3,7 +3,7 @@ module gunbc.fleet.fleet_printer_access
 import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity,sm_resolved_version_id,SmVersionIdProjected,SmVersionIdNotAVersionResource}
 import gunbc.fleet.printer_credential_source {PrinterCredentialSource,SecretManagerCredentialSource,MintAtUseCredentialSource,HostCustodyCredentialSource,PrinterGoogleTokenSource,PrinterGoogleMintAtUse,read_printer_custody_version,PrinterCustodyVersionPresent,PrinterCustodyVersionRefused}
 import gunbc.fleet.printer_mint_at_use {resolve_printer_google_token,MintAtUseTokenPresent,MintAtUseTokenRefused}
-import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential_with_token,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
+import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential_with_token,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource, gcp_resource_names_this_secret }
@@ -555,6 +555,7 @@ fn read_existing_printer_session_with_token(printer:PhysicalAssetIdentity,versio
     SecretCredentialFetchRefused {reason:r}=>PrinterSessionRefused {cause:r}
     SecretCredentialAccessUpsertRequired {plan:_}=>PrinterSessionRefused {cause:"Existing-session read requires credential access; it does not provision access"}
     SecretCredentialWireDecodeRefused {identity_cause:_,payload_cause:_}=>PrinterSessionRefused {cause:"Credential response did not decode"}
+    SecretCredentialPayloadNotText=>PrinterSessionRefused {cause:"Credential secret is not UTF-8 text"}
     SecretCredentialResolvedVersionMismatch {requested:_,resolved:_}=>PrinterSessionRefused {cause:"Credential response names another exact version"}
    }
   PrinterAccessCodeLocusUnknown {printer:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"} PrinterAccessCodeLocusConflict {printer:_,matches:_}=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}

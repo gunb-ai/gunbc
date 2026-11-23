@@ -39,7 +39,7 @@ import gunbc.command_runner { run_shell_command_capture }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.auth.secret_ref_credential {
   SecretCredentialFetch, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText, SecretCredentialFetchRefused,
   fetch_secret_ref_credential,
 }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -719,6 +719,8 @@ fn deliver_project_to_printer(
           refuse_and_drop(printer: printer, payload: payload, cause: "the access code could not be read: Secret Manager access has not been granted to this identity")
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
           refuse_and_drop(printer: printer, payload: payload, cause: "the Secret Manager response for the access code did not decode")
+        SecretCredentialPayloadNotText =>
+          refuse_and_drop(printer: printer, payload: payload, cause: "the Secret Manager secret for the access code is not UTF-8 text")
         SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
           refuse_and_drop(printer: printer, payload: payload, cause: concat(concat(
             "the access code fetch asked for ", requested),

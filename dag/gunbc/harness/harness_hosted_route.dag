@@ -41,7 +41,7 @@ import extdeps.nvidia.api_trial_terms { NvidiaApiTrialTerms, nvidia_api_trial_te
 import gunbc.secret_provision { openrouter_free_tier_key_secret_ref }
 import gunbc.auth.access_token_source { AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused, resolve_access_token, access_token_upsert_required_reason }
 import gunbc.auth.secret_ref_credential {
-  SecretCredentialReady, SecretCredentialAccessUpsertRequired, SecretCredentialWireDecodeRefused,
+  SecretCredentialReady, SecretCredentialAccessUpsertRequired, SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch, fetch_secret_ref_credential_with_token,
 }
 import gunbc.auth.materialized_secret {
@@ -357,6 +357,7 @@ fn hosted_secret_text(route: HarnessHostedRoute) -> HostedKeyFetch {
             "the Secret Manager access response did not decode (version identity ", match i { Present { value: _ } => "refused" Absent => "decoded" },
             ", payload ", match pc { Present { value: _ } => "refused" Absent => "decoded" }, ")",
           ], "") }
+        SecretCredentialPayloadNotText => HostedKeyFetchRefused { cause: join(["the stored secret is not UTF-8 text"], "") }
         SecretCredentialFetchRefused { reason: r } => HostedKeyFetchRefused { cause: join(["the Secret Manager read was refused: ", r as String], "") }
         SecretCredentialResolvedVersionMismatch { requested: q, resolved: r } =>
           HostedKeyFetchRefused { cause: join(["the Secret Manager read asked for version ", q, " and was answered about ", r], "") }

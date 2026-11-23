@@ -78,7 +78,7 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
@@ -570,6 +570,10 @@ fn r2_mint_bootstrap(
             SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
               R2MintBootstrapRefused {
                 cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr,
+              }
+            SecretCredentialPayloadNotText =>
+              R2MintBootstrapRefused {
+                cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the stored secret is not UTF-8 text" as NonEmptyStr,
               }
             SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
               R2MintBootstrapRefused {

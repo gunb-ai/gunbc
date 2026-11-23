@@ -11,7 +11,7 @@ import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential,
   SecretCredentialReady,
   SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
@@ -80,6 +80,8 @@ fn place_r2_s3_netrc(
       r2_s3_netrc_fetch_refusal(cause: reason as String)
     SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
       r2_s3_netrc_fetch_refusal(cause: "the access response did not decode")
+    SecretCredentialPayloadNotText =>
+      r2_s3_netrc_fetch_refusal(cause: "the stored secret is not UTF-8 text")
     SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
       r2_s3_netrc_fetch_refusal(cause: join(["asked for version ", requested, ", answered about ", resolved], ""))
     SecretCredentialReady { credential: token, resolved_version: _ } => {

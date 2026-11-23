@@ -19,7 +19,7 @@ import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
 }
 
 fn namecheap_host_json(host: NamecheapObservedHost) -> JsonValue {
@@ -64,6 +64,7 @@ fn namecheap_observe_at(run_id: String, attempt: String, revision: String, obser
         }
       SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "Workload identity requires provisioning; no operator token fallback")
       SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => exit_failure(reason: "Secret Manager response did not decode")
+      SecretCredentialPayloadNotText => exit_failure(reason: "Secret Manager secret payload is not UTF-8 text")
       SecretCredentialFetchRefused { reason } => exit_failure(reason: reason as String)
       SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => exit_failure(reason: "Secret Manager returned a different resource than requested")
     }

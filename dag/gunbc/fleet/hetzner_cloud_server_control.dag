@@ -25,7 +25,7 @@ import gunbc.auth.access_token_source {
 }
 import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
 }
 
 // THE FLEET'S HANDS ON A HETZNER CLOUD GUEST THROUGH ITS PROVIDER: the out-of-band route
@@ -52,6 +52,8 @@ fn hetzner_credentials(token: HetznerProjectToken) -> HetznerCredentials uses ne
           HetznerCredentialsRefused { cause: concat("THE HETZNER TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
           HetznerCredentialsRefused { cause: "THE HETZNER TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+        SecretCredentialPayloadNotText =>
+          HetznerCredentialsRefused { cause: "THE HETZNER TOKEN COULD NOT BE READ: the stored secret is not UTF-8 text" as NonEmptyStr }
         SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
           HetznerCredentialsRefused { cause: join(["THE HETZNER TOKEN READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr }
         SecretCredentialReady { credential: hetzner_secret, resolved_version: _ } => HetznerCredentialsReady { token: hetzner_secret }

@@ -16,7 +16,7 @@ import gunbc.fleet.fleet_printer_access {
 }
 import gunbc.auth.secret_ref_credential {
   fetch_secret_ref_credential_with_token, SecretCredentialReady, SecretCredentialAccessUpsertRequired,
-  SecretCredentialWireDecodeRefused, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText, SecretCredentialFetchRefused, SecretCredentialResolvedVersionMismatch,
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
@@ -73,6 +73,7 @@ fn observe_credential_with_token(printer: PhysicalAssetIdentity, token: Secret, 
           } }
         SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "Printer federation needs the ntfy-approved IAM converge")
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => exit_failure(reason: "Printer credential response did not decode")
+        SecretCredentialPayloadNotText => exit_failure(reason: "Printer credential secret is not UTF-8 text")
         SecretCredentialFetchRefused { reason: r } => exit_failure(reason: r as String)
         SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => exit_failure(reason: "Printer credential response names another resource")
       }

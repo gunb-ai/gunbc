@@ -128,7 +128,7 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetchRefused,
   SecretCredentialReady,
   SecretCredentialResolvedVersionMismatch,
-  SecretCredentialWireDecodeRefused,
+  SecretCredentialWireDecodeRefused, SecretCredentialPayloadNotText,
   fetch_secret_ref_credential,
 }
 import gunbc.fleet.fleet_ssh_locus { FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
@@ -1446,6 +1446,19 @@ fn tailscale_join_converge_ci_wet() -> ProcessExit {
                           " tailscale_join host=",
                           host as String,
                           " fetch-refused: the AccessVersion response did not decode\n",
+                        ],
+                        "",
+                      ),
+                      ok: false,
+                    )
+                  SecretCredentialPayloadNotText =>
+                    write_tailscale_join_receipt_then_exit(
+                      body: join(
+                        [
+                          stamp,
+                          " tailscale_join host=",
+                          host as String,
+                          " fetch-refused: the stored secret is not UTF-8 text\n",
                         ],
                         "",
                       ),
