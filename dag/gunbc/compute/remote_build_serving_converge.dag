@@ -48,7 +48,9 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
 }
 import gunbc.compute.unit_bounds {
   user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown,
+  gunbc_user_work_scope_command,
 }
+import extdeps.systemd.systemd_run { SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_option_words_refused_cause_detail }
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
@@ -70,10 +72,11 @@ import extdeps.posix.test_utility { test_directory_command, test_executable_comm
 // format authority, so the converge writer and the serve reader cannot drift) and carries the result as
 // the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
 import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIdentityObserved }
-import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded }
+import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded, serving_host_needs_native_build }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
-import extdeps.tools.uname { uname_machine_command }
+import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
+import gunbc.fabric.fabric_executor_class { executor_host_architecture, HostArchitecture, HostArchitectureKnown, HostArchitectureUnclassified }
 // The user-work slice leg reads these: the reservation ceiling, the emitted unit render, the model's
 // slice name/swap floor/high derivation, srv1's slice install path, and the unit serializer.
 import std.measure { ByteSize, byte_size_count }
@@ -219,7 +222,10 @@ fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFail
           false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
           true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
             ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
-              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: SidecarRecorded { sha256: s } }
+              // The reader KEEPS the revision (it was previously discarded at this boundary). The sidecar
+              // writer (converge_record_serve_identity) and its parser both carry it; on a native-build host
+              // it is the only binding of the running binary to a revision (review 97463 finding 1).
+              ServeIdentityObserved { revision: r, sha256: s } => ObservationEstablished { observed: SidecarRecorded { revision: r, sha256: s } }
               _ => ObservationEstablished { observed: SidecarMalformed }
             }
             ObservationRefused { cause: c } => ObservationRefused { cause: c }
@@ -360,7 +366,13 @@ fn serving_local_trimmed(cmd: ArgvCommand) -> String? {
 // the wet entry exits_failure rather than assessing a host against an unpin.
 fn serving_plan_pin_read() -> ServingPlanInput? {
   let sha = serving_local_first_token(cmd: sha256sum_file_command(path: "target/release/gunbc"))
-  let arch = serving_local_trimmed(cmd: uname_machine_command())
+  // The executor's own arch, projected to the ONE Architecture type via the upstream uname -m projection.
+  // An unparseable spelling is NOT defaulted: it makes the whole pin read `none`, so the run is refused
+  // (never assessed against an untrusted expected arch) -- the same shape as any other unread field.
+  let arch = match serving_local_trimmed(cmd: uname_machine_command()) {
+    Absent => none
+    Present { value: sp } => uname_linux_machine_architecture(spelling: sp)
+  }
   let rev = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => Present { value: v }
     ActionsVariableAbsent => none
@@ -835,6 +847,22 @@ type ConvergeAction =
   // stops at the first failed write, the identity is written only once the binary itself has landed,
   // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
   | RecordServeIdentity { install_path: String, revision: String, sha256: String }
+  // THE NATIVE-BUILD LEG (RB-M3, remote-build-ken-native-serve-admission). InstallServeBinary only ever
+  // scp's the EXECUTOR's own binary and refuses unless the host's architecture equals the executor's
+  // (converge_install_serve_binary): an x86 serving host such as ken (operator_host_e2d4b7, H11SSL) can
+  // never receive the CI pool's binary, so the upload route is structurally unavailable to it. Its serve
+  // binary is therefore BUILT ON THE HOST at the pinned revision, in the same place the remote build
+  // builds -- as the serving account, in its own checkout under its own scratch root, inside the capped
+  // gunbc-user-work.slice (it must not take the ken-strata engine's 56 GiB charge). This single action
+  // SUBSUMES install+identity for the native case: it runs the pinned toolchain's cargo build, installs
+  // the produced binary at install_path, reads its sha256 BACK OFF THE HOST, and writes the identity
+  // sidecar with the revision it built and that host-read sha. The sha is deliberately NOT the executor's
+  // pin -- the receipt must come from ken, not the pool -- so the authority that binds the binary is the
+  // revision (the checkout is detached+read back at it by EnsureCheckout), not a pre-known hash. The
+  // source choice (this leg vs InstallServeBinary) is realization dispatch decided in converge_step from
+  // the ONE host-architecture authority (the per-host Architecture row on gunbc.fabric.fabric_executor_class,
+  // keyed on HostIdentity), never a flag on the host and never inferred from the host-read arch alone.
+  | BuildServeBinary { checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String }
   // The serving converge's recovery leg: after the identity is recorded, a stale seat (one whose holder is
   // dead and whose launch deadline has passed) is recovered by running compute_recover_serving_cli over ssh as the
   // service user. The observe classifies each seat through the recovery model: a live or too-early holder is
@@ -1023,18 +1051,37 @@ fn converge_install_user_work_slice_plan(acc: ConvergeDraft, d: RemoteBuildServi
 }
 
 fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDraft {
+  // The source (pool upload vs native build) is realization dispatch, decided by the ONE host-architecture
+  // authority -- the per-host Architecture row on gunbc.fabric.fabric_executor_class keyed on d.host --
+  // compared enum==enum against the executor's Architecture (pin.executor_arch). The on-host uname read is
+  // NOT consulted here: it is only the assessment's consistency check (serving_assess host.arch), so this
+  // decision has a single source and cannot drift from the check.
+  //   row arch == executor arch  -> the host can receive the pool binary: the upload pair (unchanged).
+  //   row arch != executor arch  -> the host must build its own at the pinned revision: BuildServeBinary
+  //                                 (the executor installs the built binary + records identity from the
+  //                                 sha it reads back off the host, so no separate RecordServeIdentity).
+  //   no authored row (Unclassified) -> a TYPED refusal, NEVER a silent default to upload (ruling 1A).
+  // An unread on-host arch (should already be a blocking unknown upstream) keeps the prior refuse-don't-guess.
   match target_arch {
-    ObservationEstablished { observed: a } => match a == pin.executor_arch {
-      true => converge_bin_parent_dir(
-        ConvergeDraft { writes: concat([
-          RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
-          InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
-        ], acc.writes), unhandled: acc.unhandled },
-        d,
-      )
-      false => converge_draft_unhandled(acc, "serve_binary.sha256")
-    }
     ObservationRefused { cause: _ } => converge_draft_unhandled(acc, "serve_binary.sha256")
+    ObservationEstablished { observed: _ } => match executor_host_architecture(host: d.host) {
+      HostArchitectureUnclassified { host: _ } => converge_draft_unhandled(acc, "serve_binary.architecture")
+      HostArchitectureKnown { host: _, arch: row_arch } => match row_arch == pin.executor_arch {
+        true => converge_bin_parent_dir(
+          ConvergeDraft { writes: concat([
+            RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
+            InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
+          ], acc.writes), unhandled: acc.unhandled },
+          d,
+        )
+        false => converge_bin_parent_dir(
+          ConvergeDraft { writes: concat([
+            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: "gunbc", bin: "gunbc", target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary },
+          ], acc.writes), unhandled: acc.unhandled },
+          d,
+        )
+      }
+    }
   }
 }
 
@@ -1135,6 +1182,9 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     // un-admitted slice.
     InstallUserWorkSlice { unit_name: _, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => 8
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 9
+    // Built on the host where it runs: needs the checkout (rank 5) and the pinned toolchain (ranks 6/7)
+    // already in place, and it installs+records identity itself, so it shares the binary leg's rank.
+    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _ } => 9
     // The identity sidecar is recorded AFTER the binary install it documents (and after the slice the
     // binary depends on); the executor's stop-at-first-failure means it is written only once the
     // binary itself has landed -- never provenance for a binary that failed to install.
@@ -1159,6 +1209,9 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: u, rustup_home: _, cargo_home: _ } => concat("rustup:", u)
     InstallUserWorkSlice { unit_name: n, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => concat("slice:", n)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
+    // Same key as InstallServeBinary: a host settles its serve binary through exactly ONE of the two
+    // (native build XOR upload), and if both were ever drafted on one path the dedup collapses them.
+    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: i } => concat("binary:", i)
     RecordServeIdentity { install_path: i, revision: _, sha256: _ } => concat("identity:", i)
     RecoverStaleSeat { reference: r } => concat("recover:", r as String)
   }
@@ -1285,9 +1338,20 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
     // PR-1c: a drifted identity sidecar on a host whose binary is already settled (the deviation is
-    // only minted when the binary is present and its sha read) records the identity on its OWN — it
-    // reuses the RecordServeIdentity write + its read-back route from PR-1b, without a reinstall.
-    ServeIdentityDrift { path: _, reason: _ } => converge_record_identity_standalone(acc, d, pin)
+    // only minted when the binary is present and its sha read). HOST-AWARE (review 97463 finding 1):
+    // - Upload host (row arch == executor arch): its binary is the trusted POOL build, so only the sidecar
+    //   file is missing -- re-record the identity on its own (converge_record_identity_standalone), no reinstall.
+    // - Native-build host (row arch != executor arch): the sidecar must describe a binary BUILT on this host
+    //   at the dispatched revision; re-recording it over whatever binary is currently there would FABRICATE a
+    //   revision binding -- silent wrongness below the guarantee ladder. So ANY native identity drift
+    //   (missing / malformed / sha-mismatch / revision-stale) routes to the binary action: BuildServeBinary
+    //   at the dispatched revision, which records the sidecar from its own build receipt.
+    ServeIdentityDrift { path: _, reason: _ } =>
+      if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
+        converge_install_binary(acc, d, pin, target_arch)
+      } else {
+        converge_record_identity_standalone(acc, d, pin)
+      }
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
@@ -1523,12 +1587,10 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
 // uid cannot be re-read at apply is a refusal, never a door exec the bounds gate would itself refuse.
 fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr) -> ConvergeStep {
   let repo = d.checkout_dir as String
-  match serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo(path: "/etc/passwd")) {
-    ObservationRefused { cause: c } => StepFailed { cause: join(["the account could not be re-read for the recovery of ", reference as String, ": ", c.cause], "") }
-    ObservationEstablished { observed: text } => match serving_passwd_uid(text: Present { value: text }, name: d.account_name) {
-      Absent => StepFailed { cause: join(["the serving account's uid is not in the re-read passwd, so the recovery door for ", reference as String, " cannot be placed in its user session"], "") }
-      Present { value: serving_uid } => {
-        let runtime_dir = user_session_runtime_dir(uid: serving_uid)
+  match converge_resolve_serving_session(target: target, context: context, d: d) {
+    ServingSessionAccountUnread { cause: c } => StepFailed { cause: join(["the account could not be re-read for the recovery of ", reference as String, ": ", c], "") }
+    ServingSessionUidUnknown => StepFailed { cause: join(["the serving account's uid is not in the re-read passwd, so the recovery door for ", reference as String, " cannot be placed in its user session"], "") }
+    ServingSessionEstablished { runtime_dir: runtime_dir } => {
         match converge_gunbc_door_argv(d: d, function: "compute_recover_serving_cli", arguments: [
           NamedArgumentRequest { name: "host", value: d.host as String },
           NamedArgumentRequest { name: "reference", value: reference as String },
@@ -1548,7 +1610,6 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
             }
           }
         }
-      }
     }
   }
 }
@@ -1848,6 +1909,110 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
   }
 }
 
+// THE ONE SHARED "place a run in the serving account's own user session" prefix (RB-M3). Both the
+// recovery doors (#16861) and the native-build leg need the same three things before they exec as the
+// account: re-read /etc/passwd (the observe's read, so the apply never trusts a stale uid), resolve the
+// serving account's uid, and turn that uid into the account's XDG_RUNTIME_DIR so `systemd-run --user`
+// can reach the user manager that wraps the run into the capped gunbc-user-work.slice. An account whose
+// uid cannot be re-read is a REFUSAL carrying the caller's `why`, never an exec the bounds gate would
+// itself refuse. Factoring this out so the door and the build share ONE resolution (review ruling): a
+// copy of the passwd/uid/runtime_dir dance would let the two drift apart on the very step that keeps
+// unbounded host effects out of the engine's 56 GiB charge.
+type ServingSessionReading
+  = ServingSessionEstablished { runtime_dir: FilePath }
+  | ServingSessionAccountUnread { cause: String }
+  | ServingSessionUidUnknown
+
+fn converge_resolve_serving_session(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> ServingSessionReading {
+  match serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo(path: "/etc/passwd")) {
+    ObservationRefused { cause: c } => ServingSessionAccountUnread { cause: c.cause }
+    ObservationEstablished { observed: text } => match serving_passwd_uid(text: Present { value: text }, name: d.account_name) {
+      Absent => ServingSessionUidUnknown
+      Present { value: serving_uid } => ServingSessionEstablished { runtime_dir: user_session_runtime_dir(uid: serving_uid) }
+    }
+  }
+}
+
+// THE NATIVE-BUILD EXECUTOR (RB-M3). ken (and any serving host whose architecture differs from the
+// executor's) cannot receive the CI pool's binary (converge_install_serve_binary's architecture
+// refusal), so it builds its own serve binary here. One action, three host effects, in the order the
+// upload route already earns them, and none claimed until read back:
+//   1. BUILD, as the serving account, INSIDE the capped gunbc-user-work.slice -- NOT a bare sudo
+//      cargo, which would run outside the slice and could take ken-strata's 56 GiB engine charge
+//      (review ruling #3). The build is `cargo build --release` of the pinned checkout, placed in the
+//      slice by gunbc_user_work_scope_command (the same systemd-run --user --slice prefix the seed's
+//      user-work-scope gate installs), with the account's own user-session bindings so the user
+//      manager is reachable (converge_resolve_serving_session; an unobserved uid refuses before any
+//      exec). The pinned toolchain the converge already installed is used via the account's cargo shim
+//      with RUSTUP_HOME/CARGO_HOME bound explicitly (sudo carries no login env). A non-zero build is a
+//      failed step, and the executor stops there -- nothing installs from a build that did not exit 0.
+//   2. INSTALL the freshly built binary at install_path through the same privileged install the upload
+//      route uses (a binary the account builds must still land root-owned at the mode the serve reader
+//      expects).
+//   3. RECORD its identity from the bytes the HOST has: read the installed binary's sha256 back OFF
+//      THE HOST (serving_leg_sha256 -- deliberately NOT the executor's pin, which is the whole point of
+//      the native route) and write <install_path>.identity binding {revision, that host-read sha}. The
+//      revision -- read back at by EnsureCheckout before this rank -- is what binds the binary, since
+//      unlike the upload route there is no pre-known hash to match.
+fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, owner: String, group: String, mode: FileMode, checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String) -> ConvergeStep {
+  match converge_resolve_serving_session(target: target, context: context, d: d) {
+    ServingSessionAccountUnread { cause: c } => StepFailed { cause: join(["the serving account could not be re-read, so the native build cannot be placed in its capped slice: ", c], "") }
+    ServingSessionUidUnknown => StepFailed { cause: "the serving account's uid is not in the re-read passwd, so the native build cannot be placed in its user session" }
+    ServingSessionEstablished { runtime_dir: runtime_dir } => {
+      // The build runs as the serving account, so its cargo is the SAME pinned toolchain shim the toolchain
+      // leg already manages at d.account_home (EnsureToolchain runs ~/.cargo/bin/rustup). There is no other
+      // account a native build could run as: the action carries no as_user, so there is no un-modelled-home
+      // case to invent a path for (review 97472 -- a fake path is a fabricated default, not a refusal).
+      let cargo_bin = concat(d.account_home, "/.cargo/bin/cargo")
+      let build_argv = [cargo_bin, "build", "--release", "-p", package, "--bin", bin, "--manifest-path", concat(checkout_dir, "/Cargo.toml"), "--target-dir", target_dir]
+      match gunbc_user_work_scope_command(properties: [], command_argv: build_argv) {
+        SystemdRunCommandRefused { cause: c } => StepFailed { cause: join(["the native build could not be wrapped into the capped gunbc-user-work.slice: ", systemd_run_option_words_refused_cause_detail(cause: c), "; the build was refused rather than run outside the capped slice"], "") }
+        SystemdRunCommandReady { command: scoped } => {
+          // The build starts in the serving CHECKOUT (env -C), exactly as the #16862 door does: a plain
+          // checkout is not a release locus, so GUNBC_WORKSPACE_ROOT is deliberately NOT bound, and the
+          // account's session bindings make its capped user-work slice reachable. cargo is pinned by
+          // --manifest-path/--target-dir so the build is revision-anchored regardless of cwd.
+          let run = converge_as_user_outcome(
+            target: target,
+            context: context,
+            account: d.account_name,
+            argv: argv_words(command: env_prefixed_command_in(
+              directory: checkout_dir,
+              bindings: concat(
+                user_session_launcher_env(runtime_dir: runtime_dir),
+                [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }]
+              ),
+              command: scoped
+            ))
+          )
+          match run {
+            TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the native build run was refused before it executed: ", r], "") }
+            TypedArgvExecConverged { result: r } => if r.exit_code != 0 {
+              StepFailed { cause: join(["the pinned-revision cargo build exited ", to_string(r.exit_code), "; nothing installs from a build that did not succeed"], "") }
+            } else {
+              match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: concat(target_dir, "/release/", bin), dest: install_path))) {
+                StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
+                StepDone => match serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: install_path) {
+                  ObservationRefused { cause: c } => StepFailed { cause: join(["the native build's installed binary sha256 could not be read back off the host: ", c.cause], "") }
+                  ObservationEstablished { observed: host_sha } => converge_record_serve_identity(target: target, context: context, owner: owner, group: group, mode: mode, install_path: install_path, revision: revision, sha256: host_sha)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The pinned toolchain shim path is derived from d.account_home at the build site (the serving account's
+// own ~/.cargo/bin), matching the toolchain leg (EnsureToolchain runs ~/.cargo/bin/rustup); sudo carries
+// no login environment, so the build names that shim explicitly rather than a PATH cargo. (The former
+// as_user_home_bin_prefix returned a fake "__no_modelled_home__" path for a non-serving account -- review
+// 97472 -- but no native build ever runs as another account, so the action no longer carries as_user and
+// the fabricated-path arm is gone rather than guarded.)
+
+
 fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: FileMode, upload_path: String, install_path: String, expected_sha256: String) -> ConvergeStep {
   match converge_private_stage_dir(target: target, context: context) {
     StageFailed { cause: c } => StepFailed { cause: c }
@@ -1936,6 +2101,9 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: mhigh, memory_swap_max: _, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_high: mhigh, expected_content: content)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
+    // The native-build leg: build the pinned revision on the host inside the capped slice, install the
+    // produced binary, and record its identity from the sha read back off the host (not the executor pin).
+    BuildServeBinary { checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip } => converge_build_serve_binary(target: target, context: context, d: d, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip)
     EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
     // The recovery leg: run compute_recover_serving_cli over ssh as the service user. Exit 0 = released/nothing
     // held → settled. Exit 1 = declined (the seat is still legitimately held; the observation was stale)
