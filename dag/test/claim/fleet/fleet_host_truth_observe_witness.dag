@@ -1,0 +1,159 @@
+module test.claim.fleet.fleet_host_truth_observe_witness
+
+// CLAIMS ON THE OBSERVE-ONLY HOST-TRUTH READ (gunbc.fleet.fleet_host_truth_observe), option A. The producers
+// are witnessed by dag/test/claim/fleet/fleet_host_truth_sources_witness.dag and the verdict algebra by
+// dag/test/claim/fleet/fleet_host_truth_read_witness.dag. These claims are the mode's OWN contract: over the
+// three axes that have producers the observe reads and never mutates; over the two that do not (per-host PCI
+// enumeration count, per-host enabled-unit list) it refuses, and those refusals -- never silence -- are what
+// make it impossible for a host to be reported as following its desired state while they are unread.
+//
+// RED BY CONSTRUCTION: a host whose readable axes all look fine must still be refused, because two of the five
+// axes have no producer. If someone deleted the two refusals (a "fail open" edit), the readable axes could
+// agree and the host would be admitted -- that is exactly what these claims make impossible.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size }
+import extdeps.systemd { SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent }
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthRead, HostTruthReadRefused, HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
+  HostTruthExpectation, HostTruthNothingDeclared,
+  HostTruthAxis, host_truth_axes_match,
+  fleet_host_truth_verdict_for_host, fleet_truth_admits_host,
+}
+import gunbc.fleet.fleet_host_truth_sources { host_truth_identity_expectation }
+import gunbc.fleet.fleet_host_truth_observe {
+  host_truth_observe_reads, host_truth_observe_expectations, host_truth_observe_verdict, host_truth_observe_is_divergence,
+  host_truth_observe_pci_refusal, host_truth_observe_unit_refusal, host_truth_presented_fingerprint_for_host,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for }
+
+data witness_run_id: String = "converge-2026-11-23"
+
+fn refused_on_axis(reads: List<HostTruthRead>, axis: HostTruthAxis) -> Bool {
+  reads.filter(read => match read {
+    HostTruthReadRefused { host: _, axis: a, cause: _ } => host_truth_axes_match(left: a, right: axis)
+    _ => false
+  }).length() > 0
+}
+
+// THE TWO AXES WITHOUT A PRODUCER ARE ALWAYS REFUSED IN THE READ SET. Not absent, not blank-without-cause: a
+// typed refusal naming the missing probe. A host the observe looked at still owes those two reads.
+test fn test_the_two_unproduced_axes_are_always_refused() -> Bool {
+  let reads = host_truth_observe_reads(
+    host: "srv1" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitAbsent,
+    presented: none,
+  )
+  refused_on_axis(reads: reads, axis: TruthDeclaredHardwareEnumerates)
+    && refused_on_axis(reads: reads, axis: TruthEnabledUnitHasItsHardware)
+}
+
+// THE TWO REFUSALS ALONE CANNOT ADMIT. With only the two refused reads and no expectation, the fold has two
+// refusal-class comparisons and must answer HostTruthRefused, never HostTruthFollowsDesiredState. This is the
+// whole of option A in one claim: a host is never reported as following its desired state while those read no.
+test fn test_the_two_refusals_alone_cannot_admit() -> Bool {
+  let reads: List<HostTruthRead> = [
+    host_truth_observe_pci_refusal(host: "srv1" as NonEmptyStr),
+    host_truth_observe_unit_refusal(host: "srv1" as NonEmptyStr),
+  ]
+  let verdict = fleet_host_truth_verdict_for_host(host: "srv1" as NonEmptyStr, reads: reads, expectations: [])
+  match verdict {
+    HostTruthRefused { host: _, refusals: rs } => rs.length() >= 2 && !fleet_truth_admits_host(verdict: verdict)
+    _ => false
+  }
+}
+
+// NEVER ADMITTED, EVEN WHEN THE READABLE AXES LOOK FINE. The cap at-or-above the declared working set, the swap
+// absent, the presented fingerprint equal to the enrolled anchor -- every readable axis benign -- and the host is
+// still refused by the two unread axes. If the two refusals were removed this would admit; with them it cannot.
+test fn RED_a_host_with_all_readable_axes_benign_is_still_not_admitted() -> Bool {
+  let enrolled = enrolled_fingerprint_for(host: "srv1" as NonEmptyStr)
+  let verdict = host_truth_observe_verdict(
+    host: "srv1" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitAbsent,
+    presented: enrolled,
+  )
+  match verdict {
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    _ => !fleet_truth_admits_host(verdict: verdict)
+  }
+}
+
+// A CAP BELOW THE DECLARED WORKING SET IS A DIVERGENCE AND THE NON-ZERO EXIT. srv4 at 40 GiB under a 56 GiB
+// declared set: observed cap below declared is a divergence on the cap axis, the fold answers HostTruthDiverges,
+// and the observe's exit decision is non-zero. This is the only thing the observe alarms on.
+test fn test_a_cap_below_the_declared_working_set_diverges_and_exits() -> Bool {
+  let verdict = host_truth_observe_verdict(
+    host: "srv4" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: byte_size(count: 1073741824) },
+    swap_limit: MemoryLimitAbsent,
+    presented: none,
+  )
+  match verdict {
+    HostTruthDiverges { host: _, divergences: _ } => host_truth_observe_is_divergence(verdict: verdict)
+    _ => false
+  }
+}
+
+// A REFUSAL IS NOT AN ALARM. The observe runs on a timer and the two unread axes refuse on EVERY host, so a
+// refusal must not be the non-zero exit -- only a divergence is. A host that is merely refused exits zero.
+test fn test_a_refused_host_is_not_the_non_zero_exit() -> Bool {
+  let reads: List<HostTruthRead> = [
+    host_truth_observe_pci_refusal(host: "srv2" as NonEmptyStr),
+    host_truth_observe_unit_refusal(host: "srv2" as NonEmptyStr),
+  ]
+  let verdict = fleet_host_truth_verdict_for_host(host: "srv2" as NonEmptyStr, reads: reads, expectations: [])
+  match verdict {
+    HostTruthRefused { host: _, refusals: _ } => !host_truth_observe_is_divergence(verdict: verdict)
+    _ => false
+  }
+}
+
+// A HOST WITH NO ENROLLED ROW IS NOT ADMITTED. butch/dan have no enrolled fingerprint, so the identity axis is
+// undeclared; combined with the two unread axes the host is never admitted -- it is never reported as following.
+test fn RED_a_host_with_no_enrolled_anchor_is_not_admitted() -> Bool {
+  let verdict = host_truth_observe_verdict(
+    host: "butch" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitAbsent,
+    presented: none,
+  )
+  match enrolled_fingerprint_for(host: "butch" as NonEmptyStr) {
+    Absent => !fleet_truth_admits_host(verdict: verdict)
+    Present { value: _ } => false
+  }
+}
+
+// THE PRESENTED FINGERPRINT COMES FROM THE SCAN RECEIPT, parsed once. A well-formed host block yields the
+// fingerprint; a host the scan never observed yields absent -- never the empty string as a fingerprint.
+test fn test_the_presented_fingerprint_is_read_from_the_scan_receipt() -> Bool {
+  let receipt = "scan host=srv1 endpoint=100.64.0.11 outcome=observed\nkey ssh-ed25519 AAAAfake\nfingerprint SHA256:aaa111\nscan host=srv2 endpoint=100.64.0.12 outcome=observed\nkey ssh-ed25519 AAAABfake\nfingerprint SHA256:bbb222\n"
+  match host_truth_presented_fingerprint_for_host(receipt_text: receipt, host: "srv2" as NonEmptyStr) {
+    Present { value: v } => (v as String) == "SHA256:bbb222"
+    Absent => false
+  }
+}
+
+test fn RED_a_host_the_scan_never_saw_is_absent_not_empty() -> Bool {
+  let receipt = "scan host=srv1 endpoint=100.64.0.11 outcome=observed\nkey ssh-ed25519 AAAAfake\nfingerprint SHA256:aaa111\n"
+  match host_truth_presented_fingerprint_for_host(receipt_text: receipt, host: "dan" as NonEmptyStr) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn RED_an_empty_fingerprint_line_is_absent_not_an_empty_key() -> Bool {
+  let receipt = "scan host=srv1 endpoint=100.64.0.11 outcome=observed\nkey ssh-ed25519 AAAAfake\nfingerprint \n"
+  match host_truth_presented_fingerprint_for_host(receipt_text: receipt, host: "srv1" as NonEmptyStr) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
