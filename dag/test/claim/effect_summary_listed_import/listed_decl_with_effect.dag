@@ -1,0 +1,22 @@
+module test.claim.effect_summary_listed_import.listed_decl_with_effect
+
+service ListedImportProbe {
+  operation Read {
+    input {}
+    output { ok: String from "stdout" }
+    readonly
+    transport shell { argv: ["true"] }
+    exit {
+      0 => Unit
+      nonzero => String "unreachable"
+    }
+    mock_response {
+      0 => { ok: "listed" } "probe"
+    }
+  }
+}
+
+fn shared_listed_probe_fn() -> String {
+  let r = ListedImportProbe.Read()
+  r.ok
+}
