@@ -5,6 +5,7 @@ import extdeps.cloud.gcp.secret_manager {
   decode_sm_access_version_secret_wire,
   SmAccessVersionSecretDecoded,
   SmAccessVersionSecretDecodeRefused,
+  SmAccessVersionSecretNotText,
 }
 import extdeps.transports.rest {
   classify_rest_refusal,
@@ -59,6 +60,7 @@ fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCrede
     RestAnswered { answer } => match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
       SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
       SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
+      SmAccessVersionSecretNotText => CustodyCredentialUnreadable { cause: "the custody payload is bytes that are not UTF-8 text, so it is not a password" }
     }
   }
 }
