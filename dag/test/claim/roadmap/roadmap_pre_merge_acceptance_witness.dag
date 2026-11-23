@@ -1,0 +1,235 @@
+module test.claim.roadmap.roadmap_pre_merge_acceptance_witness
+
+// EXECUTING WITNESS for the operator ruling of 2026-11-23 (escalation msg_6ad5e910): an acceptance is
+// EARNED ON A HEAD, before the merge, and the merge is its own event appended later.
+//
+// What these claims prove by RUNNING, on a ledger stood up in a scratch directory and torn down again:
+//   the recorder's append route — the code the command line itself runs, below the instance resolution —
+//   lands an acceptance carrying {pr_url, head_sha} and no merge fact at all, and answers with the event
+//   id and what the push published (remote, ref, commit);
+//   the standing replayed from the durable bytes says ACCEPTED from that acceptance alone, states no merge
+//   time, and knows of no merge event — which is the whole point: ctrl's roadmap_accepted gate can pass
+//   while the pull request is still open;
+//   the read-back names where the record landed, and refuses in words for an event the branch does not
+//   hold, telling the reader to check the branch and not a stale checkout (a lane read a mirror on
+//   2026-11-23, found nothing, and reported that the recorder had never recorded — the event had been on
+//   the branch for hours);
+//   appending the same acceptance again answers the FIRST recording instead of writing a second event:
+//   append-only, and no revocation.
+//
+// WHAT IT DOES NOT PROVE, said plainly because the difference matters: the command line's last mile —
+// resolving a repo_root to a ROSTERED dashboard instance (the compiled roster in
+// gunbc.roadmap.roadmap_dashboard_instance), and the push to refs/heads/roadmap-events on the operator's
+// events remote — is not exercised here. This ledger is a scratch bare repo over file://. The first proof
+// of that last mile is the first real recording, which the lane manager verifies by fetching the branch
+// and reading the event file (msg_bb6f47af).
+
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.principal_projection { principal_ref_parse_label, PrincipalRef }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read,
+  EventsRead, EventsReadRefused, carrier_snapshot_close_failures,
+}
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEventEnvelope, RoadmapNodeStanding, NodeAccepted, roadmap_node_standing,
+  roadmap_node_has_merge_event, roadmap_merged_at_stated_by,
+  roadmap_acceptance_pr_evidence_from_args, AcceptedOnPullRequestHead,
+  RoadmapAcceptanceReceipt, roadmap_acceptance_line_acceptance_receipt, roadmap_node_standing_key,
+}
+import gunbc.roadmap.roadmap_event_cli {
+  AcceptanceCommandChoice, BuildAcceptCommand,
+  AcceptanceAppended, AcceptanceAlreadyPresent, AcceptanceCommandRefused,
+  roadmap_acceptance_command_over, roadmap_acceptance_line_of,
+  AcceptanceLineParsed, AcceptanceLineRefused, roadmap_event_publication_report_over,
+}
+import test.claim.roadmap.roadmap_event_carrier_fixture {
+  RoadmapEventCarrierReady, RoadmapEventCarrierRefused, RoadmapEventCarrierScratch,
+  roadmap_event_carrier_provision, roadmap_event_carrier_run_scoped,
+  RoadmapCarrierScopedMintRefused, RoadmapCarrierScopedRan,
+}
+import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
+import test.claim.roadmap.roadmap_red_control_tree_witness {
+  line_spelling, pair_members, pair_url, pair_head,
+}
+import std.string { join, string_contains }
+
+// THE NODE THE PINNED LINE SPEAKS OF. line_spelling is imported from the tree witness rather than
+// re-spelled here, so the bytes under test are the bytes that witness already pins the readers against —
+// one spelling of a receipt line in the whole test tree (gunbc.design_ruling::single_authority).
+fn ledger_node() -> String { "tree-node" }
+
+// THE RULING'S LINE: an executed red control carrying the pair, and no merge fact anywhere in it.
+fn accepted_line() -> String { join(["", line_spelling(observation: pair_members()), ""], "") }
+
+type LedgerRun { result: Bool, swept: Bool }
+
+// Stand a ledger up, judge over it, and let the sweep's verdict count: a scenario left behind in /tmp
+// fails the claim, the way the launch-gate claim does it.
+fn ledger_owned(fn_with: fn(RoadmapEventCarrierLayout, RoadmapEventCarrierScratch) -> Bool) -> LedgerRun {
+  match roadmap_event_carrier_run_scoped(
+    template: "/tmp/gunbc_pre_merge_acceptance_witness.XXXXXX" as NonEmptyStr,
+    body: fn(scratch) { ledger_judgement(fn_with: fn_with, scratch: scratch) }) {
+    RoadmapCarrierScopedMintRefused { detail: d } => {
+      let _unjudged = claim("the scratch ledger could not be minted: " + d, false)
+      LedgerRun { result: false, swept: true }
+    }
+    RoadmapCarrierScopedRan { judged: judged, sweep: _, root: _, torn_down: torn_down } =>
+      LedgerRun { result: judged, swept: torn_down }
+  }
+}
+
+fn ledger_judgement(fn_with: fn(RoadmapEventCarrierLayout, RoadmapEventCarrierScratch) -> Bool, scratch: RoadmapEventCarrierScratch) -> Bool {
+  let instance: HostDashboardInstance = fabric_fixture_instance(root: scratch.path)
+  match roadmap_event_carrier_provision(instance: instance, scratch: scratch) {
+    RoadmapEventCarrierRefused { step, detail } => claim(
+      "the scratch event carrier could not be stood up at " + step + ": " + detail, false)
+    RoadmapEventCarrierReady { instance: provisioned, layout: layout } =>
+      fn_with(roadmap_event_carrier_layout_for_instance(instance: provisioned), scratch)
+  }
+}
+
+fn recorder_author() -> Optional<PrincipalRef> {
+  principal_ref_parse_label(s: "principal:google-oidc/accounts/116084671989231734979")
+}
+
+fn acceptance_choice() -> Optional<AcceptanceCommandChoice> {
+  match roadmap_acceptance_line_of(text: accepted_line()) {
+    AcceptanceLineRefused { reason } => {
+      let _lost = claim("the ruling's own line was refused by the readers: " + reason, false)
+      none
+    }
+    AcceptanceLineParsed { line: l } => match roadmap_acceptance_line_acceptance_receipt(line: l) {
+      Absent => none
+      Present { value: receipt } => match roadmap_acceptance_pr_evidence_from_args(
+        pr_url: pair_url(), head_sha: pair_head()) {
+        Absent => none
+        Present { value: evidence } => Present { value: BuildAcceptCommand { receipt: receipt, evidence: evidence } }
+      }
+    }
+  }
+}
+
+// AN ACCEPTANCE, RECORDED BEFORE THE MERGE, ON A LEDGER THAT CAN SEE NO MERGE. The whole of the operator's
+// ruling, run: append an acceptance that names a pull request and a head, and read the standing back off
+// the bytes the push carried.
+test fn an_acceptance_recorded_on_a_head_is_accepted_before_any_merge() -> Bool {
+  let run = ledger_owned(fn_with: fn(layout, scratch) { pre_merge_witness(layout: layout) })
+  run.result && run.swept
+}
+
+fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
+  match recorder_author() {
+    Absent => claim("the fixture author is not a principal the law spells", false)
+    Present { value: author } => match acceptance_choice() {
+    Absent => claim("the fixture line or its pull-request pair was refused", false)
+    Present { value: choice } => {
+      let appended = roadmap_acceptance_command_over(
+        layout: layout, author_ref: author, node: ledger_node(), choice: choice)
+      match appended {
+        AcceptanceCommandRefused { step, reason, closes: _ } =>
+          claim("the acceptance was refused at " + step + ": " + reason, false)
+        AcceptanceAlreadyPresent { id: _, closes: _ } =>
+          claim("a fresh ledger answered the acceptance as already present — nothing was recorded", false)
+        AcceptanceAppended { id, published_as, closes } => {
+          let event_id = id as String
+          // 1. THE APPEND ANSWERS WITH WHERE IT LANDED. Not the temp staging tree the recorder builds
+          //    locally — the remote, the ref, and the commit the push carried. A reader who has to know the
+          //    architecture to verify a recording is the reader who reported a month of missing records.
+          let names_publication = match published_as {
+            Absent => claim("the append published nothing: the record is provisional at best, and the route said nothing about it", false)
+            Present { value: p } =>
+              claim("the append names the remote it pushed to", string_contains(s: p.remote as String, pattern: "gunbc"))
+                && claim("the append names the durable ref", string_contains(s: p.ref_name as String, pattern: "roadmap-events"))
+                && claim("the append names the COMMIT it pushed, and not a placeholder for one",
+                     (p.commit as String) != "" && !(p.commit as String) == "0000000000000000000000000000000000000000"
+                       && !string_contains(s: p.commit as String, pattern: " "))
+          }
+          // 2. THE STANDING, FROM THE ACCEPTANCE ALONE — read back off the durable bytes, not from the
+          //    values handed to the append.
+          let history = roadmap_events_read(layout: layout, node: ledger_node() as NonEmptyStr as RoadmapNodeId)
+          match history.result {
+            EventsReadRefused { node: _, step, reason } =>
+              claim("the ledger could not be read back after the append, at " + step + ": " + reason, false)
+            EventsRead { node: _, envelopes } => {
+              let standing = roadmap_node_standing(envs: envelopes)
+              let accepted = match standing {
+                NodeAccepted { by: _, receipt: _ } => claim(
+                  "the standing replayed from the durable bytes says ACCEPTED, from the acceptance alone", true)
+                other => claim("the node that was just accepted reads " + roadmap_node_standing_key(s: other) + " — the acceptance did not carry the standing by itself", false)
+              }
+              // 3. NO MERGE FACT, NOWHERE. The acceptance carries no merge field; nothing in this ledger
+              //    has ever mentioned a merge; and the time a reader would see for a merge is the empty
+              //    string, which the model reserves for "no merge has stated one" — never a guessed time
+              //    and never an empty placeholder standing in for one.
+              let no_merge = claim("no merge event exists in the ledger the acceptance was written to",
+                           !roadmap_node_has_merge_event(envs: envelopes))
+                && claim("no merge time is stated by anything in it",
+                     roadmap_merged_at_stated_by(envs: envelopes) == "")
+              // 4. THE READ-BACK, in words a stranger can act on.
+              let report = roadmap_event_publication_report_over(layout: layout, node: ledger_node(), event_id: event_id)
+              let reads_landed = claim("the read-back says the event IS on the durable branch, and names it",
+                string_contains(s: report, pattern: "IS on the checkout of")
+                  && string_contains(s: report, pattern: "refs/heads/roadmap-events"))
+                && claim("the read-back names the tip the remote states, so the claim can be checked",
+                     string_contains(s: report, pattern: "the tip the REMOTE states"))
+              let missing = roadmap_event_publication_report_over(layout: layout, node: ledger_node(), event_id: "0000000000000000")
+              let reads_absent = claim("an event the ledger does not hold is refused in words, and the words tell the reader to check the branch and not the checkout",
+                !string_contains(s: missing, pattern: "IS on the checkout of")
+                  && string_contains(s: missing, pattern: "is not on the checkout of")
+                  && string_contains(s: missing, pattern: "git fetch"))
+              // 5. THE SNAPSHOT CLOSED. A recorder that leaks its staging tree reports success over a mess
+              //    it will never clean; the sweep covers /tmp, this covers the carrier's own worktree.
+              let closed = claim("the append left no snapshot unclosed",
+                count(carrier_snapshot_close_failures(closes: closes)) == 0)
+              accepted && no_merge && reads_landed && reads_absent && closed && names_publication
+            }
+          }
+        }
+      }
+      }
+    }
+  }
+}
+
+// APPEND-ONLY, NO REVOCATION: the same acceptance offered twice answers the FIRST recording and writes
+// nothing second. This is what makes "record before the merge" safe — the lane can retry as often as it
+// likes and the ledger still holds one acceptance for that head.
+test fn the_same_acceptance_offered_twice_answers_the_first_recording() -> Bool {
+  let run = ledger_owned(fn_with: fn(layout, scratch) { replay_witness(layout: layout) })
+  run.result && run.swept
+}
+
+fn replay_witness(layout: RoadmapEventCarrierLayout) -> Bool {
+  match recorder_author() {
+    Absent => claim("the fixture author is not a principal the law spells", false)
+    Present { value: author } => match acceptance_choice() {
+      Absent => claim("the fixture line or its pull-request pair was refused", false)
+      Present { value: choice } => {
+        let first = roadmap_acceptance_command_over(layout: layout, author_ref: author, node: ledger_node(), choice: choice)
+        let second = roadmap_acceptance_command_over(layout: layout, author_ref: author, node: ledger_node(), choice: choice)
+        match first {
+          AcceptanceCommandRefused { step, reason, closes: _ } =>
+            claim("the first acceptance was refused at " + step + ": " + reason, false)
+          AcceptanceAlreadyPresent { id: _, closes: _ } =>
+            claim("a fresh ledger answered the first acceptance as already present — nothing was recorded", false)
+          AcceptanceAppended { id: a, published_as: _, closes: _ } => match second {
+            AcceptanceCommandRefused { step, reason, closes: _ } =>
+              claim("the retry was refused at " + step + ": " + reason, false)
+            AcceptanceAppended { id: _, published_as: _, closes: _ } =>
+              claim("the retry APPENDED a second event — the ledger is not append-only against a replay", false)
+            AcceptanceAlreadyPresent { id: b, closes: _ } => {
+              let history = roadmap_events_read(layout: layout, node: ledger_node() as NonEmptyStr as RoadmapNodeId)
+              let one_event = match history.result {
+                EventsRead { node: _, envelopes } => claim(
+                  "the retry wrote no second event: the ledger still holds exactly one", count(envelopes) == 1)
+                EventsReadRefused { node: _, step: _, reason: _ } => claim("the ledger could not be read back", false)
+              }
+              claim("the retry answers the FIRST recording, by its id", (a as String) == (b as String)) && one_event
+            }
+          }
+        }
+      }
+    }
+  }
+}
