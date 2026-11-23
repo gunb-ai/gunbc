@@ -9,7 +9,10 @@ import v2.lens.test_migration_debt { discovered_rust_test_modules, list_contains
 // judges the disposition rows in gunbc.v1.v1_deletion_plan::v1_migrated_test_modules, so a row cannot
 // name a replacement that the discovery does not honour. A Rust module is discharged by a floor
 // witness only on an exact .dag file-stem match (test_migration_debt_stem_covered), so a row whose
-// module is still discovered as debt names a witness the wall does not accept.
+// module is still discovered as debt names a witness the wall does not accept. This is one half of a
+// two-half rule (the other is the wall's exact equality in both directions, with deletion represented by
+// the file being absent): a module is discharged by exactly one of a retained row or an exact-stem
+// witness, never both.
 
 fn migrated_rust_files() -> List<String> {
   v1_migrated_test_modules() |> map(m => concat(m.rust_module, ".rs"))

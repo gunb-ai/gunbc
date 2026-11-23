@@ -86,8 +86,15 @@ fn v1_finish_lines_accepted_count(accepted: List<RoadmapNodeId>) -> Int {
 // src/v1/tests/src/ (still present until the seed-Rust deletion lands; a row is the witness that will
 // replace it), what covers its behaviour, or why nothing does, in a form a reader who did
 // not write it can answer from. The enforcing control is the wall claim
-// test.claim.manual.test_migration_debt retained_rust_kernel_wall_holds_against_live_tree, which
-// requires a retained row or an exact-stem floor witness per module; this carrier is the readable
+// test.claim.manual.test_migration_debt retained_rust_kernel_wall_holds_against_live_tree. The rule
+// has two halves, not two models. Discovery subtracts from the debt every Rust module whose stem
+// equals the stem of a .dag file carrying a test-marked declaration (test_migration_debt_stem_covered);
+// the wall then requires exact equality in BOTH directions between what remains discovered and the
+// retained rows, and a deleted module is represented by its file being absent. So a module is
+// discharged by exactly one of a retained row or an exact-stem floor witness, never both: both
+// together is refused, not merely redundant (the wall was FAIL at 307426545e94 for that reason on
+// the follow-up PR 16937). A disposition that names a witness the wall will not accept is the failure
+// the dispositions claim exists to catch. This carrier is the readable
 // account of which, and of what the replacement does NOT cover. A row names the gap, or it states
 // that none was identified; it never reads "replaced" for a weaker control without saying so.
 type V1TestMigrationDisposition
