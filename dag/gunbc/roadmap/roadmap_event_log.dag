@@ -552,7 +552,7 @@ fn roadmap_acceptance_receipt_members(r: RoadmapAcceptanceReceipt) -> List<JsonK
       json_kv(key: "witness_module", value: json_string(s: wm)),
       json_kv(key: "witness_fn", value: json_string(s: wf)),
       json_kv(key: "executed_on", value: json_string(s: eo)),
-    ], red_observation_members(o: ob))    ])
+    ], red_observation_members(o: ob))
     RedControlTreeUnrecorded { witness_module: wm, witness_fn: wf, executed_on: eo } => [
       json_kv(key: "variant", value: json_string(s: "red_control_executed")),
       json_kv(key: "witness_module", value: json_string(s: wm)),
