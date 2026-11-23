@@ -170,16 +170,6 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
       module_path: "gunbc.instruments.fabric_ci_calibration_actuator",
       decl_name: "fabric_ci_calibration_argv",
     ),
-    // THE DEPLOYED-TREE OBSERVATION'S LOCAL DELIVERY (2026-11-23; srv1 '/' served 409 with every
-    // issue Unknown because the fold's pair gate took its OWN host's deployed tree over FleetSsh and
-    // refused on a missing SSH_AUTH_SOCK). One named builder for one tool: the four git legs of
-    // gunbc.live_deploy.deployed_tree_observation when the locus is the local arm -- the machine the
-    // tree is standing on. It carries that tool's already-built leg words, the same builders the
-    // FleetSsh arm ships, and nothing else; it is not a general command surface.
-    decl_ref(
-      module_path: "gunbc.live_deploy.deployed_tree_observation",
-      decl_name: "deployed_tree_local_leg",
-    ),
   ]
   = CliSurface {
     arguments: fold_list(
