@@ -29,9 +29,9 @@ import v2.std.text { String }
 //
 // Subject: gunbc.rust_decl_type_overlay at dag/gunbc/rust_decl_type_overlay.dag -- the unique corpus
 // module that is (a) a single top-level declaration, (b) carried by the seed crate v1-compiler, and
-// (c) called across a module boundary carrying the crate's integer (see
-// #gunbc.instruments.stage0_boundary_add_probe::stage0_boundary_add_probe_subject and the carrier
-// #v2.compiler.self_host.stage0_production_target::stage0_production_target_model).
+// (c) called across a module boundary carrying the crate's integer. It is named as the acceptance
+// subject for the production flip by src/v2/compiler/self_host/stage0_boundary_add_probe.dag, and the
+// carrier is #v2.compiler.self_host.stage0_production_target::stage0_production_target_model.
 //
 // Door: #v2.compiler.self_host.candidate_generation::observe_provenanced_rust_emission_from_ingest
 // over the production ingest built by
