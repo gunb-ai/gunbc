@@ -403,11 +403,12 @@ test fn the_cli_door_exits_two_when_no_instance_resolves() -> Bool {
   }
 }
 
-// THE SERVING DOORS, AT THEIR BOUNDARY. A host off the remote-build serving roster gets the UNKNOWN
-// exit with a reason that names the roster — never an empty census, never a census of some other
-// host's seats. This is the red control for the seam the srv1 apply run 45102946243 exposed: the
-// doors used to resolve instances ONLY through the dashboard roster, where the parametric serving
-// instance has no row, so the honest answer for EVERY host was 'no dashboard instance is rooted at'.
+// THE SERVING DOORS, AT THEIR BOUNDARY. A host the serving route is not provisioned on (the candidate
+// row, remote_build_host_is_serving_candidate) gets the UNKNOWN exit with a reason that names serving
+// — never an empty census, never a census of some other host's seats. This is the red control for the
+// seam the srv1 apply run 45102946243 exposed: the doors used to resolve instances ONLY through the
+// dashboard roster, where the parametric serving instance has no row, so the honest answer for EVERY
+// host was 'no dashboard instance is rooted at'.
 test fn the_serving_census_door_refuses_a_host_off_the_serving_roster() -> Bool {
   match compute_recover_catalog_serving_cli(host: "not-a-serving-host") {
     CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: _ } } =>
@@ -416,20 +417,25 @@ test fn the_serving_census_door_refuses_a_host_off_the_serving_roster() -> Bool 
   }
 }
 
-// A NAMED SERVING HOST WITH NO SEAT HOME ANSWERS UNKNOWN, WITH A CAUSE — fail closed, not empty.
-// This container holds no /home/gunbc-build account, so the census of srv1's serving instance can
-// only honestly be an unknown naming what it could not read; an established census here would be a
-// fabrication.
+// A PROVISIONED HOST OFF THE DISPATCH ROSTER PASSES THE DOOR'S ADMISSION AND ACTUALLY READS. srv1
+// serves no builds today (its leave note in gunbc.compute.remote_build_hosts names its RETURN as "the
+// same run that executes the seat-recovery leg"), yet the serving route IS provisioned on it — that is
+// what its candidate row says, and the seat the recovery leg exists to settle lives under that
+// account's home. Keying this door on the dispatch gate remote_build_serving_hosts refused exactly the
+// run that must prove srv1's return: converge apply 45218878048, census refused 'the host is not one
+// the remote-build program serves'. So this claim asserts BOTH halves: the door reaches the read
+// (unknown here — this container holds no /home/gunbc-build account, so an established census would be
+// a fabrication) AND it does not take the refusal branch. Red again under the dispatch-gate key.
 test fn the_serving_census_door_answers_unknown_where_the_seat_home_is_absent() -> Bool {
   match compute_recover_catalog_serving_cli(host: "srv1") {
     CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: _ } } =>
-      string_contains(s: b, pattern: " unknown: ")
+      string_contains(s: b, pattern: " unknown: ") && !string_contains(s: b, pattern: "is not a remote-build serving host")
     _ => false
   }
 }
 
-// THE WRITE DOOR OFF THE ROSTER EXITS THE UNKNOWN CODE, not the declined code: a host the program
-// does not serve is a broken observation, not a safe no.
+// THE WRITE DOOR ON A HOST THE SERVING ROUTE IS NOT PROVISIONED ON EXITS THE UNKNOWN CODE, not the
+// declined code: a host with no serving home to settle is a broken observation, not a safe no.
 test fn the_serving_recover_door_exits_unknown_off_the_roster() -> Bool {
   compute_recover_serving_cli(host: "not-a-serving-host", reference: "anything", receipt_path: "/nonexistent-recover-serving-witness.receipt.json")
     == ExitFailure { code: 2, reason: "compute-recover: not-a-serving-host is not a remote-build serving host" }
