@@ -1524,11 +1524,21 @@ fn roadmap_node_standing_sample_rebuilt(s: RoadmapNodeStanding) -> RoadmapNodeSt
 // reader of this list outside this repository — is deleted the day this repository serves a ready set
 // that carries each node's lane; the bridge's header names the same condition.
 //
-// WHAT NO CONSTRUCT HERE CLOSES: an author who adds a variant to the type and to the fold, and
-// satisfies `roadmap_node_standing_sample_rebuilt` by adding its arm, could still leave it out of
-// `roadmap_node_standing_samples` — the compiler forces the arm, not the sample. The reader's failure
-// mode for that residual is a refusal, not a mis-staffing: the ctrl bridge refuses an unknown standing
-// key rather than treating it as absent.
+// WHAT NO CONSTRUCT HERE CLOSES, said plainly. Growing `RoadmapNodeStanding` forces, at compile
+// time, the fold's arm and the arm of every no-wildcard match over it — including
+// `roadmap_node_standing_sample_rebuilt` above, the tripwire whose rule
+// #extdeps.ssh.client_options::serialize_ssh_config_file_flag states. It forces NOTHING about `roadmap_node_standing_samples`:
+// the compiler cannot be asked for the constructors of a closed sum, so "one sample per standing" is
+// written by hand and is enforced by the reviewer, not by the build. And the witness in
+// #dag/test/claim/roadmap/roadmap_event_log_witness::roadmap_standing_key_export_matches_the_fold
+// holds its OWN hand-written copy of that list, which catches a disagreement between the two copies —
+// not a variant missing from both, where every comparison in that test stays equal and this list
+// simply omits the word. The rung this derivation actually establishes is "the export is the fold over
+// the samples written", no more. The reader's failure mode for the residual is a refusal, not a
+// mis-staffing: the ctrl bridge refuses an unknown standing key rather than treating it as absent.
+// The next rung is the language giving a witness the constructors of a closed sum, so the list is
+// checked rather than asserted; that is tracked as gunb-ai/gunbc#16925, and this comment is its
+// marker.
 //
 // A consumer that needs the sentence a standing deserves uses `roadmap_node_standing_text`, never
 // this list: the list names the leaf, the sentence says which one.

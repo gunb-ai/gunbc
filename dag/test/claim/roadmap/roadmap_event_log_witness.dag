@@ -993,15 +993,22 @@ test fn witness_a_roster_retirement_event_retires_its_node() -> Bool {
   }
 }
 
-// ONE SAMPLE PER STANDING — the witness's OWN enumeration, independent of the production module's
-// `roadmap_node_standing_samples`. The export is derived there from that list, so this one is what
-// catches a standing missing from it: the fold run over this list still names the missing word, the
-// lengths disagree, and the test is red. A new variant therefore has to be added in three places
-// before it can ship at all — the fold (its word), the production sample list (the export's content),
-// and this list (the check) — and the no-wildcard matches in both files refuse to compile until the
-// variant is named there too. The order is asserted because the ctrl bridge serves readiness in the
-// authority's declaration order, and a reader comparing sorted copies would pass while the two orders
-// disagreed.
+// ONE SAMPLE PER STANDING — the witness's OWN hand-written copy of the enumeration, kept separate
+// from the production module's `roadmap_node_standing_samples` so a disagreement between the two
+// copies is caught: if production's list omits a standing its own fold run cannot see it, but the fold
+// run over THIS list still names the word, the lengths disagree, and the test is red.
+//
+// WHAT THIS DOES NOT CATCH, said plainly: both lists are hand-written, so an author who adds an
+// eleventh variant to the type, to the fold, and to both no-wildcard matches — and adds it to NEITHER
+// list — leaves every comparison below equal and the export silently short one word. Nothing here, and
+// nothing in the compiler, enforces adding a variant to a sample list: the language cannot be asked for
+// the constructors of a closed sum. The rung this test establishes is "the export is the fold over the
+// samples written, and the two written copies agree" — not "one entry per constructor". The ctrl bridge
+// refuses an unknown key rather than treating it as absent, so the residual surfaces at the consumer as
+// a refusal; the rung above it is the language feature tracked as gunb-ai/gunbc#16925.
+//
+// Order is asserted because the ctrl bridge serves readiness in the authority's declaration order, and
+// a reader comparing sorted copies would pass while the two orders disagreed.
 fn canonical_standing_samples() -> List<RoadmapNodeStanding> {
   [
     NodeOpen,
@@ -1043,23 +1050,24 @@ fn standing_key_per_arm(s: RoadmapNodeStanding) -> List<String> {
   }
 }
 
-// THE EXPORT IS THE FOLD, checked from an enumeration the production module does not own.
-// `roadmap_node_standing_keys` is derived there — the fold mapped over that module's own samples —
-// so this witness supplies a SECOND, independent enumeration (`canonical_standing_samples`, built
+// THE EXPORT IS THE FOLD, checked against a second hand-written copy of the enumeration.
+// `roadmap_node_standing_keys` is derived in the production module — the fold mapped over that
+// module's own samples — so this witness supplies its OWN copy (`canonical_standing_samples`, built
 // from this file's fixtures) and requires the export to equal the fold over it, in order. Each
-// direction fails on its own:
+// direction that the two copies can disagree in fails on its own:
 //   - a word the fold never emits, in the export: `from_witness` (or `from_arms`) disagrees;
-//   - a word the fold emits, missing from the export — including the case where production's sample
-//     list forgets a standing: `from_witness` still has it, so the lengths disagree and this is red;
+//   - a word the fold emits, missing from the export because PRODUCTION's sample list dropped it:
+//     `from_witness` still names it, the lengths disagree, and this is red;
 //   - a reordered export: list equality is positional, and order matters because the ctrl bridge
 //     serves readiness in the authority's declaration order (a reader comparing sorted copies would
 //     pass while the two orders disagreed);
 //   - a duplicated word: the order-preserving dedup equals the list only when nothing repeats.
-// `from_production` and `samples_rebuilt` then hold the production derivation to its own samples and
-// to the no-wildcard rebuild beside it. What remains outside every check here is an author who adds
-// the type variant, the fold arm, the production sample AND this canonical list, and misnames one of
-// them with the same word — which is a misnaming of the fold itself, and the fold's own witnesses
-// are where that would surface.
+// `from_production` and `samples_rebuilt` hold the production derivation to its own samples and to the
+// no-wildcard rebuild beside it. THE RESIDUAL NO CHECK HERE REACHES: a variant present in the type, in
+// the fold, and in both no-wildcard matches, but absent from BOTH hand-written sample lists — every
+// comparison above stays equal and the export ships short one word, because neither list is derived
+// from the type and the language cannot enumerate a closed sum's constructors. Stated where the checks
+// are, not only where the derivation is; the rung above it is tracked as gunb-ai/gunbc#16925.
 test fn roadmap_standing_key_export_matches_the_fold() -> Bool {
   let from_witness = map(canonical_standing_samples(), s => roadmap_node_standing_key(s: s))
   let from_arms = fold(canonical_standing_samples(), init: no_standing_keys, f: (acc, s) => concat(acc, standing_key_per_arm(s: s)))
