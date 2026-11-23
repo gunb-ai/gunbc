@@ -1662,6 +1662,53 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       leaf(label: "the claim's return_to principal authors AcceptanceRecorded for that claim's node under the same receipt law, with the wrong-author refusal", days: 2),
     ],
   ]),
+  // gunbc.plans.read_set_convergence, heal's regeneration round (2026-11-22). Working-day priors, not measurements.
+  decomposition(node: "heal-scope-relation-without-typecheck", waits_on: [], stages: [
+    [
+      leaf(label: "the scope's dependency relation from parse and resolve alone, equal to the whole-pool edge index over the live pool with a bare-reference specimen, unresolved references refusing", days: 4),
+    ],
+  ]),
+  decomposition(node: "heal-scope-population-evidence", waits_on: [], stages: [
+    [
+      leaf(label: "an added or deleted .dag widens heal's round only on old/new reachability, binding and output evidence, with the five discriminating controls", days: 4),
+    ],
+  ]),
+  decomposition(node: "heal-seed-build-artifacts-scoped", waits_on: [], stages: [
+    [
+      leaf(label: "read sets for the 13 seed-build artifacts and the heal tail regenerating only the invalid ones, with the cold, stale, diverged and missing controls", days: 3),
+    ],
+  ]),
+  decomposition(node: "heal-noop-before-regenerator-build", waits_on: [
+    waits(item: "heal-seed-build-artifacts-scoped", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "heal's no-op decided before the regenerator build, after journal recovery, covering mirrors and artifacts, a seed-input change still building", days: 3),
+    ],
+  ]),
+  decomposition(node: "heal-planning-only-in-a-minute", waits_on: [
+    waits(item: "heal-noop-before-regenerator-build", from_stage: 0, into_stage: 0),
+    waits(item: "heal-scope-relation-without-typecheck", from_stage: 0, into_stage: 0),
+    waits(item: "heal-scope-population-evidence", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "five real heal receipts at one revision: a plan edit, a plan addition and a plan deletion each about a minute with no regenerator build, a one-module edit matching its dry run, a seed-input edit building its regenerator", days: 1),
+    ],
+  ]),
+  decomposition(node: "heal-observation-reuse-by-subject", waits_on: [], stages: [
+    [
+      leaf(label: "one source-closure observation per identified subject carried from the checkpoint subject into the generations, invalidated on a changed root set, resolver or snapshot", days: 4),
+    ],
+  ]),
+  decomposition(node: "heal-bootstrap-seed-reuse", waits_on: [], stages: [
+    [
+      leaf(label: "the base-policy bootstrap executable reused under its complete build identity from the existing materialization authority, rebuilt on any changed build input", days: 4),
+    ],
+  ]),
+  decomposition(node: "heal-terminal-emission-elision", waits_on: [], stages: [
+    [
+      leaf(label: "a stopping rule in regen_plan_next_stage that skips the next emission only when the next producer and the retained candidate's complete inputs are unchanged, with the base-built-producer negative control", days: 4),
+    ],
+  ]),
 ]
 
 // =================== roadmap-schedule-leaf-expansion: decomposition -> leaf OCCURRENCES ===================

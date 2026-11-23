@@ -4259,6 +4259,15 @@ type RecoverCatalogLegEntry
 type RecoverCatalogLegReading
   = RecoverCatalogLegEstablished { entries: List<RecoverCatalogLegEntry> }
   | RecoverCatalogLegUnknown { detail: String }
+  // The census door was NOT ASKED, with the reason: the door is part of the model the serving checkout
+  // carries, and the checkout is not yet at the dispatched revision, so the door does not exist to ask
+  // (measured on srv1, run 44980662577: the stale tree answers "function compute_recover_catalog_cli is
+  // not in the loaded entry"). This is not an unknown — nothing was read and refused — and never an
+  // established census: the plan carries no recovery write, and the next assessment, with the checkout
+  // detached at the pin, asks the door. Produced by the LEG (gunbc.compute.remote_build_serving_converge);
+  // the wire parser below speaks only Established and Unknown, because a door that was never asked emits
+  // no wire line.
+  | RecoverCatalogLegDeferred { reason: String }
 
 fn recover_catalog_leg_stale_token(token: String) -> Bool {
   let w = recover_catalog_words()

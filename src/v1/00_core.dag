@@ -2079,6 +2079,11 @@ data transport_path_template_key: String = "path"
 data transport_query_key: String = "query"
 data transport_body_key: String = "body"
 data transport_stdin_key: String = "stdin"
+// A shell transport MAY declare a per-leg wall-clock ceiling, naming the call's value. It is a
+// field of the transport declaration, exactly like `stdin`: what arms the kill is the transport
+// saying so, never a parameter spelled a particular way in the caller (review 96999). A transport
+// that does not declare it keeps main's behavior byte for byte -- no group, no kill, no overrun.
+data transport_wall_deadline_key: String = "wall_deadline"
 data transport_verb_key: String = "verb"
 data transport_response_format_key: String = "response_format"
 data transport_headers_key: String = "headers"
@@ -2129,14 +2134,18 @@ fn rest_transport_node(occurrence_identity: NodeOccurrenceIdentity, base_url: No
   make_transport_node(occurrence_identity: occurrence_identity, properties: props, children: [], body: none, span: span)
 }
 
-fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
+fn shell_transport_node(occurrence_identity: NodeOccurrenceIdentity, argv: List<Node>, env: List<Node>, stdin: Node?, wall_deadline: Node?, span: SourceSpan) -> Node {
   let shell_marker = Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   let zero_span = no_span()
   let stdin_props = match stdin {
     Present { value: s } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_stdin_key, value: s, span: zero_span, name_span: zero_span)]
     Absent => []
   }
-  let all_props = concat(env, stdin_props)
+  let deadline_props = match wall_deadline {
+    Present { value: d } => [make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: transport_wall_deadline_key, value: d, span: zero_span, name_span: zero_span)]
+    Absent => []
+  }
+  let all_props = concat(env, stdin_props, deadline_props)
   Node { ident: Absent, occurrence_identity: occurrence_identity,
     name: "", span: span, ident_span: none, children: argv, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -2388,6 +2397,7 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_auth_header_key || name == transport_auth_token_key
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
+    || name == transport_wall_deadline_key
     || name == transport_response_format_key || name == transport_headers_key
     || name == transport_auth_basic_key 
     || name == transport_tls_key
