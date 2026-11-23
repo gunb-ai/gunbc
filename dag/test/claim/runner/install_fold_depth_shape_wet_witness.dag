@@ -250,19 +250,24 @@ test fn plant_only_at_large_size() -> Bool {
 }
 
 // FAIL-CLOSED SKIP CONTROLS (work item adhoc-0952dae0). The whole-tree skip in
-// approval_broker_tree_install_observed runs the SAME three predicates as the verbatim readback
-// (tree_entries_agree over observe_tree_hashes, tree_executables_disagreement, and tree_metadata_disagreement
-// against tree_installed_expectation_owned), over a FRESH observe of the locus in the same pass -- one
-// authority, so a tree the readback would refuse is exactly a tree the skip refuses to take. These
-// controls make that equivalence executable: each RED-asserts that the skip was NOT wrongly taken by
-// re-running the real install and demanding it CONVERGE -- because if the skip were wrongly taken on a
-// wrong tree, the unconditional readback below the folds would REFUSE and the verdict would not converge.
-// (1) a converged locus reports already-converged (the skip is available); it reads true ONLY on an
-//     elevated host that ran the real install, so the conjunction cannot pass vacuously off-seam.
-// (2) a tampered file blocks the skip AND the re-install must converge AND must restore the bytes --
-//     a wrongly-skipped tampered file would leave the readback to refuse (not converge) or the bytes
-//     wrong, both red.
-// (3) a missing file blocks the skip AND the re-install must converge AND must restore the file.
+// approval_broker_tree_install_observed and the verbatim readback below now share ONE authority,
+// tree_locus_readback_verdict -> tree_locus_agreement_given (content agree via tree_entries_agree over
+// observe_tree_hashes, the tree_executables_disagreement verdict, and the kind/mode/owner chain via
+// tree_realm_readback_owner + tree_installed_expectation_owned + tree_metadata_disagreement) -- one function,
+// so a tree the readback would refuse is EXACTLY a tree the skip refuses to take; there is nothing left for
+// them to drift on. The skip decision itself is certified HERMETICALLY -- over supplied observations, with no
+// host and no elevation -- by test.claim.host.release_tree_skip_predicate_hermetic_witness; see the PR body
+// for its run and its drop-one-predicate mutation test.
+//
+// >>> THESE TWO CONTROLS ARE TYPECHECKED, NOT EXECUTED: they re-run the REAL install fold over a disturbed
+// >>> locus, which shells out to observe/install, so they need an ELEVATED host and were NOT run locally
+// >>> (no elevation in this container; the fold is refused, never fabricated, off-seam). Do NOT read them as
+// >>> green here -- they are the elevated-host pairing to the hermetic witness. <<< They each RED-assert that
+// >>> the skip was NOT wrongly taken by re-running the real install and demanding it CONVERGE -- because a
+// >>> wrongly-skipped wrong tree would leave the unconditional readback to REFUSE (not converge), or leave the
+// >>> bytes wrong, both red:
+// (1)+(2) a tampered file blocks the skip AND the re-install must converge AND must restore the bytes;
+// (3)     a missing file blocks the skip AND the re-install must converge AND must restore the file.
 
 // Re-run the real fold over a locus the caller has disturbed, and report whether it converged.
 fn reinstall_converged(staging_root: String, source_root: String, locus: String) -> Bool {
