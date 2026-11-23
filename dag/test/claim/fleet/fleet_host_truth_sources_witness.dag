@@ -25,7 +25,6 @@ import gunbc.fleet.fleet_host_key_enrollment { enrolled_fingerprint_for }
 import gunbc.fleet.fleet_host_truth_sources {
   host_truth_cap_read,
   host_truth_leaf_swap_read,
-  host_truth_host_swap_read,
   host_truth_identity_expectation,
   host_truth_identity_read,
 }
@@ -138,23 +137,12 @@ test fn RED_the_leaf_cap_the_machine_reports_diverges_from_the_working_set_the_r
     && host_truth_class(comparison: host_truth_compare(read: roomy, expectation: declared_cap("srv4" as NonEmptyStr, 56))) == TruthClassAgreement
 }
 
-// RED -- THE REPORT'S 3.3: butch came up with an 8 GiB swapfile while its slot declared none. A host-level
-// swap total of zero is the machine answering "none", so the same pair at zero agrees -- the axis is not a
-// standing refusal of swap, it is a comparison against what the model declared.
-test fn RED_a_host_carrying_swap_where_the_envelope_declares_none_diverges() -> Bool {
-  let with_swap = host_truth_host_swap_read(
-    host: "butch" as NonEmptyStr,
-    at_run: "converge-2026-11-21",
-    swap_total: gibibyte_to_byte_size(g: gibibyte(count: 8)),
-  )
-  let without = host_truth_host_swap_read(
-    host: "butch" as NonEmptyStr,
-    at_run: "converge-2026-11-21",
-    swap_total: byte_size(count: 0),
-  )
-  host_truth_class(comparison: host_truth_compare(read: with_swap, expectation: declared_swap("butch" as NonEmptyStr, 0))) == TruthClassDivergence
-    && host_truth_class(comparison: host_truth_compare(read: without, expectation: declared_swap("butch" as NonEmptyStr, 0))) == TruthClassAgreement
-}
+// THE REPORT'S 3.3 IS NOT AN AXIS, and this module produces no reading for it. The envelope judges swap at
+// the slot cgroup, so a host-level /swap.img is not a divergence on TruthSlotSwapBackingDeclared; the claim
+// that used to stand here fed an 8 GiB SwapTotal into the SLOT's declared-swap expectation and passed, which
+// is the meaning fork gunbc.design_argument::single_authority refuses -- a passing test scoring one name as
+// two different places. The premise correction is on record in gunbc.fleet.fleet_host_truth_read and the
+// host's own swapfile is swift-koi-507's item.
 
 // THE LEAF'S OWN SWAP CEILING is a separate fact from the host's backing, taken from the same reading.
 test fn the_leaf_swap_ceiling_is_read_from_the_same_observation_as_the_cap() -> Bool {

@@ -21,6 +21,15 @@ module gunbc.fleet.fleet_host_truth_sources
 // #gunbc.fleet.fleet_host_truth_sources::host_truth_cap_read, and what is owed to close the gap is tracked by
 // #gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent::failed_value_read_scored_as_value_absent.
 //
+// NO HOST-SWAP PRODUCER EXISTS, on purpose. The envelope judges swap at the slot cgroup
+// (gunbc.host.memory_envelope::memory_envelope_verdict over memory.swap.current, .peak and .max, against the
+// runner slot's declared swap maximum of zero), so the report's 3.3 -- butch's 8 GiB /swap.img -- was a
+// mis-stated premise, a host backing read as a cgroup limit (clever-raven-401, 2026-11-21). Filing a
+// /proc/meminfo SwapTotal under TruthSlotSwapBackingDeclared would have made one name carry two materially
+// different meanings, which is the meaning fork gunbc.design_argument::single_authority refuses; the
+// gunbc.fleet.fleet_host_truth_read frontier above keeps host swap out of the axis list until a reader names
+// the judgment that consults it, and the swapfile itself is swift-koi-507's item, not this lane's.
+//
 // THREE OF THE FIVE AXES are inhabited here, the three the report's own specimens named: the cap that
 // surfaced as 5.1 tok/s with 41.5 GB read per request instead of refusing (3.2, srv4's leaf), the swap
 // backing the envelope refuses on (3.3, butch's 8 GiB /swap.img at priority -2), and the identity pinned to
@@ -33,9 +42,12 @@ module gunbc.fleet.fleet_host_truth_sources
 // with the roster admission that consumes the verdict (the "fleet-truth-rosters-consume-the-read" node in
 // gunbc.roadmap.roadmap_authority). A per-axis producer that is not written yet is absent from this module;
 // nothing here answers for it.
-// CONSUMPTION, CLASSIFIED (gunbc.design_argument::consumption). The producers here --
-// host_truth_cap_read, host_truth_leaf_swap_read, host_truth_identity_expectation,
-// host_truth_identity_read and host_truth_verdict_for_host -- have exactly one consumer named: the
+// CONSUMPTION, CLASSIFIED (gunbc.design_argument::consumption). The four producers here --
+// #gunbc.fleet.fleet_host_truth_sources::host_truth_cap_read,
+// #gunbc.fleet.fleet_host_truth_sources::host_truth_leaf_swap_read,
+// #gunbc.fleet.fleet_host_truth_sources::host_truth_identity_expectation and
+// #gunbc.fleet.fleet_host_truth_sources::host_truth_identity_read -- feed one judge,
+// #gunbc.fleet.fleet_host_truth_read::fleet_host_truth_verdict_for_host, and have exactly one consumer named: the
 // observe-only converge mode authorized by
 // gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21, on the roadmap node
 // "fleet-truth-per-host-read" in gunbc.roadmap.roadmap_authority, whose verdict the node
@@ -46,7 +58,6 @@ module gunbc.fleet.fleet_host_truth_sources
 // makes it checkable rather than prose.
 
 import std.types { NonEmptyStr, String }
-import std.measure { ByteSize }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import extdeps.systemd {
@@ -159,19 +170,7 @@ fn host_truth_leaf_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, limit: Syst
   }
 }
 
-// THE SWAP THE HOST ACTUALLY CARRIES. The report's 3.3 is about a backing that exists where the model says
-// none does: butch came up with an 8 GiB /swap.img at priority -2 while its slot declared no swap at all. A
-// zero here is a real answer rather than an absence, which is why it is a value and not a refusal -- the
-// envelope reads /proc/meminfo, so "0" means the machine said 0.
-fn host_truth_host_swap_read(host: NonEmptyStr, at_run: NonEmptyStr, swap_total: ByteSize) -> HostTruthRead {
-  HostTruthObserved {
-    host: host,
-    axis: TruthSlotSwapBackingDeclared,
-    observed: TruthSize { size: swap_total },
-    at_run: at_run,
-    receipt: host_truth_source_receipt(carrier: "gunbc.host.host_memory_envelope_observe SwapTotal from /proc/meminfo")
-  }
-}
+
 
 // THE ANCHOR, TAKEN FROM THE AUTHORITY THAT OWNS IT. The enrolled fingerprint is desired state and the
 // fingerprint a host presents is the machine's answer; keeping them apart is the whole of the report's 2.1,
