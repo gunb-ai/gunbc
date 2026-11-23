@@ -5213,7 +5213,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "OPEN: red_at and green_at are not yet measured. The control is a fixture corpus whose one module fails a parse refusal and is cited by another: today the report names only the citer; after the change it names the refused module first, with the omitted count when it truncates. It must be run against the real v2.cli.reference_check path, not a reimplementation of its report.",
         out_of_scope: "Raising any line cap; changing which modules the parse wall refuses; the Wycheproof or juxtaposition walls themselves.",
         handback: "The report naming the refused module first with its omitted count, and the witness over a known-refused fixture module."
-      ),
+      )),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "A verdict names the work that produced it: a refusal that names the citers and not the refused module misdirects the reader."),
     ),
