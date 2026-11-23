@@ -757,6 +757,8 @@ fn mint_publisher_installation_token(cloud_access_token: Secret, key_path: NonEm
       match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
         SmAccessVersionSecretDecodeRefused { cause: _ } =>
           PublisherTokenNotMinted { cause: "HealPublisherAppKeyUnreadable: the Secret Manager payload did not decode" }
+        SmAccessVersionSecretNotText =>
+          PublisherTokenNotMinted { cause: "HealPublisherAppKeyUnreadable: the Secret Manager payload is bytes that are not UTF-8 text" }
         SmAccessVersionSecretDecoded { credential: key } =>
           mint_publisher_installation_token_with_key(key: key, key_path: key_path, repository_name: repository_name)
       }
