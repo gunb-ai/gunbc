@@ -1,0 +1,62 @@
+module test.claim.per_function_dispatcher_names_probe
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import v2.std.witness_evaluation {
+  WitnessReturned, WitnessRefused, WitnessInterrupted,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+}
+import std.execution_mode { Hermetic, Wet, Record }
+import v2.std.operation_realization { modeled_realization_admitted_in }
+import test.claim.modeled_filesystem_witness { filesystem_frame, empty_hold_store }
+
+// PROBE, NOT A WITNESS OF THE FILESYSTEM MODEL. It installs the same modeled frame the filesystem
+// witness installs, with a subject that does nothing, and reads the frame's own refusal reason. The
+// interpreter's modeled-realization dispatcher resolves modeled_realization_admitted_in,
+// operation_realization_duplicate, operation_realization_index, operation_handler_selection and
+// virtual_clock_after BY STRING, so under a per-function run a name outside the run's loaded index
+// refuses the frame and the reason names it. Each claim below is true only when its name was NOT
+// the one the frame refused on, so a claim's Bool reports which name is absent instead of the
+// filesystem witness folding every refusal into false.
+fn frame_refusal_reason() -> String {
+  match evaluate_in_witness_frame(frame: filesystem_frame(initial: empty_hold_store()), subject: fn(_scope) { true }) {
+    WitnessReturned { value: _, route: _, state: _ } => ""
+    WitnessRefused { diagnostic: d, route: _, state: _ } => witness_diagnostic_rendered_reason(diagnostic: d)
+    WitnessInterrupted { at: _, route: _, state: _, now: _ } => "interrupted"
+  }
+}
+
+test fn modeled_realization_admitted_in_resolved() -> Bool {
+  !string_contains(s: frame_refusal_reason(), pattern: "modeled_realization_admitted_in")
+}
+
+test fn operation_realization_duplicate_resolved() -> Bool {
+  !string_contains(s: frame_refusal_reason(), pattern: "operation_realization_duplicate")
+}
+
+test fn operation_realization_index_resolved() -> Bool {
+  !string_contains(s: frame_refusal_reason(), pattern: "operation_realization_index")
+}
+
+test fn operation_handler_selection_resolved() -> Bool {
+  !string_contains(s: frame_refusal_reason(), pattern: "operation_handler_selection")
+}
+
+test fn virtual_clock_after_resolved() -> Bool {
+  !string_contains(s: frame_refusal_reason(), pattern: "virtual_clock_after")
+}
+
+// The interpreter refuses the frame unless this exact call returns Bool(true) (v1_interpreter.rs,
+// admit_modeled_realization). The refusal is a HostEffectRefused error, not a WitnessRefused value,
+// so the reason probes above cannot observe it; this calls the predicate directly.
+test fn admission_predicate_admits_hermetic() -> Bool {
+  modeled_realization_admitted_in(mode: Hermetic) == true
+}
+
+test fn admission_predicate_refuses_wet() -> Bool {
+  modeled_realization_admitted_in(mode: Wet) == false
+}
+
+test fn admission_predicate_refuses_record() -> Bool {
+  modeled_realization_admitted_in(mode: Record) == false
+}
