@@ -194,6 +194,8 @@ data cardinality_seam_hole_source: String = "module probe_floor_cardinality_seam
 
 data cardinality_seam_green_source: String = "module probe_floor_card_seam_green\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn probe() -> Bool {\n  match levels().first() {\n    Present { value: lv } => lv.id == \"l1\"\n    Absent => false\n  }\n}\n"
 
+data cardinality_seam_call_arg_control_source: String = "module probe_floor_card_seam_call_arg\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn level_id(l: Level) -> String {\n  l.id\n}\n\nfn probe() -> Bool {\n  level_id(l: levels().first()) == \"l1\"\n}\n"
+
 // CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
 // `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
 // climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
@@ -316,6 +318,13 @@ test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent
 test fn floor_cardinality_seam_green_control_is_clean() -> Bool {
   row_holds(probe: floor_cardinality_seam_green_probe, source: cardinality_seam_green_source)
     && total_row_count_is_zero(census: census_of(source: cardinality_seam_green_source))
+}
+
+test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the call-argument control row's expectation holds", row_holds(probe: floor_cardinality_seam_call_arg_control_probe, source: cardinality_seam_call_arg_control_source)),
+    blocking_verdict(source: cardinality_seam_call_arg_control_source, wanted: "DeclaredTypeNotInhabited", holds: fn(n) { n >= 1 })
+  ])
 }
 
 // THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has since
