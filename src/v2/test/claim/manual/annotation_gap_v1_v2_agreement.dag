@@ -1,6 +1,6 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement
 
-import std.types { CommitSha, List }
+import std.types { List }
 import std.coercion { unicode_scalar_unfold }
 import std.source_annotation {
   AnnotationScope,
@@ -165,31 +165,4 @@ test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
     && nth(xs: v1, i: 4) == nth(xs: v2, i: 4)
     && nth(xs: v1, i: 0) == "above the data row | <none> | data zqx_d: Int = 1"
     && nth(xs: v2, i: 0) == "above the data row | module zqx.agree | data zqx_d: Int = 1"
-}
-
-// THE PROBE PAIR THAT SHOWS THIS CONTROL IS NOT VACUOUS, as data rather than as prose a reader has to
-// trust. kind is "deliberate-break": the red exists only on a tree where the v2 roster was broken by
-// hand, so red_at is NOT a main commit -- it is the head of the durable probe ref below, kept so anyone
-// can fetch the very tree that turned this control red. Its roster arm is the second disjunct of
-// v2.compiler.parse parse_node_is_source_region (the infix-application projection); drop it and a
-// comment before `2 * 3` loses `2 * 3` as its neighbour in v2 while v1 still names it, so the row
-// "before the product" below -- the row this control gained for exactly that reason, since the four
-// rows before it contain no infix application and could not see the break -- disagrees and this claim
-// fails. red_base is the commit the probe ref was cut from, so `git diff red_base red_at` is the break
-// and nothing else; green_at is where this SAME claim was observed passing.
-data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
-data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
-data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "RED_AT_SHA_PLACEHOLDER"
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "GREEN_AT_SHA_PLACEHOLDER"
-
-fn nth(xs: List<String>, i: Int) -> String {
-  match list_at_optional(xs: xs, index: i) {
-    Present { value: t } => t
-    Absent => "<missing>"
-  }
-}
-
-fn agreement_report() -> List<String> {
-  concat(v1_neighbours(source: agreement_source), concat(["----"], v2_neighbours(source: agreement_source)))
 }

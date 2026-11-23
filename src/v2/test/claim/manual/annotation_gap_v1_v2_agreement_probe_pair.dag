@@ -1,0 +1,29 @@
+module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
+
+import std.types { CommitSha, String }
+
+// THE PROBE PAIR THAT SHOWS THE AGREEMENT CONTROL IS NOT VACUOUS, recorded as data rather than as prose
+// a reader has to trust. The fields are the receipt: kind, the ref the red tree is durable on, the main
+// commit it was cut from, the two commits where the control was OBSERVED failing and passing, and the
+// date it was executed.
+//
+// WHY A DELIBERATE BREAK RATHER THAN A BEFORE/AFTER FEATURE TEST. The row this node closes says the
+// gated agreement control turns red when the v2 roster drops infix applications as regions. That red
+// cannot exist on any main commit -- on main the roster is whole -- so the only honest witness of it is
+// a tree where the arm was removed by hand. `kind` records that: red_at is NOT a claim that main is
+// broken, it is evidence the control is not vacuous. The arm is the second disjunct of
+// v2.compiler.parse parse_node_is_source_region (the infix-application projection); drop it and a
+// comment before `2 * 3` loses `2 * 3` as its neighbour on the v2 side while v1 still names it, so the
+// fixture row "before the product" in v2.test.claim.manual.annotation_gap_v1_v2_agreement -- the row the
+// control gained for exactly this reason, the four rows before it contain no infix application and could
+// not see the break -- disagrees and the claim fails.
+//
+// `git diff <red_at>^ <red_at>` is the break and nothing else. green_at is a real commit on the PR
+// lineage, and the witness file is BYTE-IDENTICAL between red_at and green_at -- only the roster differs
+// -- which is what makes the pair a mutation control rather than two different tests.
+data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
+data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
+data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "RED_AT_SHA_PLACEHOLDER"
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "GREEN_AT_SHA_PLACEHOLDER"
+data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
