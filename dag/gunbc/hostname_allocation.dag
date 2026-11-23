@@ -265,6 +265,19 @@ data fleet_machine_ken: HostnameAllocation = HostnameAllocation {
     next_name: Absent,
   }
 
+// Bound as a handle (like fleet_machine_srv1..srv4 and ken) so gunbc.fleet.fleet_host_key_enrollment can name
+// butch's tailnet host-key anchor row address via fleet_tailnet_name(machine: fleet_machine_butch) without restating
+// the labels. It is still the srv14 element of fleet_machine_registry (which references this handle). The board's
+// other facts live on gunbc.fleet.fleet_host_identity::operator_host_srv14.
+data fleet_machine_butch: HostnameAllocation = HostnameAllocation {
+    fleet_slot: operator_host_srv14,
+    name: DrawnHumanName {
+      name: FirstOnly { first: "butch" as DnsLabel },
+      draw: HumanNameDraw { entropy: 155184575423 },
+    },
+    next_name: Absent,
+  }
+
 data fleet_machine_registry: List<HostnameAllocation> = [
   fleet_machine_srv1,
   fleet_machine_srv2,
@@ -294,14 +307,7 @@ data fleet_machine_registry: List<HostnameAllocation> = [
     },
     next_name: Absent,
   },
-  HostnameAllocation {
-    fleet_slot: operator_host_srv14,
-    name: DrawnHumanName {
-      name: FirstOnly { first: "butch" as DnsLabel },
-      draw: HumanNameDraw { entropy: 155184575423 },
-    },
-    next_name: Absent,
-  },
+  fleet_machine_butch,
   HostnameAllocation {
     fleet_slot: operator_host_srv15,
     name: DrawnHumanName {
