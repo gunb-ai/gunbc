@@ -46,7 +46,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
   roadmap_events_read_all, carrier_exec_program, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
   CarrierExec, CarrierExecOk, CarrierExecFailed, CarrierSnapshotClose, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
-  roadmap_event_scratch_dir_presence, roadmap_event_scratch_close, RoadmapEventCarrierScopedLayout, CloseVerifyRegistrationPersists, CloseVerifyDirectoryPersists, CloseVerifyDirectoryPresenceUnobservable, carrier_close_verification_reason,
+  roadmap_event_scratch_dir_presence, roadmap_event_scratch_close, RoadmapEventCarrierScopedLayout, CloseVerifyRegistrationPersists, CloseVerifyDirectoryPersists, CloseVerifyDirectoryPresenceUnobservable, CloseVerifyRegistrationPresenceUnobservable, carrier_close_verification_reason,
 }
 import extdeps.filesystem.filesystem_io { FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
@@ -84,6 +84,19 @@ fn launcher_close_is_closed(close: CarrierSnapshotClose) -> Bool {
     SnapshotNotOpened => false
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
     SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false
+  }
+}
+
+// The close reported a REGISTRATION-side unobservable presence (the admin dir's presence could not be established,
+// e.g. .git/worktrees is mode 0300 and `worktree list` returns an INCOMPLETE 0-exit listing). This is the honest
+// verdict where the pre-fix verifier minted a false SnapshotClosed on a live registration.
+fn launcher_close_is_registration_presence_unobservable(close: CarrierSnapshotClose) -> Bool {
+  match close {
+    SnapshotCloseVerificationFailed { worktree: _, verification: CloseVerifyRegistrationPresenceUnobservable { reason: _ } } => true
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false
+    SnapshotClosed => false
+    SnapshotNotOpened => false
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
   }
 }
 
@@ -134,8 +147,8 @@ fn launcher_layout_for(runner: String) -> RoadmapEventCarrierRead {
 }
 
 // Same scoped layout but with an INJECTED realpath program, so a control can reach the pre-add
-// identity-unestablishable arm (which is otherwise unreachable because shell.Mktemp.Dir is a fixed host builtin
-// whose /tmp scratch realpath always resolves). Everything else is identical to the real launcher layout, so the
+// identity-unestablishable arm (which is otherwise unreachable because shell.Mktemp.Dir runs the host `mktemp -d`,
+// honoring $TMPDIR, and a normal scratch always resolves under realpath). Everything else is identical to the real launcher layout, so the
 // real scoped reader and close still run. remote/git/directory match ci_layout.
 fn launcher_layout_for_realpath(runner: String, rp: String) -> RoadmapEventCarrierRead {
   CarrierReadScopedDetached {
@@ -524,9 +537,9 @@ fn launcher_control_real_reader_locked_moved_add_is_caught(repo: String) -> Stri
   }
 }
 
-// CONTROL 8 — the PRE-ADD identity-failure route with a scratch that SURVIVES. shell.Mktemp.Dir is a fixed host
-// builtin (its /tmp scratch always resolves to real realpath), so the identity-unestablishable arm is otherwise
-// unreachable; we inject a realpath program (like git_program) that records the scratch path, plants an UNDELETABLE
+// CONTROL 8 — the PRE-ADD identity-failure route with a scratch that SURVIVES. shell.Mktemp.Dir runs the host
+// `mktemp -d` (which honors $TMPDIR), and a normal scratch resolves under realpath, so the identity-unestablishable
+// arm is otherwise unreachable; we inject a realpath program (like git_program) that records the scratch path, plants an UNDELETABLE
 // subtree (a 0500 subdir holding a file), then exits 1. The scoped reader therefore: mktemps, fails to establish
 // the canonical identity, and enters the pre-add arm — which removes the scratch (rm FAILS on the undeletable
 // child), then OBSERVES presence. The scratch survives, so a correct close reports a directory leak, never a silent
@@ -561,12 +574,62 @@ fn launcher_control_pre_add_identity_failure_reports_surviving_scratch(repo: Str
       let reported = launcher_close_is_reported_dir_failure(close: read.close)
       let sp = launcher_cat(workdir: c.base, rel: "scratch-path")
       let survived = launcher_path_exists(path: sp)
-      // restore perms on the planted undeletable subtree, then remove the surviving scratch and the base.
-      let _ = launcher_exec(program: "chmod", workdir: "/", args: ["-R", "u+rwX", "--", sp])
-      let _ = shell.Remove.RecursiveForce(path: sp as FilePath)
-      let cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
+      // restore perms on the planted undeletable subtree, then remove the surviving scratch and the base. Bind EVERY
+      // result: a chmod-restore or a removal that fails means the scratch did not clean, which the control must report
+      // rather than pass over (the scratch is OURS to recover after chmod).
+      let restore_ok = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: "/", args: ["-R", "u+rwX", "--", sp]))
+      let rm_ok = shell.Remove.RecursiveForce(path: sp as FilePath).success
+      let cleaned = restore_ok && rm_ok && launcher_cleanup_all(runner: c.runner, base: c.base)
       let ok = step == "identity" && reported && survived && cleaned
-      if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " reported:", to_string(value: if reported { 1 } else { 0 }), " survived:", to_string(value: if survived { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
+      if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " reported:", to_string(value: if reported { 1 } else { 0 }), " survived:", to_string(value: if survived { 1 } else { 0 }), " restore_ok:", to_string(value: if restore_ok { 1 } else { 0 }), " rm_ok:", to_string(value: if rm_ok { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
+    }
+  }
+}
+
+// CONTROL 9 — the REAL scoped reader + close under an UNREADABLE .git/worktrees (mode 0300) with a LOCKED worktree.
+// A post-checkout hook runs DURING `git worktree add`, AFTER git registered + checked out the worktree: it LOCKS the
+// worktree (so `worktree remove --force` refuses) and chmods the MAIN repo's .git/worktrees to 0300 — searchable and
+// writeable, but NOT readable. git then cannot ENUMERATE registrations under .git/worktrees, so `worktree list` exits
+// 0 with an INCOMPLETE listing that OMITS the live worktree. The pre-fix verifier read that omission as registration
+// ABSENCE and, after `rm -rf` removed the checked-out tree (which needs only search, not read), minted a FALSE
+// SnapshotClosed while the admin dir .git/worktrees/<id> still lived. The fix binds the registration identity to the
+// ADD (the gitfile's `gitdir:` admin path) and verifies ITS absence: the admin-dir presence folds the unreadable
+// parent listing, is Indeterminate, and the close must report a typed registration-presence-unobservable, NEVER Closed.
+// The hook writes a marker only if the lock AND the chmod both succeeded, proving the worktree was registered (the
+// post-checkout fires only after registration) so this cannot pass for a never-registered add.
+fn launcher_control_unreadable_worktrees_is_not_falsely_closed(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-unreadable")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
+    let marker = under(c.base, "unreadable-marker")
+    let git_worktrees = under(under(c.runner, ".git"), "worktrees")
+    let hook = under(c.runner, ".git/hooks/post-checkout")
+    let body = join([
+      "#!/bin/sh\n",
+      "wt=\"$(pwd)\"\n",
+      "if git -C \"$wt\" worktree lock . >/dev/null 2>&1 && chmod 300 \"", git_worktrees, "\" 2>/dev/null; then printf ok > \"", marker, "\"; fi\n",
+      "exit 1\n"
+    ], "")
+    let planted = Filesystem.Write(path: hook, content: body).success
+      && match carrier_exec_program(program: "chmod", workdir: c.runner, args: ["+x", hook]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    if !planted {
+      let _ = shell.Remove.RecursiveForce(path: c.base)
+      control_result(ok: false, note: "post-checkout hook not planted")
+    } else {
+      let read = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
+      let step = launcher_refusal_step(read: read.result)
+      let not_closed = !launcher_close_is_closed(close: read.close)
+      let unobservable = launcher_close_is_registration_presence_unobservable(close: read.close)
+      // The hook proves the add reached the post-checkout (a worktree was registered, then locked + parent made 0300).
+      let sabotaged = launcher_exec_ok(e: launcher_exec(program: "test", workdir: c.base, args: ["-e", "unreadable-marker"]))
+      // Cleanup must survive the sabotage: restore .git/worktrees readability (bind the result), then the shared
+      // cleanup unlocks the locked registration (only possible once the parent is enumerable) and prunes it away.
+      let restore_ok = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: "/", args: ["755", "--", git_worktrees]))
+      let cleaned = restore_ok && launcher_cleanup_all(runner: c.runner, base: c.base)
+      let ok = step == "snapshot" && not_closed && unobservable && sabotaged && cleaned
+      if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " not_closed:", to_string(value: if not_closed { 1 } else { 0 }), " unobservable:", to_string(value: if unobservable { 1 } else { 0 }), " sabotaged(lock+chmod):", to_string(value: if sabotaged { 1 } else { 0 }), " restore_ok:", to_string(value: if restore_ok { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
     }
   }
 }
@@ -619,6 +682,7 @@ fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
   let six = launcher_control_dir_presence_distinguishes_unreadable()
   let seven = launcher_control_real_reader_locked_moved_add_is_caught(repo: repo)
   let eight = launcher_control_pre_add_identity_failure_reports_surviving_scratch(repo: repo)
-  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" && seven == "PASS" && eight == "PASS" { ExitSuccess }
-  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, " 7:", seven, " 8:", eight, "\n(all eight must PASS)\n"], "")) }
+  let nine = launcher_control_unreadable_worktrees_is_not_falsely_closed(repo: repo)
+  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" && seven == "PASS" && eight == "PASS" && nine == "PASS" { ExitSuccess }
+  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, " 7:", seven, " 8:", eight, " 9:", nine, "\n(all nine must PASS)\n"], "")) }
 }

@@ -959,11 +959,13 @@ fn roadmap_events_read_all_attached(layout: RoadmapEventCarrierLayout) -> Carrie
 // empty), not a refusal. Materializing inside the worktree makes the read resolve FETCH_HEAD against its OWN
 // per-worktree value, which only this read writes. Every step after the worktree add can leave a REGISTRATION behind
 // (a post-checkout hook fails `worktree add` AFTER git registered it), so every such arm runs the close and reports
-// ITS outcome; "never opened" is claimed only for the mktemp failure, where nothing could have registered.
+// ITS outcome. "never opened" is claimed ONLY where nothing could have registered AND its absence is established: the
+// mktemp failure (no directory was ever made) and the pre-add identity arm (only after it removes the scratch and
+// observes it gone) -- never for post-add state that may still hold a registration.
 fn roadmap_events_read_all_scoped_detached(scoped: RoadmapEventCarrierScopedLayout) -> CarrierClosed<RoadmapAllEventsRead> {
   let scratch = shell.Mktemp.Dir()
   if !scratch.success {
-    // Nothing was created and nothing could have registered: not-opened is established, and only here.
+    // Nothing was created and nothing could have registered: not-opened is established here without further checking.
     CarrierClosed { result: AllEventsReadRefused { step: "scratch", reason: "cannot create launcher event snapshot scratch" }, close: SnapshotNotOpened }
   } else {
     // BIND THE IDENTITY TO THE ADD. git canonicalizes a worktree path when it registers one, so the string
@@ -994,19 +996,27 @@ fn roadmap_events_read_all_scoped_detached(scoped: RoadmapEventCarrierScopedLayo
       }
       ScratchIdentityEstablished { canonical } => match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String,
         args: ["worktree", "add", "--detach", canonical, "HEAD"]) {
-        CarrierExecFailed { exit_code, stderr } => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path) {
+        CarrierExecFailed { exit_code, stderr } => {
           // A nonzero add does NOT establish that nothing registered (a post-checkout hook can fail the checkout
-          // AFTER git registered the worktree). Clean registration and directory and report the close the host
-          // actually granted -- never SnapshotNotOpened for state that may exist.
-          close => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: close }
-        }
-        CarrierExecOk { stdout: _ } => match roadmap_event_scratch_sync(scoped: scoped, path: canonical as FilePath) {
-          ScratchSyncFailed { step, exit_code, stderr } => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path) {
-            close => CarrierClosed { result: AllEventsReadRefused { step: step, reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: close }
+          // AFTER git registered the worktree). Best-effort read the admin-dir handle, then clean registration and
+          // directory and report the close the host actually granted -- never SnapshotNotOpened for state that may exist.
+          let admin = roadmap_event_worktree_admin_dir(scoped: scoped, canonical: canonical)
+          match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path, admin: admin) {
+            close => CarrierClosed { result: AllEventsReadRefused { step: "snapshot", reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: close }
           }
-          ScratchSynced => match roadmap_events_read_dir(dir: join([canonical, "/", roadmap_events_dir_segment], "")) {
-            r => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path) {
-              close => CarrierClosed { result: r, close: close }
+        }
+        CarrierExecOk { stdout: _ } => {
+          // Bind the registration identity NOW, from the gitfile the add just wrote, so the close verifies a concrete
+          // admin dir and never trusts `worktree list` alone (which can omit a live registration).
+          let admin = roadmap_event_worktree_admin_dir(scoped: scoped, canonical: canonical)
+          match roadmap_event_scratch_sync(scoped: scoped, path: canonical as FilePath) {
+            ScratchSyncFailed { step, exit_code, stderr } => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path, admin: admin) {
+              close => CarrierClosed { result: AllEventsReadRefused { step: step, reason: join(["exit ", to_string(value: exit_code), ": ", stderr], "") }, close: close }
+            }
+            ScratchSynced => match roadmap_events_read_dir(dir: join([canonical, "/", roadmap_events_dir_segment], "")) {
+              r => match roadmap_event_scratch_close(scoped: scoped, canonical: canonical, original: scratch.path, admin: admin) {
+                close => CarrierClosed { result: r, close: close }
+              }
             }
           }
         }
@@ -1034,19 +1044,26 @@ fn roadmap_event_scratch_sync(scoped: RoadmapEventCarrierScopedLayout, path: Fil
 // (which also runs the removal's own cleanup); `worktree prune` clears any registration whose gitdir git already
 // considers gone; the recursive removal takes the scratch directory. The VERDICT is not the exit code of remove
 // (removing something that was never registered also fails, and reporting that as a close-failure would lie the
-// other way): it is the ESTABLISHED end state. The close is Closed only when the runner's `worktree list` no
-// longer names this path AND the scratch directory is gone; if either persists the close is CloseFailed, naming
-// what remains. So a cleanup that did not happen is reported as a leak, and a nothing-to-remove is reported
+// other way): it is the ESTABLISHED end state. The close is Closed only when the worktree's ADMIN directory -- bound
+// to the add from its `gitdir:` gitfile, so a concrete path -- is ESTABLISHED absent AND both scratch directories are
+// gone. The `worktree list` may only ADD a present or an unobservable (it can exit 0 with an INCOMPLETE listing when
+// .git/worktrees is unreadable), so it never establishes absence on its own. If the registration or a directory
+// persists, or its presence cannot be established, the close is a typed verification failure naming what remains or
+// why it is unobservable. So a cleanup that did not happen is reported as a leak, a nothing-to-remove is reported
 // honestly as closed, and SnapshotNotOpened is never claimed from here.
-fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, canonical: String, original: FilePath) -> CarrierSnapshotClose {
-  // The identity was bound to the ADD by the caller and is CARRIED here -- the close never re-resolves realpath
-  // (doing so after removal, when the scratch is gone, was the bug). Run EVERY removal -- never chain with &&, which
-  // short-circuits and skips the rest -- against the canonical registration git recorded, and take the original
-  // allocation too (under a symlinked scratch it is a separate, unregistered tree). The removal exit codes are
-  // bound, not discarded, but the VERDICT is the established END STATE: a nonzero removal that still leaves an
-  // established-absent end state is the legitimate nothing-to-remove case, so the codes are advisory (folded into
-  // an unobservable-presence reason) and never mint a false Closed. Absence must be ESTABLISHED for the
-  // registration AND for both directory spellings; anything else is a typed verification failure, never Closed.
+fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, canonical: String, original: FilePath, admin: CarrierAdminDir) -> CarrierSnapshotClose {
+  // The identity AND the registration admin dir were bound to the ADD by the caller and are CARRIED here -- the
+  // close never re-resolves realpath nor re-derives the gitdir (doing so after removal, when the scratch is gone,
+  // was the bug). Run EVERY removal -- never chain with &&, which short-circuits and skips the rest -- against the
+  // canonical registration git recorded, and take the original allocation too (under a symlinked scratch it is a
+  // separate, unregistered tree). The removal exit codes are bound, not discarded, but the VERDICT is the ESTABLISHED
+  // END STATE, not the codes: a nonzero removal that still leaves an established-absent end state is the legitimate
+  // nothing-to-remove case, so the codes are advisory (folded into an unobservable-presence reason) and never mint a
+  // false Closed. Registration absence is ESTABLISHED from the ADMIN DIR (a concrete path bound to this add), NOT
+  // from `worktree list`: git can exit 0 with an INCOMPLETE listing when .git/worktrees is unreadable, omitting
+  // registrations it cannot enumerate, so the listing may only ADD "present"/"unobservable" and NEVER establish
+  // absence alone. Absence must hold for the admin dir AND for both directory spellings; anything else is a typed
+  // verification failure, never Closed.
   let remove_worktree = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "remove", "--force", canonical])
   let prune = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "prune"])
   let canonical_path = canonical as FilePath
@@ -1057,27 +1074,27 @@ fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, canonica
   } else {
     "a removal reported a nonzero exit"
   }
-  match roadmap_event_scratch_registration_presence(scoped: scoped, identity: canonical) {
-    RegistrationListed =>
-      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
-    RegistrationPresenceUnobservable { reason } =>
-      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join([reason, " (", removal_note, ")"], "") } }
-    RegistrationAbsent => match roadmap_event_scratch_dir_presence(path: canonical_path) {
-      FilesystemEntryAbsent(_) => match roadmap_event_scratch_dir_presence(path: original) {
-        FilesystemEntryAbsent(_) => SnapshotClosed
-        FilesystemEntryListed { directory: _, name: _ } =>
-          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPersists }
-        FilesystemEntryPresenceIndeterminate { cause } =>
-          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["original allocation ", original as String, ": ", cause, " (", removal_note, ")"], "") } }
-        FilesystemEntrySubjectRefused { cause } =>
-          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the original allocation was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
-      }
+  match admin {
+    // No handle on the registration: the admin dir could not be read/parsed from the worktree gitfile at the add, so
+    // its absence cannot be established, and the listing alone cannot establish absence. This is never Closed.
+    AdminDirUnestablishable { reason } =>
+      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join(["the worktree admin dir could not be established from the gitfile, so its absence is not established: ", reason, " (", removal_note, ")"], "") } }
+    AdminDirEstablished { dir } => match roadmap_event_scratch_dir_presence(path: dir) {
       FilesystemEntryListed { directory: _, name: _ } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPersists }
+        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
       FilesystemEntryPresenceIndeterminate { cause } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join([cause, " (", removal_note, ")"], "") } }
+        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join(["admin dir ", dir as String, ": ", cause, " (", removal_note, ")"], "") } }
       FilesystemEntrySubjectRefused { cause } =>
-        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch path was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
+        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join(["the admin dir was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
+      FilesystemEntryAbsent(_) => match roadmap_event_scratch_registration_presence(scoped: scoped, identity: canonical) {
+        // The admin dir is established ABSENT, but the listing may still CONTRADICT it -- the listing may only ADD a
+        // present or an unobservable, never confirm absence. So a still-listed or unlistable registration overrides.
+        RegistrationListed =>
+          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
+        RegistrationPresenceUnobservable { reason } =>
+          SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join([reason, " (", removal_note, ")"], "") } }
+        RegistrationAbsent => roadmap_event_scratch_dirs_close(canonical_path: canonical_path, original: original, removal_note: removal_note)
+      }
     }
   }
 }
@@ -1125,8 +1142,10 @@ fn strip_single_trailing_newline(s: String) -> String {
 // `worktree list --porcelain -z` is the DOCUMENTED STABLE FORM (git-worktree(1) directs callers to it) and it is
 // NUL-terminated: a `worktree <path>` record is a single field ending at NUL, so a path containing a NEWLINE is
 // not split and missed -- which is how a newline-containing path once read as absent and closed the snapshot
-// falsely. A failure to list is treated as "present" — absence of a registration must be ESTABLISHED, never
-// assumed from a suppressed failure.
+// falsely. This listing is a SECOND check only: a failure to list is reported as an unobservable presence, never
+// silently as absent, and even a clean 0-exit listing can be INCOMPLETE (git omits registrations under an unreadable
+// .git/worktrees) -- so it may only ADD a present or an unobservable and NEVER establishes absence. The admin
+// directory (bound to the add from the gitfile) is the handle absence is established from.
 // Three outcomes, never two. A nonzero `worktree list` is NOT a surviving registration -- it is git never
 // answering -- so it must not collapse into `RegistrationListed` (which would report "git said it is still
 // there" for a listing that never ran). Only an ANSWERED listing that names the carried canonical identity is
@@ -1136,6 +1155,14 @@ type CarrierRegistrationPresence
   = RegistrationAbsent
   | RegistrationListed
   | RegistrationPresenceUnobservable { reason: String }
+
+// The per-worktree ADMIN directory handle, established at the ADD from the worktree's `.git` gitfile
+// (`gitdir: <repo>/.git/worktrees/<id>`). Its ABSENCE is the registration verdict the close trusts: a concrete path
+// bound to this add, so a `worktree list` that exits 0 with an INCOMPLETE listing (when .git/worktrees is unreadable,
+// git omits registrations it cannot enumerate) can never make the close say Closed on a live registration.
+type CarrierAdminDir
+  = AdminDirEstablished { dir: FilePath }
+  | AdminDirUnestablishable { reason: String }
 
 fn roadmap_event_scratch_registration_presence(scoped: RoadmapEventCarrierScopedLayout, identity: String) -> CarrierRegistrationPresence {
   match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
@@ -1158,6 +1185,59 @@ fn roadmap_event_scratch_registration_presence(scoped: RoadmapEventCarrierScoped
 // and only ESTABLISHED absence may count towards `SnapshotClosed` in the close above.
 fn roadmap_event_scratch_dir_presence(path: FilePath) -> FilesystemEntryPresence {
   filesystem_entry_presence_of_path(path: path as String)
+}
+
+// Both directory spellings (the canonical registration tree and the original mktemp allocation) established ABSENT.
+// Absence is ESTABLISHED only from a successful parent listing that omits the entry (filesystem_entry_presence_of_path
+// folds it); a present entry is a directory leak, an indeterminate or refused listing is an unobservable presence.
+// Closed is reachable ONLY through both spellings established absent.
+fn roadmap_event_scratch_dirs_close(canonical_path: FilePath, original: FilePath, removal_note: String) -> CarrierSnapshotClose {
+  match roadmap_event_scratch_dir_presence(path: canonical_path) {
+    FilesystemEntryListed { directory: _, name: _ } =>
+      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPersists }
+    FilesystemEntryPresenceIndeterminate { cause } =>
+      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join([cause, " (", removal_note, ")"], "") } }
+    FilesystemEntrySubjectRefused { cause } =>
+      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch path was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
+    FilesystemEntryAbsent(_) => match roadmap_event_scratch_dir_presence(path: original) {
+      FilesystemEntryAbsent(_) => SnapshotClosed
+      FilesystemEntryListed { directory: _, name: _ } =>
+        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPersists }
+      FilesystemEntryPresenceIndeterminate { cause } =>
+        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["original allocation ", original as String, ": ", cause, " (", removal_note, ")"], "") } }
+      FilesystemEntrySubjectRefused { cause } =>
+        SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the original allocation was not an admissible listing subject: ", cause, " (", removal_note, ")"], "") } }
+    }
+  }
+}
+
+// The per-worktree ADMIN directory, the handle the close verifies registration absence against. Read at the ADD from
+// the worktree's `.git` gitfile, whose content git writes as `gitdir: <repo>/.git/worktrees/<id>\n`. This is a
+// concrete path BOUND TO THIS ADD, so unlike `worktree list` (which can exit 0 with an INCOMPLETE listing when
+// .git/worktrees is unreadable and silently omit a live registration) its absence can be ESTABLISHED. A missing or
+// unreadable gitfile, or one whose content is not a `gitdir: .../.git/worktrees/<id>` line, is UNESTABLISHABLE -- the
+// close then cannot establish registration absence and must report unobservable, never Closed. The pathname bytes are
+// kept: strip only the framing newline, never trim.
+fn roadmap_event_worktree_admin_dir(scoped: RoadmapEventCarrierScopedLayout, canonical: String) -> CarrierAdminDir {
+  let gitfile = join([canonical, "/.git"], "") as FilePath
+  let raw = Filesystem.Read(path: gitfile as String)
+  match filesystem_read_outcome(content: raw.content, success: raw.success, error: raw.error) {
+    FilesystemReadRefused { error } =>
+      AdminDirUnestablishable { reason: join(["the worktree gitfile ", gitfile as String, " cannot be read: ", error], "") }
+    FilesystemReadSucceeded { content } => {
+      let line = strip_single_trailing_newline(s: content)
+      if !starts_with(s: line, prefix: "gitdir: ") {
+        AdminDirUnestablishable { reason: join(["the worktree gitfile ", gitfile as String, " is not a `gitdir: <admin>` gitfile"], "") }
+      } else {
+        let admin = substring(s: line, start: 8, end: string_length(s: line))
+        if admin == "" || !string_contains(s: admin, pattern: "/.git/worktrees/") {
+          AdminDirUnestablishable { reason: join(["the gitdir path ", admin, " is not a worktree admin directory under .git/worktrees/"], "") }
+        } else {
+          AdminDirEstablished { dir: admin as FilePath }
+        }
+      }
+    }
+  }
 }
 
 // WHOSE RESULT THIS IS, DERIVED FROM THE ATTEMPT'S OWN RECORD AND NOTHING THE CALLER SAYS. Given the
