@@ -216,7 +216,20 @@ fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
 // ensured dependency is outside ownership entirely — tailscale and tmux were installed for the
 // host, not for this deployment, so removing them is not this retract's business at any
 // scope.\n\nThe disposition is per-layer and total, so a new OwnedArtifactKind cannot inherit a
-// teardown answer by omission — the match fails to compile until the new kind states its own.
+// teardown answer by omission — the match fails to compile until the new kind states its own.\n\nTHE FABRIC
+// ENDPOINT'S UNIT CARRIED A REFUSAL IT SHOULD NOT HAVE.
+// #gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10 (2026-11-10) kept that unit out
+// of the live deploy, and this arm was still transcribing it after
+// #gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21 (2026-11-21)
+// put the endpoint's OWN unit back into the membership — so it stated a refusal the retract legs never honour.
+// The two rows are cited as different KINDS of decision, and that distinction is not decoration: the 11-10 row
+// is an operator answer on the record, while the 11-21 row opens by saying it is NOT one — it closed APPROVED
+// BY DEFAULT on a 15-minute no-answer window, and its provenance records that silence as a default and never as
+// assent. What binds this arm is the supersession, which both rows agree on; what must not be flattened is who
+// said it. A disposition is a fact about the layer that owns the step, not a transcription of whichever ruling
+// is current; the per-kind arm is what made the stale answer visible (the kind was present, its answer was
+// not), and #test.claim.live_deploy.emit::the_fabric_storage_unit_teardown_acts_where_its_retract_legs_act is
+// what keeps it from coming back.
 
 type TeardownRefusalCause
   = | TeardownOutsideOwnership
@@ -230,10 +243,19 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
     ComposeOwned { kind: ck } => match ck {
       SystemdUnit => TeardownActs
       FleetConvergeTimerUnit => TeardownActs
-      // Outside the deployment's ownership by the operator's ruling of 2026-11-10
-      // (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10): the fabric DB
-      // endpoint's unit stays the host's, so a retract that names it refuses rather than removing it.
-      FabricStorageServeUnit => TeardownRefuses { cause: TeardownOutsideOwnership }
+      // The endpoint's unit is DEPLOYMENT STATE AGAIN, by the recorded decision of 2026-11-21
+      // (#gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21),
+      // which supersedes #gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10; this arm
+      // had not caught up with the supersession and stated a refusal the legs never honour. That 11-21 row is
+      // NOT an operator answer — its own provenance says so, having closed by default on a no-answer window —
+      // and the 11-10 row it replaces IS one; the arm above says which binds it and why the distinction stays.
+      // #gunbc.live_deploy.retract_legs::deploy_retract_artifact_plan builds a real teardown for exactly this
+      // kind (#gunbc.live_deploy.retract_legs::retract_unit_teardown over
+      // #gunbc.live_deploy.spec::deployment_fabric_storage_unit_name, then the paths removed and the daemon
+      // reload), so the disposition that agrees with the retract is `TeardownActs`. The unit left the
+      // deployment model once and came back; this arm returns to a refusal only if it leaves again, and the
+      // decision saying so must be named here, not implied.
+      FabricStorageServeUnit => TeardownActs
       FabricStorageServeMapping => TeardownActs
       TailnetDoorServeUnit => TeardownActs
       AgentDoorServeUnit => TeardownActs
