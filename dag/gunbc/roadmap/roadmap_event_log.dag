@@ -16,10 +16,11 @@ import extdeps.languages.json.parse {
 // one every other date in the tree reads. The day-count comparator the deleted dated rule used is NOT imported:
 // acceptances are no longer ordered against a date, they are admitted by the closed set below.
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
+import gunbc.roadmap.roadmap_status { red_control_pair_holds }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
-  RedControlEvidence, RedControlNotRun, RedControlExecuted, RedControlTreeUnrecorded, red_control_pair_holds,
+  RedControlEvidence, RedControlNotRun, RedControlExecuted, RedControlTreeUnrecorded,
   HandbackEvidence, HandbackNotDelivered, HandbackDelivered,
   AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
   revocation_reopens_active_frontier, replay_acceptance_history, LeafPath,
