@@ -882,7 +882,7 @@ fn closed_exhaustiveness_verdict(
 type ExhaustivenessVerdict
   = VerdictExhaustive
   | VerdictNonExhaustive { missing: List<String> }
-  | VerdictUnknown { scrutinee: String }
+  | VerdictUnknown { scrutinee: String, declaration: String }
 
 // A match arm is irrefutable when its pattern is a wildcard or a binding -- it
 // covers the whole domain regardless of the coproduct roster, so a blocked
@@ -898,12 +898,13 @@ fn match_arm_is_irrefutable(arm: Node) -> Bool {
 fn blocked_scrutinee_exhaustiveness_verdict(
   arms: List<Node>,
   scrutinee_node: Node,
-  env: TypeEnv
+  env: TypeEnv,
+  declaration: String
 ) -> ExhaustivenessVerdict {
   if any(arms, a => match_arm_is_irrefutable(arm: a)) {
     VerdictExhaustive
   } else {
-    VerdictUnknown { scrutinee: scrutinee_verdict_name(scrutinee_node: scrutinee_node, env: env) }
+    VerdictUnknown { scrutinee: scrutinee_verdict_name(scrutinee_node: scrutinee_node, env: env), declaration: declaration }
   }
 }
 
@@ -918,10 +919,11 @@ fn blocked_scrutinee_exhaustiveness_diags(
   scrutinee_node: Node,
   env: TypeEnv,
   span: SourceSpan,
-  module_name: String
+  module_name: String,
+  declaration: String
 ) -> List<ErrorNode> {
   exhaustiveness_verdict_diags(
-    verdict: blocked_scrutinee_exhaustiveness_verdict(arms: arms, scrutinee_node: scrutinee_node, env: env),
+    verdict: blocked_scrutinee_exhaustiveness_verdict(arms: arms, scrutinee_node: scrutinee_node, env: env, declaration: declaration),
     span: span,
     module_name: module_name
   )
@@ -949,8 +951,8 @@ fn exhaustiveness_verdict_diags(
       diagnostic: NonExhaustiveMatch { missing: missing, span: span },
       module_name: module_name
     )]
-    VerdictUnknown { scrutinee: scrutinee } => [make_error_node(
-      diagnostic: ExhaustivenessUnknown { scrutinee: scrutinee, span: span },
+    VerdictUnknown { scrutinee: scrutinee, declaration: declaration } => [make_error_node(
+      diagnostic: ExhaustivenessUnknown { scrutinee: scrutinee, declaration: declaration, module_path: module_name, span: span },
       module_name: module_name
     )]
   }

@@ -396,7 +396,7 @@ type CompilerDiagnostic
   | SiblingOperandEffectOrderUndetermined { construct: String, first_operand: String, second_operand: String, span: SourceSpan }
   | PresentArmScrutineeTypeUnresolved { pattern: String, span: SourceSpan }
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
-  | ExhaustivenessUnknown { scrutinee: String, span: SourceSpan }
+  | ExhaustivenessUnknown { scrutinee: String, declaration: String, module_path: String, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
   | DuplicateModule    { name: String, span: SourceSpan }
   | TypeAliasCycle     { members: List<String>, span: SourceSpan }
@@ -710,7 +710,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     SiblingOperandEffectOrderUndetermined { construct: _, first_operand: _, second_operand: _, span: s } => s
     PresentArmScrutineeTypeUnresolved { pattern: _, span: s } => s
     NonExhaustiveMatch { missing: _, span: s }                 => s
-    ExhaustivenessUnknown { scrutinee: _, span: s }             => s
+    ExhaustivenessUnknown { scrutinee: _, declaration: _, module_path: _, span: s } => s
     CircularDependency { modules: _, span: s }                 => s
     DuplicateModule    { name: _, span: s }                    => s
     TypeAliasCycle     { members: _, span: s }                 => s
@@ -812,7 +812,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     SiblingOperandEffectOrderUndetermined { construct: c, first_operand: a, second_operand: b, span: _ } => concat("two sibling operands of '", c, "' each reach a declared effect ('", a, "' and '", b, "'), and nothing in the model orders them: sibling position is not a sequencing authority, and two realizations of this program may run them in opposite orders. Bind them with let, in the order this program needs, before constructing '", c, "'")
     PresentArmScrutineeTypeUnresolved { pattern: p, span: _ } => concat("a '", p, "' arm decides from the scrutinee's type whether it reads an optional's present value, and the checker could not resolve that type: the scrutinee's type is unresolved, typically because a generic variant upstream was constructed with no expected type, so its type arguments were never instantiated. Without that type the arm's meaning is undecided, so it refuses rather than guessing. Give the value that produces the scrutinee a declared type (annotate the let, or construct it inside a function whose return type declares it)")
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
-    ExhaustivenessUnknown { scrutinee: t, span: _ }               => concat("exhaustiveness not established for a match on '", t, "': its constructor roster could not be looked up (the scrutinee's variant/field lookup was blocked, so the checker cannot enumerate the constructors to decide whether the arms cover them all). This is not a proof of exhaustiveness and not a proof of a missing arm, so it refuses rather than passing an unestablished match as accepted. Make the scrutinee's type establishable: construct the value the match scrutinizes inside a scope where its type is declared (annotate the binding, or give the producing call an expected type), so the coproduct's constructors can be looked up.")
+    ExhaustivenessUnknown { scrutinee: t, declaration: _, module_path: _, span: _ }               => concat("exhaustiveness not established for a match on '", t, "': its constructor roster could not be looked up (the scrutinee's variant/field lookup was blocked, so the checker cannot enumerate the constructors to decide whether the arms cover them all). This is not a proof of exhaustiveness and not a proof of a missing arm, so it refuses rather than passing an unestablished match as accepted. Make the scrutinee's type establishable: construct the value the match scrutinizes inside a scope where its type is declared (annotate the binding, or give the producing call an expected type), so the coproduct's constructors can be looked up.")
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
     DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
     TypeAliasCycle     { members: ms, span: _ }                   => concat("type alias cycle: ", join(ms, separator: " -> "))
@@ -1002,7 +1002,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     SiblingOperandEffectOrderUndetermined { construct: _, first_operand: _, second_operand: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     PresentArmScrutineeTypeUnresolved { pattern: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    ExhaustivenessUnknown { scrutinee: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    ExhaustivenessUnknown { scrutinee: _, declaration: _, module_path: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeAliasCycle { members: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
