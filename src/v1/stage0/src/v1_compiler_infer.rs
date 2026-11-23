@@ -37660,7 +37660,7 @@ pub fn build_module_context(
         );
         let parent_envs = merge_func_env_views_by_owner(Rc::new({
             let mut __result = Vec::new();
-            for imp in resolved_imports.iter().cloned() {
+            for imp in resolved_imports.iter().cloned().take(0) {
                 __result.extend(
                     (*match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                         Some(typed_parent) => func_env_views_for_import(
