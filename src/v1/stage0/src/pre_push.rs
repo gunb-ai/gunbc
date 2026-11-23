@@ -35,7 +35,6 @@ struct PrePushStdinRow {
 }
 
 enum ActiveGate {
-    DocWitness { entry: String, function: String },
     CargoFmt,
 }
 
@@ -74,7 +73,6 @@ fn run_inner() -> Result<ExitCode, String> {
         return Ok(ExitCode::from(1));
     }
 
-    let claim_batch = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let active = load_active_gates(&plan, &changed)?;
 
     if active.is_empty() {
@@ -82,7 +80,7 @@ fn run_inner() -> Result<ExitCode, String> {
     }
 
     for gate in &active {
-        execute_gate(gate, &claim_batch, &plan, &root)?;
+        execute_gate(gate, &plan)?;
     }
 
     Ok(ExitCode::SUCCESS)
@@ -111,11 +109,6 @@ fn eval_fn(plan: &PlanCtx, function: &str) -> Result<Value, String> {
         .map_err(|e| format!("{function}: {e}"))
 }
 
-fn load_source_roots(plan: &PlanCtx) -> Result<Vec<String>, String> {
-    let val = eval_fn(plan, "pre_push_source_roots")?;
-    string_list_from_value(&val, "pre_push_source_roots")
-}
-
 fn load_active_gates(plan: &PlanCtx, changed: &[String]) -> Result<Vec<ActiveGate>, String> {
     let changed_val = string_list_to_value(changed);
     let args = [(Some("changed_paths".to_string()), changed_val)];
@@ -133,19 +126,6 @@ fn string_list_to_value(items: &[String]) -> Value {
     Value::List(std::rc::Rc::new(
         items.iter().cloned().map(str_value).collect(),
     ))
-}
-
-fn string_list_from_value(val: &Value, field: &str) -> Result<Vec<String>, String> {
-    match val {
-        Value::List(items) => items
-            .iter()
-            .map(|v| match v {
-                Value::Str(s) => Ok(s.to_string()),
-                other => Err(format!("{field} entry not a String: {other:?}")),
-            })
-            .collect(),
-        other => Err(format!("{field} not a List: {other:?}")),
-    }
 }
 
 fn parse_active_gates(
@@ -167,12 +147,6 @@ fn parse_gate_kind(ctx: &v1_interpreter::InterpContext, val: &Value) -> Result<A
     else {
         return Err(format!("gate kind not a Variant: {val:?}"));
     };
-    if ctx.sym_eq(*variant_name, "DocWitnessRun") {
-        return Ok(ActiveGate::DocWitness {
-            entry: field_str(ctx, fields, "entry")?,
-            function: field_str(ctx, fields, "function")?,
-        });
-    }
     if ctx.sym_eq(*variant_name, "CargoFmtCheck") {
         return Ok(ActiveGate::CargoFmt);
     }
@@ -190,17 +164,8 @@ fn field_str(
     }
 }
 
-fn execute_gate(
-    gate: &ActiveGate,
-    claim_batch: &Path,
-    plan: &PlanCtx,
-    root: &Path,
-) -> Result<(), String> {
+fn execute_gate(gate: &ActiveGate, plan: &PlanCtx) -> Result<(), String> {
     match gate {
-        ActiveGate::DocWitness { entry, function } => {
-            eprintln!("[pre-push] doc reachability: {function}");
-            run_claim_batch(claim_batch, plan, entry, function, &["--claim-run"])
-        }
         ActiveGate::CargoFmt => execute_cargo_fmt_gate(plan),
     }
 }
@@ -284,35 +249,6 @@ fn eval_fmt_recipe(
     {
         Value::Str(ref s) => Ok(s.to_string()),
         other => Err(format!("{function} not a String: {other:?}")),
-    }
-}
-
-fn run_claim_batch(
-    claim_batch: &Path,
-    plan: &PlanCtx,
-    entry: &str,
-    function: &str,
-    suffix_args: &[&str],
-) -> Result<(), String> {
-    let roots = load_source_roots(plan)?;
-    let mut cmd = Command::new(claim_batch);
-    for root in roots {
-        cmd.arg("--source-root").arg(root);
-    }
-    cmd.arg("--entry")
-        .arg(entry)
-        .arg("--function")
-        .arg(function);
-    for arg in suffix_args {
-        cmd.arg(arg);
-    }
-    let status = cmd
-        .status()
-        .map_err(|e| format!("claim_batch {function}: {e}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("claim_batch {function} failed"))
     }
 }
 

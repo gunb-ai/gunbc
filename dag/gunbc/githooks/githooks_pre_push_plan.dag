@@ -22,8 +22,7 @@ import gunbc.instruments.rust_stage0_gates { path_is_rust_monolith }
 import extdeps.git.hooks { pre_push_zero_sha }
 
 type PrePushGateKind
-  = DocWitnessRun { entry: String, function: String }
-  | CargoFmtCheck
+  = CargoFmtCheck
 
 type PrePushGateBinding {
   kind: PrePushGateKind
@@ -88,7 +87,6 @@ fn pre_push_path_hits_globs(path: String, globs: List<String>) -> Bool {
 fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool {
   match binding.kind {
     CargoFmtCheck => path_is_rust_monolith(path: path)
-    DocWitnessRun { entry: _, function: _ } => pre_push_path_hits_globs(path: path, globs: binding.trigger_globs)
   }
 }
 
@@ -99,13 +97,7 @@ fn pre_push_all_bindings() -> List<PrePushGateBinding> {
 fn pre_push_bindings() -> List<PrePushGateBinding> {
   fold(project_local_tidy_checks(roster: commit_gate_roster), init: [], f: fn(acc, check) {
     match check {
-      LocalTidyWitnessCheck { entry, check_fns } =>
-        fold(check_fns, init: acc, f: fn(inner, fn_name) {
-          concat(inner, [PrePushGateBinding {
-            kind: DocWitnessRun { entry: entry, function: fn_name },
-            trigger_globs: local_tidy_trigger_globs(check: check)
-          }])
-        })
+      LocalTidyWitnessCheck { entry: _, check_fns: _ } => acc
       LocalTidyCargoFmtCheck =>
         concat(acc, [PrePushGateBinding {
           kind: CargoFmtCheck,

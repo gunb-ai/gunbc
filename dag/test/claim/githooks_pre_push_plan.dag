@@ -14,13 +14,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn witness_plan_roster_authority() -> Bool {
   length(pre_push_all_bindings()) > 0
-    && any(
-      pre_push_all_bindings(),
-      b => match b.kind {
-        DocWitnessRun { entry: _, function: _ } => true
-        CargoFmtCheck => true
-      }
-    )
 }
 
 fn witness_plan_skips_unrelated_path() -> Bool {
