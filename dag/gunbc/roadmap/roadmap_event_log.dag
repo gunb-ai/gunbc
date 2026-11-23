@@ -705,9 +705,11 @@ fn roadmap_pull_request_merge_evidence_from_args(
   let at_seen = trim(s: at)
   let merge_seen = trim(s: merge_sha)
   let blank = count(filter([url_seen, head_seen, at_seen, merge_seen], v => v == ""))
-  if blank > 0 { none }
-  else if !commit_sha_text_holds(head: head_seen) { none }
-  else if !commit_sha_text_holds(head: merge_seen) { none }
+  // Absent, not none: as the tail of an if-chain whose other arm builds a Present, a bare `none` resolves
+  // to Product(Unit) and the reader calls the branches incompatible. The constructor says what the arm is.
+  if blank > 0 { Absent }
+  else if !commit_sha_text_holds(head: head_seen) { Absent }
+  else if !commit_sha_text_holds(head: merge_seen) { Absent }
   else {
     Present { value: PullRequestMergeEvidence {
       pr_url: url_seen as NonEmptyStr, head_sha: head_seen as NonEmptyStr,
@@ -845,7 +847,12 @@ fn roadmap_node_has_merge_event(envs: List<RoadmapEventEnvelope>) -> Bool {
 // not merged states no merge time at all, and that is the point of the ruling.
 fn roadmap_merged_at_stated_by(envs: List<RoadmapEventEnvelope>) -> String {
   match roadmap_node_merge_event(envs: envs) {
-    Present { value } => value.merge.merged_at as String
+    // The merge time lives in the merge event's own payload, which is the whole point: reading it off the
+    // envelope would be reading a fact the envelope does not carry.
+    Present { value: env } => match env.event.kind {
+      PullRequestMergedEvent { merge } => merge.merged_at as String
+      _ => ""
+    }
     Absent => match roadmap_live_acceptance_evidence(envs: envs) {
       Absent => ""
       Present { value: evidence } => roadmap_acceptance_pr_evidence_merged_at(evidence: evidence)
