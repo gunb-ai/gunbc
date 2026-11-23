@@ -1246,6 +1246,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_GSPGVKP2MWQET36DMTTXKT0H6Q",
+      id: "match-exhaustiveness-imported-projection-lookup",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag"),
+      line: ticket(t: fields(
+        headline: "Exhaustiveness resolves a field projection of an imported authority's type, not only the current module's local types",
+        boundary: "A field projection of an imported type (RequiredFloorDisposition) retains the nominal imported type name, but the exhaustiveness lookup asks only the current module's LOCAL type environment for its declaration, so a match over the projection is neither checked nor reported. This is a gap in the shipped match_exhaustiveness_coproduct_witness fix itself; it is not floor-exhaustiveness-refusal, whose head-built binary shows the identical failure set. The producing symbol is not yet named; the owning lane names it before dispatch. No behaviour is claimed beyond the two names below.",
+        displaced_cost: "A match over an imported authority's projected field passes unchecked or reports a wrong count, so a missing arm is invisible exactly where the authority is imported rather than local (gunbc.design_argument::fail_closed).",
+        first_slice: "Resolve the projected type through the imported authority's declaration, then re-run the witness module.",
+        red_control: "Two witnesses of dag/test/claim/match_exhaustiveness_coproduct_witness.dag are RED on main with the released claim_batch whose sha256 is 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 (a binary hash, not a commit): w_imported_projected_missing_arm_reports_one_non_exhaustive and w_imported_projected_exhaustive_match_observes_zero_non_exhaustive; 24 of 26 pass. The same 24/2 failure set was observed with the head-built binary of floor-exhaustiveness-refusal (bold-pike-529). red_at and green_at are OPEN: the 40-hex commit the binary was built from has not been supplied, and no sha is claimed. The control is a binary built at red_at over this witness module, per the red_at equals build-tree rule.",
+        out_of_scope: "floor-exhaustiveness-refusal. Any other coproduct-exhaustiveness behaviour.",
+        handback: "Return the fix, both named witnesses PASS with the claim_batch sha256 and the commit it was built from, and the 24 passing names still passing."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Closed variants must eliminate exhaustively on the ordinary compiler floor, including through imported authorities."),
+    ),
+    roadmap_node(
       identity: "rn_WTYZMZ8DGPYGZF730BASZ18RAH",
       id: "v2-parse-node-source-extent-witness-is-executable",
       owner: "parse",
