@@ -1189,3 +1189,17 @@ test fn starting_point_empty_percent_p_row_is_skipped_by_rule() -> Bool {
     && any(parsed, e => e.path == ".gunbc-tree-receipt")
     && any(split(s: srv1_broker_children, delimiter: "\n"), l => starts_with(s: l, prefix: "|"))
 }
+
+// THE WALK PARENTS PER SUB (closes the reviewer's not-checked item): the readback folds a maxdepth-1
+// listing of each WALK PARENT so the walk root of a multi-component sub (src/v2) is observed with the
+// correct rebasing. tree_walk_parents yields the parent directory for a multi-component sub and NOTHING
+// for a single-component sub (whose starting row is already a direct child of the locus). So the fixed
+// release_locus_tree_subdirs ["dag","src/v2"] yields exactly ["src"]: a parent for "src/v2", nothing
+// for "dag" -- and never the sub itself.
+test fn walk_parents_are_the_parent_of_multicomponent_subs_only() -> Bool {
+  tree_walk_parents(subs: ["src/v2"]) == ["src"]
+    && tree_walk_parents(subs: ["dag"]) == []
+    && tree_walk_parents(subs: release_locus_tree_subdirs) == ["src"]
+    && !any(tree_walk_parents(subs: release_locus_tree_subdirs), p => p == "dag" || p == "src/v2" || p == "v2")
+    && tree_walk_parents(subs: ["src/v2", "src/v2"]) == ["src"]
+}
