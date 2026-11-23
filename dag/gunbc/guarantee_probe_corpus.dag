@@ -737,9 +737,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: floor_cardinality_seam_hole_probe,
       class: floor_cardinality_seam_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "a field read THROUGH an optional-typed declared field (l.parent.id where parent: Level?) is admitted with zero diagnostics, although the field may be absent and absent carries no id field; the same optional value at a direct call-argument position IS refused (DeclaredTypeNotInhabited), proving the inhabittance check is live and the hole is projection-position-specific" as NonEmptyStr,
-      },
+      expectation: ExpectBlockingRefusal { diagnostic_class: "DeclaredTypeNotInhabited" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_cardinality_seam_green_probe,
