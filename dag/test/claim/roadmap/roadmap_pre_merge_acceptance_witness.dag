@@ -60,7 +60,10 @@ fn ledger_node() -> String { "tree-node" }
 // THE RULING'S LINE: an executed red control carrying the pair, and no merge fact anywhere in it.
 fn accepted_line() -> String { join(["", line_spelling(observation: pair_members()), ""], "") }
 
-type LedgerRun { result: Bool, swept: Bool }
+type LedgerRun {
+  result: Bool
+  swept: Bool
+}
 
 // Stand a ledger up, judge over it, and let the sweep's verdict count: a scenario left behind in /tmp
 // fails the claim, the way the launch-gate claim does it.

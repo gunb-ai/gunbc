@@ -234,7 +234,11 @@ fn roadmap_event_commit_message(env: RoadmapEventEnvelope) -> String {
 // manager endorsed as a fair ask). ONE fn states it, at the moment the push is confirmed: the commit it
 // pushed, the ref it pushed to, the remote it pushed them to. An append that could not name its commit
 // still says Absent rather than guessing one — a sha is read from git, never composed here.
-type EventPublication { remote: NonEmptyStr, ref_name: NonEmptyStr, commit: NonEmptyStr }
+type EventPublication {
+  remote: NonEmptyStr
+  ref_name: NonEmptyStr
+  commit: NonEmptyStr
+}
 
 type RoadmapEventAppend
   = EventAppended { id: RoadmapEventId, published_as: Optional<EventPublication> }

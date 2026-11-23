@@ -514,13 +514,20 @@ fn roadmap_acceptance_pr_evidence_members(evidence: AcceptancePrEvidence) -> Lis
 // compared as words without seventeen nested matches deciding the same fact seventeen times
 // (gunbc.design_argument::single_authority). "refused" means a member that is there and malformed —
 // null, the wrong type, duplicated, or the empty string — which is never read as an absence.
-type EvidenceMemberShape { state: NonEmptyStr, value: NonEmptyStr }
+type EvidenceMemberShape {
+  state: NonEmptyStr
+  value: Optional<String>
+}
 
 fn evidence_member_shape(read: OptionalMemberRead) -> EvidenceMemberShape {
   match read {
-    OptionalMemberAbsent => EvidenceMemberShape { state: "absent" as NonEmptyStr, value: "" as NonEmptyStr }
-    OptionalMemberRefused => EvidenceMemberShape { state: "refused" as NonEmptyStr, value: "" as NonEmptyStr }
-    OptionalMemberPresent { value } => EvidenceMemberShape { state: "present" as NonEmptyStr, value: value }
+    // The value travels as an Optional<String>, never as an empty NonEmptyStr standing in for "there is
+    // none": that construction typechecks and refuses at runtime, which is the failure this file exists to
+    // avoid. Absence is spelled by the type here, exactly as it is spelled in the record.
+    OptionalMemberAbsent => EvidenceMemberShape { state: "absent" as NonEmptyStr, value: none }
+    OptionalMemberRefused => EvidenceMemberShape { state: "refused" as NonEmptyStr, value: none }
+    OptionalMemberPresent { value } =>
+      EvidenceMemberShape { state: "present" as NonEmptyStr, value: Present { value: value as String } }
   }
 }
 
@@ -541,10 +548,27 @@ fn roadmap_acceptance_pr_evidence_decode(doc: JsonValue) -> AcceptancePrEvidence
     Present { value: NoPullRequest }
   }
   else if url.state == "present" && at.state == "absent" && sha.state == "present" {
-    Present { value: AcceptedOnPullRequestHead { pr_url: url.value, head_sha: sha.value } }
+    match url.value {
+      Present { value: u } => match sha.value {
+        Present { value: h } =>
+          Present { value: AcceptedOnPullRequestHead { pr_url: u as NonEmptyStr, head_sha: h as NonEmptyStr } }
+        Absent => none
+      }
+      Absent => none
+    }
   }
   else if url.state == "present" && at.state == "present" && sha.state == "present" {
-    Present { value: EarnedByPullRequest { pr_url: url.value, merged_at: at.value, head_sha: sha.value } }
+    match url.value {
+      Present { value: u } => match at.value {
+        Present { value: t } => match sha.value {
+          Present { value: h } => Present { value: EarnedByPullRequest {
+            pr_url: u as NonEmptyStr, merged_at: t as NonEmptyStr, head_sha: h as NonEmptyStr } }
+          Absent => none
+        }
+        Absent => none
+      }
+      Absent => none
+    }
   }
   else { none }
 }
