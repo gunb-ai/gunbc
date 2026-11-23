@@ -3,7 +3,7 @@ module test.claim.host.boot_medium_reader_probe_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
 import extdeps.github.actions { Job, RunStep, UsesStep }
@@ -21,10 +21,10 @@ import gunbc.host.boot_medium_reader_probe {
   ReaderProbeReceipt, ReaderProbeObserved, ReaderProbeRefused, ReaderProbeStage, ReaderProbeLockedAccountFact,
   LockedAccountRead, LockedAccountUnreadable, ReaderProbeForcedAnswer,
   ForcedAnswerHeld, ForcedAnswerImageUnreadable, ForcedAnswerMalformed, ForcedAnswerLoginRefused,
-  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ReaderProbeRefusal, ProbeNotRefused,
-  ProbeAuthenticationRefused, ProbeTransportRefused, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
-  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts,
-  boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class,
+  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ForcedAnswerNotDispatched, ReaderProbeRefusal, ProbeNotRefused,
+  ProbeAuthenticationRefused, ProbeTransportRefused, ProbeNotDispatched, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
+  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched,
+  boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class, reader_probe_answer_text,
   reader_probe_forced_command_masks, reader_probe_holds, reader_probe_locked_account_fact,
   reader_probe_export_reading, reader_shadow_field_is_locked, reader_probe_stage_text,
   render_reader_probe_receipt,
@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // which fact an answer is READ AS, and an answer that could only be built from a real host could not be
 // given the shapes that matter -- exit 255 with the two different stderrs that must not be confused, a
 // forced command that failed to read its file, a second command differing from the first in stderr alone.
-// That is why the fold takes RemoteAnswers rather than dispatching (authored data vs. host data, gunbc.design_argument::interface_realization_policy): the wet function holds the dispatch, this file holds the judgement.
+// That is why the fold takes HostLegs rather than dispatching (authored data vs. host data, gunbc.design_argument::interface_realization_policy): the wet function holds the dispatch, this file holds the judgement.
 
 data probe_fingerprint: NonEmptyStr = "SHA256:aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff000000"
 
@@ -52,9 +52,10 @@ data probe_digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcd
 
 data probe_resource: NonEmptyStr = "projects/gunbc-fleet/secrets/boot-medium-reader-ssh-key"
 
-fn ans(exit_code: Int, stdout: String, stderr: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: exit_code, stdout: stdout, stderr: stderr }
+fn ans(exit_code: Int, stdout: String, stderr: String) -> HostLeg {
+  LegAnswered { exit_code: exit_code, stdout: stdout, stderr: stderr }
 }
+fn not_dispatched(reason: String) -> HostLeg { LegNotDispatched { reason: reason } }
 
 // THE LINE THE FORCED COMMAND IS SUPPOSED TO PRINT: two spaces, as sha256sum prints and as
 // boot_medium_served_reader_join admits it. One space is a different fact, so it is a fixture of its own.
@@ -62,23 +63,23 @@ fn held_line() -> String {
   join([probe_digest as String, "  ", boot_medium_served_link_path() as String], "")
 }
 
-fn held_forced() -> RemoteAnswer {
+fn held_forced() -> HostLeg {
   ans(exit_code: 0, stdout: concat(held_line(), "\n"), stderr: "")
 }
 
 // THE SHADOW ROW FOR A `useradd --system` ACCOUNT: field two `!`, which is what the locked reading looks
 // for. The login field must match the account asked about, so a fixture naming someone else is a separate
 // case rather than a mutated one.
-fn good_shadow() -> RemoteAnswer {
+fn good_shadow() -> HostLeg {
   ans(exit_code: 0, stdout: concat(boot_medium_reader_login as String, ":!:19000:0:99999:7:::\n"), stderr: "")
 }
 
-fn good_use_pam() -> RemoteAnswer {
+fn good_use_pam() -> HostLeg {
   ans(exit_code: 0, stdout: "PermitRootLogin no\nusepam yes\n", stderr: "")
 }
 
 // `test -r` prints nothing; its whole answer is the exit code.
-fn good_readable() -> RemoteAnswer {
+fn good_readable() -> HostLeg {
   ans(exit_code: 0, stdout: "", stderr: "")
 }
 
@@ -88,11 +89,11 @@ fn good_accessor() -> ReaderProbeAccessorReport {
 
 // THE FOLD, WITH EVERYTHING THAT CAN SUCCEED ALREADY SUCCEEDED, so each claim below varies exactly one
 // answer and says which stage that answer must -- and must not -- be read as.
-fn fold_with(forced: RemoteAnswer, second: RemoteAnswer) -> ReaderProbeReceipt {
+fn fold_with(forced: HostLeg, second: HostLeg) -> ReaderProbeReceipt {
   fold_with_accessor(forced: forced, second: second, acc: good_accessor())
 }
 
-fn fold_with_accessor(forced: RemoteAnswer, second: RemoteAnswer, acc: ReaderProbeAccessorReport) -> ReaderProbeReceipt {
+fn fold_with_accessor(forced: HostLeg, second: HostLeg, acc: ReaderProbeAccessorReport) -> ReaderProbeReceipt {
   boot_medium_reader_probe_fold(
     pinned: true, agent_holds_pinned_key: true, fingerprint: probe_fingerprint,
     target_reached: true, target_cause: "",
@@ -182,6 +183,35 @@ test fn a_transport_refusal_is_not_read_as_the_locked_account_fact() -> Bool {
     && refused_at(r: fold_with(forced: unreachable, second: unreachable), wanted: StageTransport)
 }
 
+// A LEG THAT WAS NEVER DISPATCHED IS NOT AN OBSERVED TRANSPORT OR AUTH FAILURE. The fold classifies by the
+// leg's STRUCTURE, not by sniffing the carried reason text: a never-dispatched leg becomes ProbeNotDispatched
+// carrying its cause, and the forced reading becomes ForcedAnswerNotDispatched. This is the fail-closed bar
+// (gunbc.design_argument::fail_closed): no fabricated exit code, and no fabricated "connection refused".
+// The reason deliberately contains the ssh auth phrase "Permission denied (publickey)" and the transport
+// phrase "Connection refused" -- the very tokens the LegAnswered classifiers grep for -- so the control is
+// RED if a fold is changed to route a never-dispatched leg through those token classifiers.
+test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() -> Bool {
+  let nd_reason = "ssh prep refused: Connection refused; Permission denied (publickey)."
+  let nd = not_dispatched(reason: nd_reason)
+  match reader_probe_refusal_class(a: nd) {
+    ProbeNotDispatched { reason: carried } => carried == nd_reason
+    ProbeNotRefused => false
+    ProbeAuthenticationRefused => false
+    ProbeTransportRefused => false
+  }
+    && !string_contains(s: reader_probe_answer_text(a: nd), pattern: "exit=")
+    && match forced_of(a: nd) {
+         ForcedAnswerNotDispatched { evidence: _ } => true
+         ForcedAnswerHeld { digest: _ } => false
+         ForcedAnswerImageUnreadable { evidence: _ } => false
+         ForcedAnswerMalformed { evidence: _ } => false
+         ForcedAnswerLoginRefused { evidence: _ } => false
+         ForcedAnswerTransportBlocked { evidence: _ } => false
+         ForcedAnswerUnexplained { evidence: _ } => false
+       }
+    && refused_at(r: fold_with(forced: nd, second: nd), wanted: StageNotDispatched)
+}
+
 // THE CAUSE TEXT IS PART OF THE SAFETY, NOT DECORATION. The reader stage tells the operator what NOT to do,
 // because the tempting fix for a locked-account finding is to unlock the account -- which would put a usable
 // password on a key-only service account, a worse posture than the boot this probe exists to approve. The
@@ -212,6 +242,7 @@ test fn the_tools_own_permission_denied_is_not_read_as_an_authentication_refusal
          ForcedAnswerTransportBlocked { evidence: _ } => false
          ForcedAnswerMalformed { evidence: _ } => false
          ForcedAnswerUnexplained { evidence: _ } => false
+         ForcedAnswerNotDispatched { evidence: _ } => false
          ForcedAnswerHeld { digest: _ } => false
        }
 }
@@ -229,6 +260,7 @@ test fn a_silent_non_zero_answer_invents_no_fact_and_refuses() -> Bool {
          ForcedAnswerMalformed { evidence: _ } => false
          ForcedAnswerLoginRefused { evidence: _ } => false
          ForcedAnswerTransportBlocked { evidence: _ } => false
+         ForcedAnswerNotDispatched { evidence: _ } => false
        }
 }
 
@@ -264,7 +296,7 @@ test fn masking_is_equality_on_all_three_answer_fields() -> Bool {
 
 // THE CLASSIFIER, AS ONE CALL PER ANSWER: the fold runs it on the forced leg; the tests below run it
 // directly so a wrong reading is attributed to the classifier rather than to the fold's ordering.
-fn forced_of(a: RemoteAnswer) -> ReaderProbeForcedAnswer {
+fn forced_of(a: HostLeg) -> ReaderProbeForcedAnswer {
   reader_probe_forced_answer(a: a, link: boot_medium_served_link_path())
 }
 
@@ -462,7 +494,7 @@ test fn the_hold_needs_the_mask_and_a_refusal_never_holds() -> Bool {
 // two stages ever collapse to one string, the transport/authentication split this file exists to enforce
 // collapses with them, silently.
 test fn every_stage_has_its_own_name() -> Bool {
-  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts], s => reader_probe_stage_text(stage: s))
+  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched], s => reader_probe_stage_text(stage: s))
   all(names, n => n != "") && all(names, n => filter(names, m => m == n).length() == 1)
 }
 
