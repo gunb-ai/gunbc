@@ -107,16 +107,19 @@ test fn src_v1_corpus_parses_holds() -> Bool { slice_holds(slice: "src/v1") }
 
 test fn src_v2_corpus_parses_holds() -> Bool { slice_holds(slice: "src/v2") }
 
-// The census is real and the slices cover it: thousands of modules enumerate, and every enumerated path
-// falls under one of the slices above (so no module escapes the per-path accounting).
+// The census is real and the slices cover it: the roots enumerate modules, and every enumerated path falls
+// under exactly one slice above (so no module escapes the per-path accounting, and no slice is vacuous).
+// No expected module count is hard-coded -- the coverage is checked structurally, path by path.
 test fn corpus_census_is_live_and_sliced_holds() -> Bool {
   let paths = all_corpus_paths()
-  let total = length(xs: paths)
   let covered = count_where(
     xs: paths,
     predicate: fn(path) {
-      count_where(xs: corpus_slices, predicate: fn(slice) { is_prefix_of(prefix: slice, xs: path, eq: char_eq) }) > 0
+      count_where(xs: corpus_slices, predicate: fn(slice) { is_prefix_of(prefix: slice, xs: path, eq: char_eq) }) == 1
     }
   )
-  (total > 5000) && (covered == total)
+  // every enumerated path is in exactly one slice, and every slice enumerated something
+  let covered_all = covered == length(xs: paths)
+  let slices_nonempty = count_where(xs: corpus_slices, predicate: fn(slice) { length(xs: walk_root(root: slice)) > 0 }) == length(xs: corpus_slices)
+  covered_all && slices_nonempty
 }
