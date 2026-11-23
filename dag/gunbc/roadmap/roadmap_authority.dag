@@ -1419,7 +1419,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         first_slice: "One row per step in a receipt the job emits: step label, wall time, and the subject size it ran over, so a later change can be judged against the same instrument rather than a remembered number.",
         red_control: "A change that claims to cut a step's time without the job's own receipt moving refuses review; a receipt whose step list differs from the rows of emitted_subject_build_rows is a defect, not a report.",
         out_of_scope: "No return of batches, plan entries, selection flags or a second worker process; no corpus-denominated fallback; the tokenizer escape-scan row stays separate.",
-        handback: "The per-phase receipt on the required run, and the first phase attribution read from it."
+        handback: "The per-step receipt on the required job, and the first step attribution read from it."
       ), on: "2026-09-30", note: "Not yet centered: needs a centering plan: handed off from the v2 worksheet to the CI lane with no plan.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is paid on every landing; attributing and cutting its cost keeps verification affordable enough to stay required."),
@@ -1430,7 +1430,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "entry-graph-union-construction",
       owner: "",
       carriers: [],
-      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — no job now runs claim_executor --required-ci (gunbc.rung_drop v1_required_lanes_withdrawn), and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
+      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — no job now runs claim_executor --required-ci (gunbc.rung_drop v1_required_lanes_withdrawn), and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required job's wall time, read from its own step timings) is re-cut against the live mechanism as ci-required-run-cost." },
     ),
 
 
