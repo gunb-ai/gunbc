@@ -12,6 +12,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_leg_wall_deadline,
 }
 import gunbc.live_deploy.deployed_tree_observation {
+  deployed_tree_incident_leg_command,
   deployed_tree_leg_overran_cause,
   deployed_tree_unobservable_text,
   DeployedTreeUnobservableCause,
@@ -172,4 +173,34 @@ test fn a_ceiling_is_never_zero_for_any_declared_kind() -> Bool {
     && second_count(s: fleet_leg_wall_deadline(kind: ActuationLeg)) != 0
     && second_count(s: fleet_leg_wall_deadline(kind: RepositoryConvergenceLeg)) != 0
     && second_count(s: fleet_leg_wall_deadline(kind: ProvisioningLeg)) != 0
+}
+
+// THE WIRING CLAIM (review 96706 follow-up; manager ruling 2026-11-23, renders over list equality).
+// Everything above takes an argv as INPUT, so it proves the overrun arm renders and writes its
+// receipt -- and says nothing about WHICH leg the module runs. Here the argv comes OUT OF THE
+// MODULE: deployed_tree_incident_leg_command is what the observation call site passes to the
+// incident leg. The authority side comes from the one shared git builder, so the two sides are
+// produced by different code and the comparison is not a builder checking a builder. Point
+// deployed_tree_incident_leg_command at any other command and this goes red.
+test fn the_incident_leg_command_is_the_shared_head_revision_command() -> Bool {
+  let from_module = deployed_tree_unobservable_text(
+    cause: deployed_tree_leg_overran_cause(
+      leg: "revision",
+      host: "srv1" as String,
+      argv: argv_words(command: deployed_tree_incident_leg_command(repo: "repo" as NonEmptyStr)),
+      deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
+    )
+  )
+  let from_authority = deployed_tree_unobservable_text(
+    cause: deployed_tree_leg_overran_cause(
+      leg: "revision",
+      host: "srv1" as String,
+      argv: argv_words(command: git_in_trusted_repository_head_revision_command(repo: "repo" as NonEmptyStr)),
+      deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
+    )
+  )
+  string_eq(a: from_module, b: from_authority)
+    && string_contains(s: from_module, pattern: "rev-parse")
+    && string_contains(s: from_module, pattern: "HEAD")
+    && string_contains(s: from_module, pattern: "15")
 }

@@ -344,6 +344,14 @@ fn deployed_tree_leg_outcome_of_preserving(observed: HostEffectArgvOutcome) -> D
   }
 }
 
+// The incident leg's command, exposed as a name a claim can read. The observation call site below
+// passes THIS to the incident leg, so a claim comparing it against the shared builder reads the
+// value the module actually sends rather than recomputing the same expression: plant a different
+// command here and that claim goes red. It forwards to the one argv authority and adds none.
+fn deployed_tree_incident_leg_command(repo: NonEmptyStr) -> ArgvCommand {
+  git_in_trusted_repository_head_revision_command(repo: repo)
+}
+
 fn deployed_tree_leg(locus: DeployedTreeLocus, command: ArgvCommand) -> DeployedTreeLegOutcome {
   deployed_tree_leg_outcome_of_preserving(
     observed: run_argv_over_host_effect_transport_preserving_overrun(
@@ -542,7 +550,7 @@ fn observe_deployed_tree_owned(
 ) -> DeployedTreeObservation {
   match deployed_tree_leg(
     locus: locus,
-    command: git_in_trusted_repository_head_revision_command(repo: deployed_tree_locus_repo(locus: locus)),
+    command: deployed_tree_incident_leg_command(repo: deployed_tree_locus_repo(locus: locus)),
   ) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
