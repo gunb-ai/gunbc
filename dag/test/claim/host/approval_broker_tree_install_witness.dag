@@ -50,7 +50,7 @@ import gunbc.host.host_effect_realize {
 import extdeps.tools.gnu_coreutils { cp_copy_as_link_argv }
 import extdeps.tools.chown { chown_no_dereference_argv, ChownOwnerNames }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal }
 import extdeps.tools.findutils { find_tree_entry_metadata_command }
 import extdeps.tools.findutils { find_direct_children_metadata_command, find_self_metadata_command, find_self_metadata_printf }
 import gunbc.host.host_effect_realize {
@@ -59,6 +59,7 @@ import gunbc.host.host_effect_realize {
   tree_spine_expectation_owned,
   tree_walk_parents,
   tree_self_metadata_entry_of_stdout,
+  tree_locus_agreement,
   TreeEntryKind,
 }
 
@@ -543,71 +544,104 @@ fn is_regular(kind: TreeEntryKind) -> Bool {
 test fn locus_children_expectation_names_executables_at_exe_mode() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc", "gunbc-helper"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
     Present { value: entries } =>
       count(entries) == 4
       && any(entries, e => e.path == "dag" && is_dir(e.kind))
       && any(entries, e => e.path == "src" && is_dir(e.kind))
-      && any(entries, e => e.path == "gunbc" && is_regular(e.kind) && to_string(e.mode) == "0755")
-      && any(entries, e => e.path == "gunbc-helper" && is_regular(e.kind) && to_string(e.mode) == "0755")
+      && any(entries, e => e.path == "gunbc" && is_regular(e.kind) && file_mode_octal(mode: e.mode) == "0755")
+      && any(entries, e => e.path == "gunbc-helper" && is_regular(e.kind) && file_mode_octal(mode: e.mode) == "0755")
   }
 }
 
-// RED CONTROL 1: a same-byte executable observed at mode 0644 disagrees with the
-// expectation's 0755. Today's code only hash-checks executables, so a tampered
-// executable passes; with the extension, the metadata comparison catches it.
+
+// ===========================================================================
+// LOCUS-ROOT READBACK EXTENSION: the gaps closed by the extended observation
+// ===========================================================================
+// These tests exercise the PRODUCTION composition tree_locus_agreement, not a copy.
+// Claims:
+//   1. A same-byte executable at the wrong mode (0644 instead of 0755) is caught.
+//   2. A wrong-mode subtree root (dag at 0777) is caught.
+//   3. A wrong-mode spine directory is caught.
+//   4. Extras at the locus root (from other legs) are tolerated.
+//   5. Real srv1 listings pass through the production composition without bricking.
+
+// RED CONTROL 1: same-byte executable observed at mode 0644 disagrees.
+// Exercises tree_locus_agreement (the production composition) with no source-walk
+// entries (empty lists), isolating the locus-children containment path.
 test fn executable_at_wrong_mode_disagrees() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
-    Present { value: expected } =>
-      let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("644"), owner: gnbc() }
-      let observed_all = [observed_dag, observed_src, observed_exe]
-      match tree_metadata_disagreement(expected: expected, observed: observed_all) {
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
         Absent => false
-        Present { value: why } => string_contains(s: why, pattern: "gunbc")
+        Present { value: wr_expected } =>
+          let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("644"), owner: gnbc() }
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: [observed_dag, observed_src, observed_exe],
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Absent => false
+            Present { value: why } => string_contains(s: why, pattern: "gunbc")
+          }
       }
   }
 }
 
-// RED CONTROL 2: a subtree root directory ("dag") observed at mode 0777 disagrees
-// with the expectation's 0755. Today's code never observes the walk roots.
+// RED CONTROL 2: subtree root "dag" observed at mode 0777 disagrees.
 test fn subtree_root_wrong_mode_disagrees() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
-    Present { value: expected } =>
-      let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("777"), owner: gnbc() }
-      let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() }
-      let observed_all = [observed_dag, observed_src, observed_exe]
-      match tree_metadata_disagreement(expected: expected, observed: observed_all) {
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
         Absent => false
-        Present { value: why } => string_contains(s: why, pattern: "dag")
+        Present { value: wr_expected } =>
+          let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("777"), owner: gnbc() }
+          let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() }
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: [observed_dag, observed_src, observed_exe],
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Absent => false
+            Present { value: why } => string_contains(s: why, pattern: "dag")
+          }
       }
   }
 }
 
-// RED CONTROL 3: a spine directory observed at mode 0777 disagrees with the
-// spine expectation (which expects 0755 for all spine entries).
+// RED CONTROL 3: spine directory observed at mode 0777 disagrees.
 test fn spine_wrong_mode_disagrees() -> Bool {
   let spine = ["/opt", "/opt/gunbc", "/opt/gunbc/releases"]
   let locus = "/opt/gunbc/releases/abc123"
-  match tree_spine_expectation_owned(spine: spine, locus: locus, owner: deploy_owner) {
+  match tree_spine_expectation_owned(spine: spine, locus: locus, owner: gnbc()) {
     Absent => false
-    Present { value: expected } =>
-      let observed = [
+    Present { value: spine_expected } =>
+      let observed_spine = [
         TreeMetadataEntry { path: "/opt", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
         TreeMetadataEntry { path: "/opt/gunbc", kind: TreeDirectory, mode: fm("777"), owner: gnbc() },
         TreeMetadataEntry { path: "/opt/gunbc/releases", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
         TreeMetadataEntry { path: "/opt/gunbc/releases/abc123", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
       ]
-      match tree_metadata_disagreement(expected: expected, observed: observed) {
+      match tree_locus_agreement(
+        source_expected: [], source_observed: [],
+        locus_children_expected: [], locus_children_observed: [],
+        walk_root_expected: [],
+        spine_expected: spine_expected, spine_observed: observed_spine,
+      ) {
         Absent => false
         Present { value: why } => string_contains(s: why, pattern: "/opt/gunbc")
       }
@@ -615,93 +649,148 @@ test fn spine_wrong_mode_disagrees() -> Bool {
 }
 
 // EXTRAS AT THE LOCUS ROOT ARE TOLERATED. Decision: the tree install's readback
-// establishes only what the tree install writes (subtree roots, executables, the
-// receipt). Entries placed by other legs (firecracker, images/, the VMM receipt,
-// device-crypto-deployed-digest.env, etc.) are outside this locus's authority for
-// this readback; their own legs certify them. The comparison at the locus-root level
-// is a containment check: every expected entry must be present with correct metadata,
-// but unexpected entries are allowed. Without this, a rerun over an existing locus
-// (where earlier-leg output persists) would brick the deploy.
+// establishes only what the tree install writes. Entries placed by other legs are
+// outside its authority. The containment filter is exercised through tree_locus_agreement.
 test fn extras_at_locus_root_are_tolerated() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
-    Present { value: expected } =>
-      let expected_paths = flat_map(expected, e => [e.path])
-      let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() }
-      let observed_firecracker = TreeMetadataEntry { path: "firecracker", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr } }
-      let observed_images = TreeMetadataEntry { path: "images", kind: TreeDirectory, mode: fm("755"), owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr } }
-      let observed_all = [observed_dag, observed_src, observed_exe, observed_firecracker, observed_images]
-      let filtered = filter(observed_all, e => any(expected_paths, p => p == e.path))
-      match tree_metadata_disagreement(expected: expected, observed: filtered) {
-        Present { value: _ } => false
-        Absent => true
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
+        Absent => false
+        Present { value: wr_expected } =>
+          let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+          let observed = [
+            TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "src/v2", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "firecracker", kind: TreeRegular, mode: fm("755"), owner: root },
+            TreeMetadataEntry { path: "images", kind: TreeDirectory, mode: fm("755"), owner: root },
+          ]
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: observed,
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Present { value: _ } => false
+            Absent => true
+          }
       }
   }
 }
 
-// REAL MICROVM LOCUS LISTING: the tree install readback at the microvm controller's
-// locus root must tolerate firecracker, jailer, images/, workspace-commissioning-helper,
-// workspace-commissioning-executor.sh, and .gunbc-vmm-receipt (all from later legs).
-// The tree install's entries (dag/, src/, executables) must still be verified.
+// REAL MICROVM LOCUS LISTING: uses the real srv1 microvm-controller locus root
+// and exercises tree_locus_agreement (the production composition).
 test fn real_microvm_locus_extras_are_tolerated_by_readback() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
-    Present { value: expected } =>
-      let expected_paths = flat_map(expected, e => [e.path])
-      let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
-      // The real microvm locus root listing from srv1 (read-only observation by the manager)
-      let real_listing = [
-        TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
-        TreeMetadataEntry { path: ".gunbc-vmm-receipt", kind: TreeRegular, mode: fm("644"), owner: root },
-        TreeMetadataEntry { path: "images", kind: TreeDirectory, mode: fm("755"), owner: root },
-        TreeMetadataEntry { path: "firecracker", kind: TreeRegular, mode: fm("755"), owner: root },
-        TreeMetadataEntry { path: "jailer", kind: TreeRegular, mode: fm("755"), owner: root },
-        TreeMetadataEntry { path: "workspace-commissioning-helper", kind: TreeRegular, mode: fm("755"), owner: root },
-        TreeMetadataEntry { path: "workspace-commissioning-executor.sh", kind: TreeRegular, mode: fm("755"), owner: root },
-      ]
-      let filtered = filter(real_listing, e => any(expected_paths, p => p == e.path))
-      match tree_metadata_disagreement(expected: expected, observed: filtered) {
-        Present { value: _ } => false
-        Absent => true
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
+        Absent => false
+        Present { value: wr_expected } =>
+          let real_listing = [
+            TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "src/v2", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+            TreeMetadataEntry { path: ".gunbc-vmm-receipt", kind: TreeRegular, mode: fm("644"), owner: root },
+            TreeMetadataEntry { path: "images", kind: TreeDirectory, mode: fm("755"), owner: root },
+            TreeMetadataEntry { path: "firecracker", kind: TreeRegular, mode: fm("755"), owner: root },
+            TreeMetadataEntry { path: "jailer", kind: TreeRegular, mode: fm("755"), owner: root },
+            TreeMetadataEntry { path: "workspace-commissioning-helper", kind: TreeRegular, mode: fm("755"), owner: root },
+            TreeMetadataEntry { path: "workspace-commissioning-executor.sh", kind: TreeRegular, mode: fm("755"), owner: root },
+          ]
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: real_listing,
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Present { value: _ } => false
+            Absent => true
+          }
       }
   }
 }
 
-// REAL APPROVAL BROKER LOCUS LISTING: the approval broker locus root has
-// device-crypto-deployed-digest.env (0644) and approval_device_crypto_serve (0755)
-// alongside dag/, src/, gunbc, and .gunbc-tree-receipt. approval_device_crypto_serve
-// IS an expected executable (in approval_broker_release_locus_executables), so the
-// filter includes it. device-crypto-deployed-digest.env is from a later leg and is
-// tolerated.
+// REAL APPROVAL BROKER LOCUS LISTING: uses the real srv1 approval-broker locus root.
 test fn real_approval_broker_locus_extras_are_tolerated_by_readback() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc", "approval_device_crypto_serve"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
-    Present { value: expected } =>
-      let expected_paths = flat_map(expected, e => [e.path])
-      // The real approval-broker locus root listing from srv1
-      let real_listing = [
-        TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: "approval_device_crypto_serve", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
-        TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
-        TreeMetadataEntry { path: "device-crypto-deployed-digest.env", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
-      ]
-      let filtered = filter(real_listing, e => any(expected_paths, p => p == e.path))
-      match tree_metadata_disagreement(expected: expected, observed: filtered) {
-        Present { value: _ } => false
-        Absent => true
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
+        Absent => false
+        Present { value: wr_expected } =>
+          let real_listing = [
+            TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "src/v2", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: "approval_device_crypto_serve", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+            TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+            TreeMetadataEntry { path: "device-crypto-deployed-digest.env", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+          ]
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: real_listing,
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Present { value: _ } => false
+            Absent => true
+          }
+      }
+  }
+}
+
+// RED-ON-TODAY'S-CODE: the OLD expectation (tree_installed_expectation_owned) does NOT
+// include executables at the locus root. The old tree_metadata_disagreement with only
+// source-walk entries AGREES on a scenario that should refuse (wrong-mode executable).
+// The new tree_locus_agreement catches it. Together: old=pass, new=refuse.
+test fn old_expectation_silently_accepts_wrong_mode_executable() -> Bool {
+  let source_entry = TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let old_expected = expectation_of(sources: [source_entry])
+  let old_observed = [source_entry]
+  match tree_metadata_disagreement(expected: old_expected, observed: old_observed) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn new_expectation_catches_wrong_mode_executable_same_scenario() -> Bool {
+  let subs = ["dag", "src/v2"]
+  let execs = ["gunbc"]
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
+    Absent => false
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
+        Absent => false
+        Present { value: wr_expected } =>
+          let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("644"), owner: gnbc() }
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: [observed_dag, observed_src, observed_exe],
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Absent => false
+            Present { value: why } => string_contains(s: why, pattern: "gunbc")
+          }
       }
   }
 }
@@ -719,7 +808,7 @@ test fn self_metadata_parses_directory_entry() -> Bool {
     Present { value: e } =>
       e.path == "/opt/gunbc"
       && is_dir(e.kind)
-      && to_string(e.mode) == "0755"
+      && file_mode_octal(mode: e.mode) == "0755"
   }
 }
 
@@ -729,7 +818,7 @@ test fn self_metadata_parses_regular_file_entry() -> Bool {
     Present { value: e } =>
       e.path == "/opt/r/gunbc"
       && is_regular(e.kind)
-      && to_string(e.mode) == "0755"
+      && file_mode_octal(mode: e.mode) == "0755"
   }
 }
 
@@ -741,11 +830,11 @@ test fn self_metadata_rejects_empty_or_multi_line() -> Bool {
 // THE WALK-ROOT EXPECTATION: only multi-component subs produce walk-root expectations.
 test fn walk_root_expectation_names_multi_component_subs_as_dirs() -> Bool {
   let subs = ["dag", "src/v2"]
-  match tree_walk_root_expectation_owned(subdirs: subs, owner: deploy_owner) {
+  match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
     Absent => false
     Present { value: entries } =>
       count(entries) == 1
-      && any(entries, e => e.path == "src/v2" && is_dir(e.kind) && to_string(e.mode) == "0755")
+      && any(entries, e => e.path == "src/v2" && is_dir(e.kind) && file_mode_octal(mode: e.mode) == "0755")
   }
 }
 
@@ -753,56 +842,42 @@ test fn walk_root_expectation_names_multi_component_subs_as_dirs() -> Bool {
 test fn spine_expectation_covers_spine_and_locus() -> Bool {
   let spine = ["/opt", "/opt/gunbc"]
   let locus = "/opt/gunbc/releases"
-  match tree_spine_expectation_owned(spine: spine, locus: locus, owner: deploy_owner) {
+  match tree_spine_expectation_owned(spine: spine, locus: locus, owner: gnbc()) {
     Absent => false
     Present { value: entries } =>
       count(entries) == 3
       && any(entries, e => e.path == "/opt")
       && any(entries, e => e.path == "/opt/gunbc")
       && any(entries, e => e.path == "/opt/gunbc/releases")
-      && all(entries, e => is_dir(e.kind) && to_string(e.mode) == "0755")
+      && all(entries, e => is_dir(e.kind) && file_mode_octal(mode: e.mode) == "0755")
   }
 }
 
-// RED-ON-TODAY'S-CODE PROOF: the OLD expectation (tree_installed_expectation_owned)
-// covers ONLY entries from source_metadata (files under dag/ and src/v2/). Executables
-// at the locus root (path "gunbc") are NOT in that expected set, so a same-byte
-// executable at the wrong mode PASSES the old tree_metadata_disagreement (the path
-// is never compared). The extension adds it via tree_locus_children_expectation_owned,
-// closing the gap. This claim shows the OLD comparison returns Absent (agree) for
-// a scenario that SHOULD refuse.
-test fn old_expectation_silently_accepts_wrong_mode_executable() -> Bool {
-  // Simulate source_metadata: one file under dag/ (this is what the OLD expectation covers)
-  let source_entry = TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
-  let old_expected = expectation_of(sources: [source_entry])
-  // The OLD readback observed only entries inside dag/ and src/v2/ (not the executable at "gunbc")
-  let old_observed = [source_entry]
-  // The OLD comparison agrees: it never sees the executable
-  match tree_metadata_disagreement(expected: old_expected, observed: old_observed) {
-    Present { value: _ } => false
-    Absent => true
-  }
-}
-
-// With the NEW expectation (including locus-children for executables), the same
-// executable at mode 0644 IS caught. Together these two claims demonstrate red-on-
-// today's-code: old=pass, new=refuse for the same tampered executable.
-test fn new_expectation_catches_wrong_mode_executable_same_scenario() -> Bool {
+// RED CONTROL 1b: same-byte executable at the CORRECT mode (0755) but WRONG owner
+// (root instead of gunbc) disagrees. Exercises tree_locus_agreement (production).
+test fn executable_at_wrong_owner_disagrees() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc"]
-  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
     Present { value: locus_expected } =>
-      // Observed: the executable exists but at the wrong mode
-      let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("644"), owner: gnbc() }
-      let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
-      let expected_paths = flat_map(locus_expected, e => [e.path])
-      let observed_all = [observed_dag, observed_src, observed_exe]
-      let filtered = filter(observed_all, e => any(expected_paths, p => p == e.path))
-      match tree_metadata_disagreement(expected: locus_expected, observed: filtered) {
+      match tree_walk_root_expectation_owned(subdirs: subs, owner: gnbc()) {
         Absent => false
-        Present { value: why } => string_contains(s: why, pattern: "gunbc")
+        Present { value: wr_expected } =>
+          let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+          let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: root }
+          match tree_locus_agreement(
+            source_expected: [], source_observed: [],
+            locus_children_expected: locus_expected,
+            locus_children_observed: [observed_dag, observed_src, observed_exe],
+            walk_root_expected: wr_expected,
+            spine_expected: [], spine_observed: [],
+          ) {
+            Absent => false
+            Present { value: why } => string_contains(s: why, pattern: "gunbc")
+          }
       }
   }
 }
