@@ -1126,7 +1126,16 @@ fn red_observation_members(o: RedObservation) -> List<JsonKeyValue> {
   }
 }
 
+// A decoded observation must HOLD (well-formed shas, distinctness, probe ref spelling): a malformed or equal
+// pair is no observation, so the line is undecodable instead of reading as evidence.
 fn red_observation_decode(doc: JsonValue) -> RedObservation? {
+  match red_observation_decode_shape(doc: doc) {
+    Absent => none
+    Present { value: ob } => if red_observation_holds(o: ob) { Present { value: ob } } else { none }
+  }
+}
+
+fn red_observation_decode_shape(doc: JsonValue) -> RedObservation? {
   match event_member_nonempty(doc: doc, key: "red_at") {
     Absent => none
     Present { value: r } =>
@@ -1492,8 +1501,23 @@ fn roadmap_issue_state(envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
     else if count(heads) != 1 { RoadmapStandingAcc { standing: NodeForked { heads: map(heads, h => h.id) }, assignment: roadmap_assignment_empty() } }
     else { match heads.first() {
       Absent => roadmap_standing_acc_empty()
-      Present { value: head } => fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs))
+      Present { value: head } => roadmap_standing_acc_with_effective_red_control(
+        acc: fold(roadmap_event_chain(envs: envs, head: head, budget: count(envs)), init: roadmap_standing_acc_empty(), f: (acc, env) => roadmap_standing_step_acc(acc: acc, env: env, envs: envs)),
+        envs: envs)
     } }
+  }
+}
+
+// THE PRODUCTION READER OF AN APPENDED RED OBSERVATION: every consumer of a node's standing (the page, the
+// status, the closable and admission reads) sees the live receipt with its EFFECTIVE red control, so a
+// RedTreeRecorded appended on a tree-unrecorded receipt upgrades what they read. Done is unchanged: the
+// standing is NodeAccepted before and after.
+fn roadmap_standing_acc_with_effective_red_control(acc: RoadmapStandingAcc, envs: List<RoadmapEventEnvelope>) -> RoadmapStandingAcc {
+  match acc.standing {
+    NodeAccepted { by: by, receipt: r } => RoadmapStandingAcc {
+      standing: NodeAccepted { by: by, receipt: RoadmapAcceptanceReceipt { node: r.node, criteria_digest: r.criteria_digest, red_control: roadmap_receipt_effective_red_control(receipt: r, envs: envs), handback: r.handback, accepted_by: r.accepted_by, accepted_on: r.accepted_on } },
+      assignment: acc.assignment }
+    _ => acc
   }
 }
 

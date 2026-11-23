@@ -139,7 +139,16 @@ test fn an_appended_pair_upgrades_the_unrecorded_receipt() -> Bool {
     NodeAccepted { by: _, receipt: _ } => true
     _ => false
   }
-  !red_control_evidence_is_valid_red(e: before) && red_control_evidence_is_valid_red(e: after)
+  // THE PRODUCTION READER: the node's standing itself carries the upgraded red control.
+  let standing_upgraded = match roadmap_node_standing(envs: [old, pair]) {
+    NodeAccepted { by: _, receipt: r } => red_control_evidence_is_valid_red(e: r.red_control) && roadmap_operator_acceptance_receipt_is_closable(receipt: r)
+    _ => false
+  }
+  let standing_before = match roadmap_node_standing(envs: [old]) {
+    NodeAccepted { by: _, receipt: r } => !red_control_evidence_is_valid_red(e: r.red_control)
+    _ => false
+  }
+  standing_upgraded && standing_before && !red_control_evidence_is_valid_red(e: before) && red_control_evidence_is_valid_red(e: after)
     && admitted && equal_refused && bad_refused && on_executed && still_accepted
 }
 
