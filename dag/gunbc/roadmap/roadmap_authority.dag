@@ -5911,6 +5911,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
     roadmap_node(
+      identity: "rn_63KX4CB2GGD5BA5C6J56NBPV5E",
+      id: "bignat-bit-widths-typed-as-bit-width",
+      owner: "self-host",
+      carriers: carrier(path: "dag/std/bignat.dag"),
+      line: ticket(t: fields(
+        headline: "Carry bit widths in dag/std/bignat.dag as the std.measure BitWidth, not as bare Int",
+        boundary: "Reported by warm-fox-517 from review 97694 (claude provider, gunbc#16960, request_changes at f5eb4cffb569cc5163b5cb81f965d4b7f5fea972 over a new BignatBitBuffer field carrying bits as Int). Counted by the reporter at origin/main: zero occurrences of BitWidth in dag/std/bignat.dag, seven bare width or bits fields typed Int, and every width-taking signature (bignat_to_octets, bignat_fit_octets, bignat_limb_bits, bignat_pad, bignat_truncate, montgomery_r_squared, montgomery_modulus) takes Int. std.measure already declares BitWidth (Measure<Information, One, Nat>) with bit_width and bit_width_count. A grounding defect: a bare Int stands where the shared quantity model has the type. Not established: which of those width parameters count bits and which count limbs or octets; only a bit count is a BitWidth, so the first slice classifies each before any retype. The counts are the reporter's, not re-measured here.",
+        displaced_cost: "A bit width and a limb or octet count are both Int, so a caller can pass one for the other with no refusal, and each new field in the module copies the bare convention.",
+        first_slice: "Classify each of the seven fields and each width-taking signature as bits, limbs or octets with the exact command and revision of the count; then retype only the bit counts to BitWidth through its declared constructors, as one change to the module.",
+        red_control: "OPEN: no executed pair is recorded. Obligation, not optional: a retype can move interpreted step counts, so the before and after of the p256 verification baseline (48,296,785 eval_steps for one member at tree 91d657a62d72, reported by warm-fox-517) and of the cut (p256-verify-cost-cut) are both re-measured with one binary on the same tree, and no step comparison across binaries is accepted. A caller passing a limb count where a BitWidth is demanded refuses at typecheck.",
+        out_of_scope: "Doing the retype inside the p256-verify-cost-cut row or any row whose red_control is a step threshold. Changing what any bignat function computes.",
+        handback: "Return the classification, the retyped signatures, the one-binary before and after step counts for the p256 baseline and the cut, and the refused wrong-unit caller."
+      )),
+      parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
+      centering: plan(text: "Timing relayed 2026-11-23 by neat-badger-614 via warm-fox-517 (not recorded in gunbc.design_ruling): file non-dispatchable; sequence after p256-verify-cost-cut lands and after the P-256 witnesses stop being interpreted, since the interpreter's per-step cost is what the numbers are sensitive to."),
+    ),
+    roadmap_node(
       identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF",
       id: "compiler-identity-invariant-under-corpus-commit",
       owner: "v1-performance",
