@@ -96,7 +96,11 @@ import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
   HealthzServed, HealthzRefused, observe_healthz,
 }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  RoadmapSiteSurfaceBundleReadRefused,
+  RoadmapSiteSurfaceBundleRendered,
+  roadmap_site_surface_bundle_observation,
+}
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
 // imports the belt's observers, so an entry that also writes the observation must sit above both --
@@ -257,11 +261,31 @@ fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict 
 fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: DeployedTreeObservation) -> LabServePairVerdict {
   match observe_healthz(port: instance.listen_port as Int) {
     HealthzServed { body: _, identity: id } =>
-      lab_pair_serve_verdict(
-        observation: observation,
-        identity: id,
-        expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
-      )
+      match roadmap_site_surface_bundle_observation() {
+        // The belt serve gate mints the EXPECTED surface for the pair verdict. It reads via the INSTANCE
+        // observation, NOT the launcher one, because it does not run in the CI deploy job: the belt tick is
+        // spawned under the belt service's OWN principal/slice/spawn root on the instance tree
+        // (gunbc.roadmap.roadmap_belt_tick.emit runs it there), so the instance carrier layout IS the authority
+        // this principal opens, exactly as for the live service. This is the same law as the candidate and the
+        // readiness gate — read under the principal that can open the authority — with the layout chosen by the
+        // principal that actually runs (roadmap_site_surface_bundle_observation vs _for_launcher). Over a refused
+        // roster read it refuses rather than pairing against a fabricated identity (fail-closed).
+        RoadmapSiteSurfaceBundleReadRefused { detail } => {
+          let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+            cause: join(["roadmap roster read refused; expected surface unobservable: ", detail], ""),
+          }
+          PairServeRefused {
+            binding: binding,
+            reason: release_binding_line(binding: binding),
+          }
+        }
+        RoadmapSiteSurfaceBundleRendered { bundle: bundle } =>
+          lab_pair_serve_verdict(
+            observation: observation,
+            identity: id,
+            expected_surface: bundle.bundle_identity,
+          )
+      }
     HealthzRefused { detail: d } => {
       let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
         cause: join(["healthz probe refused, running release identity undecidable: ", d], ""),

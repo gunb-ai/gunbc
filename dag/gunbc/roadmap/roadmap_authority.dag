@@ -60,7 +60,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
 }
 import gunbc.roadmap.roadmap_event_log { RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused, roadmap_retired_node_ids_of }
 import gunbc.roadmap.roadmap_event_carrier {
-  roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused,
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, AllEventsRead, AllEventsReadRefused, RoadmapAllEventsRead, CarrierReadAttached,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
@@ -1414,12 +1414,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/workflow/required_floor.dag"),
       line: ticket(t: updated(t: fields(
         headline: "Make the required run cost what its inputs require, measured on the run that owns the number",
-        boundary: "The required run is one claim_executor --required-ci process with four phases (parse, regen, v2-emission, floor). Its cost is read from that run's own [floor-phase] rows and compile.frontend/normalize/reconcile/analyses lines, never transcribed. Work under this row attributes wall time to a phase by instrument, then removes computation whose inputs did not change, one phase at a time, with the attribution re-read from the run after each change.",
+        boundary: "The required job is v2-bootstrap, which builds the seed and runs one gunbc test step per row of gunbc.emitted_subject_build_gate emitted_subject_build_rows; no job runs claim_executor --required-ci (gunbc.rung_drop v1_required_lanes_withdrawn), so no phase or [floor-phase] receipt exists to read; the runner's modules remain as source but have no caller on an executing route. Its cost is read from that job's own step timings, never transcribed. Work under this row attributes wall time to a step by instrument, then removes computation whose inputs did not change, one step at a time, with the attribution re-read from the run after each change.",
         displaced_cost: "Every PR waits for the whole run (about thirty minutes at the 2026-08-22 measurement, from the run named in gunbc.design_document::ci_contract_blocks); the fifteen rows this replaces optimised a plan, a scheduler and a scoped worker that no longer exist, so they could only be closed by re-creating what the floor cut deleted.",
-        first_slice: "One row per phase in a receipt the run emits: phase name, wall time, and the subject size it ran over (modules parsed, entries emitted, witnesses routed), so a later change can be judged against the same instrument rather than a remembered number.",
-        red_control: "A change that claims to cut a phase's time without the run's own receipt moving refuses review; a receipt whose phase list differs from the run's printed roster (phases_run) is a defect, not a report.",
+        first_slice: "One row per emitted-subject step (the rows of emitted_subject_build_rows, two today) in a receipt the job emits: step label, wall time, and the subject size it ran over; the seed build and other non-row steps are outside this receipt unless their population is derived from the required workflow model, so a later change can be judged against the same instrument rather than a remembered number.",
+        red_control: "A change that claims to cut a step's time without the job's own receipt moving refuses review; a receipt whose step list differs from the rows of emitted_subject_build_rows (the emitted-subject steps only) is a defect, not a report.",
         out_of_scope: "No return of batches, plan entries, selection flags or a second worker process; no corpus-denominated fallback; the tokenizer escape-scan row stays separate.",
-        handback: "The per-phase receipt on the required run, and the first phase attribution read from it."
+        handback: "The per-step receipt on the required job, and the first step attribution read from it."
       ), on: "2026-09-30", note: "Not yet centered: needs a centering plan: handed off from the v2 worksheet to the CI lane with no plan.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is paid on every landing; attributing and cutting its cost keeps verification affordable enough to stay required."),
@@ -1430,7 +1430,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "entry-graph-union-construction",
       owner: "",
       carriers: [],
-      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — the required run is now one claim_executor --required-ci process running four phases, and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required run's wall time, read from its own [floor-phase] and compile.* lines) is re-cut against the live mechanism as ci-required-run-cost." },
+      line: PlainLine { content: "The ci_floor plan, batch scheduler, scoped worker, discovery snapshot and falsifier cadence this row optimised were deleted at the floor cut — no job now runs claim_executor --required-ci (gunbc.rung_drop v1_required_lanes_withdrawn), and none of the artifacts this row names exist to warm, share, stream or reconcile. The cost that survives (the required job's wall time, read from its own step timings) is re-cut against the live mechanism as ci-required-run-cost." },
     ),
 
 
@@ -3027,15 +3027,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "native-emit-match-binding-keeps-its-type",
       owner: "self-host",
       carriers: carrier(path: "src/v1/04_infer.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "A value bound by a match arm on a generic enum keeps its concrete type through native emission",
         boundary: "Found on 2026-11-15 by the demand-serve-program-image work, emitting the roadmap serve entry natively. A match arm that binds a field of a GENERIC enum variant (Optional<NonEmptyStr> matched as Present { value: v }, then v as String) leaves the bound variable typed by the enum's type parameter rather than the concrete argument, so at emit it renders erased and the as crossing lowers to compile_error!(UNRESOLVED_CompilerError). Typecheck and interpretation accept the same program, so the defect appears only at native emission and is below the floor (gunbc.design_argument::guarantee_ladder). The cause, measured in PR #16534 against a pattern-side substitution pass: the seed's kernel Optional mint (v1.compiler.infer kernel_optional_type_node) declared no type parameter and typed Present.value unbound, so the existing generic substitution received an empty slot map. Scrutinee expansion in src/v1/04_patterns.dag is not at fault and needs no second substitution pass. The first production site is gunbc.runner.runner_slot_retirement host_interruption_reason, which blocks emitting the roadmap serve entry.",
         displaced_cost: "Every program that matches on a variant and converts the bound value cannot be emitted natively, so native serving and any other native target is blocked by an ordinary pattern the rest of the compiler accepts.",
         first_slice: "The mint carries its parameter: kernel_optional_type_node declares params [t_param] and types Present.value as that parameter, so the existing substitution binds it, and kernel_mint_shape_diagnostics judges the mint by the same facts as the declaration. No change to src/v1/04_patterns.dag. The stage0 mirrors come from heal.",
-        red_control: "The generic-binding fixtures emit natively and the non-generic control keeps emitting, RED on main where each refuses at emit; the mint-shape witness's fixtures declare the module the kernel binding names (std.optional), its conforming control requires a completed fixture compile, and a declaration spelled without its type parameter refuses with KernelMintShapeMismatch through that route. A recurring_failure_mode row records the class with its rung and receipts.",
+        red_control: "test.claim.emitter_generic_match_field_binding_witness is the discriminating control: at the pre-fix tree 4e270740af59 three of its four claims (the generic ones) FAIL and one PASSes, EXIT=1; at main 4a63370f4a67 all four PASS, EXIT=0 (measured by calm-swift-579 on srv1; the fix is #16535 b650f52c, preceded by #16534 319886d9). kernel_optional_mint_shape_witness (7 claims) and generic_result_match_binding_witness (11 claims) PASS at both trees, so neither discriminates and neither is a red control here; The row claims the generic case only: a match arm binder of a generic enum variant keeps the scrutinee's concrete type. The diagnostic half (a compile_error! naming the inferred type) is withdrawn: the arm that would emit it is unreachable because func_env_declared_func_sig and func_sig_from_direct_call in src/v1/04_infer.dag answer before the census arms, and no claim takes that text as subject. Second pair, as data: witness native_emit_match_arms_default_arm_all_bind_binder claim arm_binding_keeps_the_scrutinee_type, red_at 4e270740af598a12b97351f87b86f72b7fcab343 (claim_batch built at that tree, sha256 f05bbc4edefa8aca0ac4d59a6244b19ebb149392e9d33a86bd3e4e42f99dcf60; raw line: FAIL native_emit_match_arms_default_arm_all_bind_binder.arm_binding_keeps_the_scrutinee_type: match arm binder 'v' is bound as Shared(String(\"dyn::core::unknown_type\"))), green_at 4a63370f4a67 (claim_batch built at that tree, sha256 3dfe06f25c9f7b2409fa6f4dce8cbc0c43c25d5463b2ac4771d59d90cea89385); measured by warm-fox-517. generic_let_binder_stays_unbound in the same module PASSes at both trees and is not a control. No mint-shape mutation is claimed as a red control. A recurring_failure_mode row records the class with its rung and receipts (generic_match_field_binding_keeps_its_type_parameter).",
         out_of_scope: "Other native-emission refusals in the roadmap serve entry's closure; each is found and fixed under demand-serve-program-image.",
-        handback: "The fix site and reason, the generic-binding and mint-shape controls passing on a seed built from heal's mirror and failing on main, the failure-mode row, and the roadmap serve entry's next refusal, if any."
-      ), on: "2026-11-15", note: "PR #16534 carries this slice.")),
+        handback: "The fix site and reason; the historical before/after pair for test.claim.emitter_generic_match_field_binding_witness (pre-fix tree 4e270740af59 FAIL x3 PASS x1 EXIT=1; main 4a63370f4a67 PASS x4 EXIT=0; fix #16535 b650f52c after #16534 319886d9); the mint-shape and generic-result witnesses kept as preservation evidence (PASS at both trees, not red controls); the red_at/green_at pairs above with their EXIT statuses; the failure-mode row; and the roadmap serve entry's next refusal, if any."
+      ), on: "2026-11-15", note: "PR #16534 carries this slice."), on: "2026-11-23", note: "Red control narrowed to the generic case evidenced by the pairs; diagnostic half and mint-shape mutation withdrawn (warm-fox-517).")),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Native emission accepts what typecheck accepts for variant bindings."),
     ),
@@ -3179,15 +3179,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "effect-summary-env-carries-listed-imports",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/recurring_failure_mode/listed_imported_free_fn_named_like_an_algebra_method_has_no_effect_join_callee.dag"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "The effect summary finds a callee through the module's own imports",
         boundary: "PR #16555 repaired gunbc.recurring_failure_mode::listed_imported_free_fn_named_like_an_algebra_method_has_no_effect_join_callee by letting the census gates yield to a listed import. Its next trigger remains, scoped to the environment it was measured in: when an entry's effect summary runs over the sparse, namespace-only function env (129 parents, none declaring the imported skip, on the approval_broker_tree_install effect join reaching portable_remote_words), the env carries none of the module's listed imports, so callee identity there depends on the census fallback, while the resolve pass over a richer env (194 parents) binds the same call. Entries whose graphs supply the richer env already resolve: #16555 recorded a_binary_only_plan_installs_and_restarts_without_publishing_the_tree and a_twin_apply_neither_writes_nor_restarts_the_host_broker reaching host_effect_realize green on main. In the sparse env the two passes can disagree on which declaration a bare call binds to.",
         displaced_cost: "In the sparse env a call that resolves can still refuse effect joining, which blocks whole entries at resolve, as it blocked an_unbound_revision_refuses_before_any_observation until #16555.",
-        first_slice: "Give the effect-summary env the module's listed imports, and remove the census fallback from the effect join where the import answers.",
-        red_control: "A probe whose effect summary runs over the sparse, namespace-only env and whose bare call binds through a listed import only, with the census fallback removed, joins its callee's effects; RED before that env carries the imports. an_unbound_revision_refuses_before_any_observation stays green.",
+        first_slice: "None owed: the env change landed with #16555 and its listed-import witnesses (#16884, 8d3338b2). This is a coverage row: it records what is preserved and claims no red control.",
+        red_control: "No red control is claimed, and none may be recorded for this row. Coverage: dag/test/claim/effect_summary_listed_import/listed_import_witness.dag claim listed_import_binds_the_effectful_declaration (roots dag and src/v2) PASSes at the parent a1948a5c923b2bc780fe6651aabfd04e8dd243fd and at 2eec3413d95b, claim_batch built at each tree (parent binary sha256 609b76cf2570141f17a57b2b0777dcb2bee1c709618122f1f4fc3feed7304b3b, exit 0; closing-candidate binary sha256 645418e1ed4ff9bb059c03bd9be249c405a892d3a5dcafc234f1e1ab52e3494d, exit 0). The six witness files were absent at both trees and only added, so the greens are not produced by code the PR brought, and the claim was never red at that pair: there is no closing commit to name. The two other limbs, s1_method_template_witness and s2_generic_witness, refuse to load at both trees (equality admission for an empty declaration identity cannot be judged, exit 1), a load refusal and not a verdict; they carry no pair, and claiming them is a separate choice for planning. The census fallback is not a control: call_target_for_direct_call and func_env_declared_func_sig answer before census_declaration_identity and func_sig_from_global_bare, so a probe cannot make its presence observable; whether its miss branch is reachable is established under effect-join-census-fallback-arm-removed.",
         out_of_scope: "Routing of non-imported method-template names to the method bridge.",
-        handback: "The env change, the probe, and the failure-mode row's rung raised to what the evidence shows."
-      )),
+        handback: "The coverage record above, and the failure-mode row's rung stated at what the executed evidence shows."
+      ), on: "2026-11-23", note: "Reclassified as a coverage row: the listed-import witness was never red at the candidate pair (warm-fox-517, quick-wolf-263).")),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Resolve and effect summary agree on a call's callee."),
     ),
@@ -5051,15 +5051,32 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-interpreter-p256-verify-cost-shape",
       owner: "self-host",
       carriers: carrier(path: "dag/extdeps/crypto/nist_p256.dag"),
-      line: ticket(t: updated(t: fields(
-        headline: "Find why one interpreted P-256 verification costs 13.5 GiB and minutes, and remove the cost shape rather than the workload",
-        boundary: "Receipt gunbc#11645: one interpreted p256_ecdsa_verify_octets takes gigabytes resident and minutes, so the required floor budget-refuses all eight members of test.claim.p256_dag_ecdsa_witness and the interpreted approval broker cannot verify a signature, assertion or attestation chain in usable time. A 256-bit verification is a few thousand field multiplications (std.bignat Montgomery multiplication, the extdeps.crypto.nist_p256 ladder), so this is a cost-shape defect in how the interpreter realizes those folds (gunbc.design_argument::how_to_work), not a workload property. The instrument is claim_batch --hermetic --entry dag/test/claim/p256_dag_ecdsa_witness.dag --functions the_rfc6979_sample_signature_verifies, read by its [witness] line and VmHWM.",
+      line: ticket(t: updated(t: updated(t: fields(
+        headline: "Measure where one interpreted P-256 verification spends its steps and memory, as the basis for cutting it",
+        boundary: "Receipt gunbc#11645: one interpreted p256_ecdsa_verify_octets takes gigabytes resident and minutes, so the required floor budget-refuses all eight members of test.claim.p256_dag_ecdsa_witness and the interpreted approval broker cannot verify a signature, assertion or attestation chain in usable time. A 256-bit verification is a few thousand field multiplications (std.bignat Montgomery multiplication, the extdeps.crypto.nist_p256 ladder), so this is a cost-shape defect in how the interpreter realizes those folds (gunbc.design_argument::how_to_work), not a workload property. The instrument is claim_batch --hermetic --entry dag/test/claim/p256_dag_ecdsa_witness.dag --functions the_rfc6979_sample_signature_verifies, read by its [witness] line and VmHWM. RE-SCOPED as a measurement node by operator ruling 2026-11-23 (\"regarding the p256 - yes you can rescope it.\"). Reason, measured by warm-fox-517: one verification takes about 48.3M steps, 78-101 s and about 15 GB; about 93% of the steps are in one modular-multiplication routine (about 7,227 steps per call over about 6,200 calls); even at 1 step per 24-bit-limb multiply the floor is about 1.57M steps, 4.3x the floor's 361,500 per-claim budget, and the 256 doublings alone are 518,144 steps. So no interpreter optimisation reaches the budget, and fitting it is no longer this node's control. The cut itself is p256-verify-cost-cut.",
         displaced_cost: "Every interpreted consumer of std.bignat pays it: the approval device routes (four ECDSA verifications per phone approval), the App Attest chain (two P-384 verifications per enrolment), and any future big-integer fold. Until the shape is found, the approval broker's device routes have no execution route except the native emission that #11819 gates, and the floor cannot enroll the eight P-256 witnesses at all.",
-        first_slice: "Re-derive the slice (gunbc.design_argument::earliest_unjustified_boundary): what one montgomery_mul allocates and retains in the interpreter, whether the memo or the List<Int> limb representation is what pins memory, and which link is the earliest unjustified boundary -- before any cache, batch or knob is proposed at the symptom link.",
-        red_control: "The eight P-256 witnesses executing to a terminal verdict inside the floor's per-claim budget, with VmHWM read from the same run, and the RFC 6979 and Wycheproof refusal members still refusing.",
+        first_slice: "Run the instrument once and record its attribution of steps by routine and the memory residency beside the totals, then name which of the two candidate cut sites the numbers point at: the v1 interpreter fold realization or the std.bignat number representation.",
+        red_control: "The verification cost is measured and recorded from one claim_batch --hermetic run of test.claim.p256_dag_ecdsa_witness the_rfc6979_sample_signature_verifies, giving steps, wall time and VmHWM from that same run, plus the attribution of steps by routine, with the RFC 6979 and Wycheproof refusal members still refusing. It does not require fitting the floor's 361,500 per-claim budget.",
         out_of_scope: "No host-Rust verification primitive (operator refusal on #11588/#11592 stands); no widening of the floor budget to admit the current cost; no change to the P-256 arithmetic's semantics -- the vectors are the oracle.",
-        handback: "The named boundary and its repair, the eight witnesses enrolled and green in the floor, and the [witness] eval-step and VmHWM readings beside the #11645 figures they replace."
-      ), on: "2026-09-21", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): The receipt is gunbc#11645: one interpreted p256_ecdsa_verify_octets peaks at 13.5 GiB resident (VmHWM 14,132,132 kB) and takes 192 s to 734 s depending on host residency, so the required floor budget-refuses all eight members of test.claim.p256_dag_ecdsa_witness and the interpreted approval broker cannot verify a device signature, an App Attest assertion or an attestation chain in usable time. The arithmetic is std.bignat Montgomery multiplication over limb lists and the double-scalar ladder in extdeps.crypto.nist_p256; a 256-bit verification is a few thousand field multiplications, so a resident set in the tens of gigabytes is a cost-shape defect in how the interpreter realizes those folds (gunbc.design_argument::how_to_work, bare minimum cost), not a property of the workload. The instrument that re-derives the figure is `claim_batch --source-root dag --source-root src/v2 --hermetic --entry dag/test/claim/p256_dag_ecdsa_witness.dag --functions the_rfc6979_sample_signature_verifies` read by its [witness] line and the process VmHWM; no number in this row is authoritative over that run. This is the B arm of the 2026-09-21 approval-app decision (parent ruling on msg_4d665941): filed for the v1-performance program, NOT started by the approval lane, whose terminal shape is the natively emitted verifier bound as one realization handler of the extdeps.crypto.signature and extdeps.apple.app_attest seams once MachineWidth<N> reification lands.")),
+        handback: "The one run's steps, wall time and VmHWM, the attribution of steps by routine, the refusal members' verdicts, and which cut site the measurement names."
+      ), on: "2026-09-21", note: "The brief before the 100-word re-cut, verbatim (obligations kept in the brief, context here): The receipt is gunbc#11645: one interpreted p256_ecdsa_verify_octets peaks at 13.5 GiB resident (VmHWM 14,132,132 kB) and takes 192 s to 734 s depending on host residency, so the required floor budget-refuses all eight members of test.claim.p256_dag_ecdsa_witness and the interpreted approval broker cannot verify a device signature, an App Attest assertion or an attestation chain in usable time. The arithmetic is std.bignat Montgomery multiplication over limb lists and the double-scalar ladder in extdeps.crypto.nist_p256; a 256-bit verification is a few thousand field multiplications, so a resident set in the tens of gigabytes is a cost-shape defect in how the interpreter realizes those folds (gunbc.design_argument::how_to_work, bare minimum cost), not a property of the workload. The instrument that re-derives the figure is `claim_batch --source-root dag --source-root src/v2 --hermetic --entry dag/test/claim/p256_dag_ecdsa_witness.dag --functions the_rfc6979_sample_signature_verifies` read by its [witness] line and the process VmHWM; no number in this row is authoritative over that run. This is the B arm of the 2026-09-21 approval-app decision (parent ruling on msg_4d665941): filed for the v1-performance program, NOT started by the approval lane, whose terminal shape is the natively emitted verifier bound as one realization handler of the extdeps.crypto.signature and extdeps.apple.app_attest seams once MachineWidth<N> reification lands."), on: "2026-11-23", note: "Re-scoped as a measurement node under the operator ruling of 2026-11-23; the cost cut moved to p256-verify-cost-cut.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
+    ),
+    roadmap_node(
+      identity: "rn_CN2KZR66EFV6KB1YNJ5G32YEGF",
+      id: "p256-verify-cost-cut",
+      owner: "self-host",
+      carriers: carrier(path: "dag/extdeps/crypto/nist_p256.dag"),
+      line: ticket(t: fields(
+        headline: "Cut the step count and memory of one interpreted P-256 verification at the site the measurement names",
+        boundary: "Follows v1-interpreter-p256-verify-cost-shape, which measures: about 48.3M steps, 78-101 s and about 15 GB per verification, about 93% in one modular-multiplication routine. The cut has two candidate sites and the measurement chooses between them: the v1 interpreter's fold realization (hand-written seed Rust, so a v1 change needs the v2 self-host purpose test) or std.bignat's number representation (v1 stdlib, which means regenerated Rust and heal rounds). Its terminal shape stays the natively emitted verifier noted in the measurement row.",
+        displaced_cost: "Every interpreted consumer of std.bignat pays the cost: the approval device routes, the App Attest chain and any future big-integer fold; the P-256 witnesses cannot be enrolled in the floor while one verification costs about 48.3M steps.",
+        first_slice: "The cost cut itself, at whichever of the two candidate sites the measurement names.",
+        red_control: "A measured step and VmHWM reduction on the same instrument (one claim_batch --hermetic run of test.claim.p256_dag_ecdsa_witness the_rfc6979_sample_signature_verifies), with every vector verdict unchanged, the RFC 6979 and Wycheproof refusal members still refusing.",
+        out_of_scope: "No host-Rust verification primitive (operator refusal on #11588/#11592 stands); no widening of the floor budget to admit the current cost; no change to the P-256 arithmetic's semantics -- the vectors are the oracle.",
+        handback: "The site chosen and why, the before and after steps and VmHWM from the same instrument, and every vector verdict before and after."
+      )),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
     ),
@@ -5428,11 +5445,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: updated(t: updated(t: updated(t: updated(t: fields(
         headline: "Admit the service declaration family without taxing every identifier",
         boundary: "The G0 service family parses through a grammar terminal that matches one exact word, so the marker words stay ordinary identifiers everywhere else. The parse-door refusals the family needs - missing name, missing brace, volatile, exit-without-arrow, mock-without-expression - keep their separate meanings rather than collapsing into one refusal later in the pipeline.",
-        displaced_cost: "Giving each marker word its own token class was measured as a corpus-wide cost defect: every plain-name slot became a thirteen-way choice and the lexer carried twelve more rules, so the cost was paid once per identifier in every parse. Against a fixed baseline a large minority of the shared witness population moved, and every one of them moved upward - a unidirectional shift, which is what distinguishes a real cost change from runner noise. The population and the magnitude are re-derived by joining the required floor's per-claim cost receipt across the two runs: the artifact named required-floor-claim-cost, which the required run uploads and which carries eval_steps per witness identity. The alternative of making the markers ordinary identifiers and refusing later loses five distinct refusals, because a service declaration has no later stage that could tell those five mistakes apart.",
-        first_slice: "Re-express the service family on the exact-word terminal, which is already on the main line: delete the twelve keyword lex rules and the contextual-name machinery, keep the input-and-output field tail scoped to services, and RETAIN the name-usability regression evidence, re-expressed at the lexical and grammar boundary rather than retired.",
+        displaced_cost: "Giving each marker word its own token class was measured as a corpus-wide cost defect: every plain-name slot became a thirteen-way choice and the lexer carried one more rule per marker word, so the cost was paid once per identifier in every parse. Against a fixed baseline a large minority of the shared witness population moved, and every one of them moved upward - a unidirectional shift, which is what distinguishes a real cost change from runner noise. The population and the magnitude are re-derived by joining eval_steps per witness identity from two claim_batch runs of the shared population, using the same released binary at the base and at the head, restricted to claims whose verdict is identical at both trees, with the excluded count stated. (The per-claim cost artifact required-floor-claim-cost came only from the withdrawn required-floor lane, gunbc.rung_drop v1_required_lanes_withdrawn, and cannot be produced.) The alternative of making the markers ordinary identifiers and refusing later loses five distinct refusals, because a service declaration has no later stage that could tell those five mistakes apart.",
+        first_slice: "The re-expression is already on main at 5a9b1ab9ae4f (read by warm-fox-517 and loyal-carp-337): the service declaration, operation, requires, transport, exit, response and mock_response sites in src/v2/extdeps/languages/dag.dag are each a dag_grammar_literal_terminal on dag_token_ident, the terminal coming from src/v2/std/grammar.dag, and at 5a9b1ab9ae4f the lex rule list holds 21 dag_keyword_lex_rule calls and the file defines 21 distinct dag_token_kw_* names (alias, as, data, else, false, fn, if, import, in, is, let, loop, match, module, nominal_opaque, return, sole_constructor, then, true, type, where), none a service-family word, so there are no keyword lex rules for the family to delete and the earlier count of twelve was wrong; dag_contextual_value_name_keywords holds kw_module and kw_data only. Per-arm attribution, counted by warm-fox-517: the service declaration, operation, transport and exit sites blame to a3cb5d3ace2c (#11955, merged 2026-09-21T16:56:28Z) and git log -S on the interned service lexeme returns that one commit; the requires arm blames to 7284506da973 (#12911), which rewrote it later; response and mock_response are not yet individually attributed. What remains is to confirm by execution that the name-usability evidence is retained at the lexical and grammar boundary and keep the input-and-output field tail scoped to services; a slice that commands work already on main is not taken.",
         red_control: "Two alternatives that differ only in that one word validate as distinct, while the same pair keyed on the token class alone still reports an overlap; a wrong word in the marker position is refused at the parse door; and the matched word is not published as the node's identity, so no caret literal or generic parameter changes what it carries. A source using the marker words as ordinary names still parses, and that fixture is the retained name-usability control - it reds if any later change keywords a spelling again. Each named parse-door refusal asserts its own typed diagnostic and the stage that raised it, never bare non-acceptance: a helper that is the negation of parses folds a tokenize failure and a parse failure into one verdict, so it can pass for a reason the claim is not about.",
         out_of_scope: "Not the resolver's treatment of imports, and not the evaluation-step cost of the whole-service witness, which is its own item.",
-        handback: "Return the measurement against the same baseline showing the moved population back at baseline, the refusal controls, and a statement of which service constructs still have no lowering."
+        handback: "Return the two-run claim_batch eval_steps join (same released binary at base and head, verdict-identical claims only, excluded count stated) showing the moved population back at baseline, the refusal controls, and a statement of which service constructs still have no lowering."
       ), on: "2026-09-20", note: "The prepared branch is on the shared remote so the citation resolves for anyone with the repository, not only for its author. It was cut before the merges of 2026-09-20 that put the exact-word terminal on main, so it needs rebasing onto current main before it can be proposed for landing."), on: "2026-09-21", note: "CORRECTION to this row as first authored: the slice instructed retiring the name-usability claim as a climb, and that instruction was wrong on gunbc.design_argument::guarantee_ladder (dissolution on climb), which dissolves lower-rung PRODUCTION machinery and never the evidence. The prepared branch acted on it and its annotation argues the claim's RED is no longer authorable even against a hostile fixture. That is false, and gunbc.design_argument::guarantee_ladder decides it in the opposite direction: a state unrepresentable in the accepted corpus may still be representable as SOURCE HANDED TO THE COMPILER BY A FIXTURE, and this claim's fixture is exactly that - one module using from, input and transport as a parameter and a let binding. Deleting the keyword lex rules removes the mechanism that could break name usability today; it is not evidence that a later lexer or grammar change cannot reintroduce one. Re-express the control at the right boundary and consolidate it if it duplicates, but keep the obligation enrolled."), on: "2026-09-21", note: "SECOND CORRECTION, and it retracts this row's own citation. The tip cited above as PREPARED WORK does not compile, on its base or on main: dag_grammar_literal_terminal is called twelve times and declared nowhere in it, so resolve refuses with no established callee identity. The earlier claim that it merges current main with zero conflicts is true and was never the question -- a clean merge of source that never compiled is not prepared work, and verifying the merge instead of executing it is the specification-without-execution gunbc.design_argument::fail_closed names. What the implementation actually needed, found by running it: the algebra constructor grammar_expr_literal_terminal already exists in v2.std.grammar and only wanted a local wrapper in the file's existing idiom; and seven marker words -- service, operation, input, output, readonly, idempotent, hermetic -- are reserved in the SEED's extdeps.languages.dag.syntax dag_keyword_set, so a caret literal cannot spell them and they are interned from their String spelling by symbol_intern_lexeme, which no keyword rule intercepts. G0 carries no keyword entry for any of them, which is what keeps the name-usability control meaningful rather than vacuous."), on: "2026-09-30", note: "Prepared work: branch session/calm-eagle-42-service-on-literal at tip 80a560dffb01b6fa2cbf3f7cb710e5d8e7f6dcdc.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "Primitive egress, interpreter cost and self-host admission are what the self-hosted compiler needs before it is the one that runs."),
@@ -6381,6 +6398,77 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "new_server_bringup_plan: the boot and management edge is a modeled path, and a path that pins an address in a parameter string is not modeled. Target: dag/gunbc/megarac_media_model.dag's share and the fleet endpoint authority it should read through."),
     ),
     roadmap_node(
+      identity: "rn_G75EV6NFA5Y20CRRZKH42F629W",
+      id: "empty-service-admissibility",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/extdeps/languages/dag.dag"),
+      line: ticket(t: fields(
+        headline: "An empty service declaration is admitted or refused by a named decision",
+        boundary: "Measured by loyal-carp-337 on srv1 at main with scratch discovery modules never committed: the source `module m` then `service S {}` PARSES (e_parses_holds PASS), because the grammar production dag_grammar_service_decl_expr uses repeat(service_body_entry), which admits zero entries, and normalize does NOT admit it (e_admits_holds FAIL). It is refused under none of 71 candidate reason symbols swept across body_lowering, normalize and normalized_tree (each of the 71 discovery claims FAILed), so the reason lives outside those symbol sets. The reason id and the diagnostic text are NOT yet named: no raw line has been captured, and a reading of body_lower_service_decl pointing at a service_realization_* reason is a suspicion, not a measurement. The first slice is to capture the emitted diagnostic verbatim, and if no route prints it, to record the routes tried with their exit statuses as the finding. The manager's ruling for this slice: document main's actual refusal, change no admission. Whether an empty service should be admitted is a separate language decision this row records as open, since no grammar row, ownership row or ruling settles it.",
+        displaced_cost: "An author who writes an empty service gets a refusal naming a retained shell, a reason about something else, and cannot tell whether the declaration or the compiler is wrong.",
+        first_slice: "Record main's actual refusal for the empty service, its measured reason id and diagnostic text, with the one-entry body as control; change no admission.",
+        red_control: "`module m` / `service S {}` is asserted to yield main's measured refusal with its typed reason id, so a change in which stage refuses it, or a silent admission, reds; the input with one body entry still parses and normalizes unchanged. Each assertion names the typed diagnostic and the stage that raised it, never bare non-acceptance.",
+        out_of_scope: "The five named parse-door refusals, and the lowering of non-empty services.",
+        handback: "The decision, the typed outcome for the empty body, and the control pair (empty refused or admitted by name; one-entry body unchanged).",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "An accidental refusal becomes a stated one."),
+      centering: plan(text: "gunbc.design_argument::fail_closed: a refusal is a named, located diagnostic, not a leftover. Target: src/v2/extdeps/languages/dag.dag, whose service_body_entry production admits the empty body, and the normalize stage that refuses it."),
+    ),
+    roadmap_node(
+      identity: "rn_HF1AYSSPB2TE2YVZKERDB0WNBF",
+      id: "effect-join-census-fallback-arm-removed",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/04_infer.dag"),
+      line: ticket(t: fields(
+        headline: "Remove the unreachable census-fallback arm from the effect join",
+        boundary: "In src/v1/04_infer.dag call_target_for_direct_call answers through func_env_declared_func_sig first and consults func_sig_from_global_bare (and, in the declaration and method arms, census_declaration_identity then func_sig_from_global_bare) only on the func_env miss; both are imported from v1.compiler.infer_lookup. The census arms exist for a corpus-unique census homonym out-preceding a let callee and for the algebra method-template gate (see call_locals_shadow_note in 04_infer.dag), which is why their removal needs agreement evidence and not a probe: no probe can be RED before and GREEN after. Trying func_env_declared_func_sig first proves lookup order, not that its miss arm is unreachable, and removability has not been shown (#16884's own evidence). The node first establishes whether the miss branch is reachable and what callee identity it yields, and deletes only a branch shown redundant. It is a stage0 mirror change with heal rounds.",
+        displaced_cost: "A fallback arm nothing reaches keeps a second authority for callee identity in the effect join and invites a later reader to rely on it (gunbc.design_argument::consumption).",
+        first_slice: "Establish whether the census-fallback branch is reachable and which callee identity it returns for the named population, and only if it is shown redundant delete it and keep every caller compiling. No new broad census program.",
+        red_control: "Complete per-member outcomes (PASS, FAIL, refused with its reason, or unobserved) for the named population, with the source sha and binary identity, are identical before and after the deletion; equal PASS sets are not enough because they hide a FAIL becoming UNOBSERVED, an omitted failing claim and a changed refusal reason. Any member whose outcome changes refuses the deletion.",
+        out_of_scope: "Any behaviour change, and the listed-import behaviour itself (effect-summary-env-carries-listed-imports).",
+        handback: "The reachability finding, and the two complete per-member outcome tables with source and binary identities and their diff, empty.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Resolve and effect summary keep one authority for a call's callee."),
+      centering: plan(text: "Target: src/v1/04_infer.dag, the effect join arms around census_declaration_identity and func_sig_from_global_bare."),
+    ),
+    roadmap_node(
+      identity: "rn_5ERZMZ9M7AMFBRAMW98VFMWEYW",
+      id: "claim-three-source-roots-shared-index",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
+      line: ticket(t: fields(
+        headline: "A claim run over three source roots does not refuse the shared index",
+        boundary: "The predicate is a three-root outer claim run whose witness fixture performs its own inner emit check (compile_dag_rust_emit_check) demanding the two-root pool, not any three-root run: a three-root run with no such fixture passes (modeled_filesystem_witness). Such a run refuses fixture-render-refused SharedIndexSecondResidentPool: the outer run holds the pool for roots dag, src/v1 and src/v2 on a thread, and compile_dag_rust_emit_check then demands the two-root pool dag and src/v2, which src/v1/stage0/src/cli_run.rs refuses as a second resident pool on that thread. Measured at main 4a63370f4a67 by calm-swift-579 on srv1 under heavy-slot with the released claim_batch sha256 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 over dag/test/claim/emitter_generic_match_field_binding_witness.dag: over dag plus src/v2 its four witnesses PASS and the run exits EXIT=0; adding src/v1 makes all four FAIL with the same refusal and EXIT=1. The owner is whoever owns the closure and pool authority refused at src/v1/stage0/src/cli_run.rs, not the emitter. Dropping a root to avoid the refusal silently downgrades the run to two roots and loses the coverage src/v1 contributes, so that is out of scope here. The defect is the class, not one command. The emitter row's own red_control states no three-root command, so no edge is added to it; rows whose text cites src/v1 alongside src/v2 at that sha are names-bind-to-the-unique-declaration, emission-ownership-facts-survive-lowering, extdeps-subject-ref-facts-host-census, debt-grandfathered-fold-enrolled, dp-m4-discovery-floor-semantic and heal-observation-reuse-by-subject; none states it in its red_control, so no dependency edge is declared, and an owner whose red_control comes to run three roots adds one.",
+        displaced_cost: "Every row whose stated command uses three roots cannot produce its control, so its acceptance waits on a defect nobody owns.",
+        first_slice: "Reproduce the four-witness PASS-then-FAIL pair over two and three roots and decide whether the fixture's emit check should demand the outer roots or the outer run should release its pool.",
+        red_control: "The same four emitter witnesses PASS over dag, src/v1 and src/v2 at one sha, exit 0, where they now exit 1; a three-root run that still refuses SharedIndexSecondResidentPool keeps this red.",
+        out_of_scope: "Dropping src/v1 from the command to avoid the refusal.",
+        handback: "Raw PASS/FAIL lines for the four witnesses over two roots and three roots, with real exit status, before and after.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Multi-root claim runs stop refusing a shared index they should share."),
+      centering: plan(text: "Target: the fixture render path that raises SharedIndexSecondResidentPool for the three-root source set."),
+    ),
+    roadmap_node(
+      identity: "rn_RSSFZ2ATKD5QESN749SZ0E7FXT",
+      id: "eval-call-memo-has-a-byte-bound",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+        headline: "The interpreter's eval-call memo grows to its entry cap with no byte budget",
+        boundary: "eval_call_memo_put in src/v1/stage0/src/v1_interpreter.rs is capped by EVAL_CALL_MEMO_ENTRY_CAP (1,000,000) and enabled by default through eval_call_memo_env_default. Each stored entry holds its argument vector and result value strongly for the lifetime of the run context. The sibling cross-claim memo has a byte bound, CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET (256 MiB); the asymmetry is the defect, not the memo's existence. Measured by keen-pike-826 on srv1 under heavy-slot with the released claim_batch sha256 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 at checkout b69155949654, program's own exit line: one P-256 verify with the memo on (default) took eval_steps 48,296,785, wall 101.6 s, VmHWM 14,983,500 kB; the same verify with the memo off through the existing read-only env switch took eval_steps 51,629,999, wall 78.3 s, VmHWM 6,697,188 kB, Exit status 0; the floor, a trivial witness in the same entry, VmHWM 6,815,264 kB. The memo accounts for 8,286,312 kB (55 percent), essentially the whole first-verify memory cost; seven verifies in one process reach 20,380,524 kB. Steps rose with the memo off while wall fell, so on this workload the memo cost both memory and time.",
+        displaced_cost: "Every claim run that reaches a heavy pure computation pays gigabytes of retained memo entries, and the memory envelope refuses or throttles the run for memory the computation does not need.",
+        first_slice: "Decide the byte bound for the eval-call memo and why that size, by its sibling's precedent and the measurement above, and apply it at eval_call_memo_put. This is hand-written seed Rust, so an operator ruling is needed before anyone edits; this row is a candidate and authorises nothing.",
+        red_control: "A measurement, not a knob: the P-256 verify entry and one corpus witness of comparable size, memo on, VmHWM read by /usr/bin/time -v from the same run at the same sha and binary, falls toward the memo-off figure (6,697,188 kB) with the bound in place and every verdict unchanged, so the memo's residency is bounded; a run that still retains the unbounded growth keeps this red.",
+        out_of_scope: "Disabling the memo, proposing the env switch as a knob, widening any floor budget, and the step-count problem.",
+        handback: "The named site, the byte bound chosen and why that size, VmHWM before and after at one sha for the P-256 entry and one corpus witness of comparable size, and the eval-step figures beside them so a reader can see the memo does not carry the step cost.",
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "The interpreter's memo stops retaining memory the computation does not need."),
+      centering: plan(text: "Target: eval_call_memo_put and its entry cap in src/v1/stage0/src/v1_interpreter.rs, beside the cross-claim memo's byte budget."),
+    ),
+    roadmap_node(
       identity: "rn_G9RTSUE4V511HSQWYSZ9KLTLAE",
       id: "fleet-truth-follows-the-machine",
       owner: "fleet",
@@ -7083,8 +7171,17 @@ data acceptance_history_replay_refused_detail: String = "acceptance history repl
 // hands back an empty history as if nobody had accepted anything. This is the single acceptance-fact
 // load; nothing else reads node acceptance. The board it feeds is the live dashboard's, so the load
 // resolves the event log through the same pinned instance every other production roadmap fold names.
+// THE LAYOUT-PARAMETERIZED ACCEPTANCE LOAD. The production loader below resolves the log through the pinned
+// live instance; this one reads the SAME carrier route under a layout the caller supplies, so an observer that
+// runs as a different principal — the live-deploy candidate in the CI job, which is not the instance principal —
+// can read the same authority the service renders from without reaching into a directory it cannot read. Same
+// law, same typed refusal: a log that cannot be read is a LoadRefused, never an empty history.
+fn roadmap_acceptance_event_history_load_over(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
+  roadmap_operator_close_history(layout: layout)
+}
+
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
-  roadmap_operator_close_history(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
+  roadmap_acceptance_event_history_load_over(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
 }
 
 // THE OTHER HALF OF THE ONE LOG, read the same way the acceptance history is read: the same carrier,
@@ -7092,11 +7189,25 @@ fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad 
 // — never empty — when the log cannot be read at all: an empty retired set read off a log nobody opened
 // is the fail-open this whole change exists to close
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
-fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))) {
+fn roadmap_retired_node_ids_load_over(layout: RoadmapEventCarrierLayout) -> RoadmapRetiredNodeIds {
+  // Reads through the ATTACHED arm of the single read entry point; the fold over what it read is SHARED with the
+  // launcher's scoped read (the _of_read below), so a log nobody opened refuses identically on both paths — one
+  // fold, not two (gunbc.design_argument::root_generalization).
+  roadmap_retired_node_ids_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })))
+}
+
+// THE SHARED RETIRED FOLD, over an ALREADY-READ log feed. Refused — never empty — when the log cannot be read at
+// all: an empty retired set read off a log nobody opened is the fail-open this whole change exists to close
+// (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08).
+fn roadmap_retired_node_ids_of_read(read: RoadmapAllEventsRead) -> RoadmapRetiredNodeIds {
+  match read {
     AllEventsReadRefused { step, reason } => RetiredNodeIdsRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
     AllEventsRead { envelopes } => roadmap_retired_node_ids_of(envs: envelopes)
   }
+}
+
+fn roadmap_retired_node_ids_load() -> RoadmapRetiredNodeIds {
+  roadmap_retired_node_ids_load_over(layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()))
 }
 
 // roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading every
@@ -8436,6 +8547,39 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Per-class rungs rendered from the carrier make the floor readable on the page."),
     ),
+    roadmap_node(
+      identity: "rn_READSETCONVPROG00000000000",
+      id: "read-set-convergence",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/read_set_convergence.dag"),
+      line: ticket(t: level_fields(
+        headline: "Regenerate exactly what is needed from exactly what changed (the read-set convergence program)",
+        boundary: "One read-set validation authority, consumed through the existing convergence modality (gunbc.ensure ensure_decide), replaces every bespoke affected-set check: each generated product (a stage0 mirror, a seed-build artifact, a parse verdict, a required-job verdict) stays valid while nothing its generator read has changed and the generator is unchanged, and is otherwise regenerated alone. Heal's forced recheck (the emission-scope base mirror) is the remaining whole-pool cost this program owns down to the change. The authority lives in the plan gunbc.plans.read_set_convergence; this node is the roadmap lane for its executable work (gunbc.design_argument::planning_has_one_home).",
+        approach: "Phase by phase (the plan's P0..P7), switch one production consumer onto the one authority and delete what it displaces; heal's remaining whole-pool cost is P7.",
+        red_control: "A generated product that is regenerated when nothing it read changed, or kept stale when something it read changed, keeps this red. A fourth bespoke affected-set check outside the one authority keeps this red.",
+        displaced_cost: "Heal regenerates the whole population on every same-repository pull request touching dag/**, src/v1/** or src/v2/** -- paid even for a plan-only change, because the round does no change selection and its scope reads WholePopulation. Counts (172 stage0 mirrors, 13 seed-build artifacts) are the lineage census of the plan gunbc.plans.read_set_convergence; the median 65-minute figure is the heal-generated-artifacts job wall time on the PR's own CI, e.g. run 44454974358 (03:57:47Z->05:02:58Z = 65m11s) and run 44424789306 (23:55:24Z->00:58:52Z = 63m28s).",
+        handback: "Every affected-set mechanism consolidated onto the one authority or deleted, and heal's forced recheck bounded by the pull request's own diff (P7)."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunbc-project-root", contribution: "Converging the read set -- regenerating exactly what changed and nothing more -- is what makes the self-host round (heal) and every generated product cheap enough to run on every pull request (the plan gunbc.plans.read_set_convergence)."),
+    ),
+    roadmap_node(
+      identity: "rn_HEALFORKSEEDP7000000000000",
+      id: "heal-forced-recheck-seeds-from-the-fork-point",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: updated(t: fields(
+        headline: "heal's forced recheck seeds the base mirror from the merge-base, not main's tip (P7: heal's remaining whole-pool cost)",
+        boundary: "heal's emission-scope step force-rechecks the diff between the PR head and HEAL_BASE_MIRROR_COMMIT, which the generated workflow sets to the pull request's base.sha. base.sha is main's TIP at event time, so on a branch forked days earlier the recheck is the whole distance main travelled, not the PR's change (measured on PR #16548 head 3a917e44 against main tip 5776d05cba: 156 files whole-repo / 95 in the stage0+corpus subset versus 13 across the merge-base -- the PR's own diff -- and a 22.6 GB climb that stalled 2,258 s at memory.high and was refused, run 43781205899, job 133018576398). This row's change: resolve the seed to git merge-base base.sha HEAD -- the fork point -- in ONE authority (required_regen_host::fork_point_of_base), consumed by resolve_base_mirror_authority (which reads the population and names the receipt's base_mirror_authority) and by scoped_round_base_admission (which must judge the protocol floor at the fork point it actually builds, never building a scope-blind seed). heal.yml stays unchanged: a workflow expression cannot run git merge-base, and the generator already documents the fork point as the scoped path's base, so the change belongs in the seed host that already resolves commit -> population. workflow_dispatch is covered by the same code; the checkout is fetch-depth: 0 so the fork point is always computable.",
+        displaced_cost: "Without it heal's round-1 cost scales with branch staleness instead of the PR's size: a stale branch climbs past memory.high and the round that converges the seed's mirrors is refused (run 43781205899: 22.6 GB, 2,258 s at memory.high, refused), while the WholePopulation scope label hides the staleness in every round.",
+        first_slice: "Pending, open in the implementation PR (#16753): resolve_base_mirror_authority seeds the population and the receipt at the fork point, and the round logs seed_commit, seed_size and seeded_from_base_sha so staleness is visible. Not done until #16753 merges and an accepted item event is recorded for this row.",
+        red_control: "The change adds (in #16753) two hermetic one-function-per-process controls: cli_run::required_regen_host::regen_affected_set_tests::the_forced_recheck_seeds_from_the_fork_point_when_the_head_is_behind_main (a head behind main yields the merge-base, and the seed diff equals the branch's own change) and ::the_protocol_floor_is_judged_at_the_fork_point_a_stale_fork_point_refuses (its first assert shows a base-judged gate would admit the scope-blind base).",
+        out_of_scope: "No new job, no time or memory budget change, no move onto the merge ref (heal publishes onto the head, so it still builds the head's tree); no commit-keyed mirror cache.",
+        handback: "When #16753 lands: the change, its two hermetic controls with their PASS lines, the regenerated heal.yml matching its generator, and the heal round's seed-size/base line on the PR's own CI."
+      ), on: "2026-11-19", note: "Pending: the change and its tests are open in the implementation PR #16753 (fix(heal): seed the forced recheck from the merge-base); not done until that merges and an accepted event is recorded. Operator approved the direction 2026-11-19.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "read-set-convergence", contribution: "P7: heal's forced recheck is bounded by the pull request's own diff, not the branch's distance from main's tip (the plan gunbc.plans.read_set_convergence)."),
+    ),
   ]
 }
 
@@ -8476,6 +8620,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
+    edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
   ]
 }
 
