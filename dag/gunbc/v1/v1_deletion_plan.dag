@@ -125,7 +125,7 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
       disposition: ReplacedByWitness {
         witness_module: "test.claim.rest_body_undecodable_emitted_cause",
         witness_functions: ["w_rest_body_undecodable_causes_are_declared_side_constants_test", "w_rest_body_undecodable_cause_never_splices_the_runtime_error_test"],
-        coverage_gap: "WEAKER THAN THE RUST TEST. The Rust test walked every RestBodyUndecodable construction and accepted a cause only if it was a single quoted literal equal to one of two declared-side forms, so any unforeseen splice failed it. This witness pins two declared-side literals present and two named leaking spellings absent (error.to_string() and format!( in the RestBodyUndecodable constructor); a third splice form (a helper call, string +, a differently named binding) passes undetected.",
+        coverage_gap: "Declared drop gunbc.rung_drop.rest_body_undecodable_third_splice_form. WEAKER THAN THE RUST TEST. The Rust test walked every RestBodyUndecodable construction and accepted a cause only if it was a single quoted literal equal to one of two declared-side forms, so any unforeseen splice failed it. This witness pins two declared-side literals present and two named leaking spellings absent (error.to_string() and format!( in the RestBodyUndecodable constructor); a third splice form (a helper call, string +, a differently named binding) passes undetected.",
       },
     },
     V1MigratedTestModule {
