@@ -201,7 +201,7 @@ test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() 
   }
     && !string_contains(s: reader_probe_answer_text(a: nd), pattern: "exit=")
     && match forced_of(a: nd) {
-         ForcedAnswerNotDispatched { evidence: _ } => true
+         ForcedAnswerNotDispatched { evidence: e } => string_contains(s: e as String, pattern: nd_reason)
          ForcedAnswerHeld { digest: _ } => false
          ForcedAnswerImageUnreadable { evidence: _ } => false
          ForcedAnswerMalformed { evidence: _ } => false
@@ -209,7 +209,32 @@ test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() 
          ForcedAnswerTransportBlocked { evidence: _ } => false
          ForcedAnswerUnexplained { evidence: _ } => false
        }
-    && refused_at(r: fold_with(forced: nd, second: nd), wanted: StageNotDispatched)
+    && match fold_with(forced: nd, second: nd) {
+         ReaderProbeRefused { stage: s, cause: c } => s == StageNotDispatched && string_contains(s: c as String, pattern: nd_reason)
+         ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+       }
+}
+
+// NON-DISPATCH SURVIVES AT THE ADMINISTRATOR-READABILITY CONSUMER. reader_probe_export_reading is reached in the
+// fold only with a readable admin leg, so this path is otherwise unexercised. An admin leg the host was never
+// handed must surface its CAUSE (admin_evidence "never dispatched") and never a fabricated answer carrying an
+// exit -- it must not be silently read as a real "admin says not-readable". Red if the consumer fabricates an
+// exit/answer for the never-dispatched admin leg.
+test fn a_never_dispatched_admin_leg_survives_as_its_cause_not_an_exit() -> Bool {
+  let rep = reader_probe_export_reading(admin: not_dispatched(reason: "admin leg never dispatched"), forced: ForcedAnswerHeld { digest: probe_digest })
+  string_contains(s: rep.admin_evidence as String, pattern: "never dispatched")
+    && !string_contains(s: rep.admin_evidence as String, pattern: "exit=")
+}
+
+// NON-DISPATCH SURVIVES AT THE SECOND-COMMAND COMPARISON CONSUMER. The fold returns its forced-leg refusal before
+// comparing, so reader_probe_forced_command_masks is never reached with a never-dispatched leg in the other tests.
+// A command the host never handed must NEVER be read as "the second command masked the forced one" -- that would
+// manufacture the masking evidence from runs that never happened. Red on the fabricated value: two never-run legs
+// came back identical (fabricated exit + empty) and were falsely reported as masking.
+test fn a_never_dispatched_command_is_never_read_as_masking_the_forced_answer() -> Bool {
+  let answered_empty = ans(exit_code: 0, stdout: "", stderr: "")
+  !reader_probe_forced_command_masks(forced: answered_empty, other: not_dispatched(reason: "second command never dispatched"))
+    && !reader_probe_forced_command_masks(forced: not_dispatched(reason: "forced never dispatched"), other: not_dispatched(reason: "second never dispatched"))
 }
 
 // THE CAUSE TEXT IS PART OF THE SAFETY, NOT DECORATION. The reader stage tells the operator what NOT to do,
