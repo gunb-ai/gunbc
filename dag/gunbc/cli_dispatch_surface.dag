@@ -265,6 +265,12 @@ type CliOperandValue
 // adds an arm here and must then decide what it means, rather than inheriting an option's answer.
 type CliOperandArity
   = CliExactlyOneOperand {}
+  // A verb whose operand list is a SET of names: clap takes one-or-more positionals into a Vec,
+  // and the verb itself decides what several names mean. For `test` the answer is the claim
+  // route's rule -- run exactly the claims the operands denote, in one process, each identity
+  // once. It is NOT an option's answer inherited: an option's arity selects a value's
+  // cardinality, this arity is the request's.
+  | CliOneOrMoreOperands {}
 
 type CliOperandRow {
   field: String
