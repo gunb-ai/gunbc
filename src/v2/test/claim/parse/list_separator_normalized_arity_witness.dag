@@ -54,33 +54,19 @@ type Ff639Stats {
   elements: Int
 }
 
-data ff639_three_source: String = "module ff639.arity.three\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: [x, x, x]) }
+data ff639_three_source: String = "module ff639.arity.three\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x, x, x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
+data ff639_single_source: String = "module ff639.arity.single\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
-data ff639_single_source: String = "module ff639.arity.single\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: [x]) }
+data ff639_two_source: String = "module ff639.arity.two\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x, x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
+data ff639_trailing_source: String = "module ff639.arity.trailing\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x, x, x,]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
-data ff639_two_source: String = "module ff639.arity.two\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: [x, x]) }
+data ff639_empty_source: String = "module ff639.arity.empty\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: []) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
+data ff639_nested_source: String = "module ff639.arity.nested\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [[x, x], [x]]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
-data ff639_trailing_source: String = "module ff639.arity.trailing\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: [x, x, x,]) }
-
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
-
-data ff639_empty_source: String = "module ff639.arity.empty\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: []) }
-
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
-
-data ff639_nested_source: String = "module ff639.arity.nested\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: [[x, x], [x]]) }
-
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
-
-data ff639_juxtaposed_source: String = "module ff639.arity.juxtaposed\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool {ff_take(xs: [x x x]) }
-
-fn ff_ctl(x: Bool) -> List<Bool> { [x, x] }\n"
+data ff639_juxtaposed_source: String = "module ff639.arity.juxtaposed\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x x x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
 
 fn ff639_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
