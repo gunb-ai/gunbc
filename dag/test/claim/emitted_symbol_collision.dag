@@ -31,7 +31,7 @@ fn collision_rows(sources: String) -> Int {
   match compile_fixture(MultiModuleCompileFixture { sources: [fixture_source("esc/probe.dag", sources)], entry: "esc/probe.dag" }) {
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       census_total_count(rows: fixture_rows_of_class(rows: rows, wanted: "EmittedSymbolCollision"))
-    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => 0 - count(rows) - 1
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => -1
     FixtureInstrumentRefused { cause: c } => -1
   }
 }
