@@ -1,9 +1,6 @@
 module extdeps.github.workflow_runs
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
-// The run read's fold-side decode below reads the committed response as JSON, through the same parser every
-// other GitHub decode in this repo uses -- gunbc.fleet.organization_runner_roster_read is the newer of the
-// two existing idioms and this follows it.
 import extdeps.github.errors { GitHubErrorShape }
 import std.types { Bearer, CommitSha, List, NonEmptyStr, String, Timestamp }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, ExternalModelScope, ExternalSubjectRef }

@@ -8,7 +8,7 @@ import std.durable_exclusive_hold {
   DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable
 }
 import std.optional { Present, Absent }
-import extdeps.github.workflow_runs { parse_workflow_run_status, workflow_run_status_wire_label }
+import extdeps.github.workflow_runs { Completed, WorkflowRunStatus, workflow_run_status_wire_label }
 import extdeps.github.auth { github_rest }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, rest_refusal_text }
 import gunbc.repository { gunbc_repository }
@@ -141,10 +141,13 @@ type ArrivalArchiveSlotRelease
 // -- and decodes the status from the operation's declared response type (WorkflowRun.status). This is the
 // same execute-the-op / decode-in-the-model split as gunbc.fleet.organization_runner_roster_read's
 // *_from_included decoders. The token is read in-process as a Secret from the declared auth source, never
-// interpolated into argv; an absent token is a typed refusal that this turns into Unobservable. A holder's
-// liveness is therefore whatever the declared GET answered for the run id THIS MODEL read out of the holder
-// the store wrote -- a caller cannot hand this model a HolderObservedDead: the status is read from the
-// declared response type by extdeps.github.workflow_runs, not from any caller's opinion.
+// interpolated into argv; an absent token is a typed refusal that this turns into Unobservable. The liveness
+// READER is injected explicitly through the acquire and the recovery (a required parameter, no default):
+// production (gunbc.machine_intake.arrival_run) passes arrival_holder_run_liveness -- the declared GET -- and a
+// wet claim pins that wiring; a test may pass a reader that returns a typed observation, which is how the
+// Recovered / Live / Unobservable arms are exercised without a network. Either way a holder's liveness is read
+// from the declared response type by extdeps.github.workflow_runs, not from a caller's free-form opinion, and
+// SelfHolder is decided purely from the run id the model read out of the holder the store wrote.
 
 // THE HOLDER IS arrival/<host>/<run_id>, and nothing else. A holder that does not decode to that exact
 // shape has no observable meaning, so it is never treated as dead: absence of evidence is not evidence
@@ -162,26 +165,24 @@ fn arrival_holder_run_id(subject: ArrivalSubjectAdmitted, holder: DurableHoldOwn
 
 // STATUS IS THE WIRE FACT; THE MODEL DECIDES, and the deciding is split from the reading so each can be
 // answered on its own -- the same split as gunbc.fleet.organization_runner_roster_read's *_from_included
-// decoders. Only a completed run is dead: queued, in_progress, waiting, requested and pending all mean
-// somebody may still be inside the door, and a status the vocabulary does not know is unobservable.
-// Unobservable REFUSES; it never recovers.
-fn arrival_liveness_from_status_text(run_id: String, status_text: String?) -> DurableHoldHolderLiveness {
-  match status_text {
+// decoders. It takes the operation's DECLARED response vocabulary (WorkflowRunStatus), not a re-read of the
+// wire text, so there is exactly one decode on the production route: the declared op's own. Only a completed
+// run is dead: queued, in_progress, waiting, requested and pending all mean somebody may still be inside the
+// door. An ABSENT observation -- the read refused, so no status came back -- is unobservable, and unobservable
+// REFUSES; it never recovers.
+fn arrival_liveness_from_status(run_id: String, observed: WorkflowRunStatus?) -> DurableHoldHolderLiveness {
+  match observed {
     Absent =>
       HolderLivenessUnobservable {
-        cause: join(["no status reported for holder run ", run_id], "") as NonEmptyStr
+        cause: join(["no status could be observed for holder run ", run_id], "") as NonEmptyStr
       }
-    Present { value: t } =>
-      match parse_workflow_run_status(raw: t) {
-        Absent =>
-          HolderLivenessUnobservable {
-            cause: join(["holder run ", run_id, " reported status ", t, ", which the workflow run vocabulary does not know"], "") as NonEmptyStr
-          }
-        Present { value: status } =>
-          if workflow_run_status_wire_label(status: status) == "completed" {
-            HolderObservedDead { evidence: join(["workflow run ", run_id, " has completed"], "") as NonEmptyStr }
-          } else {
-            HolderObservedLive { evidence: join(["workflow run ", run_id, " is ", t], "") as NonEmptyStr }
+    Present { value: status } =>
+      match status {
+        Completed =>
+          HolderObservedDead { evidence: join(["workflow run ", run_id, " has completed"], "") as NonEmptyStr }
+        _ =>
+          HolderObservedLive {
+            evidence: join(["workflow run ", run_id, " is ", workflow_run_status_wire_label(status: status)], "") as NonEmptyStr
           }
       }
   }
@@ -191,11 +192,11 @@ fn arrival_liveness_from_status_text(run_id: String, status_text: String?) -> Du
 // read-only GET of the holder's own workflow run, through the same declared REST route every other GitHub
 // read in this repo uses. The token is not retyped or interpolated here -- extdeps.github.auth::github_token
 // reads the declared auth source's environment variable in-process and hands a Secret to the op's auth_input,
-// and it answers an ABSENT variable with a typed refusal that names the variable, which this turns into
-// Unobservable: no token means no recovery, and the controller is never touched on that path. An empty token
-// reaches the op and comes back refused, which is also Unobservable. The status arrives as the operation's
-// declared response type (WorkflowRun.status: WorkflowRunStatus), so there is no second decode to rot beside
-// the wire contract; the decision below is the only one being made.
+// and it answers an ABSENT variable with a typed refusal that names the variable. An answered read hands the
+// operation's DECLARED status (WorkflowRun.status: WorkflowRunStatus) straight to the decision -- no re-read
+// of the wire text, so the op's decode is the only decode on this route. A refused read -- an absent or empty
+// token, a 401/403, a 404, a transport failure, or a status the op cannot decode -- hands the decision an
+// ABSENT observation. Both paths arrive at the SAME decision above, and none of them touches the controller.
 fn arrival_holder_run_liveness(run_id: String) -> DurableHoldHolderLiveness {
   match github_rest(
     call: token =>
@@ -207,19 +208,11 @@ fn arrival_holder_run_liveness(run_id: String) -> DurableHoldHolderLiveness {
       )
   ) {
     RestAnswered { answer: got } =>
-      arrival_liveness_from_status_text(
-        run_id: run_id,
-        status_text: Present { value: workflow_run_status_wire_label(status: got.run.status) }
-      )
-    // A REFUSAL IS UNOBSERVABLE, WITH ITS OWN NAME IN THE CAUSE: an absent or empty token, a 401/403, a
-    // 404 for a run that never was, and a transport failure all refuse the recovery and none of them may
-    // take the slot -- and none of them touches the controller.
-    RestRefused { refusal } =>
-      HolderLivenessUnobservable {
-        cause: join(
-          ["holder run ", run_id, "'s status could not be read: ", rest_refusal_text(o: refusal)], ""
-        ) as NonEmptyStr
-      }
+      arrival_liveness_from_status(run_id: run_id, observed: Present { value: got.run.status })
+    // A REFUSAL IS UNOBSERVABLE: an absent or empty token, a 401/403, a 404 for a run that never was, and a
+    // transport failure all refuse the read -- the decision gets no status at all -- and none of them may take
+    // the slot, and none of them touches the controller.
+    RestRefused { refusal: _ } => arrival_liveness_from_status(run_id: run_id, observed: Absent)
   }
 }
 
@@ -243,6 +236,7 @@ fn arrival_archive_slot_recover_dead_holder(
   holder: DurableHoldOwnerRef,
   generation: CasGeneration,
   self_run_id: String,
+  live_reader: fn(String) -> DurableHoldHolderLiveness,
 ) -> ArrivalArchiveSlotRecovery
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
@@ -267,7 +261,7 @@ fn arrival_archive_slot_recover_dead_holder(
           holder: holder,
           generation: generation,
           released_by: join(["arrival-recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef,
-          live_owner: h => arrival_holder_run_liveness(run_id: run_id),
+          live_owner: h => live_reader(run_id),
         ) {
           FileHoldDeadHolderRecovered { dead_holder: d, evidence: e } =>
             ArrivalArchiveSlotRecovered { holder_run_id: run_id, evidence: e }
@@ -310,12 +304,13 @@ fn arrival_archive_slot_acquire(
   subject: ArrivalSubjectAdmitted,
   owner: DurableHoldOwnerRef,
   self_run_id: String,
+  live_reader: fn(String) -> DurableHoldHolderLiveness,
 ) -> ArrivalArchiveSlotAcquire {
   let key = arrival_slot_key(subject_wire: subject.wire)
   match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
     FileHoldOccupied { slot_key: k, holder: h, generation: g } =>
       match arrival_archive_slot_recover_dead_holder(
-        root: root, subject: subject, holder: h, generation: g, self_run_id: self_run_id,
+        root: root, subject: subject, holder: h, generation: g, self_run_id: self_run_id, live_reader: live_reader,
       ) {
         ArrivalArchiveSlotRecovered { holder_run_id: _, evidence: _ } =>
           match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
