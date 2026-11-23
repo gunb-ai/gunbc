@@ -1,6 +1,8 @@
 module gunbc.v1.v1_deletion_plan
 
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.rung_drop { RungDrop }
+import gunbc.rung_drop.rest_body_undecodable_third_splice_form { rest_body_undecodable_third_splice_form }
 
 // COMPACT V1 EXIT MODEL (operator verdict 2026-07-28, retiring this file's second-mutable-roadmap
 // role). This file owns exactly one thing: the identity and meaning of the four v1 finish lines and
@@ -88,19 +90,16 @@ fn v1_finish_lines_accepted_count(accepted: List<RoadmapNodeId>) -> Int {
 // account of which, and of what the replacement does NOT cover. A row names the gap, or it states
 // that none was identified; it never reads "replaced" for a weaker control without saying so.
 type V1TestMigrationDisposition
-  = ReplacedByWitness {
-      witness_module: String,
-      witness_functions: List<String>,
-      coverage_gap: V1CoverageGap,
-    }
+  = ReplacedByWitness { coverage_gap: V1CoverageGap }
 
 // What a replacement does not cover, as a status and not as prose. PortedByReadingEmittedTextOnly: the
 // witness's needles were ported by reading the Rust assertions, not proved equivalent by a mutation
 // control, and it reads emitted Rust text only. WeakerThanRustTest: a guarantee was lowered; the typed
-// declaration is the named gunbc.rung_drop row.
+// declaration is the typed gunbc.rung_drop row, held as a resolved import. The witnesses of a row are named
+// once, by the #-markers above it, which reference_check resolves; no second copy is kept in a field.
 type V1CoverageGap
   = PortedByReadingEmittedTextOnly
-  | WeakerThanRustTest { rung_drop: String }
+  | WeakerThanRustTest { rung_drop: RungDrop }
 
 type V1MigratedTestModule {
   rust_module: String
@@ -117,8 +116,6 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
     V1MigratedTestModule {
       rust_module: "sort_by_decorate_once_test",
       disposition: ReplacedByWitness {
-        witness_module: "test.claim.sort_by_decorate_once",
-        witness_functions: ["w_sort_by_decorates_once_sorts_stored_key_and_undecorates_test", "w_sort_by_does_not_apply_the_selector_inside_the_comparator_test"],
         coverage_gap: PortedByReadingEmittedTextOnly,
       },
     },
@@ -127,8 +124,6 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
     V1MigratedTestModule {
       rust_module: "grounded_shared_carrier_wrap_test",
       disposition: ReplacedByWitness {
-        witness_module: "test.claim.grounded_shared_carrier_wrap",
-        witness_functions: ["w_grounded_empty_is_shared_once_test", "w_grounded_empty_is_never_shared_twice_test"],
         coverage_gap: PortedByReadingEmittedTextOnly,
       },
     },
@@ -139,9 +134,7 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
     V1MigratedTestModule {
       rust_module: "rest_body_undecodable_emitted_cause_test",
       disposition: ReplacedByWitness {
-        witness_module: "test.claim.rest_body_undecodable_emitted_cause",
-        witness_functions: ["w_rest_body_undecodable_causes_are_declared_side_constants_test", "w_rest_body_undecodable_cause_never_splices_the_runtime_error_test"],
-        coverage_gap: WeakerThanRustTest { rung_drop: "gunbc.rung_drop.rest_body_undecodable_third_splice_form" },
+        coverage_gap: WeakerThanRustTest { rung_drop: rest_body_undecodable_third_splice_form },
       },
     },
     // #test.claim.unknown_pipeline_driver_refusal::w_unrecognised_driver_reading_refuses_and_names_the_reading_test
@@ -149,8 +142,6 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
     V1MigratedTestModule {
       rust_module: "unknown_pipeline_driver_refusal_test",
       disposition: ReplacedByWitness {
-        witness_module: "test.claim.unknown_pipeline_driver_refusal",
-        witness_functions: ["w_unrecognised_driver_reading_refuses_and_names_the_reading_test", "w_unrecognised_driver_does_not_render_the_direct_ingest_main_test"],
         coverage_gap: PortedByReadingEmittedTextOnly,
       },
     },
