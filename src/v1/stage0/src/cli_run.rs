@@ -16704,7 +16704,10 @@ mod panic_payload_kind_tests {
         // `&'static str`: the string arm, its text preserved -- NOT mislabelled non-string.
         let (text, kind) = classify_claim_panic(caught_str.expect_err("&'static str must unwind"));
         assert_eq!(kind, PanicPayloadKind::StringPayload);
-        assert_eq!(text, "a borrowed message", "the borrowed-str text is preserved");
+        assert_eq!(
+            text, "a borrowed message",
+            "the borrowed-str text is preserved"
+        );
         assert_eq!(kind.token(), "string_payload");
 
         // `String`: the string arm, its text preserved.
