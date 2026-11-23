@@ -3345,6 +3345,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "The daily workspace shows only what the tree at its revision supports."),
     ),
     roadmap_node(
+      identity: "rn_Y2N706Z00ETP0V247F1XECBY0B",
+      id: "acceptance-recorder-exits-zero-writing-only-to-a-tmp-snapshot",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
+      line: ticket(t: fields(
+        headline: "The acceptance recorder's exit status says whether the event bytes reached the canonical log",
+        boundary: "Measured by royal-newt-240 (run 02:17:11Z, GUNBC_EXIT=0 HEAVYSLOT_EXIT=0): roadmap_acceptance_record_cli exited 0 with output lines `started Filesystem.Write /tmp/gunbc-roadmap-event-snapshot.<id>/events/<node>/<hex>.json (986 bytes)` and its operations twin; the canonical paths then read exit 2 No such file or directory, a find over /opt for the two file names returned nothing, and the snapshot directory was gone. Blast radius measured: the /opt/gunbc/roadmap-events/events/ node directories are all dated Oct 13 03:29 and the newest .json under either log is 2026-10-23 13:18, about a month of acceptances claimed with exit 0 and none durable. A recorder that reports success while its only writes land in a temporary snapshot is a zero that means unknown, in the tool that decides whether work is done. Two readings are NOT chosen between: a promotion defect, or promotion by design in a separate carrier-sync step that has never run. The row is about the exit status either way; under the second reading the repair is an honest refusal plus a documentation line, not a write-back. Boundary: where the event bytes must end up and what exit status means. Not the receipt grammar, not the digest computation, and not the carrier sync policy, which is the operator's carrier item. Distinct from acceptance-recorder-entry-resolves-on-main, which is about the entry resolving at all.",
+        displaced_cost: "Work is reported accepted and nothing durable records it, so acceptances vanish and the loss is found only by reading the log directory.",
+        first_slice: "One executed claim under dag/test/claim/roadmap/ runs the recorder against a scratch canonical log directory with a grammar-valid receipt line, then asserts both files exist at the canonical paths afterwards, not that the run exited 0 and not that a Filesystem.Write line appeared.",
+        red_control: "OPEN: red_at and green_at are not yet named as commits. Already red on main (royal-newt-240, executed): with a scratch canonical log, the recorder exits 0 and the canonical path listing is empty, with Filesystem.Write lines naming /tmp/gunbc-roadmap-event-snapshot.*. Green is either promotion into the canonical path, or a non-zero exit with a diagnostic naming the snapshot; exit 0 with an empty canonical log is never green. The probe captures the exit status AND the canonical listing.",
+        out_of_scope: "The unresolvable witness module of #16914, the roadmap_model.dag four-positional-argument resolve error, and the required-check witnesses row.",
+        handback: "The executed claim with its red run on main and its green run, the reading chosen (promotion defect or promotion by design) with its evidence, and the exit-status contract."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "A claim in the required population passes or is named as failing."),
+    ),
+    roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
       id: "list-append-refuses-an-element-argument",
       owner: "compiler-guarantee",
