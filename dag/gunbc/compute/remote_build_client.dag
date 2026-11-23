@@ -297,6 +297,7 @@ fn remote_build_try_host(context: FleetSshExecutionContext, request: RemoteBuild
                     SessionCompleted { exit_code: e, stdout: o, stderr: er } =>
                       remote_build_answer_from_exit(exit_code: e, stdout: o, stderr: er)
                   }
+                }
           }
       }
   }
