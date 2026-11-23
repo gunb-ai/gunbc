@@ -4219,7 +4219,7 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
 // necessary by the srv1 apply run 45102946243, which refused with 'the host's dashboard instance could
 // not be resolved' because the roster door had no row to find.
 fn compute_recover_catalog_serving_cli(host: String) -> CliWireResponse {
-  if !any(remote_build_serving_hosts(), h => h as String == host) {
+  if !remote_build_serving_host_admitted(host: host) {
     CliWirePrintable {
       bytes: join([recover_catalog_words().line_prefix, " unknown: ", host, " is not a remote-build serving host\n"], ""),
       exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the host is not one the remote-build program serves" }
@@ -4230,7 +4230,7 @@ fn compute_recover_catalog_serving_cli(host: String) -> CliWireResponse {
 }
 
 fn compute_recover_serving_cli(host: String, reference: String, receipt_path: String) -> ProcessExit {
-  if !any(remote_build_serving_hosts(), h => h as String == host) {
+  if !remote_build_serving_host_admitted(host: host) {
     ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["compute-recover: ", host, " is not a remote-build serving host"], "") }
   } else {
     recover_attempt_response(instance: remote_build_serving_instance(host: host as HostIdentity), reference: reference, receipt_path: receipt_path)
@@ -4238,7 +4238,7 @@ fn compute_recover_serving_cli(host: String, reference: String, receipt_path: St
 }
 
 fn compute_recover_readback_serving_cli(host: String, reference: String) -> CliWireResponse {
-  if !any(remote_build_serving_hosts(), h => h as String == host) {
+  if !remote_build_serving_host_admitted(host: host) {
     CliWirePrintable {
       bytes: recover_readback_unknown_line(detail: join([host, " is not a remote-build serving host"], "")),
       exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the host is not one the remote-build program serves" }
@@ -4246,6 +4246,13 @@ fn compute_recover_readback_serving_cli(host: String, reference: String) -> CliW
   } else {
     recover_readback_response(instance: remote_build_serving_instance(host: host as HostIdentity), reference: reference)
   }
+}
+
+// WHICH HOSTS THE REMOTE-BUILD PROGRAM SERVES, asked once. The three serving doors share this one
+// admission; the roster itself (gunbc.compute.remote_build_hosts remote_build_serving_hosts) stays
+// the only decider of the answer.
+fn remote_build_serving_host_admitted(host: String) -> Bool {
+  any(remote_build_serving_hosts(), h => h as String == host)
 }
 
 // THE ONE DECLARED TABLE OF THE RECOVERY DOORS' EXIT CODES. The recovery doors — the recovery door
