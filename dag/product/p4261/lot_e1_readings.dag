@@ -502,8 +502,9 @@ data lot_e1_c_after_removal_resistances: List<ResistanceObservation> = [
 // AFTER THE NEW B WAS FITTED: one reading, A's end 2 to B's end 2, which runs through A and the new B in
 // series by their shared end 1s, 11 ohm displayed. The untouched S/N 1583323120218 reads 12 ohm on the same
 // pair, and A alone here read 5.1 ohm against a 1 ohm probes-together value, so 11 ohm is A plus a 4.7 ohm
-// part plus the probes, within a few ohm: the new part is in circuit at both ends. It is the one reading
-// asked for before the board is powered again (strategy.fleet_decisions gh200-bench-reading-economy).
+// part plus the probes, within a few ohm. The path runs through B1's joint by the long trace; B2's joint is
+// in it only if the probe sat on B2's pad or trace rather than the new part's end cap, which was not said.
+// The two gates read to each other, which runs through both joints, is the reading still owed.
 data c_after_fit_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-23", verbatim: "the repair on B1/B2 worked - at least reading A2 -> B2 reads 11ohm" }
 
 data lot_e1_c_after_fit_resistances: List<ResistanceObservation> = [
