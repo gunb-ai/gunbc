@@ -13,7 +13,7 @@ module test.claim.roadmap.roadmap_pull_request_merge_witness
 // each plant is paired with the case that PASSES the same law — the refusal is shown to be about the fact,
 // not about the shape of the test.
 
-import std.types { Bool, String, List, NonEmptyStr, Optional, Present, Absent }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.algebra { string_contains }
 import std.content_hash { content_hash_atom, Fnv1a64Structural }
 import gunbc.principal_projection { PrincipalRef }

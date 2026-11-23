@@ -52,7 +52,7 @@ import test.claim.fabric.fabric_storage_fixture { fabric_fixture_instance }
 import test.claim.roadmap.roadmap_red_control_tree_witness {
   line_spelling, pair_members, pair_url, pair_head,
 }
-import std.string { join, string_contains }
+import std.algebra { string_contains }
 
 // THE NODE THE PINNED LINE SPEAKS OF. line_spelling is imported from the tree witness rather than
 // re-spelled here, so the bytes under test are the bytes that witness already pins the readers against —
