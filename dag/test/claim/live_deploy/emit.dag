@@ -126,7 +126,7 @@ import gunbc.live_deploy.retract_legs {
   RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
 }
 import extdeps.tailscale.serve { tailscale_serve_off_argv }
-import std.algebra { non_empty_to_list }
+import std.algebra { Cons, Empty, non_empty_to_list }
 import gunbc.live_deploy.emit {
   live_deploy_belt_credential_recovery_timer_unit_file,
 }
@@ -649,8 +649,11 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
 // "refuses" while its legs were already being built -- not conservatism, since no script honoured the refusal,
 // but a second, quieter representation of the same step. It was transcribing
 // #gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10, superseded on 2026-11-21 by
-// #gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, which also
-// records that the unit was never a DATABASE endpoint -- the thing the arm's wording leaned on.
+// #gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, which puts
+// the endpoint's OWN unit back in the membership. What this row pins is the agreement between the disposition
+// and the legs, and it does not care which decision on the ledger put the unit there; the provenance of the
+// supersession -- operator answer in 11-10, defaulted escalation in 11-21 -- is stated once, in
+// #gunbc.live_deploy.spec::owned_artifact_teardown_disposition, and is not repeated here to drift from it.
 //
 // WHICH HALF IS WRONG IS NOT THE INTERESTING HALF. The disposition is total over OwnedArtifactKind precisely
 // so a kind cannot inherit an answer by omission, so the repair is to state `TeardownActs` out loud, not to
@@ -674,11 +677,22 @@ test fn the_fabric_storage_unit_teardown_acts_where_its_retract_legs_act() -> Bo
     TeardownRefuses { cause: _ } => false
   }
   let legs_act = match deploy_retract_artifact_plan(art: unit_step, spec: spec) {
-    RetractPlanReady { legs: ls } =>
-      string_contains(
-        s: join(ls |> map(l => retract_leg_text(leg: l)), "\n"),
-        pattern: join(["disable-if-loaded ", deployment_fabric_storage_unit_name(names: spec.names) as String], ""),
-      )
+    // THE TYPED SEQUENCE, NOT A RENDERING: the plan is exactly three legs, in the order the script runs them
+    // -- disable this unit, remove this path and nothing else, reload the manager. A needle on the rendered
+    // disable leg would still pass a retract that left the fragment on disk, or never told systemd, or disabled
+    // somebody else's unit; a teardown that "acts" only halfway is the same class of bug this row exists for.
+    RetractPlanReady { legs: ls } => match ls {
+      Cons {
+        head: RetractDisableIfLoaded { unit: disabled },
+        tail: Cons {
+          head: RetractRemoveForce { paths: removed },
+          tail: Cons { head: RetractDaemonReload, tail: Empty },
+        },
+      } =>
+        (disabled as String) == (deployment_fabric_storage_unit_name(names: spec.names) as String)
+          && join(non_empty_to_list(xs: removed) |> map(p => p as String), "|") == (unit_step.path as String)
+      _ => false
+    }
     RetractPlanRefused { step: _, reason: _ } => false
   }
   disposition_acts && legs_act
