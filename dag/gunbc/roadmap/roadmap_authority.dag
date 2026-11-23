@@ -5863,6 +5863,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
     roadmap_node(
+      identity: "rn_YTGNRT7FAP4G13E0W9JXDECQ4Y",
+      id: "generated-artifact-gate-red-at-main",
+      owner: "generated-artifact",
+      carriers: carrier(path: "dag/gunbc/instruments/generated_artifact_gate.dag"),
+      line: ticket(t: fields(
+        headline: "The generated-artifact drift gate is red at main with eight drifted paths",
+        boundary: "At main 91d657a62d72 (and at the head of gunbc#16950, 53ad50a2d8c5, with the identical list) the generated-artifact gate exits 1 on eight paths, each reported as committed content that differs from authority: .github/workflows/fleet-converge.yml, .github/workflows/heal.yml, four fixtures/roadmap_authority/events/ files (scenario-accepted 01-acceptance, scenario-superseded 01-acceptance, 02-revocation and 03-retired, scenario-absent-node 01-acceptance) and provisioning/srv14/gunbc-ghrunner.sudoers. DESIGN.md is read by the gate and is not in the list. Reported by jolly-lark-58, observed on srv1 on 2026-11-23 with the command: target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main, run from a checkout of the tree with gunbc built from that same tree. Not established: whether the drift predates 91d657a62d72 or is a fixture/binary mismatch in that observation.",
+        displaced_cost: "A gate that is red at main on every checkout cannot tell a change that drifts a projection from one that does not, so authors either ignore it or regenerate by hand without knowing which of the eight their change moved.",
+        first_slice: "Establish the cause before any regeneration: run the same command at the parent of 91d657a62d72 and at one earlier revision with a binary built from each tree, record per path whether the drift is present, and name the first revision at which each path drifts or that the observation is a binary/fixture mismatch. Then regenerate through generated_artifact_gate main_wet only the paths the cause says are genuinely drifted.",
+        red_control: "OPEN: no executed pair is recorded. The red observation is the eight-path output at 91d657a62d72 cited above; the green is the same command exiting 0 at a named later revision, recorded as data when it exists.",
+        out_of_scope: "Editing any generated file by hand, and changing the gate's comparison. The required job's membership.",
+        handback: "Return the cause per path, the revisions compared, the regeneration (or the finding that none is owed) and the green run of the gate at the resulting revision."
+      )),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
+    ),
+    roadmap_node(
       identity: "rn_BJ10YHEPG9ESNJ7YV7VD9KWYTF",
       id: "compiler-identity-invariant-under-corpus-commit",
       owner: "v1-performance",
