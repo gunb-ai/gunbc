@@ -99,6 +99,9 @@ type V1MigratedTestModule {
   disposition: V1TestMigrationDisposition
 }
 
+// A DOCUMENT FOR A PERSON. The retention wall (v2.test.claim.manual.test_migration_debt) does not read
+// these rows; it judges the Rust side only. The sole machine reader is the optional row-rot claim
+// test.claim.v1_test_migration_dispositions, which the node does not require.
 fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
   [
     V1MigratedTestModule {
