@@ -2165,8 +2165,19 @@ fn microvm_controller_stage_tarball_path(stage: String) -> String {
   join([stage, "/", firecracker_release_tarball_filename(rel: microvm_controller_firecracker_release)], "")
 }
 
+// THE MICROVM SIBLING-WRITER FOOTPRINT AT THE RELEASE LOCUS: the members a locus-root readback must
+// tolerate because a leg OTHER than the tree install writes them here. Names are declared once here,
+// the microvm locus writer's home, so the readback derives its permitted set from them rather than a
+// free-standing list. .gunbc-vmm-receipt is the vmm receipt; images/ holds the guest images;
+// firecracker/jailer are the pinned vmm binaries; the two workspace-commissioning members are named by
+// the executor unit module. The tree install owns dag/, src/v2/, gunbc and its own receipt; none of
+// these are the installer's, so they are permitted (their writer owns their postconditions), never
+// authorized in another locus.
+data microvm_controller_vmm_receipt_name: String = ".gunbc-vmm-receipt"
+data microvm_controller_images_dir_name: String = "images"
+
 fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> String {
-  join([microvm_controller_release_dir(revision: revision), "/.gunbc-vmm-receipt"], "")
+  join([microvm_controller_release_dir(revision: revision), "/", microvm_controller_vmm_receipt_name], "")
 }
 
 // THE SLOT UNIT IS RENDERED HERE WITH THE SPAWN ROOT ADDED, because the env row and the locus

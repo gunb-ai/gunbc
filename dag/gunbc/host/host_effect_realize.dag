@@ -133,7 +133,7 @@ import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, rel
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
-import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
+import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path, device_crypto_deployed_digest_env_file_name, microvm_controller_vmm_receipt_name, microvm_controller_images_dir_name }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
@@ -579,6 +579,7 @@ import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_dropin_body, deploy_sudoers_i
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_owner, microvm_controller_root, microvm_receipt_store_path,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
+  microvm_controller_vmm_name, microvm_controller_jailer_name,
   microvm_controller_slice_unit_file, microvm_controller_slice_unit_path,
   microvm_slot_unit_path, microvm_slot_reserve_unit_path,
   microvm_controller_slice_unit_name, microvm_slot_unit_template_name,
@@ -6241,6 +6242,7 @@ fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: Release
     locus: release_locus_record(base_root: base_root, revision: revision),
     source_root: source_root,
     executables: approval_broker_release_locus_executables,
+    permitted_extras: approval_broker_sibling_writer_footprint(),
     transport: one_transport_route(transport: transport),
   ) {
     TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
@@ -6895,29 +6897,53 @@ fn tree_walk_root_expectation_owned(subdirs: List<String>, owner: PosixOwnerName
   }
 }
 
-// THE LOCUS-ROOT CONTAINMENT FILTER, the one place the containment rule is stated. The tree install's
-// readback establishes only what the tree install writes, so at the locus-root level the comparison is
-// containment: keep only the observed entries whose path is an expected one (a subtree-root directory,
-// a walk-root path, or a release executable), so entries placed by OTHER deploy legs -- firecracker,
-// images/, .gunbc-vmm-receipt, device-crypto-deployed-digest.env -- are tolerated, while a missing or
-// wrong-metadata tree-install entry still survives into the comparison and is refused. Consumed by
-// tree_locus_agreement, the single comparison authority; within dag/ and src/v2/ (which the tree
-// install owns entirely) that authority uses full set agreement, not this filter.
-fn tree_locus_children_contained(
+// THE LOCUS-ROOT PARTITION, the one place the rule is stated. An observed entry at the locus root or
+// under a walk parent falls into exactly one of three classes:
+//   - expected: its path is an expected locus-root path (a subtree-root directory or a release
+//     executable) or a walk-root path -> required, and it goes into the full metadata comparison;
+//   - permitted: its path is a modeled sibling-writer footprint OF THIS LOCUS, or the installer's own
+//     receipt -> tolerated, because that writer owns its postconditions; it is dropped from comparison;
+//   - unexpected: anything else -> the readback REFUSES by naming it.
+// The permitted set is passed in per locus from the modeled writer footprints -- never a global
+// basename list, owner switch, or wildcard -- so broker and microvm exceptions cannot authorize a
+// name in the helper locus, which is given only the receipt. A stray file under a walk parent (a
+// sibling of the src/v2 walk root) is unexpected and refused, not silently dropped.
+type TreeLocusChildrenPartition {
+  kept: List<TreeMetadataEntry>
+  refusal: Optional<String>
+}
+
+fn tree_locus_children_partition(
   locus_children_expected: List<TreeMetadataEntry>,
   walk_root_expected: List<TreeMetadataEntry>,
+  permitted_extras: List<String>,
   observed: List<TreeMetadataEntry>,
-) -> List<TreeMetadataEntry> {
+) -> TreeLocusChildrenPartition {
   let expected_paths = flat_map(concat(locus_children_expected, walk_root_expected), e => [e.path])
-  filter(observed, e => any(expected_paths, p => p == e.path))
+  let permitted_paths = concat(permitted_extras, [release_locus_tree_receipt_name])
+  let is_expected = e => any(expected_paths, p => p == e.path)
+  let is_permitted = e => any(permitted_paths, p => p == e.path)
+  // The compared set is ONLY the expected rows: a permitted sibling-writer entry (or the receipt) is
+  // neither refused NOR compared -- that writer owns its postconditions -- so it must not reach the
+  // observed side of tree_metadata_disagreement, which refuses any row with no expected counterpart.
+  let kept = filter(observed, e => is_expected(e))
+  let unexpected = filter(observed, e => !is_expected(e) && !is_permitted(e))
+  match unexpected {
+    Cons { head: e, tail: _ } =>
+      TreeLocusChildrenPartition {
+        kept: kept,
+        refusal: Present { value: join(["unexpected entry ", e.path, " at the locus root: it is neither part of the tree install nor declared by a writer of this locus"], "") },
+      }
+    Empty => TreeLocusChildrenPartition { kept: kept, refusal: Absent }
+  }
 }
 
 // THE FULL TREE AGREEMENT: the single comparison authority that the production readback calls.
-// It merges the source-walk expectation with the locus-children, walk-root, and spine expectations,
-// applies the containment filter (tree_locus_children_contained) to the locus-children entries so
-// extras from other legs are tolerated, keeps full set agreement on the source-walk entries within
-// dag/ and src/v2/ and the spine self-metadata, and calls tree_metadata_disagreement ONCE on the
-// merged pair.
+// It partitions the locus-children observation (tree_locus_children_partition) against the per-locus
+// permitted set, refusing by name on any unexpected entry, and -- only when nothing unexpected is
+// present -- merges the source-walk, locus-children, walk-root, and spine expectations and calls
+// tree_metadata_disagreement ONCE on the merged pair. Within dag/ and src/v2/ (which the tree install
+// owns entirely) agreement is the full set comparison, not containment.
 fn tree_locus_agreement(
   source_expected: List<TreeMetadataEntry>,
   source_observed: List<TreeMetadataEntry>,
@@ -6926,15 +6952,22 @@ fn tree_locus_agreement(
   walk_root_expected: List<TreeMetadataEntry>,
   spine_expected: List<TreeMetadataEntry>,
   spine_observed: List<TreeMetadataEntry>,
+  permitted_extras: List<String>,
 ) -> Optional<String> {
-  let locus_filtered = tree_locus_children_contained(
+  let partition = tree_locus_children_partition(
     locus_children_expected: locus_children_expected,
     walk_root_expected: walk_root_expected,
+    permitted_extras: permitted_extras,
     observed: locus_children_observed,
   )
-  let merged_expected = concat(concat(concat(source_expected, locus_children_expected), walk_root_expected), spine_expected)
-  let merged_observed = concat(concat(source_observed, locus_filtered), spine_observed)
-  tree_metadata_disagreement(expected: merged_expected, observed: merged_observed)
+  match partition.refusal {
+    Present { value: why } => Present { value: why }
+    Absent =>
+      tree_metadata_disagreement(
+        expected: concat(concat(concat(source_expected, locus_children_expected), walk_root_expected), spine_expected),
+        observed: concat(concat(source_observed, partition.kept), spine_observed),
+      )
+  }
 }
 
 // THE EXPECTED METADATA FOR SPINE AND LOCUS: every spine directory and the locus itself must be a
@@ -7040,11 +7073,13 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 // OBSERVE THE DIRECT CHILDREN OF THE LOCUS: one maxdepth-1 find on the locus itself. This
 // establishes the metadata (kind, mode, owner) of every entry the install writes at the locus
 // root: the subtree-root directories (dag, src), intermediate directories (src, visible as a
-// child of the locus), the executables, and the receipt. The comparison is a CONTAINMENT CHECK:
-// every expected entry must be present with correct metadata, but entries NOT in the expected
-// set (placed by other deploy legs that run after the tree install — firecracker, images/, the
-// VMM receipt, device-crypto-deployed-digest.env, etc.) are tolerated. Without containment,
-// a rerun over an existing locus (where earlier-leg output persists) would brick the deploy.
+// child of the locus), the executables, and the receipt. The observation is deliberately UNFILTERED
+// -- it returns every direct child -- and the per-locus partition (tree_locus_children_partition)
+// is the single authority that decides what is required (installer-expected, fully checked),
+// permitted (entries another writer declared AT THIS LOCUS, plus the installer's own receipt, both
+// dropped from comparison), or REFUSED BY NAME (anything else). Refusing the unexpected is what keeps
+// a wrong-owner helper file, a stray sibling, or a setuid binary at the locus root from passing; the
+// per-locus permitted set (never a global basename list) is what keeps a legitimate later-leg sibling
 //
 // OBSERVE EACH WALK-ROOT PARENT: for multi-component subs (e.g. "src/v2"), the walk root itself
 // (src/v2) is a child of src, not of the locus. A maxdepth-1 walk on the parent (locus/src)
@@ -7082,7 +7117,7 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
 }
 
 // OBSERVE THE SELF-METADATA OF EACH PATH (spine directories and the locus). Each path is
-// observed with find -maxdepth 0 -printf in the six-field self format. The parsed entry
+// observed with find -maxdepth 0 -printf in the seven-field self format. The parsed entry
 // gets its path from the caller. All paths must parse successfully or the observation fails.
 fn observe_directory_self_entries(paths: List<String>, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
   fold(paths, init: TreeMetadataObserved { entries: [] }, f: (acc, p) =>
@@ -7291,12 +7326,35 @@ fn approval_broker_tree_install(
   locus: ReleaseLocus,
   source_root: String,
   executables: List<String>,
+  permitted_extras: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   tree_install_in_realm(
     realm: TreeInstallElevated { owner: owner }, spine: locus.spine, locus: locus.locus, source_root: source_root,
-    revision: locus.revision, executables: executables, transport: transport,
+    revision: locus.revision, executables: executables, permitted_extras: permitted_extras, transport: transport,
   )
+}
+
+// THE PER-LOCUS SIBLING-WRITER FOOTPRINTS, the modeled set of members a leg OTHER than the tree
+// install drops at each release locus, so the readback tolerates exactly those (and the installer's
+// own receipt) and refuses everything else by name. Each is the list of that leg's modeled member
+// declarations -- never a basename list shared across loci, never a wildcard, never an owner switch.
+// A name permitted in one locus authorizes nothing in another: the helper snapshot and the staged
+// baked release hold only what the tree install writes, so they are given the empty footprint and any
+// extra (a stray file, or even a broker/microvm name) is refused there.
+fn approval_broker_sibling_writer_footprint() -> List<String> {
+  [device_crypto_deployed_digest_env_file_name]
+}
+
+fn microvm_controller_sibling_writer_footprint() -> List<String> {
+  [
+    microvm_controller_vmm_receipt_name,
+    microvm_controller_images_dir_name,
+    microvm_controller_vmm_name,
+    microvm_controller_jailer_name,
+    workspace_executor_helper_name,
+    workspace_executor_script_name,
+  ]
 }
 
 // THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
@@ -7310,6 +7368,7 @@ fn tree_install_in_realm(
   source_root: String,
   revision: ReleaseRevisionBinding,
   executables: List<String>,
+  permitted_extras: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   match revision {
@@ -7331,7 +7390,7 @@ fn tree_install_in_realm(
                 approval_broker_tree_install_observed(
                   realm: realm, spine: spine, source_root: source_root, locus: locus,
                   revision: revision, source: sort_tree_file_hashes(entries: source), source_metadata: source_entries,
-                  executables: executables, transport: transport,
+                  executables: executables, permitted_extras: permitted_extras, transport: transport,
                 )
             }
           }
@@ -7452,6 +7511,7 @@ fn approval_broker_tree_install_observed(
   source: List<TreeFileHash>,
   source_metadata: List<TreeMetadataEntry>,
   executables: List<String>,
+  permitted_extras: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, realm: realm, path: d, transport: transport))
@@ -7527,6 +7587,7 @@ fn approval_broker_tree_install_observed(
                                                   walk_root_expected: walk_root_expected,
                                                   spine_expected: spine_expected,
                                                   spine_observed: spine_observed,
+                                                  permitted_extras: permitted_extras,
                                                 ) {
                                                   Present { value: why } =>
                                                     TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
@@ -7912,6 +7973,7 @@ fn dark_helper_snapshot_at(locus: HelperLocus, tree: ReleaseLocus, source_root: 
         locus: tree,
         source_root: source_root,
         executables: [gunbc_release_bin_name],
+        permitted_extras: [],
         transport: one_transport_route(transport: transport),
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
@@ -7969,6 +8031,7 @@ fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
     locus: release_locus_record(base_root: base_root, revision: i.revision),
     source_root: i.source_root,
     executables: approval_broker_release_locus_executables,
+    permitted_extras: approval_broker_sibling_writer_footprint(),
     transport: one_transport_route(transport: i.transport),
   ) {
     TreeInstallRefused { step: ts, reason: r } =>
@@ -11717,6 +11780,7 @@ fn realize_microvm_controller_install_on_host(
                     locus: release_locus_record(base_root: microvm_controller_root, revision: revision),
                     source_root: source_root,
                     executables: [gunbc_release_bin_name],
+                    permitted_extras: microvm_controller_sibling_writer_footprint(),
                     transport: transport,
                   ) {
                     TreeInstallConverged { installed_digest: digest, files_installed: files } =>
