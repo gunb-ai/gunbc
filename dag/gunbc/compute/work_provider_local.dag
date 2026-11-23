@@ -79,7 +79,7 @@ import gunbc.compute.attempt_lifecycle {
   compute_pre_launch_ceiling_seconds,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, dashboard_instance_for_repo_root, DashboardInstanceResolved, DashboardInstanceRootUnknown,
@@ -4214,7 +4214,8 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
 // gunbc.compute.remote_build remote_build_serving_instance(host) — the same object the serving setup
 // and the seat charge already use, which is what puts the seat census in the very compute root the
 // serve route charged (/home/<account>/.local/share/... under the serving account). These entries are
-// THIN and decide NOTHING: the host must be one remote_build_serving_hosts() admits, the instance is
+// THIN and decide NOTHING: the host must be one the serving route is PROVISIONED on (the candidate row,
+// remote_build_host_is_serving_candidate — never the dispatch gate), the instance is
 // minted by the model, and every verdict comes from the shared bodies the roster doors use. Proven
 // necessary by the srv1 apply run 45102946243, which refused with 'the host's dashboard instance could
 // not be resolved' because the roster door had no row to find.
@@ -4248,11 +4249,18 @@ fn compute_recover_readback_serving_cli(host: String, reference: String) -> CliW
   }
 }
 
-// WHICH HOSTS THE REMOTE-BUILD PROGRAM SERVES, asked once. The three serving doors share this one
-// admission; the roster itself (gunbc.compute.remote_build_hosts remote_build_serving_hosts) stays
-// the only decider of the answer.
+// IS THE SERVING ROUTE PROVISIONED ON THIS HOST, asked once. The three serving doors share this one
+// admission, and it keys on the CANDIDATE row (gunbc.compute.remote_build_hosts
+// remote_build_host_is_serving_candidate), NOT on the dispatch gate remote_build_serving_hosts.
+// The doors read and settle the host's own serving seat home — the bytes the serving route charged —
+// and that home exists wherever the route is provisioned, whatever the host's dispatch standing.
+// Keying on the dispatch gate made the doors refuse the very host the recovery leg exists for: srv1
+// sits off the dispatch gate (its leave note in remote_build_hosts.dag names its RETURN as "the same
+// run that executes the seat-recovery leg"), so a door keyed on the gate refuses the run that is
+// supposed to prove its return — apply run 45218878048 refused exactly there. The dispatch gate stays
+// the sole decider of who serves builds; this asks only whether the home is on this disk.
 fn remote_build_serving_host_admitted(host: String) -> Bool {
-  any(remote_build_serving_hosts(), h => h as String == host)
+  remote_build_host_is_serving_candidate(host: host as HostIdentity)
 }
 
 // THE ONE DECLARED TABLE OF THE RECOVERY DOORS' EXIT CODES. The recovery doors — the recovery door
