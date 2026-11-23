@@ -112,8 +112,8 @@ test fn an_acceptance_recorded_on_a_head_is_accepted_with_no_merge_at_all() -> B
   let acc = acceptance_env(evidence: live_head(), at: "t1")
   let text = roadmap_event_wire_text(env: acc)
   accepted_standing(envs: [acc])
-    && !string_contains(s: text, substring: "merged_at")
-    && string_contains(s: text, substring: "head_sha")
+    && !string_contains(s: text, pattern: "merged_at")
+    && string_contains(s: text, pattern: "head_sha")
 }
 
 // THE MERGE OF THE ACCEPTED HEAD IS ADMITTED — the case every refusal plant below is paired against, so a

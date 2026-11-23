@@ -593,7 +593,7 @@ fn roadmap_acceptance_pr_evidence_from_args(url: String, sha: String) -> Accepta
       pr_url: url_seen as NonEmptyStr, head_sha: sha_seen as NonEmptyStr } }
   }
   else if filled == 0 { Present { value: NoPullRequest } }
-  else { none }
+  else { Absent }
 }
 
 // THE ROW'S PULL-REQUEST FIELDS, each read from the one evidence fact. The empty string is the row's own
