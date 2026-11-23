@@ -151,9 +151,9 @@ fn observe_declared_rank_host_reach(
   declared_rank: Nat,
   peer: NonEmptyStr,
 ) -> DeclaredRankRendezvousReach {
-  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ss_established_to_peer_argv(peer: peer)) {
-  TypedArgvExecOverran { deadline: d } =>
-    DeclaredRankHostReachUnread { host: host, declared_rank: declared_rank, cause: join(["the ss leg did not run: ", typed_argv_exec_overran_reason(leg_hint: "spark rendezvous", deadline: d)], "") }
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: ss_established_to_peer_argv(peer: peer)) {
+    TypedArgvExecOverran { deadline: d } =>
+      DeclaredRankHostReachUnread { host: host, declared_rank: declared_rank, cause: join(["the ss leg did not run: ", typed_argv_exec_overran_reason(leg_hint: "spark rendezvous", deadline: d)], "") }
     TypedArgvExecRefused { reason: why } =>
       DeclaredRankHostReachUnread { host: host, declared_rank: declared_rank, cause: join(["the ss leg did not run: ", why], "") }
     TypedArgvExecConverged { result: r } =>

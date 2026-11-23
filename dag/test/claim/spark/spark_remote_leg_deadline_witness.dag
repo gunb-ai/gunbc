@@ -7,10 +7,22 @@ import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshLegDeadline,
+  ProbeLeg,
+  fleet_leg_wall_deadline,
   fleet_ssh_leg_deadline,
   fleet_ssh_leg_deadline_options,
   fleet_ssh_password_client_options,
 }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
+import gunbc.spark.rendezvous_participation {
+  DeclaredRankHostConnected,
+  DeclaredRankHostReachUnread,
+  DeclaredRankRendezvousReach,
+  declared_rank_host_is_connected,
+  declared_rank_reach_host,
+  declared_rank_reach_line,
+}
+import product.host_identity { HostIdentity }
 import gunbc.spark.model_snapshot_materialize {
   SparkRemoteRun, RemoteRan, RemoteUnreachable,
   LegNotAttempted, LegBeginUnobserved, LegOverran,
@@ -149,4 +161,26 @@ test fn w_an_overran_projects_to_may_have_run_and_never_to_did_not_run() -> Bool
   )
   is_may_have_run(r: overran) && !is_did_not_run(r: overran)
     && !is_begin_unobserved(r: spark_remote_unreachable(u: LegOverran { endpoint: "h", deadline: second(count: 900) }))
+}
+
+// THE RENDEZVOUS NOTICER'S OWN OVERRUN ARM. Nothing else in the corpus imports
+// gunbc.spark.rendezvous_participation -- its only other mention anywhere is prose in a
+// recurring_failure_mode row -- so without this witness the arm that maps an overran ss leg into that
+// file's non-success reading would be typed by nothing and rendered by nothing. It has to be an UNREAD
+// that is never read as connected (a leg that never ran has no population to count, and counting it as
+// zero is what reported a detached rank while the hosts were merely unreachable), and its line has to
+// still carry the ceiling it overran: an unread with no deadline in it is indistinguishable from a host
+// that answered with an empty listing. The positive control beside it is what makes the first assert
+// mean something -- without a reading that IS connected, '!is_connected' is true of everything.
+test fn w_rendezvous_ss_leg_overran_is_unread_and_names_its_ceiling() -> Bool {
+  let h = "host-183527" as NonEmptyStr
+  let cause = join(["the ss leg did not run: ", typed_argv_exec_overran_reason(leg_hint: "spark rendezvous", deadline: fleet_leg_wall_deadline(kind: ProbeLeg))], "")
+  let unread = DeclaredRankHostReachUnread { host: h as HostIdentity, declared_rank: 2, cause: cause }
+  let connected = DeclaredRankHostConnected { host: h as HostIdentity, declared_rank: 2, connections: 3 }
+  !declared_rank_host_is_connected(unread)
+    && declared_rank_host_is_connected(connected)
+    && declared_rank_reach_host(unread) == (h as HostIdentity)
+    && string_contains(s: declared_rank_reach_line(unread), pattern: "connectivity unread")
+    && string_contains(s: declared_rank_reach_line(unread), pattern: "15s wall-clock deadline")
+    && string_contains(s: declared_rank_reach_line(unread), pattern: "process group was killed")
 }
