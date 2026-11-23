@@ -1492,16 +1492,45 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
 // own runner (gunbc.runner.runner_qualification_floor_job).
 data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, FleetKeypairMint, ReviewSheetConverge, QualificationFloor]
 
-// ONLY A DISPATCH BUILDS THE PACK OR RESOLVES A PLAN REVISION. The schedule and push triggers exist for
-// the review-sheet converge alone and carry no inputs, so an inputs.mode test reads empty there: build's
-// `!= mode` chain would be TRUE and plan-revision has no mode test at all. Gating both to dispatches is
-// what makes those two events start that one job and nothing else.
-data fleet_converge_dispatch_event_if: String = serialize_expression(expression: Equals {
+// A DISPATCH OR THE DAILY SCHEDULE BUILDS THE PACK; NOTHING ELSE DOES. The schedule (review_sheet_converge_cron,
+// 06:41 UTC) builds the sixteen-binary pack every day, so the lab's pair delivery always has a built ancestor of
+// main to deliver (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23). A schedule carries no inputs:
+// inputs.mode reads empty, so plan-revision's steps (each gated on a plan-executing mode) do not run and the job is
+// a checkout, its output is empty, and build checks out the event sha (fleet_converge_build_checkout_ref), the
+// default-branch head the schedule fired on, with the sixteen-binary product (no pair mode is set). Every
+// host-actuating job still requires a positive mode match, so a schedule starts no actuation. The push trigger
+// (the review-sheet sources) starts neither job: a push builds nothing.
+data fleet_converge_dispatch_event: Expression = Equals {
   left: ContextAccess { context: Github, path: ["event_name"] },
   right: StringLiteral { value: workflow_dispatch_event_name },
-})
+}
 
-data fleet_converge_build_job_if: String = join(concat([fleet_converge_dispatch_event_if], map(fleet_converge_modes_without_release_pack, m => join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: m), "'"], ""))), " && ")
+data fleet_converge_schedule_event: Expression = Equals {
+  left: ContextAccess { context: Github, path: ["event_name"] },
+  right: StringLiteral { value: schedule_event_name },
+}
+
+data fleet_converge_dispatch_event_if: String = serialize_expression(expression: fleet_converge_dispatch_event)
+
+// plan-revision runs on every event that may reach build, because a job skipped by its own `if` skips build too.
+data fleet_converge_plan_revision_job_condition: Expression = LogicalOr { left: fleet_converge_dispatch_event, right: fleet_converge_schedule_event }
+
+data fleet_converge_plan_revision_job_if: String = serialize_expression(expression: fleet_converge_plan_revision_job_condition)
+
+// build: a dispatch of any mode that consumes the pack, or the schedule.
+data fleet_converge_build_job_condition: Expression = LogicalOr {
+  left: fold(
+    fleet_converge_modes_without_release_pack,
+    init: fleet_converge_dispatch_event,
+    f: (acc, m) => LogicalAnd {
+      left: acc,
+      right: NotEquals { left: ContextAccess { context: Github, path: ["event", "inputs", "mode"] }, right: StringLiteral { value: fleet_converge_workflow_mode_wire(mode: m) } },
+    },
+  ),
+  right: fleet_converge_schedule_event,
+}
+
+data fleet_converge_build_job_if: String = serialize_expression(expression: fleet_converge_build_job_condition)
 
 fn fleet_converge_build_job() -> Job {
   Job {
@@ -1637,7 +1666,7 @@ fn fleet_converge_plan_revision_job() -> Job {
     outputs: Present {
       value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}"))]
     },
-    if_condition: Present { value: fleet_converge_dispatch_event_if },
+    if_condition: Present { value: fleet_converge_plan_revision_job_if },
     timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
     continue_on_error: none,
     concurrency: none,
@@ -8783,10 +8812,10 @@ fn fleet_converge_arrival_converge_job() -> Job {
 }
 
 // ── THE REVIEW SHEETS, CONVERGED WITH NO HUMAN IN THE LOOP (gunbc.review_sheet_federation) ─────
-// Three events reach this job and no other: a dispatch of the mode, the daily schedule, and a push to
-// main touching the sheet sources. A schedule or push carries no inputs, so every other job's mode
-// check is false, and plan-revision and build are gated to dispatches (fleet_converge_dispatch_event),
-// so these two events start this job alone. It is not a required context: nothing on the pull-request
+// Three events reach this job: a dispatch of the mode, the daily schedule, and a push to main touching
+// the sheet sources. A schedule or push carries no inputs, so every other job's mode check is false. A
+// push starts this job alone; the schedule also starts plan-revision and build, which produce the day's
+// release pack (fleet_converge_build_job_condition) and touch no host. It is not a required context: nothing on the pull-request
 // or merge-queue path reads fleet-converge.
 //
 // THE TOKEN IS MINTED BY THE RUN AND LIVES IN ONE STEP'S ENVIRONMENT. The auth step federates through
@@ -8801,7 +8830,9 @@ data review_sheet_converge_writer_token_step_id: String = "writer_token"
 // tree it checked out, and the newer tree is the one that should win.
 data review_sheet_converge_mutation_group: String = "review-sheet-converge"
 
-// Daily, off the hour (06:41 UTC), so it does not land on the fleet's top-of-hour load.
+// Daily, off the hour (06:41 UTC), so it does not land on the fleet's top-of-hour load. It is the workflow's one
+// schedule: it starts the review-sheet converge and, since 2026-11-23, the daily release pack (build and its
+// plan-revision prerequisite, fleet_converge_build_job_condition).
 data review_sheet_converge_cron: CronSchedule = CronSchedule {
   minute: Exact { value: 41 },
   hour: Exact { value: 6 },
