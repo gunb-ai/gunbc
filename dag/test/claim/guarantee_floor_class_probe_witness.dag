@@ -46,7 +46,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
 }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, census_int_text, CensusVerdict }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
@@ -347,7 +347,7 @@ test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -
 // grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
 // row without declaring it here impossible. A number in the name is maintenance with no consumer.
-test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
+fn below_floor_hole_set_holds() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
@@ -359,6 +359,33 @@ test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let every_declared_is_a_hole = fold(declared, init: true, f: (acc, id) => acc && (hole_ids |> filter(h => h == id) |> count) == 1
   )
   every_hole_declared && every_declared_is_a_hole
+}
+
+test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
+  below_floor_hole_set_holds()
+}
+
+// THE COUNTED FACE OF THE SAME ORACLE (ladder-probe-corpus red-control receipt). The Bool above is
+// the assertion; this one makes the deficit READABLE where a receipt must show it: the premise label
+// carries the counted number of below-floor hole rows against the declared set's size, so a probe
+// that greens without its wall landing (or a phantom enrolled beside none) FAILS with the counted
+// number visibly off by exactly one - the deficit as a continuously measured quantity, which is what
+// this node exists to replace anecdote with. The comparison remains SET EQUALITY against the named
+// declared rows (no copied constant): a count copied from the tree would be a change detector
+// (gunbc.design_argument::fail_closed), so the numbers reported are projections of the same folds the
+// Bool oracle consumes, not a second authority.
+test fn counted_below_floor_hole_rows_match_declared_count() -> ProcessExit {
+  let declared = [
+    floor_exhaustiveness_type_variable_hole_probe as String,
+    floor_generic_instantiation_hole_probe as String,
+    floor_parse_list_separator_hole_probe as String,
+    floor_cardinality_seam_hole_probe as String,
+  ]
+  let hole_count = count(guarantee_probe_below_floor_hole_rows())
+  let declared_count = count(declared)
+  census_verdict_all([
+    census_premise(concat("counted below-floor hole rows: ", concat(census_int_text(hole_count), concat(" vs declared below-floor holes: ", census_int_text(declared_count)))), below_floor_hole_set_holds() && hole_count == declared_count)
+  ])
 }
 
 test fn every_declared_floor_class_has_registry_rows() -> Bool {
