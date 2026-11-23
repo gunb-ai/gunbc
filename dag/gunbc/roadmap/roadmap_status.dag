@@ -157,6 +157,34 @@ fn red_observation_from_texts(red_at: String, green_at: String, red_base: String
   else { RedProbe { red_at: red_at, red_base: red_base, green_at: green_at, probe_ref: probe_ref as NonEmptyStr } }
 }
 
+// THE ARM IS SAID, NEVER GUESSED. An executed red control holds one of two standings — the failing commit
+// was seen ON MAIN, or it was seen on a probe pushed to a durable ref — and the route that builds one NAMES
+// which, in the same word the wire carries (gunbc.roadmap.roadmap_event_log red_observation_members). The
+// older red_observation_from_texts above reads the arm out of which argument was left empty and stays for
+// the callers that already hold a decided pair; a recorder may not use it to decide. An arm word outside
+// the closed set, a probe naming no base or no ref, or a main arm naming either is no observation at all —
+// refused, not defaulted (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+//
+// All five arrive as TEXTS, the way the command line holds them: a member the arm does not carry is the
+// EMPTY TEXT, and the empty text is not a value of either arm's member — so the empty string is never read
+// as "the caller meant this member but left it out" across arms, it is refused or required strictly by the
+// arm that was NAMED. (Deciding the arm by which texts were empty is exactly what the older
+// red_observation_from_texts does, and what this fn exists to replace.)
+fn red_observation_from_arm(arm: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> RedObservation? {
+  if arm == "on_main" {
+    if red_base != "" { none }
+    else if probe_ref != "" { none }
+    else { Present { value: RedObservedOnMain { red_at: red_at, green_at: green_at } } }
+  }
+  else if arm == "probe" {
+    if red_base == "" { none }
+    else if probe_ref == "" { none }
+    else { Present { value: RedProbe {
+      red_at: red_at, red_base: red_base, green_at: green_at, probe_ref: probe_ref as NonEmptyStr } } }
+  }
+  else { none }
+}
+
 fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {
   match e {
     HandbackNotDelivered => false
